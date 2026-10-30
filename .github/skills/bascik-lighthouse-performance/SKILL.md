@@ -15,10 +15,13 @@ Bascik's design philosophy is zero runtime JavaScript overhead, resulting in 100
 
 ```
 docs/lighthouse/
-├── generate-config.ts       # Generates URL matrix across all docs pages
-├── lighthouserc.json        # Full Lighthouse CI assertions & performance budgets
-├── lighthouserc.light.json  # Fast lightweight subset for rapid developer checks
-└── lighthouserc.test.ts     # Test suite verifying LHCI config consistency
+├── generate-config.ts           # Writes lighthouserc.all*.json from every page in nav.ts
+├── lighthouserc.json            # Mobile gate: assertions & performance budgets
+├── lighthouserc.desktop.json    # Desktop gate
+├── lighthouserc.light.json      # Light-theme accessibility check
+├── lighthouserc.all.json        # Generated: every route (gitignored)
+├── lighthouserc.all-light.json  # Generated: every route, light theme
+└── lighthouserc.test.ts         # Test suite verifying LHCI config consistency
 ```
 
 ---
@@ -35,17 +38,21 @@ docs/lighthouse/
 
 Docs pages include automated JSON-LD schemas verified during build and audits:
 
-- **BreadcrumbList:** Generated via `docs/scripts/breadcrumb-ld.ts`.
-- **Article & TechArticle:** Generated via `docs/scripts/article-schema.ts`.
-- **FAQPage:** Generated via `docs/scripts/faq-schema.ts`.
+- **BreadcrumbList:** Generated via `docs/src/lib/breadcrumb-ld.ts`.
+- **Article & TechArticle:** Generated via `docs/src/lib/article-schema.ts`.
+- **FAQPage:** Generated via `docs/src/lib/faq-schema.ts`.
 
 ---
 
 ## 4. Running Audits
 
 ```sh
-# Generate dynamic LHCI config matrix
-npx --prefix docs tsx docs/lighthouse/generate-config.ts
+# Run the gate (mobile, desktop, light theme) or every route
+yarn docs:lighthouse
+yarn docs:lighthouse:all   # runs generate-config.ts itself
+
+# Generate dynamic LHCI config matrix only
+node docs/lighthouse/generate-config.ts
 
 # Run LHCI config unit test
 npx vitest run docs/lighthouse/lighthouserc.test.ts

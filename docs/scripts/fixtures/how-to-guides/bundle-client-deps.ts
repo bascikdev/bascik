@@ -1,10 +1,10 @@
-// build-bundle.mjs: bundles client dependencies into dist/assets/js/.
+// build-bundle.ts: bundles client dependencies into dist/assets/js/.
 // Run as a pipeline.exec step with phase: 'pre' so the bundle exists
 // before pages are transpiled and referenced.
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/client/confetti-entry.mjs"],
+  entryPoints: ["src/client/confetti-entry.ts"],
   bundle: true,
   format: "esm",
   minify: true,

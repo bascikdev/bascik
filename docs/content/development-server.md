@@ -55,14 +55,13 @@ If a Windows environment does not allow symlink creation, Bascik warns once and 
 
 ## CLI Flags
 
-| Flag                  | Description                  | Default                       |
-| :-------------------- | :--------------------------- | :---------------------------- |
-| `--port <number>`     | Port to listen on            | `8080`                        |
-| `--hostname <string>` | Interface to bind            | `localhost`                   |
-| `--base <path>`       | Deployment path prefix       | `/`                           |
-| `--config <path>`     | Path to explicit config file | `bascik.config.ts`            |
-| `--env-file <path>`   | Custom environment file path | `./.env`                      |
-| `--site-url <url>`    | Override canonical site URL  | `process.env.BASCIK_SITE_URL` |
+| Flag                | Description                  | Default                              |
+| :------------------ | :--------------------------- | :----------------------------------- |
+| `--port <number>`   | Port to listen on            | `8080`                               |
+| `--host <name>`     | Interface to bind            | `localhost`                          |
+| `--config <path>`   | Path to explicit config file | `bascik.config.js`, `.mjs`, or `.ts` |
+| `--env-file <path>` | Custom environment file path | `./.env`                             |
+| `--site-url <url>`  | Override canonical site URL  | `process.env.BASCIK_SITE_URL`        |
 
 ```sh
 # Start dev server on custom port
@@ -73,7 +72,7 @@ bascik --port 3000
 
 Bascik injects a lightweight, zero-dependency SSE client into HTML pages served during development.
 
-- When an HTML, CSS, or JavaScript file is saved, Bascik re-transpiles only affected pages and notifies connected browsers via an SSE event stream (`/__bascik_sse`).
+- When an HTML, CSS, or JavaScript file is saved, Bascik re-transpiles only affected pages and notifies connected browsers via an SSE event stream (`/bascik-live-reload`).
 - Browsers reload seamlessly without requiring browser extensions or external polling tools.
 - Live reload scripts are completely stripped from production builds (`bascik --build`).
 
@@ -101,6 +100,7 @@ The development server watches:
 - **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag.
 - **`src/` (or `scripts.importRoot`):** Only request-time modules are reloaded from here. A shared `@/` helper that a build script imports re-renders its pages only when its folder is in `pipeline.watchPaths` (or inside `directory.pages` or `directory.components`); then the edit invalidates dependent build script caches and re-renders the affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
+- **The root config file (`bascik.config.js`, `.mjs`, or `.ts`):** An edit is not applied. The server prints `[bascik] Config file changed: <path>. Restart the server to apply configuration changes.` and keeps running with the configuration it booted with. See [My config changes have no effect](/testing/troubleshooting#my-config-changes-have-no-effect).
 
 ## This Website's Build: A Real-World Example
 

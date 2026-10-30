@@ -22,18 +22,17 @@ The production server is read-only and designed for deployment:
 
 ## CLI Flags
 
-| Flag                  | Description                         | Default                               |
-| :-------------------- | :---------------------------------- | :------------------------------------ |
-| `--server`            | Start the production server runtime | `false`                               |
-| `--port <number>`     | Port to listen on                   | `8080` (HTTP) or `8443` (HTTPS/HTTP2) |
-| `--hostname <string>` | Interface to bind                   | `localhost`                           |
-| `--base <path>`       | Deployment path prefix              | `/`                                   |
-| `--config <path>`     | Path to explicit config file        | `bascik.config.ts`                    |
-| `--env-file <path>`   | Custom environment file path        | `./.env`                              |
+| Flag                | Description                         | Default                               |
+| :------------------ | :---------------------------------- | :------------------------------------ |
+| `--server`          | Start the production server runtime | `false`                               |
+| `--port <number>`   | Port to listen on                   | `8080` (HTTP) or `8443` (HTTPS/HTTP2) |
+| `--host <name>`     | Interface to bind                   | `localhost`                           |
+| `--config <path>`   | Path to explicit config file        | `bascik.config.js`, `.mjs`, or `.ts`  |
+| `--env-file <path>` | Custom environment file path        | `./.env`                              |
 
 ```sh
 # Run on port 3000 bound to all interfaces
-bascik --server --port 3000 --hostname 0.0.0.0
+bascik --server --port 3000 --host 0.0.0.0
 ```
 
 ## Configuration (`http`)
@@ -69,22 +68,26 @@ export default defineConfig({
 
 ### Server Configuration Options
 
-| Option                         | Type                     | Default                       | Description                                                                                           |
-| :----------------------------- | :----------------------- | :---------------------------- | :---------------------------------------------------------------------------------------------------- |
-| `http.port`                    | `number`                 | `8080` / `8443`               | TCP port to listen on                                                                                 |
-| `http.hostname`                | `string`                 | `'localhost'`                 | Network interface to bind                                                                             |
-| `http.compression`             | `boolean`                | `true`                        | Enables automatic Gzip and Brotli compression                                                         |
-| `http.trustProxy`              | `boolean`                | `false`                       | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers                    |
-| `http.rateLimit`               | `boolean \| object`      | `true`                        | In-memory sliding-window IP rate limiter (500 requests per 10 s per IP)                               |
-| `http.cacheControl`            | `Record<string, string>` | `{}`                          | Custom `Cache-Control` headers matched by file extension                                              |
-| `http.timeouts`                | `object`                 | `{}`                          | Socket request, headers, and keep-alive timeout values                                                |
-| `http.maxBodySize`             | `number`                 | `1048576` (1MB)               | Maximum payload byte size for API route requests                                                      |
-| `http.tls`                     | `object`                 | `{ enabled: false }`          | TLS / HTTPS and HTTP/2 certificate configuration                                                      |
-| `security.headers`             | `boolean \| object`      | `true`                        | The five security headers on every response; an object changes or removes one                         |
-| `security.hsts`                | `boolean \| object`      | `true`                        | `Strict-Transport-Security: max-age=31536000` over HTTPS                                              |
-| `security.privateDynamicPages` | `boolean`                | `true`                        | `cache-control: private, no-store` on pages with server or stream scripts                             |
-| `security.hideDotfiles`        | `boolean`                | `true`                        | 404 for paths with a dot segment such as `/.env`, except `/.well-known/`                              |
-| `scripts.renderLimits`         | `object`                 | `{ maxInstances: 1000, ... }` | Limits on what one script output may render (see [Configuration](/configuration#scriptsrenderlimits)) |
+| Option                         | Type                | Default                       | Description                                                                                                            |
+| :----------------------------- | :------------------ | :---------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `http.port`                    | `number`            | `8080` / `8443`               | TCP port to listen on                                                                                                  |
+| `http.hostname`                | `string`            | `'localhost'`                 | Network interface to bind                                                                                              |
+| `http.compression`             | `boolean`           | `true`                        | Enables automatic Gzip and Brotli compression                                                                          |
+| `http.trustProxy`              | `boolean`           | `false`                       | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers                                     |
+| `http.rateLimit`               | `boolean \| object` | `true`                        | In-memory sliding-window IP rate limiter (500 requests per 10 s per IP)                                                |
+| `http.cacheControl`            | `string \| object`  | `'public, max-age=3600'`      | `Cache-Control` for static files; an object maps file extensions to values                                             |
+| `http.timeouts.request`        | `number`            | `30000`                       | Milliseconds to receive a whole request, body included; then `408`. Responses are not limited                          |
+| `http.timeouts.headers`        | `number`            | `10000`                       | Milliseconds to receive a request's headers; then `408`. At most `http.timeouts.request` (unset: the lower of the two) |
+| `http.timeouts.keepAlive`      | `number`            | `5000`                        | Milliseconds an idle connection waits for its next request before it closes (HTTP/2: no open stream)                   |
+| `http.timeouts.drain`          | `number`            | `5000`                        | Milliseconds in-flight requests get to finish on shutdown                                                              |
+| `http.maxBodySize`             | `number`            | `1048576` (1MB)               | Maximum request body size in bytes for API routes; a larger body gets `413`                                            |
+| `http.apiTimeout`              | `number`            | `10000`                       | Maximum run time of an API route handler in milliseconds                                                               |
+| `http.tls`                     | `object`            | `{ enabled: false }`          | TLS / HTTPS and HTTP/2 certificate configuration                                                                       |
+| `security.headers`             | `boolean \| object` | `true`                        | The five security headers on every response; an object changes or removes one                                          |
+| `security.hsts`                | `boolean \| object` | `true`                        | `Strict-Transport-Security: max-age=31536000` over HTTPS                                                               |
+| `security.privateDynamicPages` | `boolean`           | `true`                        | `cache-control: private, no-store` on pages with server or stream scripts                                              |
+| `security.hideDotfiles`        | `boolean`           | `true`                        | 404 for paths with a dot segment such as `/.env`, except `/.well-known/`                                               |
+| `scripts.renderLimits`         | `object`            | `{ maxInstances: 1000, ... }` | Limits on what one script output may render (see [Configuration](/configuration#scriptsrenderlimits))                  |
 
 The server reads its own config, including the `server` export, for every row above. See [`security`](/configuration#security) for what each protection does and what turning it off means.
 
@@ -123,7 +126,10 @@ export default defineConfig({
 When TLS is enabled:
 
 - ALPN negotiation enables HTTP/2 for modern clients and HTTP/1.1 for legacy agents.
-- TLS session tickets and SNI routing are configured automatically.
+- `http.timeouts.request` and `http.timeouts.headers` apply to HTTP/1.1 clients. An HTTP/2 connection is closed with `GOAWAY` once it has had no open request for `http.timeouts.keepAlive`; an open request, however quiet, keeps it open. See [`http`](/configuration#http).
+- Without `keyFile` and `certFile`, the server creates a certificate for `localhost` on first start, with `mkcert` when it is installed and `openssl` otherwise, saved as `bascik-privkey.pem` and `bascik-cert.pem` in the directory Bascik runs from (the project folder when you start it there). The mkcert certificate covers `localhost`, `127.0.0.1`, and `::1` and is trusted once mkcert's local CA is installed (`mkcert -install`). The openssl certificate is self-signed, with SubjectAltName (SAN) entries for `localhost`, `*.localhost`, `127.0.0.1`, and `::1`; browsers still warn until you trust it.
+- Existing `bascik-privkey.pem` and `bascik-cert.pem` files are reused, not regenerated. Delete them after installing mkcert to get a trusted certificate.
+- If `keyFile` or `certFile` is set, Bascik never generates a certificate. A configured path that does not exist fails [configuration validation](/configuration#configuration-validation) at startup (`http.tls.keyFile ... file does not exist or is not readable`). If you set only one of the two, the other falls back to the default `bascik-privkey.pem` or `bascik-cert.pem`, and when that default file is missing the server stops with `Custom TLS certificate files are configured but could not be found.`
 - Development certificates (e.g. generated with `mkcert`) work seamlessly for local HTTPS testing.
 
 ## Compression: Brotli & Gzip
@@ -148,7 +154,7 @@ On boot, `bascik --server` reads all compiled HTML documents from `dist/` into a
 
 The production server responds to `SIGTERM` and `SIGINT` process signals by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
 
-- **Built-in Health Checks:** Deploy `src/api/health.ts` or query `/_health` for orchestrator liveness and readiness probes. Readiness transitions to 503 during draining while liveness remains 200.
+- **Built-in Health Checks:** Point readiness probes at `/_health` (or `/_health/ready`) and liveness probes at `/_health/live`. Readiness answers 503 while the server boots and drains; liveness stays 200 while the process is up.
 - **Connection Draining:** In-flight streaming scripts and requests complete within `http.timeouts.drain` before connections close. Forced socket termination only occurs if the deadline expires.
 
 > **Next:** See [Deployment Overview](/deployment) for deployment guides on Node servers, Docker, PM2, and systemd.

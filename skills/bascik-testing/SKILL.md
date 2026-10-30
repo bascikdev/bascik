@@ -67,7 +67,7 @@ Install `parse5` as a dev dependency and `bascik --check` will report WHATWG par
 
 ## Debug
 
-- **Component scripts:** in DevTools Sources, open `src/components/<name>.html` (Cmd+P / Ctrl+P). Lines match the source in dev. Later instances are `<name>.html?instance=2`. Use `debugger;` to stop in every instance.
+- **Component scripts:** in DevTools Sources, open `src/components/<name>/<name>.html` (Cmd+P / Ctrl+P). Lines match the source in dev. Later instances are `<name>.html?instance=2`. Use `debugger;` to stop in every instance.
 - **Build, routes, server, and stream scripts:** errors point at the file and line where the script was written. Set breakpoints in VS Code and launch the dev server under the debugger.
 - **Wrong output:** run `node <skills-dir>/bascik/scripts/preview.mjs --page src/pages/x.html` to read the unminified compiled page.
 - **Stale build script output:** a script that reads the network or a directory is cached; add it to `scripts.cache.exclude` or delete `node_modules/.cache/bascik/script-cache`.
@@ -86,5 +86,6 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 | Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
 | Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
+| Fix a known problem                  | `/testing/troubleshooting`                                                   |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

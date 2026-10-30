@@ -70,6 +70,9 @@ const defaultFs: ConfigValidationFs = {
   },
 };
 
+/** One extension, dot optional: `.css` or `css`, never `*.css` or `a/b.css`. */
+const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
+
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === "object" && !Array.isArray(val);
 
@@ -574,6 +577,31 @@ export const validateConfigShape = (
         }
       }
     }
+    if (http.cacheControl !== undefined && http.cacheControl !== null) {
+      const cacheControl = http.cacheControl;
+      if (isPlainObject(cacheControl)) {
+        for (const [ext, value] of Object.entries(cacheControl)) {
+          const key = `http.cacheControl[${JSON.stringify(ext)}]`;
+          // Matched against the file's last extension, with or without the
+          // dot; a glob or a path would silently never match.
+          if (!CACHE_CONTROL_EXTENSION.test(ext)) {
+            push(
+              key,
+              ext,
+              'expected a file extension such as ".css" (matched against the last extension of the file name)',
+            );
+          } else if (typeof value !== "string") {
+            push(key, value, "expected a Cache-Control string");
+          }
+        }
+      } else if (typeof cacheControl !== "string") {
+        push(
+          "http.cacheControl",
+          cacheControl,
+          'expected a Cache-Control string, or a per-extension map such as { ".css": "public, max-age=31536000, immutable" }',
+        );
+      }
+    }
     if (http.timeouts !== undefined) {
       const timeouts = http.timeouts;
       if (!isPlainObject(timeouts)) {
@@ -583,23 +611,31 @@ export const validateConfigShape = (
           "expected an object with timeout values",
         );
       } else {
-        for (const key of [
-          "request",
-          "headers",
-          "keepAlive",
-          "drain",
-        ] as const) {
+        // Node's servers take request, headers and keepAlive as integers and
+        // throw at startup on anything else, so a fraction reports here.
+        for (const key of ["request", "headers", "keepAlive"] as const) {
           const val = timeouts[key];
           if (
             val !== undefined &&
-            (typeof val !== "number" || Number.isNaN(val) || val <= 0)
+            (typeof val !== "number" || !Number.isInteger(val) || val <= 0)
           ) {
             push(
               `http.timeouts.${key}`,
               val,
-              "expected a positive number (milliseconds)",
+              "expected a positive whole number (milliseconds)",
             );
           }
+        }
+        const drain = timeouts.drain;
+        if (
+          drain !== undefined &&
+          (typeof drain !== "number" || Number.isNaN(drain) || drain <= 0)
+        ) {
+          push(
+            "http.timeouts.drain",
+            drain,
+            "expected a positive number (milliseconds)",
+          );
         }
       }
     }
@@ -1400,6 +1436,61 @@ export const collectModeOverrideWarnings = (
 
 /* ── Orchestration ────────────────────────────────────────────────────── */
 
+/**
+ * The `http.timeouts` defaults in milliseconds (config.ts uses these). The
+ * drain default lives with the shutdown handler in server-lifecycle.ts.
+ */
+export const DEFAULT_HTTP_TIMEOUTS = {
+  request: 30_000,
+  headers: 10_000,
+  keepAlive: 5_000,
+} as const;
+
+/**
+ * The headers timeout used when the config leaves it out: the documented
+ * default, lowered to a request timeout set below it, since Node refuses a
+ * headers timeout longer than the request timeout.
+ */
+export const defaultHeadersTimeout = (request: number): number =>
+  Math.min(DEFAULT_HTTP_TIMEOUTS.headers, request);
+
+const timeoutValue = (
+  layer: unknown,
+  key: "request" | "headers",
+): number | undefined => {
+  if (!isPlainObject(layer) || !isPlainObject(layer.http)) return undefined;
+  const timeouts = layer.http.timeouts;
+  if (!isPlainObject(timeouts)) return undefined;
+  const value = timeouts[key];
+  // A malformed value already reported in the shape pass; skip it here.
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+};
+
+/**
+ * Node refuses to start a server whose headers timeout is longer than its
+ * request timeout (the headers are part of the request), so report the
+ * merged pair as a config error instead of a stack trace at listen time.
+ */
+const checkHttpTimeoutOrder = (
+  base: unknown,
+  override: unknown,
+): ConfigValidationError | undefined => {
+  const requestSet =
+    timeoutValue(override, "request") ?? timeoutValue(base, "request");
+  const headers =
+    timeoutValue(override, "headers") ?? timeoutValue(base, "headers");
+  const request = requestSet ?? DEFAULT_HTTP_TIMEOUTS.request;
+  // An unset headers timeout follows request down (defaultHeadersTimeout).
+  if (headers === undefined || headers <= request) return undefined;
+  return {
+    key: "http.timeouts.headers",
+    value: headers,
+    message: `expected at most http.timeouts.request (${request}${requestSet === undefined ? ", the default" : ""}); the headers are part of the request, so lower headers or raise request`,
+  };
+};
+
 const errorSignature = (error: ConfigValidationError): string =>
   `${error.key}${error.message}${String(error.value)}`;
 
@@ -1434,6 +1525,23 @@ export const validateUserConfig = (
   for (const layer of layers) {
     errors.push(...validateConfigShape(layer, { cwd: deps.cwd }));
     errors.push(...validateConfigPaths(layer, { fs: deps.fs, cwd: deps.cwd }));
+  }
+  // headers <= request holds for the merged values a server runs with, so
+  // check the pair dev and --server each see (build starts no server). A
+  // flat override applies to build and --server only, as in config.ts.
+  const perMode =
+    isPlainObject(modeOverrides) &&
+    ("dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides);
+  for (const mode of ["dev", "server"] as const) {
+    const override = perMode
+      ? (modeOverrides as Record<string, unknown>)[mode]
+      : mode === "server"
+        ? modeOverrides
+        : undefined;
+    const error = checkHttpTimeoutOrder(userConfig, override);
+    if (error) errors.push(error);
   }
 
   // Site URL: owned by environment.ts, validated here so an invalid value

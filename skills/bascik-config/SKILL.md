@@ -47,7 +47,7 @@ export const build = defineConfig({/* bascik --build only */});
 export const server = defineConfig({/* bascik --server only */});
 ```
 
-- `bascik.config.js` wins when both `.js` and `.ts` exist. `--config <path>` selects a file explicitly.
+- Bascik loads the first of `bascik.config.js`, `bascik.config.mjs`, and `bascik.config.ts` it finds, so a leftover `.js` wins over `.ts`. `--config <path>` selects a file explicitly.
 - `"type": "module"` must be in `package.json`.
 - The config is validated at startup: unknown keys fail with a "did you mean" suggestion, and referenced paths must exist. All problems are reported together.
 - Objects deep-merge across `default` and the mode export. **Arrays replace.** Defining `build.pipeline.exec` replaces the whole default `exec` list, so include every script that should run in production.
@@ -173,7 +173,7 @@ Bascik changes the author's output only to protect it, and each change has a swi
 - HSTS no longer sends `includeSubDomains` by default; opt in with `hsts: { includeSubDomains: true }` only when every subdomain serves HTTPS. `hsts: { maxAge: 0 }` makes browsers forget an earlier policy.
 - Turn one off only for a named reason, and never the binding ones for visitor data: `blockCodeBindings: false` lets a prop become code.
 - The binding keys and `stripDirectiveScripts` apply at build time (default or `build` export; Bascik warns in `server`). The Cloudflare Worker uses the build's values for all of them.
-- Limits are server settings, not `security`: `scripts.renderLimits` (request-time rendering, `maxInstances: 1000` and five more) and `components.expansionLimits` (build guard, `maxInstances: 10000`, `maxPageLength`). `scripts.stripAnsi: false` keeps terminal color codes in script output.
+- Limits are their own settings, not `security`: `scripts.renderLimits` (request-time rendering, `maxInstances: 1000` and five more) and `components.expansionLimits` (build guard, `maxInstances: 10000`, `maxPageLength`). `scripts.stripAnsi: false` keeps terminal color codes in script output.
 
 Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /security`.
 

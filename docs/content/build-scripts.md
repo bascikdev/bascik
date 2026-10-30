@@ -36,7 +36,7 @@ Output in the compiled HTML (`dist/index.html`):
 </html>
 ```
 
-> **A few rules to know:** Top-level `import` and `await` are supported at module scope. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Return an HTML string (or a promise resolving to a string) from the default export. Build scripts run during both dev and production builds. Component tags in the returned markup are resolved normally, so your build script can emit `<my-card>` and it will be transpiled. Standard console methods (`console.log()`, `console.warn()`, `console.error()`) write to the terminal for debugging and logging only; they never generate markup.
+> **A few rules to know:** Top-level `import` and `await` are supported at module scope. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Return an HTML string (or an `html` value, or a promise resolving to either) from the default export. Build scripts run during both dev and production builds. Component tags in the returned markup are resolved normally, so your build script can emit `<my-card>` and it will be transpiled. Standard console methods (`console.log()`, `console.warn()`, `console.error()`) write to the terminal for debugging and logging only; they never generate markup.
 
 ### Handler Contract & Console Logging
 
@@ -53,7 +53,7 @@ A build script defines its output through a callable default export:
 ```
 
 - **Callable default export:** The module must provide a default export that is a callable function (`function`, `async function`, or arrow function). Bascik invokes it with zero arguments.
-- **Return value:** The function must return a string or a promise resolving to a string. Returning `undefined`, `null`, numbers, or objects throws an error.
+- **Return value:** The function must return a string, an [`html`](/html-helpers#html) value from `@bascik/bascik/html`, or a promise resolving to either. Returning `undefined`, `null`, numbers, or other objects throws an error.
 - **Empty output:** To render nothing, return an explicit empty string `return ''`.
 - **Console logging:** `console.log()` and `console.error()` output travels directly to the terminal for diagnostic logging. Bascik transfers returned HTML through a separate isolated transport, so logs never leak into generated markup.
 - **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup.

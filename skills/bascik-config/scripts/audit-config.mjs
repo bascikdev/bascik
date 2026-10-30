@@ -380,7 +380,11 @@ export function auditConfig(module, { root, exists = existsSync } = {}) {
 function findConfig(start) {
   let dir = resolve(start);
   while (true) {
-    for (const file of ["bascik.config.js", "bascik.config.ts"]) {
+    for (const file of [
+      "bascik.config.js",
+      "bascik.config.mjs",
+      "bascik.config.ts",
+    ]) {
       if (existsSync(join(dir, file)))
         return { root: dir, path: join(dir, file) };
     }
@@ -406,7 +410,7 @@ async function main() {
   const { root, path } = findConfig(values.root ?? process.cwd());
   if (!path) {
     const message =
-      "No bascik.config.ts or bascik.config.js: the zero-config defaults apply. Nothing to audit.";
+      "No bascik.config.js, bascik.config.mjs, or bascik.config.ts: the zero-config defaults apply. Nothing to audit.";
     console.log(
       values.json
         ? JSON.stringify({ root, config: null, findings: [] }, null, 2)

@@ -54,7 +54,7 @@ src/components/              src/components/
 
 ## Component Syntax
 
-A Bascik component is a vanilla HTML file. There are no `<template>`, `<script setup>`, or `<style>` blocks. The file name (minus the extension) is the tag name.
+A Bascik component is a vanilla HTML file: no `<template>` wrapper and no `<script setup>`. Styles go in a paired `.css` file or an inline `<style>` block, and client behavior in an ordinary `<script>` tag. The file name (minus the extension) is the tag name.
 
 ```html
 <!-- SiteNav.vue (Vue - before) -->
@@ -206,19 +206,17 @@ Vue passes an array to a component with `:data="rows"`. In Bascik, a build scrip
 <data-grid>
   <script data-bascik-build>
     import { rows } from "@/data/rows.ts";
-    import { jsonScript } from "@/lib/json-script.ts";
+    import { html, json } from "@bascik/bascik/html";
 
-    export default () => jsonScript({ rows });
+    export default () =>
+      html`<script type="application/json">
+        ${json({ rows })}
+      <\/script>`;
   </script>
 </data-grid>
 ```
 
-```ts
-// src/lib/json-script.ts
-// Escape `<` so no value can end the script early.
-export const jsonScript = (value: unknown) =>
-  `<script type="application/json">${JSON.stringify(value).replaceAll("<", () => "\\u003c")}</script>`;
-```
+`json()` escapes `<`, `>` and `&`, so no value can end the script early; see [HTML Helpers](/html-helpers#json).
 
 ```html
 <!-- src/components/data-grid/data-grid.html -->
@@ -340,21 +338,35 @@ src/router/index.js          src/pages/
 
 ```html
 <!-- src/pages/blog/[slug].html -->
-<script data-bascik-routes>
-  export default async function () {
-    return [
-      { params: { slug: "my-first-post" }, data: { title: "My First Post" } },
-      { params: { slug: "another-post" }, data: { title: "Another Post" } },
-    ];
-  }
-</script>
-<h1>Post</h1>
-<script data-bascik-build>
-  export default function () {
-    const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
-    return `<p>${route.params.slug}</p>`;
-  }
-</script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Blog - Acme</title>
+    <script data-bascik-routes>
+      export default async function () {
+        return [
+          {
+            params: { slug: "my-first-post" },
+            data: { title: "My First Post" },
+          },
+          { params: { slug: "another-post" }, data: { title: "Another Post" } },
+        ];
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <script data-bascik-build>
+        import { esc } from "@bascik/bascik/html";
+
+        export default function () {
+          const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+          return `<h1>${esc(route.data.title)}</h1>`;
+        }
+      </script>
+    </main>
+  </body>
+</html>
 ```
 
 This writes `dist/blog/my-first-post.html` and `dist/blog/another-post.html`. Name the file `[slug]/index.html` to get `/blog/my-first-post/` instead. Do not generate page files into `src/pages/`. See [Dynamic Routes](/dynamic-routes).
@@ -363,19 +375,7 @@ Route guards, nested layouts with `<RouterView>`, and `<RouterLink>` active clas
 
 ## Computed / Watch for Data → `<script data-bascik-build>`
 
-Data you load once for a page becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script exports a default callable function whose returned HTML replaces the tag in the page. Escape every value you return, because the output is markup:
-
-```ts
-// src/lib/escape.ts
-export const escapeHtml = (text: string) =>
-  text.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        character
-      ]!,
-  );
-```
+Data you load once for a page becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script exports a default callable function whose returned HTML replaces the tag in the page. The output is markup, so build it with the `html` tagged template from `@bascik/bascik/html`, which escapes every value as Vue's `{{ }}` did (see [HTML Helpers](/html-helpers)):
 
 ```html
 <!-- src/pages/blog/index.html -->
@@ -384,7 +384,7 @@ export const escapeHtml = (text: string) =>
   <ul>
     <script data-bascik-build>
       import { readdir } from "node:fs/promises";
-      import { escapeHtml } from "@/lib/escape.ts";
+      import { html } from "@bascik/bascik/html";
 
       export default async function () {
         const files = await readdir("./content/posts");
@@ -392,12 +392,9 @@ export const escapeHtml = (text: string) =>
           .filter((file) => file.endsWith(".md"))
           .map((file) => file.slice(0, -3))
           .filter((slug) => /^[a-z0-9-]+$/.test(slug));
-        return slugs
-          .map(
-            (slug) =>
-              `<li><a href="/blog/${escapeHtml(slug)}">${escapeHtml(slug)}</a></li>`,
-          )
-          .join("\n");
+        return html`${slugs.map(
+          (slug) => html`<li><a href="/blog/${slug}">${slug}</a></li>`,
+        )}`;
       }
     </script>
   </ul>
@@ -406,7 +403,7 @@ export const escapeHtml = (text: string) =>
 
 A fetch in `onMounted` stays a `fetch()` in a component script if the data must be fresh for each visitor. Data that is the same for everyone belongs in a build script.
 
-> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. `bascik --check` cannot see a tag that only a build script prints, so it can report that component as unused.
+> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. `bascik --check` counts a tag the script writes out as a use; a tag name built in code, such as `` `<card-${kind}>` ``, it cannot follow, so it notes that the component may be used there (see [`bascik --check`](/cli#static-analysis-with-bascik-check)).
 
 ## v-if / v-show / v-for → Build Scripts, `hidden`, and Templates
 

@@ -1,0 +1,321 @@
+<!-- @bascik
+A request waterfall comparing when content first appears: a framework SPA, a static Bascik page, a page with a server script, and a page with a stream script. Each bar sits on a time track of 18 columns, four per network round trip, so grid-column 1 / 5 is the first round trip. Use inside diagram-figure.
+-->
+<style>
+  .waterfall {
+    display: grid;
+    gap: 22px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  /* Two classes to beat the docs' .docs-content li bottom margin, which would
+     leave the last item taller than the rest in this flex row. */
+  .legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+  }
+
+  .key {
+    white-space: nowrap;
+  }
+
+  .swatch {
+    width: 14px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  .lane-name {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .lane-note {
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+  }
+
+  .rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .row,
+  .axis {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 38%) 1fr;
+    align-items: center;
+    gap: 12px;
+    min-height: 22px;
+  }
+
+  .label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .track,
+  .ticks {
+    display: grid;
+    grid-template-columns: repeat(18, 1fr);
+    align-items: center;
+    height: 100%;
+    background-image: linear-gradient(
+      to right,
+      var(--border) 1px,
+      transparent 1px
+    );
+    background-size: calc(100% / 4.5) 100%;
+  }
+
+  .bar {
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  .net {
+    background: var(--syn-attr);
+  }
+
+  .cpu {
+    background: var(--syn-num);
+  }
+
+  .server {
+    background: var(--syn-kw);
+  }
+
+  .seen {
+    background: var(--accent-fg);
+  }
+
+  .row-seen .label {
+    color: var(--accent-fg);
+    font-weight: 700;
+  }
+
+  .row-seen .bar {
+    width: 4px;
+    height: 18px;
+    border-radius: 2px;
+  }
+
+  .axis {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+
+  .ticks {
+    background-image: none;
+  }
+
+  .tick {
+    grid-column: span 4;
+  }
+
+  /* The track is 4.5 round trips wide, so the last tick has half a column group. */
+  .tick:last-child {
+    grid-column: span 2;
+  }
+</style>
+<div class="waterfall" data-testid="load-waterfall">
+  <ul class="legend" aria-label="Legend">
+    <li class="legend-item">
+      <span class="swatch net"></span><span class="key">Network</span>
+    </li>
+    <li class="legend-item">
+      <span class="swatch cpu"></span><span class="key">Browser work</span>
+    </li>
+    <li class="legend-item">
+      <span class="swatch server"></span><span class="key">Server work</span>
+    </li>
+    <li class="legend-item">
+      <span class="swatch seen"></span><span class="key">Content visible</span>
+    </li>
+  </ul>
+
+  <div class="axis" aria-hidden="true">
+    <span>Round trips</span>
+    <span class="ticks">
+      <span class="tick">0</span><span class="tick">1</span
+      ><span class="tick">2</span><span class="tick">3</span
+      ><span class="tick">4</span>
+    </span>
+  </div>
+
+  <div class="lane">
+    <p class="lane-name">Framework SPA</p>
+    <ol class="rows" aria-label="Framework SPA">
+      <li class="row">
+        <span class="label">Fetch HTML shell</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 1 / 5"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Fetch JS bundle</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 5 / 9"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Parse and run JS</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 9 / 11"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Fetch API data</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 11 / 15"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Render content</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 15 / 17"></span
+        ></span>
+      </li>
+      <li class="row row-seen">
+        <span class="label">Content visible</span>
+        <span class="track"
+          ><span class="bar seen" style="grid-column: 17 / 18"></span
+        ></span>
+      </li>
+    </ol>
+    <p class="lane-note">
+      Four steps wait on each other before anything shows.
+    </p>
+  </div>
+
+  <div class="lane">
+    <p class="lane-name">Static page (bascik --build)</p>
+    <ol class="rows" aria-label="Static page">
+      <li class="row">
+        <span class="label">Fetch complete HTML</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 1 / 5"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Paint</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 5 / 6"></span
+        ></span>
+      </li>
+      <li class="row row-seen">
+        <span class="label">Content visible</span>
+        <span class="track"
+          ><span class="bar seen" style="grid-column: 6 / 7"></span
+        ></span>
+      </li>
+    </ol>
+    <p class="lane-note">The first response is the whole page.</p>
+  </div>
+
+  <div class="lane">
+    <p class="lane-name">Server script (data-bascik-server)</p>
+    <ol class="rows" aria-label="Server script">
+      <li class="row">
+        <span class="label">Request reaches the server</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 1 / 3"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Script reads the data</span>
+        <span class="track"
+          ><span class="bar server" style="grid-column: 3 / 7"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Complete HTML arrives</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 7 / 9"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Paint</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 9 / 10"></span
+        ></span>
+      </li>
+      <li class="row row-seen">
+        <span class="label">Content visible</span>
+        <span class="track"
+          ><span class="bar seen" style="grid-column: 10 / 11"></span
+        ></span>
+      </li>
+    </ol>
+    <p class="lane-note">
+      Still one request: the data is fetched next to the backend.
+    </p>
+  </div>
+
+  <div class="lane">
+    <p class="lane-name">Stream script (data-bascik-stream)</p>
+    <ol class="rows" aria-label="Stream script">
+      <li class="row">
+        <span class="label">Request reaches the server</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 1 / 3"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Shell flushed at once</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 3 / 5"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Paint the shell</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 5 / 6"></span
+        ></span>
+      </li>
+      <li class="row row-seen">
+        <span class="label">Content visible</span>
+        <span class="track"
+          ><span class="bar seen" style="grid-column: 6 / 7"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Script reads the data</span>
+        <span class="track"
+          ><span class="bar server" style="grid-column: 3 / 7"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Section arrives, same response</span>
+        <span class="track"
+          ><span class="bar net" style="grid-column: 7 / 9"></span
+        ></span>
+      </li>
+      <li class="row">
+        <span class="label">Section fills in</span>
+        <span class="track"
+          ><span class="bar cpu" style="grid-column: 9 / 10"></span
+        ></span>
+      </li>
+    </ol>
+    <p class="lane-note">
+      The page paints like a static one; the slow part streams in after.
+    </p>
+  </div>
+</div>

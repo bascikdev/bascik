@@ -549,15 +549,17 @@ Users can either pass the package name via CLI:
 bascik --build --target my-adapter
 ```
 
-Or configure it with options in their `bascik.config.ts`:
+`bascik.config.ts` has no adapter option. To pass options, users write a local file whose default export calls `createAdapter` and point `--target` at it:
 
 ```ts
-import { defineConfig } from "@bascik/bascik";
+// adapters/my-cloud.ts
 import { createAdapter } from "my-adapter";
 
-export default defineConfig({
-  // Configuration options
-});
+export default createAdapter({ memoryMb: 256, region: "eu" });
+```
+
+```sh
+bascik --build --target ./adapters/my-cloud.ts
 ```
 
 ---
@@ -647,6 +649,7 @@ export interface SiteGraph {
   custom500?: string; // Content or path of custom 500.html template if present
   importRoot: string; // Absolute path to project source import root
   components?: SiteGraphComponents; // Present when the build wrote .bascik/dist/components.json
+  contentSecurityPolicy?: SiteGraphContentSecurityPolicy; // Present when contentSecurityPolicy is set
   responseSecurity?: ResponseSecurity; // security.headers, hsts and privateDynamicPages, resolved
   hideDotfiles?: boolean; // security.hideDotfiles (absent: true)
   stripAnsi?: boolean; // scripts.stripAnsi (absent: true)
@@ -656,6 +659,12 @@ export interface SiteGraph {
 export interface SiteGraphComponents {
   manifest: ComponentManifest; // The parsed .bascik/dist/components.json
   jobs: Record<string, SiteGraphJob>; // Server and stream scripts inside components, by job ID
+}
+
+export interface SiteGraphContentSecurityPolicy {
+  policy: ContentSecurityPolicyConfig; // The contentSecurityPolicy option as configured
+  hashes: Record<string, CspRouteHashes>; // Each route's inline script and style hashes
+  staticRoutes: string[]; // HTTP paths of static pages, which a host serves without the runtime
 }
 ```
 
@@ -758,6 +767,7 @@ Adapters bundle `@bascik/bascik/runtime` into their function entry points. It us
 | Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`. |
 | Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                  |
 | Script output       | `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                                                        |
+| Content policy      | `contentSecurityPolicyHeader(policy, hashes)`, which returns the header name and value for one HTML response, from the graph's content security policy and the route's hashes.                                                                                                        |
 
 A buffered page response for a page without stream scripts, given a `page` from `graph.pages` and a `run` like the tutorial's:
 

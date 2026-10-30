@@ -37,10 +37,12 @@ export const LINGER_IDLE_MS = 5_000;
 /**
  * Longest the server keeps reading a rejected body in total, however
  * steadily it trickles. It is what stops a slowloris that sends a byte
- * just inside every idle window, so one rejected upload holds a socket for
- * seconds, not for `requestTimeout`'s minutes. 30 s is nginx's
- * `lingering_time` default, the same total bound, and covers a slow client
- * finishing several MiB.
+ * just inside every idle window. It is its own bound rather than the
+ * server's `requestTimeout` (`http.timeouts.request`, 30 s by default but
+ * configurable, see `nodeServerTimeouts` in server-lifecycle.ts), so raising
+ * that timeout for slow legitimate uploads never lets a rejected body hold
+ * the socket longer. 30 s is nginx's `lingering_time` default, the same
+ * total bound, and covers a slow client finishing several MiB.
  */
 export const LINGER_MAX_MS = 30_000;
 

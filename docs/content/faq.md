@@ -44,19 +44,6 @@ Bascik will advance through minor updates to support new browser capabilities, p
 
 Then of course, I hope for very few patch updates as stability is a top priority.
 
-## What happens if I name a component after a native HTML element?
-
-If you create a file like `nav.html` or `div.html`, Bascik will print a warning in the terminal when starting the dev server or running a build, and still load it:
-
-```text
-warning: Component "nav" has the same name as a native HTML element.
-This may cause unexpected behavior, consider a hyphenated name like "my-nav".
-```
-
-The component will conflict with every occurrence of that element in your pages. All your `<nav>` tags would be replaced by the component content, most likely breaking your site entirely.
-
-Always use a hyphenated name for components, for example `site-nav.html` instead of `nav.html`. This follows the HTML custom element convention: a hyphen in the tag name is how browsers (and Bascik) distinguish a component from a built-in element.
-
 ## What happens if I use uppercase letters in a component filename?
 
 Component names are normalized to lowercase when loaded. `My-Card.html` registers as `my-card` and is used as `<my-card>` in pages.
@@ -64,14 +51,6 @@ Component names are normalized to lowercase when loaded. `My-Card.html` register
 If you have two files that differ only in case (for example `my-card.html` and `My-Card.html`), they both map to the same `my-card` component key and the last one loaded wins. Avoid this situation by using consistent lowercase filenames.
 
 > **Convention.** Use lowercase, hyphenated filenames for all components: `site-nav.html`, `feature-card.html`, `alert-box.html`. This matches the HTML custom element convention and avoids any case-collision surprises.
-
-## What happens if I reference a component that doesn't exist?
-
-During a build, Bascik emits a warning naming the unresolved tag, and the tag ships to the output unchanged. The build does not fail.
-
-Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
-
-To silence the warning for a tag you own on purpose, list it in [`components.external`](/configuration#componentsexternal), for example `components: { external: ['model-viewer', 'ion-icon', 'vendor-*'] }`. Typos stay reported. `scoping.preserve` does not do this: it only controls attribute scoping.
 
 ## What does Bascik output?
 
@@ -116,10 +95,6 @@ Yes. You can organize `src/components/` however you prefer: completely flat, gro
 
 Tag names come from the filename only, so subfolders do not create separate namespaces. `src/components/marketing/promo-card.html` registers `<promo-card>`. Choose whichever folder structure fits your project, ensuring each component file has a unique name.
 
-## What happens if two components have the same name?
-
-If two component files define the same tag name (such as `src/components/marketing/card.html` and `src/components/admin/card.html`, or `card.html` and `card.v2.html`), Bascik throws a build error naming both colliding file paths. Duplicate component names are not allowed because tag names come from the filename alone.
-
 ## Do I need to restart the dev server when I add a new component?
 
 No. The dev server watches the components directory. Drop a new `.html` (or paired `.css`) file in and all pages that use that tag are automatically re-transpiled and reloaded. No restart required.
@@ -144,7 +119,7 @@ The `src/components/` directory is treated strictly as source-only files:
 
 - Component `.html` templates are resolved and inlined into pages at build time.
 - Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
-- Client `.ts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
+- Client `.ts`, `.mts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
 - Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their returned markup replaces the script tag.
 - Any other files (helper modules, JSON data files, tests, READMEs) stay in `src/components/` and are never copied to `dist/`.
 
@@ -158,33 +133,9 @@ A `.ts` or `.mts` companion is stripped to JavaScript first (erasable syntax onl
 
 Unreferenced local files are ignored so Node build/server helpers are never accidentally bundled into client code. External `<script src="...">` links pointing to CDNs or global assets are left untouched and passed through to the page output.
 
-## Why is my prop value showing as escaped text?
-
-Props are text values. Bascik HTML-escapes them during injection so markup from a CMS, database, or API cannot become an executable element or script. If you need rich HTML or a nested component, pass it through a default or named [slot](/slots) instead. Slot content remains markup and participates in component scoping.
-
 ## How do I put a prop into an attribute?
 
 Add `data-bascik-attr-{attribute}="{propName}"` to the target element in the component template. For example, `<a data-bascik-attr-href="link">` reads `data-bascik-prop-link="/about"` from the component usage and emits `<a href="/about">`. This works on non-root elements, unlike attribute inheritance. It is a build-time `data-*` directive, not a variable or templating expression. See [Props](/props#put-a-prop-in-an-attribute).
-
-## Why do I see multiple identical script tags in my page output?
-
-This is by design and is how Bascik's component scoping works.
-
-When you use a component multiple times on a page, each instance of that component includes its corresponding `<script>` block in the expanded output. Because class names are scoped to the component name rather than an individual instance ID (which allows CSS rules to be deduplicated into a single `<style>` block), component scripts that query elements by class name or use DOM traversal produce identical JavaScript code for every instance.
-
-Each script tag is isolated in its own IIFE so variables never leak into the global scope. Having one script tag per component instance guarantees that every instance receives its behavior without requiring a runtime framework, component registry, or bundling step.
-
-## Why are my form field names hashed?
-
-They are not by default: `name` ships as written, so `new FormData(form)` and a form post send the names you wrote. Names are hashed only in a project that sets `scoping.attributes.name: true`; there, add `data-bascik-preserve="name"` to a form whose server reads literal keys. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups).
-
-## Why do the radios in two copies of my component act as one group?
-
-`name` ships as written, and the HTML spec makes radios with one name and no form owner one group across the page. Give the component its own `<form>` around the radios, or give each copy its own name through a prop (`data-bascik-attr-name="group"` in the component, `data-bascik-prop-group="..."` on each usage). The linter warns (`shared-name-group`) when a component like this is used more than once on a page. See [Component Best Practices](/component-best-practices#radio-groups-per-component-instance).
-
-## How do I use a third-party widget that looks up an element by ID?
-
-Add a bare `data-bascik-preserve` directive to the widget mount point. Its literal ID and subtree remain unscoped, so calls such as `turnstile.render('widget-mount')` can find it. Bascik removes the directive from compiled output. See [Preserve Scoping](/preserve).
 
 ## Where should I put images and fonts?
 
@@ -246,7 +197,7 @@ Restart the dev server after changing configuration. Each dev startup clears `di
 
 Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standard ECMAScript modules outside the browser. They export a callable default function that returns their result: an HTML string for build scripts, or an array of route entries for dynamic route scripts.
 
-Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract--console-logging).
+Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract-console-logging).
 
 ## Can I rebuild only part of my site?
 
@@ -255,14 +206,6 @@ Yes. Run `bascik --build --only "<glob>"` to selectively transpile matching page
 ## Can I see the transpiled HTML during development?
 
 Yes. Dev mode stores the updated page in memory first so it can be served immediately, then writes the same transpiled HTML to `directory.out` asynchronously. You can inspect `dist/index.html` or the corresponding nested output file while the dev server runs without adding disk latency to page serving.
-
-## Why do I need to restart after changing my config?
-
-Bascik deep-freezes configuration at server boot to guarantee consistency across worker threads, routers, and watchers. When `bascik.config.ts` changes during development, Bascik logs a restart hint. Hot config reload is intentionally avoided to prevent state desynchronization.
-
-## Why does my browser reject the dev TLS certificate?
-
-Modern browsers require SubjectAltName (SAN) extensions on certificates. When generating self-signed certificates (`http.tls.enabled: true`), Bascik creates certificates with SAN extensions covering `localhost`, `*.localhost`, `127.0.0.1`, and `::1`. If you have `mkcert` installed, Bascik uses it to create locally-trusted certificates automatically.
 
 ## What does `bascik --check` actually check?
 
@@ -289,10 +232,6 @@ Modern browsers require SubjectAltName (SAN) extensions on certificates. When ge
 If the linter is not installed, the project checks still run and the report says the per-file checks were skipped.
 
 Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
-
-## Why does `--check` list my third-party web components?
-
-Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. Declare the ones you use in [`components.external`](/configuration#componentsexternal) to remove them from the report. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
 
 ## How does Bascik handle bad markup or invalid code? Does it crash?
 
@@ -329,13 +268,9 @@ Bascik follows the standard precedence chain instead: `--site-url` flag, then th
 
 Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML and CSS URLs during the build, serves dev and production-server requests below `/docs/`, and includes the prefix in generated sitemap, robots, and canonical URLs. Requests without the prefix return `404`, matching a static subdirectory host. See [Subdirectory deploys](/deployment#subdirectory-deploys).
 
-## How do I use a strict Content Security Policy with Bascik?
-
-List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `.bascik/dist/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
-
 ## Does Bascik set a Content Security Policy header?
 
-No. Bascik inlines styles and component scripts for performance and scoping isolation. Setting a CSP header directly in Bascik would require `'unsafe-inline'`, which defeats the purpose of CSP. Instead, Bascik generates SHA-256 hash manifests (`generate.cspHashes: true`) so your host or CDN edge can serve a strict policy.
+Only when you ask. By default Bascik sends none, because a policy has to list the sites your pages load from, and only you know them. A strict policy lists the hash of each inline script instead of allowing `'unsafe-inline'`. Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) with your directives and the dev server, `bascik --server`, and Cloudflare send the header with your directives plus each route's inline script and style hashes. On Cloudflare, static pages get it through exact-path rules in the generated `_headers` file. For a static host, `generate.cspHashes: true` writes the SHA-256 hashes of every page's inline scripts and styles to `.bascik/dist/csp-hashes.json` for your host or CDN to serve. See [Content Security Policy](/how-to/content-security-policy) for a recipe per host.
 
 ## Do I need a process supervisor?
 
@@ -351,12 +286,6 @@ Configure your orchestrator or reverse proxy to use `GET /_health` as the readin
 
 Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<product-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/server-scripts#returning-component-tags) for a worked example and the rules, or see it live on Cloudflare Workers in the [product catalog demo](https://cloudflare-adapter.bascik.dev/catalog?q=frother).
 
-## Can a server script slow down other requests?
-
-Yes, if it executes long-running synchronous code or blocks Node's event loop.
-
-Server scripts (`<script data-bascik-server>`) execute in-process within the same Node.js runtime to eliminate fork overhead and process starvation. Because Node runs JavaScript on a single thread, synchronous computations (such as heavy regex matching or CPU loops) block the event loop while they run, delaying concurrent requests. Always use asynchronous APIs with `await`, pass `signal` to `fetch()` or database clients to respect `scripts.timeout`, and offload intensive CPU tasks to worker threads.
-
 ## Can Bascik handle form submissions and API requests?
 
 Yes. Define API route handlers in TypeScript or JavaScript under `src/api/` (such as `src/api/contact.ts` or `src/api/users/[id].ts`). Handlers take a standard WHATWG `Request` and return a standard `Response`. You can accept POST JSON, parse form bodies, set custom status codes, and issue cookies directly without external backend dependencies. Run `bascik --server` to serve API routes in production.
@@ -368,7 +297,3 @@ No. If you run Bascik with `bascik --server`, API routes run in-process on the s
 ## Why does Bascik not include middleware chains or interceptors?
 
 Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.
-
-## How big a request body can an API route accept?
-
-By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and answers oversized requests with `413 Payload Too Large` without buffering the entire body into memory. A `Content-Length` over the limit is answered before the handler runs. Bascik then reads and discards the rest of the upload, within fixed limits, before it closes the connection, so the client receives the `413` instead of a connection error.

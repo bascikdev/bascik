@@ -37,7 +37,7 @@ Component names are derived from filenames, regardless of subfolder nesting. Two
      Component names come from the filename, so subfolders do not
      create separate namespaces. Rename one file, for example
      marketing-hero-card.html. -->
-<div class="hero-card">
+<div class="hero-card" data-testid="hero-card">
   <p>Local hero card</p>
 </div>
 ```
@@ -53,7 +53,7 @@ For one or two components without npm packaging, copying files manually is strai
 ```html
 <!-- src/components/marketing/hero-card.html -->
 <!-- Component names derive from the filename, regardless of subfolder nesting. -->
-<div class="hero-card">
+<div class="hero-card" data-testid="hero-card">
   <p class="hero-card-title" data-bascik-prop-title></p>
   <p>Shared marketing card</p>
 </div>

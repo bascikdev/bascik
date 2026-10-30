@@ -85,6 +85,24 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     );
   });
 
+  // server.ts lowercases the request's extension, so a key written as ".PNG"
+  // (or without the dot) must still match; an exact-case key wins over a
+  // case-folded one.
+  it("matches per-extension keys case-insensitively and with or without the dot", () => {
+    const upper = {
+      ".PNG": "public, max-age=86400",
+      JPG: "public, max-age=60",
+    };
+    expect(resolveCacheControl(".png", upper)).toBe("public, max-age=86400");
+    expect(resolveCacheControl(".PNG", upper)).toBe("public, max-age=86400");
+    expect(resolveCacheControl(".jpg", upper)).toBe("public, max-age=60");
+    expect(resolveCacheControl(".gif", upper)).toBe("public, max-age=3600");
+
+    const both = { ".png": "lower", ".PNG": "upper" };
+    expect(resolveCacheControl(".png", both)).toBe("lower");
+    expect(resolveCacheControl(".PNG", both)).toBe("upper");
+  });
+
   it("emits immutable when configured", () => {
     const config = { ".woff2": "public, max-age=31536000, immutable" };
     expect(resolveCacheControl(".woff2", config)).toContain("immutable");

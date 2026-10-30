@@ -17,6 +17,7 @@ import {
   normalizeBasePath,
 } from "./config-validation.ts";
 import { initBascikConfig } from "./config.ts";
+import { defineConfig } from "./defineConfig.ts";
 
 /** fs stub where every path exists, is a directory, and is readable. */
 const allowAllFs = {
@@ -155,6 +156,229 @@ describe("scripts.timeout", () => {
     expect(validateConfigShape({ scripts: { timeout: 30000 } })).toHaveLength(
       0,
     );
+  });
+});
+
+describe("http.timeouts", () => {
+  it("accepts every documented key as a positive whole number", () => {
+    expect(
+      validateConfigShape({
+        http: {
+          timeouts: { request: 30000, headers: 10000, keepAlive: 5000 },
+        },
+      }),
+    ).toHaveLength(0);
+  });
+
+  it.each(["request", "headers", "keepAlive"] as const)(
+    "rejects a fractional %s, which Node's server would throw on at start",
+    (key) => {
+      const errors = validateConfigShape({
+        http: { timeouts: { [key]: 1500.5 } },
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe(`http.timeouts.${key}`);
+      expect(errors[0].message).toContain("whole number");
+    },
+  );
+
+  it.each([0, -1, Number.NaN, "5000"])("rejects %s for a timeout", (value) => {
+    const errors = validateConfigShape({
+      http: { timeouts: { keepAlive: value as any } },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.keepAlive");
+  });
+
+  it("suggests the right key for a typo", () => {
+    const errors = validateConfigShape({
+      http: { timeouts: { keepalive: 5000 } as any },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.keepalive");
+    expect(errors[0].message).toContain(
+      'did you mean "http.timeouts.keepAlive"',
+    );
+  });
+
+  it("rejects headers longer than request, naming both values", () => {
+    const errors = validateUserConfig(
+      { http: { timeouts: { request: 5000, headers: 8000 } } },
+      {},
+      { fs: allowAllFs, env: {} },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.headers");
+    expect(errors[0].value).toBe(8000);
+    expect(errors[0].message).toContain("http.timeouts.request (5000)");
+  });
+
+  it("compares a raised headers timeout against the default request timeout", () => {
+    const errors = validateUserConfig(
+      { http: { timeouts: { headers: 45000 } } },
+      {},
+      { fs: allowAllFs, env: {} },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.headers");
+    expect(errors[0].message).toContain("30000, the default");
+  });
+
+  it("lowers the default headers timeout to a request set below it, instead of failing", () => {
+    // Only request is set; the 10 s headers default must not reject it.
+    expect(
+      validateUserConfig(
+        { http: { timeouts: { request: 5000 } } },
+        {},
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toHaveLength(0);
+    expect(
+      validateUserConfig(
+        {},
+        { server: { http: { timeouts: { request: 2000 } } } },
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toHaveLength(0);
+    const { BascikConfig } = initBascikConfig(
+      { http: { timeouts: { request: 5000 } } },
+      {},
+      { isProdServer: true },
+      { fs: allowAllFs, env: {} },
+    );
+    expect(BascikConfig.http.timeouts).toMatchObject({
+      request: 5000,
+      headers: 5000,
+    });
+  });
+
+  it("skips the default export's own pair when every server mode overrides it", () => {
+    // dev and --server both raise request; build starts no server.
+    expect(
+      validateUserConfig(
+        { http: { timeouts: { headers: 40000 } } },
+        {
+          dev: { http: { timeouts: { request: 60000 } } },
+          server: { http: { timeouts: { request: 60000 } } },
+        },
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toHaveLength(0);
+    // A mode export that leaves request alone still runs the default pair.
+    const errors = validateUserConfig(
+      { http: { timeouts: { headers: 40000 } } },
+      { dev: { http: { timeouts: { request: 60000 } } } },
+      { fs: allowAllFs, env: {} },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.headers");
+    expect(errors[0].message).toContain("30000, the default");
+  });
+
+  it("checks the merged values of each mode export, not each layer alone", () => {
+    // request from the default export, headers from the server export: fine.
+    expect(
+      validateUserConfig(
+        { http: { timeouts: { request: 60000 } } },
+        { server: { http: { timeouts: { headers: 45000 } } } },
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toHaveLength(0);
+    // The dev export lowers request under the default export's headers.
+    const errors = validateUserConfig(
+      { http: { timeouts: { headers: 20000, request: 60000 } } },
+      { dev: { http: { timeouts: { request: 15000 } } } },
+      { fs: allowAllFs, env: {} },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.timeouts.headers");
+    expect(errors[0].message).toContain("(15000)");
+  });
+
+  it("initBascikConfig fills the documented defaults and keeps a partial object's others", () => {
+    const { BascikConfig: defaults } = initBascikConfig(
+      {},
+      {},
+      {},
+      { fs: allowAllFs, env: {} },
+    );
+    expect(defaults.http.timeouts).toMatchObject({
+      request: 30000,
+      headers: 10000,
+      keepAlive: 5000,
+    });
+    const { BascikConfig: partial } = initBascikConfig(
+      { http: { timeouts: { keepAlive: 2000 } } },
+      {},
+      { isProdServer: true },
+      { fs: allowAllFs, env: {} },
+    );
+    expect(partial.http.timeouts).toMatchObject({
+      request: 30000,
+      headers: 10000,
+      keepAlive: 2000,
+    });
+  });
+});
+
+describe("http.cacheControl", () => {
+  it("types and accepts a string or a per-extension map (yarn pkg:typecheck)", () => {
+    const one = defineConfig({
+      http: { cacheControl: "public, max-age=600" },
+    });
+    const map = defineConfig({
+      http: {
+        cacheControl: {
+          ".css": "public, max-age=31536000, immutable",
+          woff2: "public, max-age=31536000, immutable",
+        },
+      },
+    });
+    expect(validateConfigShape(one)).toHaveLength(0);
+    expect(validateConfigShape(map)).toHaveLength(0);
+    // @ts-expect-error a max-age number is not a Cache-Control value
+    defineConfig({ http: { cacheControl: 3600 } });
+    // @ts-expect-error each extension maps to a Cache-Control string
+    defineConfig({ http: { cacheControl: { ".css": 3600 } } });
+  });
+
+  it.each([3600, true, ["public"]])(
+    "rejects %j, naming both accepted shapes",
+    (value) => {
+      const errors = validateConfigShape({
+        http: { cacheControl: value as any },
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.cacheControl");
+      expect(errors[0].message).toContain("per-extension");
+    },
+  );
+
+  it("locates a non-string value in the map at its extension", () => {
+    const errors = validateConfigShape({
+      http: {
+        cacheControl: { ".css": "public, max-age=60", ".png": 86400 } as any,
+      },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe('http.cacheControl[".png"]');
+    expect(errors[0].value).toBe(86400);
+  });
+
+  it("rejects a key that is not a file extension, which would never match", () => {
+    const errors = validateConfigShape({
+      http: {
+        cacheControl: {
+          "*.css": "public, max-age=60",
+          "assets/logo.png": "no-cache",
+        },
+      },
+    });
+    expect(errors.map((e) => e.key)).toEqual([
+      'http.cacheControl["*.css"]',
+      'http.cacheControl["assets/logo.png"]',
+    ]);
+    expect(errors[0].message).toContain('".css"');
   });
 });
 

@@ -123,6 +123,29 @@ jobs:
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
 
+  unit-lsp:
+    name: Language Server Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run language server unit tests
+        run: yarn lsp:test:ci
+
   # Windows is a supported platform, so the code that touches paths, processes, and files runs there too. Checkout
   # uses Git for Windows' default line-ending conversion on purpose: `.gitattributes` must keep every file LF, and a
   # failure here that mentions line endings means it no longer does. Each step runs even if an earlier one failed,
@@ -393,6 +416,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -434,6 +458,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -470,6 +495,9 @@ jobs:
       - name: Run framework E2E tests (exec failure policy)
         run: yarn pkg:e2e:exec:policy
 
+      - name: Run framework E2E tests (exec build lifecycle)
+        run: yarn pkg:e2e:exec:build
+
   e2e-pkg-prod-http1:
     name: Framework E2E (Prod Server HTTP/1.1)
     runs-on: ubuntu-latest
@@ -481,6 +509,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -522,6 +551,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -563,6 +593,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -604,6 +635,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,
@@ -645,6 +677,7 @@ jobs:
         unit-pkg,
         integration-pkg,
         unit-create,
+        unit-lsp,
         unit-adapter-cloudflare,
         unit-docs,
         unit-extension,

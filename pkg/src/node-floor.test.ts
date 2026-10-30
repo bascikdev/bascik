@@ -31,6 +31,19 @@ describe("bin/bascik.js Node floor", () => {
     expect(pkg.engines.node).toBe(">=22.22.0");
   });
 
+  // Every published workspace states the floor, so a package manager that
+  // enforces engines reports it at install time for any of them.
+  it.each([
+    "create/package.json",
+    "adapters/cloudflare/package.json",
+    "lsp/package.json",
+  ])("%s declares the same floor in engines", (file) => {
+    const other = JSON.parse(
+      readFileSync(new URL(`../../${file}`, import.meta.url), "utf8"),
+    ) as { engines?: { node?: string } };
+    expect(other.engines?.node, `${file} engines.node`).toBe(pkg.engines.node);
+  });
+
   it.each(["22.21.9", "22.18.0", "20.19.0", "not.a.version"])(
     "refuses Node %s with one located line",
     (version) => {

@@ -41,7 +41,7 @@ export default async function (request, context, { signal });
 ```
 
 - `request`: A standard WHATWG [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request), identical to API routes. Access `request.method`, `new URL(request.url).pathname`, `new URL(request.url).searchParams.get('page')`, or `request.headers.get('cookie')`. Note that `request.url` carries the real scheme and host of the incoming request. See MDN documentation for [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request), [`Headers`](https://developer.mozilla.org/en-US/docs/Web/API/Headers), [`URL`](https://developer.mozilla.org/en-US/docs/Web/API/URL), and [`URLSearchParams`](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams).
-- `context`: `{ remoteIp }`. This object holds data that has no standard home on `Request`; it is the same shape API routes receive minus `params`.
+- `context`: `{ remoteIp, platform }`. This object holds data that has no standard home on `Request`; it is the same shape API routes receive minus `params`. `platform` is `{ name: "node" }` on the built-in server and carries the Worker's bindings on Cloudflare (see [Bindings and secrets](/deployment/cloudflare#bindings-and-secrets)); a script that ignores it runs unchanged on every host.
 - `{ signal }`: An [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) triggered when the request times out or the client disconnects.
 
 ```html
@@ -76,9 +76,9 @@ Both forms are compiled and parsed when the page is built, in dev and by `bascik
   </head>
   <body>
     <script data-bascik-server type="text/typescript">
-      import { html } from "@bascik/bascik/html";
+      import { html, type SafeHtml } from "@bascik/bascik/html";
 
-      export default (request: Request): string => {
+      export default (request: Request): SafeHtml => {
         const name: string =
           new URL(request.url).searchParams.get("name") ?? "visitor";
         return html`<p>Hello, ${name}</p>`;
@@ -157,7 +157,7 @@ Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. P
 
 Once the deadline passes, the result is a timeout even if the script settles afterwards, including a script that returns a value from inside its own `abort` listener. The timeout is then handled by `scripts.onServerScriptError` like any other timeout. A script that returned before the deadline keeps its output. When the client disconnects instead, the script's output is discarded without a report.
 
-> **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or heavy CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts. Always use asynchronous I/O and standard timers.
+> **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or heavy CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts, so every concurrent request waits until it finishes. Always use asynchronous I/O and standard timers, and move CPU-heavy work to a worker thread.
 
 ## Shared Helper Modules
 
@@ -866,7 +866,7 @@ Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-pro
 | Feature              | Server Scripts (`data-bascik-server`)                  | API Routes (`src/api/*.ts`)                                   |
 | :------------------- | :----------------------------------------------------- | :------------------------------------------------------------ |
 | **Destination**      | Injected directly into HTML pages                      | Standalone JSON, streaming, or binary HTTP endpoints          |
-| **Methods**          | GET only (page render)                                 | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`    |
+| **Methods**          | `GET` and `HEAD` (page render)                         | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`    |
 | **Contract**         | Takes WHATWG `Request`, returns HTML string            | Takes WHATWG `Request`, returns WHATWG `Response`             |
 | **Response Control** | Cannot set HTTP status code or custom headers          | Full control over status codes, response headers, and cookies |
 | **Use Cases**        | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs  |
@@ -879,7 +879,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 - Scripts run on **every request** and are **never cached:** the output is always fresh.
 - During `bascik --build`, server script tags are stripped and stored in `.bascik/dist/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
 - Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as the [Cloudflare Adapter](/deployment/cloudflare). A static-only host leaves the placeholders inert.
-- On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, while `'warn'` logs to stderr and replaces the tag with an empty string. Stack traces remap to your original source file line and column.
+- On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, `'warn'` logs to stderr and replaces the tag with an empty string, and `'ignore'` replaces it with an empty string without a log. Stack traces remap to your original source file line and column.
 - Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
 
 > **Next:** See [Stream Scripts](/stream-scripts) for chunked streaming scripts (`data-bascik-stream`), or consult the [Production Server](/production-server) reference for server runtime configuration.

@@ -39,7 +39,7 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
 
 The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformations:
 
-- Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component
+- Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component, highlighted at build time (`docs/src/lib/highlight.ts`)
 - Blockquotes (`>`) → `<div class="callout">`
 
 ## HTML Page Shell Structure
@@ -67,9 +67,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
           <!-- Any page-specific summary UI (technique grids, etc.) -->
 
-          <div class="callout">
-            <p><strong>Next:</strong> …</p>
-          </div>
+          <docs-pagination />
         </main>
       </div>
     </div>
@@ -130,7 +128,7 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 
 ## Updating the Agent Skills (`skills/`)
 
-**Do not run `#pre-push.prompt.md` or pre-push scripts automatically.** The user handles running pre-push steps.
+**Do not run the `pre-push` skill (`.github/skills/pre-push/SKILL.md`) or pre-push scripts automatically.** The user handles running pre-push steps.
 
 Note: `llms.txt` and search index are generated automatically when running `yarn docs:build` (or during dev server via `exec` in `docs/bascik.config.ts`). **Lifecycle/generation scripts executed by `exec` must write their generated output files directly to the output directory (`dist/`), never to the source directories (`src/`), to avoid polluting the source tree with build-time artifacts.**
 
@@ -176,7 +174,7 @@ When updating a skill, follow the official Agent Skills best practices (https://
 
 ## Sidebar
 
-Add new pages to `docs/src/components/docs-sidebar/docs-sidebar.html`. Group under the appropriate `<p class="sidebar-heading">` section.
+Add new pages to `NAV` in `docs/src/lib/nav.ts`, under the appropriate section. `docs/src/components/docs-sidebar/docs-sidebar.html` renders the sidebar headings and links from it at build time.
 
 ## Code in HTML Slots (component-demo pattern)
 
@@ -212,7 +210,7 @@ Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build
     <script data-bascik-build>
       import { extractDemoBlock } from "@/lib/md-renderer.ts";
       export default async () =>
-        await extractDemoBlock("./content/03-scoped-css.md", "source-html");
+        await extractDemoBlock("./content/props.md", "source-html");
     </script>
   </code-block>
 </div>

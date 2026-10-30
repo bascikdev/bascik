@@ -173,7 +173,7 @@ describe("request-time component rendering docs", () => {
       const row = rowFor(`\`${reason}\``);
       expect(row, `missing row for ${reason}`).toBeDefined();
       // Each unsupported row says how to restructure the component.
-      expect(row!.split("|")[2]).toContain("Unsupported");
+      expect(row!.split("|")[2].trim()).toBe("✕");
       expect(row!.split("|")[3].length).toBeGreaterThan(80);
     }
   });

@@ -13,7 +13,7 @@ Bascik separates protocol management from request routing using a 4-tier archite
                  [server.ts Orchestrator]
                           │
                  ┌────────┴────────┐
-                 │ (enableTls:     │ (enableTls:
+                 │ (tls.enabled:   │ (tls.enabled:
                  │  false)         │  true)
                  ▼                 ▼
              [http.ts]          [pki.ts Cert Gen]
@@ -41,7 +41,7 @@ Bascik separates protocol management from request routing using a 4-tier archite
 1. **`server.ts`**: Central server orchestrator. Defines the unified `createRequestHandler()` routing pipeline, `startServerInstance()` port binder, rate limiter, security header handler, and top-level `startServer()` dispatcher.
 2. **`http.ts`**: Plaintext HTTP/1.1 server (`node:http`). Wraps `http.IncomingMessage` and `http.ServerResponse` into Bascik's request context.
 3. **`http2.ts`**: Opt-in encrypted HTTP/2 server (`node:http2`). Wraps `ServerHttp2Stream` into Bascik's request context.
-4. **`pki.ts`**: Generates self-signed TLS certificates when `enableTls: true` is configured and certificate files are missing on disk.
+4. **`pki.ts`**: Generates TLS certificates when `http.tls.enabled: true` is configured and certificate files are missing on disk.
 
 ## Plaintext HTTP/1.1 Default vs HTTP/2 TLS
 
@@ -59,7 +59,7 @@ export default {
 };
 ```
 
-When `enableTls: true` is active, `pki.ts` looks for local `bascik-cert.pem` and `bascik-privkey.pem` files. If missing, it attempts to generate CA-trusted certificates using `mkcert` (if available) or falls back to OpenSSL self-signed certificates.
+When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.pem` and `bascik-privkey.pem` files. If missing, it attempts to generate CA-trusted certificates using `mkcert` (if available) or falls back to OpenSSL self-signed certificates.
 
 ## Development Server Mode (`bascik`)
 
@@ -209,7 +209,7 @@ The scheduler described above is not Node code. `pkg/src/lib/request-execution.t
 Hosts adapt onto it:
 
 - The Node server (`server-scripts.ts`, `api-runtime.ts`) supplies a `ScriptJobRunner` that resolves each job through `ScriptRegistry`, a `StreamWriter` over the backpressure-aware response sink, and a `classifyError` hook that maps Node transport failures (`PayloadTooLargeError` to 413, socket resets to 499) before the generic 500. The pure route matcher lives in `route-matching.ts`; `api-routes.ts` re-exports it and adds only the filesystem scanner.
-- The Cloudflare adapter (`pkg/src/adapters/cloudflare-runtime.ts`) supplies a runner over the compiled module graph, returns `streamComposedResponse(...).toReadableStream()` as a `Response` body before the body completes (the stream is demand-gated, so returning early is required, not optional), and maps `env` and `ctx.waitUntil` onto `context.platform`.
+- The Cloudflare adapter (`adapters/cloudflare/src/runtime.ts`) supplies a runner over the compiled module graph, returns `streamComposedResponse(...).toReadableStream()` as a `Response` body before the body completes (the stream is demand-gated, so returning early is required, not optional), and maps `env` and `ctx.waitUntil` onto `context.platform`.
 
 Every handler receives `context.platform` (`{ name: "node" }` on the built-in server; `{ name: "cloudflare", env, waitUntil }` in a Worker). It is additive: a handler that never reads it runs unchanged on both.
 
@@ -220,7 +220,7 @@ A server or stream script may return component tags. The build records every com
 At request time `toExecution` (`server-scripts.ts`) wraps the page's job runner with `wrapRunner` when the stored page carries a manifest. `wrapRunner` is host-neutral (no `node:*`; `serverless-contract.test.ts` bundles it for the Web) and returns the runner itself when the manifest has nothing to render. Otherwise, for each job output that contains `<`, it:
 
 1. Runs the compiler's own expansion loop (`expandComponents`, `component-expansion-core.ts`) over the output with only the supported manifest entries, so unsupported and unknown tags pass through as written. Each instance's template is instantiated for a fresh request id (`r` plus 7 hex digits, disjoint from the build's 8-hex ids) by replaying the recorded name hashes (`instantiateTemplate`, `scoping-instantiate.ts`). Props bound with `data-bascik-attr-*` are injected after scoping, with id references mapped through the instance's scoped ids. Each instance is then minified (when `minify.html` was on) and base-rewritten.
-2. Replaces each staged script placeholder in an instance with a request-local marker. Only markers the renderer minted are dispatched, so a placeholder or directive script an author returns stays inert text. Nested jobs run through the host's `runComponentJob` with the runner's `AbortSignal` and the parent's remaining budget, and their output is rendered again, at most 4 levels deep and 64 nested jobs per response.
+2. Replaces each staged script placeholder in an instance with a request-local marker. Only markers the renderer minted are dispatched, so a placeholder or directive script an author returns stays inert text. Nested jobs run through the host's `runComponentJob` with the runner's `AbortSignal` and the parent's remaining budget, and their output is rendered again, by default at most 4 levels deep and 64 nested jobs per response (`scripts.renderLimits`).
 3. Prepends each used component's `<style>` block, once per response per mode, decided in dispatch order through a per-mode promise chain, so the first instance in document order gets the block whatever order jobs finish in.
 
 Budget, depth, and stage failures throw `RequestRenderError`, naming the route and the component file. The page job's wrapper catches it and hands it to the host's `onRenderError`, which applies `scripts.onServerScriptError` the way the host's runner does for a script that throws, with the same `server script error at "<path>"` frame (`renderFailureMessage`) and no stack: under `'error'` it throws (Node: a `ServerScriptError`), so a `server` job rejects `ready` (a 500 before commit) and a `stream` job is logged and absorbed into an empty slot; under `'warn'` it logs and the job's slot is empty; under `'ignore'` the slot is empty. The whole page job's slot is emptied, never a partial render. A nested job's own failure has already been through the policy in `runComponentJob`. Nested jobs run under the wrapper's own `AbortSignal`, linked to the request's: when the render fails, the wrapper aborts it, so sibling nested scripts still running stop and log nothing for a slot already decided. The Cloudflare host does the same with its graph's policy and log. The Node host (`request-render-node.ts`) supplies a bounded name hasher per manifest (`createNameHasher` over `node:crypto` SHA-256, the same algorithm as `getAttributeNameHash` without its process-wide cache) or identity for names, `node:crypto` for ids, and, in development, `warnOnce`. Every render message names a component file by the manifest's `filePath`, which the build records in the form `bascik --check` prints (`components/...`), so the dev server, `bascik --server` and the Worker name it alike. In development the manifest is built once per compile publication and attached to each `StoredPage` with a plan, so a request never mixes two versions. `runServerScriptJob` applies a job's `outputScope` with `applyOutputScope`, so markup returned by a script inside a component gets the component's class mapping and element classes whether the component was placed on a page or returned by a script.
@@ -264,7 +264,7 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 | ------------------------------ | ------------------------------------ | -------------------------------------------------- |
 | Entry Module                   | `transpile.ts` via `server-dev.ts`   | `server-prod.ts`                                   |
 | Shared Core                    | `server.ts`                          | `server.ts`                                        |
-| Page Storage                   | `MemoryStore` in memory (`mem.ts`)   | Pre-built files in `dist/`                         |
+| Page Storage                   | `MemoryStore` in memory (`mem.ts`)   | `dist/` HTML loaded into `MemoryStore` at boot     |
 | Brotli Quality                 | `BROTLI_MIN_QUALITY = 1`             | `BROTLI_MAX_QUALITY = 11`                          |
 | HTTP Caching                   | Disabled (`http.httpCache: false`)   | Enabled (`http.httpCache: true` with ETags & 304s) |
 | Rate Limiting                  | Disabled                             | Active (500 req / 10s per IP)                      |
@@ -383,7 +383,10 @@ The process-wide registry decides its mode once, at construction, from the froze
 Request-time modules (API routes, `src=` server scripts, and the helpers they import at any depth) are imported by the runtime registry, not by the build, so the page dependency graph knows nothing about them. Inline scripts consult the generations of their literal file imports on invocation. The watchers advance runtime identities directly:
 
 - The API route watcher calls `apiRouteRegistry.invalidateFile`, which invalidates the module identity and rescans the route table before `api-route-changed` is emitted.
-- The import-root and components watchers advance the runtime identity for every changed `.js`/`.ts`/`.mjs` path under their roots before deciding whether any page needs a rebuild. When the changed file is a helper, the module graph advances every entry that imports it, and the log line names them: `module invalidated: src/lib/helper.ts (reloads src/lib/src-script.ts)`. The pages watcher only observes `.html` files, so a script module placed under `directory.pages` is covered only when that directory is nested inside the import root.
+- The components watcher reports `.html`, `.css`, `.js`, `.mjs`, `.ts`, and `.mts` files under every component root (`COMPONENT_FILE_RE` in `components.ts`) and advances the runtime identity of each changed path before deciding which pages to rebuild.
+- The import-root watcher applies no extension filter: it passes every added, changed, or removed file under `scripts.importRoot` to the registry, except files under `directory.pages` or a component root (their own watchers own them) and stylesheets inlined through `assets.inlineStyles`. Only an identity the registry or the resolve hook has already seen advances, so an edit to a file no runtime module loaded allocates nothing.
+- The pages asset watcher treats `.ts`, `.mts`, `.cts`, `.mjs`, and `.cjs` files under `directory.pages` as script sources (excluding `.d.ts` declarations and `.test.*`/`.spec.*` files; `isPageScriptSource` in `watch.ts`). One that is not a published static asset advances its runtime identity and recompiles the pages that read it. A `.js` file there is a static asset: it is copied to the output, not invalidated. The pages compile watcher observes only `.html` files.
+- When the changed file is a helper, the module graph advances every entry that imports it, and the log line names them: `module invalidated: src/lib/helper.ts (reloads src/lib/src-script.ts)`.
 
 **Watcher coverage boundary:** the watchers observe `scripts.importRoot`, `directory.components`, and `directory.api`. A helper imported from outside those roots (for example a sibling directory of the import root, or a path reached through `..`) is tracked by the module graph if it lies under the project root, but no watcher reports its edits, so the served output does not update until a watched member of its import chain is edited or the dev server restarts.
 
@@ -431,12 +434,14 @@ The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving 
 
 ## E2E Server Testing
 
-Server behavior is validated through Playwright E2E suites across five environment configurations:
+Server behavior is validated through Playwright E2E suites across five environment configurations (the `pkg/e2e/` configs, plus the adapter's own):
 
 - `playwright.dev.config.ts`: Dev server (`bascik`) live reload, watchers, and boot page.
 - `playwright.server.config.ts`: Production server (`bascik --server`) over HTTP/1.1.
 - `playwright.server-http2.config.ts`: Production server over encrypted HTTP/2 (HTTPS).
 - `playwright.config.ts`: Static build output serving.
-- `playwright.cloudflare.config.ts`: The emitted Cloudflare Pages bundle running in local workerd (Miniflare) with the asset layer in front, including a paint-order test with JavaScript disabled.
+- `adapters/cloudflare/e2e/playwright.config.ts`: The emitted Cloudflare Pages bundle running in local workerd (Miniflare) with the asset layer in front, including a paint-order test with JavaScript disabled.
 
-Request-level parity between the Node server and the Worker is covered by `src/lib/serverless-parity.integration.test.ts`, which serves one build both ways and compares pages, streams, APIs, methods, cookies, errors, and source leakage. Deliberate platform differences are enumerated in that test rather than excluded silently.
+The exec lifecycle has its own lanes (`playwright.dev-exec.config.ts`, `playwright.dev-exec-gated.config.ts`, `playwright.exec-build.config.ts`, `playwright.exec-policy.config.ts`).
+
+Request-level parity between the Node server and the Worker is covered by `adapters/cloudflare/src/serverless-parity.integration.test.ts`, which serves one build both ways and compares pages, streams, APIs, methods, cookies, errors, and source leakage. Deliberate platform differences are enumerated in that test rather than excluded silently.

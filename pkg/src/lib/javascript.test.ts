@@ -2278,6 +2278,27 @@ describe("getComponentScripts", () => {
     expect(res.scriptMap.size).toBe(0);
   });
 
+  it("treats a flat-layout .mts companion as the component's main script", async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "bascik-mts-")));
+    try {
+      const root = join(base, "src/components");
+      mkdirSync(root, { recursive: true });
+      const main = join(root, "card.mts");
+      const extra = join(root, "card-extra.js");
+      writeFileSync(main, "let n: number = 1;\nconsole.log(n);\n");
+      writeFileSync(extra, "console.log('extra');\n");
+      const res = await getComponentScripts(join(root, "card.html"), [
+        extra,
+        main,
+      ]);
+      // The main script (same base name) comes first, as for .ts and .js.
+      expect([...res.scriptMap.keys()][0]).toBe("card.mts");
+      expect(res.scriptMap.get("card.mts")!.code).not.toContain(": number");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   describe("with multiple component roots", () => {
     let base: string;
     const originalRoots = BascikConfig.directory.components;

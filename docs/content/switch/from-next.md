@@ -144,7 +144,7 @@ If many pages share the same outer wrapper, extract it into a layout component t
 
 `getStaticProps` (Pages Router) and an async server component (App Router) fetch data at build time. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time, exporting a callable default function whose returned HTML replaces the tag in the page. Top-level `import` and top-level `await` are natively supported at module scope.
 
-A build script returns strings, not JSX, so escape every value you interpolate. The example below does not, which is fine only because it is illustrative; see [Escaping](#escaping-and-shared-helpers).
+A build script returns HTML, not JSX. The `html` tagged template from `@bascik/bascik/html` escapes each interpolated value, as JSX did; see [Escaping](#escaping-and-shared-helpers).
 
 ```jsx
 // pages/products.js (Next.js - before)
@@ -171,10 +171,12 @@ export default function Products({ products }) {
 <!-- src/pages/products.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
+    import { html } from "@bascik/bascik/html";
+
     export default async function () {
       const res = await fetch("https://api.example.com/products");
       const products = await res.json();
-      return products.map((p) => `<li>${p.name} - $${p.price}</li>`).join("\n");
+      return html`${products.map((p) => html`<li>${p.name} - $${p.price}</li>`)}`;
     }
   </script>
 </ul>
@@ -192,11 +194,14 @@ In Bascik, you do not need a runtime framework or synthetic data payloads. When 
 ```html
 <!-- src/pages/products.html -->
 <script data-bascik-build>
+  import { html, json } from "@bascik/bascik/html";
+
   export default async function () {
     const res = await fetch("https://api.example.com/products");
     const products = await res.json();
-    const safeJson = JSON.stringify(products).replaceAll("<", () => "\\u003c");
-    return `<script type="application/json" id="products-data">${safeJson}<\/script>`;
+    return html`<script type="application/json" id="products-data">
+      ${json(products)}
+    <\/script>`;
   }
 </script>
 
@@ -212,18 +217,18 @@ See [Passing Data to Client Scripts](/build-scripts#passing-data-to-client-scrip
 
 ### Escaping and Shared Helpers
 
-Move the code that turns data into markup into `src/lib/*.ts` helpers that return strings, and import them with the `@/` alias from any page. Two rules differ from Next.js:
+Move the code that turns data into markup into `src/lib/*.ts` helpers that return `html` values, and import them with the `@/` alias from any page. Two rules differ from Next.js:
 
 - **`@/` works only in the script tag.** Bascik resolves `@/lib/x.ts` inside `<script data-bascik-build>`. A helper file is run by Node as-is, so tsconfig `paths` do not apply there: a helper that imports another helper uses a relative path with its extension (`./site.ts`), and a type-only import must be `import type`.
-- **Escape every value.** JSX escapes text for you; a template string does not. Write one `escapeHtml` helper and call it on every interpolated value, including attribute values.
+- **Build markup with `html`.** JSX escapes text for you; a plain template string does not. The `html` tagged template from `@bascik/bascik/html` escapes every interpolated value for where it lands, text or attribute, and blocks `javascript:` URLs. A helper that returns it declares `SafeHtml`. See [HTML Helpers](/html-helpers).
 
 ```ts
 // src/lib/render.ts (illustrative)
+import { html, type SafeHtml } from "@bascik/bascik/html";
 import type { Post } from "../interfaces/post.ts";
-import { escapeHtml as e } from "./site.ts";
 
-export function renderPreview(post: Post): string {
-  return `<h3><a href="/posts/${e(post.slug)}">${e(post.title)}</a></h3>`;
+export function renderPreview(post: Post): SafeHtml {
+  return html`<h3><a href="/posts/${post.slug}">${post.title}</a></h3>`;
 }
 ```
 
@@ -341,4 +346,4 @@ Handlers run in-process on the production server (`bascik --server`) or during l
 
 ## TypeScript in Bascik
 
-Bascik component files are vanilla HTML. If you have TypeScript helper functions, data fetchers, or API routes, you can keep them in `.ts` files and import them directly into build scripts, server scripts, or API routes.
+Bascik component files are vanilla HTML. If you have TypeScript helper functions, data fetchers, or API routes, you can keep them in `.ts` files and import them directly into build scripts, server scripts, or API routes. The scripts themselves can be TypeScript too: mark any inline script, browser or `data-bascik-*`, with `type="text/typescript"`, or point its `src=` at a `.ts` file, and Bascik strips the types before it runs (see [`scripts.typescript`](/configuration#scriptstypescript)).

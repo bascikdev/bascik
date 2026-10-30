@@ -498,7 +498,11 @@ export type UserConfig = {
     tls?: Partial<HttpTlsOptions>;
     rateLimit?: boolean | { window?: number; max?: number };
     trustProxy?: boolean;
-    cacheControl?: string;
+    /**
+     * `Cache-Control` for static files under `bascik --server`: one value for
+     * every file, or a map from file extension (`".css"`) to its value.
+     */
+    cacheControl?: string | Record<string, string>;
     compression?: boolean;
     precompress?: boolean;
     timeouts?: HttpTimeoutsOptions;

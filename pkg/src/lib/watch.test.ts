@@ -314,6 +314,18 @@ describe("watchFiles – watcher setup", () => {
     expect(mockWatch.mock.calls[2][0]).toContain("/project/src/components");
   });
 
+  it("rebuilds for every companion script extension, .mts included", async () => {
+    await watchFiles();
+    const ignored = mockWatch.mock.calls[2][1].ignored as (
+      path: string,
+      stats?: { isFile(): boolean },
+    ) => boolean;
+    const file = { isFile: () => true };
+    for (const ext of ["html", "css", "js", "mjs", "ts", "mts"])
+      expect(ignored(`/project/src/components/card.${ext}`, file)).toBe(false);
+    expect(ignored("/project/src/components/notes.md", file)).toBe(true);
+  });
+
   it("watches every configured component root and follows symlinks there only", async () => {
     const previous = (BascikConfig as any).directory.components;
     (BascikConfig as any).directory.components = [

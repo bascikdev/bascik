@@ -1149,6 +1149,22 @@ describe("checkProject", () => {
       ).toBe(true);
     });
 
+    it("locates config findings in bascik.config.mjs when that is the discovered config", async () => {
+      Object.assign(userConfigMock, { http: { prt: 8080 } });
+      await setupProject({
+        "pages/index.html": "<p>ok</p>",
+        "bascik.config.mjs": "export default {};",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.find(
+        (i) => i.category === "config-validation",
+      );
+      expect(cfg?.locations[0]?.filePath).toBe("bascik.config.mjs");
+    });
+
     it("uses explicit --config path as finding location when provided", async () => {
       const originalArgv = [...process.argv];
       try {

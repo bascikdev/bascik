@@ -55,7 +55,14 @@ export const minifyCss = (css: string): string => {
   const minified = shielded
     .replace(/\n/g, " ")
     .replace(/\s\s+/g, " ")
-    .replace(/\s*([{}:;,])\s*/g, "$1")
+    // Preserve the single space in an empty custom property (`--empty: ;`).
+    .replace(/(?<!-)--([\w-]+)\s*:\s+(?=[;}])/g, "--$1: ")
+    .replace(/\s*([{};,])\s*/g, "$1")
+    .replace(/:\s+/g, ":")
+    // A space before `:` is a descendant combinator in a selector
+    // (`.a :hover`), so strip it only in a declaration.
+    .replace(/\s+:(?![^;{}]*\{)/g, ":")
+    .replace(/(?<!-)--([\w-]+):(?=[;}])/g, "--$1: ")
     .trim();
   return restore(minified);
 };
@@ -85,7 +92,12 @@ CSS property values can contain strings, data URIs, or custom properties contain
 JavaScript source code is divided into literal segments (which must be preserved verbatim) and minifiable code segments:
 
 ```ts
-type Segment = { literal: boolean; text: string };
+type Segment = {
+  literal: boolean;
+  text: string;
+  controlHeaderCloses?: Set<number>; // `)` closing an if/while/for/with header
+  postfixUpdateEnds?: Set<number>;
+};
 ```
 
 Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments.
@@ -121,7 +133,7 @@ When production identifier minification is enabled (`minify.identifiers: true`),
 
 ### Base62 Hash Encoding
 
-`names.ts` computes SHA-256 digests of scoped attribute names and encodes the first 64 bits into a Base62 string:
+`names.ts` computes SHA-256 digests of scoped attribute names, and the portable `name-hash.ts` (shared with request-time rendering on Workers) encodes the first 64 bits into a Base62 string:
 
 ```ts
 const BASE62_ALPHABET =
@@ -139,13 +151,16 @@ export const toBase62 = (num: bigint, length = 11): string => {
   return str.padStart(length, "0");
 };
 
+export const nameHashFromDigest = (digest: Uint8Array): string => {
+  let num = 0n;
+  for (let i = 0; i < 8; i++) num = (num << 8n) | BigInt(digest[i]);
+  return `b${toBase62(num, 11)}`;
+};
+
+// names.ts
 export const getAttributeNameHash = (attributeName: string): string => {
   const digest = createHash("sha256").update(attributeName).digest();
-  const num =
-    typeof digest === "string"
-      ? Buffer.from(digest).readBigUInt64BE(0)
-      : digest.readBigUInt64BE(0);
-  return `b${toBase62(num, 11)}`;
+  return nameHashFromDigest(digest); // memoized in hashCache
 };
 ```
 

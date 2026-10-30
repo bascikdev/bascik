@@ -278,6 +278,12 @@
         margin: 0 0 40px;
       }
 
+      /* Code panels sit flush in these grids; docs pages keep the demo box margin. */
+      :is(.how-split, .demo-layout, .stream-spotlight)
+        > [data-defer-render="demo"] {
+        margin: 0;
+      }
+
       /* ── How it works ── */
       .how-split {
         display: grid;

@@ -56,7 +56,7 @@ With `scripts.importRoot` pointing at the shared scripts directory, `@/` reaches
 
 ```html
 <!-- sites/marketing/src/pages/pricing.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { renderMd } from "@/md-renderer.ts"; // shared/scripts/md-renderer.ts
   import { pricingTable } from "./helpers/pricing.ts"; // sites/marketing/src/pages/helpers/pricing.ts
 
@@ -89,7 +89,7 @@ A build script in a shared component runs as part of whichever site uses it, so 
 
 ```html
 <!-- shared/components/site-nav/site-nav.html -->
-<script data-bascik-build-once>
+<script data-bascik-build-once type="text/typescript">
   import { links } from "../../scripts/links.ts";
   export default () => links();
 </script>

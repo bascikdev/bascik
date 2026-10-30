@@ -15,24 +15,24 @@ Every component works with several instances on one page, uses [semantic HTML](/
 | [Popover Menu](/example-components/popover-menu) | A dropdown with no JavaScript, using `popover` and anchor positioning                  |
 | [Copy Button](/example-components/copy-button)   | The Clipboard API with an announced result, and a prop bound to an attribute           |
 | [Filter List](/example-components/filter-list)   | Live filtering of slotted list items                                                   |
-| [Contact Form](/example-components/contact-form) | Validation, a JSON `fetch`, preserved field names, and the API route behind it         |
+| [Contact Form](/example-components/contact-form) | Validation, a JSON `fetch`, field names as written, and the API route behind it        |
 | [Theme Toggle](/example-components/theme-toggle) | Light and dark themes with no flash on load                                            |
 
 ## See a Technique in Use
 
 Other pages explain a feature; these components show it inside something complete.
 
-| To see this                            | Read                                                              | In this example                                                                                    |
-| -------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Per-instance IDs for scripts and ARIA  | [Scoped JavaScript](/scoped-javascript)                           | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list)         |
-| Reading slotted content                | [Slots](/slots)                                                   | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list)         |
-| A prop in an attribute                 | [Props](/props)                                                   | [Copy Button](/example-components/copy-button)                                                     |
-| Design tokens with fallbacks           | [Scoped Styles](/scoped-styles)                                   | Every component                                                                                    |
-| `html:has()` and anchor positioning    | [Scoped Styles](/scoped-styles)                                   | [Modal Dialog](/example-components/modal-dialog), [Popover Menu](/example-components/popover-menu) |
-| Build scripts with page context        | [Build Scripts with Page Context](/how-to/page-aware-scripts)     | [Site Header](/example-components/site-header)                                                     |
-| Build-once scripts for shared output   | [`data-bascik-build-once`](/build-scripts#data-bascik-build-once) | [Site Footer](/example-components/site-footer)                                                     |
-| Preserved field names and an API route | [Preserve Scoping](/preserve), [API Routes](/api-routes)          | [Contact Form](/example-components/contact-form)                                                   |
-| Light and dark themes                  | [Theming](/how-to/theming)                                        | [Theme Toggle](/example-components/theme-toggle)                                                   |
+| To see this                           | Read                                                                                                               | In this example                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Per-instance IDs for scripts and ARIA | [Scoped JavaScript](/scoped-javascript)                                                                            | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list)         |
+| Reading slotted content               | [Slots](/slots)                                                                                                    | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list)         |
+| A prop in an attribute                | [Props](/props)                                                                                                    | [Copy Button](/example-components/copy-button)                                                     |
+| Design tokens with fallbacks          | [Scoped Styles](/scoped-styles)                                                                                    | Every component                                                                                    |
+| `html:has()` and anchor positioning   | [Scoped Styles](/scoped-styles)                                                                                    | [Modal Dialog](/example-components/modal-dialog), [Popover Menu](/example-components/popover-menu) |
+| Build scripts with page context       | [Build Scripts with Page Context](/how-to/page-aware-scripts)                                                      | [Site Header](/example-components/site-header)                                                     |
+| Build-once scripts for shared output  | [`data-bascik-build-once`](/build-scripts#data-bascik-build-once)                                                  | [Site Footer](/example-components/site-footer)                                                     |
+| Form field names and an API route     | [Component Best Practices](/component-best-practices#naming-form-fields-for-submission), [API Routes](/api-routes) | [Contact Form](/example-components/contact-form)                                                   |
+| Light and dark themes                 | [Theming](/how-to/theming)                                                                                         | [Theme Toggle](/example-components/theme-toggle)                                                   |
 
 The previews on these pages sit on a plain page background with the starter site's design tokens, so each component looks as it does in a real site. Each component reads its colors from tokens with neutral fallbacks, so it also works in a project with no token stylesheet.
 

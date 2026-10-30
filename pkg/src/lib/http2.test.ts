@@ -92,6 +92,62 @@ describe("startHttp2Server", () => {
     );
   });
 
+  it("applies http.timeouts to the HTTP/1.1 fallback of the TLS server", async () => {
+    await startHttp2Server();
+    // Node 22's constructor overwrites these options with its own defaults
+    // when allowHTTP1 is set, so they must be assigned after construction.
+    expect((mockServer as any).requestTimeout).toBe(30000);
+    expect((mockServer as any).headersTimeout).toBe(10000);
+    expect((mockServer as any).connectionsCheckingInterval).toBe(5000);
+    expect((mockServer as any).keepAliveTimeout).toBe(5000);
+  });
+
+  it("closes an HTTP/2 session idle for keepAlive, but never one with an open stream", async () => {
+    vi.useFakeTimers();
+    try {
+      await startHttp2Server();
+      const onSession = mockServer.on.mock.calls.find(
+        (c) => c[0] === "session",
+      )![1];
+      const { EventEmitter } = await import("node:events");
+      const session: any = Object.assign(new EventEmitter(), {
+        close: vi.fn(),
+        closed: false,
+        destroyed: false,
+      });
+      onSession(session);
+
+      // A session that never sends a request closes after keepAlive.
+      vi.advanceTimersByTime(4999);
+      expect(session.close).not.toHaveBeenCalled();
+
+      // An open stream (an SSE response, a slow download) holds it open
+      // however long it is silent.
+      const stream = new EventEmitter();
+      session.emit("stream", stream);
+      vi.advanceTimersByTime(60_000);
+      expect(session.close).not.toHaveBeenCalled();
+
+      // Idle again once the last stream closes: keepAlive from that moment.
+      stream.emit("close");
+      vi.advanceTimersByTime(4999);
+      expect(session.close).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(session.close).toHaveBeenCalledTimes(1);
+
+      // A closed session drops its timer.
+      const other: any = Object.assign(new EventEmitter(), {
+        close: vi.fn(),
+      });
+      onSession(other);
+      other.emit("close");
+      vi.advanceTimersByTime(10_000);
+      expect(other.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("handles HTTP/1.1 fallback requests via the 'request' listener and ignores HTTP/2 compatibility requests", async () => {
     await startHttp2Server();
 

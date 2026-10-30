@@ -6,6 +6,10 @@ import {
   resolveCssImports,
 } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
+import {
+  COMPANION_SCRIPT_RE,
+  TEST_COMPANION_SCRIPT_RE,
+} from "./companion-scripts.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
@@ -501,7 +505,14 @@ export const deriveComponentName = (fileName: string): string => {
     .toLowerCase();
 };
 
-const COMPONENT_FILE_RE = /\.(html|css|js|ts|mjs)$/;
+// Markup, stylesheets, and every COMPANION_SCRIPT_RE extension. `bascik add`
+// copies the same set, so a published component arrives with every file the
+// build reads.
+export const COMPONENT_FILE_RE = /\.(html|css|js|mjs|ts|mts)$/;
+
+/** A file `listComponents` reads: markup, a stylesheet, or a companion script. */
+export const isComponentSourceFile = (path: string): boolean =>
+  COMPONENT_FILE_RE.test(path);
 const DEFAULT_COMPONENT_ROOT = "src/components";
 
 /**
@@ -551,8 +562,8 @@ export const listComponents = async (
   );
   const componentScriptFileNames = (componentFileNames as string[]).filter(
     (fileName) =>
-      fileName.match(/\.(js|ts|mjs)$/) &&
-      !fileName.match(/\.(test|spec)\.(js|ts|mjs)$/),
+      COMPANION_SCRIPT_RE.test(fileName) &&
+      !TEST_COMPANION_SCRIPT_RE.test(fileName),
   );
   // Check for duplicate component names across files
   const nameToFilePaths = new Map<string, string[]>();

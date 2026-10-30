@@ -18,17 +18,17 @@ bascik__<componentName>__<originalName>
 # Example:
 bascik__site-nav__toggle-btn
 
-# ID and Name naming (scoped to unique component instance):
+# ID naming, and name with scoping.attributes.name: true (scoped to unique component instance):
 bascik__<componentName>__<instanceId>__<originalName>
 # Example:
 bascik__site-nav__a1b2c3d4__search-input
 ```
 
-The **instanceId** is an 8-hex-character value derived deterministically from the page path, component name, and ordinal occurrence index on that page (`deriveInstanceId` in `pkg/src/lib/names.ts`). It guarantees that DOM identifiers (`id`, `name`) are unique even when the same component is used multiple times on a page, while ensuring identical builds produce byte-identical output across repeated runs. Under the default configuration, class names are scoped to the component name without an instance ID; this deterministic derivation guarantees full reproducibility for pages scoping `id` and `name` attributes as well.
+The **instanceId** is an 8-hex-character value derived deterministically from the page path, component name, and ordinal occurrence index on that page (`deriveInstanceId` in `pkg/src/lib/names.ts`). It guarantees that DOM identifiers (`id`, and `name` when `scoping.attributes.name` is on) are unique even when the same component is used multiple times on a page, while ensuring identical builds produce byte-identical output across repeated runs. Under the default configuration, class names are scoped to the component name without an instance ID, and `name` ships as written; this deterministic derivation guarantees full reproducibility for pages scoping `id` (and `name`) attributes as well.
 
 ### Class attributes intentionally omit the instanceId
 
-IDs and names must be unique per DOM element, so they include the `instanceId`. Class names, however, are deliberately scoped to the _component name_ only:
+IDs (and names, when scoped) must be unique per DOM element, so they include the `instanceId`. Class names, however, are deliberately scoped to the _component name_ only:
 
 ```text
 bascik__site-nav__toggle-btn   ← same on every instance
@@ -328,13 +328,16 @@ After scoping, `recursivelyTranspile` appends `?instance=N` to the sourceURL of 
 When `minify.identifiers: true` is set (the default for builds), every scoped name is hashed using SHA-256 (converting the 64-bit prefix to an 11-character Base62 string) and prefixed with `b` to ensure it starts with a letter:
 
 ```ts
-// names.ts
+// names.ts (memoized per name)
 export const getAttributeNameHash = (attributeName: string): string => {
   const digest = createHash("sha256").update(attributeName).digest();
-  const num =
-    typeof digest === "string"
-      ? Buffer.from(digest).readBigUInt64BE(0)
-      : digest.readBigUInt64BE(0);
+  return nameHashFromDigest(digest);
+};
+
+// name-hash.ts (portable, so a Worker computes the same names)
+export const nameHashFromDigest = (digest: Uint8Array): string => {
+  let num = 0n;
+  for (let i = 0; i < 8; i++) num = (num << 8n) | BigInt(digest[i]);
   return `b${toBase62(num, 11)}`;
 };
 ```
@@ -447,11 +450,11 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
   padding: 0;
 }
 
-/* After scoping */
-.bascik__card .bascik__card__el__p {
+/* After scoping, in a card component */
+.bascik__card__card .bascik__card__el__p {
   color: blue;
 }
-.bascik__list > .bascik__list__el__li {
+.bascik__card__list > .bascik__card__el__li {
   padding: 0;
 }
 ```

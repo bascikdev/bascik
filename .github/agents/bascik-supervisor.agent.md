@@ -34,7 +34,7 @@ You are the **Bascik Supervisor**, the primary orchestrator and continuous learn
 1. **Agent & Skill Ecosystem Audit**:
    - Inspect `.github/agents/*.agent.md` and `.github/skills/*/SKILL.md` to ensure they reflect current architecture, compiler features, and testing workflows.
    - Detect drift: when new features, compiler passes, server capabilities, or testing configurations land in `pkg/src/`, identify which agents and skills require synchronization.
-   - Validate frontmatter syntax, model references (`Google: Gemini 3.7 Flash (openrouter)`), tool permissions, and discovery descriptions.
+   - Validate frontmatter syntax, model references (`Google: Gemini 3.8 Flash (openrouter)`), tool permissions, and discovery descriptions.
 
 2. **Cross-Agent Orchestration & Workflow Triage**:
    - Enforce strict **TDD-first** workflow across all coding tasks: instruct `@Bascik Developer` to author failing unit tests and E2E tests before touching application/compiler source code.

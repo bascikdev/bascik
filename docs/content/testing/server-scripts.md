@@ -62,7 +62,7 @@ Inside the component template, import the helper module and execute request-time
 
 ```html
 <script data-bascik-server>
-  import { fetchCityWeather, formatWeatherReport } from "./weather-service.js";
+  import { fetchCityWeather, formatWeatherReport } from "./weather-service.ts";
 
   export default async function (request) {
     const apiKey = process.env.WEATHER_API_KEY ?? "";
@@ -76,7 +76,7 @@ Inside the component template, import the helper module and execute request-time
 </script>
 ```
 
-> **ESM Import Convention:** Node 24 and Node 22.22+ support runtime `.js` specifiers pointing to local `.ts` source files, allowing seamless execution in both production dev servers and test runners.
+> **ESM Import Convention:** Import a local TypeScript module by its real `.ts` filename. Node 22.22+ strips the types at runtime, so the same specifier works in the dev server, `bascik --server`, and Vitest. A `.js` specifier is not mapped to a `.ts` file and fails with `ERR_MODULE_NOT_FOUND`.
 
 ## Writing Server Logic Unit Tests
 

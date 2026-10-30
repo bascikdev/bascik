@@ -54,7 +54,7 @@ Ink on Lime has a contrast ratio of 16.9:1, and Lime on Charcoal has 15.5:1. Bot
 
 ## Naming and Description
 
-Write the name as **Bascik** in running text: capital B, lowercase rest. The all-caps `BASCIK` appears only inside the wordmark artwork. The npm packages are `@bascik/bascik` and `create-bascik`.
+Write the name as **Bascik** in running text: capital B, lowercase rest. The all-caps `BASCIK` appears only inside the wordmark artwork. The main npm packages are `@bascik/bascik` and `create-bascik`; the language server is `@bascik/language-server` and the Cloudflare adapter is `@bascik/adapter-cloudflare`.
 
 The tagline is **HTML components. Zero runtime.**
 

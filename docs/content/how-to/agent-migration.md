@@ -45,7 +45,7 @@ The scripts are plain Node.js modules with unit tests in the Bascik repository. 
 
 ## What You Need
 
-1. A Bascik project on Node.js 22.22 or newer. `npm create bascik@rc` creates one with every agent skill already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
+1. A Bascik project on Node.js 22.22 or newer. `npm create bascik@rc` creates one with every agent skill except the opt-in `bascik-refactor` already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
 2. A read-only checkout of the legacy repository.
 3. The live production URL.
 4. sharp and Lighthouse 13.3 or later as dev dependencies, plus Playwright, which the starter already has. The scripts load them from your project, never from the skill.
@@ -122,7 +122,7 @@ Production defects, such as low contrast, a missing focus outline or a blurry im
    npx bascik --build && npx bascik --server
    ```
 
-   It prints `Server running at http://localhost:8080`. If port 8080 is taken it picks the next free port, so copy the printed URL into `TARGET_URL`. Rebuild after every change. On Cloudflare, use `npx wrangler dev` once the Worker wrapper below exists, and point `TARGET_URL` at the URL it prints.
+   It prints `Server running at http://localhost:8080`. If port 8080 is taken it stops with an error instead of picking another port: pass a free one with `--port` and put that URL in `TARGET_URL`. Rebuild after every change. On Cloudflare, use `npx wrangler dev` once the Worker wrapper below exists, and point `TARGET_URL` at the URL it prints.
 
 ## Record the Inventories First
 
@@ -422,7 +422,7 @@ node "$REFACTOR/production-defects.mjs" --prod "$PROD_URL" --route / --route /pr
 node "$REFACTOR/run-checks.mjs" \
   --prod "$PROD_URL" --target "$TARGET_URL" \
   --route / --route /pricing \
-  --legacy-src ../legacy-site --target-src . \
+  --legacy-src ../legacy --target-src . \
   --mask '[data-testid="review-carousel"]'
 ```
 
@@ -503,7 +503,7 @@ Number the prompts and keep them in the repository, grouped into phases. The [pr
 
 Two templates cover most of the queue:
 
-- [`one-route.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/one-route.md) migrates one route. Its placeholders: `{{ROUTE}}`, `{{LEGACY_ENTRY}}`, `{{TARGET_PAGE}}`, `{{BASELINE_IDS}}`, `{{REQUIRED_COMPONENTS}}`, `{{INTERACTIONS}}`, `{{PARENT_PROMPT}}` and `{{CHILD_ID}}`.
+- [`one-route.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/one-route.md) migrates one route. Its placeholders: `{{ROUTE}}`, `{{LEGACY_ENTRY}}`, `{{TARGET_PAGE}}`, `{{BASELINE_IDS}}`, `{{REQUIRED_COMPONENTS}}`, `{{INTERACTIONS}}`, `{{PARENT_PROMPT}}` and `{{CHILD_ID}}`, plus `{{LEGACY_REPO}}` from the execution contract.
 - [`one-failure.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/one-failure.md) repairs one failing check. Its placeholders: `{{FAILURE_ID}}`, `{{EVIDENCE}}`, `{{MATRIX_CASE}}`, `{{OWNER_FILES}}` and `{{ACCEPTANCE}}`.
 
 Both end in acceptance checks that run the scripts on this page. The one-route checks collect fresh Lighthouse reports for their own route, so a stale report never passes.
@@ -614,7 +614,7 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 
 ### Best Practices
 
-Serve a strict Content Security Policy with a SHA-256 hash for every inline script and style and no `unsafe-inline`. `generate.cspHashes` writes the hashes per page to `.bascik/dist/csp-hashes.json`, and [Content Security Policy](/how-to/content-security-policy) shows the meta tag approach. On Cloudflare, `worker-response-policy.mjs` computes the hashes per response in a Worker wrapper instead. Hashing needs the whole page, so the wrapper buffers pages that stream unless you pass `streamedHtml: "pass"`.
+Serve a strict Content Security Policy with a SHA-256 hash for every inline script and style and no `unsafe-inline`. `generate.cspHashes` writes the hashes per page to `.bascik/dist/csp-hashes.json`. Setting `contentSecurityPolicy` sends the header with those hashes on `bascik --server` and on Cloudflare, and [Content Security Policy](/how-to/content-security-policy) also shows a meta tag approach for static hosts. When you also need robots and cache headers on Cloudflare, `worker-response-policy.mjs` sends each route's hashes from that file in a Worker wrapper. The hashes are known before the body, so streamed pages keep streaming.
 
 ### Agentic Browsing
 
@@ -705,9 +705,11 @@ For Cloudflare, add a root `wrangler.jsonc` and a wrapper that imports the copie
 ```js
 // worker-wrapper.js
 import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
+import cspHashes from "./.bascik/dist/csp-hashes.json";
 import { withResponsePolicy } from "./scripts/worker-response-policy.mjs";
 
 export default withResponsePolicy(bascikWorker, {
+  cspHashes,
   directives: { "img-src": ["'self'", "data:"] },
 });
 ```

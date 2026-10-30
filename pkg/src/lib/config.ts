@@ -1,6 +1,7 @@
-import { resolve, sep, relative } from "node:path";
+import { basename, resolve, sep, relative } from "node:path";
 import { existsSync, realpathSync } from "node:fs";
 import { config, modeOverrides } from "./userConfig.ts";
+import { findConfigFile } from "./config-file-names.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
 import { resolveCliAction } from "./cli.ts";
 import { LOG_LEVELS, shouldLog, type LogLevel } from "./log-level.ts";
@@ -8,6 +9,8 @@ import { stderr as colorErr } from "./colors.ts";
 import {
   collectConfigWarnings,
   collectModeOverrideWarnings,
+  DEFAULT_HTTP_TIMEOUTS,
+  defaultHeadersTimeout,
   formatConfigErrors,
   normalizeBasePath,
   validateUserConfig,
@@ -218,7 +221,11 @@ export const defaultConfig: Omit<
     cacheControl: "public, max-age=3600",
     compression: true,
     precompress: false,
-    timeouts: undefined,
+    // headers is filled after the merge: its default follows request down.
+    timeouts: {
+      request: DEFAULT_HTTP_TIMEOUTS.request,
+      keepAlive: DEFAULT_HTTP_TIMEOUTS.keepAlive,
+    },
     maxBodySize: 1048576,
     apiTimeout: 10000,
   },
@@ -314,6 +321,7 @@ const deepFreeze = <T>(value: T): Readonly<T> => {
 export const normalizeComponentRoots = (
   input: string | string[] | undefined,
   cwd: string,
+  sourceName?: string,
 ): string[] => {
   const entries =
     input === undefined
@@ -362,7 +370,7 @@ export const normalizeComponentRoots = (
     }
   }
   if (errors.length > 0) {
-    throw new Error(formatConfigErrors(errors));
+    throw new Error(formatConfigErrors(errors, sourceName));
   }
   return canonical;
 };
@@ -402,6 +410,8 @@ export const initBascikConfig = (
     only?: string[];
     target?: BascikConfigOptions["target"];
     allowInvalidConfig?: boolean;
+    /** The loaded config's filename, named in configuration errors. */
+    configFile?: string;
   } = {},
   deps: ConfigValidationDeps = {},
 ) => {
@@ -431,7 +441,7 @@ export const initBascikConfig = (
       effectiveUserConfig = {};
       effectiveModeOverrides = {};
     } else {
-      throw new Error(formatConfigErrors(validationErrors));
+      throw new Error(formatConfigErrors(validationErrors, flags.configFile));
     }
   }
 
@@ -516,6 +526,17 @@ export const initBascikConfig = (
   if (flags.logLevel !== undefined) {
     merged.logging = { ...merged.logging, level: flags.logLevel };
   }
+  if (merged.http.timeouts?.headers === undefined) {
+    const request =
+      merged.http.timeouts?.request ?? DEFAULT_HTTP_TIMEOUTS.request;
+    merged.http = {
+      ...merged.http,
+      timeouts: {
+        ...merged.http.timeouts,
+        headers: defaultHeadersTimeout(request),
+      },
+    };
+  }
 
   const rawCache = merged.scripts?.cache;
   const normalizedCache = normalizeScopableOption(
@@ -535,6 +556,7 @@ export const initBascikConfig = (
   resolvedDirectory.components = normalizeComponentRoots(
     resolvedDirectory.components as unknown as string | string[] | undefined,
     process.cwd(),
+    flags.configFile,
   );
 
   const BascikConfig: BascikConfigOptions = {
@@ -594,6 +616,9 @@ const envPort =
     ? envPortParsed
     : undefined;
 const envHost = process.env.BASCIK_SERVER_HOST?.trim() || undefined;
+// Configuration errors name the file that was loaded (bascik.config.mjs, a
+// --config path), not a bascik.config.ts that may not exist.
+const loadedConfigFile = findConfigFile(process.argv.slice(2)).path;
 
 export const { BascikConfig } = initBascikConfig(
   config ?? {},
@@ -607,5 +632,6 @@ export const { BascikConfig } = initBascikConfig(
     only: cliDecision.flags.only,
     target: cliDecision.flags.target,
     allowInvalidConfig: cliDecision.action === "check",
+    configFile: loadedConfigFile && basename(loadedConfigFile),
   },
 );

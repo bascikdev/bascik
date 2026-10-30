@@ -14,7 +14,7 @@ user-invocable: true
 argument-hint: "Run pre-push verification audit for this branch..."
 ---
 
-You are a pre-push auditing specialist for **Bascik**. Your responsibility is auditing changes across all workspace packages (`pkg/`, `docs/`, `create/`, `extensions/vscode-bascik/`) to ensure complete pre-push readiness.
+You are a pre-push auditing specialist for **Bascik**. Your responsibility is auditing changes across all workspace packages (`pkg/`, `docs/`, `create/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`) to ensure complete pre-push readiness.
 
 ## Capabilities & Execution
 
@@ -33,8 +33,10 @@ You are a pre-push auditing specialist for **Bascik**. Your responsibility is au
    - `npx --prefix pkg tsc -p docs/tsconfig.json --noEmit`
    - `npx --prefix create tsc -p create/tsconfig.json --noEmit`
    - `npx --prefix extensions/vscode-bascik tsc -p extensions/vscode-bascik/tsconfig.json --noEmit`
+   - `npx --prefix adapters/cloudflare tsc -p adapters/cloudflare/tsconfig.json --noEmit`
+   - `npx --prefix lsp tsc -p lsp/tsconfig.json --noEmit`
 4. **Unit, E2E & Lighthouse Testing**:
-   - Run `yarn workspace @bascik/bascik test:run` (or focused unit tests).
+   - Run `yarn unit:all` (or focused unit tests).
    - Rebuild pkg: `yarn pkg:build`
    - Run docs build: `yarn docs:build`
    - Run E2E suites: `yarn e2e:all` (or focused Playwright configs).

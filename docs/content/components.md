@@ -55,7 +55,7 @@ The simplest component is just markup. No CSS, no JavaScript required.
       <h3 class="bascik__hello-card__hello-card-title">
         Plain HTML, ready to reuse.
       </h3>
-      <p class="hello-card-body">
+      <p class="bascik__hello-card__hello-card-body">
         Bascik replaces the custom tag at build time and ships the finished
         markup.
       </p>
@@ -287,7 +287,9 @@ All three can live in a single file. Follow the component convention order: plac
 </style>
 <div class="alert" id="alert">
   <p class="alert-body">Scheduled maintenance Sunday, 2am–4am UTC.</p>
-  <button id="close" class="alert-close" aria-label="Dismiss">×</button>
+  <button id="close" class="alert-close" type="button" aria-label="Dismiss">
+    ×
+  </button>
 </div>
 <script>
   document.getElementById("close").addEventListener("click", () => {
@@ -338,6 +340,7 @@ All three can live in a single file. Follow the component convention order: plac
       <button
         id="bascik__comp-alert__a1b__close"
         class="bascik__comp-alert__alert-close"
+        type="button"
         aria-label="Dismiss"
       >
         ×
@@ -390,13 +393,13 @@ All three can live in a single file. Follow the component convention order: plac
 
 ## Companion CSS and Script Files
 
-Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `.ts`/`.js`/`.mjs` files is a matter of personal preference.
+Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `.ts`/`.mts`/`.js`/`.mjs` files is a matter of personal preference.
 
 For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is checked as an advisory warning (`component-structure-order`) by the [linter](/tools/linter), in your editor and in `bascik --check`.
 
 Components do not need literal HTML markup. A component can consist entirely of a `<script data-bascik-build>` block that returns its markup, optionally with a `<style>` block. When there is no literal markup, the ordering warning does not apply.
 
-Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. A companion `.css` file with the same base name (`feature-card.css` beside `feature-card.html`) is merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
 > **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories.
 
@@ -449,8 +452,10 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 
 ```html
 <div class="bascik__feature-card__fcard">
-  <h3>Build-time Components</h3>
-  <p>Bascik resolves tags and ships vanilla HTML.</p>
+  <h3 class="bascik__feature-card__el__h3">Build-time Components</h3>
+  <p class="bascik__feature-card__el__p">
+    Bascik resolves tags and ships vanilla HTML.
+  </p>
 </div>
 ```
 
@@ -462,20 +467,19 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
   background: #242628;
   border: 1px solid #3a3d40;
   border-radius: 10px;
-}
 
-.bascik__feature-card__fcard .bascik__feature-card__el__h3 {
-  color: #f0f1f2;
-}
+  .bascik__feature-card__el__h3 {
+    color: #f0f1f2;
+  }
+  .bascik__feature-card__el__p {
+    font-size: 0.875rem;
+    color: #8d929e;
+  }
 
-.bascik__feature-card__fcard .bascik__feature-card__el__p {
-  font-size: 0.875rem;
-  color: #8d929e;
-}
-
-.bascik__feature-card__fcard:hover {
-  border-color: rgba(211, 255, 141, 0.35);
-  box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
+  &:hover {
+    border-color: rgba(211, 255, 141, 0.35);
+    box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
+  }
 }
 ```
 
@@ -502,7 +506,7 @@ There is nothing to import or register. Here `hello-card.html` lives in its own 
 
 ![An editor above a browser. The editor shows hello-card.html in src/components/hello-card. In a page, typing the start of the tag brings up hello-card as a suggested Bascik component. Accepting it and saving renders the card in the browser. Duplicating the line and saving renders a second card](/assets/demos/component-tag@2x.webp)
 
-If two files anywhere in `src/components/` resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`), Bascik raises a build error naming both conflicting paths.
+If two files anywhere in `src/components/` resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`, or `card.html` and `card.v2.html`, since the tag is the filename up to its first dot), Bascik raises a build error naming both conflicting paths.
 
 > **Flexible organization.** Organize `src/components/` flat, in feature folders, or in per-component directories. Choose whichever layout fits your workflow and keep filenames unique across the tree.
 
@@ -523,9 +527,9 @@ You can choose any of these arrangements at any time. There is **no functionalit
 
 Under the **WHATWG HTML standard (§4.13.1.2)**, custom elements must contain at least one hyphen (such as `<site-nav>`, `<hello-card>`, or `<my-button>`).
 
-Naming your components with hyphens ensures they never collide with native HTML tags or future web standards. Bascik's CLI compiler and the official Bascik VS Code Extension validate component names at build time and in your editor:
+Naming your components with hyphens ensures they never collide with native HTML tags or future web standards. Bascik validates component names when the dev server starts or a build runs, and the official Bascik VS Code Extension flags non-hyphenated names in your editor:
 
-- If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), Bascik issues a build-time warning indicating that it may collide with standard HTML elements.
+- If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), the CLI warns `Component "header" has the same name as a native HTML element.` but still loads the component, which then replaces every `<header>` on your pages and most likely breaks the site. The editor does not flag native names; only the CLI does.
 - If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
@@ -681,7 +685,7 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 - **Client scripts:** Standard JavaScript blocks (without `data-bascik-server` or `data-bascik-build`) are each wrapped in an isolated IIFE `(function() { ... })();`. You can include multiple client scripts in a component template, and each receives its own scope so local variables do not bleed into other blocks.
 - **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js for each component use, with that page's context. Returned HTML replaces the tag.
 - **Build-once scripts (`<script data-bascik-build-once>`):** Executed once when the component is registered, without page or route context. The same returned HTML is reused at every component use, then scoped and expanded normally. Their output is cached like other build script output. See [`data-bascik-build-once`](/build-scripts#data-bascik-build-once).
-- **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. They are not wrapped in browser IIFEs.
+- **Server and stream scripts (`<script data-bascik-server>`, `<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). They are not wrapped in browser IIFEs, and the component tags they return render at request time; see [Returning component tags](/server-scripts#returning-component-tags).
 - **Data scripts (e.g., `type="application/ld+json"`):** Preserved intact without IIFE wrapping or JavaScript minification.
 
 > **Clean Code Recommendation:** Using separate `<script>` tags for distinct, unrelated concerns within a component (for example, a modal controller vs. an analytics handler) is recommended for code readability and maintainability. Because Bascik wraps each client script in its own IIFE, local variables stay safely isolated without polluting a single monolithic script block. Avoid splitting closely related code for no reason, but use separate `<script>` tags whenever a component handles multiple independent interactive features.

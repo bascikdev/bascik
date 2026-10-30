@@ -13,6 +13,7 @@ import {
 } from "./server.ts";
 import { adaptHttp1, handleCheckContinue } from "./http.ts";
 import { drainRequestBody, isLingeringSocket } from "./request-body-linger.ts";
+import { nodeServerTimeouts } from "./server-lifecycle.ts";
 
 /**
  * HTTP/1 connection-specific headers (RFC 9113 8.2.2). `stream.respond`
@@ -135,6 +136,43 @@ export const adaptHttp2 = (
   return { req, res };
 };
 
+/**
+ * Closes `session` (GOAWAY, so the client opens a new one for its next
+ * request) once it has had no open stream for `idleMs`: the HTTP/2 form of a
+ * keep-alive timeout. Node's own session timeout counts frames, not streams,
+ * so it would end a quiet SSE response; this one never fires while a
+ * stream is open, however silent.
+ */
+const closeWhenIdle = (
+  session: http2.ServerHttp2Session,
+  idleMs: number,
+): void => {
+  let openStreams = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const start = () => {
+    stop();
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (openStreams === 0) session.close();
+    }, idleMs);
+    timer.unref?.();
+  };
+  session.on("stream", (stream: ServerHttp2Stream) => {
+    openStreams++;
+    stop();
+    stream.once("close", () => {
+      openStreams--;
+      if (openStreams === 0) start();
+    });
+  });
+  session.once("close", stop);
+  start();
+};
+
 export const startHttp2Server = async (): Promise<string> => {
   const { keyPath, certPath } = await ensureCertificates({
     keyFile: BascikConfig.http.tls?.keyFile,
@@ -144,16 +182,26 @@ export const startHttp2Server = async (): Promise<string> => {
   const key = await readFile(keyPath);
   const cert = await readFile(certPath);
 
+  // request and headers bound the HTTP/1.1 fallback; HTTP/2 has no
+  // per-request equivalent, so for its sessions keepAlive is the one that
+  // applies, as an idle-session close below.
+  const timeouts = nodeServerTimeouts(BascikConfig.http.timeouts);
   const server = http2.createSecureServer({
     key,
     cert,
     allowHTTP1: true,
     settings: { maxConcurrentStreams: 250 },
   });
+  // Assigned, not passed as options: Node 22's constructor overwrites them
+  // with its own defaults (300 s, 60 s, 30 s) when allowHTTP1 is set. The
+  // fallback reads them when it starts listening and on each request.
+  Object.assign(server, timeouts);
+  const { keepAliveTimeout } = timeouts;
 
   const openSessions = new Set<http2.ServerHttp2Session>();
   server.on("session", (session: http2.ServerHttp2Session) => {
     openSessions.add(session);
+    closeWhenIdle(session, keepAliveTimeout);
     session.once("close", () => openSessions.delete(session));
     session.on("error", (err) => {
       if (isNetworkResetError(err)) return;

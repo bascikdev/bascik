@@ -106,13 +106,14 @@ The browser ships a set of interactive primitives that require zero JavaScript. 
 
 ### Collapsible Sections and Toggle Menus: `<details>`
 
-`<details>` and `<summary>` give you a fully accessible toggle with no JavaScript, open/close state, keyboard activation (Enter, Space), Escape to close, and correct ARIA roles are all handled by the browser:
+`<details>` and `<summary>` give you a fully accessible toggle with no JavaScript, open/close state, keyboard activation (Enter, Space), and correct ARIA roles are all handled by the browser:
 
 ```html
 <details>
   <summary>How does Bascik scope CSS?</summary>
   <p>
-    It prefixes every class name with a component-unique hash at build time.
+    It renames each class the component's stylesheet defines to a name unique to
+    that component, at build time.
   </p>
 </details>
 ```

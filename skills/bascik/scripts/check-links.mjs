@@ -214,9 +214,12 @@ function findRoot(start) {
   let dir = resolve(start);
   while (true) {
     if (
-      ["bascik.config.js", "bascik.config.ts", "package.json"].some((f) =>
-        existsSync(join(dir, f)),
-      )
+      [
+        "bascik.config.js",
+        "bascik.config.mjs",
+        "bascik.config.ts",
+        "package.json",
+      ].some((f) => existsSync(join(dir, f)))
     )
       return dir;
     const parent = dirname(dir);
@@ -239,7 +242,11 @@ async function main() {
 
   const root = findRoot(process.cwd());
   let config = {};
-  for (const file of ["bascik.config.js", "bascik.config.ts"]) {
+  for (const file of [
+    "bascik.config.js",
+    "bascik.config.mjs",
+    "bascik.config.ts",
+  ]) {
     if (existsSync(join(root, file))) {
       config =
         (await import(pathToFileURL(join(root, file)).href)).default ?? {};

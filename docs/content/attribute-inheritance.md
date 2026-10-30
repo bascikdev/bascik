@@ -4,7 +4,7 @@ Any attribute on a component usage tag that is not a Bascik-specific attribute (
 
 ## How It Works
 
-When Bascik transpiles a component, it reads the usage tag, extracts any inheritable attributes, and merges them onto the first element of the compiled output. The component template and the usage attributes are combined, classes are appended, all other attributes are forwarded:
+When Bascik transpiles a component, it reads the usage tag, extracts any inheritable attributes, and merges them onto the first element of the compiled output. The component template and the usage attributes are combined: classes are appended, and all other attributes are forwarded.
 
 If a component template contains multiple root elements (for example, a heading followed by a paragraph), inherited attributes are merged onto the **first** root HTML element in the component template.
 
@@ -108,7 +108,7 @@ If the template root already defines an `id`, Bascik keeps the template's root `
 
 ## Interaction with Scoped Classes
 
-Inherited class names are not scoped, they are treated as global classes. This is intentional: you are passing a page-level concern onto the component's root element.
+Inherited class names are not scoped to the component they land on; they are treated as global classes. This is intentional: you are passing a page-level concern onto the component's root element.
 
 ```html
 <my-card class="featured">

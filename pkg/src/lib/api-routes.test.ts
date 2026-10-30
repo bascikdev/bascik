@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   matchApiRoute,
+  scanApiRouteFiles,
   buildApiRouteTree,
   fileToApiRoutePath,
   formatApiRouteWarning,
@@ -10,6 +14,54 @@ import {
   expectLinearTime,
   LINEAR_TIME_TIMEOUT_MS,
 } from "./linear-time.test-helper.ts";
+
+// Route files are the script extensions components and configs accept:
+// .ts, .mts, .js, .mjs. Anything else in the folder (types, notes, CommonJS)
+// is not a route.
+describe("scanApiRouteFiles", () => {
+  it("finds .ts, .mts, .js and .mjs routes, in any case, and skips other files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bascik-api-scan-"));
+    try {
+      await mkdir(join(root, "users"), { recursive: true });
+      const names = [
+        "health.ts",
+        "status.mts",
+        "legacy.js",
+        "plain.mjs",
+        "LOUD.MTS",
+        "users/[id].mts",
+        "types.d.cts",
+        "old.cjs",
+        "notes.md",
+      ];
+      for (const name of names) {
+        await writeFile(join(root, name), "export const GET = () => {};\n");
+      }
+      const found = (await scanApiRouteFiles(root)).map((file) =>
+        file.slice(root.length + 1).replace(/\\/g, "/"),
+      );
+      expect(found.sort()).toEqual(
+        [
+          "LOUD.MTS",
+          "health.ts",
+          "legacy.js",
+          "plain.mjs",
+          "status.mts",
+          "users/[id].mts",
+        ].sort(),
+      );
+      expect(fileToApiRoutePath("users/[id].mts")).toBe("/api/users/[id]");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns no routes for a missing folder", async () => {
+    expect(
+      await scanApiRouteFiles(join(tmpdir(), "bascik-no-such-api")),
+    ).toEqual([]);
+  });
+});
 
 describe("fileToApiRoutePath", () => {
   it.each([

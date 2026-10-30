@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This page is organized by what you saw, not by feature.Most entries end with a link to the page that covers the rule in depth, and the [FAQ](/faq) covers the "why does Bascik work this way" questions.
+This page is organized by what you saw, not by feature. Most entries end with a link to the page that covers the rule in depth, and the [FAQ](/faq) covers the "why does Bascik work this way" questions.
 
 Not sure where the problem is reported? Bascik tells you in one of four places:
 
@@ -21,7 +21,7 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ### `[bascik] Node.js 22.22.0 or newer is required.`
 
-The CLI refuses to start on an older Node. Install Node 22.22 or newer (Node 24 is recommended) and re-run. Every Bascik package declares the same floor in its `engines` field, so a package manager that enforces engines reports it at install time instead.
+The CLI refuses to start on an older Node. Install Node 22.22 or newer (Node 24 is recommended) and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
 
 ### `npm create bascik` ignored my `--template`
 
@@ -59,11 +59,11 @@ Fix each listed key and re-run. See [Configuration Validation](/configuration#co
 
 ### My config changes have no effect
 
-Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
+Check for a `bascik.config.js` or `bascik.config.mjs` in the same directory. Bascik looks for `.js`, then `.mjs`, then `.ts` in the project root and loads the first one it finds, so a stale or accidental `.js` or `.mjs` file shadows your `.ts` config. Delete the extra file, or pass `--config bascik.config.ts` to load a specific file explicitly.
 
-Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
+Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js`, `.mjs`, and `.ts` extensions are discovered (`.cjs`, `.mts`, and `.cts` files are not). See [Config file discovery](/configuration#config-file-discovery).
 
-If the file is found but an edit is not taking effect, the dev server is still running with the old configuration. It prints `[bascik] Config file changed: ... Restart the server to apply configuration changes.` and does not hot-reload configuration on purpose. See [Why do I need to restart after changing my config?](/faq#why-do-i-need-to-restart-after-changing-my-config).
+If the file is found but an edit is not taking effect, the dev server is still running with the old configuration. It prints `[bascik] Config file changed: ... Restart the server to apply configuration changes.` and does not hot-reload configuration on purpose: Bascik deep-freezes the resolved configuration at boot so worker threads, routers, and watchers all see the same values, and reloading it in place could leave them out of sync. The hint watches all three root filenames, `bascik.config.js`, `bascik.config.mjs`, and `bascik.config.ts`, plus the file passed with `--config`, so editing an unused root config file prints it too. See [Config Changes Need a Restart](/configuration#config-changes-need-a-restart).
 
 ### `` `siteUrl` is not a bascik.config option ``
 
@@ -77,25 +77,25 @@ The path passed to `--config` is relative to the directory you ran the command f
 
 ### `[bascik] Unresolved component tag in "pages/about.html": <my-mistyped>`
 
-A hyphenated tag has no matching file under `src/components/`. The tag ships to the browser unchanged and the build does not fail. Causes, in order of likelihood:
+A hyphenated tag has no matching file in your component directories (`src/components/` by default). The tag ships to the browser unchanged and the build does not fail. When a page has more than one, the warning reads `Unresolved component tags` and lists every tag on one line. Causes, in order of likelihood:
 
 - **A typo in the tag or the filename.** Tag names come from the filename, lowercased, without the extension: `site-nav.html` is `<site-nav>`.
 - **The component file does not exist yet.** Create it; the dev server picks it up without a restart.
-- **The tag belongs to a third-party custom element** such as `<model-viewer>`. Declare it in [`components.external`](/configuration#componentsexternal) so neither the build warning nor `--check` reports it.
+- **The tag belongs to a third-party custom element** such as `<model-viewer>` or `<ion-icon>`. Declare it in [`components.external`](/configuration#componentsexternal), by exact name or with a wildcard, so neither the build warning nor `--check` reports it: `components: { external: ['model-viewer', 'ion-icon', 'vendor-*'] }`. Only the tags you list are silenced, so a misspelled tag still warns. `scoping.preserve` and `data-bascik-preserve` do not silence it: they only control attribute scoping.
 
-Run `bascik --check` for the full list. See [What happens if I reference a component that doesn't exist?](/faq#what-happens-if-i-reference-a-component-that-doesnt-exist).
+Run `bascik --check` for the full list. It reports these tags as warnings (exit code 0); with `--strict`, warnings fail the check. See [Third-Party Web Components](/how-to/third-party-web-components).
 
 ### `bascik --check` lists my third-party web components
 
-Same cause as the previous entry: Bascik has no allowlist of custom element names, so anything hyphenated without a file is reported under "Components with no matching file". Declare the ones you use in [`components.external`](/configuration#componentsexternal). See [Third-Party Web Components](/how-to/third-party-web-components).
+Same cause as the previous entry: Bascik has no allowlist of custom element names, so `bascik --check` lists every hyphenated tag without a component file under "Components with no matching file". The tags still pass through to the output unchanged for the browser or the element's library to handle, and the exit code and `--strict` behavior are as described above. Declare the ones you use in [`components.external`](/configuration#componentsexternal) to remove them from the report. See [Third-Party Web Components](/how-to/third-party-web-components).
 
 ### `warning: Component "nav" has the same name as a native HTML element.`
 
-A file such as `nav.html` or `div.html` replaces every `<nav>` or `<div>` on your pages with the component. Rename it to a hyphenated name like `site-nav.html`. The sibling warning `Component "card" is not hyphenated.` means the same thing one step earlier: custom elements need a hyphen. See [Component Naming and Hyphens](/components#component-naming-and-hyphens).
+The full message is `warning: Component "nav" has the same name as a native HTML element. This may cause unexpected behavior — consider a hyphenated name like "my-nav".` Bascik prints it when the dev server starts or a build runs, and still loads the component. The VS Code extension does not flag native names; only the CLI does. A file such as `nav.html` or `div.html` then replaces every `<nav>` or `<div>` on your pages with the component, most likely breaking the site. Rename it to a hyphenated name like `site-nav.html`: a hyphen is how browsers and Bascik tell a custom element from a built-in one. The sibling warning `Component "card" is not hyphenated.` means the same thing one step earlier: custom elements need a hyphen. See [Component Naming and Hyphens](/components#component-naming-and-hyphens).
 
 ### Two component files define the same tag name
 
-The build fails with both file paths and the note that "Component names come from the filename, so neither subfolders nor the roots listed in directory.components create separate namespaces." `marketing/card.html` and `admin/card.html` are both `<card>`. Rename one, for example `marketing-card.html`. See [Subfolder Layout](/components#subfolder-layout).
+The build fails with `error: two component files both define the tag <card>`, both file paths, and the note that "Component names come from the filename, so neither subfolders nor the roots listed in directory.components create separate namespaces." The tag is the filename up to its first dot, lowercased: `marketing/card.html` and `admin/card.html` are both `<card>`, and so are `card.html` and `card.v2.html`. Rename one, for example `marketing-card.html`. See [Subfolder Layout](/components#subfolder-layout).
 
 ### `components directory "..." does not exist`
 
@@ -123,13 +123,13 @@ An inline `<script>` in a component contains type annotations. Mark it `<script 
 
 ### My edit to a component does not show up
 
-The dev server watches component `.html` files, companion `.css` and script files, and files imported by build scripts, and rebuilds every page that uses the component. If the stale part is build-script output, the script cache is answering from an earlier run: see [Build script output is stale](#build-script-output-is-stale) below. If nothing reloads at all, see [Live reload stopped working](#live-reload-stopped-working).
+The dev server watches component `.html` files and companion `.css` and script files, and rebuilds every page that uses the component. A build-script helper or data file outside `directory.pages` and `directory.components` (for example in `src/lib/`) rebuilds pages only when it is listed in `pipeline.watchPaths`: see [Editing a data file does not rebuild](#editing-a-data-file-does-not-rebuild). If the stale part is build-script output, the script cache is answering from an earlier run: see [Build script output is stale](#build-script-output-is-stale) below. If nothing reloads at all, see [Live reload stopped working](#live-reload-stopped-working).
 
 ## Props, slots, and scoping
 
 ### My prop shows up as escaped text
 
-Props are text. Bascik HTML-escapes them so markup from a CMS or an API cannot become an element or a script. Pass markup through a [slot](/slots) instead. See [Why is my prop value showing as escaped text?](/faq#why-is-my-prop-value-showing-as-escaped-text).
+Props are text. Bascik HTML-escapes them when it injects them, so markup from a CMS, a database, or an API cannot become an element or a script. To pass rich HTML or a nested component, use a default or named [slot](/slots) instead. Slot content stays markup and takes part in component scoping. See [Props](/props#define-and-pass-props).
 
 ### `<link-card> (components/link-card/link-card.html): data-bascik-attr-href="url" received a script URL such as javascript:, so href is set to about:invalid.`
 
@@ -169,7 +169,7 @@ Choosing a radio in one copy clears the choice in another because `name` ships a
 
 ### A third-party widget cannot find its mount element by ID
 
-The ID was scoped. Add a bare `data-bascik-preserve` to the mount element so its literal ID and subtree stay unscoped. See [Preserve Scoping](/preserve).
+The ID was scoped: inside a component, Bascik rewrites `id` per instance, so a script that calls something like `turnstile.render('widget-mount')` with the literal ID finds nothing. Add a bare `data-bascik-preserve` to the mount element so its literal ID and subtree stay unscoped; Bascik removes the directive from compiled output. See [Third-Party Widget Mount Points](/preserve#third-party-widget-mount-points).
 
 ### An inline SVG gradient, mask, or filter is not showing
 
@@ -181,7 +181,7 @@ Rules such as `js-dynamic-id-lookup` or `css-id-attribute-selector` flag pattern
 
 ### The same `<script>` appears once per component instance
 
-By design: each instance carries its own scoped script in an IIFE, so no runtime registry is needed. See [Why do I see multiple identical script tags in my page output?](/faq#why-do-i-see-multiple-identical-script-tags-in-my-page-output).
+By design: each instance carries its own copy of the component's scripts, so every instance gets its behavior without a runtime framework, a registry, or a bundling step. Inline classic scripts are wrapped in an IIFE so their variables stay out of the global scope, and from the second instance on each copy's `//# sourceURL` ends in `?instance=N`, so browser devtools list the copies separately. See [Multiple Instances](/scoped-javascript#multiple-instances).
 
 ## Build scripts
 
@@ -248,7 +248,7 @@ Once `scripts.timeout` passes, the result is a timeout even if the script settle
 
 ### `--server: .bascik/dist/server-scripts.json has server-script entries but .bascik/dist/components.json is missing`
 
-Same family: a build that has server or stream scripts also writes a component manifest, used to render component tags those scripts return, and this `dist/` predates it or lost it. The related messages are `component manifest at ... uses schema N, but this runtime understands schema 1`, `component manifest at ... is malformed`, for `--target` builds, `the sidecar has server-script entries but .bascik/dist/components.json is missing`, and, at request time, `component script "<id>" is not listed in .bascik/dist/components.json` Each means `dist/` and `.bascik/dist/` were not written by one full build of the installed version. Run `bascik --build` again. See [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder).
+Same family: a build that has server or stream scripts also writes a component manifest, used to render component tags those scripts return, and this `dist/` predates it or lost it. The related messages are `component manifest at ... uses schema N, but this runtime understands schema 1`, `component manifest at ... is malformed`, for `--target` builds, `the sidecar has server-script entries but .bascik/dist/components.json is missing`, and, at request time, `component script "<id>" is not listed in .bascik/dist/components.json`. Each means `dist/` and `.bascik/dist/` were not written by one full build of the installed version. Run `bascik --build` again. See [What is the `.bascik/` folder?](/faq#what-is-the-bascik-folder).
 
 ### A component tag in script output reaches the browser as written
 
@@ -373,7 +373,7 @@ Slot resolution, attribute inheritance, and substitution run the same code in bo
 
 ### One slow server script delays every request
 
-Synchronous work in a handler blocks Node's event loop. Use asynchronous APIs, await them, and offload CPU-heavy work. See [Can a server script slow down other requests?](/faq#can-a-server-script-slow-down-other-requests).
+Server scripts and API routes run in-process, in the same process as the server, and JavaScript runs on one thread (in Node.js for the built-in server, in the Worker isolate on Cloudflare). Synchronous work in a handler (a CPU loop, heavy regex matching, a large synchronous parse) blocks the event loop while it runs, so every concurrent request waits. `scripts.timeout` (and `http.apiTimeout` for API routes) cannot interrupt synchronous code; it only cancels asynchronous work. Use asynchronous APIs and `await` them, pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled at the deadline or when the client disconnects, and move CPU-heavy work to a worker thread. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
 
 ## Server script safety
 
@@ -505,7 +505,7 @@ Await the sanitized HTML before calling `raw`.
 
 ### `esc() received an object that cannot be converted to text (its toString or valueOf is missing, or threw a TypeError). Check that the value is a string before you use it.`
 
-The same problem as `unconvertible-value` above, in `esc()`: check that the value is a string first.
+The same problem as the `received an object that cannot be converted to text` entry above, in `esc()`: check that the value is a string first.
 
 ### `safeUrl: origins[1] "cdn.example.com" is not an origin. Write it as https://cdn.example.com.`
 
@@ -572,7 +572,7 @@ The file exports no handler for that method, or the export is not uppercase. The
 
 ### 413 Payload Too Large
 
-The request body exceeded `http.maxBodySize` (1 MB by default). Raise it in `bascik.config.ts` if the payload is legitimate. See [Request Body Handling and Streaming](/api-routes#request-body-handling-and-streaming).
+The request body exceeded `http.maxBodySize` (1 MB by default). Bascik answers with a plain-text `Payload Too Large` body and `Connection: close`. Raise the limit in `bascik.config.ts` if the payload is legitimate. See [Request Body Handling and Streaming](/api-routes#request-body-handling-and-streaming).
 
 ### 504 Gateway Timeout
 
@@ -590,7 +590,7 @@ A `pipeline.exec` script failed or overran. The script's own output is printed a
 
 ### My `parallel` exec script's output is missing from the build
 
-In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts. See [Exec Scripts](/exec-scripts).
+`parallel` lifecycle scripts start alongside page compilation, and `bascik --build` joins them only before it reports success, so pages may compile before a `parallel` script has written anything. If transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts. See [Exec Scripts](/exec-scripts).
 
 ### `exec script "..." is located inside source directories`
 
@@ -598,7 +598,7 @@ Exec scripts under `src/pages/` or `src/components/` would be treated as source.
 
 ### Editing a data file does not rebuild
 
-The dev server watches pages, components, and files imported by build scripts. A file a script reads at runtime (a JSON it `readFile`s, a Markdown directory) must be listed in `pipeline.watchPaths`. See [Watch Paths](/watch-paths).
+The dev server watches pages and components. A helper a build script imports from elsewhere (such as `src/lib/`), or a file a script reads at runtime (a JSON it `readFile`s, a Markdown directory), must be listed in `pipeline.watchPaths`; `scripts.importRoot` is watched only to reload request-time modules. See [Watch Paths](/watch-paths).
 
 ## Dev server
 
@@ -608,11 +608,11 @@ Another process holds the port. In development Bascik moves to the next free por
 
 ### Live reload stopped working
 
-If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected. If the page still does not reload, make sure the tab is on the dev server's origin and not a cached copy, and restart the server if the config changed. See [Live Reload via Server-Sent Events](/development-server#live-reload-via-server-sent-events-sse).
+Bascik sends a comment heartbeat every 20 seconds so a corporate proxy or VPN does not close the connection as idle. A build error does not stop reloads: the in-browser overlay shows the error location until you save a fix. If the page still does not reload, make sure the tab is on the dev server's origin and not a cached copy, and restart the server if the config changed. See [Live Reload via Server-Sent Events](/development-server#live-reload-via-server-sent-events-sse).
 
 ### The browser rejects the dev TLS certificate
 
-Self-signed certificates include the SubjectAltName entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`); install `mkcert` and Bascik uses it to issue a locally trusted certificate instead. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
+With `http.tls.enabled: true` and no `keyFile`/`certFile`, Bascik generates a certificate. If `mkcert` is installed, it issues a locally trusted one (covering `localhost`, `127.0.0.1`, and `::1`) once mkcert's local CA is installed with `mkcert -install`. Otherwise Bascik falls back to an openssl self-signed certificate. It carries the SubjectAltName (SAN) entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`), which prevents a name-mismatch error, but browsers still warn because nothing trusts it. Bascik reuses an existing `bascik-privkey.pem` and `bascik-cert.pem` instead of regenerating, so after installing mkcert, delete those two files and restart to get a trusted certificate. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
 
 ### `could not create static-asset symlinks; copying assets instead.`
 
@@ -620,7 +620,7 @@ Self-signed certificates include the SubjectAltName entries modern browsers requ
 
 ### A deleted page is still served
 
-Current Bascik versions clean `directory.out` at the start of every dev and build run, before pre-phase lifecycle scripts execute. A page, renamed asset, or removed dynamic route from an earlier run should therefore not remain in the new output. `bascik --server` is intentionally read-only: it starts the production runtime from output previously generated by `bascik --build`, so it neither builds nor cleans files. For local development, plain `bascik` transpiles, serves, watches, and reloads the site in one command.
+Bascik cleans `directory.out` at the start of every dev and build run, before pre-phase lifecycle scripts execute, so a page, renamed asset, or removed dynamic route from an earlier run does not remain in the new output. A targeted `--only` build is the exception: it keeps pages it did not rebuild, and a deleted source page stays until the next full build. `bascik --server` is intentionally read-only: it starts the production runtime from output previously generated by `bascik --build`, so it neither builds nor cleans files. For local development, plain `bascik` transpiles, serves, watches, and reloads the site in one command.
 
 If stale output remains, confirm that the command is running from the expected project root and that `directory.out` points to the directory you are inspecting.
 
@@ -648,7 +648,7 @@ Point the orchestrator's readiness probe at `GET /_health`. On `SIGTERM` the ser
 
 ### Requests are missing from the logs
 
-In earlier releases, static asset streams logged before the file descriptor finished opening. Bascik now logs static asset and page requests when the response finishes transmission, capturing the HTTP status and total transfer time. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
+Bascik logs static asset and page requests when the response finishes, with the HTTP status and total transfer time, so a request still in flight has no line yet. `/_health` probes are never logged. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
 
 ## Build output and deployment
 
@@ -658,7 +658,7 @@ A targeted `bascik --build --only "<glob>"` leaves other pages in place but skip
 
 ### My hand-written `robots.txt` or `sitemap.xml` was replaced
 
-In earlier versions of Bascik, generated files could overwrite authored ones. Bascik now checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`) before generating files. If an authored file exists, Bascik preserves it and emits a warning with steps to configure `generate.robots: false` or delete the authored file. See [Sitemap & robots.txt](/sitemap).
+Bascik checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`) before generating these files. If an authored file exists, Bascik preserves it and emits a warning with steps to configure `generate.robots: false` or delete the authored file. See [Sitemap & robots.txt](/sitemap).
 
 ### Requests under `base` return 404 or `fetch('/api/x')` fails
 
@@ -668,7 +668,7 @@ A `fetch('/api/x')` in client code fails under `base` because Bascik cannot safe
 
 ### Part of the page disappeared after minification
 
-Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification. See [`minify` (BYOMinifier)](/configuration#minify-byominifier).
+The HTML minifier reads the page the way a browser does, so a literal `<!--` inside JavaScript, JSON-LD, or `<textarea>` is not a comment and cannot consume the rest of the document, and `<pre>` content is kept as written. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification. See [`minify` (BYOMinifier)](/configuration#minify-byominifier).
 
 ### `HTML minification failed for "..."` or `CSS minification failed for ...`
 
@@ -676,11 +676,11 @@ A `minify.html`, `minify.css`, or `minify.js` function you supplied threw. In de
 
 ### Browser assets re-download after every deploy
 
-In earlier versions, static asset ETags were derived from file modification times (`mtime`), which differed across CI checkouts and server replicas. Bascik now uses deterministic SHA-256 content hashes for all static and page ETags, computed once and cached in memory. Identical bytes produce identical ETags across separate server instances and deploys. If assets still re-download, a CDN or proxy in front of the server is stripping or rewriting the headers. See [In-Memory Caching & ETags](/production-server#in-memory-caching-etags).
+Bascik uses deterministic SHA-256 content hashes for static and page ETags, computed once and cached in memory, not file modification times, which differ across CI checkouts and server replicas. Assets above 2 MiB are streamed with a weak validator built from size, modification time, and inode instead. Identical bytes produce identical ETags across separate server instances and deploys. If assets still re-download, a CDN or proxy in front of the server is stripping or rewriting the headers. See [In-Memory Caching & ETags](/production-server#in-memory-caching-etags).
 
 ### Inline scripts are blocked by my Content Security Policy
 
-Bascik inlines component scripts and styles and sets no CSP header itself. Turn on `generate.cspHashes: true` and feed `.bascik/dist/csp-hashes.json` to the host or CDN that sets the header. See [Content Security Policy](/how-to/content-security-policy).
+Bascik inlines component scripts and styles and sends no CSP header unless you set `contentSecurityPolicy` in `bascik.config.ts`, which sends your directives with each route's inline script and style hashes added, on `bascik --server`, the dev server, and Cloudflare. For another host, turn on `generate.cspHashes: true` and feed `.bascik/dist/csp-hashes.json` to the host or CDN that sets the header, or put the policy in a `<meta>` tag. See [Content Security Policy](/how-to/content-security-policy).
 
 ### Cloudflare: `"node:fs" (imported by ...) is not available in the Cloudflare Workers runtime`
 

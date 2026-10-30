@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { stripTypeScriptTypes } from "node:module";
 import {
   extractDemoBlock,
   readDemoBlock,
@@ -23,7 +24,7 @@ const TEMPLATING_MD = path.resolve(
 describe("templating fixtures", () => {
   it("interpolate helper escapes HTML and resolves dotted paths", async () => {
     const { interpolate, escape } = await import(
-      `file://${path.join(FIXTURE_DIR, "interpolate.mjs")}`
+      `file://${path.join(FIXTURE_DIR, "interpolate.ts")}`
     );
 
     // Dotted path resolution
@@ -117,9 +118,11 @@ describe("templating fixtures", () => {
       "./content/how-to/templating.md",
       "html-script",
     );
-    const body = /<script data-bascik-server>([\s\S]*?)<\/script>/.exec(
+    const tsBody = /<script data-bascik-server[^>]*>([\s\S]*?)<\/script>/.exec(
       block,
     )![1];
+    // The block is TypeScript; strip its types the way Bascik does.
+    const body = stripTypeScriptTypes(tsBody);
     // A computed path, so the docs typecheck does not pull pkg/src in.
     const { html } = await import(
       path.resolve(import.meta.dirname, "../../../../pkg/src/html.ts")

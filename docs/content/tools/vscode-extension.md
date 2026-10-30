@@ -15,7 +15,7 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 | -------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
 | Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)           |
 | Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
-| Write a `<script>`               | Offers the four execution directives      | [Script directives](#complete-script-directives)     |
+| Write a `<script>`               | Offers the five execution directives      | [Script directives](#complete-script-directives)     |
 | Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
 | Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
 | Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)          |
@@ -53,7 +53,7 @@ Slot suggestions are not repeated when the element already has a `data-bascik-sl
 
 ## Complete Script Directives
 
-Inside a `<script>` tag, the extension suggests the four mutually exclusive execution directives:
+Inside a `<script>` tag, the extension suggests the five mutually exclusive execution directives:
 
 ![The suggest widget listing data-bascik-build, data-bascik-build-once, data-bascik-routes, data-bascik-server, and data-bascik-stream](/assets/vscode/complete-script-directives@2x.webp)
 
@@ -222,7 +222,7 @@ A project gets this setting in one of three ways. None of them touches your user
 
 - **`npm create bascik`** writes it to the new project's `.vscode/settings.json`, so it works for teammates before they install the extension.
 - **`bascik init`** adds it to `.vscode/settings.json` in the current folder, and keeps any settings that file already has.
-- **The extension's prompt, or pasting it yourself.** When the extension starts in a workspace that holds a `bascik.config.ts` (or `.js`, `.mjs`) and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it shows one message that explains the false error, with two buttons. **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder and keeps what that file already has. **Don't ask again** stops the message for that workspace. The message shows at most once per window. Or paste the JSON above into `.vscode/settings.json` at the project root; if the file already has settings, add the `"html.validate.scripts": false` line inside its braces.
+- **The extension's prompt, or pasting it yourself.** When the extension starts in a workspace that holds a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it shows one message that explains the false error, with two buttons. **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder and keeps what that file already has. **Don't ask again** stops the message for that workspace. The message shows at most once per window. Or paste the JSON above into `.vscode/settings.json` at the project root; if the file already has settings, add the `"html.validate.scripts": false` line inside its braces.
 
 The extension never changes the setting without your click, and it never asks when the value is already set either way. A project that wants VS Code's check can set it to `true`.
 
@@ -297,7 +297,7 @@ The extension discovers Bascik configs recursively inside every VS Code workspac
 
 When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults.
 
-Component discovery follows `directory.components` in the owning project's `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
+Component discovery follows `directory.components` in the owning project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
 Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
 

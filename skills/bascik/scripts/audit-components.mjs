@@ -467,7 +467,7 @@ function checkJsFiles(root, layout, options, findings) {
         line: 1,
         message: "bascik.config.js is JavaScript.",
         suggestion:
-          "Rename it to bascik.config.ts and import defineConfig from @bascik/bascik/config for typed options. Delete the .js file: when both exist, bascik.config.js wins.",
+          "Rename it to bascik.config.ts and import defineConfig from @bascik/bascik/config for typed options. Delete the .js file: Bascik loads the first of bascik.config.js, .mjs, and .ts it finds, so a leftover .js wins.",
       });
       continue;
     }

@@ -602,4 +602,65 @@ describe("bascik add", () => {
     );
     expect(profileHtml).toBe("<div>User Profile</div>");
   });
+  // A published component's .mts companion is copied like .ts, so the copied
+  // <script src="x.mts"> resolves at build time instead of shipping as-is.
+  it("copies a .mts companion script, and still skips extensions Bascik never reads", async () => {
+    await setupFixturePackage(
+      "mts-kit",
+      {
+        name: "mts-kit",
+        version: "1.0.0",
+        bascik: { components: "components" },
+      },
+      {
+        "components/kit-counter/kit-counter.html":
+          '<button>0</button><script src="kit-counter.mts"></script>',
+        "components/kit-counter/kit-counter.mts":
+          "const start: number = 0;\nconsole.log(start);\n",
+        "components/kit-counter/kit-counter.cts": "module.exports = {};\n",
+      },
+    );
+
+    const all = await addComponents(["mts-kit"], { cwd: testDir });
+    const copied = all.copiedFiles.map((file) =>
+      file.destPath.replace(/\\/g, "/").replace(/^.*\/src\/components\//, ""),
+    );
+    expect(copied.sort()).toEqual([
+      "kit-counter/kit-counter.html",
+      "kit-counter/kit-counter.mts",
+    ]);
+    expect(
+      await readFile(
+        join(componentsDir, "kit-counter", "kit-counter.mts"),
+        "utf8",
+      ),
+    ).toContain("const start: number = 0;");
+  });
+
+  it("copies a .mts companion when one component is selected", async () => {
+    await setupFixturePackage(
+      "mts-kit",
+      {
+        name: "mts-kit",
+        version: "1.0.0",
+        bascik: { components: "components" },
+      },
+      {
+        "components/kit-counter/kit-counter.html":
+          '<script src="kit-counter.mts"></script>',
+        "components/kit-counter/kit-counter.mts": "export {};\n",
+        "components/kit-other/kit-other.html": "<p>other</p>",
+      },
+    );
+
+    const result = await addComponents(["mts-kit/kit-counter"], {
+      cwd: testDir,
+    });
+    expect(result.copiedFiles.length).toBe(2);
+    expect(
+      result.copiedFiles.some((file) =>
+        file.destPath.endsWith("kit-counter.mts"),
+      ),
+    ).toBe(true);
+  });
 });

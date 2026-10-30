@@ -55,6 +55,17 @@ yarn docs:coverage     # Run unit tests and generate a coverage report
 yarn docs:e2e          # Run Playwright E2E integration tests
 ```
 
+The E2E run builds and serves its own copy of the site, so it can run while `yarn docs:dev` is up:
+
+|                     | Dev server (`yarn docs:dev`)  | E2E (`yarn docs:e2e`)                                              |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------ |
+| Config              | `bascik.config.ts`            | `e2e/bascik.config.ts` (the same config, another output directory) |
+| Output              | `dist/`                       | `.e2e/dist/`                                                       |
+| Private build files | `.bascik/dist/`               | `.e2e/.bascik/dist/`                                               |
+| Port                | 8080 (8081, 8082… when taken) | 8099, or `BASCIK_E2E_PORT`                                         |
+
+Specs that read built files import the output directory from `e2e/site.ts`, never `dist/`. The run starts its own server and fails when the port is already taken, rather than testing whatever answers there. To keep a server up between runs, start it with `yarn workspace bascik-docs e2e:serve` and run with `BASCIK_E2E_PORT=8099`: setting the variable is what lets the run reuse a server on that port. CI never reuses one.
+
 Because the documentation site is built in production mode with identifier minification enabled (`minify.identifiers: true`), raw CSS classes and element IDs are hashed and compressed. To prevent brittle tests that break upon minification, E2E tests under `docs/e2e/` must target elements using standard `data-testid` attributes or accessible roles (e.g., `page.getByTestId(...)`, `page.getByRole(...)`).
 
 ### Lighthouse Auditing
@@ -62,6 +73,17 @@ Because the documentation site is built in production mode with identifier minif
 To catch performance, accessibility, best practices, and SEO regressions locally before deployment, the documentation site includes Lighthouse CI CLI (`@lhci/cli`) pre-configured in `lighthouse/lighthouserc.json`.
 
 The audits build the production bundle, start Bascik's production server (`bascik --server`), and test the documentation routes against strict score thresholds.
+
+Like the E2E run, the audits build and serve their own copy of the site, so they can run while `yarn docs:dev` or `yarn docs:e2e` is up:
+
+|                     | Dev server (`yarn docs:dev`)  | E2E (`yarn docs:e2e`)  | Lighthouse (`yarn docs:lighthouse`)                                       |
+| ------------------- | ----------------------------- | ---------------------- | ------------------------------------------------------------------------- |
+| Config              | `bascik.config.ts`            | `e2e/bascik.config.ts` | `lighthouse/bascik.config.ts` (the same config, another output directory) |
+| Output              | `dist/`                       | `.e2e/dist/`           | `.lighthouse/dist/`                                                       |
+| Private build files | `.bascik/dist/`               | `.e2e/.bascik/dist/`   | `.lighthouse/.bascik/dist/`                                               |
+| Port                | 8080 (8081, 8082… when taken) | 8099                   | 8097                                                                      |
+
+The port and output directory live in `lighthouse/site.ts`; the `lighthouserc*.json` files repeat the port in their URLs, and `lighthouse/lighthouserc.test.ts` fails when they disagree. Each script first runs `lighthouse/check-port.ts`, which stops the run before building when something already answers on 8097 (often a server left from an earlier run): Lighthouse CI only warns when the server it starts never reports ready, and would then audit whatever answers on the port.
 
 ```sh
 # Gate: mobile (/, /getting-started, /components, /search, /libraries, /sitemap), then desktop

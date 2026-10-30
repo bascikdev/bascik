@@ -1,7 +1,15 @@
+import { spawnSync } from "node:child_process";
 import { access } from "node:fs/promises";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  CONFIG_FILE_LIST,
+  CONFIG_FILE_NAMES,
+  findConfigFile,
+} from "./config-file-names.ts";
 import type { UserConfig } from "./types.ts";
+
+export { CONFIG_FILE_NAMES };
 
 // The user-facing `defineConfig` helper and its `BascikConfig` input type
 // live in defineConfig.ts only — keeping a second, divergent copy here is how
@@ -24,6 +32,35 @@ export const importUserConfig = async (
   configPath: string,
 ): Promise<UserConfigModule> => {
   return (await import(pathToFileURL(configPath).href)) as UserConfigModule;
+};
+
+/**
+ * The file, line, and caret for a syntax error in a JavaScript config. A
+ * SyntaxError from a dynamic import carries no location, so on that failure
+ * only, the file is parsed again with `node --check`, which prints
+ * "<file>:<line>", the line, and a caret under the token. The file itself is
+ * checked, not its source as a module, so Node picks the same format the
+ * import did: ESM for .mjs, and for .js whatever package.json "type" and
+ * syntax detection say (a CommonJS config allows sloppy-mode syntax that a
+ * module check would stop on first). Returns "" when the check reports a
+ * different error than the import (so the location could point at the wrong
+ * line), when the config parses (the SyntaxError came from linking, such as
+ * a missing named export), or for a TypeScript config, which `node --check`
+ * would parse without stripping its types.
+ */
+const syntaxErrorLocation = (configPath: string, err: unknown): string => {
+  if (!(err instanceof Error) || err.name !== "SyntaxError") return "";
+  if (![".js", ".mjs"].includes(extname(configPath))) return "";
+  const result = spawnSync(process.execPath, ["--check", configPath], {
+    encoding: "utf8",
+  });
+  if (result.status === 0 || !result.stderr) return "";
+  // Node prints "<file>:<line>", the source line, a caret line, a blank
+  // line, then "SyntaxError: <message>" and its stack. Keep the first three.
+  const lines = result.stderr.split("\n");
+  if (!lines[0]?.startsWith(`${configPath}:`)) return "";
+  if (!lines.includes(`SyntaxError: ${err.message}`)) return "";
+  return [lines[0], lines[1] ?? "", lines[2] ?? ""].join("\n").trimEnd();
 };
 
 const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
@@ -60,7 +97,7 @@ export const loadUserConfig = async (
       if (options.explicit) {
         throw new Error(
           `[bascik] error: --config "${configPath}" does not exist. ` +
-            `Pass an existing file, or omit the flag to use ./bascik.config.js or ./bascik.config.ts when present.`,
+            `Pass an existing file, or omit the flag to use ${CONFIG_FILE_LIST} when present.`,
         );
       }
       return { config: {}, dev: {}, build: {}, server: {} };
@@ -82,8 +119,10 @@ export const loadUserConfig = async (
     // A config file that exists but fails to load is fatal — throw (rather
     // than process.exit) so the CLI can surface the error and library
     // consumers (worker threads) don't nuke the whole process.
+    const location = syntaxErrorLocation(configPath, err);
     throw new Error(
-      `[bascik] Failed to load bascik.config (${configPath}): ${err instanceof Error ? err.message : String(err)}`,
+      `[bascik] Failed to load bascik.config (${configPath}): ${err instanceof Error ? err.message : String(err)}` +
+        (location ? `\n${location}` : ""),
       { cause: err },
     );
   }
@@ -111,12 +150,13 @@ export const loadUserConfig = async (
  * Resolve which config file to load.
  *
  * An explicit `--config <path>` (or `--config=<path>`) wins and is resolved
- * against the cwd. Otherwise discovery looks in the cwd only:
- * bascik.config.js is preferred over bascik.config.ts when both exist,
+ * against the cwd. Otherwise discovery looks in the cwd only, in
+ * CONFIG_FILE_NAMES order: bascik.config.js, then bascik.config.mjs, then
+ * bascik.config.ts. The first that exists wins and the others are ignored,
  * because an `init`-scaffolded .js file would otherwise silently shadow the
  * user's .ts config.
  *
- * Intentionally unsupported: .mjs/.cjs/.mts/.cts extensions, a config/
+ * Intentionally unsupported: .cjs/.mts/.cts extensions, a config/
  * subdirectory, and parent-directory search. TypeScript configs work through
  * Node 24's native type stripping, so non-erasable syntax such as `enum`
  * fails with a Node error at import time.
@@ -125,25 +165,15 @@ export const resolveConfigPath = async (
   argv: string[] = process.argv.slice(2),
   cwd: string = process.cwd(),
 ): Promise<{ path: string; explicit: boolean }> => {
-  const inline = argv.find((a) => a.startsWith("--config="));
-  const flagIndex = argv.indexOf("--config");
-  const flagValue =
-    flagIndex !== -1 &&
-    argv[flagIndex + 1] &&
-    !argv[flagIndex + 1].startsWith("-")
-      ? argv[flagIndex + 1]
-      : undefined;
-  const explicitValue = inline ? inline.slice("--config=".length) : flagValue;
-  if (explicitValue) {
-    return { path: resolve(cwd, explicitValue), explicit: true };
-  }
-  const jsPath = resolve(cwd, "bascik.config.js");
-  try {
-    await access(jsPath);
-    return { path: jsPath, explicit: false };
-  } catch {
-    return { path: resolve(cwd, "bascik.config.ts"), explicit: false };
-  }
+  const found = findConfigFile(argv, cwd);
+  // None exists: loadUserConfig treats the missing last candidate as the
+  // zero-config default.
+  return {
+    path:
+      found.path ??
+      resolve(cwd, CONFIG_FILE_NAMES[CONFIG_FILE_NAMES.length - 1]),
+    explicit: found.explicit,
+  };
 };
 
 const discovered = await resolveConfigPath();

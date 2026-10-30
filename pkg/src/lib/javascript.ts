@@ -78,6 +78,7 @@ import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
+import { COMPANION_SCRIPT_RE } from "./companion-scripts.ts";
 import { scanHtml } from "./html-scanner.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
@@ -1127,7 +1128,7 @@ export const getComponentScripts = async (
     } else {
       const scriptBaseName = basename(scriptPath);
       const nameWithoutExt = scriptBaseName
-        .replace(/\.(js|ts|mjs)$/, "")
+        .replace(COMPANION_SCRIPT_RE, "")
         .toLowerCase();
       return (
         nameWithoutExt === componentBaseName ||
@@ -1141,8 +1142,8 @@ export const getComponentScripts = async (
   matchingScriptFiles.sort((a, b) => {
     const aBase = basename(a).toLowerCase();
     const bBase = basename(b).toLowerCase();
-    const aMain = aBase.replace(/\.(js|ts|mjs)$/, "") === componentBaseName;
-    const bMain = bBase.replace(/\.(js|ts|mjs)$/, "") === componentBaseName;
+    const aMain = aBase.replace(COMPANION_SCRIPT_RE, "") === componentBaseName;
+    const bMain = bBase.replace(COMPANION_SCRIPT_RE, "") === componentBaseName;
     if (aMain && !bMain) return -1;
     if (!aMain && bMain) return 1;
     return a < b ? -1 : a > b ? 1 : 0;

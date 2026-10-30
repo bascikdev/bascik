@@ -125,24 +125,56 @@ async function loadLane(file: string) {
   }
 }
 
+/**
+ * Ports of the suites outside pkg/e2e that can run beside the lanes. Docs e2e and docs Lighthouse take their ports
+ * from their own site modules, so the defaults come from there, not from a pattern over the config text; each config
+ * is checked to actually read its module, so a config that stops using it fails here instead of passing on a stale
+ * number.
+ */
 async function docsAndAdapterPorts(): Promise<Record<string, number>> {
-  const docs = await readFile(
+  const docsE2eConfig = await readFile(
     join(repoDir, "docs/e2e/playwright.config.ts"),
     "utf8",
   );
+  expect(
+    docsE2eConfig,
+    "docs/e2e/playwright.config.ts no longer takes its port from parseE2ePort (docs/e2e/site.ts)",
+  ).toMatch(/parseE2ePort\(\s*process\.env\.BASCIK_E2E_PORT\s*\)/);
+  const docsE2eSite = (await import(join(repoDir, "docs/e2e/site.ts"))) as {
+    parseE2ePort: (value: string | undefined) => number;
+    DEV_PORT: number;
+  };
+
+  const lighthouseScripts = (
+    JSON.parse(await readFile(join(repoDir, "docs/package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    }
+  ).scripts;
+  const lighthouseSite = (await import(
+    join(repoDir, "docs/lighthouse/site.ts")
+  )) as { LIGHTHOUSE_PORT: number };
+  for (const script of ["lighthouse", "lighthouse:all", "lighthouse:ci"])
+    expect(
+      lighthouseScripts[script],
+      `docs script ${script} must build with lighthouse/bascik.config.ts`,
+    ).toContain("--config lighthouse/bascik.config.ts");
+
   const adapter = await readFile(
     join(repoDir, "adapters/cloudflare/e2e/playwright.config.ts"),
     "utf8",
   );
-  const docsPort = docs.match(/BASCIK_E2E_PORT\s*\?\?\s*"(\d+)"/)?.[1];
   const adapterPort = adapter.match(/\bPORT\s*=\s*(\d+)/)?.[1];
-  expect(docsPort, "docs e2e default port not found").toBeDefined();
   expect(adapterPort, "adapter e2e port not found").toBeDefined();
-  return { docs: Number(docsPort), adapter: Number(adapterPort) };
+  return {
+    docsDev: docsE2eSite.DEV_PORT,
+    docsE2e: docsE2eSite.parseE2ePort(undefined),
+    docsLighthouse: lighthouseSite.LIGHTHOUSE_PORT,
+    adapter: Number(adapterPort),
+  };
 }
 
 describe("lane isolation", () => {
-  it("binds a disjoint set of ports in every lane group, docs e2e and adapter e2e included", async () => {
+  it("binds a disjoint set of ports in every lane group, docs dev, docs e2e, docs Lighthouse, and adapter e2e included", async () => {
     const owners = new Map<number, string[]>();
     const claim = (group: string, ports: Iterable<number>) => {
       for (const port of ports) {
@@ -158,7 +190,9 @@ describe("lane isolation", () => {
       for (const port of (await loadLane(file)).ports) execPorts.add(port);
     claim("exec", execPorts);
     const external = await docsAndAdapterPorts();
-    claim("docs-e2e", [external.docs]);
+    claim("docs-dev", [external.docsDev]);
+    claim("docs-e2e", [external.docsE2e]);
+    claim("docs-lighthouse", [external.docsLighthouse]);
     claim("adapter-e2e", [external.adapter]);
 
     const collisions = [...owners]
@@ -738,5 +772,190 @@ describe("root scripts", () => {
     expect(pkg.scripts["pkg:e2e:all:serial"]).toBe(
       "yarn pkg:e2e && yarn pkg:e2e:dev && yarn pkg:e2e:prod",
     );
+  });
+});
+
+/** Each CI job's `runs-on` and `run:` commands (comments dropped), keyed by job id. */
+function ciJobs(
+  workflow: string,
+): Map<string, { runsOn: string; runs: string[]; needs: string[] }> {
+  const jobs = new Map<
+    string,
+    { runsOn: string; runs: string[]; needs: string[] }
+  >();
+  const lines = workflow.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => /^jobs:\s*$/.test(line));
+  let current: { runsOn: string; runs: string[]; needs: string[] } | undefined;
+  let inNeeds = false;
+  for (const line of start < 0 ? [] : lines.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    const job = /^ {2}([\w-]+):\s*$/.exec(line);
+    if (job) {
+      jobs.set(job[1], (current = { runsOn: "", runs: [], needs: [] }));
+      inNeeds = false;
+      continue;
+    }
+    if (!current || line.trim().startsWith("#")) continue;
+    const runsOn = /^ {4}runs-on:\s*(\S+)/.exec(line);
+    if (runsOn) current.runsOn = runsOn[1];
+    if (/^ {4}needs:/.test(line)) inNeeds = true;
+    else if (/^ {4}\S/.test(line)) inNeeds = false;
+    if (inNeeds)
+      for (const need of line.replace(/^ {4}needs:/, "").matchAll(/[\w-]+/g))
+        current.needs.push(need[0]);
+    for (const run of line.matchAll(/\byarn ([\w:-]+)/g))
+      current.runs.push(run[1]);
+  }
+  return jobs;
+}
+
+const readCi = async () =>
+  ciJobs(await readFile(join(repoDir, ".github/workflows/ci.yml"), "utf8"));
+
+describe("every lane runs in CI", () => {
+  it("parses jobs, runs-on, needs and yarn runs, skipping comments", () => {
+    const jobs = ciJobs(
+      [
+        "jobs:",
+        "  a:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      # - run: yarn not:this",
+        "      - run: yarn pkg:build && yarn lsp:test:ci",
+        "  b:",
+        "    runs-on: windows-latest",
+        "    needs:",
+        "      [",
+        "        a,",
+        "        c-d,",
+        "      ]",
+        "    steps:",
+        "      - run: yarn pkg:e2e",
+        "env: {}",
+      ].join("\r\n"),
+    );
+    expect([...jobs.keys()]).toEqual(["a", "b"]);
+    expect(jobs.get("a")).toEqual({
+      runsOn: "ubuntu-latest",
+      runs: ["pkg:build", "lsp:test:ci"],
+      needs: [],
+    });
+    expect(jobs.get("b")!.needs).toEqual(["a", "c-d"]);
+  });
+
+  it("names every Playwright config in e2e/ in a pkg script that a CI job runs through its root pkg: wrapper", async () => {
+    const pkgScripts = (
+      JSON.parse(await readFile(join(pkgDir, "package.json"), "utf8")) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    const rootScripts = (
+      JSON.parse(await readFile(join(repoDir, "package.json"), "utf8")) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    const ciRuns = new Set(
+      [...(await readCi()).values()].flatMap((job) => job.runs),
+    );
+    const configs = (await readdir(e2eDir)).filter((name) =>
+      /^playwright(\..+)?\.config\.ts$/.test(name),
+    );
+    // Guards the scan: if it finds nothing the check below proves nothing.
+    expect(configs).toContain("playwright.exec-build.config.ts");
+    const missing: string[] = [];
+    for (const config of configs) {
+      const flag = new RegExp(
+        `--config e2e/${config.replace(/\./g, "\\.")}(?=$|\\s)`,
+      );
+      const scripts = Object.keys(pkgScripts).filter((name) =>
+        flag.test(pkgScripts[name]),
+      );
+      if (scripts.length === 0) {
+        missing.push(`${config}: no pkg/package.json script runs it`);
+        continue;
+      }
+      const wrappers = scripts.filter(
+        (name) =>
+          rootScripts[`pkg:${name}`] ===
+          `yarn workspace @bascik/bascik ${name}`,
+      );
+      if (wrappers.length === 0) {
+        missing.push(
+          `${config}: no root pkg: script wraps ${scripts.join(" or ")}`,
+        );
+        continue;
+      }
+      if (!wrappers.some((name) => ciRuns.has(`pkg:${name}`)))
+        missing.push(
+          `${config}: .github/workflows/ci.yml runs none of ${wrappers.map((name) => `yarn pkg:${name}`).join(", ")}`,
+        );
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("classifies every Playwright config in e2e/ as a main lane or an exec lane", async () => {
+    const configs = (await readdir(e2eDir)).filter((name) =>
+      /^playwright(\..+)?\.config\.ts$/.test(name),
+    );
+    const known = new Set<string>([
+      ...Object.values(MAIN_LANES),
+      ...EXEC_LANE_CONFIGS,
+    ]);
+    expect(configs.filter((config) => !known.has(config))).toEqual([]);
+  });
+
+  it("names every exec-lane script in the agent guides that list E2E commands", async () => {
+    // e2e:all skips the exec lanes, so an agent only finds them through
+    // these guides. A lane missing here is a lane nobody runs locally.
+    const pkgScripts = (
+      JSON.parse(await readFile(join(pkgDir, "package.json"), "utf8")) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    const execScripts = Object.keys(pkgScripts).filter((name) =>
+      EXEC_LANE_CONFIGS.some((config) =>
+        pkgScripts[name].includes(`--config e2e/${config}`),
+      ),
+    );
+    expect(execScripts).toContain("e2e:exec:build");
+    const missing: string[] = [];
+    for (const guide of [
+      ".github/copilot-instructions.md",
+      ".github/skills/bascik-playwright-e2e/SKILL.md",
+    ]) {
+      const text = await readFile(join(repoDir, guide), "utf8");
+      for (const name of execScripts) {
+        const token = new RegExp(
+          `(?<![\\w:-])(?:pkg:)?${name.replace(/:/g, "\\:")}(?![\\w:-])`,
+        );
+        if (!token.test(text)) missing.push(`${guide}: never names ${name}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("runs every published workspace's unit tests in a Linux stage-1 job the E2E stage waits on", async () => {
+    const jobs = await readCi();
+    const e2eNeeds = new Set(jobs.get("e2e-pkg-static")?.needs ?? []);
+    expect(e2eNeeds.size, "e2e-pkg-static lists no needs").toBeGreaterThan(0);
+    const missing: string[] = [];
+    for (const script of [
+      "pkg:test:ci",
+      "create:test:ci",
+      "adapter:cf:test:ci",
+      "lsp:test:ci",
+    ]) {
+      const owner = [...jobs].find(
+        ([id, job]) =>
+          e2eNeeds.has(id) &&
+          job.runsOn === "ubuntu-latest" &&
+          job.runs.includes(script),
+      );
+      if (!owner)
+        missing.push(
+          `yarn ${script}: no ubuntu-latest job in e2e-pkg-static's needs runs it`,
+        );
+    }
+    expect(missing).toEqual([]);
   });
 });

@@ -176,7 +176,7 @@ Defining `main: "worker.js"` alone does **not** guarantee the Worker executes be
 
 ### Middleware Composition Is an Application Responsibility
 
-The Cloudflare adapter does not provide a middleware composition layer. If you need redirects, authentication checks, or custom headers on paths that are also static assets, you must compose that logic in your application-owned worker or use Cloudflare's native features (e.g. `_middleware.js`, `headers`, `redirect` in `wrangler.jsonc`). Bascik's generated Worker handles dynamic pages and API routes; application-owned code is responsible for any additional routing concerns.
+The Cloudflare adapter does not provide a middleware composition layer. If you need redirects, authentication checks, or custom headers on paths that are also static assets, you must compose that logic in your application-owned worker or use Cloudflare's native features (e.g. `_headers` and `_redirects` files). Bascik's generated Worker handles dynamic pages and API routes; application-owned code is responsible for any additional routing concerns.
 
 ### Tradeoff: Routing All Requests Through the Worker
 
@@ -431,7 +431,7 @@ The request-time contract is the one documented for [Stream Scripts](/stream-scr
 Two details are specific to the edge:
 
 - Streamed pages are sent with `Content-Encoding: identity`. The edge would otherwise compress the response on the fly and hold every byte until the stream closes, which defeats the early paint. Buffered pages and static assets keep edge compression.
-- Composed responses carry `Cache-Control: private, no-store`, and any `Content-Length`, `ETag`, or `Content-Encoding` a template might have inherited is removed. Personalized output never enters a shared cache.
+- Composed responses carry `Cache-Control: private, no-store` (unless [`security.privateDynamicPages`](/configuration#security) is off), and any `Content-Length`, `ETag`, or `Content-Encoding` a template might have inherited is removed. Personalized output never enters a shared cache.
 
 Every `Set-Cookie` header an API handler returns is preserved individually.
 

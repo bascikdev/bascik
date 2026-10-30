@@ -13,9 +13,9 @@ export const HTML_VALIDATE_SCRIPTS = "html.validate.scripts";
 
 /** Config file names that make a folder a Bascik project. Matches the language server's `CONFIG_FILE_CANDIDATES`. */
 export const CONFIG_FILE_NAMES = [
-  "bascik.config.ts",
   "bascik.config.js",
   "bascik.config.mjs",
+  "bascik.config.ts",
 ];
 
 /** Glob for a Bascik config anywhere in a workspace folder. */

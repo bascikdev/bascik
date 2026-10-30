@@ -19,6 +19,8 @@ my-project/
   .gitignore
   .vscode/
     launch.json
+    extensions.json
+    settings.json
   AGENTS.md              project brief for coding assistants
   CLAUDE.md              imports AGENTS.md for Claude Code
   .agents/skills/        Bascik agent skills, when you answer Y to the skills question
@@ -56,6 +58,9 @@ my-project/
       my-counter/
         my-counter.html
         my-counter.test.ts
+      contact-form/
+        contact-form.html
+        contact-form.test.ts
 ```
 
 Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.js`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
@@ -103,28 +108,28 @@ bascik --check   # static analysis: validate pages, components, and config witho
 bascik add <pkg> # copy components from an installed npm package into src/components/
 ```
 
-| Flag                  | Description                                                                                                                                                                                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--log [path]`        | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log`                                                                                                                                                                     |
-| `--only <glob>`       | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build`                                                                                                                                              |
-| `--target <name>`     | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare-pages`, `cloudflare-workers`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
-| `--fix`               | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain                                                                                                                               |
-| `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                |
-| `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                       |
-| `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                          |
-| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`, and install the agent skills without asking during `bascik init`                                                                                                                                                |
-| `--no-skills`         | Do not ask about or install the agent skills during `bascik init`                                                                                                                                                                                                  |
-| `--dry-run`           | List what `bascik add` would do without writing files to disk                                                                                                                                                                                                      |
-| `--port <n>`          | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`)                                                                                                                                                                                          |
-| `--host <name>`       | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`)                                                                                                                                                                                  |
-| `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`)                                                                                                                                                             |
-| `--quiet`, `-q`       | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level`                                                                       |
-| `--no-pin`            | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0`                                                                                                                                 |
-| `--site-url <url>`    | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`)                                                                                                                                                                                             |
-| `--env-file <path>`   | Load env vars from a file (repeatable; later files win)                                                                                                                                                                                                            |
-| `--config <path>`     | Load the config from a specific file instead of `./bascik.config.js` or `./bascik.config.ts`                                                                                                                                                                       |
-| `-h`, `--help`        | Show the help text                                                                                                                                                                                                                                                 |
-| `-v`, `--version`     | Show the installed Bascik version                                                                                                                                                                                                                                  |
+| Flag                  | Description                                                                                                                                                                                                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--log [path]`        | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log`                                                                                                                                                                                   |
+| `--only <glob>`       | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build`                                                                                                                                                            |
+| `--target <name>`     | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare`, `cloudflare-workers`, `cloudflare-pages`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
+| `--fix`               | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain                                                                                                                                             |
+| `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                              |
+| `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                                     |
+| `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                                        |
+| `--yes`, `-y`         | Skip interactive confirmation during `bascik add`, and install the agent skills without asking during `bascik init`                                                                                                                                                              |
+| `--no-skills`         | Do not ask about or install the agent skills during `bascik init`                                                                                                                                                                                                                |
+| `--dry-run`           | List what `bascik add` would do without writing files to disk                                                                                                                                                                                                                    |
+| `--port <n>`          | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`)                                                                                                                                                                                                        |
+| `--host <name>`       | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`)                                                                                                                                                                                                |
+| `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`)                                                                                                                                                                           |
+| `--quiet`, `-q`       | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level`                                                                                     |
+| `--no-pin`            | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0`                                                                                                                                               |
+| `--site-url <url>`    | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`)                                                                                                                                                                                                           |
+| `--env-file <path>`   | Load env vars from a file (repeatable; later files win)                                                                                                                                                                                                                          |
+| `--config <path>`     | Load the config from a specific file instead of `./bascik.config.js`, `.mjs`, or `.ts`                                                                                                                                                                                           |
+| `-h`, `--help`        | Show the help text                                                                                                                                                                                                                                                               |
+| `-v`, `--version`     | Show the installed Bascik version                                                                                                                                                                                                                                                |
 
 Every value-taking flag accepts both forms:
 
@@ -263,7 +268,7 @@ Port 8080 is in use, trying 8081…
 Server running at http://localhost:8081
 ```
 
-If you explicitly configure the server to run with TLS (`enableTls: true` in `bascik.config.ts`), Bascik will serve over HTTPS (default port `8443`) and generate local TLS certificates if needed via `mkcert` or `openssl` fallback.
+If you explicitly configure the server to run with TLS (`http.tls.enabled: true` in `bascik.config.ts`), Bascik will serve over HTTPS (default port `8443`) and generate local TLS certificates if needed via `mkcert` or `openssl` fallback.
 
 ## Watching for file changes
 
@@ -601,15 +606,15 @@ export default {
 };
 ```
 
-| Option      | Default                        | Description                                    |
-| ----------- | ------------------------------ | ---------------------------------------------- |
-| `port`      | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on                          |
-| `hostname`  | `"localhost"`                  | Hostname or IP to bind to                      |
-| `enableTls` | `false`                        | Enable TLS (HTTPS) and serve over HTTP/2.      |
-| `keyFile`   | auto-generated                 | Path to a PEM private key when TLS is enabled. |
-| `certFile`  | auto-generated                 | Path to a PEM certificate when TLS is enabled. |
+| Option         | Default                        | Description                                    |
+| -------------- | ------------------------------ | ---------------------------------------------- |
+| `port`         | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on                          |
+| `hostname`     | `"localhost"`                  | Hostname or IP to bind to                      |
+| `tls.enabled`  | `false`                        | Enable TLS (HTTPS) and serve over HTTP/2.      |
+| `tls.keyFile`  | auto-generated                 | Path to a PEM private key when TLS is enabled. |
+| `tls.certFile` | auto-generated                 | Path to a PEM certificate when TLS is enabled. |
 
-When `enableTls` is true and `keyFile` / `certFile` are omitted, Bascik generates certificates automatically using `mkcert` (if installed) or `openssl` as a fallback.
+When `tls.enabled` is true and `tls.keyFile` / `tls.certFile` are omitted, Bascik generates certificates automatically using `mkcert` (if installed) or `openssl` as a fallback.
 
 To preview the production build locally with Bascik's built-in production server:
 

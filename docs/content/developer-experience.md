@@ -161,7 +161,7 @@ Write standard HTML, plain CSS, and standard JavaScript in one file:
 
 ```html
 <article class="card">
-  <h3 class="name"><slot name="name">Guest User</slot></h3>
+  <h3 class="name"><span data-bascik-slot="name">Guest User</span></h3>
   <p class="role" data-bascik-prop-role></p>
 </article>
 
@@ -224,9 +224,7 @@ Compare source template code with what appears when inspecting elements in brows
 
 ```html
 <article class="bascik__user-card__card">
-  <h3 class="bascik__user-card__name">
-    <span>Sarah Chen</span>
-  </h3>
+  <h3 class="bascik__user-card__name">Sarah Chen</h3>
   <p class="bascik__user-card__role">Lead Engineer</p>
 </article>
 ```
@@ -348,7 +346,7 @@ describe("user-card contract", () => {
 
   it("defines slot and prop placeholders correctly", async () => {
     const html = await readFile(filePath, "utf8");
-    expect(html).toContain('<slot name="name">');
+    expect(html).toContain('data-bascik-slot="name"');
     expect(html).toContain("data-bascik-prop-role");
   });
 });
@@ -416,27 +414,36 @@ npm run build
 Terminal Output:
 
 ```terminal
-transpiled: pages/index.html -> dist/index.html
-transpiled: pages/about.html -> dist/about.html
-extracted: dist/css/styles.css (minified)
+transpiled: pages/index.html in 0.6ms
+transpiled: pages/about.html in 0.3ms
+copied (minified): pages/css/styles.css
 
-✓ Build completed in 34ms
+✓ 2 pages transpiled in 34ms
+
+✓ Build complete in 41ms
 ```
 
 ### Inspecting Output Files (`dist/index.html`)
 
-Open `dist/index.html` to see the compiled result. Custom component tags are fully expanded, and component CSS is extracted into minified stylesheets:
+Open `dist/index.html` to see the compiled result. Custom component tags are fully expanded, and component CSS is scoped into one `<style>` block per page. Shown here unminified and with readable class names; a default build also minifies and shortens them:
 
 ```html
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <title>Team Directory</title>
-    <link rel="stylesheet" href="/css/styles.css" />
+    <style>
+      .bascik__user-card__card {
+        padding: 16px;
+        border: 1px solid #3a3d40;
+        border-radius: 8px;
+      }
+      /* ...the other user-card rules... */
+    </style>
   </head>
   <body>
     <article class="bascik__user-card__card">
-      <h3 class="bascik__user-card__name"><span>Sarah Chen</span></h3>
+      <h3 class="bascik__user-card__name">Sarah Chen</h3>
       <p class="bascik__user-card__role">Lead Engineer</p>
     </article>
   </body>
@@ -454,7 +461,7 @@ npx bascik --server
 Terminal Output:
 
 ```terminal
-Serving dist/ at http://localhost:8080
+Server running at http://localhost:8080
 ```
 
 > **Deep Dive:** Read [Deployment Overview](/deployment) for deployment targets and [Production Server](/production-server) for server options.

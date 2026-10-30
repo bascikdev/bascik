@@ -85,11 +85,14 @@
       rawId = decodeURIComponent(rawId);
     } catch (_) {}
 
+    // The id comes from the URL hash or a heading anchor in the page's Markdown, never this component.
+    // bascik-ignore js-dynamic-id-lookup
     let el = document.getElementById(rawId);
     if (el) return el;
 
     const norm = normalizeHashId(rawId);
     if (norm) {
+      // bascik-ignore js-dynamic-id-lookup
       el = document.getElementById(norm);
       if (el) return el;
       // bascik-ignore js-attribute-selector
@@ -122,16 +125,20 @@
     const behavior = smooth && !prefersReduced ? "smooth" : "auto";
     const startY = window.scrollY;
     window.scrollTo({ top: top, behavior: behavior });
-    settleOn(target, offset, startY, onSettled);
+    // An instant scroll has landed by now, so the settle knows where it left the page. A smooth one has not.
+    const landedY =
+      behavior === "auto" && behaviorIsInstant() ? window.scrollY : null;
+    settleOn(target, offset, startY, onSettled, landedY);
   }
 
   // Blocks below the fold use content-visibility: auto, so until they come near the viewport they count at an
   // estimated height. The scroll above aims with those estimates, and the blocks it lands near then render at
   // their real height and move the target. Once the scroll ends, aim again until the target holds still. Any
-  // input from the visitor ends this at once, so it never fights their own scrolling. onSettled runs once,
-  // however the settle ends.
+  // input from the visitor ends this at once, so it never fights their own scrolling. So does a scroll that
+  // sends no input event (dragging the scrollbar, a script): when the page is no longer where this left it,
+  // it stays where it was moved. onSettled runs once, however the settle ends.
   let cancelSettle = null;
-  function settleOn(target, offset, startY, onSettled) {
+  function settleOn(target, offset, startY, onSettled, landedY) {
     if (cancelSettle) cancelSettle();
     let done = false;
     let corrections = 0;
@@ -153,9 +160,12 @@
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           if (done) return;
+          if (landedY !== null && Math.abs(window.scrollY - landedY) > 1)
+            return stop();
           const delta = target.getBoundingClientRect().top - offset;
           if (Math.abs(delta) <= 1 || corrections++ >= 8) return stop();
           window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+          landedY = window.scrollY;
           check();
         });
       });

@@ -414,6 +414,12 @@ h3 {
   scroll-margin-top: var(--scroll-margin-h3);
 }
 
+/* Rendered Markdown h4s get room above them too, so one after a demo box,
+   a code block, or an h3 never sits flush. Headings inside components keep 0. */
+.docs-content > h4 {
+  margin: 24px 0 8px;
+}
+
 p {
   margin-top: 0;
   color: var(--text-muted);

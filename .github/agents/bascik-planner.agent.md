@@ -218,10 +218,12 @@ Anything the implementer must not do, including the banned workarounds above.
 - **TDD-first.** Step 1 is always a failing test that pins the wrong behavior. Confirm it fails
   for the right reason before any implementation.
 - **Fix defects in `pkg/src/`,** never work around a package bug inside `docs/`.
-- Four E2E configs exist: `playwright.config.ts` (static build),
+- Four main E2E configs exist: `playwright.config.ts` (static build),
   `playwright.dev.config.ts` (dev server), `playwright.server.config.ts` (HTTP/1.1),
   `playwright.server-http2.config.ts` (HTTP/2). State which apply and justify any you skip.
-  Dev-server-only defects are caught **only** by `yarn pkg:e2e:dev`.
+  Dev-server-only defects are caught **only** by `yarn pkg:e2e:dev`. Exec lifecycle, exec failure
+  policy, and the Cloudflare adapter have their own lanes (`yarn pkg:e2e:dev:exec`,
+  `yarn pkg:e2e:exec:policy`, `yarn pkg:e2e:exec:build`, `yarn adapter:cf:e2e`).
 - E2E assertions use `data-testid` with `page.getByTestId()` only. Never assert on raw class
   names or IDs, because production minification hashes them. Never use `.nth(N)` or
   `.locator('../..')`.

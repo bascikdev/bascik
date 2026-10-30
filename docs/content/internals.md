@@ -4,7 +4,7 @@ Everything you need to work on the Bascik package itself, architecture, the tran
 
 ## Repository Layout
 
-The monorepo is split into four top-level folders:
+The monorepo's main top-level folders:
 
 ```text
 bascik/
@@ -14,8 +14,12 @@ bascik/
       transpile.ts    ← dev/build startup (called by index.ts)
       lib/            ← all library modules
   create/       ← standalone generator used by `npm create bascik@rc`
+  lsp/          ← the @bascik/language-server package
+  adapters/     ← deployment adapters, including @bascik/adapter-cloudflare
   docs/         ← this documentation site (a Bascik project itself)
   extensions/   ← editor tooling, including the VS Code extension
+  skills/       ← the public agent skills
+  examples/     ← example components and a starter site
 ```
 
 The `pkg/` directory is a self-contained TypeScript project with its own `package.json`, `tsconfig.json`, and `vite.config.js` (used by Vitest).

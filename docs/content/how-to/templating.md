@@ -7,7 +7,7 @@ Bascik does not ship a proprietary template language or a custom server-side com
 Traditional web frameworks often bundle proprietary templating languages, custom JSX compilers, or bespoke reactivity runtimes. Bascik intentionally avoids this layer for several reasons:
 
 - **Standard web technologies:** Bascik treats HTML as standard HTML. Rather than introducing a custom DSL that requires dedicated parser plugins, custom syntax highlighters, and bespoke IDE tooling, your markup remains standard vanilla HTML.
-- **Node.js as the execution environment:** Both build-time scripts (`data-bascik-build`) and request-time scripts (`data-bascik-server`) run as standard Node.js processes. This means you have full, direct access to the entire JavaScript language and the npm package ecosystem without needing framework-specific adapters.
+- **Node.js as the execution environment:** Both build-time scripts (`data-bascik-build`) and request-time scripts (`data-bascik-server`) run as standard JavaScript modules on Node.js (request-time scripts also run in a Cloudflare Worker). This means you have full, direct access to the entire JavaScript language and the npm package ecosystem without needing framework-specific adapters.
 - **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and returned from the default export function.
 - **Ecosystem flexibility:** Simple sites often only need native JavaScript template literals and a small helper module. Content-heavy publications or complex applications might prefer EJS, Nunjucks, or Handlebars. You choose the right tool for your project without framework lock-in.
 
@@ -18,10 +18,10 @@ For markup built in a server, stream or build script, start with [`html`](/html-
 <!-- demo:html-script -->
 
 ```html
-<script data-bascik-server>
+<script data-bascik-server type="text/typescript">
   import { html } from "@bascik/bascik/html";
 
-  export default function (request) {
+  export default function (request: Request) {
     const q = new URL(request.url).searchParams.get("q") ?? "";
     const items = [
       { title: "First article", href: "/posts/first" },
@@ -57,7 +57,7 @@ Keep the template in a `.hbs` file so editors can highlight it and the script st
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import Handlebars from "handlebars";
 
@@ -97,9 +97,9 @@ Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stach
 
 <!-- demo:helper-module -->
 
-```js
-// lib/interpolate.mjs
-export const escape = (value) =>
+```ts
+// src/lib/interpolate.ts
+export const escape = (value: unknown): string =>
   String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -107,12 +107,19 @@ export const escape = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-export const interpolate = (template, data) =>
-  template.replace(/\$\{([^}]+)\}/g, (_, path) => {
+export const interpolate = (
+  template: string,
+  data: Record<string, unknown>,
+): string =>
+  template.replace(/\$\{([^}]+)\}/g, (_, path: string) => {
     const value = path
       .trim()
       .split(".")
-      .reduce((obj, key) => (obj == null ? undefined : obj[key]), data);
+      .reduce<unknown>(
+        (obj, key) =>
+          obj == null ? undefined : (obj as Record<string, unknown>)[key],
+        data,
+      );
     return value == null ? "" : escape(value);
   });
 ```
@@ -123,8 +130,8 @@ Use it from a build script:
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
-  import { interpolate } from "./lib/interpolate.mjs";
+<script data-bascik-build type="text/typescript">
+  import { interpolate } from "@/lib/interpolate.ts";
 
   export default function () {
     const data = { article: { title: "Hello, Bascik" } };
@@ -151,7 +158,7 @@ npm install ejs
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import ejs from "ejs";
 
@@ -190,7 +197,7 @@ npm install nunjucks
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import nunjucks from "nunjucks";
 
   export default function () {
@@ -226,13 +233,20 @@ When a data-driven page needs the same data in several places, fetch or read it 
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { html } from "@bascik/bascik/html";
 
+  interface Article {
+    title: string;
+    href: string;
+  }
+
   export default async function () {
     // One read at page level; every block below reuses this data.
-    const data = JSON.parse(await readFile("./content/data.json", "utf8"));
+    const data: { site: string; articles: Article[] } = JSON.parse(
+      await readFile("./content/data.json", "utf8"),
+    );
 
     const list = data.articles.map(
       (a) => html`<li><a href="${a.href}">${a.title}</a></li>`,
@@ -256,6 +270,8 @@ The same `data` object can feed a second script on the page, a JSON payload for 
 >
 > ```ts
 > // bascik.config.ts
+> import { defineConfig } from "@bascik/bascik/config";
+>
 > export default defineConfig({
 >   scripts: {
 >     cache: {
@@ -266,7 +282,7 @@ The same `data` object can feed a second script on the page, a JSON payload for 
 > });
 > ```
 >
-> See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
+> See [Build Scripts](/build-scripts#performance-output-caching) for the full cache key and invalidation limits.
 
 ## A JSON payload for client JavaScript
 
@@ -278,7 +294,7 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 
 ```html
 <!-- src/pages/articles.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { html, json } from "@bascik/bascik/html";
 
@@ -296,16 +312,23 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 <!-- demo:json-payload-client -->
 
 ```html
-<script>
-  // The id is scoped at build time. Write getElementById with the source
-  // name; Bascik rewrites the selector to the scoped name automatically.
-  const payload = JSON.parse(document.getElementById("page-data").textContent);
+<script type="text/typescript">
+  // In a component, the id is scoped at build time. Write getElementById with
+  // the source name; Bascik rewrites the selector to the scoped name.
+  interface Article {
+    title: string;
+    href: string;
+  }
 
-  document.getElementById("sort-btn").addEventListener("click", () => {
+  const payload: { site: string; articles: Article[] } = JSON.parse(
+    document.getElementById("page-data")!.textContent!,
+  );
+
+  document.getElementById("sort-btn")!.addEventListener("click", () => {
     payload.articles.sort((a, b) => a.title.localeCompare(b.title));
     // ...re-render the sorted list from payload
   });
 </script>
 ```
 
-**The gotcha:** the script's `id` is **scoped at build time**, so client code must use `getElementById` with the source name and let Bascik rewrite the selector to the scoped name. This is the same rule as everywhere else in Bascik: `getElementById('page-data')` in the source becomes `getElementById('bascik__page-data__a1b2__page-data')` in the compiled output, and the two always stay in sync because the rewrite is automatic. Never hardcode the scoped name yourself; it contains a per-instance hash you cannot predict.
+**The gotcha:** in a page, as here, the `id` ships as written. Move the block into a component and its `id` is **scoped per instance at build time**, so client code must use `getElementById` with the source name and let Bascik rewrite the selector to the scoped name. This is the same rule as everywhere else in Bascik: inside an `<article-list>` component, `getElementById('page-data')` in the source becomes `getElementById('bascik__article-list__f23dc087__page-data')` in the compiled output (a short hash once `minify.identifiers` is on), and the two always stay in sync because the rewrite is automatic. Never hardcode the scoped name yourself; it contains a per-instance hash you cannot predict.

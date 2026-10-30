@@ -6,7 +6,7 @@ Bascik organizes verification across three distinct levels: **unit tests** that 
 
 The codebase distinguishes test runners from testing levels:
 
-- **Unit tests (Vitest):** Run with `yarn unit:all` or per-workspace commands. Verify isolated functions, AST manipulation, and CSS scoping transforms using deterministic inputs and minimal mocks where isolation is required.
+- **Unit tests (Vitest):** Run with `yarn unit:all` or per-workspace commands. Verify isolated functions, HTML, CSS, and JavaScript string transforms, and CSS scoping using deterministic inputs and minimal mocks where isolation is required.
 - **Integration tests (Vitest):** Run separately with `yarn integration:all` or per-package `integration` commands. Rather than isolating units, these exercise real subsystems collaborating across real boundaries. Key examples include real CLI child-process builds (`worker-serial-parity.integration.test.ts`), real worker thread lifecycles (`worker-pool.real.integration.test.ts`), real dev server module invalidation (`dev-module-reload.integration.test.ts`), real project scaffolding to compiler execution (`scaffold.integration.test.ts`), and serverless runtime parity (`serverless-parity.integration.test.ts`).
 - **End-to-end tests (Playwright):** Run via `yarn pkg:e2e`, `yarn pkg:e2e:dev`, or `yarn pkg:e2e:prod`. These boot actual servers (static file server, live dev server with SSE, HTTP/1.1 cleartext, or HTTP/2 TLS production server) and navigate headless browsers to verify real DOM rendering, script execution, and user interaction.
 
@@ -27,8 +27,10 @@ yarn unit:all
 # Package-specific unit tests (single run)
 yarn pkg:unit         # @bascik/bascik
 yarn create:unit      # create-bascik
+yarn docs:unit        # bascik-docs
 yarn ext:unit         # bascik-vscode
 yarn adapter:cf:unit  # @bascik/adapter-cloudflare
+yarn lsp:unit         # @bascik/language-server
 
 # Interactive watch mode (pkg)
 yarn pkg:unit:watch
@@ -36,8 +38,10 @@ yarn pkg:unit:watch
 # Single run with coverage
 yarn pkg:coverage
 yarn create:coverage
+yarn docs:coverage
 yarn ext:coverage
 yarn adapter:cf:coverage
+yarn lsp:coverage
 yarn coverage:all     # update coverage across all packages
 
 # Benchmarks
@@ -56,6 +60,7 @@ yarn integration:all
 
 # Package-specific integration tests (single run)
 yarn pkg:integration  # @bascik/bascik
+yarn docs:integration # bascik-docs
 
 # Interactive watch mode (pkg)
 yarn pkg:integration:watch
@@ -87,6 +92,11 @@ yarn pkg:e2e:all
 yarn pkg:e2e:all dev http1                    # a subset
 yarn pkg:e2e:all http2 --grep scoping         # extra args go to every lane
 yarn pkg:e2e:all:serial                       # the old one-after-another chain
+
+# Exec lanes (run on their own, not by pkg:e2e:all)
+yarn pkg:e2e:dev:exec      # dev exec lifecycle, plain and gated
+yarn pkg:e2e:exec:policy   # pipeline.onExecError in temporary projects
+yarn pkg:e2e:exec:build    # build-time pre/parallel/post ordering in temporary projects
 
 # Cloudflare adapter suite in @bascik/adapter-cloudflare workspace (emitted Pages bundle in local workerd)
 yarn adapter:cf:e2e
@@ -145,13 +155,13 @@ The E2E suite supports four Bascik server modes plus three exec lanes and one ad
 2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 (base fixture on 9552) to test `data-bascik-server` request-time script execution and cleartext server behavior.
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 (base fixture on 9553) to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots the live dev server on port 9445 (configured via `BASCIK_SERVER_PORT=9445`; base fixture on 9551, symlink fixture on 9663) to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation. Read-only specs run four at a time in the `dev-readonly` project; the specs that edit watched files (`devSourceEditingSpecs` in the config) then run one at a time in `dev-mutating`, which depends on it.
-5. **Exec lifecycle lanes (`playwright.dev-exec.config.ts`, `playwright.dev-exec-gated.config.ts`, `playwright.exec-build.config.ts`)**: run against a dedicated `e2e/exec-fixture/` project to prove exec producer/consumer lifecycle ownership. The dev lanes run via `yarn pkg:e2e:dev:exec`; the gated variant holds a `phase: 'parallel'` producer behind an HTTP gate to prove the dev server serves before the parallel entry finishes.
+5. **Exec lifecycle lanes (`playwright.dev-exec.config.ts`, `playwright.dev-exec-gated.config.ts`, `playwright.exec-build.config.ts`)**: prove exec producer/consumer lifecycle ownership. The dev lanes run against a dedicated `e2e/exec-fixture/` project via `yarn pkg:e2e:dev:exec`; the gated variant holds a `phase: 'parallel'` producer behind an HTTP gate to prove the dev server serves before the parallel entry finishes. The build lane (`yarn pkg:e2e:exec:build`) runs `bascik --build` in temporary projects, with and without worker threads, and checks that a `phase: 'parallel'` script joins after compilation and `post`, and that its failure fails the build.
 6. **Exec failure policy lane (`playwright.exec-policy.config.ts`)**: spawns the real CLI in temporary projects and checks `pipeline.onExecError`: exit codes, output, the build-error frame an open browser receives, and that a dev session survives a failing script and recovers on the next edit. It covers the dev default (`'warn'`), the build default (`'error'`), the option set explicitly, and the `dev` and `build` config exports. It runs via `yarn pkg:e2e:exec:policy` and is excluded from the four fixture-serving configs.
 7. **Cloudflare adapter suite (`adapters/cloudflare/e2e/playwright.config.ts`)**: builds the small fixture with `--target cloudflare-pages` and serves the emitted `_worker.js` and public tree inside local workerd (Miniflare) with the asset layer in front, on port 9876. It covers static bypass, worker-side pages and APIs, and a stream paint-order test with JavaScript disabled. Request-level Node-versus-Worker parity is a Vitest integration test (`serverless-parity.integration.test.ts`), which runs one build under both `bascik --server` and workerd and compares them. This lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
 
 Each of the four main lanes also serves `e2e/base-fixture/`, a second project with its own config: it deploys under `base: "/sub/"` and opts in to `scoping.attributes.name`, which `pkg/e2e` itself leaves at the default (off). Its specs are `BASE_FIXTURE_SPECS` in each config (`base-serving.test.ts`, `base-name-scoping.test.ts`).
 
-Every port across the four main lanes, the exec lanes, the docs e2e (8080) and the adapter e2e (9876) is distinct, and each main lane config sets `BASCIK_E2E_OUT` (`dist-static`, `dist-dev`, `dist-http1`, `dist-http2`), which `pkg/e2e/bascik.config.ts` and `base-fixture/bascik.config.ts` use as `directory.out`. Each lane config also sets its own Playwright `outputDir` (`pkg/test-results/<lane>`), so no lane clears another's results or `.last-run.json`. Run the main lanes together only through `yarn pkg:e2e:all`: the dev lane edits `pkg/e2e/src` and `base-fixture/src`, which the other lanes build from, and the runner holds it back until their builds are serving. Starting `yarn pkg:e2e:dev` by hand next to another lane has no such guard. Specs read build output only through `outDir()` or `defaultOutDir()` in `tests/helpers/out-dir.ts`; the symlink fixture, exec fixture, and temporary projects keep plain `dist`. `e2e/scripts/run-lanes.test.ts` (in the unit project) fails on a port collision, a hardcoded `dist/` path or server origin in a spec, a file-writing spec left in `dev-readonly`, or a `dev-mutating` edit of a module the production lanes import at request time (an API route other specs call, or a server-script dependency).
+Every port across the four main lanes, the exec lanes, the docs e2e (8080) and the adapter e2e (9876) is distinct, and each main lane config sets `BASCIK_E2E_OUT` (`dist-static`, `dist-dev`, `dist-http1`, `dist-http2`), which `pkg/e2e/bascik.config.ts` and `base-fixture/bascik.config.ts` use as `directory.out`. Each lane config also sets its own Playwright `outputDir` (`pkg/test-results/<lane>`), so no lane clears another's results or `.last-run.json`. Run the main lanes together only through `yarn pkg:e2e:all`: the dev lane edits `pkg/e2e/src` and `base-fixture/src`, which the other lanes build from, and the runner holds it back until their builds are serving. Starting `yarn pkg:e2e:dev` by hand next to another lane has no such guard. Specs read build output only through `outDir()` or `defaultOutDir()` in `tests/helpers/out-dir.ts`; the symlink fixture, exec fixture, and temporary projects keep plain `dist`. `e2e/scripts/run-lanes.test.ts` (in the unit project) fails on a port collision, a hardcoded `dist/` path or server origin in a spec, a file-writing spec left in `dev-readonly`, a `dev-mutating` edit of a module the production lanes import at request time (an API route other specs call, or a server-script dependency), or a Playwright config in `pkg/e2e/` that no package script and CI job runs.
 
 Each configuration owns its mode-specific `testIgnore` list on its main project (`default`, or `dev-readonly` in the dev config). Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports the four Bascik-server configs and pins their project exclusions before any browser starts; the Cloudflare config selects its single test file with `testMatch` and is excluded from the other four.
 
@@ -233,20 +243,24 @@ export default defineConfig({
   test: {
     benchmark: {
       include: ["bench/**/*.bench.ts"],
+      suppressExportGetterWarnings: true,
     },
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.test-helper.ts"],
     },
     projects: [
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "e2e/scripts/**/*.test.ts"],
           exclude: ["src/**/*.integration.test.ts"],
+          env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          // Whether the run collects coverage, for calibrated cost ratios.
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
       {
@@ -255,6 +269,8 @@ export default defineConfig({
           include: ["src/**/*.integration.test.ts"],
           // Projects inherit the root `benchmark.include`; run benchmarks once.
           benchmark: { exclude: ["bench/**"] },
+          env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
+          globalSetup: ["./vitest.coverage-setup.ts"],
         },
       },
     ],
@@ -287,7 +303,7 @@ vi.mock("../config.ts", () => ({
 }));
 
 // Import the module under test AFTER mocking its dependencies
-import { prefixElementAttribute } from "./javascript.js";
+import { prefixElementAttribute } from "./javascript.ts";
 
 describe("prefixElementAttribute", () => {
   it("scopes class attributes in HTML", () => {
@@ -319,6 +335,8 @@ Bascik uses five test mechanics for time-sensitive behavior. This keeps framewor
 4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
 5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
 
+Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth must set `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there; the helper throws otherwise. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`).
+
 For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
 ### Exec Lifecycle
@@ -335,7 +353,7 @@ Exec scripts run in `pre`, `parallel`, and `post` phases around compilation. The
 
 Some integration tests measure the runtime itself rather than a single feature:
 
-- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#module-lifetime): clearing framework caches does not evict Node's ESM cache.
+- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#in-process-script-module-registry): clearing framework caches does not evict Node's ESM cache.
 - `profile-resource-boundaries.integration.test.ts` verifies that timers, descriptors, streams, child processes, and worker transfers are released at each boundary, using explicit producer and consumer gates and event-loop checkpoints.
 - `profile-workload.integration.test.ts` and `profile-fixture-tls.integration.test.ts` validate the profiling harness itself.
 
@@ -358,7 +376,10 @@ yarn typecheck:all
 # Package-specific type checks
 yarn pkg:typecheck
 yarn create:typecheck
+yarn docs:typecheck
 yarn ext:typecheck
+yarn adapter:cf:typecheck
+yarn lsp:typecheck
 ```
 
 ## Monorepo Aggregator Commands
@@ -366,7 +387,7 @@ yarn ext:typecheck
 The root `package.json` provides aggregated tasks across all projects:
 
 - `yarn typecheck:all`: runs typechecks across all packages in the workspace
-- `yarn check:all`: runs spelling (`check:spelling`) and web standards (`check:standards`)
+- `yarn check:all`: runs formatting (`check:format`), spelling (`check:spelling`), and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
 - `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)

@@ -30,14 +30,14 @@ The tag must equal the prefix plus the `version` in that package's `package.json
 Packages depend on each other, and `create-bascik` scaffolds projects that install the others from npm, so publish in this order and wait for each job to finish before starting the next group.
 
 1. **`@bascik/language-server` and `@bascik/bascik`.** Neither depends on the other, so either may go first. Both must be on npm before anything in step 2.
-2. **`create-bascik` and `@bascik/adapter-cloudflare`.** The scaffold pins `@bascik/bascik` and `@bascik/language-server`, and the adapter has a peer dependency on `@bascik/bascik`. Their order relative to each other does not matter.
+2. **`create-bascik` and `@bascik/adapter-cloudflare`.** The scaffold pins `@bascik/bascik` and `@bascik/language-server` (and `@bascik/adapter-cloudflare` in the Cloudflare Workers template), and the adapter has a peer dependency on `@bascik/bascik`. Their order relative to each other does not matter.
 3. **VS Code extension.** It does not depend on any npm package, so it can ship at any point, but release it last so it is tested against the published packages.
 
 ## Release candidate walkthrough
 
 Release candidates use a semver prerelease version (`1.0.0-rc.1`) and publish under the `rc` dist-tag, so `npm install @bascik/bascik` never picks them up. Install one with `npm install @bascik/bascik@rc`.
 
-1. Confirm the versions in each `package.json` are the intended RC versions, and that `create/src/scaffold.ts` and `adapters/cloudflare/package.json` reference ranges that include them (for example `^1.0.0-rc.1`).
+1. Confirm the versions in each `package.json` are the intended RC versions, and that `create/src/scaffold.ts` (`BASCIK_VERSION` and the dependency ranges), `adapters/cloudflare/package.json`, and `examples/starter-site/package.json` reference ranges that include them (for example `^1.0.0-rc.1`). `npm create bascik` installs the agent skills from the `v<BASCIK_VERSION>` tag, which step 3 pushes.
 2. Commit and push the version bumps to `main`.
 3. Tag and push the first group, then wait for both jobs to succeed in the Actions tab:
 
@@ -96,7 +96,7 @@ git tag ext-v0.2.0 && git push origin ext-v0.2.0
 
 Pre-release and stable uploads must use different version numbers: if `0.1.0` is uploaded as a pre-release, the next stable release must be a distinct version. VS Code auto-updates every user to the highest version available, including pre-release users, so a stable version higher than the latest pre-release moves them onto stable. The Marketplace convention is to avoid surprises by using an odd minor for pre-releases and an even minor for stable (`0.1.*` pre-release, `0.2.*` stable). A version number can only be published once.
 
-Pre-release support requires `engines.vscode` of at least 1.63.0; the extension currently declares `^1.90.0`. To check packaging locally without publishing:
+Pre-release support requires `engines.vscode` of at least 1.63.0; the extension currently declares `^1.91.0`. To check packaging locally without publishing:
 
 ```sh
 cd extensions/vscode-bascik
@@ -111,6 +111,6 @@ npx @vscode/vsce@3 package --no-dependencies -o /tmp/bascik-ext.vsix
 
 ## CI caveats
 
-- The CI job `yarn create:test-site` installs the scaffolded project from npm, so it fails until the packages the scaffold references (`@bascik/bascik` and `@bascik/language-server`) are published.
+- The CI job `yarn create:test-site` scaffolds with `--no-install` and builds against the workspace packages, so it does not prove the published packages install. Step 7's `npm create bascik@rc` smoke test is the registry check.
 - npm versions are immutable. A failed publish before the registry accepts it can be retried by re-running the job; a bad version that was accepted must be superseded with a new version, not republished.
 - If a tag was pushed against the wrong commit before the job published, delete the tag locally and remotely, fix the commit, and tag again.

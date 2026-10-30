@@ -23,6 +23,7 @@ Microbenchmarks use Vitest's `bench` test-context fixture (`pkg/bench/transpile.
 - **CSS scoping transforms**: `convertCssElementSelectorsToClasses`, `scopeCssCustomProperties`, and `deduplicateCss`.
 - **Component expansion scaling**: `recursivelyTranspile` across 10 to 3,200 flat and nested component instances, plus sequential multi-page simulations.
 - **Masking and segment reuse**: raw-text masking with present and absent tags, plus shared JavaScript code-segment normalization with and without its memo.
+- **`html` helper** (`pkg/bench/html.bench.ts`): `@bascik/bascik/html` rendering 1,000 product cards, against a plain template literal with and without `esc()`.
 
 Run the suite from the repository root:
 

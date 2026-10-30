@@ -38,10 +38,28 @@
             export default async () =>
               renderSectionLabel("/lighthouse/performance");
           </script>
+          <!-- Rendered from docs/content/lighthouse/performance.md; the waterfall sits before the prose that walks through it. -->
           <script data-bascik-build>
-            import { renderMd } from "@/lib/md-renderer.ts";
+            import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
-              await renderMd("./content/lighthouse/performance.md");
+              await renderMdRange("./content/lighthouse/performance.md", {
+                to: "Fewer Steps, Sooner Content",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="When content first appears"
+            data-bascik-prop-footer="Illustrative: each column is one network round trip. Real timings depend on the network, the device, and the backend."
+          >
+            <load-waterfall />
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/lighthouse/performance.md", {
+                from: "Fewer Steps, Sooner Content",
+              });
           </script>
 
           <docs-pagination />

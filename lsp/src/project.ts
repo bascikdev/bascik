@@ -30,10 +30,14 @@ export interface ProjectSnapshot {
   scopesName?: boolean;
 }
 
+/**
+ * Config filenames in the CLI's discovery order (pkg/src/lib/config-file-names.ts): the first that exists is
+ * the project's config, so the editor reads the same file `bascik` loads when more than one is present.
+ */
 export const CONFIG_FILE_CANDIDATES = [
-  "bascik.config.ts",
   "bascik.config.js",
   "bascik.config.mjs",
+  "bascik.config.ts",
 ];
 const DEFAULT_COMPONENT_ROOTS = ["src/components"];
 const DEFAULT_IMPORT_ROOT = "src";
@@ -267,7 +271,7 @@ export function isPathInside(fsPath: string, root: string): boolean {
   );
 }
 
-/** Is `fsPath` a Bascik config file (`bascik.config.ts`, `.js`, or `.mjs`)? */
+/** Is `fsPath` a Bascik config file (`bascik.config.js`, `.mjs`, or `.ts`)? */
 export function isConfigFile(fsPath: string): boolean {
   return CONFIG_FILE_CANDIDATES.includes(path.basename(fsPath));
 }

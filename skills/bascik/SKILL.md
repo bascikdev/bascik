@@ -171,9 +171,8 @@ Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribut
 | `<script data-bascik-routes>`     | Node, at build time         | Expanding `[slug].html` templates into many pages                      |
 | `<script data-bascik-server>`     | Node, per request           | Personalized markup (needs `bascik --server` or a serverless target)   |
 | `<script data-bascik-stream>`     | Node, per request, streamed | Slow per-request blocks that should not delay the page shell           |
-| `<script data-bascik-dev>`        | Browser, dev only           | Debug helpers removed from production builds                           |
 
-Node-side scripts export a default function that returns an HTML string. Details are in the `bascik-scripts` skill.
+Node-side scripts export a default function that returns an HTML string. Component tags in that HTML render, at build time and, from server and stream scripts, per request. Details are in the `bascik-scripts` skill.
 
 ## CLI
 
@@ -241,7 +240,7 @@ node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 | Use a library (petite-vue, Alpine.js, HTMX, Tailwind) | `/libraries`                                                  |
 | Use a third-party web component                       | `/how-to/third-party-web-components`                          |
 | Share components between projects                     | `/how-to/sharing-components`, `/how-to/publishing-components` |
-| Find answers to edge cases                            | `/faq`                                                        |
+| Find answers to edge cases, fix a known problem       | `/faq`, `/testing/troubleshooting`                            |
 | Use the CLI and the dev server                        | `/cli`, `/development-server`                                 |
 
 The full page index is at https://bascik.dev/llms.txt.

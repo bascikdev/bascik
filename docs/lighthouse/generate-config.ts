@@ -9,12 +9,13 @@ import { writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NAV } from "../src/lib/nav.ts";
+import { LIGHTHOUSE_ORIGIN, LIGHTHOUSE_SERVER_COMMAND } from "./site.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const lighthouseDir = resolve(__dirname);
 
 export async function generateLighthouseAllConfig(
-  baseUrl = "http://localhost:8080",
+  baseUrl = LIGHTHOUSE_ORIGIN,
 ): Promise<string[]> {
   // Collect all page hrefs from NAV. External nav entries (e.g. Merch) are
   // off-site and can't be audited against the local server, so they are skipped.
@@ -38,8 +39,8 @@ export async function generateLighthouseAllConfig(
   const config = {
     ci: {
       collect: {
-        startServerCommand: "bascik --server",
-        startServerReadyPattern: "Server running at http://localhost:8080",
+        startServerCommand: LIGHTHOUSE_SERVER_COMMAND,
+        startServerReadyPattern: `Server running at ${baseUrl}`,
         url: allUrls,
         numberOfRuns: 1,
         settings: {
@@ -67,8 +68,8 @@ export async function generateLighthouseAllConfig(
   const lightConfig = {
     ci: {
       collect: {
-        startServerCommand: "bascik --server",
-        startServerReadyPattern: "Server running at http://localhost:8080",
+        startServerCommand: LIGHTHOUSE_SERVER_COMMAND,
+        startServerReadyPattern: `Server running at ${baseUrl}`,
         url: lightUrls,
         numberOfRuns: 1,
         settings: {

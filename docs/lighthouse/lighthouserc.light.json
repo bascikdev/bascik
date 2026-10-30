@@ -1,12 +1,12 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "bascik --server",
-      "startServerReadyPattern": "Server running at http://localhost:8080",
+      "startServerCommand": "bascik --config lighthouse/bascik.config.ts --server --port 8097",
+      "startServerReadyPattern": "Server running at http://localhost:8097",
       "url": [
-        "http://localhost:8080/?theme=light",
-        "http://localhost:8080/getting-started?theme=light",
-        "http://localhost:8080/components?theme=light"
+        "http://localhost:8097/?theme=light",
+        "http://localhost:8097/getting-started?theme=light",
+        "http://localhost:8097/components?theme=light"
       ],
       "numberOfRuns": 1,
       "settings": {

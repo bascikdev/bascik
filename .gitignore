@@ -74,6 +74,8 @@ pkg/e2e/src/pages/dev-recovery-test.html
 /package-lock.json
 
 docs/dist
+docs/.e2e
+docs/.lighthouse
 pkg/dist
 **/dist
 # Per-lane e2e output (BASCIK_E2E_OUT, one per Playwright lane)

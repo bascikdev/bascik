@@ -48,7 +48,7 @@ Use it from any page's `<head>`:
 
 ```html
 <head>
-  <script data-bascik-build>
+  <script data-bascik-build type="text/typescript">
     import { canonical } from "@/lib/canonical.ts";
 
     export default async () => await canonical();
@@ -112,7 +112,7 @@ That means shared components can derive navigation state, breadcrumbs, canonical
 
 ```html
 <!-- src/components/canonical-link/canonical-link.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { pagePath, siteOrigin } from "@/lib/site.ts";
 
   export default () =>
@@ -124,10 +124,10 @@ For output that is the same at every use of a component, use `data-bascik-build-
 
 ```html
 <!-- src/components/site-footer/site-footer.html -->
-<footer class="site-footer">
+<footer class="site-footer" data-testid="site-footer">
   <p>
     &copy;
-    <script data-bascik-build-once>
+    <script data-bascik-build-once type="text/typescript">
       export default () => String(new Date().getFullYear());
     </script>
     Example Co. All rights reserved.

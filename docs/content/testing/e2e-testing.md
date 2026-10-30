@@ -18,13 +18,15 @@ Configure Playwright to build and serve your compiled Bascik application before 
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./",
   use: {
     baseURL: "http://localhost:8080",
     headless: true,
   },
   webServer: {
-    command: "npx bascik --build && npx bascik --server",
+    // Playwright runs the command beside this config; the site is one up.
+    cwd: "..",
+    command: "npx bascik --build && npx bascik --server --port 8080",
     url: "http://localhost:8080",
     reuseExistingServer: !process.env.CI,
   },
@@ -33,7 +35,7 @@ export default defineConfig({
 
 ## Identifier Minification & Locator Strategy
 
-In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes `.b1a2`). Behavior-oriented E2E tests should avoid depending on raw compiled class or ID selectors.
+In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes a 12-character name such as `.b2Y4G9eD1K8b`). Behavior-oriented E2E tests should avoid depending on raw compiled class or ID selectors.
 
 ### Recommended Pattern: `data-testid` Attributes
 

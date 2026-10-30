@@ -272,7 +272,7 @@ npx http-server dist
 
 ### Sitemap and Robots.txt
 
-When `generate.sitemap: true` or `generate.robots: true` is configured in `bascik.config.ts`, Bascik requires a valid site URL so search engines receive absolute URLs. Pass `BASCIK_SITE_URL` during the build:
+When `generate.sitemap` or `generate.robots` is on (both are by default), Bascik requires a valid site URL so search engines receive absolute URLs. Pass `BASCIK_SITE_URL` during the build:
 
 ```sh
 BASCIK_SITE_URL=https://example.com npx bascik --build

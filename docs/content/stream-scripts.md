@@ -74,14 +74,14 @@ A stream script can be TypeScript the way a [server script](/server-scripts#type
   <body>
     <h1>In stock</h1>
     <script data-bascik-stream type="text/typescript">
-      import { html } from "@bascik/bascik/html";
+      import { html, type SafeHtml } from "@bascik/bascik/html";
 
       interface Item {
         name: string;
         left: number;
       }
 
-      export default async (): Promise<string> => {
+      export default async (): Promise<SafeHtml> => {
         const items: Item[] = [
           { name: "Milk frother", left: 3 },
           { name: "Pour-over kettle", left: 12 },
@@ -140,7 +140,7 @@ When a page contains both `data-bascik-server` and `data-bascik-stream` blocks:
 
 Whatever HTML you write before a `<script data-bascik-stream>` tag is sent in the initial chunk and displayed while the script executes. Bascik does not inject synthetic wrappers or client loaders. The placeholder gives way to the streaming result through standard HTML and CSS.
 
-### Recipe A: Reserved Box (Default Pattern)
+## Recipe A: Reserved Box (Default Pattern)
 
 Wrap the placeholder and script in a container that reserves its typical dimensions using `min-block-size` for text blocks or `aspect-ratio` for media elements. Include `aria-busy="true"` on the container and `role="status"` on the placeholder text so assistive technologies announce the pending state:
 
@@ -178,7 +178,7 @@ Wrap the placeholder and script in a container that reserves its typical dimensi
 </section>
 ```
 
-#### How Visual Swap Works
+### How Visual Swap Works
 
 Because Bascik adds no client runtime, previously flushed DOM nodes cannot be removed without client code. The streaming result is appended where the `<script>` tag lived in the DOM. The visual swap is achieved with author CSS:
 
@@ -187,7 +187,7 @@ Because Bascik adds no client runtime, previously flushed DOM nodes cannot be re
 
 > **Accessibility consideration:** CSS visual overlay or `:has()` hiding visually swaps elements, but CSS alone cannot change the container's `aria-busy` attribute. For static streaming where no client script is desired, avoid leaving an indefinite `aria-busy="true"` container if assistive technology requires state settlement, or add a small progressive enhancement script to toggle attributes once loaded.
 
-### Recipe B: Skeleton Shimmer
+## Recipe B: Skeleton Shimmer
 
 Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion):
 
@@ -237,7 +237,7 @@ Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced
 </div>
 ```
 
-### Recipe C: Priority Source Order with CSS Positioning (The Early-Paint Footer Trick)
+## Recipe C: Priority Source Order with CSS Positioning (The Early-Paint Footer Trick)
 
 In Bascik streaming, source order is network delivery order: all markup before the first `<script data-bascik-stream>` tag arrives in the initial chunk (Time-to-First-Byte), while streaming scripts resolve subsequently.
 
@@ -247,7 +247,7 @@ The browser paints the complete page container and footer immediately, with plac
 
 Ensure that visual reordering maintains an intuitive reading and focus order according to the [W3C CSS Grid Placement](https://www.w3.org/TR/css-grid-1/#order-accessibility) specification.
 
-#### Option 1: Multi-Slot Grid with In-Place Skeleton Swapping (Recommended)
+### Option 1: Multi-Slot Grid with In-Place Skeleton Swapping (Recommended)
 
 When rendering multiple independent streaming sections (like cards in a dashboard), place **all skeleton placeholders first** in the initial HTML chunk before the streaming script slots, and assign them to named CSS grid areas. As each stream chunk resolves, its arrived card lands in the corresponding grid area, and CSS `:has()` swaps out only that specific skeleton:
 
@@ -327,7 +327,7 @@ When rendering multiple independent streaming sections (like cards in a dashboar
 </div>
 ```
 
-#### Option 2: Full Dashboard Layout (Grid Template Areas)
+### Option 2: Full Dashboard Layout (Grid Template Areas)
 
 ```html
 <!-- src/pages/dashboard-layout.html -->
@@ -390,7 +390,7 @@ When rendering multiple independent streaming sections (like cards in a dashboar
 </div>
 ```
 
-#### Option 3: Flexbox Column Order
+### Option 3: Flexbox Column Order
 
 ```html
 <!-- src/pages/report.html -->
@@ -433,14 +433,14 @@ When rendering multiple independent streaming sections (like cards in a dashboar
 </main>
 ```
 
-#### Option 4: Zero-Placeholder Progressive Append Flow
+### Option 4: Zero-Placeholder Progressive Append Flow
 
 If you want content to append progressively as it streams in without showing placeholders upfront, simply omit the placeholder markup before the `<script data-bascik-stream>` tags. The browser constructs and renders each element as soon as its stream chunk is flushed:
 
 ```html
 <!-- src/pages/feed.html -->
 <div class="feed-grid">
-  <!-- Items stream and append into the grid in arrival order with no placeholders -->
+  <!-- Items stream and append into the grid in source order with no placeholders -->
   <script data-bascik-stream>
     import { html } from "@bascik/bascik/html";
     import { fetchPrimaryFeed } from "@/lib/feeds.ts";
@@ -709,7 +709,7 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 - **HTTP/1.1 Framing:** Uses `Transfer-Encoding: chunked` according to [RFC 9112 Section 7.1](https://httpwg.org/specs/rfc9112.html#chunked.encoding).
 - **HTTP/2 Framing:** Uses native multiplexed DATA frames according to [RFC 9113 Section 8.1](https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1). `Transfer-Encoding` is prohibited in HTTP/2 ([RFC 9113 Section 8.2.2](https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2)).
 - **Content-Length & ETag:** Omitted because response byte length is unknown when headers are committed.
-- **Cache-Control:** Automatically set to `private, no-store` to prevent intermediary proxy caching of partial streaming responses ([RFC 9111](https://httpwg.org/specs/rfc9111.html)).
+- **Cache-Control:** Automatically set to `private, no-store` to prevent intermediary proxy caching of partial streaming responses ([RFC 9111](https://httpwg.org/specs/rfc9111.html)). [`security.privateDynamicPages: false`](/security#turning-protections-off) removes it.
 - **HEAD Requests:** HEAD requests execute through the buffered planner to compute exact `Content-Length` headers without streaming the body.
 
 ## Client Disconnect & Backpressure

@@ -23,10 +23,10 @@ Svelte and Bascik share an intuitive single-file authoring feel, combining marku
 
 Migrate a static UI component into Bascik:
 
-1. Move your component markup to `src/components/card/card.html`.
-2. Move your `<style>` content to `src/components/card/card.css`.
-3. Use `<card></card>` in `src/pages/index.html`.
-4. Run `yarn dev` to view your compiled zero-JS output.
+1. Move your component markup to `src/components/my-card/my-card.html`.
+2. Move your `<style>` content to `src/components/my-card/my-card.css`.
+3. Use `<my-card></my-card>` in `src/pages/index.html`.
+4. Run `npm run dev` to view your compiled zero-JS output.
 
 ## File and Folder Setup
 
@@ -38,9 +38,9 @@ src/                         src/components/
   lib/                         site-nav/
     SiteNav.svelte               site-nav.html
     Card.svelte                  site-nav.css
-    AlertBox.svelte            card/
-  routes/                        card.html
-    +page.svelte                 card.css
+    AlertBox.svelte            my-card/
+  routes/                        my-card.html
+    +page.svelte                 my-card.css
     about/                     alert-box/
       +page.svelte               alert-box.html
                                  alert-box.css
@@ -51,7 +51,7 @@ src/                         src/components/
 
 ## Component Syntax
 
-A Bascik component is a vanilla HTML file. There are no `<script>`, `<template>`, or `<style>` blocks in the component file itself; the HTML is the component markup. Scoped styles go in a paired `.css` file.
+A Bascik component is a vanilla HTML file: the HTML is the component markup, with no compiler syntax. Scoped styles go in a paired `.css` file or an inline `<style>` block, and client behavior in an ordinary `<script>` tag.
 
 ```html
 <!-- SiteNav.svelte (Svelte - before) -->
@@ -110,13 +110,13 @@ Svelte 5 replaced the `<slot />` element with snippets. The `children` snippet p
 > **Svelte 4:** If you are migrating from Svelte 4, the equivalent is `<slot>No content provided.</slot>` in the component.
 
 ```html
-<!-- src/components/card/card.html (Bascik - after) -->
+<!-- src/components/my-card/my-card.html (Bascik - after) -->
 <div class="card">
   <div data-bascik-slot>No content provided.</div>
 </div>
 
 <!-- Usage -->
-<card><p>Card content here.</p></card>
+<my-card><p>Card content here.</p></my-card>
 ```
 
 ## Named Slots
@@ -153,7 +153,7 @@ Svelte 5 uses named snippet props for what Svelte 4 called named slots. The comp
 
 <!-- Usage -->
 <page-layout>
-  <h1 data-bascik-slot="header">My Page</h1>
+  <div data-bascik-slot="header"><h1>My Page</h1></div>
   <p>Body content here.</p>
 </page-layout>
 ```
@@ -177,17 +177,17 @@ Svelte 5's `$props()` and Svelte 4's `export let` both become Bascik's `data-bas
 ```
 
 ```html
-<!-- src/components/card/card.html (Bascik - after) -->
+<!-- src/components/my-card/my-card.html (Bascik - after) -->
 <div class="card">
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-description></p>
 </div>
 
 <!-- Usage -->
-<card
+<my-card
   data-bascik-prop-title="Getting Started"
   data-bascik-prop-description="Up and running in minutes."
-></card>
+></my-card>
 ```
 
 > **Text only:** Props accept plain text strings. For rich HTML content use a named slot instead. For computed content use a `<script data-bascik-build>` block in the page.
@@ -248,9 +248,11 @@ For static lists and conditional content, write the HTML directly. For dynamic d
 <!-- src/pages/index.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
+    import { html } from "@bascik/bascik/html";
+
     const items = ["Home", "About", "Contact"];
 
-    export default () => items.map((item) => `<li>${item}</li>`).join("\n");
+    export default () => html`${items.map((item) => html`<li>${item}</li>`)}`;
   </script>
 </ul>
 ```
@@ -262,7 +264,7 @@ For static lists and conditional content, write the HTML directly. For dynamic d
 Delete Svelte's `<style>` block and create a plain `.css` file alongside the component HTML. Change nothing about the class names. Bascik scopes every class name at build time with no configuration required.
 
 ```css
-/* src/components/card/card.css */
+/* src/components/my-card/my-card.css */
 .card {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -279,7 +281,7 @@ The class name `card` in the CSS and `class="card"` in the HTML are automaticall
 
 ## SvelteKit Routing → Static Pages
 
-SvelteKit's file-based routing (`src/routes/+page.svelte`) becomes one `.html` file per route in `src/pages/`. There are no dynamic segments; each URL gets its own static file.
+SvelteKit's file-based routing (`src/routes/+page.svelte`) becomes one `.html` file per route in `src/pages/`. Each static URL gets its own file.
 
 ```text
 Before (SvelteKit)           After (Bascik)

@@ -4,6 +4,7 @@ import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FSWatcher } from "chokidar";
 import { loadChokidar } from "./dev-watcher.ts";
+import { isComponentSourceFile } from "./components.ts";
 import {
   pageProcessing,
   processAllPages,
@@ -23,6 +24,7 @@ import {
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
+import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
@@ -300,16 +302,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           ...watchOptions,
           followSymlinks: true,
           ignored: (path: string, stats?: Stats): boolean => {
-            return !!(
-              stats?.isFile() &&
-              !(
-                path.endsWith(".html") ||
-                path.endsWith(".css") ||
-                path.endsWith(".js") ||
-                path.endsWith(".ts") ||
-                path.endsWith(".mjs")
-              )
-            );
+            return !!(stats?.isFile() && !isComponentSourceFile(path));
           },
           ignoreInitial: true,
           persistent: !BascikConfig.isBuild,
@@ -474,11 +467,15 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     );
   }
 
-  // Watch config file to print a restart hint when modified
-  const configCandidates = [
-    "bascik.config.ts",
-    "bascik.config.js",
-    "bascik.config.mjs",
+  // Watch the config file to print a restart hint when it is modified: every
+  // root config name the loader discovers (shared with config.ts so the lists
+  // cannot drift), plus an explicit `--config <path>` when one was passed.
+  const explicitConfig = findConfigFile();
+  const configCandidates: string[] = [
+    ...CONFIG_FILE_NAMES,
+    ...(explicitConfig.explicit && explicitConfig.path
+      ? [explicitConfig.path]
+      : []),
   ];
   if (!BascikConfig.isBuild && !process.env.VITEST) {
     w(

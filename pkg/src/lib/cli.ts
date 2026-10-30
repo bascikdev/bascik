@@ -592,7 +592,8 @@ Options:
   --env-file <path>  Load env vars from a file (repeatable; later files win).
                      Defaults to ./.env when present, silently skipped when not
   --config <path>    Load the config from a specific file instead of
-                     ./bascik.config.js or ./bascik.config.ts
+                     ./bascik.config.js, ./bascik.config.mjs, or
+                     ./bascik.config.ts
   -h, --help         Show this help text
   -v, --version      Show the installed Bascik version
 

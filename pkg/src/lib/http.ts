@@ -14,6 +14,7 @@ import {
   markLingeringSocket,
 } from "./request-body-linger.ts";
 import { declaresBodyOverLimit } from "./api-runtime.ts";
+import { nodeServerTimeouts } from "./server-lifecycle.ts";
 
 /**
  * Requests whose `Expect: 100-continue` was not answered up front because
@@ -190,7 +191,9 @@ export const adaptHttp1 = (
 };
 
 export const startHttpServer = async (): Promise<string> => {
-  const server = http.createServer();
+  const server = http.createServer(
+    nodeServerTimeouts(BascikConfig.http.timeouts),
+  );
   const handleRequest = createRequestHandler();
 
   const openSockets = new Set<import("node:net").Socket>();

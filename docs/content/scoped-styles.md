@@ -78,7 +78,7 @@ ID attributes are scoped per **component instance** so multiple instances on the
 ```text
 class  →  bascik__<componentName>__<originalName>
 id     →  bascik__<componentName>__<instanceId>__<originalName>
-name   →  bascik__<componentName>__<instanceId>__<originalName>
+name   →  bascik__<componentName>__<instanceId>__<originalName>   (only with scoping.attributes.name: true)
 ```
 
 In production builds (`minify.identifiers: true`, the default), these verbose names are hashed to short alphanumeric strings such as `b2Y4G9eD1K8b` for name compression. The HTML, CSS, and JavaScript are all rewritten with the same hashed names so they stay in sync. This is entirely a build-time transformation with no runtime overhead.
@@ -158,7 +158,10 @@ p {
 <section class="bascik__scope-lab__scope-lab">
   <div>
     <h3 class="bascik__scope-lab__el__h3">Scoped selectors are active</h3>
-    <p class="bascik__scope-lab__el__p">Bare element selectors stay local.</p>
+    <p class="bascik__scope-lab__el__p">
+      Bare element selectors, keyframes, and custom properties stay inside this
+      component.
+    </p>
   </div>
   <span
     class="bascik__scope-lab__scope-lab-meter bascik__scope-lab__id__signal"
@@ -210,7 +213,7 @@ p {
 
 ## Class Scoping
 
-Every class name in the `.css` file is prefixed with a unique instance ID. The corresponding HTML attributes are updated to match.
+Every class name in the `.css` file is prefixed with the component's name. The corresponding HTML attributes are updated to match.
 
 Both demos on this page show the source class names under Source and their rewritten names under Output.
 
@@ -558,7 +561,7 @@ export const build = defineConfig({
 });
 ```
 
-When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build` and `bascik --server`.
+When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build`.
 
 ## How Scoping Works
 

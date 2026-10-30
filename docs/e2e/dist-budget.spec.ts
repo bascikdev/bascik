@@ -1,11 +1,10 @@
-// Checks the built site in docs/dist, which the web server command builds before the tests run. These are the
-// page budgets from the docs performance work: what a visitor downloads and what each page costs to render.
+// Checks the built site in docs/.e2e/dist (site.ts), which the web server command builds before the tests run. These
+// are the page budgets from the docs performance work: what a visitor downloads and what each page costs to render.
 
 import { test, expect } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { highlightCode } from "../src/lib/highlight.ts";
 import {
   PUBLIC_SEARCH_INDEX_PATH,
@@ -17,8 +16,9 @@ import {
   parseHeaderRules,
   IMMUTABLE_CACHE_CONTROL,
 } from "../src/lib/pages-headers.ts";
+import { E2E_DIST_DIR } from "./site.ts";
 
-const dist = fileURLToPath(new URL("../dist/", import.meta.url));
+const dist = E2E_DIST_DIR;
 
 /** Most raw HTML bytes one page may have. components.html was 555 KB when every code block carried a highlighter. */
 const MAX_PAGE_BYTES = 300_000;

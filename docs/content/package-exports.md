@@ -4,17 +4,17 @@ Bascik ships as a single npm package, `@bascik/bascik`, with a small set of subp
 
 ## Export map
 
-| Import specifier         | Purpose                                                                                                                                                            | Where it is documented                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `@bascik/bascik`         | Main entry: `defineConfig`, `composeSiteUrl`, and CLI helpers (`runCli`, `readVersion`, `installProcessCrashHandlers`, `resolveBuildLogPath`, `setupBuildLogging`) | [Configuration](/configuration), [Command Line Interface](/cli)                          |
-| `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                                                            | [Configuration](/configuration)                                                          |
-| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch                                        | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
-| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                                                           | [Custom Adapters](/deployment/custom-adapters)                                           |
-| `@bascik/bascik/html`    | Safe HTML for server, stream and build scripts: `html`, `raw`, `esc`, `safeUrl`, `json`                                                                            | [HTML Helpers](/html-helpers), [Security](/security)                                     |
+| Import specifier         | Purpose                                                                                                                     | Where it is documented                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `@bascik/bascik`         | Main entry: the same exports as `/config` (`defineConfig`, `composeSiteUrl` and the configuration types)                    | [Configuration](/configuration)                                                          |
+| `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                     | [Configuration](/configuration)                                                          |
+| `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
+| `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                    | [Custom Adapters](/deployment/custom-adapters)                                           |
+| `@bascik/bascik/html`    | Safe HTML for server, stream and build scripts: `html`, `raw`, `esc`, `safeUrl`, `json`                                     | [HTML Helpers](/html-helpers), [Security](/security)                                     |
 
 ## `@bascik/bascik`
 
-The main entry re-exports the configuration helper and a few programmatic CLI utilities. Most projects only ever import `defineConfig` from it (or from `/config`).
+The main entry resolves to the same module as `/config`. Most projects only ever import `defineConfig` from it (or from `/config`).
 
 ```ts
 import { defineConfig, composeSiteUrl } from "@bascik/bascik";
@@ -25,8 +25,9 @@ export default defineConfig({
 ```
 
 - `defineConfig(config)` returns the config unchanged, typed as `BascikConfig`, so your editor surfaces every option with inline docs.
-- `composeSiteUrl(base, siteUrl)` composes a site URL from a base path and origin.
-- `runCli(args)` runs the CLI programmatically; `readVersion()`, `installProcessCrashHandlers()`, `resolveBuildLogPath(args)`, and `setupBuildLogging(path)` support embedding the CLI in custom tooling.
+- `composeSiteUrl(siteUrl, base, pathname)` joins a site origin, the base path and a page path into an absolute URL (`composeSiteUrl("https://example.com", "/docs/", "/about")` gives `https://example.com/docs/about`).
+
+The CLI itself is not importable: run it through the `bascik` command.
 
 ## `@bascik/bascik/config`
 

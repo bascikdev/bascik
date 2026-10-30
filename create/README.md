@@ -34,7 +34,7 @@ my-site/
 │   ├── extensions.json             ← Recommends official Bascik extension
 │   └── settings.json               ← Stops false VS Code errors on pages with several scripts
 ├── src/
-│   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter
+│   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter, contact-form
 │   └── pages/                      ← index.html, about.html, contact.html, 404.html, css/styles.css
 ├── package.json                    ← dev, build, lint, test, and e2e scripts
 └── .gitignore

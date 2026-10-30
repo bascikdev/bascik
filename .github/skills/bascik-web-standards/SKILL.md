@@ -75,7 +75,7 @@ Always verify the maturity tier of the specification:
 
 ### 2. Attribute Syntax & `data-*` Custom Data Attributes (WHATWG HTML §3.2.6.6)
 
-- Bascik internal scoping markers and directives use standard `data-*` attributes (`data-bascik-s-*`, `data-bascik-slot`, `data-bascik-prop-*`, `data-bascik-build`, `data-bascik-server`).
+- Bascik internal scoping markers and directives use standard `data-*` attributes (`data-bascik-slot`, `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`).
 - `data-*` attribute names must not contain uppercase ASCII characters or characters outside the XML-compatible NCName set.
 
 ### 3. CSS Selector Semantics & Specificity (W3C Selectors 4)

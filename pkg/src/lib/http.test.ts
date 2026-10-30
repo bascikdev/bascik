@@ -53,6 +53,18 @@ describe("startHttpServer", () => {
     expect(res).toBe("http://localhost:8443");
   });
 
+  it("applies http.timeouts (defaults when unset) to the server", async () => {
+    await startHttpServer();
+    expect(mockCreateServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestTimeout: 30000,
+        headersTimeout: 10000,
+        connectionsCheckingInterval: 5000,
+        keepAliveTimeout: 5000,
+      }),
+    );
+  });
+
   it("adapts standard http request and response messages", () => {
     const mockReqMsg: any = {
       method: "GET",

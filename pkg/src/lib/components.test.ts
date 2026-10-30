@@ -24,6 +24,7 @@ import {
   listComponents,
   invalidateComponentListCache,
   readComponentRoot,
+  isComponentSourceFile,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import {
@@ -1549,6 +1550,28 @@ describe("listComponents", () => {
   });
 });
 
+describe("isComponentSourceFile", () => {
+  // The dev watcher uses this to decide which component-root edits rebuild
+  // pages; it must accept every companion script listComponents inlines.
+  it.each([
+    "card.html",
+    "card.css",
+    "card.js",
+    "card.mjs",
+    "card.ts",
+    "card.mts",
+  ])("accepts %s", (file) => {
+    expect(isComponentSourceFile(`src/components/card/${file}`)).toBe(true);
+  });
+
+  it.each(["card.md", "card.cts", "card.cjs", "card.tsx", "card.mts.bak"])(
+    "ignores %s",
+    (file) => {
+      expect(isComponentSourceFile(`src/components/card/${file}`)).toBe(false);
+    },
+  );
+});
+
 describe("readComponentRoot", () => {
   const withProject = async (run: (cwd: string) => Promise<void>) => {
     const cwd = await mkdtemp(join(tmpdir(), "bascik-component-root-"));
@@ -1617,6 +1640,19 @@ describe("readComponentRoot", () => {
       await expect(
         readComponentRoot(join(cwd, "src/components"), cwd),
       ).resolves.toEqual([join(cwd, "src/components/cards/promo-card.html")]);
+    });
+  });
+
+  it("lists .mts companion scripts next to .ts, .js, and .mjs ones", async () => {
+    await withProject(async (cwd) => {
+      const dir = join(cwd, "src/components/mts-counter");
+      await mkdir(dir, { recursive: true });
+      for (const name of ["mts-counter.html", "mts-counter.mts", "helper.cts"])
+        await writeFile(join(dir, name), "");
+      const files = await readComponentRoot(join(cwd, "src/components"), cwd);
+      expect(files.sort()).toEqual(
+        [join(dir, "mts-counter.html"), join(dir, "mts-counter.mts")].sort(),
+      );
     });
   });
 

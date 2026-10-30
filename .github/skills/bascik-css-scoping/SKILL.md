@@ -42,15 +42,15 @@ Supported CSS nesting is token-aware and scoped without changing the established
   }
 }
 
-/* Representative scoped output */
+/* Representative scoped output (nesting is kept, not flattened) */
 .bascik__my-comp__card {
   padding: 1rem;
-}
-.bascik__my-comp__card.bascik__my-comp__active {
-  border-color: green;
-}
-.bascik__my-comp__card > .bascik__my-comp__header {
-  font-weight: bold;
+  &.bascik__my-comp__active {
+    border-color: green;
+  }
+  & > .bascik__my-comp__header {
+    font-weight: bold;
+  }
 }
 ```
 
@@ -59,12 +59,12 @@ Supported CSS nesting is token-aware and scoped without changing the established
 When traversing complex selector lists inside pseudo-classes:
 
 - Ensure that inner target classes are scoped without corrupting the structural pseudo-class syntax.
-- For `:global(.cls)`, strip the pseudo-wrapper and leave `.cls` unscoped.
+- There is no `:global()`. A class the component's CSS does not define is left unscoped, which is how global utility classes pass through.
 
 ### Container Queries (`@container`) & Layer Rules (`@layer`)
 
 - Scopes selectors inside `@container` blocks and `@layer` blocks consistently with root rules.
-- Scopes named container names if configured.
+- Container names declared in the component's CSS (`container-name:` or the `container:` shorthand) and layer names are scoped per component type (`scopeContainerNames`, `scopeLayerNames`); unnamed `@container (…)` queries are untouched.
 
 ---
 

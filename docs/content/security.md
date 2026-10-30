@@ -406,7 +406,7 @@ Turn one off only for a reason you can name, and only that one. The keys are ind
 What stays on whatever you set:
 
 - A path with `..`, a null byte or a control character gets 400 on every host.
-- `/.bascik/` (the build's own manifests and sidecars in the output) is never served, even with `hideDotfiles` off.
+- `/.bascik/` (where `bascik --build --target` writes an adapter's deployment inside the output) is never served, even with `hideDotfiles` off. The build's own manifests and sidecars sit beside the output folder, in `.bascik/dist/`, so a static deploy never uploads them.
 - The [`html`](#using-html) helper escapes and checks values the same way; `security` does not change it.
 - Opt-in protections such as `contentSecurityPolicy` stay as you configured them.
 

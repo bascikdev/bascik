@@ -58,11 +58,21 @@ const anchors = new Set(
     .map((t) => slugFromHeadingHtml(marked.parseInline(t.text) as string)),
 );
 
+/** The page's three parts; each topic under them is an h2 of its own. */
+const PARTS = [
+  "Build the Bascik Way",
+  "Use HTML's Elements",
+  "Name Form Controls and Groups",
+];
+
+/** One part, from its h2 to the next part's h2. */
 const section = (heading: string): string => {
   const start = md.indexOf(`\n## ${heading}\n`);
   expect(start, heading).toBeGreaterThan(-1);
-  const next = md.indexOf("\n## ", start + 4);
-  return md.slice(start, next === -1 ? undefined : next);
+  const ends = PARTS.map((p) => md.indexOf(`\n## ${p}\n`)).filter(
+    (i) => i > start,
+  );
+  return md.slice(start, ends.length ? Math.min(...ends) : undefined);
 };
 
 describe(PAGE, () => {
@@ -96,6 +106,33 @@ describe(PAGE, () => {
       "what-bascik-does",
     ])
       expect(anchors.has(anchor), anchor).toBe(true);
+  });
+
+  it("gives each topic an h2, so it gets the divider every other docs page uses", () => {
+    const outside = md.replace(/```[\s\S]*?```/g, "");
+    expect(outside.match(/^## /gm)!.length).toBeGreaterThanOrEqual(20);
+    expect(outside).not.toMatch(/^#### /m);
+  });
+
+  it("opens with the Bascik conventions before the HTML habits, not semantic HTML alone", () => {
+    const conventions = section("Build the Bascik Way");
+    expect(md.indexOf("\n## Build the Bascik Way\n")).toBeLessThan(
+      md.indexOf("\n## Use HTML's Elements\n"),
+    );
+    for (const heading of [
+      "Pages Read Like a List of Tags",
+      "One Folder per Component",
+      "Props for Text, Slots for Markup",
+      "A Component Owns Its Styles and Script",
+      "Decide When the Work Runs",
+      "Give Tests a Handle",
+    ])
+      expect(conventions, heading).toContain(`\n## ${heading}\n`);
+    const text = prose(conventions);
+    expect(text).toMatch(/getElementById/);
+    expect(text).toMatch(/Write TypeScript/);
+    expect(text).toMatch(/Default to build time/);
+    expect(text).toMatch(/never scopes or hashes `data-testid`/);
   });
 
   it("redirects the old URLs to the section that holds their content, with a 301 each", () => {
@@ -163,7 +200,7 @@ describe(PAGE, () => {
 
   it("says tag names never reach the browser, and to name tags after what they are", () => {
     const text = prose(md);
-    expect(md).toContain("\n### Tag Names Never Reach the Browser\n");
+    expect(md).toContain("\n## Tag Names Never Reach the Browser\n");
     expect(text).toMatch(/never see the tag name/);
     expect(text).toMatch(/does not have to be a semantic element/);
     expect(text).toMatch(/name a component after what it is/);

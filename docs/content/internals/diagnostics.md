@@ -14,10 +14,10 @@ Diagnostics in Bascik come from three places, each with one job:
 
 A rule has exactly one home, so a finding is never reported twice and an editor squiggle always matches what CI says. The test for where a rule belongs is simple: **if it needs only one file, it belongs to the language server; if it needs the project, it belongs to `bascik --check`.**
 
-| Home                                 | Rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bascik --check` (project)           | `config-validation`, `missing-site-url`, `pages-directory`, `duplicate-component-name`, `component-list`, `circular-component-reference`, `duplicate-route-resolution`, `unmatched-tag`, `unused-component`, `route-collision`, `invalid-catch-all`, `dist-html-spec`                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `@bascik/language-server` (per file) | `unknown-bascik-attribute`, `unknown-directive-value`, `script-mode-conflict`, `directive-on-non-script`, `missing-prop-prefix`, `undeclared-prop`, `undeclared-slot`, `slot-outside-component`, `component-structure-order`, `component-name-not-hyphenated`, `unclosed-component-tag`, `prefer-self-closing-component`, `id-reference-undeclared`, `unknown-preserve-token`, `external-form-missing-preserve-name`, `shared-name-group`, `inline-and-companion-styles`, `middleware-unsupported`, `missing-method-handler`, `invalid-method-case`, `api-handler-return-type`, the `css-*` and `js-*` scoping-compatibility rules, the `server-script-*` rules, and the component metadata rules |
+| Home                                 | Rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik --check` (project)           | `config-validation`, `missing-site-url`, `pages-directory`, `duplicate-component-name`, `component-list`, `circular-component-reference`, `duplicate-route-resolution`, `unmatched-tag`, `unused-component`, `route-collision`, `invalid-catch-all`, `dist-html-spec`, `request-render-unsupported`, `request-render-csp-unstable`                                                                                                                                                                                                                                                                                                                                                                                           |
+| `@bascik/language-server` (per file) | `unknown-bascik-attribute`, `unknown-directive-value`, `script-mode-conflict`, `directive-on-non-script`, `missing-prop-prefix`, `undeclared-prop`, `undeclared-slot`, `slot-outside-component`, `component-structure-order`, `component-name-not-hyphenated`, `unclosed-component-tag`, `prefer-self-closing-component`, `id-reference-undeclared`, `unknown-preserve-token`, `external-form-missing-preserve-name`, `shared-name-group`, `inline-and-companion-styles`, `middleware-unsupported`, `missing-method-handler`, `invalid-method-case`, `api-handler-return-type`, `leading-slash-specifier`, the `css-*` and `js-*` scoping-compatibility rules, the `server-script-*` rules, and the component metadata rules |
 
 One per-file rule reads the rest of the project too: `shared-name-group` reports on a component file, but counts how many times each page renders that component (through nested components, with unsaved editor text), so the warning appears in the file to change while you type.
 
@@ -42,18 +42,27 @@ Running `bascik --check` validates the project without starting a full build or 
 
 ### Tag Extraction (`extractCustomTags`)
 
-To locate custom component usages, `extractCustomTags` scans page and component HTML for custom hyphenated element tags (`<user-card>`, `<nav-header>`):
+To locate custom component usages, `extractCustomTagOccurrences` scans page and component HTML for custom hyphenated element tags (`<user-card>`, `<nav-header>`):
 
 ```ts
-export const extractCustomTags = (html: string): Set<string> => {
-  const stripped = stripElementContents(html.replace(/<!--[\s\S]*?-->/g, ""));
-  const tags = new Set<string>();
-  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(stripped)) !== null) {
-    tags.add(m[1].toLowerCase());
+export const extractCustomTagOccurrences = (html: string): TagOccurrence[] => {
+  // Comments are blanked, keeping their newlines so line numbers stay right.
+  const noComments = html.replace(/<!--[\s\S]*?-->/g, (match) => {
+    const newlines = match.match(/\n/g);
+    return newlines ? newlines.join("") : " ";
+  });
+  const stripped = stripElementContents(noComments);
+  const occurrences: TagOccurrence[] = [];
+  // The tag name ends where a browser ends it: at tag whitespace, `/` or `>`.
+  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\t\n\f\r \/>])/gi;
+  let counted = 0;
+  let line = 1;
+  for (const m of stripped.matchAll(re)) {
+    for (; counted < m.index; counted++)
+      if (stripped.charCodeAt(counted) === 10) line++;
+    occurrences.push({ tag: m[1].toLowerCase(), line });
   }
-  return tags;
+  return occurrences;
 };
 ```
 
@@ -70,31 +79,25 @@ Before custom tags are extracted, `stripElementContents` removes the inner conte
 
 ```ts
 const stripElementContents = (html: string): string => {
+  // Keep entries that satisfy the scoping.preserve validation rule (tag names
+  // and `*` wildcard patterns) and drop anything else.
   const extra = (BascikConfig.scoping?.preserve ?? [])
-    .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
-    .filter(Boolean);
+    .map((t) => String(t))
+    .filter(
+      (t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t),
+    );
   const protectedTags = ["script", "style", "textarea", ...extra];
-  const re = new RegExp(
-    `<(${protectedTags.join("|")})(\\s[^>]*)?>[\\s\\S]*?</\\1>`,
-    "gi",
-  );
-  let prev: string;
-  let out = html;
-  do {
-    prev = out;
-    out = out.replace(re, "<$1$2></$1>");
-  } while (out !== prev);
-  return out;
+  return maskElementContents(html, protectedTags);
 };
 ```
 
-A loop runs until output stabilizes to handle nested tags (such as `<code>...<code>...</code>...</code>`).
+`maskElementContents` (`shielding.ts`) replaces each protected element's content with the same number of spaces, so offsets are unchanged.
 
 ### Build Script Presence Heuristic
 
 `<script data-bascik-build>` blocks execute arbitrary JavaScript at build time and can output component markup dynamically. Running build scripts during `bascik --check` would be slow and could cause unwanted side effects.
 
-Rather than disabling the unused component check project-wide, `check.ts` checks build script source text for string literal references (e.g. `"my-card"`, `'my-card'`, or `` `my-card` ``). A component is marked as potentially used only when its name appears as a string literal in a build script. Unreferenced components continue to be reported as unused warnings.
+Rather than disabling the unused component check project-wide, `check.ts` reads the source text of build, server and stream scripts, their `src=` modules, and the local modules they import. A component counts as used when its start tag is written there, or when its name appears as a whole string literal (e.g. `"my-card"`, `'my-card'`, or `` `my-card` ``). A tag name built in code cannot be followed; where a script builds one, the unused warning carries a note naming that line. Unreferenced components continue to be reported as unused warnings.
 
 ### The Findings Model & Extension Points
 
@@ -115,6 +118,7 @@ export interface CheckFinding {
   message: string;
   locations: FindingLocation[];
   suggestion?: string;
+  note?: string; // a caveat shown under the finding
   source?: "language-server"; // set on per-file findings
 }
 
@@ -129,6 +133,10 @@ export interface CheckFindings {
   perFileChecked: number | null; // null when the language server did not run
   perFileHint?: string; // why it did not run
   fixedFiles: string[];
+  perFileFormat?: (
+    diagnostic: LanguageServerDiagnostic,
+    color?: boolean,
+  ) => string;
 }
 ```
 
@@ -155,19 +163,22 @@ First decide where it belongs, using the test above: one file, or the whole proj
 
 `bascik --check` produces categorized diagnostic reporting:
 
-| Diagnostic Type              | Category                       | Severity      | Exit Code | Description                                                                                                            |
-| ---------------------------- | ------------------------------ | ------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Unknown Component Tag        | `unmatched-tag`                | Warning       | 0         | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged.                  |
-| Unused Component File        | `unused-component`             | Warning       | 0         | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
-| Config Validation            | `config-validation`            | Error/Warning | Depends   | Configuration validation results projected into findings with key-based severity mapping.                              |
-| Missing Site URL             | `missing-site-url`             | Warning       | 0         | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. `bascik --build` fails on it.     |
-| Pages Directory Issue        | `pages-directory`              | Error         | 1         | Configured pages directory cannot be read or contains no page HTML files.                                              |
-| Duplicate Component Name     | `duplicate-component-name`     | Error         | 1         | Multiple component files define the same custom tag name.                                                              |
-| Circular Component Reference | `circular-component-reference` | Error         | 1         | Direct or indirect component graph cycle detected (full cycle path included).                                          |
-| Duplicate Route Resolution   | `duplicate-route-resolution`   | Error         | 1         | Multiple pages resolve to the same route path.                                                                         |
-| API Route Collision          | `route-collision`              | Error         | 1         | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests.       |
-| API Invalid Catch-All        | `invalid-catch-all`            | Error         | 1         | A `[...name]` segment is unnamed, partial, repeated, or not the final segment.                                         |
-| dist/ HTML Spec Violation    | `dist-html-spec`               | Error         | 1         | A compiled `dist/` page does not parse cleanly (needs the optional parse5).                                            |
+| Diagnostic Type              | Category                       | Severity      | Exit Code | Description                                                                                                                                                      |
+| ---------------------------- | ------------------------------ | ------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown Component Tag        | `unmatched-tag`                | Warning       | 0         | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged.                                                            |
+| Unused Component File        | `unused-component`             | Warning       | 0         | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal.                                           |
+| Config Validation            | `config-validation`            | Error/Warning | Depends   | Configuration validation results projected into findings with key-based severity mapping.                                                                        |
+| Missing Site URL             | `missing-site-url`             | Warning       | 0         | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. `bascik --build` fails on it.                                               |
+| Pages Directory Issue        | `pages-directory`              | Error         | 1         | Configured pages directory cannot be read or contains no page HTML files.                                                                                        |
+| Duplicate Component Name     | `duplicate-component-name`     | Error         | 1         | Multiple component files define the same custom tag name.                                                                                                        |
+| Component Scan Failure       | `component-list`               | Error         | 1         | Component discovery failed (other than a duplicate tag name), so the check cannot rely on the component list.                                                    |
+| Circular Component Reference | `circular-component-reference` | Error         | 1         | Direct or indirect component graph cycle detected (full cycle path included).                                                                                    |
+| Duplicate Route Resolution   | `duplicate-route-resolution`   | Error         | 1         | Multiple pages resolve to the same route path.                                                                                                                   |
+| API Route Collision          | `route-collision`              | Error         | 1         | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests.                                                 |
+| API Invalid Catch-All        | `invalid-catch-all`            | Error         | 1         | A `[...name]` segment is unnamed, partial, repeated, or not the final segment.                                                                                   |
+| dist/ HTML Spec Violation    | `dist-html-spec`               | Error         | 1         | A compiled `dist/` page does not parse cleanly (needs the optional parse5).                                                                                      |
+| Request-time Unsupported     | `request-render-unsupported`   | Warning       | 0         | Components a server or stream script cannot return, read from the last build's component manifest, each with its reason.                                         |
+| Request-time CSP Unstable    | `request-render-csp-unstable`  | Warning       | 0         | With `generate.cspHashes` on, components whose stylesheet or client scripts embed the instance id, so a script that returns them cannot satisfy a hash-only CSP. |
 
 The per-file rules that `bascik --check` reports through the language server, with the same severities:
 
@@ -205,7 +216,7 @@ Build failed with 2 page errors:
 
 Stages include `validate markup`, `component expansion`, `create output directory`, `write output`, `transpile page`, and `worker transpile`. Missing or unreadable configured source directories fail before page processing begins. The one exception is the default components root: a missing `src/components/` means the project has no components, and an unmatched tag is still reported. Any other missing components root fails with a message that names the path. A subdirectory that disappears during recursive traversal is treated as a file-watch race: Bascik warns and continues scanning the remaining tree.
 
-In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unmatched custom component tags emit a warning by default (and exit with code 1 when `--strict` is passed).
+In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unmatched custom component tags emit a warning (and `bascik --check --strict` exits with code 1 on them).
 
 ## Source Map & Stack Trace Remapping (`stack-trace.ts`)
 

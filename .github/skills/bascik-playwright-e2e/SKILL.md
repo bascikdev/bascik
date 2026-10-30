@@ -67,6 +67,11 @@ yarn --cwd pkg e2e:dev
 # Run HTTP/1.1 & HTTP/2 prod server tests
 yarn --cwd pkg e2e:prod
 
-# Run all E2E test suites
+# Run the four main lanes (static, dev, HTTP/1.1, HTTP/2) in parallel
 yarn --cwd pkg e2e:all
+
+# Exec lanes: not part of e2e:all, CI runs each. Run them when you change exec.
+yarn --cwd pkg e2e:dev:exec     # dev-server exec lifecycle (plus the gated config)
+yarn --cwd pkg e2e:exec:build   # pre/parallel/post order and failure in bascik --build
+yarn --cwd pkg e2e:exec:policy  # pipeline.onExecError in temporary projects
 ```

@@ -1,6 +1,6 @@
 # CI / CD
 
-Bascik uses two GitHub Actions workflows: one for continuous integration on every push and pull request, and one for publishing releases to npm when a version tag is pushed.
+Bascik uses three GitHub Actions workflows: one for continuous integration on every push and pull request, one for CodeQL code scanning (`.github/workflows/codeql.yml`, `actions` and `javascript-typescript`, also run weekly), and one for publishing releases to npm when a version tag is pushed.
 
 ## Continuous Integration
 
@@ -14,29 +14,29 @@ on:
     branches: [main]
 ```
 
-It executes across three structured stages on Node 24, plus one Node 22.22 lane (`node-floor`) that builds and runs every workspace's unit tests on the published engine floor to prove the packages still work there:
+It executes across three structured stages on Node 24 and Ubuntu, plus two lanes that the later stages do not wait for: a Node 22.22 lane (`node-floor`) that builds every workspace, runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor to prove the packages still work there, and a Windows lane (`unit-windows`, `windows-latest`) that runs the framework, language server, and `create-bascik` unit tests:
 
 ### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
 
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
-- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, and `adapters/cloudflare/`.
-- **Spelling & Web Standards (`standards`)**: Runs `yarn check:spelling` (codespell) and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `extensions/vscode-bascik` (`yarn ext:unit`), and `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`).
+- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, and `lsp/`.
+- **Spelling & Web Standards (`standards`)**: Runs `yarn check:format` (Prettier), `yarn check:spelling` (codespell), and `yarn check:standards` (webhint).
+- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`, with Chromium installed for the `bascik-refactor` parity checks), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows and Node floor lanes run the language server unit tests too.
 - **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
 
 ### Stage 2: End-to-End Test Matrix (Parallel)
 
-Runs after all Stage 1 jobs pass. Installs Chromium via `playwright install chromium` and executes:
+Runs after the Stage 1 jobs above pass (not `node-floor` or `unit-windows`). Installs Chromium via `playwright install chromium` and executes:
 
 - **Framework E2E (Static)**: `yarn pkg:e2e`
-- **Framework E2E (Dev Server & Dev Exec Lifecycle)**: `yarn pkg:e2e:dev` and `yarn pkg:e2e:dev:exec`
+- **Framework E2E (Dev Server)**: `yarn pkg:e2e:dev`, `yarn pkg:e2e:dev:exec` (dev exec lifecycle), `yarn pkg:e2e:exec:policy` (exec failure policy), and `yarn pkg:e2e:exec:build` (build exec lifecycle)
 - **Framework E2E (Production HTTP/1.1 Server)**: `yarn pkg:e2e:prod:http1`
 - **Framework E2E (Production HTTP/2 TLS Server)**: `yarn pkg:e2e:prod:http2`
 - **Cloudflare Adapter E2E (local workerd)**: `yarn adapter:cf:e2e`
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
 
-Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same.
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that Stage 2 waits on.
 
 ### Stage 3: Semgrep Static Analysis
 

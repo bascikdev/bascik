@@ -2357,6 +2357,9 @@ export default function retentionShared129(request, context) { ${requestObservat
         expected,
         "external helper exact response bytes",
       );
+      // A helper change is a source cycle, which publishes the page as soon as it is compiled; the disk
+      // write is still queued, so join it before reading dist/ (as the inline case does).
+      await command("page-write-idle");
       assert.deepEqual(
         await readDistPage(join(project, "dist/external.html")),
         expected,

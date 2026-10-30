@@ -114,7 +114,7 @@ Whitespace _within_ slot content is preserved exactly as written.
 
 ## See it in action
 
-This example uses two named slots (`eyebrow` and `actions`) plus the default slot for the body content.
+This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the default slot for the body content.
 
 <!-- demo:source-usage -->
 
@@ -217,8 +217,7 @@ This example uses two named slots (`eyebrow` and `actions`) plus the default slo
 
   <div class="bascik__slot-layout-demo__slot-panel-body">
     <p>
-      Use named slots for fixed regions and the default slot for the main body
-      content.
+      Use named slots for fixed regions and the default slot for body content.
     </p>
   </div>
 

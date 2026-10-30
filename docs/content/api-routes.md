@@ -105,12 +105,13 @@ export const GET = async (
 
 - `context.params`: Key-value map of extracted dynamic route segments. `[param]` values are `string`; a `[...name]` catch-all value is a decoded `string[]`.
 - `context.remoteIp`: The client IP address. When `http.trustProxy` is enabled in configuration, this value reflects the real client IP forwarded by upstream reverse proxies or CDNs.
+- `context.platform`: The host. `{ name: "node" }` on `bascik --server` and the dev server; on Cloudflare it also carries the Worker's `env` bindings and `waitUntil` (see [Bindings and secrets](/deployment/cloudflare#bindings-and-secrets)).
 
 ## Request Body Handling and Streaming
 
 Request bodies are exposed as standard WHATWG streams with `duplex: 'half'`. Handlers parse bodies using standard WHATWG methods such as `await request.json()`, `await request.text()`, `await request.formData()`, or `await request.arrayBuffer()`. Bascik does not automatically parse bodies or sniff content types.
 
-- **Streaming Size Enforcement (`http.maxBodySize`):** The maximum request body size defaults to `1048576` bytes (1 MB) and can be customized in `bascik.config.ts`.
+- **Streaming Size Enforcement (`http.maxBodySize`):** The maximum request body size defaults to `1048576` bytes (1 MB) and can be customized in `bascik.config.ts`. A value of `0` or less disables the limit.
 - **Stream Counting:** Bytes are counted on the fly as they stream from the client. Bascik never buffers an unbounded payload in memory to measure it.
 - **Payload Rejection:** If the payload exceeds the limit, the handler's body stream errors and Bascik responds with `413 Payload Too Large` and `Connection: close`.
 - **Declared Length:** A `Content-Length` above the limit is answered `413` before the handler runs, even for a handler that never reads its body. The method policy comes first: a method the route does not export still gets `405` with `Allow`, and an automatic `OPTIONS` still gets `204`. A client that sends `Expect: 100-continue` with such a length gets the `413` without a `100 Continue`, so it never uploads the body.
@@ -124,7 +125,7 @@ API route execution is protected by `http.apiTimeout` (defaults to `10000` ms):
 
 - **AbortSignal:** Handlers receive a cooperative `AbortSignal` in the third argument options object `{ signal }` to cancel downstream network calls or database operations.
 - **Hard Timeout:** If a handler does not resolve before `http.apiTimeout` elapses, Bascik responds with `504 Gateway Timeout` and logs the timeout on the server. Once the deadline passes the response is a `504` even if the handler returns a `Response` afterwards, including from inside its own `abort` listener. A client that disconnects first stays a `499`.
-- **Synchronous Execution Limitation:** Like any JavaScript runtime, synchronous CPU-bound operations (such as infinite loops) cannot be interrupted by timers. The timeout protects asynchronous operations (promises, queries, fetch requests).
+- **Synchronous Execution Limitation:** Like any JavaScript runtime, synchronous CPU-bound operations (such as infinite loops) cannot be interrupted by timers, and while they run they block the event loop, so other requests to the server wait too. The timeout protects asynchronous operations (promises, queries, fetch requests).
 
 ## Error Handling and Information Protection
 

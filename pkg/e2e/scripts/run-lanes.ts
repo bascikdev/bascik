@@ -12,7 +12,8 @@
  * path, a flag, or anything after `--`) starts the arguments passed to every
  * lane's `playwright test`. The lanes can share a machine because each binds
  * its own ports and builds into its own BASCIK_E2E_OUT directory (set by its
- * config). The exec lanes (e2e:dev:exec, e2e:exec:policy) are not run here.
+ * config). The exec lanes (e2e:dev:exec, e2e:exec:policy, e2e:exec:build) are
+ * not run here.
  *
  * The dev lane edits files under pkg/e2e/src and base-fixture/src while it
  * runs, and the other lanes build from those same sources, so the dev lane

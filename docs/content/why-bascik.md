@@ -148,7 +148,7 @@ Every decision in Bascik follows three simple rules:
 
 ![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
-Bascik exports configuration helpers (`defineConfig`) for your build, and nothing for your runtime code. Server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
+Bascik exports configuration helpers (`defineConfig`) for your build, and one module for your runtime code: [`@bascik/bascik/html`](/html-helpers), which escapes the values a server or stream script puts into markup, because escaping is easy to get wrong and costly when it is. Otherwise, server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
 
 Bascik is a find-and-replace at build time. Custom component tags are resolved to their source HTML. CSS class names are scoped so they cannot collide. Script variables are isolated so they cannot leak. The output is a directory of vanilla HTML files that any server can host, any browser can render, and any tool can inspect without knowing Bascik exists.
 

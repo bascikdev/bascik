@@ -6,18 +6,22 @@ Every Bascik script tag is a standard Node.js ESM module: `data-bascik-build`, `
 
 Write utility functions in your project and import them from any script. No special Bascik API is required:
 
-```js
+```ts
 // src/lib/render-cards.ts
-import { readFile } from 'node:fs/promises';
+import { readFile } from "node:fs/promises";
 
 export async function renderCards(jsonPath: string) {
-  const items = JSON.parse(await readFile(jsonPath, 'utf8'));
-  return items.map(item => `
+  const items = JSON.parse(await readFile(jsonPath, "utf8"));
+  return items
+    .map(
+      (item) => `
     <div class="card">
       <h3>${item.title}</h3>
       <p>${item.description}</p>
     </div>
-  `).join('\n');
+  `,
+    )
+    .join("\n");
 }
 ```
 

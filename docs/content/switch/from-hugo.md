@@ -82,27 +82,29 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 {{ end }}
 ```
 
+The layout component wraps only the repeated inner structure. The `<html>`, `<head>`, and `<body>` live in the page file; a component that tries to own them fails the build ("Page does not contain a non-empty `<body>` element"). Shared head tags go in a head component such as `<site-head>`.
+
 ```html
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
+<site-nav></site-nav>
+<main><div data-bascik-slot></div></main>
+<site-footer />
+
+<!-- src/pages/posts/my-post.html (Bascik - after) -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title data-bascik-prop-title></title>
+    <title>My Post - Acme</title>
   </head>
   <body>
-    <site-nav></site-nav>
-    <main><div data-bascik-slot></div></main>
-    <site-footer />
+    <site-layout>
+      <article>
+        <h1>My Post</h1>
+        <p>Post body goes here.</p>
+      </article>
+    </site-layout>
   </body>
 </html>
-
-<!-- src/pages/posts/my-post.html (Bascik - after) -->
-<site-layout data-bascik-prop-title="My Post - Acme">
-  <article>
-    <h1>My Post</h1>
-    <p>Post body goes here.</p>
-  </article>
-</site-layout>
 ```
 
 ## Template Variables → data-bascik-prop-* and data-bascik-attr-*
@@ -163,6 +165,7 @@ Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equi
   <script data-bascik-build>
     import { readdir, readFile } from "node:fs/promises";
     import matter from "gray-matter";
+    import { html } from "@bascik/bascik/html";
 
     export default async function () {
       const files = (await readdir("./content/posts")).filter((f) =>
@@ -174,16 +177,16 @@ Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equi
             await readFile(`./content/posts/${f}`, "utf8"),
           );
           const slug = f.replace(".md", "");
-          return { slug, title: data.title, date: data.date };
+          return { slug, title: data.title, date: new Date(data.date) };
         }),
       );
-      posts.sort((a, b) => new Date(b.date) - new Date(a.date));
-      return posts
-        .map(
-          (p) =>
-            `<li><a href="/posts/${p.slug}">${p.title}</a><span>${p.date}</span></li>`,
-        )
-        .join("\n");
+      posts.sort((a, b) => b.date - a.date);
+      return html`${posts.map((p) => {
+        const day = p.date.toISOString().slice(0, 10);
+        return html`<li>
+          <a href="/posts/${p.slug}">${p.title}</a><span>${day}</span>
+        </li>`;
+      })}`;
     }
   </script>
 </ul>
@@ -249,15 +252,18 @@ Post body here.
   import { readFile } from "node:fs/promises";
   import matter from "gray-matter";
   import { marked } from "marked";
+  import { html, raw } from "@bascik/bascik/html";
 
   export default async function () {
     const src = await readFile("./content/posts/my-post.md", "utf8");
     const { data, content } = matter(src);
-    return `
+    return html`
       <h1>${data.title}</h1>
       <p class="description">${data.description}</p>
-      ${await marked.parse(content)}
+      ${raw(await marked.parse(content))}
     `;
   }
 </script>
 ```
+
+`html` escapes the front matter values; `raw()` marks the Markdown output as HTML to insert as it is, which is safe here because you wrote the Markdown. Sanitize Markdown from anyone else first; see [HTML Helpers](/html-helpers#raw).

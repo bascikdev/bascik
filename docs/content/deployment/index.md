@@ -138,7 +138,7 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 
 Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `.bascik/dist/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`), taken from the pages as `post` exec scripts left them.
 
-Bascik emits hashes rather than setting a policy because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy.
+Bascik sends no policy of its own because the policy depends on your site and your host. Setting a generic one inside the framework would provide false assurance. The [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) option sends the directives you write, plus these hashes, from the Node servers and the Cloudflare Worker, and turns on `generate.cspHashes` for you. [Content Security Policy](/how-to/content-security-policy) shows how to turn the hashes into a policy on each host.
 
 ### Cross-Origin Isolation Headers
 

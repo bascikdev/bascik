@@ -1,4 +1,4 @@
-// fingerprint-assets.mjs: content-hash renames for copied page assets,
+// fingerprint-assets.ts: content-hash renames for copied page assets,
 // then rewrites references in the built HTML.
 import { createHash } from "node:crypto";
 import { readdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 const ASSET_DIR = "dist/assets/img";
 const files = await readdir(ASSET_DIR);
 
-const renames = [];
+const renames: [from: string, to: string][] = [];
 for (const file of files) {
   const full = join(ASSET_DIR, file);
   const buf = await readFile(full);

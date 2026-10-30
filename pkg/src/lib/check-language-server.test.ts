@@ -160,7 +160,10 @@ describe("languageServerTargets", () => {
         { path: join(root, "src/pages"), extensions: ["html"] },
         { path: join(root, "src/components") },
         { path: join(root, "shared/ui") },
-        { path: join(root, "server/routes"), extensions: ["ts", "js", "mjs"] },
+        {
+          path: join(root, "server/routes"),
+          extensions: ["ts", "mts", "js", "mjs"],
+        },
       ]);
     } finally {
       (BascikConfig as { directory: typeof original }).directory = original;

@@ -156,6 +156,8 @@
       });
       var headings = Array.from(links.keys())
         .map(function (id) {
+          // The TOC links point at headings in this page's Markdown, not at ids in this component.
+          // bascik-ignore js-dynamic-id-lookup
           return document.getElementById(id);
         })
         .filter(Boolean);
@@ -260,6 +262,7 @@
         )
           return;
         var id = (link.getAttribute("href") || "").slice(1);
+        // bascik-ignore js-dynamic-id-lookup
         var target = document.getElementById(id);
         if (!target) return;
 

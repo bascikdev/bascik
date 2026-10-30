@@ -1,6 +1,77 @@
 # Component Best Practices
 
-Bascik ships the markup a component holds, element for element and attribute for attribute. Two habits follow from that: pick the element the HTML standard defines for each job, and treat `name` as the page-level contract it is. Both use what the browser already does, so a component needs less script, less ARIA, and no surprises when it is used twice on one page.
+Bascik ships the markup a component holds, element for element and attribute for attribute, with no runtime around it. That shapes how a Bascik site is built: a page is a list of named components, each component is a small folder of HTML, CSS, and TypeScript that owns its own styles and script, and the elements you pick are the elements visitors get. This page covers those conventions first, then two HTML habits that matter most: pick the element the HTML standard defines for each job, and treat `name` as the page-level contract it is.
+
+## Build the Bascik Way
+
+Bascik has no framework API to learn, so its conventions are about where things live and when they run. Each one keeps a site small, readable, and close to the platform, for the next person who opens it and for the next coding agent.
+
+## Pages Read Like a List of Tags
+
+Write a page as a list of component tags, not one long block of HTML:
+
+```html
+<!-- src/pages/index.html -->
+<body>
+  <site-header />
+  <main id="main">
+    <home-hero />
+    <pricing-section>
+      <plan-card data-bascik-prop-name="Home" data-bascik-prop-price="$49" />
+      <plan-card data-bascik-prop-name="Cafe" data-bascik-prop-price="$129" />
+    </pricing-section>
+    <faq-list />
+  </main>
+  <site-footer />
+</body>
+```
+
+The page says what it is in a dozen lines, and each tag opens a small file with its own CSS, IDs, and script. It is a balance:
+
+- **Split** a section into a component when it has a job you can name (`<pricing-section>`, `<signup-form>`), when its markup repeats, or when it owns behavior.
+- **Keep it whole** when a piece only makes sense inside its parent, when it would be a one-element wrapper used once, or when splitting would pass a prop through a component that does not use it. Let the page place the child in the parent's [slot](/slots) instead.
+- **Write each fact once.** An address, a price, or a phone number lives in one component or in one data file under `src/lib/` that build scripts read. A value every page passes the same way belongs inside the component, not in a prop.
+
+Pages keep their own `<html>`, `<head>`, and `<body>`. The shared `<head>` tags, the header, and the footer are components.
+
+## One Folder per Component
+
+```text
+src/components/plan-card/
+  plan-card.html   the template; the file name is the tag name
+  plan-card.css    optional, scoped to plan-card
+  plan-card.ts     optional, loaded with <script src="plan-card.ts">
+```
+
+- **Name it with a hyphen, after what it is:** `plan-card`, not `card` or `box-2`. Bascik warns about a name with no hyphen or the name of a native element.
+- **Write TypeScript.** Component scripts, build and server scripts, `src/lib/` helpers, and `bascik.config.ts` all take TypeScript with no setup. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+- **Self-close** a component that takes no slot content: `<site-footer />`.
+
+## Props for Text, Slots for Markup
+
+- A [prop](/props) (`data-bascik-prop-*`) carries text that changes between uses, and Bascik escapes it. `data-bascik-attr-href="href"` puts a prop into an attribute.
+- Markup and other components go in a [slot](/slots).
+- `class`, `aria-label`, `id`, and `data-testid` on the usage tag land on the component's root through [attribute inheritance](/attribute-inheritance), so the page decides what a copy is called and how it is labeled.
+
+## A Component Owns Its Styles and Script
+
+- **Style the classes the component defines.** They are [scoped](/scoped-styles) to the component. Classes it does not define stay global, so utilities from your global stylesheet still match. Declare design tokens once in the global stylesheet and read them with `var(--token, fallback)`.
+- **Find elements by `id`.** IDs are [rewritten per instance](/scoped-javascript#multiple-instances) and `getElementById("btn")` follows, so every copy controls its own button. `querySelector(".btn")` finds the first copy on the page.
+- **Keep state in attributes.** Toggle `data-state`, `aria-expanded`, or `hidden`, and style `.panel[data-state="open"]`.
+- **Talk through events.** Components send bubbling `CustomEvent`s and listen on `document`. They never reach into each other's elements.
+- **HTML and CSS before JavaScript.** `<details>`, `<dialog>`, `popover`, and `:has()` cover most widgets with no script. See [Native Elements Before ARIA or JavaScript](#native-elements-before-aria-or-javascript).
+
+## Decide When the Work Runs
+
+Default to build time. A page that is the same for every visitor ships as vanilla HTML, served from any static host.
+
+- A [`data-bascik-build`](/build-scripts) script runs at build time for each page that uses it, and `data-bascik-build-once` runs once per file, with no page context, for output that is the same everywhere.
+- A [`data-bascik-routes`](/dynamic-routes) script turns one template into many pages.
+- A [`data-bascik-server`](/server-scripts) or [`data-bascik-stream`](/stream-scripts) script runs per request, only for what differs per request. It can [return component tags](/server-scripts#returning-component-tags), and builds its markup with [`html`](/html-helpers) from `@bascik/bascik/html`, which escapes each value for where it lands.
+
+## Give Tests a Handle
+
+Put `data-testid="plan-card"` on each component's root and `data-testid="plan-card-buy"` on each interactive part inside it. Bascik never scopes or hashes `data-testid`, so a test that finds `getByTestId("plan-card-buy")` passes against a production build where classes and ids are shortened. See [`data-testid` attributes](/testing/e2e-testing#recommended-pattern-data-testid-attributes).
 
 ## Use HTML's Elements
 
@@ -8,20 +79,20 @@ Bascik is built on web standards: HTML, CSS, and JavaScript as browsers ship the
 
 Bascik ships the code you wrote. A component tag is replaced by its template, and the elements in that template are the elements visitors get. Bascik never adds a wrapper, never turns a `<nav>` into a `<div>`, and never turns a `<div>` into a `<nav>`. The choice of element is yours, and Bascik keeps it.
 
-### Tag Names Never Reach the Browser
+## Tag Names Never Reach the Browser
 
 `<site-nav>` and `<faq-item>` exist only in your source. At build time each one is replaced by its template, so the browser, search engines, and screen readers never see the tag name. A component tag does not have to be a semantic element, and it cannot be one: what visitors get is the root element and the markup inside it. That markup is where the HTML standard's elements belong.
 
 Still name a component after what it is. `<site-nav>`, `<product-card>`, and `<faq-item>` read like the page they build, so a page made of components reads almost like an outline. `<blue-box>` or `<wrapper-2>` says nothing. A good name often echoes its root element: `<site-nav>` has a `<nav>` root, and `<faq-item>` has a `<details>` root. The name is for the people reading your code, and the root element is for everyone else.
 
-### Why It Matters
+## Why Semantic HTML Matters
 
 - **Accessibility comes with it.** A `<button>` is focusable, works with Enter and Space, and is announced as a button. A `<nav>` is a landmark a screen reader lists and jumps to. You get this from the element, with no ARIA and no script.
 - **Less JavaScript.** `<details>`, `<dialog>`, the `popover` attribute, and form validation are built into the browser. A component that uses them needs no script at all.
 - **Machines read structure.** Search engines and [AI agents](/lighthouse/agentic-browsing) read headings, landmarks, lists, and tables to understand a page.
 - **It is easier to change.** A `<footer>` says what it is. A `<div class="ft-wrap">` needs a comment.
 
-### Components Keep Their Semantics
+## Components Keep Their Semantics
 
 A component's root element is the element that replaces its tag, and attributes on the usage tag (`class`, `aria-label`, `id`) land on it through [attribute inheritance](/attribute-inheritance). A `class` is appended to the root's own, and a `data-testid` on the usage tag replaces the root's, but any other attribute already on the root wins over the same attribute on the usage tag. So leave a label off the component's root and pass it where the component is used, as the demos below do. Make the root the element for the component's job, not a wrapper `<div>` around it.
 
@@ -40,7 +111,7 @@ A component's root element is the element that replaces its tag, and attributes 
 
 A card is an [`<article>`](https://html.spec.whatwg.org/multipage/sections.html#the-article-element) only when it stands on its own, something that could be shared or reused as a whole, such as a blog post or a product. A stat, icon, or feature card is fine as a `<div>`, or as an `<li>` when the cards form a list. Every `<article>` adds an entry to the accessibility tree, so a page of them is noise for a screen reader user.
 
-#### Bad: A Wrapper Div
+### Bad: A Wrapper Div
 
 This `<site-nav>` looks the same as the good one below, but its output is a `<div>` of links. A screen reader does not list it as navigation, and the `aria-label` from the usage tag lands on a `<div>`, where it means nothing.
 
@@ -95,7 +166,7 @@ This `<site-nav>` looks the same as the good one below, but its output is a `<di
 </main>
 ```
 
-#### Good: The Root Is the Nav
+### Good: The Root Is the Nav
 
 The root is a `<nav>`, the links are a list, and the `aria-label` from the usage tag names the landmark, which a screen reader announces as "Demo site navigation". It looks the same. Bascik adds no element or role to it; only the scoped class names change.
 
@@ -161,7 +232,7 @@ The root is a `<nav>`, the links are a list, and the `aria-label` from the usage
 </main>
 ```
 
-### Buttons for Actions, Links for Navigation
+## Buttons for Actions, Links for Navigation
 
 A link (`<a href>`) goes somewhere. A button (`<button type="button">`) does something on the page. A `<div>` or `<span>` with a click listener does neither for a keyboard user: it cannot be focused with Tab, does not respond to Enter or Space, and a screen reader reads it as plain text. Adding `role="button"` and `tabindex="0"` brings back only some of that, and you then write the key handling yourself.
 
@@ -275,7 +346,7 @@ The fix is a `<button>`. `aria-pressed` tells a screen reader whether it is on, 
 </main>
 ```
 
-### Native Elements Before ARIA or JavaScript
+## Native Elements Before ARIA or JavaScript
 
 The [first rule of ARIA](https://www.w3.org/TR/using-aria/#rule1) is to use a native HTML element when one exists. The same goes for JavaScript: reach for a script only when HTML and CSS cannot do the job.
 
@@ -343,7 +414,7 @@ This FAQ item opens and closes with a click, Enter, or Space, and screen readers
 </main>
 ```
 
-### Checklist
+## Checklist
 
 Each item links to the HTML standard (WHATWG) or MDN.
 
@@ -360,7 +431,7 @@ Each item links to the HTML standard (WHATWG) or MDN.
 
 [MDN's guide to HTML accessibility](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Accessibility/HTML) covers each of these with examples.
 
-### Check It
+## Check Your Markup
 
 Bascik guides and warns. It never rewrites or rejects your markup, so these checks are suggestions you can weigh.
 
@@ -373,7 +444,7 @@ Bascik guides and warns. It never rewrites or rejects your markup, so these chec
 
 `name` is a contract with the rest of the page, not a private label. A form field's `name` is the key its value is submitted under, radios that share a `name` are one group, and an `<iframe name>` is a target that links elsewhere on the page point at. Bascik ships every `name` exactly as you write it, so each of these works the way the HTML standard says it does. `id` and `class` are still [scoped per component](/scoped-styles), so two copies of a component never share an id; `name` is different on purpose, because when two copies share a `name` the browser treats them as one group. The sections below show how to decide whether that is what you want.
 
-### What `name` Is For
+## What `name` Is For
 
 Everything that reads a `name` lives outside the element itself: the form, the server, another element on the page, or a script.
 
@@ -389,7 +460,7 @@ Everything that reads a `name` lives outside the element itself: the form, the s
 | `<meta>`                                        | [Names a piece of metadata](https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-name) from a fixed vocabulary (`description`, `viewport`, `robots`)                                    | Browsers, search engines, link previews                          |
 | Any element with `name`                         | Found by [`document.getElementsByName()`](https://html.spec.whatwg.org/multipage/dom.html#dom-document-getelementsbyname)                                                                          | Scripts                                                          |
 
-### Naming Form Fields for Submission
+## Naming Form Fields for Submission
 
 Write the field names your server reads. A plain form post works with or without JavaScript, and the names arrive exactly as written:
 
@@ -415,7 +486,7 @@ export async function POST(request: Request): Promise<Response> {
 
 `label for="email"` and `id="email"` are scoped together per instance, so two signups on one page still label their own inputs. `name="email"` stays `email`, so `new FormData(form)` in a component script, a fetch that sends it, and a form service on another domain all see the same key. The [Contact Form](/example-components/contact-form) example posts this way to an API route.
 
-### Radio Groups per Component Instance
+## Radio Groups per Component Instance
 
 Radios are one group when they share a `name` and a form owner. A radio outside any `<form>` has no form owner, so radios with one `name` and no form are one group across the whole page, whichever component they came from. A component that holds a whole radio group needs a `<form>` of its own so each copy on a page is its own group. The form does not have to submit anywhere; it gives the radios their own owner.
 
@@ -520,7 +591,7 @@ Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<fo
 </form>
 ```
 
-#### Radios Inside a Larger Form
+### Radios Inside a Larger Form
 
 When the radios already sit inside a larger form, such as a checkout with one size per line item, a `<form>` per copy is not an option: forms cannot nest. Give each copy its own name through a prop instead. Bind `name` with `data-bascik-attr-name` and leave out the literal `name`:
 
@@ -559,7 +630,7 @@ The linter catches the mistake. A `froth-picker` with a literal `name="froth"` o
 src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group) name="froth" is on 2 radios with no <form> of their own, and <froth-picker> is used 2 times on src/pages/index.html, so the copies act as one radio group on the page: choosing in one copy clears the others. Wrap the radios in the component's own <form>, or give each copy its own name through a prop: data-bascik-attr-name="group" in place of name here, and data-bascik-prop-group="..." with a different value on each <froth-picker>.
 ```
 
-### Exclusive `<details>` Accordions
+## Exclusive `<details>` Accordions
 
 `<details name="faq">` makes every `<details>` on the page with that `name` one exclusive accordion: opening one closes the one that was open. Because `name` ships as written, an accordion can be built from one component per item. Open one question and the open one closes, though each comes from a separate `frother-question`:
 
@@ -629,11 +700,11 @@ src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group
 </details>
 ```
 
-#### One Accordion per Copy
+### One Accordion per Copy
 
 A component that holds the whole accordion, used twice on one page, makes one accordion of both copies. For a group per copy, bind the name to a prop (`<details data-bascik-attr-name="group">` with no literal `name`, and a different `data-bascik-prop-group` on each usage). The linter warns `shared-name-group` for this case too; when one accordion across the copies is what you want, silence it with `<!-- bascik-ignore shared-name-group -->` on the line above.
 
-### `<iframe>` Targets and Image Maps
+## `<iframe>` Targets and Image Maps
 
 An `<iframe name="manual">` is a target: `<a href="/manual/descaling" target="manual">` anywhere on the page loads into it, and so does a form with `target="manual"`. Because the name ships as written, links in other components and in the page shell reach it.
 
@@ -658,7 +729,7 @@ An `<iframe name="manual">` is a target: `<a href="/manual/descaling" target="ma
 
 Two copies of `manual-viewer` would be two targets with one name, and a link loads into the first. `usemap="#parts"` works the same way: it uses the first `<map name="parts">` in the page, so a component with a `<map>` used twice gets a `shared-name-group` warning. Give each copy its own names through props (`data-bascik-attr-name` on the `<map>`, `data-bascik-attr-usemap` on the `<img>`), or move the map into the page.
 
-### Do Not Name a Control After a Form Property
+## Do Not Name a Control After a Form Property
 
 A form exposes its named controls as properties, and a named control wins over the form's own property of the same name. This is DOM clobbering, and it breaks code that reads the form:
 
@@ -676,11 +747,10 @@ A form exposes its named controls as properties, and a named control wins over t
 
 Do not name a control `action`, `method`, `target`, `submit`, `reset`, `requestSubmit`, `elements`, `length`, `name`, `id`, `className`, or any other property or method of `HTMLFormElement`. Choose names that describe the data: `intent` instead of `action`, `delivery` instead of `method`. The same applies to `<form name>`, `<img name>`, `<iframe name>`, and `<object name>`, which also become properties of `document`: a form named `cookie` or `title` hides `document.cookie` or `document.title` from scripts on the page. Bascik never renames `name`, so it never hides a clobbered name from you either: the name in your source is the name on the page.
 
-### What Bascik Does
+## What Bascik Does
 
 - **Every `name` ships as written** by default (`scoping.attributes.name: false`), on every element, at build time and at request time, on Node and on the Cloudflare Worker. `getElementsByName()` in a component script is left alone too.
 - **`id` and `class` are still scoped.** `<label for>`, `aria-*` id lists, `form="id"`, and other id references are rewritten together with their ids, so a component's labels and controls keep pointing at their own copy.
 - **`data-bascik-attr-name="prop"`** sets `name` per usage from a prop, at build time and in server-script output, for a group per copy.
 - **The linter warns `shared-name-group`** when a component used more than once on a page holds a whole radio group outside its own `<form>`, two or more `<details>` with one `name`, or a `<map name>`. See [Linter](/tools/linter#shared-name-group).
-
 - **Name scoping is an opt-in.** [`scoping.attributes.name: true`](/configuration#scopingattributesname) renames every `name` except `<meta name>` per component instance, the default in earlier Bascik releases. Each copy's radios and `<details>` are then their own group without a `<form>` or a prop, but everything that reads a name from outside the component breaks: field names a server reads come out as `bascik__froth-picker__a1b2c3d4__froth` and need [`data-bascik-preserve="name"`](/preserve) on the form, and an `<iframe>` target no longer matches the links that point at it. Turn it on only for a site with many components that each hold a whole radio group or accordion, where opting the few page-wide names out is less work than a form or a prop per component. The linter then checks forms that post to another site for `data-bascik-preserve="name"` (`external-form-missing-preserve-name`) and stops reporting `shared-name-group`.

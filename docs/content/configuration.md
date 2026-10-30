@@ -4,7 +4,7 @@ Bascik is **completely zero configuration** by default. You do not need a config
 
 However, Bascik is also **highly configurable** for both development and production. Rather than forcing a single architectural opinion on your project, Bascik is designed to put control directly in your hands. Whenever a technical choice involves trade-offs, Bascik exposes fine-grained preferences so you can tailor the build pipeline to your exact workflow.
 
-To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` also works and takes precedence if both files exist.
+To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` or `bascik.config.mjs` also works and takes precedence if more than one config file exists.
 
 ## Config File Discovery
 
@@ -12,13 +12,24 @@ Bascik looks for its config in the project root only, in this order:
 
 1. `--config <path>` (or `--config=<path>`): load a specific file. An explicitly passed path that does not exist is an error, mirroring the `--env-file` behavior.
 2. `bascik.config.js`
-3. `bascik.config.ts`
+3. `bascik.config.mjs`
+4. `bascik.config.ts`
 
-When both files exist, `bascik.config.js` wins. This is deliberate because many JavaScript-first projects keep a `.js` config alongside TypeScript files. If your `.ts` file appears to be ignored, check for a stray `.js` file next to it.
+Bascik loads the first file it finds and ignores the rest, so a `bascik.config.js` or `bascik.config.mjs` wins over `bascik.config.ts`, and `bascik.config.js` wins over `bascik.config.mjs`. This is deliberate because many JavaScript-first projects keep a `.js` config alongside TypeScript files. If your `.ts` file appears to be ignored, check for a stray `.js` or `.mjs` file next to it. The Bascik language server and VS Code extension read the same names in the same order, so the editor and the CLI agree on which file is the config.
 
-Only these two filenames are supported: no `.mjs`, `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
+Only these three filenames are discovered: no `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
 
 TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
+
+### Config Changes Need a Restart
+
+The dev server does not hot-reload configuration. Bascik deep-freezes the resolved configuration at boot so worker threads, routers, and watchers all see the same values, and reloading it in place could leave them out of sync. When you edit a root config file, the dev server keeps its boot configuration and prints:
+
+```text
+[bascik] Config file changed: bascik.config.ts. Restart the server to apply configuration changes.
+```
+
+The hint watches the three root filenames `bascik.config.js`, `bascik.config.mjs`, and `bascik.config.ts`, plus the file passed with `--config` when there is one (such as `config/site.config.ts`). It watches all three root names whichever one was loaded, so editing an unused root config file prints the hint too. No hint prints during `--build`. Restart the server to apply any config change. If a restart does not help either, see [My config changes have no effect](/testing/troubleshooting#my-config-changes-have-no-effect).
 
 ## Configuration Validation
 
@@ -170,9 +181,11 @@ export default defineConfig({
     watchPaths: [],
     exec: [],
     workers: false,
+    onExecError: "warn", // 'warn' in dev; 'error' in --build
   },
   scripts: {
     cache: { enabled: true },
+    typescript: true, // Node's strip-only mode; false or a compiler function
     onBuildScriptError: "error",
     onRoutesScriptError: "error",
     onServerScriptError: "error",
@@ -190,6 +203,7 @@ export default defineConfig({
   },
   onMinifyError: "warn", // 'warn' in dev; 'error' in --build and --server
   http: {
+    httpCache: false, // false in dev; true in --server (ETag, 304 and cacheControl)
     port: undefined, // auto-selected port
     hostname: "localhost", // use '0.0.0.0' to bind all interfaces
     tls: {
@@ -200,6 +214,7 @@ export default defineConfig({
     cacheControl: "public, max-age=3600", // string or per-extension map: { '.woff2': 'public, max-age=31536000, immutable' }
     compression: true,
     precompress: false, // emit verified .br/.gz sidecars at build time
+    timeouts: { request: 30000, headers: 10000, keepAlive: 5000, drain: 5000 },
     maxBodySize: 1048576,
     apiTimeout: 10000,
   },
@@ -211,6 +226,7 @@ export default defineConfig({
     transpiles: true,
   },
   base: "/",
+  contentSecurityPolicy: undefined, // no header until you set it
   security: {
     blockScriptUrls: true,
     blockCodeBindings: true,
@@ -511,7 +527,7 @@ scripts: {
   onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
   onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
   timeout: 30000,               // execution timeout in ms
-  importRoot: 'src',            // directory that @/ and / resolve against
+  importRoot: 'src',            // directory that @/ resolves against
   stripAnsi: true,              // remove terminal color codes from script output
   renderLimits: { maxInstances: 1000 }, // request-time render limits (see below)
 }
@@ -661,13 +677,33 @@ http: {
   compression: true,
   precompress: false,       // emit .br/.gz sidecars with .bmeta provenance at build time
   timeouts: {
-    request: 30000,         // request socket timeout (ms)
-    headers: 10000,         // headers timeout (ms)
-    keepAlive: 5000,        // keep-alive timeout (ms)
+    request: 30000,         // time to receive a whole request, body included (ms)
+    headers: 10000,         // time to receive a request's headers (ms); at most request
+    keepAlive: 5000,        // how long an idle connection waits for its next request (ms)
     drain: 5000,            // graceful shutdown drain window (ms)
   },
   maxBodySize: 1048576,     // maximum API request body size in bytes (1 MB default)
   apiTimeout: 10000,        // maximum execution time for API route handlers in ms (10s default)
+}
+```
+
+`timeouts` bounds how long a client may take, so a slow or stalled client cannot hold a connection open. Each value is a positive whole number of milliseconds (`drain` may be any positive number), and a partial object keeps the other defaults. The dev server and `bascik --server` both apply them.
+
+- `request` is the time to receive the whole request, headers and body, measured from its first byte. A client still sending when it passes gets `408 Request Timeout` and the connection closes. It covers receiving the request only: once the request is in, a response may take as long as it needs, so streaming responses, stream scripts and the dev server's live-reload events are never cut off by it. Raise it if you raise `maxBodySize` for uploads from slow connections: at the defaults, a 1 MB body has 30 seconds to arrive.
+- `headers` is the time to receive the request line and headers, which stops a client that opens a connection and then trickles its headers (slowloris). It must not be more than `request`, because the headers are part of the request. Left unset, it is 10000 or `request`, whichever is lower, so lowering only `request` works. A config that sets `headers` higher than `request` fails at startup with an error naming both values, for each of the dev server and `bascik --server` that would run with that pair.
+- `keepAlive` is how long a connection waits, idle between responses, for its next request before the server closes it. It never applies while a response is being sent.
+- `drain` is how long in-flight requests get to finish on shutdown (see [Production Server](/production-server)).
+
+With `tls.enabled`, `request` and `headers` apply to clients that negotiate HTTP/1.1. HTTP/2 has no per-request equivalent in Node, so for an HTTP/2 connection only `keepAlive` applies: once it has had no open request for that long, the server closes it with a `GOAWAY` and the browser opens a new one for its next request. A request still open, such as a live-reload event stream, keeps the connection open however quiet it is.
+
+`cacheControl` sets the `Cache-Control` header on static files when `httpCache` is on (the default under `bascik --server`). A string applies to every file; an object maps a file extension, with or without the dot, to its value, and files whose extension is not listed get `public, max-age=3600`. Each key is one extension such as `".css"`: a glob like `"*.css"` or a path would never match, so it is a config error.
+
+```ts
+http: {
+  cacheControl: {
+    ".woff2": "public, max-age=31536000, immutable",
+    ".png": "public, max-age=86400",
+  },
 }
 ```
 

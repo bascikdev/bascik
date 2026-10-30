@@ -1475,10 +1475,16 @@ process.on(
         // `transpiled` event is published before that write runs, so a caller
         // asserting exact dist/ bytes must await this first.
         assert(
-          buildDepEnabled || devModuleInlineEnabled,
+          buildDepEnabled || devModuleInlineEnabled || devModuleExternalEnabled,
           "page-write-idle requires a page-edit fixture",
         );
-        await pageWriteIdle(resolve("src/pages/inline.html"));
+        await pageWriteIdle(
+          resolve(
+            devModuleExternalEnabled
+              ? "src/pages/external.html"
+              : "src/pages/inline.html",
+          ),
+        );
         result = { idle: true };
       } else if (message.action === "completed") {
         assert(armed, "edit must be armed");

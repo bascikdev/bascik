@@ -5,7 +5,57 @@ import {
   isHealthEndpoint,
   handleHealthCheck,
   createGracefulShutdownHandler,
+  nodeServerTimeouts,
 } from "./server-lifecycle.ts";
+
+describe("nodeServerTimeouts (http.timeouts to Node's server options)", () => {
+  it("maps the documented defaults when http.timeouts is unset", () => {
+    expect(nodeServerTimeouts(undefined)).toEqual({
+      requestTimeout: 30000,
+      headersTimeout: 10000,
+      keepAliveTimeout: 5000,
+      connectionsCheckingInterval: 5000,
+    });
+  });
+
+  it("maps configured values, keeping defaults for the keys left out", () => {
+    expect(
+      nodeServerTimeouts({ request: 60000, keepAlive: 2000, drain: 1 }),
+    ).toEqual({
+      requestTimeout: 60000,
+      headersTimeout: 10000,
+      keepAliveTimeout: 2000,
+      connectionsCheckingInterval: 5000,
+    });
+  });
+
+  it("lowers the default headers timeout to a request set below it", () => {
+    // Node refuses headersTimeout > requestTimeout at startup.
+    expect(nodeServerTimeouts({ request: 4000 }).headersTimeout).toBe(4000);
+    expect(nodeServerTimeouts({ request: 4000, headers: 3000 })).toMatchObject({
+      requestTimeout: 4000,
+      headersTimeout: 3000,
+    });
+  });
+
+  it("checks deadlines often enough for a short headers timeout to fire close to on time", () => {
+    // Node's own interval is 30 s, which would let a 400 ms headers
+    // timeout fire 30 s late.
+    expect(
+      nodeServerTimeouts({ request: 1000, headers: 400 })
+        .connectionsCheckingInterval,
+    ).toBe(200);
+    // Never busier than every 50 ms, never lazier than Node's 30 s.
+    expect(
+      nodeServerTimeouts({ request: 10, headers: 10 })
+        .connectionsCheckingInterval,
+    ).toBe(50);
+    expect(
+      nodeServerTimeouts({ request: 600000, headers: 300000 })
+        .connectionsCheckingInterval,
+    ).toBe(30000);
+  });
+});
 
 describe("Health state management", () => {
   beforeEach(() => {

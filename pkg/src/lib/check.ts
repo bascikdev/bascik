@@ -42,6 +42,7 @@ import {
 import { getHttpPath } from "./paths.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
+import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
 import {
   validateUserConfig,
   type ConfigValidationError,
@@ -636,29 +637,9 @@ const mapConfigErrorSeverity = (
 };
 
 const resolveConfigSourcePath = (): string => {
-  const argv = process.argv.slice(2);
-  const inline = argv.find((arg) => arg.startsWith("--config="));
-  const inlinePath = inline ? inline.slice("--config=".length) : undefined;
-  const configFlagIndex = argv.indexOf("--config");
-  const flaggedPath =
-    configFlagIndex !== -1 &&
-    argv[configFlagIndex + 1] &&
-    !argv[configFlagIndex + 1].startsWith("-")
-      ? argv[configFlagIndex + 1]
-      : undefined;
-  const explicitPath = inlinePath || flaggedPath;
-  if (explicitPath) {
-    return relative(
-      process.cwd(),
-      resolve(process.cwd(), explicitPath),
-    ).replace(/\\/g, "/");
-  }
-
-  const jsPath = resolve(process.cwd(), "bascik.config.js");
-  if (existsSync(jsPath)) return "bascik.config.js";
-  const tsPath = resolve(process.cwd(), "bascik.config.ts");
-  if (existsSync(tsPath)) return "bascik.config.ts";
-  return "bascik.config.js";
+  const { path } = findConfigFile();
+  if (!path) return CONFIG_FILE_NAMES[0];
+  return relative(process.cwd(), path).replace(/\\/g, "/");
 };
 
 const canonicalPath = (filePath: string): string =>

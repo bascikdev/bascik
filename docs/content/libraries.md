@@ -191,7 +191,7 @@ petite-vue's `v-for` and `v-model` work as expected. Filter a list in real time 
 
 ### Shared State Across Components
 
-For state that needs to be shared between separate components, define it in a vanilla JavaScript module and import it in a `data-bascik-build` script or a regular `<script type="module">`:
+For state that needs to be shared between separate components, define it in a vanilla JavaScript module and import it in a regular `<script type="module">`:
 
 ```js
 // src/pages/store.js - imported by components that share state
@@ -201,12 +201,14 @@ export const store = reactive({ cart: [] });
 
 ```html
 <!-- src/components/cart-button.html -->
+<div id="cart-root" v-scope="{ store }">Cart ({{ store.cart.length }})</div>
 <script type="module">
   import { createApp } from "https://unpkg.com/petite-vue?module";
   import { store } from "/store.js";
-  createApp({ store }).mount("#cart-root");
+  // getElementById is rewritten to this instance's scoped id; a "#cart-root"
+  // string passed to mount() would not be.
+  createApp({ store }).mount(document.getElementById("cart-root"));
 </script>
-<div id="cart-root" v-scope="{ store }">Cart ({{ store.cart.length }})</div>
 ```
 
 ## Alpine.js
@@ -237,9 +239,9 @@ export const store = reactive({ cart: [] });
 
 ## Tailwind CSS
 
-[Tailwind CSS](https://tailwindcss.com) is a utility-first CSS framework. Because Tailwind's utility classes are global by design, you need to tell Bascik not to scope class attributes, otherwise Bascik renames `class="flex gap-4"` to `class="bascik__my-comp__flex bascik__my-comp__gap-4"`, which Tailwind's CSS will never match.
+[Tailwind CSS](https://tailwindcss.com) is a utility-first CSS framework. Tailwind's utility classes are global by design. Bascik scopes only the class names a component's own CSS defines, so `class="flex gap-4"` passes through unchanged unless the component's stylesheet also has a `.flex` or `.gap-4` rule; then Bascik renames it to `bascik__my-comp__flex`, which Tailwind's CSS will never match.
 
-Set `scoping.attributes.class` to `false` in `bascik.config.ts`:
+To rule that out, set `scoping.attributes.class` to `false` in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
@@ -309,7 +311,7 @@ With class scoping turned off, Tailwind utility classes work normally inside any
 
 For production, replace the CDN tag with a [Tailwind CLI](https://tailwindcss.com/docs/installation) build step that scans your source files and emits a single CSS file; the CDN is only recommended for development.
 
-> **Trade-off.** With `class: false`, Bascik no longer isolates component class names; you give up class-level CSS isolation in exchange for Tailwind compatibility. IDs and names are still scoped independently. For most Tailwind projects this is the right choice since Tailwind's utilities are intentionally global.
+> **Trade-off.** With `class: false`, Bascik no longer isolates component class names; you give up class-level CSS isolation in exchange for Tailwind compatibility. IDs are still scoped independently. For most Tailwind projects this is the right choice since Tailwind's utilities are intentionally global.
 
 ## Any Library Works
 

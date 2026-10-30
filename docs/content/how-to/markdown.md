@@ -18,7 +18,7 @@ Read a Markdown file and output the HTML:
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
 
@@ -29,7 +29,7 @@ Read a Markdown file and output the HTML:
 </script>
 ```
 
-The output replaces the script tag in the compiled HTML with no client-side JavaScript runs.
+The output replaces the script tag in the compiled HTML, and no client-side JavaScript runs.
 
 <!-- demo:source-md -->
 
@@ -68,7 +68,7 @@ Wrap the generated content with a stable class and link a regular stylesheet fro
 </head>
 <body>
   <main class="markdown-body">
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { readFile } from "node:fs/promises";
       import { marked } from "marked";
 
@@ -130,7 +130,7 @@ For a portable content style, create a component whose default slot receives the
 
 ```html
 <!-- src/components/markdown-content/markdown-content.html -->
-<article class="markdown-content">
+<article class="markdown-content" data-testid="markdown-content">
   <div data-bascik-slot></div>
 </article>
 ```
@@ -174,7 +174,7 @@ Have the build script emit the component tag around the parsed Markdown:
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
 
@@ -204,7 +204,10 @@ Markdown stays comfortable for authors, while the published page stays **vanilla
 The parser produces normal elements inside the resolved component:
 
 ```html
-<article class="bascik__markdown-content__markdown-content">
+<article
+  class="bascik__markdown-content__markdown-content"
+  data-testid="markdown-content"
+>
   <h2>A practical heading</h2>
   <p>
     Markdown stays comfortable for authors, while the published page stays
@@ -241,7 +244,7 @@ This is the post body.
 
 ```html
 <!-- src/pages/posts/my-first-post.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { marked } from "marked";
   import matter from "gray-matter";
@@ -253,7 +256,7 @@ This is the post body.
     return `
       <article>
         <h1>${data.title}</h1>
-        <time datetime="${data.date}">${new Date(data.date).toLocaleDateString("en-US", { dateStyle: "long" })}</time>
+        <time datetime="${data.date.toISOString().slice(0, 10)}">${data.date.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}</time>
         ${marked(content)}
       </article>
     `;
@@ -267,7 +270,7 @@ Read an entire folder of Markdown files and generate a list or index page:
 
 ```html
 <!-- src/pages/blog/index.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readdir, readFile } from "node:fs/promises";
   import matter from "gray-matter";
 
@@ -291,7 +294,7 @@ Read an entire folder of Markdown files and generate a list or index page:
         (p) => `
       <li>
         <a href="/posts/${p.slug}">${p.title}</a>
-        <time>${p.date}</time>
+        <time datetime="${p.date.toISOString().slice(0, 10)}">${p.date.toISOString().slice(0, 10)}</time>
       </li>
     `,
       )
@@ -302,7 +305,7 @@ Read an entire folder of Markdown files and generate a list or index page:
 </script>
 ```
 
-> **Tip.** Each post's HTML can live on its own page too. Create `src/pages/posts/[slug].html` as a template, or use a build script to generate static output files programmatically.
+> **Tip.** Each post's HTML can live on its own page too. Create `src/pages/posts/[slug].html` as a template with a `data-bascik-routes` script that lists the slugs. See [Dynamic Routes](/dynamic-routes).
 
 > **Exclude listing pages from the cache.** The [build script cache](/build-scripts) keys on the files a script names literally. It cannot see the result of `readdir`, so without an exclusion a new or renamed post does not appear until the cache is cleared. Add every page that reads the folder to `scripts.cache.exclude`, and add `content/` and your helper folder to `pipeline.watchPaths` so the dev server rebuilds on edits.
 
@@ -318,7 +321,7 @@ npm install markdown-it
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import MarkdownIt from "markdown-it";
 
@@ -338,7 +341,7 @@ npm install markdown-it highlight.js
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import MarkdownIt from "markdown-it";
   import hljs from "highlight.js";
@@ -378,7 +381,7 @@ npm install unified remark-parse remark-html
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
   import { unified } from "unified";
   import remarkParse from "remark-parse";
@@ -401,14 +404,14 @@ If your content comes from a headless CMS that returns Markdown via an API, fetc
 
 ```html
 <!-- src/pages/about.html -->
-<script data-bascik-build>
+<script data-bascik-build type="text/typescript">
   import { marked } from "marked";
 
   export default async function () {
     const res = await fetch("https://your-cms.example.com/api/page/home", {
       headers: { Authorization: `Bearer ${process.env.CMS_TOKEN}` },
     });
-    const { body } = await res.json();
+    const { body } = (await res.json()) as { body: string };
     return marked(body);
   }
 </script>

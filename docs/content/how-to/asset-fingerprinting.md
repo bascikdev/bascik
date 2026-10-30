@@ -15,7 +15,7 @@ Bascik's production server already sends strong SHA-256 content-hash `ETag` head
 ```ts
 // bascik.config.ts: per-extension cache-control, no build step needed.
 // Pair immutable with fingerprinted filenames whose content cannot change.
-import { defineConfig } from "@bascik/bascik";
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   http: {
@@ -39,7 +39,7 @@ One honest note: do not expect a Lighthouse improvement. The `uses-long-cache-tt
 
 A content hash does not have to be part of the file name. Appending it as a query string (`hero.webp?v=0eace9e1a7`) gives the same guarantee: when the bytes change, the URL changes, so a far-future cache can never serve a stale copy. Nothing is renamed on disk, and there is no post-build rewrite pass. Whatever writes the `<img>` tag computes the hash while it renders, because it already knows the file.
 
-The Bascik docs site works this way for its recorded demos and screenshots. The image helper in `docs/src/lib/md-renderer.ts` hashes each file in `/assets/demos/` and `/assets/vscode/` and emits `?v=<hash>` on the `src` and `srcset` URLs. A build script then writes a Cloudflare Pages `_headers` file that marks only those two folders `immutable`:
+The Bascik docs site works this way for its recorded demos and screenshots. The image helper in `docs/src/lib/md-renderer.ts` hashes each file in `/assets/demos/` and `/assets/vscode/` and emits `?v=<hash>` on the `src` and `srcset` URLs. A build script then writes a Cloudflare Pages `_headers` file that marks only those two folders, and the content-hashed search index, `immutable`:
 
 ```text
 /assets/demos/*
@@ -65,13 +65,13 @@ An `exec` step that runs **after** pages are written, hashes each asset, renames
 ```ts
 // bascik.config.ts: run fingerprinting as a post-transpile exec step,
 // after pages are written to dist/ and asset references exist to rewrite.
-import { defineConfig } from "@bascik/bascik";
+import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     exec: [
       {
-        script: "fingerprint-assets.mjs",
+        script: "fingerprint-assets.ts",
         phase: "post",
       },
     ],
@@ -81,8 +81,8 @@ export default defineConfig({
 
 <!-- demo:fingerprint-script -->
 
-```js
-// fingerprint-assets.mjs: content-hash renames for copied page assets,
+```ts
+// fingerprint-assets.ts: content-hash renames for copied page assets,
 // then rewrites references in the built HTML.
 import { createHash } from "node:crypto";
 import { readdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -91,7 +91,7 @@ import { join } from "node:path";
 const ASSET_DIR = "dist/assets/img";
 const files = await readdir(ASSET_DIR);
 
-const renames = [];
+const renames: [from: string, to: string][] = [];
 for (const file of files) {
   const full = join(ASSET_DIR, file);
   const buf = await readFile(full);
