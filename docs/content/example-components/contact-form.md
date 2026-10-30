@@ -18,7 +18,7 @@ This docs site is static, so it has no `/api/contact` route and sending shows th
 
 ## How It Works
 
-- `name` ships as written, so `new FormData(form)` and the no-JavaScript post both send the keys `name`, `email`, and `message`. See [The `name` Attribute](/name-attribute#naming-form-fields-for-submission).
+- `name` ships as written, so `new FormData(form)` and the no-JavaScript post both send the keys `name`, `email`, and `message`. See [Component Best Practices](/component-best-practices#naming-form-fields-for-submission).
 - The form keeps native validation, so without JavaScript the browser still blocks an empty or malformed submit. With JavaScript, the script calls `checkValidity()` and `reportValidity()`, which shows the browser's messages and focuses the first invalid field. `:user-invalid` styles a field only after the visitor has interacted with it.
 - The script sends JSON with `fetch`, disables the button while sending, and writes the outcome to a `role="status"` element.
 

@@ -564,7 +564,7 @@ A component's root element is the element that replaces its tag in the output, a
 </nav>
 ```
 
-Bascik never adds or removes a wrapper, so what you pick is what ships. [Semantic HTML](/semantic-html) has a table of jobs and their elements, with good and bad examples built by Bascik.
+Bascik never adds or removes a wrapper, so what you pick is what ships. [Component Best Practices](/component-best-practices#use-htmls-elements) has a table of jobs and their elements, with good and bad examples built by Bascik.
 
 Give the root `data-testid="<component-name>"` and each control inside it `data-testid="<component-name>-<part>"`, so end-to-end tests can find them after a production build hashes class names and IDs. Bascik never scopes or hashes `data-testid`. See [End-to-End Testing](/testing/e2e-testing#recommended-pattern-data-testid-attributes).
 
@@ -688,7 +688,7 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 
 ## Page Shells vs. Component Templates (Landmarks & Skip Links)
 
-Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts (see [Semantic HTML](/semantic-html) for the landmark elements themselves):
+Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts (see [Component Best Practices](/component-best-practices#use-htmls-elements) for the landmark elements themselves):
 
 - **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
 - **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).

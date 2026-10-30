@@ -1,6 +1,6 @@
 # Accessibility
 
-The Lighthouse accessibility audit runs a subset of the axe-core rules: semantic HTML, sufficient color contrast, keyboard navigability, accessible names, and valid ARIA usage. Because Bascik outputs real HTML, every accessibility technique the platform provides is available to you without a plugin or library. Components are plain HTML elements, so their semantics reach the final page unchanged. [Semantic HTML](/semantic-html) covers choosing those elements, including a component's root.
+The Lighthouse accessibility audit runs a subset of the axe-core rules: semantic HTML, sufficient color contrast, keyboard navigability, accessible names, and valid ARIA usage. Because Bascik outputs real HTML, every accessibility technique the platform provides is available to you without a plugin or library. Components are plain HTML elements, so their semantics reach the final page unchanged. [Component Best Practices](/component-best-practices#use-htmls-elements) covers choosing those elements, including a component's root.
 
 Lighthouse can only check what a machine can verify, so a score of 100 is a floor and not proof that a page is accessible. Test with a keyboard and a screen reader before you ship.
 

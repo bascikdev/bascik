@@ -1,5 +1,5 @@
 /**
- * The demos on /semantic-html.
+ * The semantic HTML demos on /component-best-practices (Use HTML's Elements).
  *
  * The Markdown is the single source: the Usage and HTML panes are <!-- demo:semantic-* --> blocks, and each Output
  * pane is generated, never hand-written. scripts/semantic-html-demos.ts writes each demo's source blocks into its own
@@ -60,8 +60,10 @@ describe("semantic-html demos: source blocks", () => {
   });
 
   it("the page shell has one demo box per demo, each reading its own blocks, and no Preview for the bad nav", () => {
-    const shell = readDocs("src/pages/semantic-html.html");
-    expect(shell.match(/<component-demo\b/g)).toHaveLength(DEMOS.length);
+    const shell = readDocs("src/pages/component-best-practices.html");
+    expect(shell.match(/<component-demo\b/g)!.length).toBeGreaterThanOrEqual(
+      DEMOS.length,
+    );
     for (const demo of DEMOS)
       for (const marker of [...demo.sources, demo.output])
         expect(shell, marker).toContain(`"${marker}"`);

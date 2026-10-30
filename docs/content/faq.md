@@ -83,7 +83,7 @@ No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly th
 
 ## Does Bascik enforce semantic HTML?
 
-No. Bascik ships the markup you wrote and never rewrites or rejects it, so a `<div>` stays a `<div>` and a `<nav>` stays a `<nav>`. It guides and warns instead. [Semantic HTML](/semantic-html) has the checklist, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a component whose root is a `<div>` where a `<nav>` or `<article>` fits, a skipped heading level, an image with no `alt`, a form control with no label, and a page with no `<main>`.
+No. Bascik ships the markup you wrote and never rewrites or rejects it, so a `<div>` stays a `<div>` and a `<nav>` stays a `<nav>`. It guides and warns instead. [Component Best Practices](/component-best-practices#use-htmls-elements) has the checklist, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a component whose root is a `<div>` where a `<nav>` or `<article>` fits, a skipped heading level, an image with no `alt`, a form control with no label, and a page with no `<main>`.
 
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 
@@ -176,11 +176,11 @@ Each script tag is isolated in its own IIFE so variables never leak into the glo
 
 ## Why are my form field names hashed?
 
-They are not by default: `name` ships as written, so `new FormData(form)` and a form post send the names you wrote. Names are hashed only in a project that sets `scoping.attributes.name: true`; there, add `data-bascik-preserve="name"` to a form whose server reads literal keys. See [The `name` Attribute](/name-attribute).
+They are not by default: `name` ships as written, so `new FormData(form)` and a form post send the names you wrote. Names are hashed only in a project that sets `scoping.attributes.name: true`; there, add `data-bascik-preserve="name"` to a form whose server reads literal keys. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups).
 
 ## Why do the radios in two copies of my component act as one group?
 
-`name` ships as written, and the HTML spec makes radios with one name and no form owner one group across the page. Give the component its own `<form>` around the radios, or give each copy its own name through a prop (`data-bascik-attr-name="group"` in the component, `data-bascik-prop-group="..."` on each usage). The linter warns (`shared-name-group`) when a component like this is used more than once on a page. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
+`name` ships as written, and the HTML spec makes radios with one name and no form owner one group across the page. Give the component its own `<form>` around the radios, or give each copy its own name through a prop (`data-bascik-attr-name="group"` in the component, `data-bascik-prop-group="..."` on each usage). The linter warns (`shared-name-group`) when a component like this is used more than once on a page. See [Component Best Practices](/component-best-practices#radio-groups-per-component-instance).
 
 ## How do I use a third-party widget that looks up an element by ID?
 

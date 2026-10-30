@@ -61,7 +61,7 @@ Each component instance receives its own scoped IDs, and every local reference p
 
 References that do not resolve in the same component remain byte-identical. This preserves component links to literal page-shell IDs, but a reference to an ID declared by another component cannot be scoped safely because that target is instance-specific. Keep related declarations and references in one component, move the target to the page shell, or use [Preserve Scoping](/preserve) when an external system owns the literal ID.
 
-`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, and `name` ships as written, so it is rewritten only when `scoping.attributes.name` is on. See [The `name` Attribute](/name-attribute) for what `name` means on a page, and why a radio group in a repeated component needs a `<form>` of its own.
+`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, and `name` ships as written, so it is rewritten only when `scoping.attributes.name` is on. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups) for what `name` means on a page, and why a radio group in a repeated component needs a `<form>` of its own.
 
 ## Pitfall: Class-Based DOM Lookups
 
@@ -370,7 +370,7 @@ The scoping format:
 
 - `class` → `bascik__<componentName>__<originalName>` (shared across all instances)
 - `id` → `bascik__<componentName>__<instanceId>__<originalName>` (unique per instance)
-- `name` → as written (the same per-instance form as `id` with `scoping.attributes.name: true`); see [The `name` Attribute](/name-attribute)
+- `name` → as written (the same per-instance form as `id` with `scoping.attributes.name: true`); see [Component Best Practices](/component-best-practices#name-form-controls-and-groups)
 
 > **Under the hood.** Read the [Scoping System internals](/internals/scoping-system) for the compiler passes, attribute maps, selector rewriting, and CSS deduplication that produce this output.
 

@@ -1,7 +1,7 @@
 // The agent skills teach semantic HTML (Collin 2026-10-29: "Bascik is all about web standards, which also means an
 // emphasis on semantic HTML. Not sure our docs or skills mention this, but it should.").
 //
-// - The bascik skill has a semantic HTML rule next to the component rules that routes to /semantic-html (skills are
+// - The bascik skill has a semantic HTML rule next to the component rules that routes to /component-best-practices#use-htmls-elements (skills are
 //   routers: the docs page is the reference), and its audit description names the semantic rules the script checks.
 // - bascik-migrate and bascik-refactor say to keep or improve semantics and never turn semantic markup into divs;
 //   a refactor that fixes non-semantic production markup logs it in the decisions ledger like a production defect.
@@ -27,7 +27,7 @@ const SEMANTIC_RULES = [
 
 describe("bascik skill: semantic HTML", () => {
   const skill = read("skills/bascik/SKILL.md");
-  const docs = read("docs/content/semantic-html.md");
+  const docs = read("docs/content/component-best-practices.md");
 
   it("has a numbered Semantic HTML rule among the must-follow rules", () => {
     const rules = skill.slice(skill.indexOf("## Rules (must follow)"));
@@ -37,8 +37,10 @@ describe("bascik skill: semantic HTML", () => {
       expect(rule, word).toContain(word);
   });
 
-  it("routes to the /semantic-html docs page, which covers the checklist with spec links, and holds no reference copy", () => {
-    expect(skill).toContain("read-doc.mjs /semantic-html");
+  it("routes to the /component-best-practices docs page, which covers the checklist with spec links, and holds no reference copy", () => {
+    expect(skill).toContain(
+      "read-doc.mjs /component-best-practices#use-htmls-elements",
+    );
     expect(skill).not.toContain("references/semantic-html.md");
     expect(existsSync(repo + "skills/bascik/references")).toBe(false);
     for (const topic of [
@@ -102,7 +104,9 @@ describe("migrate and refactor skills keep semantics", () => {
     expect(migrate).toMatch(
       /never turn semantic (markup|elements) into `?<div>`?s?/i,
     );
-    expect(migrate).toContain("read-doc.mjs /semantic-html");
+    expect(migrate).toContain(
+      "read-doc.mjs /component-best-practices#use-htmls-elements",
+    );
   });
 
   it("bascik-refactor carries the clean semantic HTML stance and logs fixes in the decisions ledger", () => {
@@ -113,7 +117,9 @@ describe("migrate and refactor skills keep semantics", () => {
     );
     expect(refactor).toMatch(/decisions ledger/i);
     expect(refactor).toMatch(/production defect/i);
-    expect(refactor).toContain("read-doc.mjs /semantic-html");
+    expect(refactor).toContain(
+      "read-doc.mjs /component-best-practices#use-htmls-elements",
+    );
     expect(refactor).not.toContain("references/semantic-html.md");
   });
 });
@@ -131,6 +137,8 @@ describe("AGENTS.md brief", () => {
       .split("\n")
       .filter((line) => line.startsWith("- ") && /semantic HTML/i.test(line));
     expect(semantic).toHaveLength(1);
-    expect(semantic[0]).toContain("/semantic-html)");
+    expect(semantic[0]).toContain(
+      "/component-best-practices#use-htmls-elements)",
+    );
   });
 });

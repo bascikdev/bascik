@@ -88,7 +88,7 @@ Use `data-bascik-attr-{attribute}="{propName}"` when the same prop values should
 </media-card>
 ```
 
-The directive is removed from compiled output. If the named prop is missing, Bascik adds no target attribute. If the target attribute already exists, the prop value wins and Bascik warns. Values are HTML-attribute-escaped. Bound `id` and `class` values enter the normal scoping pipeline. A bound `name` ships as the prop's value, which gives each usage its own radio group or `<details>` group (see [The `name` Attribute](/name-attribute)); with `scoping.attributes.name: true` it is scoped too.
+The directive is removed from compiled output. If the named prop is missing, Bascik adds no target attribute. If the target attribute already exists, the prop value wins and Bascik warns. Values are HTML-attribute-escaped. Bound `id` and `class` values enter the normal scoping pipeline. A bound `name` ships as the prop's value, which gives each usage its own radio group or `<details>` group (see [Component Best Practices](/component-best-practices#name-form-controls-and-groups)); with `scoping.attributes.name: true` it is scoped too.
 
 A few targets give the browser a value to run, and escaping cannot make that safe, so Bascik checks them. The rules are the same at build time and when a [server script returns the tag](/server-scripts#security):
 

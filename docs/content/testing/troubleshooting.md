@@ -157,11 +157,11 @@ Bascik rewrites `<label for>` automatically when the matching `id` is declared i
 
 ### Form field names are hashed
 
-`name` ships as written by default. Hashed names mean the project sets `scoping.attributes.name: true`: add `data-bascik-preserve="name"` to a form that posts to a service expecting literal keys, or turn the option off. `Unknown data-bascik-preserve token "..."` means the token was not one of `id`, `name`, or `class`. See [The `name` Attribute](/name-attribute) and [Preserve Scoping](/preserve).
+`name` ships as written by default. Hashed names mean the project sets `scoping.attributes.name: true`: add `data-bascik-preserve="name"` to a form that posts to a service expecting literal keys, or turn the option off. `Unknown data-bascik-preserve token "..."` means the token was not one of `id`, `name`, or `class`. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups) and [Preserve Scoping](/preserve).
 
 ### Radios in two copies of a component act as one group
 
-Choosing a radio in one copy clears the choice in another because `name` ships as written: radios with one name and no form owner are one group across the page. Wrap the radios in the component's own `<form>`, or bind the name to a prop (`data-bascik-attr-name="group"`, and a different `data-bascik-prop-group` on each usage). The linter reports this as `shared-name-group` on the component file. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
+Choosing a radio in one copy clears the choice in another because `name` ships as written: radios with one name and no form owner are one group across the page. Wrap the radios in the component's own `<form>`, or bind the name to a prop (`data-bascik-attr-name="group"`, and a different `data-bascik-prop-group` on each usage). The linter reports this as `shared-name-group` on the component file. See [Component Best Practices](/component-best-practices#radio-groups-per-component-instance).
 
 ### An exclusive `<details name>` accordion does not close the other items
 

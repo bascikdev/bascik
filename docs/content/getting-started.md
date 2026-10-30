@@ -104,7 +104,7 @@ VS Code's built-in HTML checker joins every classic `<script>` (one without `typ
 </html>
 ```
 
-At build time, Bascik replaces `<site-nav>` with its component markup and scopes the class names its CSS uses into `dist/index.html`. The `<nav>` you wrote is the `<nav>` that ships, and the `lang` attribute and `<main>` landmark tell browsers and screen readers what the page is: see [Semantic HTML](/semantic-html) for the elements to pick.
+At build time, Bascik replaces `<site-nav>` with its component markup and scopes the class names its CSS uses into `dist/index.html`. The `<nav>` you wrote is the `<nav>` that ships, and the `lang` attribute and `<main>` landmark tell browsers and screen readers what the page is: see [Component Best Practices](/component-best-practices#use-htmls-elements) for the elements to pick.
 
 <!-- demo:page-output-html -->
 

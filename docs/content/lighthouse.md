@@ -19,7 +19,7 @@ Bascik inverts that relationship. Adding a new component adds zero JavaScript to
 Start with the category you want to improve. Each page lists what Lighthouse checks, what Bascik already does for you, and the vanilla HTML, CSS, and JavaScript patterns for the rest.
 
 - **[Performance](/lighthouse/performance):** Responsive images, lazy loading, resource hints, font loading, critical CSS, minification, and profiling with Chrome DevTools.
-- **[Accessibility](/lighthouse/accessibility):** Semantic landmarks, labels, skip links, contrast, focus, and native interactive elements like `<details>` and `<dialog>`. Start with [Semantic HTML](/semantic-html): most accessibility audits pass when each element is the right one for its job.
+- **[Accessibility](/lighthouse/accessibility):** Semantic landmarks, labels, skip links, contrast, focus, and native interactive elements like `<details>` and `<dialog>`. Start with [Component Best Practices](/component-best-practices#use-htmls-elements): most accessibility audits pass when each element is the right one for its job.
 - **[Best Practices](/lighthouse/best-practices):** HTTPS, a valid document shell, image aspect ratios, a clean console, and Content Security Policy hashes.
 - **[SEO](/lighthouse/seo):** Titles, descriptions, canonical URLs, Open Graph, JSON-LD structured data, and a complete head template.
 - **[Agentic Browsing](/lighthouse/agentic-browsing):** The accessibility tree, layout stability, and `llms.txt` for AI agents and automated browsers.

@@ -31,7 +31,7 @@ describe("bascik-components skill: the name attribute", () => {
       "shared-name-group",
       "`action`",
       "`submit`",
-      "/name-attribute",
+      "/component-best-practices#name-form-controls-and-groups",
     ])
       expect(rule, text).toContain(text);
   });
@@ -45,7 +45,7 @@ describe("bascik-components skill: the name attribute", () => {
   });
 
   it("points at a docs page that is in the nav", () => {
-    expect(navHrefs).toContain("/name-attribute");
+    expect(navHrefs).toContain("/component-best-practices");
   });
 });
 

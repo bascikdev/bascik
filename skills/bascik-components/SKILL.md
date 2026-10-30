@@ -218,7 +218,7 @@ Production builds shorten these to hashes. Never hard-code a scoped name. Tests 
 7. **Scripts run once per instance and may run late** (production moves body scripts to the end). Re-sync form-driven state on `pageshow`.
 8. **Talk between components with bubbling `CustomEvent`s** listened for on `document`. Never query another component's elements.
 9. **Progressive enhancement:** render something useful without JavaScript; mark script-only controls `hidden` and unhide them in the script.
-10. **`name` ships as written; it is a page-level contract.** It is the key a field is submitted under (`FormData`, a form post), so write the keys the server reads. Radios with one `name` and no form owner are one group across the page, so a component that holds a whole radio group wraps it in its own `<form>`, or binds `data-bascik-attr-name="group"` (no literal `name`) with a different `data-bascik-prop-group` per usage. The linter warns `shared-name-group` on such a component used twice on a page. Never name a control `action`, `method`, `submit`, `reset`, `elements`, or another form property: it clobbers `form.action` and `form.submit()`. See `/name-attribute`.
+10. **`name` ships as written; it is a page-level contract.** It is the key a field is submitted under (`FormData`, a form post), so write the keys the server reads. Radios with one `name` and no form owner are one group across the page, so a component that holds a whole radio group wraps it in its own `<form>`, or binds `data-bascik-attr-name="group"` (no literal `name`) with a different `data-bascik-prop-group` per usage. The linter warns `shared-name-group` on such a component used twice on a page. Never name a control `action`, `method`, `submit`, `reset`, `elements`, or another form property: it clobbers `form.action` and `form.submit()`. See `/component-best-practices#name-form-controls-and-groups`.
 11. **HTML before script:** `<details name>` (one item per component makes a page-wide accordion), `popover`/`popovertarget`, `<dialog>`, `:user-invalid`, and `:has()` replace most widget code.
 
 ## CSS rules (must follow)
@@ -265,7 +265,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | Know exactly what CSS is scoped                                          | `/scoped-styles`, `/compatibility#css-scoping`                      |
 | Know which DOM calls are rewritten                                       | `/scoped-javascript`, `/compatibility#dom-selector-rewriting`       |
 | Keep names literal (`preserve`, `data-bascik-preserve`)                  | `/preserve`                                                         |
-| `name` on fields, radios, `<details>`, `<iframe>`, `<map>`               | `/name-attribute`                                                   |
+| `name` on fields, radios, `<details>`, `<iframe>`, `<map>`               | `/component-best-practices#name-form-controls-and-groups`           |
 | Pick an interactivity pattern (fetch, storage, events, delegation, a11y) | `/how-to/interactivity`                                             |
 | Set up tokens, dark mode, fonts, Tailwind                                | `/how-to/theming`                                                   |
 | Style a child component's root from its parent                           | `/attribute-inheritance`                                            |

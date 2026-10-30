@@ -138,7 +138,7 @@ New components are picked up by the running dev server automatically; no restart
 4. **Props carry text only.** `data-bascik-prop-*` values are HTML-escaped strings. Pass markup or nested components through slots (`data-bascik-slot`).
 5. **Self-close** components that take no slot content: `<site-head />`, `<site-footer />`.
 6. **HTML and CSS first.** Reach for JavaScript only when HTML and CSS cannot do the job cleanly (`<details>`, `<dialog>`, `:has()`, `popover` cover a lot).
-7. **Semantic HTML.** Pick the element the HTML standard defines for the job, because Bascik ships exactly the markup you write: a component's root is the semantic element itself (`<site-nav>` renders a `<nav>`, a review an `<article>`, a form a `<form>`), not a wrapper `<div>`; `<button type="button">` for actions and `<a href>` for navigation, never a clickable `<div>` or `<span>`; one `<main>` and one `<h1>` per page with no skipped heading levels; a `<label>` for every control; `alt` on every image; native `<details>`, `<dialog>`, and `popover` before ARIA or JavaScript. The checklist with spec links: `read-doc.mjs /semantic-html`.
+7. **Semantic HTML.** Pick the element the HTML standard defines for the job, because Bascik ships exactly the markup you write: a component's root is the semantic element itself (`<site-nav>` renders a `<nav>`, a review an `<article>`, a form a `<form>`), not a wrapper `<div>`; `<button type="button">` for actions and `<a href>` for navigation, never a clickable `<div>` or `<span>`; one `<main>` and one `<h1>` per page with no skipped heading levels; a `<label>` for every control; `alt` on every image; native `<details>`, `<dialog>`, and `popover` before ARIA or JavaScript. The checklist with spec links: `read-doc.mjs /component-best-practices#use-htmls-elements`.
 8. **Runtime state in `data-` attributes.** Toggle `data-state="open"` and style `.panel[data-state="open"]`; anchor attribute selectors on a scoped class.
 9. **Zero config.** Do not create `bascik.config.ts` unless a requirement differs from a default, and never put `siteUrl` in it. See the `bascik-config` skill.
 10. **Never write generated files into `src/`.** Generated output goes to `dist/` (`BASCIK_OUT_DIR`) from an existing `pipeline.exec` script.
@@ -236,7 +236,7 @@ node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 | How do I...                                           | Read                                                          |
 | ----------------------------------------------------- | ------------------------------------------------------------- |
 | Write components, slots, props, attributes            | `/components`, `/slots`, `/props`, `/attribute-inheritance`   |
-| Pick semantic elements, landmarks, headings, labels   | `/semantic-html`                                              |
+| Pick semantic elements, landmarks, headings, labels   | `/component-best-practices#use-htmls-elements`                |
 | Pass shared `<head>` tags                             | `/how-to/templating`                                          |
 | Use a library (petite-vue, Alpine.js, HTMX, Tailwind) | `/libraries`                                                  |
 | Use a third-party web component                       | `/how-to/third-party-web-components`                          |

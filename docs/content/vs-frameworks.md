@@ -76,7 +76,7 @@ Bascik overlaps with them at the output level, all of these tools can ship plain
 
 ## The Key Difference
 
-Bascik ships the HTML you wrote, element for element, so the [semantic HTML](/semantic-html) you choose (a `<nav>`, a `<button>`, a `<details>`) reaches the browser unchanged, with no component wrapper or hydration markup around it.
+Bascik ships the HTML you wrote, element for element, so the [semantic HTML](/component-best-practices#use-htmls-elements) you choose (a `<nav>`, a `<button>`, a `<details>`) reaches the browser unchanged, with no component wrapper or hydration markup around it.
 
 | Tool                         |                Runtime shipped | Component model or APIs required                                          | Attribute / source syntax                                          | Requires server      |
 | ---------------------------- | -----------------------------: | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------- |

@@ -1,5 +1,5 @@
 /**
- * Writes the Output blocks of the demos on /name-attribute from a real `bascik --build`.
+ * Writes the Output blocks of the demos on /component-best-practices from a real `bascik --build`.
  *
  *   yarn workspace bascik-docs generate:name-attribute-demos
  *

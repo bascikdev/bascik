@@ -1,5 +1,5 @@
 /**
- * Writes the Output blocks of the demos on /semantic-html from a real `bascik --build`, and the audit finding the page
+ * Writes the Output blocks of the demos on /component-best-practices from a real `bascik --build`, and the audit finding the page
  * quotes from a real run of the bascik skill's audit-components.mjs.
  *
  *   yarn workspace bascik-docs generate:semantic-html-demos

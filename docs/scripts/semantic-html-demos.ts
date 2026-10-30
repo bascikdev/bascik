@@ -1,5 +1,5 @@
 /**
- * The Output panes of the demos on /semantic-html, produced by the real compiler, and the audit finding the page
+ * The Output panes of the demos on /component-best-practices, produced by the real compiler, and the audit finding the page
  * quotes for its clickable <div>.
  *
  * The Markdown is the single source. For each demo this library writes the demo's source blocks into its own temp
@@ -35,7 +35,7 @@ export const SCRATCH = "/tmp/bascik-semantic";
 const BASCIK_BIN = path.join(repoRoot, "pkg/bin/bascik.js");
 const AUDIT = path.join(repoRoot, "skills/bascik/scripts/audit-components.mjs");
 
-export const MD = "content/semantic-html.md";
+export const MD = "content/component-best-practices.md";
 
 export interface SemanticDemo {
   id: string;

@@ -123,7 +123,7 @@ To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence
 
 ### `shared-name-group`
 
-`name` ships as written ([The `name` Attribute](/name-attribute)), so a component that holds a whole name group makes one group of all its copies on a page. The linter warns on the `name` attribute in the component file when the component is used more than once on one page and holds:
+`name` ships as written ([Component Best Practices](/component-best-practices#name-form-controls-and-groups)), so a component that holds a whole name group makes one group of all its copies on a page. The linter warns on the `name` attribute in the component file when the component is used more than once on one page and holds:
 
 - two or more radios with one `name` that are not inside a `<form>` of the component's own (and have no `form` attribute): the copies are one radio group, so choosing in one copy clears the others;
 - two or more `<details>` with one `name`: the copies are one exclusive accordion;

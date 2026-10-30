@@ -1,5 +1,5 @@
 /**
- * The Output panes of the two demos on /name-attribute (a radio group per component copy, and an exclusive
+ * The Output panes of the two demos on /component-best-practices (a radio group per component copy, and an exclusive
  * `<details>` accordion across copies), produced by the real compiler.
  *
  * The Markdown is the single source. This library writes the demos' source blocks into one temp site under
@@ -31,7 +31,7 @@ const DOCS_ROOT = path.resolve(import.meta.dirname, "..");
 const SCRATCH = "/tmp/bascik-name-attribute";
 const BASCIK_BIN = path.join(repoRoot, "pkg/bin/bascik.js");
 
-export const MD = "content/name-attribute.md";
+export const MD = "content/component-best-practices.md";
 
 /** Each demo: the source blocks a reader copies into a site, the page it builds, and its generated block. */
 export const DEMOS = [

@@ -1,5 +1,5 @@
 /**
- * The two demos on /name-attribute: a radio group per component copy, and an exclusive `<details>` accordion
+ * The two demos on /component-best-practices (Name Form Controls and Groups): a radio group per component copy, and an exclusive `<details>` accordion
  * across copies.
  *
  * The Markdown is the single source: the Usage and HTML panes are <!-- demo:name-* --> blocks, and the Output panes
@@ -19,8 +19,8 @@ import { readDemoBlock } from "../src/lib/md-renderer.ts";
 import type { NameAttributeDemoRun } from "./name-attribute-demos.ts";
 
 const DOCS_ROOT = path.resolve(import.meta.dirname, "..");
-const MD = "content/name-attribute.md";
-const PAGE = "src/pages/name-attribute.html";
+const MD = "content/component-best-practices.md";
+const PAGE = "src/pages/component-best-practices.html";
 
 const readDocs = (rel: string) =>
   readFileSync(path.join(DOCS_ROOT, rel), "utf8");

@@ -19,6 +19,8 @@
  * Speculation rules are not sent here. A `Speculation-Rules` header names a rules file, which is one more request
  * before first paint on every page, so the rules are inline in docs-head and hashed into each page's policy.
  *
+ * Moved pages redirect through the `_redirects` file (PAGE_REDIRECTS), written by the same script.
+ *
  * The production `*.pages.dev` alias serves the same pages as bascik.dev. Pages already sends `noindex` for
  * preview deployments, but not for that alias, so a host-scoped rule keeps it out of search results. The
  * `:project` placeholder matches any project name, so the rule never touches the custom domain.
@@ -63,6 +65,40 @@ export function pagesHeaders(
       (file) => `${file}\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
     ),
   ].join("\n");
+}
+
+/**
+ * Pages that moved, as `[old URL, new URL]`. Each becomes a 301 in the Cloudflare Pages `_redirects` file, which
+ * Pages follows before it looks for a static asset, and the destination keeps its fragment, so an old link lands on
+ * the section that holds the content now.
+ */
+export const PAGE_REDIRECTS: ReadonlyArray<readonly [string, string]> = [
+  ["/semantic-html", "/component-best-practices#use-htmls-elements"],
+  [
+    "/name-attribute",
+    "/component-best-practices#name-form-controls-and-groups",
+  ],
+];
+
+/** The Cloudflare Pages `_redirects` file: one `from to 301` line per moved page. */
+export function pagesRedirects(
+  redirects: ReadonlyArray<readonly [string, string]> = PAGE_REDIRECTS,
+): string {
+  return redirects.map(([from, to]) => `${from} ${to} 301\n`).join("");
+}
+
+/** The rules of a `_redirects` file, in order. Blank lines and `#` comments are left out. */
+export function parseRedirectRules(
+  text: string,
+): Array<{ from: string; to: string; status: number }> {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => {
+      const [from, to, status = "302"] = line.split(/\s+/);
+      return { from, to, status: Number(status) };
+    });
 }
 
 /** Site folders under `pagesDir` that contain pages, like `/deployment/`. The assets folder is not one. */

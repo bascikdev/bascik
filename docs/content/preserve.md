@@ -4,7 +4,7 @@ Keep selected component attributes literal when an external system or browser AP
 
 ## How Preserve Works
 
-Bascik scopes `id` and `class` inside components so repeated instances never collide, and `name` too when `scoping.attributes.name` is on (it ships as written by default; see [The `name` Attribute](/name-attribute)). It also rewrites the references that follow those ids: `<label for>`, `aria-*` id lists, fragment-only `href` values on `<a>`, `<area>`, and `<use>`, SVG `url(#id)` values, and similar attributes.
+Bascik scopes `id` and `class` inside components so repeated instances never collide, and `name` too when `scoping.attributes.name` is on (it ships as written by default; see [Component Best Practices](/component-best-practices#name-form-controls-and-groups)). It also rewrites the references that follow those ids: `<label for>`, `aria-*` id lists, fragment-only `href` values on `<a>`, `<area>`, and `<use>`, SVG `url(#id)` values, and similar attributes.
 
 Preserve removes a region from both halves of that process:
 
@@ -91,7 +91,7 @@ Values are space-separated. The valid tokens are `id`, `name`, and `class`:
 
 An unknown token produces a warning and is ignored. Valid tokens beside it still apply. The `name` token changes nothing unless the project opts in to name scoping.
 
-> **Radio groups.** With `name` as written, radios with one name and no `<form>` of their own are one group across every instance on the page. Give a component that holds a whole radio group its own `<form>`, or a name through a prop. The linter warns (`shared-name-group`) when such a component is used more than once on a page. See [The `name` Attribute](/name-attribute#radio-groups-per-component-instance).
+> **Radio groups.** With `name` as written, radios with one name and no `<form>` of their own are one group across every instance on the page. Give a component that holds a whole radio group its own `<form>`, or a name through a prop. The linter warns (`shared-name-group`) when such a component is used more than once on a page. See [Component Best Practices](/component-best-practices#radio-groups-per-component-instance).
 
 ## Hand-Authored SVG
 
