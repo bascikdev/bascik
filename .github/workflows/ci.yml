@@ -1,7 +1,11 @@
 name: CI
 
-# Every branch push runs CI, and its stage 5 deploys: main to production, any other branch to a Preview of both
-# Workers. Tags never run it (release.yml handles them): a push filter with only `branches` skips tag pushes.
+# A push to a branch other than main runs every stage, then uploads a Preview of both Workers. A push to main (a
+# merged pull request, already tested on its branch) skips stages 1 to 4 and only deploys both Workers to
+# production: the stage 1 jobs skip on main, every test job after them skips with them, and the deploy jobs run
+# anyway because their `if` starts with !cancelled(). On any other branch the deploy jobs still need every stage 4
+# job to have succeeded. Tags never run CI (release.yml handles them): a push filter with only `branches` skips
+# tag pushes.
 #
 # pull_request is here only so pull requests from forks get tested. A pull request from a branch of this repo is
 # already tested by that branch's push run, whose checks are on the same head commit and so show on the pull
@@ -29,7 +33,9 @@ jobs:
     name: Jelly Static Analysis
     runs-on: ubuntu-latest
     # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     permissions:
       contents: read
     steps:
@@ -60,7 +66,9 @@ jobs:
     name: Semgrep Static Analysis
     runs-on: ubuntu-latest
     # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     permissions:
       contents: read
     steps:
@@ -75,7 +83,9 @@ jobs:
     name: Workspace Typechecks
     runs-on: ubuntu-latest
     # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     permissions:
       contents: read
     steps:
@@ -103,7 +113,9 @@ jobs:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest
     # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     permissions:
       contents: read
     steps:
@@ -882,7 +894,11 @@ jobs:
   deploy-docs:
     name: Deploy Docs (bascik.dev)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.repository == 'bascikdev/bascik'
+    if: >-
+      !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
+      github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
     needs:
@@ -990,7 +1006,11 @@ jobs:
   deploy-demo:
     name: Deploy Adapter Demo (cloudflare-adapter.bascik.dev)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.repository == 'bascikdev/bascik'
+    if: >-
+      !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
+      github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
     needs:

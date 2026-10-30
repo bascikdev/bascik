@@ -619,12 +619,13 @@ function allNeeds(jobs: Map<string, CiJob>, id: string): Set<string> {
   return seen;
 }
 
-type Value = string | boolean | null;
+type Value = string | boolean | null | readonly string[];
 
 /**
  * Evaluates the subset of the GitHub Actions expression syntax that ci.yml
  * uses: context paths, '…' strings, true/false/null, ==, !=, !, &&, ||,
- * parentheses, and startsWith, format, success, always and cancelled. A path
+ * parentheses, and startsWith, format, contains, success, always and cancelled,
+ * with `needs.*.result` as a list. A path
  * missing from `context` throws, so a typo'd context name fails the test
  * instead of reading as empty.
  */
@@ -636,7 +637,7 @@ function evaluate(expression: string, context: Record<string, Value>): Value {
   // One sticky pass: each alternative starts with a different character, so
   // tokenizing is linear in the expression length.
   const token =
-    /\s*(?:('(?:[^']|'')*')|(==|!=|&&|\|\||[!(),])|([A-Za-z_][\w.-]*))/y;
+    /\s*(?:('(?:[^']|'')*')|(==|!=|&&|\|\||[!(),])|([A-Za-z_][\w.*-]*))/y;
   while (token.lastIndex < source.length) {
     const from = token.lastIndex;
     const match = token.exec(source);
@@ -666,6 +667,12 @@ function evaluate(expression: string, context: Record<string, Value>): Value {
       String(pattern).replace(/\{(\d+)\}/g, (_, n: string) =>
         String(args[Number(n)] ?? ""),
       ),
+    contains: (haystack, needle) =>
+      Array.isArray(haystack)
+        ? haystack.some((item) => equal(item, needle))
+        : String(haystack ?? "")
+            .toLowerCase()
+            .includes(String(needle ?? "").toLowerCase()),
     success: () => true,
     always: () => true,
     cancelled: () => false,
@@ -756,18 +763,33 @@ function runContext(
 
 /**
  * Which jobs, and which steps of the stage 5 jobs, a run with `context`
- * starts. A job runs when its `if` holds and every job it needs ran (a skipped
- * need skips the job, as GitHub does without an always() or failure()). A
- * deploy job's `preview-url` output is set when its upload step ran.
+ * starts. As on GitHub, a job whose `if` has no status function (success,
+ * always, cancelled, failure) runs only when every job it needs succeeded; one
+ * whose `if` has a status function is evaluated whatever its needs did, with
+ * `needs.*.result` listing their results ("skipped" for a need that did not
+ * run). A job in `failed` runs and then fails. A deploy job's `preview-url`
+ * output is set when its upload step ran.
  */
-function simulate(jobs: Map<string, CiJob>, context: Record<string, Value>) {
+function simulate(
+  jobs: Map<string, CiJob>,
+  context: Record<string, Value>,
+  failed: ReadonlySet<string> = new Set(),
+) {
   const ran = new Set<string>();
+  const results = new Map<string, string>();
   const steps = new Map<string, string[]>();
-  const scope = { ...context };
+  const scope: Record<string, Value> = { ...context };
   for (const [id, job] of jobs) {
-    if (!job.needs.every((need) => ran.has(need))) continue;
+    const needResults = job.needs.map((need) => results.get(need) ?? "skipped");
+    const statusCheck = /\b(?:success|always|cancelled|failure)\(/.test(
+      job.if ?? "",
+    );
+    if (!statusCheck && needResults.some((result) => result !== "success"))
+      continue;
+    scope["needs.*.result"] = needResults;
     if (!isTruthy(evaluate(job.if ?? "success()", scope))) continue;
     ran.add(id);
+    results.set(id, failed.has(id) ? "failure" : "success");
     if (job.stage !== 5) continue;
     const names = job.steps
       .filter((step) => isTruthy(evaluate(step.if ?? "success()", scope)))
@@ -959,7 +981,7 @@ describe("CI stages and the deploy stage", () => {
   it("skips same-repo pull_request runs at stage 1, so the branch's push run is the only test run", () => {
     for (const id of stage(1))
       expect(jobs.get(id)!.if, id).toBe(
-        "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository",
+        "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
       );
     // Every later job needs stage 1 (directly or not), so the whole run skips.
     const sameRepo = simulate(
@@ -981,14 +1003,30 @@ describe("CI stages and the deploy stage", () => {
     for (const id of stage(5)) expect(fork.ran.has(id), id).toBe(false);
   });
 
-  it("deploys main to production, and never only previews it", () => {
+  it("deploys main to production without running the tests again, and never only previews it", () => {
     const main = simulate(jobs, runContext("push", "refs/heads/main"));
+    // A merged pull request was tested on its branch, so main skips stages 1 to 4.
+    for (const n of [1, 2, 3, 4])
+      for (const id of stage(n)) expect(main.ran.has(id), id).toBe(false);
     for (const id of ["deploy-docs", "deploy-demo"])
       expect(wranglerSteps(main.steps.get(id)), id).toEqual([
         "Deploy to production",
         "Smoke-test production",
       ]);
     expect(main.ran.has("preview-comment")).toBe(false);
+  });
+
+  it("previews nothing when any stage 4 job of a branch fails", () => {
+    for (const failing of stage(4)) {
+      const push = simulate(
+        jobs,
+        runContext("push", "refs/heads/feature/x"),
+        new Set([failing]),
+      );
+      for (const id of ["deploy-docs", "deploy-demo"])
+        expect(push.ran.has(id), `${failing} failed: ${id}`).toBe(false);
+      expect(push.ran.has("preview-comment"), failing).toBe(false);
+    }
   });
 
   it("previews both Workers on every other branch push, and publishes the URLs", () => {
