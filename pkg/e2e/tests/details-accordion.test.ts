@@ -6,8 +6,13 @@
  * group spans three component instances: Bascik ships `name` as written
  * (name scoping is opt-in), or each item would be a group of one and opening
  * one would not close the others.
+ *
+ * Each usage tag carries its own data-testid, which replaces the root's
+ * `accordion-item`, so every instance is found by name rather than position.
  */
 import { test, expect } from "@playwright/test";
+
+const ITEMS = ["item-shipping", "item-returns", "item-warranty"];
 
 test.describe("details-accordion-test page — <details name> across instances", () => {
   test.beforeEach(async ({ page }) => {
@@ -15,20 +20,27 @@ test.describe("details-accordion-test page — <details name> across instances",
   });
 
   test("every item keeps the authored name", async ({ page }) => {
-    const items = page.getByTestId("accordion-item");
-    await expect(items).toHaveCount(3);
-    for (let i = 0; i < 3; i++)
-      await expect(items.nth(i)).toHaveAttribute("name", "faq");
+    for (const id of ITEMS)
+      await expect(page.getByTestId(id)).toHaveAttribute("name", "faq");
+  });
+
+  test("each usage tag's data-testid replaces the root's own", async ({
+    page,
+  }) => {
+    for (const id of ITEMS)
+      await expect(page.getByTestId(id)).toHaveJSProperty("tagName", "DETAILS");
+    await expect(page.getByTestId("accordion-item")).toHaveCount(0);
   });
 
   test("opening one item closes the open one", async ({ page }) => {
-    const items = page.getByTestId("accordion-item");
-    const questions = page.getByTestId("accordion-question");
-    await questions.nth(0).click();
-    await expect(items.nth(0)).toHaveAttribute("open", "");
-    await questions.nth(2).click();
-    await expect(items.nth(2)).toHaveAttribute("open", "");
-    await expect(items.nth(0)).not.toHaveAttribute("open", /.*/);
-    await expect(items.nth(1)).not.toHaveAttribute("open", /.*/);
+    const [shipping, returns, warranty] = ITEMS.map((id) =>
+      page.getByTestId(id),
+    );
+    await shipping.getByTestId("accordion-question").click();
+    await expect(shipping).toHaveAttribute("open", "");
+    await warranty.getByTestId("accordion-question").click();
+    await expect(warranty).toHaveAttribute("open", "");
+    await expect(shipping).not.toHaveAttribute("open", /.*/);
+    await expect(returns).not.toHaveAttribute("open", /.*/);
   });
 });
