@@ -66,15 +66,15 @@ const section = (heading: string): string => {
 };
 
 describe(PAGE, () => {
-  it("sits in Components right after Preserve Scoping, with an h1 equal to its label", () => {
+  it("sits last in Components, labeled Best Practices, with the h1 Component Best Practices", () => {
     const components = NAV.find((s) => s.section === "Components")!;
     const hrefs = components.pages.map((p) => p.href);
-    expect(hrefs.indexOf(PAGE)).toBe(hrefs.indexOf("/preserve") + 1);
+    expect(hrefs.indexOf(PAGE)).toBe(hrefs.length - 1);
     expect(
       NAV.filter((s) => s.pages.some((p) => p.href === PAGE)),
     ).toHaveLength(1);
     expect(components.pages.find((p) => p.href === PAGE)!.label).toBe(
-      "Component Best Practices",
+      "Best Practices",
     );
     expect(md.split("\n")[0]).toBe("# Component Best Practices");
     for (const old of ["/semantic-html", "/name-attribute"])
