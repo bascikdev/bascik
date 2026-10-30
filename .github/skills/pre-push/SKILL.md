@@ -3,6 +3,7 @@ name: pre-push
 description: "Pre-push checklist: code review & TDD, doc/README updates, check spelling/standards, test workspace (including Lighthouse CLI), update coverage, update the agent skills in skills/, and propagate."
 disable-model-invocation: true
 ---
+
 Run these steps in order before pushing.
 
 1. Do a pre-review of this branch's committed and uncommitted changes. If you spot anything suspicious, fragile, or a code smell, use Test-Driven Development (TDD) to write failing unit or integration tests to probe your suspicions. This will then enable you to make better choices on if there is a real problem or not. If you need to fix something, the tests are something to validate against.
