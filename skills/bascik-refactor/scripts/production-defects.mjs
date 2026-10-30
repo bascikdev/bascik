@@ -229,6 +229,7 @@ export function diffDefects(prod, target) {
 
 const cell = (v) =>
   String(v ?? "")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\n/g, " ");
 

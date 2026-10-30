@@ -1,9 +1,38 @@
 import { describe, it, expect } from "vitest";
 import {
   hasHiddenSegment,
+  isBascikFolderName,
   matchApiRoute,
   WELL_KNOWN_SEGMENT,
 } from "./route-matching.ts";
+
+describe("isBascikFolderName", () => {
+  it.each([
+    ".bascik",
+    ".BASCIK",
+    ".Bascik",
+    ".bascik.",
+    ".bascik . ",
+    ".bascik  ",
+  ])("names %j as the private folder", (segment) => {
+    expect(isBascikFolderName(segment)).toBe(true);
+  });
+
+  it.each(["bascik", ".bascikx", ". bascik", ".bascik.x", ""])(
+    "does not name %j",
+    (segment) => {
+      expect(isBascikFolderName(segment)).toBe(false);
+    },
+  );
+
+  it("misuse: a request segment of many spaces and dots is answered in linear time", () => {
+    const segment = ". ".repeat(100_000) + "x";
+    const started = performance.now();
+    expect(isBascikFolderName(segment)).toBe(false);
+    expect(isBascikFolderName(". ".repeat(100_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+});
 
 describe("hasHiddenSegment", () => {
   it("names the RFC 8615 well-known segment", () => {

@@ -121,7 +121,7 @@ function anchorOf(el, mode) {
 }
 
 /** In the page: whether the crawl may activate `el` at all (a hover never leaves the page, so any link may be hovered). */
-function activatable(el, mode, masks) {
+export function activatable(el, mode, masks) {
   if (!isRendered(el)) return false;
   if (isMasked(el, masks)) return false;
   if (el.closest("[disabled], [inert]")) return false;
@@ -133,10 +133,15 @@ function activatable(el, mode, masks) {
     return false;
   const link = el.closest("a[href]");
   if (link && mode !== "hover") {
-    const href = link.getAttribute("href");
-    if (!href.startsWith("#") && !href.startsWith("javascript:")) {
+    // A javascript: link runs in this page. A data: or vbscript: link, like any other scheme, opens another document
+    // or nothing, so the crawl never clicks it. The parsed protocol is lower case, whatever the author wrote.
+    if (!link.getAttribute("href").startsWith("#")) {
       const to = new URL(link.href, location.href);
-      if (to.origin + to.pathname !== location.origin + location.pathname)
+      if (to.protocol === "data:" || to.protocol === "vbscript:") return false;
+      if (
+        to.protocol !== "javascript:" &&
+        to.origin + to.pathname !== location.origin + location.pathname
+      )
         return false;
     }
   }

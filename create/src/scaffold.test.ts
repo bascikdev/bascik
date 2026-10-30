@@ -979,7 +979,7 @@ describe("page templates", () => {
 
   it("writes every component script in TypeScript", () => {
     for (const html of [SITE_HEADER_HTML, MY_COUNTER_HTML, CONTACT_FORM_HTML])
-      expect(html.match(/<script\b[^>]*>/g)).toEqual([
+      expect(html.match(/<script\b[^>]*>/gi)).toEqual([
         '<script type="text/typescript">',
       ]);
   });

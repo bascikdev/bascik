@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHECK,
   INTERACTIVE_SELECTOR,
+  activatable,
   diffEffects,
   effectOf,
   matchAnchor,
@@ -310,5 +311,51 @@ describe("parseCliArgs", () => {
     ]);
     expect(args.matrix).toBe("docs/migration/breakpoints.json");
     expect(args.out).toBe("artifacts/checks");
+  });
+});
+
+describe("activatable (the in-page source, run with stub page helpers)", () => {
+  const here = new URL("https://example.com/pricing");
+  const inPage = new Function(
+    "location",
+    "isRendered",
+    "isMasked",
+    "tagOf",
+    `${activatable}\nreturn activatable;`,
+  )(
+    here,
+    () => true,
+    () => false,
+    (el: { tagName: string }) => el.tagName,
+  ) as (el: unknown, mode: string, masks: string[]) => boolean;
+  const linkTo = (href: string) => {
+    const link = {
+      tagName: "A",
+      form: null,
+      getAttribute: (name: string) => (name === "href" ? href : null),
+      href: new URL(href, here).href,
+      closest: (selector: string) => (selector === "a[href]" ? link : null),
+    };
+    return link;
+  };
+
+  it.each(["#plans", "javascript:void(0)", "JavaScript:void(0)", "/pricing"])(
+    "clicks a link to %s, which keeps the page",
+    (href) => {
+      expect(inPage(linkTo(href), "click", [])).toBe(true);
+    },
+  );
+
+  it.each([
+    "/about",
+    "https://other.example/",
+    "data:text/html,<p>x</p>",
+    "vbscript:msgbox(1)",
+  ])("does not click a link to %s, which leaves the page", (href) => {
+    expect(inPage(linkTo(href), "click", [])).toBe(false);
+  });
+
+  it("hovers any link, since a hover never leaves the page", () => {
+    expect(inPage(linkTo("/about"), "hover", [])).toBe(true);
   });
 });

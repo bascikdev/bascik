@@ -118,6 +118,20 @@ describe("auditComponent", () => {
       auditComponent("site-nav", html, "src/components/site-nav/site-nav.html"),
     ).toEqual([]);
   });
+
+  it("a script or style ends where the HTML parser ends it, even with space before the >", () => {
+    const html = `<nav data-testid="site-nav"><a href="/" data-testid="site-nav-home">Home</a></nav>\n<style>.x { color: red; }</style\n>\n<script>const a = "<button>";</script >\n<script>const b = "<input>";</SCRIPT\tfoo>\n`;
+    expect(
+      auditComponent("site-nav", html, "src/components/site-nav/site-nav.html"),
+    ).toEqual([]);
+  });
+
+  it("a comment ends at --!> as the parser does, so the markup after it is still checked", () => {
+    const html = `<!-- a --!>\n<nav data-testid="site-nav">\n  <button>Menu</button>\n</nav>\n<!-- b -->\n`;
+    expect(
+      auditComponent("site-nav", html, "src/components/site-nav/site-nav.html"),
+    ).toEqual([expect.objectContaining({ kind: "missing", line: 3 })]);
+  });
 });
 
 describe("auditSource", () => {

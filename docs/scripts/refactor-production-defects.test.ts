@@ -278,6 +278,13 @@ describe("ledgerRows and appendLedger", () => {
     expect(rows[1]).toContain("main section li:nth-child(1)");
   });
 
+  it("escapes a backslash before a pipe, so the escaped pipe still cannot end the cell", () => {
+    const [row] = ledgerRows([
+      { ...defects()[0], selector: String.raw`.a\|b` },
+    ]);
+    expect(row).toContain(String.raw`.a\\\|b`);
+  });
+
   it("escapes a pipe in a selector so the table keeps its columns", () => {
     const [row] = ledgerRows([{ ...defects()[0], selector: 'a[href|="en"]' }]);
     expect(row).toContain('a[href\\|="en"]');

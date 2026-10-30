@@ -20,7 +20,7 @@ describe("component-demo component", () => {
 
     // 3. Should not contain any client runtime <script> tag
     const clientScriptRegex =
-      /<script(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script>/gi;
+      /<script\b(?![^>]*data-bascik-build)[^>]*>[\s\S]*?<\/script(?=[\s/>])[^>]*>/gi;
     expect(clientScriptRegex.test(html)).toBe(false);
   });
 
@@ -29,9 +29,11 @@ describe("component-demo component", () => {
     // one group across the page: a page with two demos would have one
     // Preview/Source/Output choice between them.
     const html = await readFile(componentPath, "utf8");
+    // Comments and style blocks end where the HTML parser ends them, so a form
+    // tag after a --!> or a </style > is still counted.
     const markup = html
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<style>[\s\S]*?<\/style>/g, "");
+      .replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "")
+      .replace(/<style\b[\s\S]*?(?:<\/style(?=[\s/>])[^>]*>|$)/gi, "");
     let depth = 0;
     for (const match of markup.matchAll(/<(\/?)form\b[^>]*>|<input\b[^>]*>/g)) {
       if (match[0].startsWith("<input")) {

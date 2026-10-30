@@ -207,7 +207,7 @@ export function clickedIds(script) {
   ))
     variables.set(m[1], m[2]);
   for (const [name, id] of variables) {
-    const escaped = name.replace(/\$/g, "\\$");
+    const escaped = name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
     for (const m of script.matchAll(
       new RegExp(String.raw`(?<![\w$.])${escaped}!?\s*${CLICK}`, "g"),
     ))

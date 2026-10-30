@@ -549,5 +549,11 @@ export const isPrivatePathname = (
  * and Windows filesystems ignore letter case, and Windows drops trailing dots
  * and spaces, so `.BASCIK`, `.Bascik` and `.bascik.` open the same folder.
  */
-export const isBascikFolderName = (segment: string): boolean =>
-  segment.replace(/[. ]+$/, "").toLowerCase() === ".bascik";
+export const isBascikFolderName = (segment: string): boolean => {
+  // A scan from the end, not /[. ]+$/: that regex is quadratic on a request
+  // segment of many dots and spaces followed by another character.
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " "))
+    end--;
+  return segment.slice(0, end).toLowerCase() === ".bascik";
+};

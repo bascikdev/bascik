@@ -51,7 +51,7 @@ export interface ScriptExample {
 }
 
 const SCRIPT =
-  /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script\s*>/gi;
+  /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?=[\s/>])[^>]*>/gi;
 
 /** The build and build-once scripts in one Markdown file's fenced code blocks, with their 1-based lines. */
 export function scriptExamples(md: string, file: string): ScriptExample[] {
@@ -188,6 +188,17 @@ describe("the classifier (misuse lens)", () => {
         "x.md",
       ),
     ).toEqual([]);
+  });
+
+  it("ends a script where the HTML parser does, even at an end tag with space or attributes", () => {
+    const examples = scriptExamples(
+      "```html\n<script data-bascik-build>a</script\t\n bar>\n<script data-bascik-build-once>b</SCRIPT >\n```\n",
+      "x.md",
+    );
+    expect(examples.map((e) => [e.directive, e.body])).toEqual([
+      ["build", "a"],
+      ["build-once", "b"],
+    ]);
   });
 
   it("matches the directive names exactly, never a longer attribute", () => {

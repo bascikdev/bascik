@@ -112,13 +112,17 @@ const INTERACTIVE_ROLES = new Set([
 const TAG_RE =
   /<([a-zA-Z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>/g;
 
-/** Blanks comments, style, script and template-less blocks, keeping newlines so line numbers stay right. */
+/**
+ * Blanks comments, style and script blocks, keeping newlines so line numbers stay right. Each ends where the HTML
+ * parser ends it: a comment at -->, --!>, an abrupt <!--> or the end of input, and an end tag at its >, whatever
+ * whitespace or attributes come first.
+ */
 function blank(html) {
   const keepLines = (m) => m.replace(/[^\n]/g, " ");
   return html
-    .replace(/<!--[\s\S]*?-->/g, keepLines)
-    .replace(/<style\b[\s\S]*?<\/style>/gi, keepLines)
-    .replace(/<script\b[\s\S]*?<\/script>/gi, keepLines);
+    .replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, keepLines)
+    .replace(/<style\b[\s\S]*?(?:<\/style(?=[\s/>])[^>]*>|$)/gi, keepLines)
+    .replace(/<script\b[\s\S]*?(?:<\/script(?=[\s/>])[^>]*>|$)/gi, keepLines);
 }
 
 /** The attributes of one tag as a map. */
