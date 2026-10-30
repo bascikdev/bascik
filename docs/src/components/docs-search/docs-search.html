@@ -88,6 +88,7 @@
   import { stripTypeScriptTypes } from "node:module";
   import { join, resolve } from "node:path";
   import {
+    PUBLIC_SEARCH_INDEX_PATH,
     buildSearchEntries,
     searchIndexJson,
     searchIndexPath,
@@ -117,13 +118,16 @@
       .replace(/^export function /gm, "function ")
       .replace(/^export const /gm, "var ");
     // The index file name carries a hash of the index, built from the same content as the file the build
-    // writes (scripts/generate-search-index.ts), so a new deploy never serves a cached old index.
+    // writes (scripts/generate-search-index.ts), so a new deploy never serves a cached old index. A page
+    // opened before a deploy names a file the deploy removed, so it falls back to the unhashed index.
     const indexUrl = searchIndexPath(
       searchIndexJson(await buildSearchEntries()),
     );
     return (
       "<script>\n(function () {\nvar SEARCH_INDEX_URL = " +
       JSON.stringify(indexUrl) +
+      ";\nvar PUBLIC_SEARCH_INDEX_URL = " +
+      JSON.stringify(PUBLIC_SEARCH_INDEX_PATH) +
       ";\n\n" +
       fns.trim() +
       "\n\n" +

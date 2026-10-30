@@ -199,6 +199,24 @@ test.describe("Docs Component E2E Tests", () => {
     await expect(modal).toBeHidden();
   });
 
+  test("docs-search still finds results when a deploy removed the page's hashed index", async ({
+    page,
+  }) => {
+    // A page opened before a deploy names the old hashed file, which the new deploy no longer has.
+    await page.route(/\/assets\/search-index\.[0-9a-f]{10}\.json$/, (route) =>
+      route.fulfill({ status: 404, body: "Not Found" }),
+    );
+    await page.goto("/");
+    await page.getByRole("button", { name: "Search docs" }).first().click();
+    await page.getByPlaceholder("Search docs…").fill("scoped styles");
+    await expect(
+      page
+        .getByRole("listbox", { name: "Search results" })
+        .locator("li")
+        .first(),
+    ).toContainText("Scoped Styles");
+  });
+
   test("docs-search shows Home first with popular pages nested under it for a brand query", async ({
     page,
   }) => {

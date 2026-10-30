@@ -66,10 +66,16 @@ function close() {
 
 var indexRequest = null;
 
-/** Downloads the index once. SEARCH_INDEX_URL carries a content hash, so the browser can keep it for a year. */
+/**
+ * Downloads the index once. SEARCH_INDEX_URL carries a content hash, so the browser can keep it for a year. A page
+ * opened before a deploy names a hashed file the deploy removed; it then reads the unhashed PUBLIC_SEARCH_INDEX_URL.
+ */
 function loadIndex() {
   if (!indexRequest) {
     indexRequest = fetch(SEARCH_INDEX_URL)
+      .then(function (response) {
+        return response.ok ? response : fetch(PUBLIC_SEARCH_INDEX_URL);
+      })
       .then(function (response) {
         if (!response.ok) throw new Error("HTTP " + response.status);
         return response.json();
