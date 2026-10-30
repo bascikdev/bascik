@@ -244,7 +244,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
     <title>Press</title>
   </head>
   <body>
-    <press-list></press-list>
+    <press-list />
   </body>
 </html>
 ```
@@ -253,7 +253,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 
 ```html
 <!-- src/components/press-list/press-list.html -->
-<section class="press">
+<section class="press" data-testid="press-list">
   <h2 class="title">In the press</h2>
   <ul class="items">
     <li class="item">Example Daily: A faster site in a week</li>
@@ -299,7 +299,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 <!-- demo:migration-grid-output-html -->
 
 ```html
-<section class="bascik__press-list__press">
+<section class="bascik__press-list__press" data-testid="press-list">
   <h2 class="bascik__press-list__title">In the press</h2>
   <ul class="bascik__press-list__items">
     <li class="bascik__press-list__item">
