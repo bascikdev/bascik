@@ -10,10 +10,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "unit": "vitest run --project unit",
+    "unit": "yarn workspace @bascik/bascik build && vitest run --project unit",
     "integration": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run --project integration",
     "test": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run",
-    "coverage": "vitest run --project unit --coverage.enabled && node update-coverage.ts",
+    "coverage": "yarn workspace @bascik/bascik build && vitest run --project unit --coverage.enabled && node update-coverage.ts",
     "cover": "yarn coverage"
   },
   "devDependencies": {
