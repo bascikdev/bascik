@@ -18,7 +18,7 @@ import {
 } from "./analyzer.js";
 import { checkFiles, formatDiagnostic } from "./check.js";
 import type { ProjectSnapshot } from "./project.js";
-import { growthOf } from "./linear-time.test.util.js";
+import { LINEAR_TIME_TIMEOUT_MS, growthOf } from "./linear-time.test.util.js";
 
 const RULE = "server-script-unescaped-markup";
 
@@ -132,17 +132,21 @@ describe("quick fix: Wrap template in html`...`", () => {
     },
   );
 
-  it("an existing import split by a long run of tabs: the fix reads it in linear time", () => {
-    const script = (tabs: number) =>
-      `      import { esc${"\t".repeat(tabs)}x } from "@bascik/bascik/html";\n${SEARCH}`;
-    // Tick-aware CPU-time growth: see linear-time.test.util.ts.
-    const fixer = (tabs: number) => {
-      const { doc, diags } = open(PAGE(script(tabs)));
-      const diag = markupDiags(diags)[0];
-      return () => createCodeActions(doc, diag.range, diags, snapshot());
-    };
-    expect(growthOf(fixer(5_000), fixer(20_000))).toBeLessThan(8);
-  }, 60_000);
+  it(
+    "an existing import split by a long run of tabs: the fix reads it in linear time",
+    () => {
+      const script = (tabs: number) =>
+        `      import { esc${"\t".repeat(tabs)}x } from "@bascik/bascik/html";\n${SEARCH}`;
+      // Tick-aware CPU-time growth: see linear-time.test.util.ts.
+      const fixer = (tabs: number) => {
+        const { doc, diags } = open(PAGE(script(tabs)));
+        const diag = markupDiags(diags)[0];
+        return () => createCodeActions(doc, diag.range, diags, snapshot());
+      };
+      expect(growthOf(fixer(5_000), fixer(20_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
   it("adds the tag and the import in one edit", () => {
     const { doc, action } = fixFor(PAGE(SEARCH));

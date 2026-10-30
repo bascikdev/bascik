@@ -11,6 +11,28 @@
  * the sample target: a run of microseconds capped at 64 runs reached only
  * one Windows tick and read a growth of 9.2.
  */
+import { TestRunner } from "vitest";
+
+/**
+ * A timeout for a test that calls `growthOf`: on Windows a sample spans
+ * sixteen clock ticks, so a check takes seconds there and milliseconds on
+ * macOS and Linux.
+ */
+export const LINEAR_TIME_TIMEOUT_MS = 60_000;
+
+/**
+ * Throws in a test whose timeout is under `LINEAR_TIME_TIMEOUT_MS`, on every
+ * platform, so a missing timeout fails here rather than only on Windows CI.
+ * Outside a test (a hook) it does nothing.
+ */
+const requireLinearTimeTimeout = (): void => {
+  const timeout = TestRunner.getCurrentTest()?.timeout;
+  if (timeout !== undefined && timeout < LINEAR_TIME_TIMEOUT_MS)
+    throw new Error(
+      `measures CPU time, which takes seconds on Windows: give this test LINEAR_TIME_TIMEOUT_MS (it has ${timeout} ms)`,
+    );
+};
+
 const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
   process.threadCpuUsage?.bind(process) ?? process.cpuUsage.bind(process);
 const msOf = ({ user, system }: NodeJS.CpuUsage) => (user + system) / 1000;
@@ -48,6 +70,7 @@ export const growthOf = (
   small: () => unknown,
   large: () => unknown,
 ): number => {
+  requireLinearTimeTimeout();
   const stepMs = clockStepMs();
   const targetMs = Math.max(MIN_SAMPLE_MS, TICKS_PER_SAMPLE * stepMs);
   const maxRuns = Math.ceil((MAX_RUNS * targetMs) / MIN_SAMPLE_MS);

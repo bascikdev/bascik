@@ -9,7 +9,7 @@ import { DiagnosticSeverity } from "vscode-languageserver";
 import { createDiagnostics } from "./analyzer.js";
 import { parseScopesName, type ProjectSnapshot } from "./project.js";
 import { findNameGroups, countInstancesOnPages } from "./name-groups.js";
-import { growthOf } from "./linear-time.test.util.js";
+import { LINEAR_TIME_TIMEOUT_MS, growthOf } from "./linear-time.test.util.js";
 
 const COMPONENTS = "/site/src/components";
 const PAGES = "/site/src/pages";
@@ -344,22 +344,26 @@ describe("shared-name-group", () => {
     expect(found).toEqual([]);
   });
 
-  it("scans markup and counts usages in linear time", () => {
-    const groupsOf = (n: number) => {
-      const html =
-        '<input type="radio" name="a">'.repeat(n) + "<form>".repeat(n);
-      return () => findNameGroups(html);
-    };
-    expect(growthOf(groupsOf(5_000), groupsOf(20_000))).toBeLessThan(8);
-    const pageOf = (n: number) => {
-      const snapshot = project(
-        { "x-y": RADIOS },
-        { "index.html": "<x-y></x-y>".repeat(n) },
-      );
-      return () => countInstancesOnPages("x-y", snapshot, []);
-    };
-    expect(growthOf(pageOf(5_000), pageOf(20_000))).toBeLessThan(8);
-  });
+  it(
+    "scans markup and counts usages in linear time",
+    () => {
+      const groupsOf = (n: number) => {
+        const html =
+          '<input type="radio" name="a">'.repeat(n) + "<form>".repeat(n);
+        return () => findNameGroups(html);
+      };
+      expect(growthOf(groupsOf(5_000), groupsOf(20_000))).toBeLessThan(8);
+      const pageOf = (n: number) => {
+        const snapshot = project(
+          { "x-y": RADIOS },
+          { "index.html": "<x-y></x-y>".repeat(n) },
+        );
+        return () => countInstancesOnPages("x-y", snapshot, []);
+      };
+      expect(growthOf(pageOf(5_000), pageOf(20_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("parseScopesName", () => {
