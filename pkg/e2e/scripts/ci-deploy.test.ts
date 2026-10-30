@@ -876,6 +876,26 @@ describe("CI stages and the deploy stage", () => {
   const stage = (n: number) =>
     [...jobs].filter(([, job]) => job.stage === n).map(([id]) => id);
 
+  it("enables Corepack before setup-node in every job, or turns off setup-node's package manager cache", () => {
+    // setup-node v5 caches the package manager named in package.json by default. Without Corepack that runs the
+    // runner's global Yarn 1, which refuses this repo's "packageManager": "yarn@4…" and fails the job.
+    const missing: string[] = [];
+    for (const [id, job] of jobs) {
+      const setupNode = job.steps.findIndex((s) =>
+        /uses:\s*actions\/setup-node@/.test(s.text),
+      );
+      if (setupNode < 0) continue;
+      const corepackFirst = job.steps
+        .slice(0, setupNode)
+        .some((s) => /corepack enable/.test(s.text));
+      const noCache = /package-manager-cache:\s*false/.test(
+        job.steps[setupNode].text,
+      );
+      if (!corepackFirst && !noCache) missing.push(id);
+    }
+    expect(missing).toEqual([]);
+  });
+
   it("parses stage headers, jobs and needs, skipping comments", () => {
     const parsed = ciStages(
       [

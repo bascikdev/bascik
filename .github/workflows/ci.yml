@@ -1108,10 +1108,13 @@ jobs:
         with:
           sparse-checkout: .github/scripts
 
+      # This job installs nothing: it runs one dependency-free script. setup-node v5 caches the package manager
+      # named in package.json by default, which would call Yarn without Corepack, so the cache is turned off.
       - name: Use Node.js 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
 
       # A push run builds the branch commit itself, github.sha, so that is the commit the comment names.
       - name: Write the summary and the pull request comment
