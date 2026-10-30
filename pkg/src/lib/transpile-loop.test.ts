@@ -348,43 +348,53 @@ describe("close and closer look-alikes keep unclosed usages linear", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  it("a raw-text opener that a later closer ends falls back, but each splice re-reads only the text since the last one", () => {
-    // `<textarea a"b>` is no element while no `"` follows to end what its
-    // opener reads as a quoted value, but a template with one could make it
-    // one, so every splice falls back to a whole re-mask (charged). The
-    // masker's state at each splice is kept, so the next one does not re-read
-    // the page from the start.
-    const list: ComponentList = { "x-q": { fileContent: "<i>v</i>" } };
-    const html = `<textarea a"b>${fill("<x-q></x-q>", 200_000)}</textarea>`;
-    __componentScanStatsForTests.reset();
-    const out = expand(html, list);
-    expect(out.split("<i>v</i>").length - 1).toBe(999);
-    expect(__componentScanStatsForTests.closureBytesChecked).toBeLessThan(
-      4 * html.length,
-    );
-  });
+  it(
+    "a raw-text opener that a later closer ends falls back, but each splice re-reads only the text since the last one",
+    () => {
+      // `<textarea a"b>` is no element while no `"` follows to end what its
+      // opener reads as a quoted value, but a template with one could make it
+      // one, so every splice falls back to a whole re-mask (charged). The
+      // masker's state at each splice is kept, so the next one does not re-read
+      // the page from the start.
+      const list: ComponentList = { "x-q": { fileContent: "<i>v</i>" } };
+      const html = `<textarea a"b>${fill("<x-q></x-q>", 200_000)}</textarea>`;
+      __componentScanStatsForTests.reset();
+      const out = expand(html, list);
+      expect(out.split("<i>v</i>").length - 1).toBe(999);
+      expect(__componentScanStatsForTests.closureBytesChecked).toBeLessThan(
+        4 * html.length,
+      );
+    },
+    // Byte counts, not time, but a 200k-character page under coverage on a
+    // loaded runner passed the 5 s default (Collin's coverage:all, 2026-10-30).
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 
-  it("finds each name's closes once and reads each splice's window once, however many components there are", () => {
-    // 300 components, each used once at the start, then three wrappers
-    // around 200k characters. The close facts are kept for every name, but
-    // found in one pass and moved with one pass over each splice's window.
-    const list: ComponentList = { ...componentList };
-    let head = "";
-    for (let index = 0; index < 300; index++) {
-      list[`c-${index}`] = { fileContent: `<b>${index}</b>` };
-      head += `<c-${index}></c-${index}>`;
-    }
-    const html = `${head}<my-card><my-card><my-card>${"z".repeat(200_000)}</my-card></my-card></my-card>`;
-    __componentScanStatsForTests.reset();
-    const out = expand(html, list);
-    expect(out.split('<div class="c">').length - 1).toBe(3);
-    expect(__componentScanStatsForTests.closeFactBytesScanned).toBeGreaterThan(
-      0,
-    );
-    expect(__componentScanStatsForTests.closeFactBytesScanned).toBeLessThan(
-      8 * html.length,
-    );
-  });
+  it(
+    "finds each name's closes once and reads each splice's window once, however many components there are",
+    () => {
+      // 300 components, each used once at the start, then three wrappers
+      // around 200k characters. The close facts are kept for every name, but
+      // found in one pass and moved with one pass over each splice's window.
+      const list: ComponentList = { ...componentList };
+      let head = "";
+      for (let index = 0; index < 300; index++) {
+        list[`c-${index}`] = { fileContent: `<b>${index}</b>` };
+        head += `<c-${index}></c-${index}>`;
+      }
+      const html = `${head}<my-card><my-card><my-card>${"z".repeat(200_000)}</my-card></my-card></my-card>`;
+      __componentScanStatsForTests.reset();
+      const out = expand(html, list);
+      expect(out.split('<div class="c">').length - 1).toBe(3);
+      expect(
+        __componentScanStatsForTests.closeFactBytesScanned,
+      ).toBeGreaterThan(0);
+      expect(__componentScanStatsForTests.closeFactBytesScanned).toBeLessThan(
+        8 * html.length,
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
 
 describe("close facts across a white-space run at a splice seam", () => {
