@@ -79,6 +79,7 @@ import {
   expandByUsage,
   prepareRenderer,
   requestRoutePath,
+  usageFinalizer,
   wrapRunner,
   type RenderHost,
 } from "./request-render.ts";
@@ -2603,5 +2604,33 @@ describe("request-time renderer: prepared at store time", () => {
     expect(() => prepareRenderer(pagePlan(), empty)).not.toThrow();
     expect(__componentScanStatsForTests.searchesCompiled).toBe(searches);
     expect(__requestRenderStatsForTests.pageScans).toBe(scans);
+  });
+});
+
+describe("usageFinalizer", () => {
+  it("keeps one space between adjacent inline instances whose scripts leave a separator in a table", () => {
+    // Each instance is an inline root and a script; in a table the build
+    // leaves an empty comment where the script stood, and the whitespace
+    // around it still renders as a space between the two buttons.
+    const instance = "<button>a</button>\n<script>x()</script>\n";
+    const open = "<table><tr><td>";
+    const page = `${open}<x-b></x-b><x-b></x-b></td></tr></table>`;
+    const spans = [
+      { start: open.length, end: open.length + 11 },
+      { start: open.length + 11, end: open.length + 22 },
+    ];
+    const finalize = usageFinalizer({
+      minifyHtml: true,
+      base: "/",
+    } as ComponentManifest);
+    const finished = finalize!(page, spans, [instance, instance]);
+    const requestTime = `${open}${finished.join("")}</td></tr></table>`;
+    const built = minifyHtml(`${open}${instance}${instance}</td></tr></table>`);
+    const rendered = (html: string) =>
+      html.replace(/\n?<script>x\(\)<\/script>/g, "").replaceAll("<!---->", "");
+    expect(rendered(built)).toBe(
+      `${open}<button>a</button> <button>a</button></td></tr></table>`,
+    );
+    expect(rendered(requestTime)).toBe(rendered(built));
   });
 });

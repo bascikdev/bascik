@@ -273,8 +273,46 @@ const FORMATTING_ELEMENTS = new Set([
 const isMarkupToken = (token: HtmlToken | undefined): token is HtmlToken =>
   token !== undefined && (token.kind === "tag" || token.kind === "markup");
 
-const isInlineTag = (token: HtmlToken): boolean =>
-  token.kind === "tag" && INLINE_TAGS.has(token.name);
+const isInlineTag = (token: HtmlToken | undefined): boolean =>
+  token !== undefined && token.kind === "tag" && INLINE_TAGS.has(token.name);
+
+/**
+ * The nearest token from `k` in direction `step` that renders: comments and
+ * other markup outside SVG and MathML render nothing, nor does the
+ * whitespace-only text between them and a tag.
+ */
+const renderingNeighbor = (
+  tokens: HtmlToken[],
+  html: string,
+  k: number,
+  step: 1 | -1,
+): HtmlToken | undefined => {
+  for (let i = k + step; i >= 0 && i < tokens.length; i += step) {
+    const token = tokens[i];
+    if (token.kind === "markup" && !token.inForeign) continue;
+    if (
+      token.kind === "text" &&
+      !token.inPre &&
+      !token.inForeignCode &&
+      TEXT_WHITESPACE_ONLY_RE.test(html.slice(token.start, token.end))
+    )
+      continue;
+    return token;
+  }
+  return undefined;
+};
+
+/** No other whitespace-only run follows the one at `k` before the next token that renders. */
+const isLastWhitespaceRun = (tokens: HtmlToken[], k: number): boolean => {
+  let i = k + 1;
+  while (
+    i < tokens.length &&
+    tokens[i].kind === "markup" &&
+    !tokens[i].inForeign
+  )
+    i++;
+  return i >= tokens.length || tokens[i].kind !== "text";
+};
 
 interface CollapsedHtml {
   html: string;
@@ -358,12 +396,15 @@ const collapseWhitespace = (
       isMarkupToken(tokens[k - 1]) &&
       isMarkupToken(tokens[k + 1])
     ) {
-      write(
-        openFormatting > 0 ||
-          (isInlineTag(tokens[k - 1]) && isInlineTag(tokens[k + 1]))
-          ? " "
-          : "",
-      );
+      // A comment between two inline elements renders nothing, so the space
+      // around it still separates them. One space covers every run there: the
+      // last, so an instance that ends in comments keeps it at its end. Only
+      // a last run looks back, so each token is passed over at most twice.
+      const keepInlineSpace =
+        isLastWhitespaceRun(tokens, k) &&
+        isInlineTag(renderingNeighbor(tokens, html, k, 1)) &&
+        isInlineTag(renderingNeighbor(tokens, html, k, -1));
+      write(openFormatting > 0 || keepInlineSpace ? " " : "");
     } else {
       write(collapseText(source));
     }

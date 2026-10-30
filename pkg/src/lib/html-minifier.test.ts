@@ -409,6 +409,59 @@ describe("minifyHtml", () => {
     expect(fullInputNormalizations).toBeLessThanOrEqual(1);
   });
 
+  it("keeps the space between inline elements across a comment or script stand-in in a table", () => {
+    // A comment renders nothing, so `a</b> <!-- --> <b>b` shows "a b"; the
+    // `<!---->` a table keeps in its place must not cost that space.
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b> <!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><b>a</b><!----> <b>b</b></td></tr></table>");
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b><!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><b>a</b><!----> <b>b</b></td></tr></table>");
+    expect(
+      minifyHtml(
+        "<table><tr><td><button>a</button>\n<script>x()</script>\n<button>b</button></td></tr></table>",
+      ),
+    ).toBe(
+      "<table><tr><td><button>a</button><!----> <button>b</button></td></tr></table>\n<script>x()</script>",
+    );
+    expect(
+      minifyHtml(
+        "<table><tr><td><b>a</b> <!-- c --> <!-- d --><!-- e --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe(
+      "<table><tr><td><b>a</b><!----><!----><!----> <b>b</b></td></tr></table>",
+    );
+    // Next to a block, the whitespace still goes.
+    expect(
+      minifyHtml(
+        "<table><tr><td><p>a</p> <!-- c --> <b>b</b></td></tr></table>",
+      ),
+    ).toBe("<table><tr><td><p>a</p><!----><b>b</b></td></tr></table>");
+    // Matches what the same markup gives outside a table.
+    expect(minifyHtml("<div><b>a</b> <!-- c --> <b>b</b></div>")).toBe(
+      "<div><b>a</b> <b>b</b></div>",
+    );
+  });
+
+  it(
+    "keeps the space across a table's comment stand-ins in linear time",
+    () => {
+      for (const unit of [" <!-- c -->", "<!-- c --> <b>b</b>"])
+        expectLinearTime(
+          (n) => `<table><tr><td><b>a</b>${unit.repeat(n)} <b>z</b>`,
+          20_000,
+          minifyHtml,
+          { label: unit },
+        );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
   it("preserves sensitive content with whitespace in closing tags", () => {
     const script =
       "<div><script>const value = 1;\n// keep newline\nwindow.done = true;</script ></div>";
