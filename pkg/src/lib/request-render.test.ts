@@ -2616,8 +2616,8 @@ describe("usageFinalizer", () => {
     const open = "<table><tr><td>";
     const page = `${open}<x-b></x-b><x-b></x-b></td></tr></table>`;
     const spans = [
-      { start: open.length, end: open.length + 11 },
-      { start: open.length + 11, end: open.length + 22 },
+      { name: "x-b", start: open.length, end: open.length + 11 },
+      { name: "x-b", start: open.length + 11, end: open.length + 22 },
     ];
     const finalize = usageFinalizer({
       minifyHtml: true,
