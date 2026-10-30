@@ -163,8 +163,27 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "document.getElementById( id );",
         "document.getElementById(ids[0]);",
         'document.getElementById(el.getAttribute("data-target"));',
+        // `href` reads back with its `#`, which getElementById never matches.
+        'document.getElementById(link.getAttribute("href"));',
+        'document.getElementById(btn.getAttribute("popovertarget") + "-x");',
+        "document.getElementById(btn.getAttribute(name));",
+        'document.getElementById(btn.getAttribute("aria-controlsx"));',
+        'document.getElementById(btn.getAttribute("data-popovertarget"));',
       ],
       negative: [
+        // The value of an ID-reference attribute Bascik rewrites is already
+        // the scoped id, so reading it is the lookup the rule recommends.
+        'document.getElementById(button.getAttribute("popovertarget"));',
+        "document.getElementById(btn.getAttribute('aria-controls'));",
+        "document.getElementById(this.getAttribute(`commandfor`));",
+        'document.getElementById(event.currentTarget.getAttribute("aria-controls"));',
+        'document.getElementById(btn?.getAttribute("popovertarget"));',
+        'document.getElementById( label.getAttribute("for") );',
+        'document.getElementById(input.getAttribute("list"));',
+        'document.getElementById(el.getAttribute("aria-describedby"));',
+        'document.getElementById(link.getAttribute("href").slice(1));',
+        'document.getElementById(link.getAttribute("href").substring(1));',
+        "document.getElementById(label.htmlFor);",
         'document.getElementById("panel");',
         "document.getElementById('panel');",
         'document.getElementById( "panel" );',
@@ -209,6 +228,8 @@ describe("rule patterns on hostile input", () => {
     ["document.getElementById(", 20_000],
     ["document.getElementById( ", 20_000],
     ["document.getElementById('a", 20_000],
+    ["document.getElementById(a.b.getAttribute('for'", 20_000],
+    ["document.getElementById(a.getAttribute('href').slice(", 20_000],
     ["document.querySelector('.a", 20_000],
     ["document.getElementsByClassName('a", 20_000],
   ] as const)(
