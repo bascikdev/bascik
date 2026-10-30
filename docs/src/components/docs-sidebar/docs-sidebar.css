@@ -164,3 +164,9 @@
     display: none !important;
   }
 }
+
+@media print {
+  .docs-sidebar {
+    display: none !important;
+  }
+}

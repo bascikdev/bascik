@@ -587,6 +587,13 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     align-items: center;
   }
 
+  /* The checkerboard behind a preview is screen-only */
+  @media print {
+    .demo-preview-content {
+      background: none;
+    }
+  }
+
   /* An example stage (see examples.ts) is its own page background, so the checkerboard and padding step aside. */
   .demo-preview-content:has(> [data-example-stage]) {
     padding: 0;

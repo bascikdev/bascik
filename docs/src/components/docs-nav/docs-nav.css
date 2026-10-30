@@ -382,3 +382,30 @@
     background: var(--elevated);
   }
 }
+
+/* Print: keep only the logo, in grayscale, as the page header */
+@media print {
+  .dnav {
+    position: static;
+    background: none;
+    border: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .dnav-banner,
+  .dnav-right {
+    display: none !important;
+  }
+
+  .dnav-inner {
+    max-width: 100%;
+    padding: 0;
+    height: auto;
+    margin-bottom: 8pt;
+  }
+
+  .dnav-logo {
+    filter: grayscale(1);
+  }
+}

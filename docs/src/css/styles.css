@@ -808,16 +808,62 @@ pre code {
 
 /* ── Print ── */
 @media print {
-  /* Reset colors to black-on-white */
-  :root {
+  /* Reset colors to dark-on-white, whatever theme the page (or a live demo inside it) was using. The light theme's
+     values, spelled out because a dark theme's selectors would otherwise win. */
+  :root,
+  :root[data-theme],
+  [data-demo-theme] {
+    color-scheme: light;
     --bg: #fff;
+    --bg-muted: #f5f5f5;
     --surface: #fff;
     --elevated: #f5f5f5;
     --border: #ccc;
     --accent: #2a6000;
+    --accent-fg: #2a6000;
     --accent-dim: #f0f7e6;
+    --accent-border: #b2d98a;
     --text: #111;
     --text-muted: #444;
+    --pillar-text: #444;
+    --pre-bg: #f5f5f5;
+    --pre-text: #111;
+    --code-header-bg: #eee;
+    --code-tabs-bg: #eee;
+    --badge-bg: #f5f5f5;
+    --badge-color: #444;
+    --badge-border: #ccc;
+    --callout-bg: #f0f7e6;
+    --callout-border: #b2d98a;
+    --step-bg: #f0f7e6;
+    --step-border: #b2d98a;
+    --step-color: #2a6000;
+    --pagination-label: #111;
+    --syn-cm: #4b5563;
+    --syn-str: #065f46;
+    --syn-kw: #6d28d9;
+    --syn-num: #9a3412;
+    --syn-attr: #1d4ed8;
+    --syn-val: #065f46;
+    --hl-tag: #1d4ed8;
+    --hl-kw: #6d28d9;
+    --hl-str: #065f46;
+    --hl-comment: #6b7280;
+    --hl-scoped: #2a6000;
+    --hl-num: #9a3412;
+  }
+
+  /* A live example's stage keeps its own dark tokens, so give it the starter site's light ones */
+  [data-example-stage] {
+    color-scheme: light;
+    --color-bg: #fff;
+    --color-surface: #f4f5f7;
+    --color-text: #1b1d21;
+    --color-muted: #5b616e;
+    --color-border: #d9dce1;
+    --color-accent: #2457d6;
+    --color-accent-contrast: #fff;
+    --color-danger: #b42318;
   }
 
   body {
@@ -827,41 +873,11 @@ pre code {
     line-height: 1.5;
   }
 
-  /* Print just the page content: hide the site chrome. Components compile
-     away, so these target the classes they render, not their tag names. */
+  /* Print just the page content. The nav, sidebar, footer and pagination hide themselves in their own
+     component CSS: component class names are scoped, so a global sheet cannot select them. */
   .skip-link,
-  .dnav-banner,
-  .dnav-right,
-  .dfooter,
-  .docs-sidebar,
-  .docs-sidebar-nav,
-  .docs-toc,
-  .docs-pagination,
-  .callout .btn,
-  docs-search,
-  [role="dialog"],
-  dialog {
+  .callout .btn {
     display: none !important;
-  }
-
-  /* Keep only the logo from the nav, in grayscale, as the page header */
-  .dnav {
-    position: static;
-    background: none;
-    border: 0;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .dnav-inner {
-    max-width: 100%;
-    padding: 0;
-    height: auto;
-    margin-bottom: 8pt;
-  }
-
-  .dnav-logo svg {
-    filter: grayscale(1);
   }
 
   /* Flatten layout */

@@ -185,3 +185,9 @@
     justify-content: center;
   }
 }
+
+@media print {
+  .dfooter {
+    display: none !important;
+  }
+}
