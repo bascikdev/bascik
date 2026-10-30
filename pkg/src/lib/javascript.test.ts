@@ -17,6 +17,10 @@ import {
 import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";
 
+// The first TypeScript companion stripped in a worker loads Node's WebAssembly type-stripping parser, which can
+// pass Vitest's 5 s default on a busy Windows runner.
+vi.setConfig({ testTimeout: 30_000 });
+
 vi.mock("./config.js", () => ({
   BascikConfig: {
     minify: { identifiers: false },

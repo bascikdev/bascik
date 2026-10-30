@@ -15,6 +15,10 @@ import {
 import { cleanStackTrace } from "./stack-trace.ts";
 import { BuildScriptError } from "./build-error.ts";
 
+// A TypeScript build script is checked in a real `node --check` child process, and the first type strip loads
+// Node's WebAssembly parser. On a busy Windows runner either can pass Vitest's 5 s default.
+vi.setConfig({ testTimeout: 30_000 });
+
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 const { state, buildScriptMocks } = vi.hoisted(() => {
