@@ -827,17 +827,41 @@ pre code {
     line-height: 1.5;
   }
 
-  /* Hide chrome */
-  docs-nav,
-  docs-sidebar,
+  /* Print just the page content: hide the site chrome. Components compile
+     away, so these target the classes they render, not their tag names. */
+  .skip-link,
+  .dnav-banner,
+  .dnav-right,
+  .dfooter,
+  .docs-sidebar,
   .docs-sidebar-nav,
   .docs-toc,
-  docs-footer,
-  docs-pagination,
-  .dnav,
-  .docs-sidebar,
-  .callout .btn {
+  .docs-pagination,
+  .callout .btn,
+  docs-search,
+  [role="dialog"],
+  dialog {
     display: none !important;
+  }
+
+  /* Keep only the logo from the nav, in grayscale, as the page header */
+  .dnav {
+    position: static;
+    background: none;
+    border: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .dnav-inner {
+    max-width: 100%;
+    padding: 0;
+    height: auto;
+    margin-bottom: 8pt;
+  }
+
+  .dnav-logo svg {
+    filter: grayscale(1);
   }
 
   /* Flatten layout */
@@ -885,8 +909,8 @@ pre code {
     content: none;
   }
 
-  /* Strip URL from logo link */
-  a[aria-label="Bascik home"]::after {
+  /* Only external links are worth spelling out on paper */
+  a[href^="/"]::after {
     content: none;
   }
 
