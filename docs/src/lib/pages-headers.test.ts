@@ -122,7 +122,7 @@ describe("pages-headers", () => {
     // preview URL like https://feature-x-bascik.account.workers.dev and never bascik.dev.
     const hostPattern = new RegExp(
       `^${"https://:worker.:subdomain.workers.dev/"
-        .replace(/[.]/g, "\\.")
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
         .replace(/:[A-Za-z]\w*/g, "[^/.]+")}`,
     );
     expect(

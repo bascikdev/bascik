@@ -56,7 +56,7 @@ describe("Find All References docs", () => {
   it("renders the animation with its reduced-motion still", async () => {
     const html = await renderMd("./content/tools/vscode-extension.md");
     // The helper emits `@` as `%40`, the form Workers static assets serves without a redirect.
-    expect(html).toContain(ANIMATION.replace("@", "%40"));
+    expect(html).toContain(ANIMATION.replaceAll("@", "%40"));
     expect(html).toContain("/assets/vscode/find-references-still%402x.webp");
   });
 

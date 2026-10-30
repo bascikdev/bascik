@@ -448,7 +448,10 @@ const x = 1;
       const html = await renderMd(mdFile);
       expect(
         html.match(
-          new RegExp(`src="${encoded.replace(/[?.]/g, "\\$&")}"`, "g"),
+          new RegExp(
+            `src="${encoded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+            "g",
+          ),
         ),
       ).toHaveLength(2);
       expect(html).toContain(`srcset="${still}"`);
