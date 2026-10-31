@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -15,6 +17,7 @@ import {
   collectConfigWarnings,
   formatConfigErrors,
   normalizeBasePath,
+  isSameOrInsideOnDisk,
 } from "./config-validation.ts";
 import { initBascikConfig } from "./config.ts";
 import { defineConfig } from "./defineConfig.ts";
@@ -1120,6 +1123,75 @@ describe("directory.out overlap with source folders", () => {
         scripts: { importRoot: "lib" },
       }),
     ).toEqual([]);
+  });
+
+  // The same check with the file system injected, so it also runs on a
+  // case-sensitive file system (Linux CI), where the test below skips.
+  it("compares folders by identity on disk, walking the child's ancestors", () => {
+    // A case-insensitive disk: /p/SRC and /p/src are one entry.
+    const identify = (path: string) =>
+      ({ "/p": "1", "/p/src": "2", "/p/src/pages": "3" })[path.toLowerCase()];
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify)).toBe(true);
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/Src/Pages", identify)).toBe(
+      true,
+    );
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages/out", "/p/SRC/PAGES", identify),
+    ).toBe(true);
+    expect(isSameOrInsideOnDisk("/p/src", "/p/SRC/PAGES", identify)).toBe(
+      false,
+    );
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/DIST", identify)).toBe(
+      false,
+    );
+    // No identity (nothing on disk, or no fs given): strings only.
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", () => undefined),
+    ).toBe(false);
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined)).toBe(
+      false,
+    );
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/src", undefined)).toBe(
+      true,
+    );
+  });
+
+  // On a case-insensitive file system (the macOS and Windows default) "SRC"
+  // is the src folder, and emptying it deletes the sources. The check
+  // compares the folders on disk, not only the path strings.
+  it("rejects an out that is a source folder spelled in another case", (ctx) => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-out-case-"));
+    try {
+      mkdirSync(join(root, "src", "pages"), { recursive: true });
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      if (!existsSync(join(root, "SRC"))) {
+        ctx.skip("the file system is case-sensitive");
+        return;
+      }
+      const errorsFor = (out: string) =>
+        validateUserConfig(
+          { directory: { out } },
+          {},
+          { cwd: root, env: {} },
+        ).filter((error) => error.key === "directory.out");
+
+      const deleting = errorsFor("SRC");
+      expect(deleting).toHaveLength(1);
+      expect(deleting[0].message).toContain("would delete");
+      expect(deleting[0].message).toContain('directory.pages "src/pages"');
+
+      expect(errorsFor("Src/Pages")[0]?.message).toContain(
+        'directory.pages "src/pages"',
+      );
+      expect(errorsFor("SRC/PAGES/dist")[0]?.message).toContain(
+        'is inside directory.pages "src/pages"',
+      );
+      // A folder of its own is still fine, whatever its case.
+      expect(errorsFor("DIST")).toEqual([]);
+      expect(errorsFor("src/dist")).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("leaves wrong-typed directory values to their own type errors", () => {

@@ -16,8 +16,14 @@
  * so every problem reports together, and dedupes errors shared by layers.
  */
 
-import { existsSync, statSync, accessSync, constants } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import {
+  existsSync,
+  statSync,
+  lstatSync,
+  accessSync,
+  constants,
+} from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
 import { hostnameExpectation, isPlausibleHostname } from "./server-address.ts";
@@ -44,6 +50,12 @@ export interface ConfigValidationFs {
   existsSync(path: string): boolean;
   isDirectory(path: string): boolean;
   isReadableFile(path: string): boolean;
+  /**
+   * The identity of the directory entry at a path (device and inode, the
+   * final symlink not followed), or undefined when nothing is there. Absent:
+   * the output-directory overlap check compares path strings only.
+   */
+  entryIdentity?(path: string): string | undefined;
 }
 
 export interface ConfigValidationDeps {
@@ -69,6 +81,7 @@ const defaultFs: ConfigValidationFs = {
       return false;
     }
   },
+  entryIdentity: (path) => entryIdentity(path),
 };
 
 /** The longest delay setTimeout honors; a longer one fires after 1 ms. */
@@ -84,6 +97,42 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 export const isSameOrInside = (child: string, parent: string): boolean =>
   child === parent ||
   child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+
+/**
+ * The device and inode of the entry at `path`, without following a final
+ * symlink (a recursive rm removes the link, not its target), or undefined
+ * when nothing is there or the file system reports no inode (0).
+ */
+export const entryIdentity = (path: string): string | undefined => {
+  try {
+    const stats = lstatSync(path, { bigint: true });
+    return stats.ino === 0n ? undefined : `${stats.dev}:${stats.ino}`;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * isSameOrInside, also true when `parent` exists and `child` or one of its
+ * ancestors is that same folder on disk under another spelling. On a
+ * case-insensitive file system (the macOS and Windows default) "SRC" is the
+ * src folder, and a string comparison misses it; so does any other alias
+ * that names the same entry (a bind mount, an 8.3 short name).
+ */
+export const isSameOrInsideOnDisk = (
+  child: string,
+  parent: string,
+  identify: ((path: string) => string | undefined) | undefined = entryIdentity,
+): boolean => {
+  if (isSameOrInside(child, parent)) return true;
+  if (!identify) return false;
+  const parentIdentity = identify(parent);
+  if (parentIdentity === undefined) return false;
+  for (let path = child; ; path = dirname(path)) {
+    if (identify(path) === parentIdentity) return true;
+    if (dirname(path) === path) return false;
+  }
+};
 
 /**
  * The built-in source and output folders. config.ts builds its defaults from
@@ -1780,7 +1829,11 @@ const checkOutputDirectoryOverlap = (
   userConfig: unknown,
   modeOverrides: unknown,
   cwd: string,
+  fs: ConfigValidationFs,
 ): ConfigValidationError[] => {
+  // Compared on disk too: "SRC" is src on a case-insensitive file system.
+  const overlaps = (child: string, parent: string): boolean =>
+    isSameOrInsideOnDisk(child, parent, fs.entryIdentity?.bind(fs));
   const root = resolve(cwd);
   const perMode =
     isPlainObject(modeOverrides) &&
@@ -1802,7 +1855,7 @@ const checkOutputDirectoryOverlap = (
     const display = (path: string): string =>
       relative(root, resolve(cwd, path)).replace(/\\/g, "/") || ".";
     const deleted = sources.filter(([, path]) =>
-      isSameOrInside(resolve(cwd, path), resolvedOut),
+      overlaps(resolve(cwd, path), resolvedOut),
     );
     if (deleted.length > 0) {
       errors.push({
@@ -1815,7 +1868,7 @@ const checkOutputDirectoryOverlap = (
     const readBack = sources.find(
       ([key, path]) =>
         key !== "scripts.importRoot" &&
-        isSameOrInside(resolvedOut, resolve(cwd, path)),
+        overlaps(resolvedOut, resolve(cwd, path)),
     );
     if (readBack) {
       errors.push({
@@ -1886,6 +1939,7 @@ export const validateUserConfig = (
       userConfig,
       modeOverrides,
       deps.cwd ?? process.cwd(),
+      deps.fs ?? defaultFs,
     ),
   );
 

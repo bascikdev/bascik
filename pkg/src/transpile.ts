@@ -26,7 +26,7 @@ import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
 import { privateDirFor } from "./lib/private-dir.ts";
 import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
-import { isSameOrInside } from "./lib/config-validation.ts";
+import { isSameOrInsideOnDisk } from "./lib/config-validation.ts";
 import { findConfigFile } from "./lib/config-file-names.ts";
 
 /**
@@ -54,7 +54,9 @@ const findSourceInsideCleanTargets = (
   for (const [name, path] of sources) {
     if (typeof path !== "string" || path === "") continue;
     const resolved = resolve(projectRoot, path);
-    if (targets.some((target) => isSameOrInside(resolved, target)))
+    // On disk, not only by string: on a case-insensitive file system (the
+    // macOS and Windows default) an out of "SRC" is the src folder.
+    if (targets.some((target) => isSameOrInsideOnDisk(resolved, target)))
       return `${name} ${relative(projectRoot, resolved).replace(/\\/g, "/")}`;
   }
   return undefined;

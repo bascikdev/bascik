@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolve } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const {
   _state,
@@ -384,6 +392,43 @@ describe("runTranspile", () => {
       expect(_mockRm).not.toHaveBeenCalled();
     },
   );
+
+  // F092 / F047 on macOS and Windows: "SRC" is the src folder on a
+  // case-insensitive file system, so a string comparison let the clean
+  // delete the sources. The guard compares the folders on disk.
+  it("refuses to clean an output directory that is a source folder spelled in another case", async (ctx) => {
+    // The real path: process.cwd() after chdir is one (/private/var on macOS).
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "bascik-clean-case-")),
+    );
+    const cwd = process.cwd();
+    try {
+      mkdirSync(join(root, "src", "pages"), { recursive: true });
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      if (!existsSync(join(root, "SRC"))) {
+        ctx.skip("the file system is case-sensitive");
+        return;
+      }
+      process.chdir(root);
+      Object.assign((BascikConfig as any).directory, {
+        out: "SRC",
+        pages: join(root, "src", "pages"),
+        components: [join(root, "src", "components")],
+      });
+      const failure = await runTranspile().then(
+        () => null,
+        (err: unknown) => err as Error,
+      );
+      expect(failure?.message).toMatch(
+        /Refusing to clean the output directory/,
+      );
+      expect(failure?.message).toMatch(/directory\.pages src\/pages/);
+      expect(_mockRm).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(cwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   it("refuses to clean an output directory that holds the import root", async () => {
     (BascikConfig as any).directory.out = "lib";
