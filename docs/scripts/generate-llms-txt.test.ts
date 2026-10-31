@@ -19,4 +19,26 @@ describe("generate-llms-txt", () => {
     expect(content).toContain("## Scripts & Routing");
     expect(content).toContain("## Reference");
   });
+
+  // Its Markdown is content/deployment/index.md, which the old lookup never tried.
+  it("describes a page whose Markdown is a folder's index.md", async () => {
+    await import("./generate-llms-txt.js");
+    const llmsFile = path.resolve(import.meta.dirname, "../dist/llms.txt");
+    const content = await fs.readFile(llmsFile, "utf8");
+    expect(content).toMatch(
+      /^- \[Overview\]\(https:\/\/bascik\.dev\/deployment\): \S/m,
+    );
+  });
+
+  it("gives every sidebar page a description", async () => {
+    await import("./generate-llms-txt.js");
+    const llmsFile = path.resolve(import.meta.dirname, "../dist/llms.txt");
+    const content = await fs.readFile(llmsFile, "utf8");
+    const bare = content
+      .split("\n")
+      .filter((line) =>
+        /^- \[[^\]]+\]\(https:\/\/bascik\.dev\/[^)]*\)$/.test(line),
+      );
+    expect(bare).toEqual([]);
+  });
 });

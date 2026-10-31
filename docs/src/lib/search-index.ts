@@ -22,7 +22,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV, HOME_SITELINKS } from "./nav.ts";
+import { NAV, HOME_SITELINKS, type NavSection } from "./nav.ts";
+import { readRouteMarkdown, routeContentCandidates } from "./content-path.ts";
 import type {
   CompactSearchIndex,
   SearchEntry,
@@ -39,8 +40,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
 /**
  * Upper bound on the index file. It was 1.43 MB with the text indented as in the Markdown and each page's
  * fields repeated on every section. Raise it only for new content, never to fit a format that wastes space.
+ * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
+ * index until the content lookup learned folder index.md files.
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_300_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_330_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
@@ -87,18 +90,6 @@ export function stripMd(text: string): string {
     .replace(/\|/g, " ") // table cell pipes → spaces
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
 }
 
 function decodeAttr(value: string): string {
@@ -231,15 +222,21 @@ function parseMd(
 }
 
 /** Every search entry, Home first, then each nav page with its sections, in nav order. */
-export async function buildSearchEntries(): Promise<SearchEntry[]> {
+export async function buildSearchEntries(
+  nav: NavSection[] = NAV,
+): Promise<SearchEntry[]> {
   const entries: SearchEntry[] = [await homeEntry()];
-  for (const { section, pages } of NAV) {
+  for (const { section, pages } of nav) {
     for (const { href, label } of pages) {
       // External nav entries (e.g. Merch) are off-site and have no local content
       // Markdown, so they are not indexed for search.
       if (/^https?:\/\//i.test(href)) continue;
-      const md = await readMd(href);
+      const md = (await readRouteMarkdown(href))?.markdown;
       if (!md) {
+        // A typo'd href or a moved file: the page still gets a title result, but nothing in it is searchable.
+        console.warn(
+          `[search-index] warning: no Markdown for nav page ${href}; looked for ${routeContentCandidates(href).join(" or ")}`,
+        );
         entries.push({
           title: label,
           navLabel: label,

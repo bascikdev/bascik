@@ -29,6 +29,7 @@ import { availableParallelism } from "node:os";
 import { renderAsync, type ResvgRenderOptions } from "@resvg/resvg-js";
 import sharp from "sharp";
 import { NAV } from "../src/lib/nav.ts";
+import { readRouteMarkdown } from "../src/lib/content-path.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, "..");
@@ -220,18 +221,6 @@ function wrapText(
   }
 
   return lines;
-}
-
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
 }
 
 function extractMetaFromMd(
@@ -606,9 +595,9 @@ export async function generateOgImages(
       htmlMeta = extractMetaFromHtml(html);
     } catch {}
 
-    const md = await readMd(href);
-    const mdMeta = md
-      ? extractMetaFromMd(md, label)
+    const content = await readRouteMarkdown(href);
+    const mdMeta = content
+      ? extractMetaFromMd(content.markdown, label)
       : { title: label, description: "HTML components. Zero runtime." };
 
     const title =
@@ -620,7 +609,7 @@ export async function generateOgImages(
           htmlMeta?.description ||
           "HTML components. Zero runtime.";
     const codeSnippet = mdMeta.codeSnippet;
-    const fileName = `docs/content${href === "/" ? "/overview" : href}.md`;
+    const fileName = content ? `docs/${content.file}` : undefined;
 
     pagesMap.set(slug, {
       slug,
