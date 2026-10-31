@@ -557,7 +557,7 @@ export const isMessageArgument = (source: string, start: number): boolean => {
   );
 };
 
-// ─── Where html would throw ─────────────────────────────────────────────────
+// ─── Where each hole lands, and where html would throw ─────────────────────
 
 const enum T {
   Data,
@@ -578,6 +578,36 @@ const enum T {
   RawText,
 }
 
+/** Where a template hole lands in the markup its static parts build. */
+export type HoleContext =
+  /** Text. `sawTag` is false while the template has not opened a tag yet (a fragment such as ` href="${u}"`). */
+  | { kind: "text"; sawTag: boolean }
+  /**
+   * The body of a raw-text element (script, style, textarea, title).
+   * `jsonScript`: a <script type="application/json"> or
+   * "application/ld+json" with only whitespace before the hole.
+   */
+  | { kind: "raw"; tag: string; jsonScript: boolean }
+  /** A quoted attribute value. `attr` is lower case; it holds U+0000 where a hole made part of the name. */
+  | { kind: "value"; tag: string; attr: string }
+  /** An unquoted attribute value. */
+  | { kind: "unquoted"; tag: string; attr: string }
+  /** A tag name, where an attribute name goes, or inside a <!...> declaration. */
+  | { kind: "name" }
+  /** Inside a <!-- --> comment. */
+  | { kind: "comment" };
+
+export interface TemplateHtml {
+  /** One per hole, in order. */
+  holes: HoleContext[];
+  /**
+   * Where html`...` would throw: the 1-based number of the first hole it
+   * throws on, 0 when only the end does (the template stops inside a tag,
+   * comment, quoted value or raw-text element), or -1 when it would not.
+   */
+  throwsAt: number;
+}
+
 const RAW_TEXT_TAGS = new Set(["script", "style", "textarea", "title"]);
 const SVG_ANIMATION_TAGS = new Set([
   "animate",
@@ -587,23 +617,56 @@ const SVG_ANIMATION_TAGS = new Set([
 ]);
 const isAsciiAlpha = (c: string): boolean => /[a-zA-Z]/.test(c);
 const isTagSpace = (c: string): boolean => /[\t\n\f\r ]/.test(c);
+/** Stands for the text of a hole inside a tag or attribute name. */
+const HOLE_CHAR = "\u0000";
+
+/** Whether html`...` throws on a hole in this context. */
+const throwsOn = (context: HoleContext): boolean => {
+  switch (context.kind) {
+    case "text":
+      return false;
+    case "raw":
+      return context.tag === "script" || context.tag === "style";
+    case "value":
+      return (
+        /^on/.test(context.attr) ||
+        context.attr === "style" ||
+        context.attr === "srcdoc" ||
+        (context.tag === "meta" &&
+          (context.attr === "http-equiv" || context.attr === "content")) ||
+        SVG_ANIMATION_TAGS.has(context.tag)
+      );
+    default:
+      return true;
+  }
+};
 
 /**
- * Whether html`...` would throw for a template with these static parts:
- * a hole in a tag name, where an attribute name goes, in an unquoted value,
- * inside a comment or <!...> declaration, inside a <script> or <style>, in
- * an on*, style or srcdoc value, a <meta> http-equiv or content value, any
- * attribute of an SVG animation element, or a template that ends inside a
- * tag, comment, quoted value or raw-text element. A small version of
- * html's own tokenizer, one linear pass; it errs toward true, since a true
- * only withholds the quick fix.
+ * Where each hole of a template lands, from its static parts, and where
+ * html`...` would throw: a hole in a tag name, where an attribute name
+ * goes, in an unquoted value, inside a comment or <!...> declaration,
+ * inside a <script> or <style>, in an on*, style or srcdoc value, a <meta>
+ * http-equiv or content value, any attribute of an SVG animation element,
+ * or a template that ends inside a tag, comment, quoted value or raw-text
+ * element. A small version of html's own tokenizer that carries its state
+ * across the holes, so the whole template is read once, however many holes
+ * it has. A hole in a name position counts as part of that name, so the
+ * text after it is read as html would read it.
  */
-export function htmlWouldThrow(parts: readonly string[]): boolean {
+export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
+  const holes: HoleContext[] = [];
+  let throwsAt = -1;
   let state = T.Data;
   let tag = "";
   let isEnd = false;
   let attr = "";
   let rawTag = "";
+  let sawTag = false;
+  /** The current tag's type="..." value, for a JSON script. */
+  let typeValue = "";
+  let jsonScript = false;
+  /** Only whitespace so far in the raw-text element. */
+  let rawBlank = true;
   for (let p = 0; p < parts.length; p++) {
     const text = parts[p];
     for (let i = 0; i < text.length; i++) {
@@ -617,8 +680,11 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
             state = T.TagName;
             tag = c.toLowerCase();
             isEnd = false;
+            sawTag = true;
+            typeValue = "";
           } else if (c === "/") state = T.EndTagOpen;
           else if (c === "!") {
+            sawTag = true;
             if (text.startsWith("--", i + 1)) {
               state = T.Comment;
               i += 2;
@@ -634,6 +700,7 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
             state = T.TagName;
             tag = c.toLowerCase();
             isEnd = true;
+            sawTag = true;
           } else if (c === ">") state = T.Data;
           else state = T.Bogus;
           break;
@@ -649,6 +716,10 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
             if (!isEnd && RAW_TEXT_TAGS.has(tag)) {
               state = T.RawText;
               rawTag = tag;
+              rawBlank = true;
+              jsonScript =
+                tag === "script" &&
+                /^application\/(?:ld\+)?json$/i.test(typeValue.trim());
             } else state = T.Data;
           } else if (state === T.TagName) {
             if (isTagSpace(c)) state = T.BeforeAttrName;
@@ -657,9 +728,13 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
           } else if (state === T.BeforeAttrValue) {
             if (c === '"') state = T.ValueDq;
             else if (c === "'") state = T.ValueSq;
-            else if (!isTagSpace(c)) state = T.ValueUq;
+            else if (!isTagSpace(c)) {
+              state = T.ValueUq;
+              if (attr === "type") typeValue += c;
+            }
           } else if (state === T.ValueUq) {
             if (isTagSpace(c)) state = T.BeforeAttrName;
+            else if (attr === "type") typeValue += c;
           } else if (state === T.AttrName) {
             if (isTagSpace(c)) state = T.AfterAttrName;
             else if (c === "/") state = T.SelfClosing;
@@ -677,9 +752,11 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
           break;
         case T.ValueDq:
           if (c === '"') state = T.AfterValueQuoted;
+          else if (attr === "type") typeValue += c;
           break;
         case T.ValueSq:
           if (c === "'") state = T.AfterValueQuoted;
+          else if (attr === "type") typeValue += c;
           break;
         case T.Comment: {
           const close = text.indexOf("-->", i);
@@ -704,32 +781,73 @@ export function htmlWouldThrow(parts: readonly string[]): boolean {
             tag = rawTag;
             isEnd = true;
             i += 1 + rawTag.length;
-          }
+          } else if (!isTagSpace(c)) rawBlank = false;
           break;
       }
     }
     if (p === parts.length - 1) break;
-    // A hole after parts[p].
+    // A hole after parts[p]: where it lands, then the state html reads on in.
+    let context: HoleContext;
     switch (state) {
       case T.Data:
+        context = { kind: "text", sawTag };
         break;
       case T.RawText:
-        if (rawTag === "script" || rawTag === "style") return true;
+        context = {
+          kind: "raw",
+          tag: rawTag,
+          jsonScript: jsonScript && rawBlank,
+        };
+        rawBlank = false;
         break;
       case T.ValueDq:
       case T.ValueSq:
-        if (
-          /^on/.test(attr) ||
-          attr === "style" ||
-          attr === "srcdoc" ||
-          (tag === "meta" && (attr === "http-equiv" || attr === "content")) ||
-          SVG_ANIMATION_TAGS.has(tag)
-        )
-          return true;
+        context = { kind: "value", tag, attr };
+        if (attr === "type") typeValue += HOLE_CHAR;
+        break;
+      case T.BeforeAttrValue:
+      case T.ValueUq:
+        context = { kind: "unquoted", tag, attr };
+        state = T.ValueUq;
+        if (attr === "type") typeValue += HOLE_CHAR;
+        break;
+      case T.Comment:
+        context = { kind: "comment" };
+        break;
+      case T.Bogus:
+        context = { kind: "name" };
+        break;
+      case T.TagOpen:
+      case T.EndTagOpen:
+        // `<${tag}`: the hole is the tag name.
+        context = { kind: "name" };
+        isEnd = state === T.EndTagOpen;
+        tag = HOLE_CHAR;
+        sawTag = true;
+        state = T.TagName;
+        break;
+      case T.TagName:
+        context = { kind: "name" };
+        tag += HOLE_CHAR;
+        break;
+      case T.AttrName:
+        context = { kind: "name" };
+        attr += HOLE_CHAR;
         break;
       default:
-        return true;
+        // Where an attribute name goes: the hole starts one.
+        context = { kind: "name" };
+        attr = HOLE_CHAR;
+        state = T.AttrName;
+        break;
     }
+    holes.push(context);
+    if (throwsAt === -1 && throwsOn(context)) throwsAt = holes.length;
   }
-  return state !== T.Data;
+  if (throwsAt === -1 && state !== T.Data) throwsAt = 0;
+  return { holes, throwsAt };
 }
+
+/** Whether html`...` would throw for a template with these static parts (see scanTemplateHtml). */
+export const htmlWouldThrow = (parts: readonly string[]): boolean =>
+  scanTemplateHtml(parts).throwsAt !== -1;

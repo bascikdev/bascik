@@ -64,4 +64,36 @@ describe("server-script-unescaped-markup: linear time", () => {
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
+
+  it.each([
+    [
+      "an unquoted attribute and text",
+      (i: number) => `<li class=\${x${i}}>\${y${i}}</li>`,
+    ],
+    ["text before a tag", (i: number) => `\${x${i}}<b>`],
+    ["a hole where an attribute name goes", (i: number) => `<p \${x${i}}`],
+  ])(
+    "one long template with many holes (%s) lints in linear time in a module (CPU growth under 8x for 4x the holes)",
+    (_name, item) => {
+      // Each hole once re-read the whole template before it, so one 12k-row
+      // table helper took 37 seconds in bascik --check.
+      const module = (n: number) =>
+        `export const table = () => \`${Array.from({ length: n }, (_, i) => item(i)).join("\n")}\`;\n`;
+      const lint = (body: string) =>
+        analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive: "module",
+        } as AnalyzeOptions);
+      const small = module(2_000);
+      const large = module(8_000);
+      lint(small);
+      expect(
+        growthOf(
+          () => lint(small),
+          () => lint(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });

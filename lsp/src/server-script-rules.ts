@@ -10,12 +10,13 @@ import {
   findHtmlImports,
   findTemplateLiterals,
   htmlExportOf,
-  htmlWouldThrow,
   htmlTagNames,
   isExempt,
   isMessageArgument,
   looksLikeMarkup,
+  scanTemplateHtml,
   type ExemptContext,
+  type HoleContext,
 } from "./server-script-templates.js";
 
 export interface ServerScriptDiagnostic {
@@ -359,33 +360,40 @@ export function analyzeServerScriptSource(
       markupLike &&
       !isMessageArgument(body, literal.start);
     const pending: ServerScriptDiagnostic[] = [];
+    // Where each hole lands, read once for the whole template.
+    const scanned = scanTemplateHtml(literal.parts);
     // The fix puts html before the backtick, so a tagged template and one
     // where html would throw (a tag name, an attribute name, a comment) get
     // no fix.
-    let fixable = markup && !plainTag && !htmlWouldThrow(literal.parts);
+    const throwsAt = scanned.throwsAt;
+    let fixable = markup && !plainTag && throwsAt === -1;
     for (const hole of literal.holes) {
-      const precedingInLiteral = body.slice(literal.start + 1, hole.start);
+      const context = scanned.holes[hole.index - 1];
       // A placeholder inside a <!-- --> comment within the literal is skipped.
-      const lastCommentOpen = precedingInLiteral.lastIndexOf("<!--");
-      const lastCommentClose = precedingInLiteral.lastIndexOf("-->");
-      if (lastCommentOpen !== -1 && lastCommentClose < lastCommentOpen)
-        continue;
-      const found = sinkOf(precedingInLiteral);
+      if (context.kind === "comment") continue;
+      // A fragment that has opened no tag yet (` href="${u}"`) is read the
+      // old way, over a bounded stretch of text before the hole.
+      const found =
+        context.kind === "text" && !context.sawTag
+          ? sinkOf(
+              body.slice(
+                Math.max(literal.start + 1, hole.start - FRAGMENT_WINDOW),
+                hole.start,
+              ),
+            )
+          : sinkOfContext(context);
       const sink =
         !markupLike && found === "server-script-sink-unquoted-attribute"
           ? null
           : found;
       const at = { start: hole.start, end: hole.end };
-      const inAttribute = /=\s*["'][^"']*$/.test(precedingInLiteral);
+      const inAttribute = context.kind === "value";
 
       if (isHtml) {
         if (sink === "server-script-sink-inline-script") {
           // <script type="application/json">${json(value)}</script> is html's own form.
           const callee = callOf(hole.expr);
-          const isJsonScript =
-            /<script\b[^>]*\btype\s*=\s*["']application\/(?:ld\+)?json["'][^>]*>\s*$/i.test(
-              precedingInLiteral,
-            );
+          const isJsonScript = context.kind === "raw" && context.jsonScript;
           if (
             isJsonScript &&
             callee !== undefined &&
@@ -420,6 +428,21 @@ export function analyzeServerScriptSource(
             code: JOINED_RULE,
             message:
               'This hole joins its items into one string, which html escapes, so the page shows &lt;li&gt; as text. Pass the array without .join(""): html inserts each html`...` item as it is.',
+            severity: "warning",
+            ...at,
+          });
+        continue;
+      }
+
+      if (context.kind === "name") {
+        // A tag or attribute name: html throws here, so wrapping cannot
+        // help. Build-time names are the site's own (`<h${level}>`,
+        // `<th${attributes}>`); a request value here is an injection.
+        fixable = false;
+        if (requestTime && markup && !isExempt(hole.expr, ctx))
+          pending.push({
+            code: UNESCAPED_MARKUP_RULE,
+            message: `This markup template (line ${lineOf(literal.start)}) puts \${${hole.expr.trim()}} (hole ${hole.index}) where a tag or attribute name goes. html\`...\` throws there and escaping cannot make it safe: choose between fixed names in code (for example level === 1 ? "h1" : "h2").`,
             severity: "warning",
             ...at,
           });
@@ -473,12 +496,27 @@ export function analyzeServerScriptSource(
         // markup in a joined string, would show as text.
         if (escaper !== undefined || isJoined(hole.expr, joined))
           fixable = false;
-        pending.push({
-          code: UNESCAPED_MARKUP_RULE,
-          message:
+        // html would throw on this template, so the advice is esc().
+        const throwsReason =
+          throwsAt > 0
+            ? `hole ${throwsAt} sits where html throws`
+            : throwsAt === 0
+              ? "it ends inside a tag"
+              : undefined;
+        let message: string;
+        if (throwsReason !== undefined)
+          message =
+            escaper !== undefined
+              ? `${head} ${escaper.name}() looks like a hand-written escaper. html\`...\` cannot build this template as it is (${throwsReason}), so call esc() from @bascik/bascik/html in its place, or list ${escaper.name}() in diagnostics.escapeFunctions if it is a trusted escaper.`
+              : `${head} html\`...\` cannot build this template as it is (${throwsReason}), so escape the value with esc() from @bascik/bascik/html.`;
+        else
+          message =
             escaper !== undefined
               ? `${head} ${escaper.name}() looks like a hand-written escaper, and html escapes too, so wrapping this template in html would show &amp;lt; on the page. Wrap it in html\`...\` and pass the value as it is: \${${escaper.args}}. If ${escaper.name}() is a trusted escaper, list it in diagnostics.escapeFunctions.`
-              : `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`,
+              : `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`;
+        pending.push({
+          code: UNESCAPED_MARKUP_RULE,
+          message,
           severity: "warning",
           ...at,
         });
@@ -598,7 +636,36 @@ const SINK_MESSAGES: Record<string, string> = {
     'Unquoted attribute. A space in the value breaks out of the attribute. Quote it: `attr="${...}"`.',
 };
 
-/** Which sink rule a hole after `precedingInLiteral` falls under, or null for text. */
+/** How far back a fragment's hole is read when the template opens no tag. */
+const FRAGMENT_WINDOW = 256;
+
+const URL_ATTRIBUTE =
+  /\b(?:href|src|action|formaction|poster|data|srcset|xlink:href)$/;
+
+/** Which sink rule a hole falls under, from where it lands, or null for text and names. */
+function sinkOfContext(context: HoleContext): string | null {
+  if (context.kind === "value") {
+    if (URL_ATTRIBUTE.test(context.attr))
+      return "server-script-sink-url-attribute";
+    if (/\bon[a-z]+$/.test(context.attr))
+      return "server-script-sink-event-handler";
+    if (/\bstyle$/.test(context.attr)) return "server-script-sink-style";
+    return null;
+  }
+  if (context.kind === "raw") {
+    if (context.tag === "script") return "server-script-sink-inline-script";
+    if (context.tag === "style") return "server-script-sink-style";
+    return null;
+  }
+  if (context.kind === "unquoted")
+    return "server-script-sink-unquoted-attribute";
+  return null;
+}
+
+/**
+ * Which sink rule a hole after `precedingInLiteral` falls under, or null for
+ * text. For a fragment that opens no tag; the caller bounds the text.
+ */
 function sinkOf(precedingInLiteral: string): string | null {
   // Inside a quoted URL attribute value.
   if (

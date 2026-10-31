@@ -854,3 +854,82 @@ describe("server-script-unescaped-markup: an XML escaper that says so is trusted
     ]);
   });
 });
+
+describe("server-script-unescaped-markup: holes where a tag or attribute name goes (review 2026-10-31)", () => {
+  // html`...` throws on these holes, so "wrap the template in html" is
+  // wrong advice. Build-time code is the site's own: no report. A request
+  // value there is a real injection, so request-time code still warns, with
+  // advice that works.
+  const module = (body: string) =>
+    analyze(body, { directive: "module" }).filter((d) => d.code === RULE);
+
+  it("an attribute name from a parameter in a module: the name hole is skipped, the value hole says esc(), not wrap", () => {
+    const body =
+      'export const m = (attr: string, key: string) => `<meta ${attr}="${key}">`;\n';
+    const diags = module(body);
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual(["${key}"]);
+    expect(diags[0].message).not.toContain("Wrap the template");
+    expect(diags[0].message).toContain("esc()");
+    expect(diags[0].template?.fixable).toBe(false);
+  });
+
+  it("a heading level, attribute strings and a Prettier-wrapped tag in build code are not reported", () => {
+    const heading =
+      'export const h = (level: number, slug: string) => `<h${level} id="${slug}">Milk frother</h${level}>`;\n';
+    expect(module(heading).map((d) => heading.slice(d.start, d.end))).toEqual([
+      "${slug}",
+    ]);
+    const th =
+      'export const th = (attributes: string) => `<th scope="col"${attributes}>`;\n';
+    expect(module(th)).toEqual([]);
+    const img = `export const img = (loading: string, demoClass: string, rest: string) =>
+  \`<img
+    \${loading}\${demoClass}
+    src="/frother.webp"\${rest}
+  >\`;
+`;
+    expect(module(img)).toEqual([]);
+    for (const directive of ["build", "routes"] as const)
+      expect(
+        analyze(`export default () => ${th.slice(th.indexOf("`"))}`, {
+          directive,
+        }).filter((d) => d.code === RULE),
+      ).toEqual([]);
+  });
+
+  it("a request value as a tag name in a server script warns without suggesting html", () => {
+    const body = handler(
+      '`<p><${new URL(request.url).searchParams.get("t")}>Milk frother</p>`',
+    );
+    const diags = unescaped(body);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain("tag or attribute name");
+    expect(diags[0].message).not.toContain("Wrap the template");
+    expect(diags[0].template?.fixable).toBe(false);
+  });
+
+  it("a hole in a quoted value after a name hole is still a value, not a name", () => {
+    const body = handler('`<p ${q}="${q}">Milk frother</p>`');
+    const diags = unescaped(body);
+    expect(diags.map((d) => d.message.includes("name goes"))).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it("a fragment with no tag keeps the attribute sinks it had (a URL attribute in a server script)", () => {
+    const body = handler('` href="${q}"`');
+    expect(
+      analyze(body)
+        .map((d) => d.code)
+        .filter((c) => c.startsWith("server-script-sink")),
+    ).toEqual(["server-script-sink-url-attribute"]);
+  });
+
+  it("a fixable template keeps the wrap advice", () => {
+    const body = 'export const p = (t: string) => `<p class="x">${t}</p>`;\n';
+    const [d] = module(body);
+    expect(d.message).toContain("Wrap the template in html");
+    expect(d.template?.fixable).toBe(true);
+  });
+});
