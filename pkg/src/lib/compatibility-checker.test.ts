@@ -37,6 +37,21 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         '.card::before { content: "[id]"; }',
       ],
     },
+    "css-reserved-class-prefix": {
+      kind: "css",
+      positive: [
+        ".el__p { color: blue; }",
+        ".card .id__btn { color: blue; }",
+        ".card, .el__item:hover { color: blue; }",
+      ],
+      negative: [
+        ".block__el { color: blue; }",
+        ".model__p { color: blue; }",
+        ".el-p, .id-btn, .el_p { color: blue; }",
+        '.card::before { content: ".el__p"; }',
+        "/* .el__p { color: blue; } */",
+      ],
+    },
     "css-attribute-selector": {
       kind: "css",
       positive: [
