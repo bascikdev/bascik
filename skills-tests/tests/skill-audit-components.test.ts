@@ -1098,6 +1098,60 @@ describe("audit-components: semantic HTML", () => {
     expect(found[0].suggestion).toMatch(/<h2>/);
   });
 
+  it("follows a named slot a component passes to a child, even when the page passes the same slot name to the parent", async () => {
+    // Bascik drops a named wrapper and fills the child's slot with what is inside it; the wrapper is the outer
+    // template's own content for the child, never a placeholder for the page's same-named slot.
+    const root = project({
+      ...clean,
+      "src/components/inner-card/inner-card.html": `<article class="card" data-testid="inner-card">
+  <header data-bascik-slot="title"></header>
+</article>
+`,
+      "src/components/outer-section/outer-section.html": `<section class="outer" data-testid="outer-section">
+  <div data-bascik-slot="title"></div>
+  <inner-card>
+    <div data-bascik-slot="title"><h4>Inner</h4></div>
+  </inner-card>
+</section>
+`,
+      "src/components/main-shell/main-shell.html": `<div class="shell" data-testid="main-shell">
+  <div data-bascik-slot="title"></div>
+  <inner-card>
+    <div data-bascik-slot="title"><main id="main"><h2>Body</h2></main></div>
+  </inner-card>
+</div>
+`,
+      "src/pages/nested.html": page(`      <h1>Nested</h1>
+      <outer-section>
+        <div data-bascik-slot="title"><h2>Outer</h2></div>
+      </outer-section>`),
+      "src/pages/shell.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <h1>Shell</h1>
+    <main-shell>
+      <div data-bascik-slot="title"><p>Lead</p></div>
+    </main-shell>
+  </body>
+</html>
+`,
+    });
+    const { findings } = await audit(root);
+    const skipped = only(findings, "skipped-heading");
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({ file: "src/pages/nested.html" });
+    expect(skipped[0].message).toContain(
+      "src/components/outer-section/outer-section.html:4",
+    );
+    expect(skipped[0].message).toMatch(/<h2>.*to <h4>/);
+    expect(
+      only(findings, "missing-main").filter(
+        (f) => f.file === "src/pages/shell.html",
+      ),
+    ).toEqual([]);
+  });
+
   it("misuse: does not guess past headings a build script prints, and skips missing-main when a script may print <main>", async () => {
     const root = project({
       ...clean,

@@ -446,9 +446,18 @@ export function walkComposed(page, componentDocs, visit) {
         continue;
       }
       if ("data-bascik-slot" in node.attrs && ctx.slots) {
-        const passed = ctx.slots.map.get(node.attrs["data-bascik-slot"] || "");
+        const name = node.attrs["data-bascik-slot"] || "";
+        const passed = ctx.slots.map.get(name);
         if (passed?.length) {
-          walk(passed, { ...ctx.slots.ctx, ancestors: ctx.ancestors });
+          if (name)
+            // Bascik drops a named wrapper and keeps what is inside it, and fills nothing in there from an outer
+            // usage: a wrapper a template passes to a child is that template's content, not a slot of its own.
+            walk(
+              passed.flatMap((wrapper) => wrapper.children),
+              { ...ctx.slots.ctx, slots: undefined, ancestors: ctx.ancestors },
+            );
+          // Default slot content keeps the outer slots, so a valueless marker forwards the outer default slot.
+          else walk(passed, { ...ctx.slots.ctx, ancestors: ctx.ancestors });
           continue;
         }
       }
