@@ -12,6 +12,7 @@ import {
   prefixKeyframes,
   removeIdSelectors,
   removeCommentsFromCss,
+  declaredCustomPropertyNames,
   scopeCssCustomProperties,
   scopeLayerNames,
   scopeContainerNames,
@@ -603,6 +604,35 @@ describe("scopeCssCustomProperties", () => {
     // A property defined elsewhere (not in this component's CSS) should not be touched
     const css = ".el { color: var(--external-var); }";
     expect(scopeCssCustomProperties(css, "my-comp__x1")).toBe(css);
+  });
+});
+
+describe("scopeCssCustomProperties – BEM modifier classes (R2-03)", () => {
+  // `.btn--primary:hover` is a class with a pseudo-class, not a `--primary`
+  // declaration: `--` only starts a custom property at the start of a name.
+  it("leaves a BEM modifier class with a pseudo-class alone and keeps a global var global", () => {
+    const css = ".btn--primary:hover { color: var(--primary); }";
+    expect([...declaredCustomPropertyNames(css)]).toEqual([]);
+    expect(scopeCssCustomProperties(css, "c")).toBe(css);
+  });
+
+  it("does the same after the class itself is scoped", () => {
+    const css =
+      ".bascik__c__btn--primary:hover { color: var(--primary); } :root { --gap: 1px; }";
+    expect(scopeCssCustomProperties(css, "c")).toBe(
+      ".bascik__c__btn--primary:hover { color: var(--primary); } :root { --bascik__c__gap: 1px; }",
+    );
+  });
+
+  it("still scopes a declaration after {, ;, ( or whitespace", () => {
+    const css =
+      ".a{--x:1}.b{color:red;--y:2}@supports (--z: 1) { .c { --w :3 } }";
+    expect([...declaredCustomPropertyNames(css)].sort()).toEqual([
+      "w",
+      "x",
+      "y",
+      "z",
+    ]);
   });
 });
 
@@ -2714,6 +2744,34 @@ describe("CSS @import resolution and hoisting", () => {
       expect(wrapped).toContain("@layer utilities {");
       expect(wrapped).toContain("@supports (display: flex) {");
       expect(wrapped).toContain(".btn { color: red; }");
+    });
+  });
+
+  describe("hoistCssImports – unterminated statements (R2-03)", () => {
+    it("leaves an @import with no semicolon in place instead of moving half the next rule", () => {
+      // The browser reads `@import "a.css" .x { ... }` as one invalid
+      // at-rule with a block; hoisting up to the first `;` inside the rule
+      // moved `.x { color: red;` to the top and left a stray `}`.
+      const css = '.y { top: 0 }\n@import "a.css"\n.x { color: red; }\n';
+      expect(hoistCssImports(css)).toBe(css);
+    });
+
+    it("still hoists a complete @import after the broken one", () => {
+      const css =
+        '.y { top: 0 }\n@import "a.css"\n.x { color: red; }\n@import "b.css";';
+      expect(hoistCssImports(css).startsWith('@import "b.css";\n')).toBe(true);
+    });
+
+    it("reads url() with spaces inside and an escaped quote in a string", () => {
+      expect(hoistCssImports('.a{}\n@import url(  "x.css"  ) screen;\n')).toBe(
+        '@import url(  "x.css"  ) screen;\n.a{}',
+      );
+      expect(hoistCssImports(".a{}\n@import url(  x.css  );\n")).toBe(
+        "@import url(  x.css  );\n.a{}",
+      );
+      expect(hoistCssImports('.a{}\n@import "it\\"s.css";\n')).toBe(
+        '@import "it\\"s.css";\n.a{}',
+      );
     });
   });
 

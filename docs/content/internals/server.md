@@ -321,7 +321,7 @@ When receiving `SIGTERM` or `SIGINT`:
 
 ### Port conflict policy
 
-Under `bascik --server`, binding to an occupied port (`EADDRINUSE`) is a fatal error that exits immediately to prevent serving from an unexpected port. Under development mode (`bascik`), port conflicts increment automatically up to 20 attempts.
+Under `bascik --server`, binding to an occupied port (`EADDRINUSE`) is a fatal error that exits immediately to prevent serving from an unexpected port. Under development mode (`bascik`), port conflicts increment automatically up to 20 attempts. The hostname comes from `--host`, `BASCIK_SERVER_HOST` or `http.hostname`, checked by `server-address.ts` (a DNS name, an IPv4 address, or a bare IPv6 address with an optional `%zone`), and the URL the server prints and returns brackets an IPv6 host (`formatServerOrigin`: `http://[::1]:8080`, a zone written `%25`).
 
 ### Path traversal protection
 

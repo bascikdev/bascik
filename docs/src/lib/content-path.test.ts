@@ -55,6 +55,20 @@ describe("routeContentCandidates", () => {
     expect(routeContentCandidates("/../package")).toEqual([]);
     expect(routeContentCandidates("/a/../../b")).toEqual([]);
   });
+
+  // path.join on Windows reads a backslash as a separator, so `\..\` climbs there too.
+  it("refuses a route that climbs out with backslashes", () => {
+    expect(routeContentCandidates("/a\\..\\..\\package")).toEqual([]);
+    expect(routeContentCandidates("\\..\\package")).toEqual([]);
+    expect(routeContentCandidates("/a/..\\b")).toEqual([]);
+  });
+
+  it("trims any run of leading and trailing slashes", () => {
+    expect(routeContentCandidates("///deployment///")).toEqual(
+      routeContentCandidates("/deployment"),
+    );
+    expect(routeContentCandidates("////")).toEqual(["content/index.md"]);
+  });
 });
 
 describe("routeContentFile and readRouteMarkdown", () => {

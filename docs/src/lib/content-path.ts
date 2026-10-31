@@ -22,9 +22,19 @@ export const DOCS_DIR = resolve(
  * Empty for a route that would climb out of content/.
  */
 export function routeContentCandidates(route: string): string[] {
-  const path = route.replace(/[?#].*$/, "").replace(/^\/+|\/+$/g, "");
+  const query = route.search(/[?#]/);
+  let path = query === -1 ? route : route.slice(0, query);
+  // Trimmed with a loop: `/\/+$/` retried at every slash of a long inner run.
+  let start = 0;
+  let end = path.length;
+  while (start < end && path[start] === "/") start++;
+  while (end > start && path[end - 1] === "/") end--;
+  path = path.slice(start, end);
   if (!path) return ["content/index.md"];
-  if (path.split("/").some((segment) => segment === ".." || segment === "."))
+  // A backslash is a separator to path.join on Windows, so `\..\` climbs there too.
+  if (
+    path.split(/[\\/]/).some((segment) => segment === ".." || segment === ".")
+  )
     return [];
   return [`content/${path}.md`, `content/${path}/index.md`];
 }

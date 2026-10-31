@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { DOCS_DIR } from "./content-path.ts";
 import {
   decodeHtmlText,
   metaDescription,
@@ -45,5 +48,44 @@ describe("meta-tags", () => {
     expect(
       pageTitle(`<title data-x="1"> Benchmarking &amp; Profiling </title>`),
     ).toBe("Benchmarking & Profiling");
+  });
+});
+
+/** Every page shell under src/pages, as a path relative to the docs folder. */
+const pageShells = (dir = join(DOCS_DIR, "src", "pages")): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? entry.name === "assets"
+        ? []
+        : pageShells(join(dir, entry.name))
+      : entry.name.endsWith(".html")
+        ? [join(dir, entry.name)]
+        : [],
+  );
+
+describe("meta-tags on the docs page shells (R2-03)", () => {
+  // decodeHtmlText decodes the seven entities page shells use. One it does
+  // not know, such as `&mdash;` in a title, would reach the Open Graph tags,
+  // the search index and the TechArticle schema as the text `&mdash;`, so a
+  // page that adds one fails here and either writes the character itself or
+  // extends the table.
+  it("finds only entities decodeHtmlText decodes in every title and description", () => {
+    const shells = pageShells();
+    expect(shells.length).toBeGreaterThan(10);
+    const undecoded: string[] = [];
+    for (const file of shells) {
+      const html = readFileSync(file, "utf8");
+      for (const text of [pageTitle(html), pageDescription(html)]) {
+        for (const [entity] of text.matchAll(/&#?[a-zA-Z0-9]+;/g))
+          undecoded.push(`${file.slice(DOCS_DIR.length + 1)}: ${entity}`);
+      }
+    }
+    expect(undecoded).toEqual([]);
+  });
+
+  it("leaves an entity it does not know as written, so the guard above can see it", () => {
+    expect(pageTitle("<title>Build &mdash; Ship</title>")).toBe(
+      "Build &mdash; Ship",
+    );
   });
 });

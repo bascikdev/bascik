@@ -228,20 +228,36 @@ export function findMatchingClose(
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Tag names end at HTML whitespace, `/` or `>`, and an end tag may carry whitespace or junk before
   // its `>`, the shapes the compiler accepts (component-tags.ts, component-slots.ts).
+  // The end tag runs to the first `>` after its name, so it is found as the name, then indexOf(">"): a
+  // regex `[^>]*>` rescanned the rest of the document from each `</name` with no `>` (quadratic).
   const openRe = new RegExp(`<${tn}${TAG_NAME_END}`, "gi");
-  const closeRe = new RegExp(`<\\/${tn}(?:[\\t\\n\\f\\r /][^>]*)?>`, "gi");
+  const closeNameRe = new RegExp(`<\\/${tn}${TAG_NAME_END}`, "gi");
+  const closeFrom = (from: number): { index: number; end: number } | null => {
+    closeNameRe.lastIndex = from;
+    const name = closeNameRe.exec(html);
+    if (!name) return null;
+    // No `>` after this end tag means none after any later one either.
+    const gt = html.indexOf(">", name.index + name[0].length);
+    return gt === -1 ? null : { index: name.index, end: gt + 1 };
+  };
+  // The next open and end tag at or after `pos`, kept while `pos` has not passed them, so nested or
+  // self-closing tags do not search again for the same end tag each time.
+  let openMatch: RegExpExecArray | null | undefined;
+  let closeMatch: { index: number; end: number } | null | undefined;
   let depth = 1;
   let pos = contentStart;
   while (pos < html.length) {
-    openRe.lastIndex = pos;
-    closeRe.lastIndex = pos;
-    const openMatch = openRe.exec(html);
-    const closeMatch = closeRe.exec(html);
+    if (closeMatch === undefined || (closeMatch && closeMatch.index < pos))
+      closeMatch = closeFrom(pos);
     if (!closeMatch) return -1;
+    if (openMatch === undefined || (openMatch && openMatch.index < pos)) {
+      openRe.lastIndex = pos;
+      openMatch = openRe.exec(html);
+    }
     if (!openMatch || closeMatch.index < openMatch.index) {
       depth--;
       if (depth === 0) return closeMatch.index;
-      pos = closeMatch.index + closeMatch[0].length;
+      pos = closeMatch.end;
     } else {
       let inDoubleQuote = false;
       let inSingleQuote = false;

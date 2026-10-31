@@ -11,6 +11,10 @@ import {
   decodeCharacterReferences,
   namedCharacterReferences,
 } from "./character-references.ts";
+import {
+  ASCII_NAMED_REFERENCES,
+  decodeAttributeEntities,
+} from "./url-safety.ts";
 
 /** What the browser's tokenizer makes of `value` written in a quoted attribute. */
 const browserDecode = (value: string): string => {
@@ -92,5 +96,53 @@ describe("decodeCharacterReferences", () => {
         expect(decodeCharacterReferences(written)).toBe(browserDecode(written));
       }),
     );
+  });
+});
+
+describe("decodeAttributeEntities and decodeCharacterReferences agree (R2-03)", () => {
+  // The URL check decodes with url-safety.ts, the prop path with this module.
+  // They share one regex; numeric references must decode the same in both,
+  // as the HTML tokenizer's numeric character reference end state says
+  // (WHATWG HTML §13.2.5.80): 0x80-0x9F remap through windows-1252.
+  it("decodes every numeric reference up to U+00A0 as the tokenizer does, in both", () => {
+    for (let code = 0; code <= 0xa0; code++) {
+      if (code === 0x0d) continue; // a CR is normalized by the input stream
+      for (const written of [
+        `&#${code};`,
+        `&#x${code.toString(16)};`,
+        `&#${code}`,
+      ]) {
+        const browser = browserDecode(written);
+        expect(decodeAttributeEntities(written), written).toBe(browser);
+        expect(decodeCharacterReferences(written), written).toBe(browser);
+      }
+    }
+  });
+
+  it("agrees on invalid and out-of-range numbers and on every ASCII name", () => {
+    for (const written of [
+      "&#0;",
+      "&#xD800;",
+      "&#x110000;",
+      "&#99999999999999999999;",
+      "&#x10FFFF;",
+      "&#128512;",
+      "&#150;javascript:",
+      "&#x9D;",
+    ]) {
+      expect(decodeAttributeEntities(written), written).toBe(
+        decodeCharacterReferences(written),
+      );
+    }
+    for (const name of Object.keys(ASCII_NAMED_REFERENCES)) {
+      expect(decodeAttributeEntities(`&${name};`), name).toBe(
+        decodeCharacterReferences(`&${name};`),
+      );
+    }
+  });
+
+  it("differs only on non-ASCII names, which the URL check leaves as written", () => {
+    expect(decodeAttributeEntities("&mdash;&colon;")).toBe("&mdash;:");
+    expect(decodeCharacterReferences("&mdash;&colon;")).toBe("\u2014:");
   });
 });

@@ -7,7 +7,7 @@ import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { parsePort } from "./server-address.ts";
+import { formatServerOrigin, parsePort } from "./server-address.ts";
 import {
   eventEmitter,
   registerShutdownHandler,
@@ -1345,7 +1345,7 @@ export const startServerInstance = async (
       server.once("error", errorHandler);
       server.listen(p, hostname, () => {
         server.removeListener("error", errorHandler);
-        origin = `${protocol}://${hostname}:${p}`;
+        origin = formatServerOrigin(protocol, hostname, p);
         setServerHealthState("ready");
         resolve();
       });

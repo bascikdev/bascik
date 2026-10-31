@@ -139,6 +139,32 @@ describe("extension-config files", () => {
     expect(readExtensionConfig(root).problem?.message).toMatch(/object/);
   });
 
+  it("reports a config file that is present but cannot be read, instead of skipping it", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A folder where the file should be fails to read as EISDIR, like a file
+    // the editor's user may not read (EACCES).
+    fs.mkdirSync(path.join(root, "bascik.ext.json"));
+    write(
+      "bascik.ext.ts",
+      "export default { diagnostics: { enabled: false } };",
+    );
+    const result = readExtensionConfig(root);
+    expect(result).toMatchObject({
+      config: {},
+      file: path.join(root, "bascik.ext.json"),
+      problem: {
+        file: path.join(root, "bascik.ext.json"),
+        line: 1,
+        message: expect.stringMatching(/could not be read.*EISDIR/),
+      },
+    });
+    expect(loadExtensionConfig(root)).toEqual({});
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(String(errors.mock.calls[0][0])).toContain(
+      `${path.join(root, "bascik.ext.json")}:1:`,
+    );
+  });
+
   it("uses the first config file present, even when it is broken", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     write("bascik.ext.json", "{ nope");
@@ -189,5 +215,86 @@ describe("config literal reader", () => {
     expect(() =>
       parseExtensionConfigSource('export default { a: "\\u{110000}" };'),
     ).toThrow(/escape/i);
+  });
+});
+
+describe("config literal reader on unhappy input (R2-03)", () => {
+  it("reads a bascik.ext.json saved with a byte order mark, as Windows Notepad writes it", () => {
+    expect(
+      parseExtensionConfigFile(
+        "bascik.ext.json",
+        '﻿{ "diagnostics": { "enabled": false } }',
+      ),
+    ).toEqual({
+      config: { diagnostics: { enabled: false } },
+      file: "bascik.ext.json",
+    });
+  });
+
+  it("reads a line continuation in a string with CRLF line endings", () => {
+    expect(
+      parseExtensionConfigSource(
+        "export default {\r\n  diagnostics: { escapeFunctions: ['esc\\\r\nape'] },\r\n};\r\n",
+      ),
+    ).toEqual({ diagnostics: { escapeFunctions: ["escape"] } });
+  });
+
+  it("skips a regex literal elsewhere in the file instead of reading its quote as a string", () => {
+    expect(
+      parseExtensionConfigSource(
+        [
+          'const quoted = /"[^"]*"/g;',
+          "const half = 4 / 2 / 1;",
+          "const trailing = /\\//;",
+          "export default { diagnostics: { enabled: false } };",
+        ].join("\n"),
+      ),
+    ).toEqual({ diagnostics: { enabled: false } });
+  });
+
+  it("reads the number forms JavaScript writes", () => {
+    expect(
+      parseExtensionConfigSource(
+        "export default { a: 1., b: 0o17, c: 0b101, d: 0x1F, e: 1_000, f: .5e1, g: -2 };",
+      ),
+    ).toEqual({ a: 1, b: 15, c: 5, d: 31, e: 1000, f: 5, g: -2 });
+  });
+
+  it("reports a computed __proto__ key at its line instead of setting the prototype", () => {
+    const result = parseExtensionConfigFile(
+      "bascik.ext.ts",
+      "export default {\n  ['__proto__']: { diagnostics: {} },\n};",
+    );
+    expect(result.config).toEqual({});
+    expect(Object.getPrototypeOf(result.config)).toBe(Object.prototype);
+    expect(result.problem).toMatchObject({
+      line: 2,
+      message: expect.stringMatching(/key: value/),
+    });
+  });
+
+  it("names the unsupported shape of a template literal with a substitution", () => {
+    expect(
+      parseExtensionConfigFile(
+        "bascik.ext.ts",
+        "export default {\n  diagnostics: { escapeFunctions: [`esc${1}`] },\n};",
+      ).problem,
+    ).toMatchObject({
+      line: 2,
+      message: expect.stringMatching(/literal values/),
+    });
+    expect(
+      parseExtensionConfigSource(
+        "export default { a: `plain \\${not} computed` };",
+      ),
+    ).toEqual({ a: "plain ${not} computed" });
+  });
+
+  it("reads nested arrays and objects with comments and trailing commas", () => {
+    expect(
+      parseExtensionConfigSource(
+        "export default { a: [[1, [2, /* x */ [3,],],], { b: [ ], }, ], } as const;",
+      ),
+    ).toEqual({ a: [[1, [2, [3]]], { b: [] }] });
   });
 });

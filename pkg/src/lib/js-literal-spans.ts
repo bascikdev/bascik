@@ -27,6 +27,14 @@ const isIdentifierChar = (code: number): boolean =>
   code === 36 ||
   code > 127;
 
+/** Keywords whose parenthesized header is followed by a statement, not an operator. */
+const CONTROL_HEADER_KEYWORDS: ReadonlySet<string> = new Set([
+  "if",
+  "while",
+  "for",
+  "with",
+]);
+
 const isLineBreak = (c: string): boolean =>
   c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029";
 
@@ -37,7 +45,8 @@ const quotedStringEnd = (js: string, start: number): number => {
   while (i < js.length) {
     const c = js[i];
     if (c === "\\") {
-      i += 2;
+      // `\` + CRLF is one line continuation, as a Windows checkout writes it.
+      i += js[i + 1] === "\r" && js[i + 2] === "\n" ? 3 : 2;
       continue;
     }
     if (c === quote) return i + 1;
@@ -73,14 +82,19 @@ const regexLiteralEnd = (js: string, start: number): number => {
  * open a literal. A `/` is a regex where an expression may start (after an operator, `(`,
  * `,`, a keyword such as `return` or `else`, or at the start), and a division after a value,
  * `)`, `]`, `}` or a postfix update. That is the rule the built-in minifier applies inside a
- * template's `${}` expressions. Its statement-level scan differs after `}` (a block can end
- * there, so it tries a regex that closes on the same line) and after an `if`/`while`/`for`
- * header's `)`; this scan reads a division in both places.
+ * template's `${}` expressions, plus its statement-level rule for the `)` that closes an
+ * `if`/`while`/`for`/`with` header: a statement follows, so a `/` there is a regex. After `}`
+ * the minifier's statement scan tries a regex that closes on the same line (a block can end
+ * there); this scan reads a division.
  */
 export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
   const spans: JsLiteralSpan[] = [];
-  // "" (start), "value", a keyword from REGEX_PRECEDING_KEYWORDS, or a punctuator.
+  // "" (start), "value", a keyword from REGEX_PRECEDING_KEYWORDS, "header)", or a punctuator.
   let lastToken = "";
+  // Whether the last token was a bare `if`/`while`/`for`/`with`, and for each open `(`,
+  // whether it opened such a header.
+  let afterControlKeyword = false;
+  const openParens: boolean[] = [];
   let i = 0;
   while (i < js.length) {
     const c = js[i];
@@ -94,6 +108,7 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
       spans.push({ start: i, end });
       i = end;
       lastToken = "value";
+      afterControlKeyword = false;
       continue;
     }
     if (c === "`") {
@@ -101,6 +116,7 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
       spans.push({ start: i, end });
       i = end;
       lastToken = "value";
+      afterControlKeyword = false;
       continue;
     }
     if (c === "/") {
@@ -115,6 +131,7 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
         i = close === -1 ? js.length : close + 2;
         continue;
       }
+      afterControlKeyword = false;
       if (canStartRegexAfter(lastToken)) {
         i = regexLiteralEnd(js, i);
         lastToken = "value";
@@ -129,10 +146,23 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
       while (i < js.length && isIdentifierChar(js.charCodeAt(i))) i++;
       const word = js.slice(wordStart, i);
       // `a.return / 2` divides a property, so only a bare keyword allows a regex.
-      lastToken =
-        REGEX_PRECEDING_KEYWORDS.has(word) && js[wordStart - 1] !== "."
-          ? word
-          : "value";
+      const bare = js[wordStart - 1] !== ".";
+      lastToken = REGEX_PRECEDING_KEYWORDS.has(word) && bare ? word : "value";
+      afterControlKeyword = bare && CONTROL_HEADER_KEYWORDS.has(word);
+      continue;
+    }
+    if (c === "(") {
+      openParens.push(afterControlKeyword);
+      afterControlKeyword = false;
+      lastToken = c;
+      i++;
+      continue;
+    }
+    afterControlKeyword = false;
+    if (c === ")") {
+      // `if (a) /re/` starts a statement after the header; `f(a) / 2` divides.
+      lastToken = openParens.pop() ? "header)" : c;
+      i++;
       continue;
     }
     if ((c === "+" || c === "-") && js[i + 1] === c) {

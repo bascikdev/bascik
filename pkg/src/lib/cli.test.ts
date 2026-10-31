@@ -354,12 +354,22 @@ describe("cli helper tests", () => {
       "::1",
       "::",
       "fe80::1",
+      "fe80::1%en0",
+      "::ffff:127.0.0.1",
       "example.com",
       "my-box.local",
     ])("accepts --host %s", (value) => {
       const decision = resolveCliAction(["--server", "--host", value]);
       expect(decision.action).toBe("server");
       expect(decision.flags.host).toBe(value);
+    });
+
+    it("tells --host [::1] to drop the brackets", () => {
+      const decision = resolveCliAction(["--server", "--host", "[::1]"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain(
+        'write an IPv6 address without brackets, like "::1"',
+      );
     });
 
     it("rejects an unknown --log-level", () => {
