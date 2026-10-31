@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -1151,16 +1151,20 @@ describe("directory.out overlap with source folders", () => {
     expect(isSameOrInsideOnDisk("/p/src/pages", "/p/DIST", identify)).toBe(
       false,
     );
-    // No identity (nothing on disk, or no fs given): strings only.
+    // No identity (nothing on disk, or no fs given): strings only, which
+    // are exact on posix. On win32 the strings alone already ignore case.
     expect(
-      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", () => undefined),
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", () => undefined, posix),
     ).toBe(false);
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined)).toBe(
-      false,
-    );
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/src", undefined)).toBe(
-      true,
-    );
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined, posix),
+    ).toBe(false);
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/src", undefined, posix),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk("C:\\p\\src\\pages", "C:\\p\\SRC", undefined, win32),
+    ).toBe(true);
   });
 
   // Startup cost: each mode compares every source folder with the output
@@ -1199,8 +1203,17 @@ describe("directory.out overlap with source folders", () => {
     expect(deleting[0].message).toContain('directory.pages "src/pages"');
     for (const [path, count] of calls) expect(count, path).toBe(1);
     // A later validation reads the disk again: a folder made since counts.
+    // ("SRC" alone may not reach the disk: on win32 the path strings already
+    // match it, so the repeat that must read the disk is the separate out.)
     expect(errorsFor({ directory: { out: "SRC" } })).toHaveLength(1);
+    expect(
+      errorsFor(
+        { directory: { out: "dist" } },
+        { build: { directory: { out: "dist" } }, server: {} },
+      ),
+    ).toEqual([]);
     expect(calls.size).toBeGreaterThan(0);
+    for (const [path, count] of calls) expect(count, path).toBe(1);
   });
 
   // On a case-insensitive file system (the macOS and Windows default) "SRC"

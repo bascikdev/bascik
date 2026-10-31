@@ -245,12 +245,65 @@ describe("isSameOrInsideOnDisk", () => {
   it("matches another spelling of the parent through its identity", () => {
     const identify = (path: string) =>
       path.toLowerCase().replace(/\/$/, "") === "/p/src" ? "src" : undefined;
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify)).toBe(true);
-    expect(isSameOrInsideOnDisk("/p/dist", "/p/SRC", identify)).toBe(false);
-    // No identity function: string comparison only.
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined)).toBe(
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify, posix),
+    ).toBe(true);
+    expect(isSameOrInsideOnDisk("/p/dist", "/p/SRC", identify, posix)).toBe(
       false,
     );
+    // No identity function: string comparison only, which is exact on posix.
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined, posix),
+    ).toBe(false);
+  });
+
+  // The unit-windows job runs the default (host) path module, which is
+  // path.win32 there: its string comparison already ignores case, so the
+  // posix expectation above must name posix rather than rely on the host.
+  it("matches another case by spelling alone on win32", () => {
+    expect(
+      isSameOrInsideOnDisk("C:\\p\\src\\pages", "C:\\p\\SRC", undefined, win32),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", () => undefined, win32),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk("C:\\p\\dist", "C:\\p\\SRC", undefined, win32),
+    ).toBe(false);
+  });
+
+  it("matches an 8.3 short name of the parent on win32 through its identity", () => {
+    // NTFS gives C:\PROGRA~1 and C:\Program Files one file index; only the
+    // identity can tell, the spellings share nothing.
+    const ids: Record<string, string> = {
+      "c:\\program files": "vol:7",
+      "c:\\progra~1": "vol:7",
+      "c:\\program files\\site": "vol:8",
+      "c:\\progra~1\\site": "vol:8",
+      "c:\\program files\\site\\src": "vol:9",
+      "c:\\": "vol:5",
+    };
+    const identify = (path: string) => ids[path.toLowerCase()];
+    expect(
+      isSameOrInsideOnDisk(
+        "C:\\Program Files\\site\\src",
+        "C:\\PROGRA~1",
+        identify,
+        win32,
+      ),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk(
+        "C:\\Program Files",
+        "C:\\PROGRA~1\\site",
+        identify,
+        win32,
+      ),
+    ).toBe(false);
+    // Another drive is never inside, and the walk stops at the drive root.
+    expect(
+      isSameOrInsideOnDisk("D:\\site\\src", "C:\\PROGRA~1", identify, win32),
+    ).toBe(false);
   });
 
   it("follows a symlinked parent to the folder it names", () => {
