@@ -13,7 +13,7 @@ import {
   lstat,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve, relative, sep, dirname } from "node:path";
+import { join, resolve, relative, sep, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { BascikConfig } from "./config.ts";
@@ -22,6 +22,7 @@ import { readSiteGraph, detectPublicCollisions } from "./site-graph.ts";
 import { rewriteModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import { isRenderable } from "./request-render.ts";
+import { privateDirFor } from "./private-dir.ts";
 import type { DeployTarget } from "./cli.ts";
 import type {
   SiteGraph,
@@ -306,10 +307,19 @@ export const emitServerlessArtifacts = async (
         .sort()
     : [];
   if (renderable.length > 0 && buildResult.components !== true) {
-    console.warn(
+    // The manifest's real place: `.bascik/<directory.out name>/`, named
+    // from the project root (absolute when the output lives outside it).
+    const privateDir = privateDirFor(distDir);
+    const fromRoot = relative(projectRoot, privateDir);
+    const insideRoot =
+      fromRoot !== "" &&
+      !isAbsolute(fromRoot) &&
+      fromRoot.split(/[\\/]/)[0] !== "..";
+    const manifestPath = `${(insideRoot ? fromRoot : privateDir).replace(/\\/g, () => "/")}/components.json`;
+    (options.log ?? console.warn)(
       `[bascik] --target ${target}: adapter "${adapter.name}" does not declare components: true, ` +
         `so component tags returned by server and stream scripts are not rendered on this host and reach ` +
-        `the client as written (.bascik/dist/components.json lists ${renderable.map((name) => `<${name}>`).join(", ")}). ` +
+        `the client as written (${manifestPath} lists ${renderable.map((name) => `<${name}>`).join(", ")}). ` +
         `Upgrade the adapter, or keep component tags out of script output for this target.`,
     );
   }
