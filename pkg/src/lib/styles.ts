@@ -1431,9 +1431,30 @@ export const hoistCssImports = (css: string): string => {
   // Only top-level `@layer` statements move: one inside `@media` must stay
   // there.
   const depthAt = braceDepthScanner(css);
-  const statements = [...css.matchAll(statementRegex)].filter(
+  const matches = [...css.matchAll(statementRegex)];
+  const hoistableLayerStatements = new Set(
+    matches
+      .filter(
+        (statement) =>
+          !/^@import/i.test(statement[0]) && depthAt(statement.index) === 0,
+      )
+      .map((statement) => statement.index),
+  );
+  // Any other `@layer` (a block, or a statement inside a block) declares a
+  // layer where it stands, so a statement after it must stay after it, or
+  // the layers it names would move ahead of that one.
+  let layerOrderFixedFrom = css.length;
+  for (const layer of css.matchAll(/@layer\b/gi)) {
+    if (!hoistableLayerStatements.has(layer.index)) {
+      layerOrderFixedFrom = layer.index;
+      break;
+    }
+  }
+  const statements = matches.filter(
     (statement) =>
-      /^@import/i.test(statement[0]) || depthAt(statement.index) === 0,
+      /^@import/i.test(statement[0]) ||
+      (hoistableLayerStatements.has(statement.index) &&
+        statement.index < layerOrderFixedFrom),
   );
   let lastImport = -1;
   statements.forEach((statement, index) => {

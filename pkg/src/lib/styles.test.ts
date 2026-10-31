@@ -3162,6 +3162,32 @@ describe("hoistCssImports – nested @layer statements", () => {
     );
   });
 
+  it("leaves an @layer statement after an @layer block in place, keeping the layer order", () => {
+    const css =
+      '@layer theme { .a {} }\n@layer reset, base;\n@import url("https://x.test/r.css") layer(reset);\n.b {}';
+    // Source order: theme, reset, base. The import may only define reset
+    // first, as it did before @layer statements were hoisted.
+    expect(hoistCssImports(css)).toBe(
+      '@import url("https://x.test/r.css") layer(reset);\n@layer theme { .a {} }\n@layer reset, base;\n\n.b {}',
+    );
+  });
+
+  it("leaves a top-level @layer statement after a nested one in place", () => {
+    const css =
+      "@media screen { @layer x; }\n@layer y, z;\n@import url(https://x.test/a.css) layer(y);";
+    expect(hoistCssImports(css)).toBe(
+      "@import url(https://x.test/a.css) layer(y);\n@media screen { @layer x; }\n@layer y, z;",
+    );
+  });
+
+  it("still hoists the leading @layer statements before a later @layer block", () => {
+    const css =
+      "@layer a, b;\n@layer c { .c {} }\n@layer d;\n@import url(https://x.test/a.css) layer(b);";
+    expect(hoistCssImports(css)).toBe(
+      "@layer a, b;\n@import url(https://x.test/a.css) layer(b);\n@layer c { .c {} }\n@layer d;",
+    );
+  });
+
   it("returns the CSS unchanged when only @layer statements are present", () => {
     const css = "/* @import x; */ @layer a, b;\n.a {}";
     expect(hoistCssImports(css)).toBe(css);
