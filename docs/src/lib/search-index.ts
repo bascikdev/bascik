@@ -22,6 +22,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { marked } from "marked";
+import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
 import { NAV, HOME_SITELINKS, type NavSection } from "./nav.ts";
 import { readRouteMarkdown, routeContentCandidates } from "./content-path.ts";
 import type {
@@ -51,15 +53,6 @@ const MAX_TEXT = 2000;
 /** Searchable text for a section: Markdown removed, whitespace collapsed to single spaces, and capped. */
 function searchText(markdown: string): string {
   return stripMd(markdown).slice(0, MAX_TEXT).replace(/\s+/g, " ").trim();
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
 }
 
 export function stripMd(text: string): string {
@@ -152,72 +145,74 @@ async function homeEntry(): Promise<SearchEntry> {
   };
 }
 
-function parseMd(
+/** A heading's display text and anchor id, from its Markdown, exactly as md-renderer.ts renders them. */
+function renderedHeading(markdown: string): { text: string; id: string } {
+  const html = marked.parseInline(markdown, { async: false });
+  return { text: headingPlainText(html), id: slugFromHeadingHtml(html) };
+}
+
+/**
+ * The search entries of one page's Markdown: the intro, then one entry per h2 and h3. The headings come from
+ * marked's lexer, as the page and its "On this page" list get them, so a `## ` line inside a fenced code
+ * block is text, not a section, and each anchor is the id md-renderer.ts puts on that heading. A page with
+ * no h1 is titled by its nav label and indexed from its first line.
+ */
+export function markdownSearchEntries(
   md: string,
   navLabel: string,
   section: string,
   href: string,
 ): SearchEntry[] {
-  const lines = md.split("\n");
-  const entries: SearchEntry[] = [];
-
-  const h1Line = lines.find((l) => /^# /.test(l));
-  const rawTitle = h1Line ? h1Line.slice(2).trim() : navLabel;
-  const title = rawTitle
-    .replace(/`([^`\n]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1");
-
-  const sections: { heading: string | null; lines: string[] }[] = [];
-  let cur: { heading: string | null; lines: string[] } = {
-    heading: null,
-    lines: [],
-  };
-  let pastH1 = false;
-  for (const line of lines) {
-    if (/^# /.test(line)) {
+  const tokens = marked.lexer(md);
+  const hasH1 = tokens.some(
+    (token) => token.type === "heading" && token.depth === 1,
+  );
+  let title: string | null = null;
+  const sections: {
+    heading: string | null;
+    anchor: string | null;
+    raw: string[];
+  }[] = [];
+  let cur: (typeof sections)[number] = { heading: null, anchor: null, raw: [] };
+  let pastH1 = !hasH1;
+  for (const token of tokens) {
+    if (token.type === "heading" && token.depth === 1) {
+      title ??= renderedHeading(token.text).text;
       pastH1 = true;
       continue;
     }
     if (!pastH1) continue;
-    if (/^#{2,3}\s+/.test(line)) {
+    if (token.type === "heading" && (token.depth === 2 || token.depth === 3)) {
       sections.push(cur);
-      const rawHeading = line.replace(/^#{2,3}\s+/, "").trim();
-      const heading = rawHeading
-        .replace(/`([^`\n]+)`/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*\n]+)\*/g, "$1")
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
-      cur = { heading, lines: [] };
+      const heading = renderedHeading(token.text);
+      cur = { heading: heading.text, anchor: heading.id, raw: [] };
     } else {
-      cur.lines.push(line);
+      cur.raw.push(token.raw);
     }
   }
   sections.push(cur);
 
-  const introText = searchText(sections[0].lines.join("\n"));
-  entries.push({
-    title,
-    navLabel,
-    section,
-    path: href,
-    heading: null,
-    text: introText,
-  });
-
-  for (const sec of sections.slice(1)) {
-    if (!sec.heading) continue;
-    const text = searchText(sec.lines.join("\n"));
-    const anchor = slugify(sec.heading);
-    entries.push({
-      title,
+  const entries: SearchEntry[] = [
+    {
+      title: title ?? navLabel,
       navLabel,
       section,
-      path: `${href}#${anchor}`,
+      path: href,
+      heading: null,
+      text: searchText(sections[0].raw.join("")),
+    },
+  ];
+  for (const sec of sections.slice(1)) {
+    if (!sec.heading) continue;
+    entries.push({
+      title: title ?? navLabel,
+      navLabel,
+      section,
+      path: `${href}#${sec.anchor}`,
       heading: sec.heading,
-      text,
+      text: searchText(sec.raw.join("")),
     });
   }
-
   return entries;
 }
 
@@ -247,7 +242,7 @@ export async function buildSearchEntries(
         });
         continue;
       }
-      entries.push(...parseMd(md, label, section, href));
+      entries.push(...markdownSearchEntries(md, label, section, href));
     }
   }
   return entries;
