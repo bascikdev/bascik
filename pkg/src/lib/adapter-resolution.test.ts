@@ -172,6 +172,50 @@ describe("resolveAdapterTarget", () => {
       }
     });
 
+    it("misuse: an exports target or wildcard with a '..', '.' or node_modules segment is not followed outside the package, as in Node", async () => {
+      const root = await project({
+        "package.json": JSON.stringify({ name: "site" }),
+        "node_modules/escaping-adapter/package.json": JSON.stringify({
+          name: "escaping-adapter",
+          type: "module",
+          exports: {
+            ".": { import: "./../outside.js" },
+            "./here": { import: "./././index.js" },
+            "./dep": { import: "./node_modules/dep/index.js" },
+            "./p/*": { import: "./p/*.js" },
+          },
+        }),
+        "node_modules/escaping-adapter/index.js": ADAPTER_SOURCE("inside"),
+        "node_modules/escaping-adapter/node_modules/dep/index.js":
+          ADAPTER_SOURCE("dep"),
+        "node_modules/escaping-adapter/p/ok.js": ADAPTER_SOURCE("ok"),
+        "node_modules/outside.js": ADAPTER_SOURCE("outside"),
+      });
+      try {
+        for (const target of [
+          "escaping-adapter",
+          "escaping-adapter/here",
+          "escaping-adapter/dep",
+          "escaping-adapter/p/../../outside",
+          "escaping-adapter/p/%2e%2e/%2E%2E/outside",
+          "escaping-adapter/p/node_modules/x",
+        ]) {
+          const error = await resolveAdapterTarget(target, root).then(
+            () => null,
+            (err: Error) => err,
+          );
+          expect(error?.message, target).toMatch(
+            /adapter package "[^"]+" is installed at .*, but it has no entry Bascik can import/,
+          );
+        }
+        // A wildcard with ordinary segments still resolves.
+        const ok = await resolveAdapterTarget("escaping-adapter/p/ok", root);
+        expect(ok.adapter?.name).toBe("ok");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
     it("misuse: a package that is not installed anywhere keeps the install hint", async () => {
       const root = await project({
         "package.json": JSON.stringify({ name: "site" }),
@@ -184,6 +228,48 @@ describe("resolveAdapterTarget", () => {
         await rm(root, { recursive: true, force: true });
       }
     });
+  });
+
+  it("resolves an official adapter whose exports offer only the import condition, like any package adapter", async () => {
+    const root = await project({
+      "package.json": JSON.stringify({ name: "site" }),
+      "node_modules/@bascik/adapter-cloudflare/package.json": JSON.stringify({
+        name: "@bascik/adapter-cloudflare",
+        type: "module",
+        exports: { ".": { import: "./index.js" } },
+      }),
+      "node_modules/@bascik/adapter-cloudflare/index.js":
+        ADAPTER_SOURCE("cloudflare"),
+    });
+    try {
+      const resolved = await resolveAdapterTarget("cloudflare-pages", root);
+      expect(resolved.adapter?.name).toBe("cloudflare");
+      expect(resolved.variant).toBe("pages");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("misuse: an installed official adapter with no importable entry is reported as installed, not as missing", async () => {
+    const root = await project({
+      "package.json": JSON.stringify({ name: "site" }),
+      "node_modules/@bascik/adapter-cloudflare/package.json": JSON.stringify({
+        name: "@bascik/adapter-cloudflare",
+        exports: { ".": { browser: "./b.js" } },
+      }),
+    });
+    try {
+      const error = await resolveAdapterTarget("cloudflare", root).then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error?.message).toMatch(
+        /adapter package "@bascik\/adapter-cloudflare" is installed at .*, but it has no entry Bascik can import/,
+      );
+      expect(error?.message).not.toMatch(/is not installed in this project/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("misuse: an installed official adapter whose own import fails names the missing module, not a missing adapter (F090)", async () => {

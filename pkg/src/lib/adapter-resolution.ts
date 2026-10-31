@@ -63,6 +63,15 @@ const findPackageDir = (name: string, projectRoot: string): string | null => {
   }
 };
 
+/**
+ * A `.`, `..` or `node_modules` path segment, also percent-encoded, which
+ * Node rejects in an `exports` target (after its `./`) and in the part a
+ * `*` matches (ERR_INVALID_PACKAGE_TARGET, ERR_INVALID_MODULE_SPECIFIER),
+ * so a target can never leave the package folder.
+ */
+const INVALID_EXPORTS_SEGMENT =
+  /(^|\\|\/)((\.|%2e)(\.|%2e)?|(n|%6e|%4e)(o|%6f|%4f)(d|%64|%44)(e|%65|%45)(_|%5f)(m|%6d|%4d)(o|%6f|%4f)(d|%64|%44)(u|%75|%55)(l|%6c|%4c)(e|%65|%45)(s|%73|%53))(\\|\/|$)/i;
+
 /** A conditional `exports` target resolved with the import conditions, in key order like Node. */
 const resolveExportTarget = (
   target: unknown,
@@ -70,7 +79,10 @@ const resolveExportTarget = (
 ): string | null => {
   if (typeof target === "string") {
     if (!target.startsWith("./")) return null;
-    return wildcard === undefined ? target : target.split("*").join(wildcard);
+    if (INVALID_EXPORTS_SEGMENT.test(target.slice(2))) return null;
+    if (wildcard === undefined) return target;
+    if (INVALID_EXPORTS_SEGMENT.test(wildcard)) return null;
+    return target.split("*").join(wildcard);
   }
   if (Array.isArray(target)) {
     for (const entry of target) {
@@ -131,7 +143,15 @@ const resolveExportsEntry = (
  * is resolved again from its folder with the import conditions, and a
  * failure says the package is installed rather than asking to install it.
  */
-const resolveAdapterPackage = (target: string, projectRoot: string): string => {
+const resolveAdapterPackage = (
+  target: string,
+  projectRoot: string,
+  notInstalled: () => Error = () =>
+    new Error(
+      `[bascik] --target: could not resolve adapter package "${target}" from ${projectRoot}.\n` +
+        `  Ensure it is installed in package.json dependencies or devDependencies.`,
+    ),
+): string => {
   let requireError: NodeJS.ErrnoException;
   try {
     return createRequire(join(projectRoot, "package.json")).resolve(target);
@@ -140,12 +160,7 @@ const resolveAdapterPackage = (target: string, projectRoot: string): string => {
   }
   const [name, subpath] = splitPackageSpecifier(target);
   const packageDir = findPackageDir(name, projectRoot);
-  if (!packageDir) {
-    throw new Error(
-      `[bascik] --target: could not resolve adapter package "${target}" from ${projectRoot}.\n` +
-        `  Ensure it is installed in package.json dependencies or devDependencies.`,
-    );
-  }
+  if (!packageDir) throw notInstalled();
   let manifest: { exports?: unknown };
   try {
     manifest = JSON.parse(
@@ -196,15 +211,16 @@ export const resolveAdapterTarget = async (
       return { package: pkgName, variant };
     }
 
-    try {
-      const req = createRequire(join(projectRoot, "package.json"));
-      specifier = req.resolve(pkgName);
-    } catch {
-      throw new Error(
-        `[bascik] --target ${target}: required package "${pkgName}" is not installed in this project.\n` +
-          `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
-      );
-    }
+    const officialPackage = pkgName;
+    specifier = resolveAdapterPackage(
+      officialPackage,
+      projectRoot,
+      () =>
+        new Error(
+          `[bascik] --target ${target}: required package "${officialPackage}" is not installed in this project.\n` +
+            `  Install it as a dev dependency: npm install --save-dev ${officialPackage}`,
+        ),
+    );
   } else if (
     target.startsWith("./") ||
     target.startsWith("../") ||
