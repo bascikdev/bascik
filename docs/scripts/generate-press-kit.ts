@@ -26,6 +26,18 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateRawSync } from "node:zlib";
 import { Resvg } from "@resvg/resvg-js";
+import {
+  COLORS,
+  MARK_CROP,
+  parseLogo,
+  renderLogoBody,
+  type LogoArtwork,
+  type Tone,
+} from "../src/lib/press-logo.ts";
+
+// The logo parsing lives in src/lib/press-logo.ts, shared with the /press page's clear-space diagram.
+export { COLORS, parseLogo };
+export type { Box, LogoArtwork, Tone } from "../src/lib/press-logo.ts";
 
 const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,31 +46,7 @@ export const ZIP_NAME = "bascik-press-kit.zip";
 /** Role alias that forwards to the maintainer. Never publish a personal address. */
 export const PRESS_EMAIL = "press@bascik.dev";
 
-export const COLORS = {
-  lime: "#d3ff8d",
-  ink: "#0e0f10",
-  charcoal: "#18191b",
-  paper: "#f2f3f0",
-} as const;
-
-export type Tone = "color" | "black" | "white";
 export type Background = "dark" | "dark-glow" | "light";
-
-export interface Box {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface LogoArtwork {
-  /** Final view box, after any crop. */
-  viewBox: Box;
-  /** Points of the lime tile polygon. */
-  points: string;
-  /** Ink elements (cursor and letters) with animation and comments removed. */
-  ink: string;
-}
 
 export interface KitFile {
   /** Path relative to the kit root, using forward slashes. */
@@ -79,9 +67,6 @@ export interface CanvasSpec {
 
 export const WORDMARK_PNG_WIDTHS = [600, 1200, 2400] as const;
 export const MARK_PNG_SIZES = [256, 512, 1024] as const;
-
-/** The mark source has a 2 unit margin inside its 32 unit square; the kit crops to the artwork. */
-const MARK_CROP: Box = { x: 2, y: 2, width: 28, height: 28 };
 
 export const CANVASES: CanvasSpec[] = [
   {
@@ -144,72 +129,6 @@ function round(n: number): number {
   return Number(n.toFixed(4));
 }
 
-/**
- * Extracts the tile polygon and ink elements from a logo SVG. The sources must
- * follow the brand contract: one lime polygon, and every other shape filled with
- * the ink color. Anything else fails loudly instead of producing a wrong kit.
- */
-export function parseLogo(source: string, crop?: Box): LogoArtwork {
-  const svg = /<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(
-    source,
-  );
-  if (!svg) throw new Error("press-kit: logo source has no <svg viewBox>");
-  const [x, y, width, height] = svg[1]
-    .trim()
-    .split(/[\s,]+/)
-    .map(Number);
-  if ([x, y, width, height].some((n) => !Number.isFinite(n))) {
-    throw new Error(`press-kit: unreadable viewBox "${svg[1]}"`);
-  }
-
-  let inner = svg[2];
-  let previous: string;
-  do {
-    previous = inner;
-    inner = inner.replace(/<!--[\s\S]*?-->/g, "");
-  } while (inner !== previous);
-  inner = inner.replace(/<animate\b[\s\S]*?\/>/g, "");
-  const polygon = /<polygon\b[^>]*\bpoints="([^"]+)"[^>]*\/?>/.exec(inner);
-  if (!polygon) throw new Error("press-kit: logo source has no <polygon> tile");
-  if (!polygon[0].includes(COLORS.lime)) {
-    throw new Error(`press-kit: logo tile is not filled with ${COLORS.lime}`);
-  }
-
-  const ink = inner
-    .replace(polygon[0], () => "")
-    .trim()
-    .replace(
-      /<rect\b([^>]*[^/])>\s*<\/rect>/g,
-      (_match, attrs: string) => `<rect${attrs} />`,
-    )
-    .replace(/>\s+</g, () => ">\n  <");
-  if (!ink.includes(`fill="${COLORS.ink}"`)) {
-    throw new Error(`press-kit: logo ink is not filled with ${COLORS.ink}`);
-  }
-
-  return { viewBox: crop ?? { x, y, width, height }, points: polygon[1], ink };
-}
-
-/** Shapes for one logo tone, ready to place inside any SVG that uses the logo's own coordinates. */
-function logoBody(art: LogoArtwork, tone: Tone): string {
-  if (tone === "color") {
-    return `<polygon points="${art.points}" fill="${COLORS.lime}" />\n  ${art.ink}`;
-  }
-  // Single-color versions: a solid tile with the cursor and letters knocked out, so the page behind shows through.
-  const { x, y, width, height } = art.viewBox;
-  const fill = tone === "black" ? COLORS.ink : "#ffffff";
-  const knockout = art.ink.replaceAll(`fill="${COLORS.ink}"`, 'fill="#000000"');
-  return [
-    "<defs>",
-    `    <mask id="bascik-knockout" maskUnits="userSpaceOnUse" x="${x}" y="${y}" width="${width}" height="${height}">`,
-    `      <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#ffffff" />`,
-    `      ${knockout}`,
-    "    </mask>",
-    "  </defs>",
-    `  <polygon points="${art.points}" fill="${fill}" mask="url(#bascik-knockout)" />`,
-  ].join("\n  ");
-}
-
 /** A standalone, static (non-animated) logo SVG. */
 export function renderLogoSvg(
   art: LogoArtwork,
@@ -219,7 +138,7 @@ export function renderLogoSvg(
   const { x, y, width: vw, height: vh } = art.viewBox;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${vw} ${vh}" width="${width}" height="${height}" role="img">
   <title>${title}</title>
-  ${logoBody(art, tone)}
+  ${renderLogoBody(art, tone)}
 </svg>
 `;
 }
@@ -270,7 +189,7 @@ export function renderCanvasSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
   ${defs}${backdrop}
   <g transform="translate(${tx} ${ty}) scale(${round(scale)})">
-  ${logoBody(art, tone)}
+  ${renderLogoBody(art, tone)}
   </g>
 </svg>
 `;

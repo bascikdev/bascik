@@ -92,6 +92,23 @@
         box-shadow: none;
       }
 
+      /* Clear-space diagram: inline SVGs whose lines use currentColor, so they follow the theme. */
+      .press-clear-space {
+        color: var(--text-muted);
+      }
+
+      .press-clear-space svg {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        height: auto;
+        margin: 0 auto;
+      }
+
+      .press-clear-space-square svg {
+        max-width: 140px;
+      }
+
       .press-tile figcaption {
         display: flex;
         flex-wrap: wrap;
@@ -312,6 +329,47 @@
               export default async () =>
                 await renderMdRange("./content/press.md", {
                   from: "Kit Contents",
+                  to: "Colors",
+                });
+            </script>
+
+            <diagram-figure
+              data-bascik-prop-title="Clear space"
+              data-bascik-prop-footer="The solid line is the edge of the kit file, cropped to the artwork. The dashed line is one quarter of the logo's height further out: keep everything else outside it."
+              data-testid="press-clear-space"
+            >
+              <diagram-row>
+                <diagram-panel data-bascik-prop-label="Wordmark">
+                  <div
+                    class="press-clear-space"
+                    data-testid="press-clear-space-wordmark"
+                  >
+                    <script data-bascik-build-once>
+                      import { clearSpaceSvg } from "@/lib/press-logo.ts";
+                      export default async () =>
+                        await clearSpaceSvg("wordmark");
+                    </script>
+                  </div>
+                </diagram-panel>
+                <diagram-panel data-bascik-prop-label="Mark">
+                  <div
+                    class="press-clear-space press-clear-space-square"
+                    data-testid="press-clear-space-mark"
+                  >
+                    <script data-bascik-build-once>
+                      import { clearSpaceSvg } from "@/lib/press-logo.ts";
+                      export default async () => await clearSpaceSvg("mark");
+                    </script>
+                  </div>
+                </diagram-panel>
+              </diagram-row>
+            </diagram-figure>
+
+            <script data-bascik-build>
+              import { renderMdRange } from "@/lib/md-renderer.ts";
+              export default async () =>
+                await renderMdRange("./content/press.md", {
+                  from: "Colors",
                 });
             </script>
           </div>

@@ -157,3 +157,39 @@ test.describe("Press logo previews", () => {
     });
   }
 });
+
+test.describe("Press clear-space diagram", () => {
+  test("draws the dashed boundary a quarter of the logo's height outside the artwork", async ({
+    page,
+  }) => {
+    await page.goto("/press");
+    await expect(page.getByTestId("press-clear-space")).toBeVisible();
+    for (const logo of ["wordmark", "mark"]) {
+      const diagram = page.getByTestId(`press-clear-space-${logo}`);
+      await expect(diagram.getByRole("img")).toHaveAccessibleName(
+        /clear space/i,
+      );
+      const tile = (await diagram.locator("svg polygon").boundingBox())!;
+      const boundary = (await diagram
+        .locator("svg rect[stroke-dasharray]")
+        .boundingBox())!;
+      expect(tile, logo).not.toBeNull();
+      expect(boundary, logo).not.toBeNull();
+      expect(tile.height, logo).toBeGreaterThan(20);
+
+      const quarter = tile.height / 4;
+      const gaps = {
+        top: tile.y - boundary.y,
+        right: boundary.x + boundary.width - (tile.x + tile.width),
+        bottom: boundary.y + boundary.height - (tile.y + tile.height),
+        left: tile.x - boundary.x,
+      };
+      // The boundary's box includes half of its 1.5 px stroke, so allow 1 px either way.
+      for (const [side, gap] of Object.entries(gaps)) {
+        expect(Math.abs(gap - quarter), `${logo} ${side}`).toBeLessThanOrEqual(
+          1,
+        );
+      }
+    }
+  });
+});

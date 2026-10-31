@@ -37,9 +37,16 @@ Use the full-color logo unless you are limited to one color. The black and white
 
 ### Spacing and Minimum Size
 
-Always keep adequate clear space around the wordmark and the mark. As a guide, leave at least one quarter of the logo height on every side, with no text, other logos, or image edges inside it.
+Keep clear space of at least one quarter of the logo's height on every side of the wordmark and the mark. The height is that of the whole lime tile, not of the letters inside it: a wordmark shown 48 px tall needs 12 px of clear space on each side. Keep text, other logos, and the edges of images, cards, and buttons outside that space.
 
-The wordmark and the mark should always be at least 24 px tall in digital applications and 1/8 inch (3 mm) tall in print.
+The SVG and PNG files in the kit are cropped to the artwork, with no space around the tile, so whoever places a file adds the clear space as padding or margin. Never place a file edge to edge in a container with rounded corners, a border, or clipped overflow: the container cuts off or covers the tile's sharp corners. Pad the logo inside the container by at least a quarter of its height instead.
+
+| Logo     | Smallest on screen      | Smallest in print    | Smallest PNG in the kit                          |
+| -------- | ----------------------- | -------------------- | ------------------------------------------------ |
+| Wordmark | 24 px tall (98 px wide) | 1/8 inch (3 mm) tall | `logo/png/bascik-wordmark-600.png`, 600 x 147 px |
+| Mark     | 24 x 24 px              | 1/8 inch (3 mm) tall | `logo/png/bascik-mark-256.png`, 256 x 256 px     |
+
+Every PNG is larger than the smallest size on screen, so scale a PNG down, never up. A favicon or profile picture fills its own small square, so the edge of that square is the edge to keep clear of: start from an avatar file, which already keeps more than a quarter of the mark's height clear on every side, rather than from the cropped mark.
 
 ## Colors
 
