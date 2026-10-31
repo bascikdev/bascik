@@ -545,6 +545,11 @@ describe("every diagnostic can be named", () => {
   it.each([
     ["component-name-not-hyphenated", component, "<p>hi</p>"],
     [
+      "component-name-underscore",
+      "/site/src/components/site_nav.html",
+      "<p>hi</p>",
+    ],
+    [
       "id-reference-undeclared",
       "/site/src/components/my-card.html",
       '<label for="missing">x</label>',
@@ -661,6 +666,85 @@ describe("component-name-not-hyphenated", () => {
     expect(
       codesFor("Untitled-1", "html", "<p>hi</p>", windowsProject),
     ).not.toContain("component-name-not-hyphenated");
+  });
+});
+
+describe("component-name-underscore", () => {
+  const diagnosticsFor = (path: string, project = snapshot()) =>
+    createDiagnostics(
+      TextDocument.create(`file://${path}`, "html", 1, "<nav>hi</nav>"),
+      path,
+      project,
+    ).filter((d) => d.code === "component-name-underscore");
+
+  it("warns on a component whose tag name holds an underscore, with the collision it can cause and the hyphenated name", () => {
+    const [found] = diagnosticsFor("/site/src/components/site-nav_x.html");
+    expect(found.severity).toBe(2);
+    expect(found.range.start).toEqual({ line: 0, character: 0 });
+    expect(messageText(found.message)).toBe(
+      'Component "site-nav_x" has an underscore in its name. The name is legal, but underscores can make two components\' generated id classes spell the same name: #btn in <site-nav_x> and #x_btn in <site-nav> both compile to the class b_id_site-nav_x_btn, which stops the build. Use hyphens (e.g. "site-nav-x").',
+    );
+  });
+
+  it("reads the tag the way the build does: the lowercased file name up to its first dot, in a subfolder or on a Windows path", () => {
+    expect(
+      diagnosticsFor("/site/src/components/nav/Site_Nav.html"),
+    ).toHaveLength(1);
+    expect(
+      messageText(
+        diagnosticsFor("/site/src/components/site_nav.v2.html")[0].message,
+      ),
+    ).toContain('Component "site_nav"');
+    // The tag is <site-nav>: the underscore after the first dot is not part of it.
+    expect(diagnosticsFor("/site/src/components/site-nav.my_v2.html")).toEqual(
+      [],
+    );
+    // A folder name does not define the tag.
+    expect(
+      diagnosticsFor("/site/src/components/my_folder/site-nav.html"),
+    ).toEqual([]);
+    const windowsProject = snapshot({
+      projectRoot: "C:/site",
+      componentRoots: ["C:/site/src/components"],
+      importRoot: "C:/site/src",
+      apiRoot: "C:/site/src/api",
+    });
+    expect(
+      diagnosticsFor(
+        "C:\\site\\src\\components\\site_nav.html",
+        windowsProject,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("leaves out the example when the name gives no real pair, such as a leading or trailing underscore", () => {
+    for (const name of ["_card", "card_", "card_2x"]) {
+      const [found] = diagnosticsFor(`/site/src/components/${name}.html`);
+      expect(messageText(found.message)).toBe(
+        `Component "${name}" has an underscore in its name. The name is legal, but underscores can make two components' generated id classes spell the same name. Use hyphens (e.g. "${name.replace(/_/g, "-")}").`,
+      );
+    }
+  });
+
+  it("stays quiet for a hyphenated component, a page with an underscore, and an unsaved buffer", () => {
+    expect(diagnosticsFor("/site/src/components/site-nav.html")).toEqual([]);
+    expect(diagnosticsFor("/site/src/pages/my_page.html")).toEqual([]);
+    expect(diagnosticsFor("Untitled-1")).toEqual([]);
+  });
+
+  it("fires next to component-name-not-hyphenated for a name with only underscores", () => {
+    const codes = createDiagnostics(
+      TextDocument.create(
+        "file:///site/src/components/my_card.html",
+        "html",
+        1,
+        "<p>x</p>",
+      ),
+      "/site/src/components/my_card.html",
+      snapshot(),
+    ).map((d) => d.code);
+    expect(codes).toContain("component-name-not-hyphenated");
+    expect(codes).toContain("component-name-underscore");
   });
 });
 

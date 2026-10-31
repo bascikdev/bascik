@@ -642,6 +642,40 @@ export function completionReplacementRange(
   };
 }
 
+/**
+ * The `component-name-underscore` message for a component file, or null. The
+ * tag is the lowercased file name up to its first dot, as the build derives it
+ * (`deriveComponentName` in @bascik/bascik), so `site-nav.my_v2.html` defines
+ * `<site-nav>` and gets no warning. An `#id` rule compiles to the class
+ * `b_id_<component>_<id>`, so `<a_b>` with `#c` and `<a>` with `#b_c` spell
+ * one class, which the build rejects; the example uses the file's own name.
+ */
+export const componentNameUnderscoreMessage = (
+  fileName: string,
+): string | null => {
+  const tag = fileName.split(".")[0].toLowerCase();
+  const at = tag.indexOf("_");
+  if (at === -1) return null;
+  const head = tag.slice(0, at);
+  const rest = tag.slice(at + 1);
+  // The example needs a real pair: a component name and an id that starts
+  // with a letter, as an #id selector the build converts does.
+  return underscoreMessage(
+    tag,
+    head && /^[a-z]/.test(rest) ? { head, rest } : null,
+  );
+};
+
+const underscoreMessage = (
+  tag: string,
+  split: { head: string; rest: string } | null,
+): string => {
+  const example = split
+    ? `: #btn in <${tag}> and #${split.rest}_btn in <${split.head}> both compile to the class b_id_${tag}_btn, which stops the build`
+    : "";
+  return `Component "${tag}" has an underscore in its name. The name is legal, but underscores can make two components' generated id classes spell the same name${example}. Use hyphens (e.g. "${tag.replace(/_/g, "-")}").`;
+};
+
 export function createDiagnostics(
   document: TextDocumentLike,
   fsPath: string,
@@ -741,6 +775,19 @@ export function createDiagnostics(
           },
           code: "component-name-not-hyphenated",
           message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${nameWithoutExt}") to avoid collisions with future HTML standards.`,
+          severity: DiagnosticSeverity.Warning,
+          source: "bascik",
+        });
+      }
+      const underscore = componentNameUnderscoreMessage(fileName);
+      if (underscore) {
+        diagnostics.push({
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: Math.min(text.length, 10) },
+          },
+          code: "component-name-underscore",
+          message: underscore,
           severity: DiagnosticSeverity.Warning,
           source: "bascik",
         });

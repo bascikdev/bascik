@@ -39,6 +39,26 @@ describe("checkFiles", () => {
     });
   });
 
+  it("reports a component name with an underscore as a warning, which disabledRules turns off", async () => {
+    write("src/components/site-nav_x.html", "<nav>hi</nav>\n");
+    const result = await checkFiles({ cwd: root });
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        filePath: path.join("src", "components", "site-nav_x.html"),
+        line: 1,
+        severity: "warning",
+        code: "component-name-underscore",
+      }),
+    ]);
+    write(
+      "bascik.ext.json",
+      JSON.stringify({
+        diagnostics: { disabledRules: ["component-name-underscore"] },
+      }),
+    );
+    expect((await checkFiles({ cwd: root })).diagnostics).toEqual([]);
+  });
+
   it("checks several targets once each, and a file named by two targets is not reported twice", async () => {
     const page = write("src/pages/a.html", '<p data-bascik-slott="x">hi</p>\n');
     write("src/components/my-card.html", "<p>hi</p>\n");
