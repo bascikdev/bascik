@@ -171,7 +171,19 @@ export const getActiveRateLimiter = (): RateLimiter => {
       typeof rateLimitConfig === "object" && rateLimitConfig?.max
         ? rateLimitConfig.max
         : DEFAULT_RATE_LIMIT_MAX;
-    activeRateLimiter = new RateLimiter({ windowMs, max });
+    const maxTrackedIps =
+      typeof rateLimitConfig === "object"
+        ? rateLimitConfig?.maxTrackedIps
+        : undefined;
+    activeRateLimiter = new RateLimiter({
+      windowMs,
+      max,
+      maxTrackedIps,
+      warn: (message) => {
+        if (shouldLog(BascikConfig.logging.level ?? "info", "warn"))
+          console.warn(message);
+      },
+    });
     activeRateLimiter.startSweep();
     registerShutdownHandler(() => {
       resetActiveRateLimiter();

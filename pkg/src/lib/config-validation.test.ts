@@ -1509,6 +1509,38 @@ describe("referenced files (fs half)", () => {
     expect(validErrors).toHaveLength(0);
   });
 
+  // R3-01: the table-pressure log line names http.rateLimit.maxTrackedIps,
+  // so the key exists and a wrong value is a located error.
+  it.each([0, -1, 2.5, "10000", Number.NaN])(
+    "rejects http.rateLimit.maxTrackedIps %o",
+    (maxTrackedIps) => {
+      const errors = validateConfigShape({
+        http: { rateLimit: { maxTrackedIps: maxTrackedIps as any } },
+      });
+      expect(errors).toEqual([
+        expect.objectContaining({
+          key: "http.rateLimit.maxTrackedIps",
+          message: "expected a positive integer",
+        }),
+      ]);
+    },
+  );
+
+  it("accepts http.rateLimit.maxTrackedIps and suggests it for a typo", () => {
+    expect(
+      validateConfigShape({ http: { rateLimit: { maxTrackedIps: 50_000 } } }),
+    ).toHaveLength(0);
+    const typo = validateConfigShape({
+      http: { rateLimit: { maxTrackedIp: 50_000 } as any },
+    });
+    expect(typo).toEqual([
+      expect.objectContaining({
+        key: "http.rateLimit.maxTrackedIp",
+        message: 'did you mean "http.rateLimit.maxTrackedIps"?',
+      }),
+    ]);
+  });
+
   it("accepts referenced files that all exist", () => {
     expect(
       validateConfigPaths(

@@ -679,7 +679,7 @@ http: {
     keyFile: undefined,     // path to TLS private key
     certFile: undefined,    // path to TLS certificate
   },
-  rateLimit: true,          // boolean or { window?: number, max?: number } (default: 500 req / 10s)
+  rateLimit: true,          // boolean or { window?, max?, maxTrackedIps? } (default: 500 req / 10s, 10000 clients)
   trustProxy: false,        // trust X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
