@@ -53,6 +53,30 @@ const STRING_ESCAPES: Record<string, string> = {
   "0": "\0",
   "\n": "",
 };
+/** The hex digits of a `\x`, `\u` or `\u{...}` escape, read from just after the letter. */
+const CODE_ESCAPE_DIGITS = {
+  x: /[0-9a-fA-F]{2}/y,
+  u: /[0-9a-fA-F]{4}/y,
+  "u{": /\{([0-9a-fA-F]+)\}/y,
+};
+
+/**
+ * Decodes the `\xHH`, `\uHHHH` or `\u{H...}` escape whose letter is at `at`; returns the text and the
+ * index after it. A malformed one is reported, as JavaScript reports it, instead of read as letters.
+ */
+function readCodeEscape(source: string, at: number): [string, number] {
+  const form = source[at] === "x" ? "x" : source[at + 1] === "{" ? "u{" : "u";
+  const digits = CODE_ESCAPE_DIGITS[form];
+  digits.lastIndex = at + 1;
+  const match = digits.exec(source);
+  const codePoint = match ? parseInt(match[1] ?? match[0], 16) : NaN;
+  if (!match || !(codePoint <= 0x10ffff))
+    throw new LiteralError(
+      `Invalid \\${source[at]} escape in a string.`,
+      at - 1,
+    );
+  return [String.fromCodePoint(codePoint), digits.lastIndex];
+}
 const NUMBER_RE =
   /0[xX][0-9a-fA-F_]+|(?:[0-9][0-9_]*)?\.?[0-9][0-9_]*(?:[eE][+-]?[0-9]+)?/y;
 
@@ -92,6 +116,12 @@ function tokenize(source: string, json = false): Token[] {
         if (ch === c) break;
         if (ch === "\\") {
           const next = source[i] ?? "";
+          if (next === "x" || next === "u") {
+            const [decoded, after] = readCodeEscape(source, i);
+            value += decoded;
+            i = after;
+            continue;
+          }
           value += STRING_ESCAPES[next] ?? next;
           i++;
           continue;
@@ -185,7 +215,13 @@ function parseValue(
         );
       }
       const [value, after] = parseValue(tokens, i + 2, endOffset, json);
-      object[String(key.value)] = value;
+      // An own property even for `__proto__`, as JSON.parse makes it, so a key never sets the prototype.
+      Object.defineProperty(object, String(key.value), {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
       i = after;
     }
     if (isPunct(tokens[i], ",")) {

@@ -3,7 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { loadExtensionConfig } from "./config.js";
-import { readExtensionConfig } from "./config-reader.js";
+import {
+  parseExtensionConfigFile,
+  parseExtensionConfigSource,
+  readExtensionConfig,
+} from "./config-reader.js";
 
 describe("extension-config", () => {
   it("returns empty config when no file exists", () => {
@@ -146,5 +150,44 @@ describe("extension-config files", () => {
       path.join(root, "bascik.ext.json"),
     );
     expect(loadExtensionConfig(root)).toEqual({});
+  });
+});
+
+describe("config literal reader", () => {
+  it("keeps a __proto__ key as an own property, as JSON.parse does", () => {
+    const config = parseExtensionConfigSource(
+      'export default { "__proto__": { diagnostics: { selfClosingComponents: false } } };',
+    ) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(config)).toBe(Object.prototype);
+    expect(Object.keys(config)).toEqual(["__proto__"]);
+    expect((config as { diagnostics?: unknown }).diagnostics).toBeUndefined();
+    const bare = parseExtensionConfigSource(
+      "export default { __proto__: { diagnostics: {} } };",
+    ) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(bare)).toBe(Object.prototype);
+    expect(Object.keys(bare)).toEqual(["__proto__"]);
+  });
+
+  it("decodes \\x, \\u and \\u{} escapes as JavaScript does", () => {
+    expect(
+      parseExtensionConfigSource(
+        String.raw`export default { a: "\u0041", b: '\x42', c: "\u{1F600}", d: "\u{43}" };`,
+      ),
+    ).toEqual({ a: "A", b: "B", c: "\u{1F600}", d: "C" });
+  });
+
+  it("reports a malformed escape where it is", () => {
+    expect(
+      parseExtensionConfigFile(
+        "bascik.ext.ts",
+        'export default {\n  a: "\\u00G1",\n};',
+      ).problem,
+    ).toMatchObject({ line: 2, message: expect.stringMatching(/\\u escape/) });
+    expect(() =>
+      parseExtensionConfigSource('export default { a: "\\x4" };'),
+    ).toThrow(/escape/i);
+    expect(() =>
+      parseExtensionConfigSource('export default { a: "\\u{110000}" };'),
+    ).toThrow(/escape/i);
   });
 });
