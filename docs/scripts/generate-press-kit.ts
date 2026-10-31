@@ -223,11 +223,23 @@ Colors
   Charcoal   ${COLORS.charcoal}   dark backgrounds
   Paper      ${COLORS.paper}   light backgrounds
 
+Clear space
+  Keep clear space of at least one quarter of the logo's height on every side.
+  The height is that of the whole lime tile, not the letters: a wordmark shown
+  48 px tall needs 12 px on each side. Keep text, other logos, and image edges
+  outside it.
+
+  Every logo file in logo/svg and logo/png is cropped to the artwork, with no
+  space around the tile, so add the clear space yourself as padding or margin.
+  Never place a file edge to edge in a container with rounded corners, a border,
+  or clipped overflow: it cuts off or covers the tile's sharp corners.
+
 Quick rules
   - Use the full-color logo by default, on dark, light, or mid-tone backgrounds.
-    Use the black or white logo only when you are limited to a single color, such as one-color print.
-  - Keep clear space of at least one quarter of the logo height on every side.
+    Use the black or white logo only when you are limited to a single color,
+    such as one-color print.
   - Display the logo at least 24 px tall on screen or 1/8 inch (3 mm) tall in print.
+  - For a favicon or profile picture, start from an avatar image, not the cropped mark.
   - Do not recolor, stretch, rotate, add effects to, crop, or retype the logo.
   - Do not use the logo as your own app, website, or company icon, or inside your own logo.
   - Do not use the logo in a way that suggests Bascik endorses your product.
