@@ -2783,3 +2783,82 @@ describe("CSS @import resolution and hoisting", () => {
     });
   });
 });
+
+describe("convertCssElementSelectorsToClasses – at-rule preludes", () => {
+  const convert = (input: string) =>
+    convertCssElementSelectorsToClasses(input, "card");
+
+  it("leaves a bare media type after a comma in a media list alone", () => {
+    const { css, elementsConvertedClasses } = convert(
+      "@media screen, print { .bascik__card__card { color: red } }",
+    );
+    expect(css).toBe(
+      "@media screen, print { .bascik__card__card { color: red } }",
+    );
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("leaves a mixed media list alone", () => {
+    const input =
+      "@media (min-width: 1px), print and (color) { p { color: red } }";
+    expect(convert(input).css).toBe(
+      "@media (min-width: 1px), print and (color) { .bascik__card__el__p { color: red } }",
+    );
+  });
+
+  it("leaves keywords at the start of a continuation line of a wrapped prelude alone", () => {
+    const input =
+      "@media (min-width: 100px)\n  and (max-width: 200px) {\n  p { color: red }\n}\n" +
+      "@media not\n  screen { p { color: blue } }\n" +
+      "@supports (display: grid)\n  and (gap: 1rem) { p { gap: 1rem } }\n" +
+      "@media\nprint,\nscreen { p { color: green } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toContain(
+      "@media (min-width: 100px)\n  and (max-width: 200px) {",
+    );
+    expect(css).toContain("@media not\n  screen {");
+    expect(css).toContain("@supports (display: grid)\n  and (gap: 1rem) {");
+    expect(css).toContain("@media\nprint,\nscreen {");
+    expect(css).not.toMatch(/__el__(?:and|not|screen|print)\b/);
+    // The rules inside the blocks are still scoped.
+    expect(css.match(/\.bascik__card__el__p /g)).toHaveLength(4);
+    expect(elementsConvertedClasses).toEqual(["p"]);
+  });
+
+  it("leaves a wrapped @container and @keyframes prelude alone", () => {
+    const input =
+      "@container\n  sidebar (min-width: 1px) { p { color: red } }\n" +
+      "@keyframes\nfade { from { opacity: 0 } to { opacity: 1 } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toContain("@container\n  sidebar (min-width: 1px) {");
+    expect(css).toContain("@keyframes\nfade {");
+    expect(elementsConvertedClasses).toEqual(["p"]);
+  });
+
+  it("still scopes element selectors in an @scope prelude after a scoped class", () => {
+    const input = "@scope (.bascik__card__a p) { span { color: red } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toBe(
+      "@scope (.bascik__card__a .bascik__card__el__p) { .bascik__card__el__span { color: red } }",
+    );
+    expect(elementsConvertedClasses).toEqual(["span", "p"]);
+  });
+
+  it("leaves a typo'd at-rule prelude alone instead of scoping its words", () => {
+    // `@mediaquery` is not a real at-rule; the browser drops the block, and Bascik
+    // must not turn `print` into a class and make the output differ.
+    const input = "@mediaquery screen, print { p { color: red } }";
+    const { css } = convert(input);
+    expect(css).toBe(
+      "@mediaquery screen, print { .bascik__card__el__p { color: red } }",
+    );
+  });
+
+  it("is not confused by an at-rule keyword inside a string or url", () => {
+    const input = `p::before { content: "@media screen, print {" } .x { background: url(a@b.png) }\nh2 { color: red }`;
+    const { css } = convert(input);
+    expect(css).toContain(`content: "@media screen, print {"`);
+    expect(css).toContain(".bascik__card__el__h2 { color: red }");
+    expect(css).toContain(".bascik__card__el__p::before");
+  });
+});

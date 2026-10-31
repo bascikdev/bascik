@@ -144,7 +144,16 @@ export const convertCssElementSelectorsToClasses = (
   // Shield strings and url() contents so braces or commas inside string
   // literals (e.g. `content: "p {"` or `[data-x="a { b"]`) never trigger
   // element-selector lookaheads.
-  const { css: shielded, restore } = shieldCssStrings(css);
+  const { css: stringShielded, restore: restoreStrings } =
+    shieldCssStrings(css);
+  // Shield at-rule preludes too (`@media screen, print`, a wrapped
+  // `@supports (a)\n  and (b)`, `@keyframes\nfade`): their keywords sit in
+  // selector position for the passes below and would become element classes.
+  // `@scope` is left visible because its prelude holds real selectors.
+  const { css: shielded, restore: restorePreludes } =
+    shieldAtRulePreludes(stringShielded);
+  const restore = (value: string): string =>
+    restoreStrings(restorePreludes(value));
 
   // Pass 1: standalone element selectors after a selector boundary.
   // Handles top-level rules and indented selectors inside at-rules:
@@ -792,6 +801,24 @@ export const shieldCssStrings = (
   );
   return {
     css: shielded,
+    restore: shield.restore,
+  };
+};
+
+/**
+ * Hide every at-rule prelude except `@scope`'s (from the `@` up to the next
+ * `{`, `;` or `}`) behind shield tokens. Run on CSS whose strings and `url()`
+ * contents are already shielded, so an `@` inside them is never matched.
+ */
+const shieldAtRulePreludes = (
+  css: string,
+): { css: string; restore: (s: string) => string } => {
+  if (!css.includes("@")) return { css, restore: (value) => value };
+  const shield = createContentShield(css);
+  return {
+    css: css.replace(/@(?!scope(?![\w-]))[\w-]+[^{};]*/gi, (prelude) =>
+      shield.hide(prelude),
+    ),
     restore: shield.restore,
   };
 };
