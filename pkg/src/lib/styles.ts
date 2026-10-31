@@ -119,6 +119,52 @@ const CSS_UNIT_KEYWORDS = new Set([
   "head",
 ]);
 
+/**
+ * `css.replace(pattern, ...)` for a pattern capturing `(prefix)(element)`,
+ * replacing a match only when the first `{`, `}` or `;` (and `)` when
+ * `parenStops`) after it is a `{`: what `(?=[^{};]*\{)` answered, the test
+ * that an element name sits in selector position. The lookahead rescanned
+ * to the next stop from every candidate, quadratic in a long selector list
+ * or a long run of text without a stop; match ends only grow, so one
+ * forward cursor answers them all in a single scan.
+ *
+ * A match never spans a stop past its first character (only an escaped one
+ * inside a scoped class name), so a match the lookahead refused lies in a
+ * stretch where every other match is refused too, and skipping over it
+ * changes no result.
+ */
+const replaceInSelectorPosition = (
+  css: string,
+  pattern: RegExp,
+  parenStops: boolean,
+  convert: (prefix: string, elementName: string) => string,
+): string => {
+  // The first stop at or after the last match end asked about.
+  let stop = -1;
+  return css.replace(
+    pattern,
+    (match: string, prefix: string, elementName: string, offset: number) => {
+      const end = offset + match.length;
+      if (end > stop) {
+        stop = end;
+        for (; stop < css.length; stop++) {
+          const code = css.charCodeAt(stop);
+          if (
+            code === 123 /* { */ ||
+            code === 125 /* } */ ||
+            code === 59 /* ; */ ||
+            (parenStops && code === 41) /* ) */
+          )
+            break;
+        }
+      }
+      return css.charCodeAt(stop) === 123
+        ? convert(prefix, elementName)
+        : match;
+    },
+  );
+};
+
 export const convertCssElementSelectorsToClasses = (
   css: string,
   componentName: string,
@@ -165,10 +211,13 @@ export const convertCssElementSelectorsToClasses = (
   // The context-aware lookahead confirms we are still in selector position.
   // Element names start with a letter (`[a-z][a-z1-6]*`), so @keyframes stops
   // such as `40%` or `0%, 100%` are never mistaken for element selectors.
-  let result = shielded.replace(
-    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/gim,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  const prefixed = (prefix: string, elementName: string): string =>
+    `${prefix}${toClass(elementName)}`;
+  let result = replaceInSelectorPosition(
+    shielded,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])/gim,
+    false,
+    prefixed,
   );
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
@@ -179,10 +228,11 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(
-    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};)]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g,
+    true,
+    prefixed,
   );
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
@@ -193,15 +243,17 @@ export const convertCssElementSelectorsToClasses = (
   //     (the same chain Pass 4 accepts after a scoped class).
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
-  result = result.replace(
-    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/g,
+    false,
+    prefixed,
   );
-  result = result.replace(
-    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/g,
+    false,
+    prefixed,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -219,13 +271,22 @@ export const convertCssElementSelectorsToClasses = (
   // Every argument and attribute scan stops at `{`, `}` or `;`: a missing `)`
   // or `]` (a typo) would otherwise rescan the rest of the stylesheet from
   // each scoped class, which is quadratic.
+  //
+  // Each round converts the next element of a descendant chain
+  // (`.card p span` takes two), so a stylesheet costs one pass per level of
+  // its deepest chain: linear for any realistic depth, quadratic only for a
+  // single selector chaining thousands of elements.
   let previousResult: string;
   do {
     previousResult = result;
-    result = result.replace(
-      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^){};]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-      (_match, prefix: string, elementName: string) =>
-        `${prefix}${toClass(elementName)}`,
+    // The `:is(` argument is checked for a scoped class with a lazy
+    // lookahead and read once: two `[^){};]*` runs around the class
+    // backtracked over every class in an unclosed argument (quadratic).
+    result = replaceInSelectorPosition(
+      result,
+      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
+      false,
+      prefixed,
     );
   } while (result !== previousResult);
 
@@ -1426,8 +1487,15 @@ export const hoistCssImports = (css: string): string => {
   // `@layer` statements precede `@import`, and a statement that names the
   // layer an import goes into (`@layer base, theme; @import … layer(theme)`)
   // sets the layer order, so one that came before an import moves up with it.
+  //
+  // Each part scans forward once: a string ends at its closing quote (or a
+  // line break), a bare `url(...)` takes everything up to `)` in one atomic
+  // step (`(?=(...))\1`), and the tail stops at `;`, `{`, `}` or `@`. A lazy
+  // `[\s\S]*?` string, `[^)]*?\s*\)` and a `[^;]*` tail made an unclosed
+  // quote or `url(` cubic, and let an `@import` with no `;` swallow the next
+  // rule up to its first declaration's `;`.
   const statementRegex =
-    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
+    /@import\s+(?:url\((?:\s*(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)\s*|(?=([^)]*))\1)\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)[^;{}@]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
   // Only top-level `@layer` statements move: one inside `@media` must stay
   // there.
   const depthAt = braceDepthScanner(css);
@@ -1527,10 +1595,19 @@ export const declaredCustomPropertyNames = (css: string): Set<string> =>
     ? customPropertyNamesInShielded(shieldCssStrings(css).css)
     : new Set();
 
+/**
+ * A `--name` at the start of an identifier. The `--` inside a name such as
+ * the BEM class `.btn--primary:hover` is not a custom property, and starting
+ * only at a name's start keeps a run like `--a--a--a` one scan, not one per
+ * `--` (quadratic).
+ */
+const CUSTOM_PROPERTY_DECLARATION =
+  /((?<![\w\u0080-\uffff\\-]))--(\w[\w-]*)(?=\s*:)/gm;
+
 const customPropertyNamesInShielded = (shielded: string): Set<string> => {
   const names = new Set<string>();
-  for (const m of shielded.matchAll(/(?<!-)--(\w[\w-]*)(?=\s*:)/gm))
-    names.add(m[1]);
+  for (const m of shielded.matchAll(CUSTOM_PROPERTY_DECLARATION))
+    names.add(m[2]);
   for (const m of shielded.matchAll(/@property\s+--(\w[\w-]*)\s*\{/gm))
     names.add(m[1]);
   return names;
@@ -1562,7 +1639,7 @@ export const scopeCssCustomProperties = (
   const scopeName = customPropertyScoper(names, componentName);
   const replaced = shielded
     .replace(/(@property\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName)
-    .replace(/((?<!-))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
+    .replace(CUSTOM_PROPERTY_DECLARATION, scopeName)
     .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName);
   return restore(replaced);
 };
