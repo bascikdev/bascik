@@ -53,6 +53,7 @@ import {
   BUILD_EXPANSION_LIMITS,
   recursivelyTranspile,
 } from "./component-expansion.ts";
+import { removeHtmlRanges, scanHtml, type HtmlRange } from "./html-scanner.ts";
 import { deriveInstanceId } from "./names.ts";
 import { PageProcessingError } from "./page-diagnostics.ts";
 import { applyScopingResult } from "./scoping-instantiate.ts";
@@ -923,13 +924,35 @@ describe("expanded instances do not pin the page (F025)", () => {
 });
 
 describe("a component with an empty template (F026)", () => {
-  /** The page without script text, where inner-box's template names itself. */
-  const markup = (html: string): string =>
-    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: drops the compiler's own script elements so the assertions read only markup; nothing is rendered.
-    html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, () => "");
+  /**
+   * The page without its complete script elements, where inner-box's
+   * template names itself: the compiler's own scanner finds them, and the
+   * ranges are cut out the way the compiler cuts them.
+   */
+  const markup = (html: string): string => {
+    const scripts: HtmlRange[] = [];
+    scanHtml(html, {
+      script: (script) => {
+        if (script.terminated) scripts.push(script);
+      },
+    });
+    return removeHtmlRanges(html, scripts).html;
+  };
 
   beforeEach(() => {
     (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+
+  it("misuse: the markup helper cuts only script elements, not a component after a commented-out <script>", () => {
+    expect(
+      markup(
+        '<!-- <script> --><inner-box>x</inner-box><SCRIPT type="module">"<inner-box>"</SCRIPT>',
+      ),
+    ).toBe("<!-- <script> --><inner-box>x</inner-box>");
+    // An unterminated script never runs; the helper leaves it for the assertion to see.
+    expect(markup("<p></p><script><inner-box>")).toBe(
+      "<p></p><script><inner-box>",
+    );
   });
 
   const withStub = (): ComponentList => ({
