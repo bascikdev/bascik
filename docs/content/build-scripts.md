@@ -80,10 +80,11 @@ The script below is marked `type="text/typescript"` and reads `BASCIK_PAGE_PATH`
   </head>
   <body>
     <script data-bascik-build type="text/typescript">
+      import { html, type SafeHtml } from "@bascik/bascik/html";
       const path: string = process.env.BASCIK_PAGE_PATH ?? "/";
       const trail: string[] = ["Home", ...path.split("/").filter(Boolean)];
-      export default (): string =>
-        `<nav aria-label="Breadcrumb">${trail.join(" / ")}</nav>`;
+      export default (): SafeHtml =>
+        html`<nav aria-label="Breadcrumb">${trail.join(" / ")}</nav>`;
     </script>
   </body>
 </html>
@@ -289,8 +290,9 @@ Build scripts work inside `<head>` as well as `<body>`. This lets you extract re
   <title>Home</title>
   <site-meta></site-meta>
   <script data-bascik-build>
+    import { html } from "@bascik/bascik/html";
     const apiUrl = process.env.API_URL ?? "https://api.example.com";
-    export default () => `<meta name="api-url" content="${apiUrl}" />`;
+    export default () => html`<meta name="api-url" content="${apiUrl}" />`;
   </script>
 </head>
 ```
@@ -316,8 +318,9 @@ Environment variables set in your shell or a `.env` file (Bascik loads `./.env` 
 ```html
 <!-- src/pages/index.html -->
 <script data-bascik-build>
+  import { html } from "@bascik/bascik/html";
   const apiUrl = process.env.API_URL ?? "https://api.example.com";
-  export default () => `<meta name="api-url" content="${apiUrl}" />`;
+  export default () => html`<meta name="api-url" content="${apiUrl}" />`;
 </script>
 ```
 
@@ -330,9 +333,13 @@ When no source provides a value, the variable is **absent** from the script's en
 ```html
 <!-- src/pages/index.html -->
 <script data-bascik-build>
+  import { html } from "@bascik/bascik/html";
   export default function () {
     if ("BASCIK_SITE_URL" in process.env) {
-      return `<link rel="canonical" href="${process.env.BASCIK_SITE_URL}/about" />`;
+      return html`<link
+        rel="canonical"
+        href="${process.env.BASCIK_SITE_URL}/about"
+      />`;
     }
     return "";
   }
@@ -571,16 +578,18 @@ For per-request server-side rendering, see [Server Scripts](/server-scripts).
 <!-- src/pages/build-scripts.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
-  import { marked } from "marked";
+  import { html } from "@bascik/bascik/html";
 
   export default async function () {
     const md = await readFile("./content/why-bascik.md", "utf8");
     const [heading, paragraph] = md.split("\n\n");
     const title = heading.replace(/^#\s*/, "");
-    return `
+    // Props are text: html escapes each value into its attribute.
+    return html`
       <feature-card
         data-bascik-prop-title="${title}"
-        data-bascik-prop-desc="${marked.parseInline(paragraph)}">
+        data-bascik-prop-desc="${paragraph}"
+      >
       </feature-card>
     `;
   }

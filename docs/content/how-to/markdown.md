@@ -176,11 +176,13 @@ Have the build script emit the component tag around the parsed Markdown:
 <!-- src/pages/about.html -->
 <script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
+  import { html, raw } from "@bascik/bascik/html";
   import { marked } from "marked";
 
   export default async function () {
     const md = await readFile("./content/article.md", "utf8");
-    return `<markdown-content>${marked(md)}</markdown-content>`;
+    // The Markdown is the project's own, so its HTML is trusted: raw() keeps it as markup.
+    return html`<markdown-content>${raw(marked.parse(md, { async: false }) as string)}</markdown-content>`;
   }
 </script>
 ```

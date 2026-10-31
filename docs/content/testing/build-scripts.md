@@ -131,7 +131,9 @@ Test page-aware functions in Vitest by setting `process.env` values in test case
 
 ```ts
 // src/lib/canonical.ts
-export function getCanonicalUrl(): string {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
+export function getCanonicalUrl(): SafeHtml | "" {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
@@ -149,7 +151,7 @@ export function getCanonicalUrl(): string {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = route ? `/${route}` : "/";
 
-  return `<link rel="canonical" href="${siteUrl}${urlPath}" />`;
+  return html`<link rel="canonical" href="${siteUrl}${urlPath}" />`;
 }
 ```
 
@@ -172,14 +174,15 @@ describe("getCanonicalUrl", () => {
 
   it("generates canonical tag for index pages", () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/index.html";
-    expect(getCanonicalUrl()).toBe(
+    // An html value is an object: compare its text.
+    expect(String(getCanonicalUrl())).toBe(
       '<link rel="canonical" href="https://example.com/" />',
     );
   });
 
   it("generates canonical tag for nested routes", () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/blog/post.html";
-    expect(getCanonicalUrl()).toBe(
+    expect(String(getCanonicalUrl())).toBe(
       '<link rel="canonical" href="https://example.com/blog/post" />',
     );
   });
@@ -198,17 +201,20 @@ When a build script encounters missing files or remote network failures, your he
 
 ```ts
 // src/lib/remote-data.ts
-export async function fetchHeroData(endpoint: string): Promise<string> {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
+export async function fetchHeroData(endpoint: string): Promise<SafeHtml> {
   try {
     const res = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return `<h1 class="hero-title">${data.title}</h1>`;
+    // A remote title is data: html escapes it, so markup in it shows as text.
+    return html`<h1 class="hero-title">${data.title}</h1>`;
   } catch (err) {
     console.warn(
       `[build-scripts] Fallback used for ${endpoint}: ${(err as Error).message}`,
     );
-    return `<h1 class="hero-title">Welcome to Bascik</h1>`;
+    return html`<h1 class="hero-title">Welcome to Bascik</h1>`;
   }
 }
 ```
@@ -230,8 +236,23 @@ describe("fetchHeroData", () => {
       }),
     );
 
-    const html = await fetchHeroData("https://api.example.com/release");
-    expect(html).toBe('<h1 class="hero-title">Latest Release v1.0</h1>');
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe(
+      '<h1 class="hero-title">Latest Release v1.0</h1>',
+    );
+  });
+
+  it("shows markup in a remote title as text", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ title: "<img src=x onerror=alert(1)>" }), {
+        status: 200,
+      }),
+    );
+
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe(
+      '<h1 class="hero-title">&lt;img src=x onerror=alert(1)&gt;</h1>',
+    );
   });
 
   it("returns fallback markup when fetch fails", async () => {
@@ -239,8 +260,8 @@ describe("fetchHeroData", () => {
       new Error("Network error"),
     );
 
-    const html = await fetchHeroData("https://api.example.com/release");
-    expect(html).toBe('<h1 class="hero-title">Welcome to Bascik</h1>');
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe('<h1 class="hero-title">Welcome to Bascik</h1>');
   });
 });
 ```

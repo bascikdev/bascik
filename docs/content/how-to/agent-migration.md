@@ -662,11 +662,18 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 
    ```html
    <script data-bascik-build>
+     import { html } from "@bascik/bascik/html";
      import { heroFor } from "@/lib/heroes.ts";
      export default () => {
        const hero = heroFor(process.env.BASCIK_PAGE_PATH);
        return hero
-         ? `<link rel="preload" as="image" fetchpriority="high" imagesrcset="${hero.srcset}" imagesizes="100vw">`
+         ? html`<link
+             rel="preload"
+             as="image"
+             fetchpriority="high"
+             imagesrcset="${hero.srcset}"
+             imagesizes="100vw"
+           />`
          : "";
      };
    </script>

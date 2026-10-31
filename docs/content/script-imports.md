@@ -9,19 +9,24 @@ Write utility functions in your project and import them from any script. No spec
 ```ts
 // src/lib/render-cards.ts
 import { readFile } from "node:fs/promises";
+import { html, type SafeHtml } from "@bascik/bascik/html";
 
-export async function renderCards(jsonPath: string) {
-  const items = JSON.parse(await readFile(jsonPath, "utf8"));
-  return items
-    .map(
-      (item) => `
-    <div class="card">
-      <h3>${item.title}</h3>
-      <p>${item.description}</p>
-    </div>
-  `,
-    )
-    .join("\n");
+interface Card {
+  title: string;
+  description: string;
+}
+
+export async function renderCards(jsonPath: string): Promise<SafeHtml> {
+  const items: Card[] = JSON.parse(await readFile(jsonPath, "utf8"));
+  // html escapes each value; an array of html values needs no .join().
+  return html`${items.map(
+    (item) => html`
+      <article class="card">
+        <h3>${item.title}</h3>
+        <p>${item.description}</p>
+      </article>
+    `,
+  )}`;
 }
 ```
 

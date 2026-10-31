@@ -306,21 +306,27 @@ The template logic becomes one helper. `loadPosts` returns posts oldest first, s
 
 ```ts
 // src/lib/render.ts (excerpt)
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
 const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? "" : "s"}`;
 
-export function renderHome(posts: Post[], latest = 3): string {
+// renderPostList returns an html value too, so it nests without being escaped again.
+export function renderHome(posts: Post[], latest = 3): SafeHtml {
   const shown = posts.slice(-latest);
   const more = posts.length - latest;
-  const parts = [
-    `<h1>Latest ${plural(shown.length, "Post")}</h1>`,
-    renderPostList(shown, posts.length),
-  ];
-  if (more > 0)
-    parts.push(
-      `<p>${plural(more, "more post")} can be found in <a href="/blog/">the archive</a>.</p>`,
-    );
-  return parts.join("\n");
+  return html`
+    <h1>Latest ${plural(shown.length, "Post")}</h1>
+    ${renderPostList(shown, posts.length)}
+    ${
+      more > 0
+        ? html`<p>
+            ${plural(more, "more post")} can be found in
+            <a href="/blog/">the archive</a>.
+          </p>`
+        : ""
+    }
+  `;
 }
 ```
 
