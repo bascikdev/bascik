@@ -3,7 +3,7 @@
 // SEO check. Dependency-free; Node.js 22.22+. Run from the project root after `bascik --build`.
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { parseArgs } from "node:util";
+import { parseArgs, parseEnv } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HELP = `Usage: node audit-seo.mjs [--dist dist] [--site-url https://example.com] [--strict] [--json]
@@ -264,6 +264,14 @@ function htmlFiles(dir, out = []) {
   return out;
 }
 
+/**
+ * BASCIK_SITE_URL from the text of a .env file, parsed with Node's util.parseEnv as Bascik reads it: CRLF line ends,
+ * quotes and comments are handled the same way. An empty value reads as unset.
+ */
+export function siteUrlFromEnv(text) {
+  return parseEnv(text).BASCIK_SITE_URL?.trim() || undefined;
+}
+
 /** "/", "/about", or "/blog/post/" for a dist-relative HTML file. Exported for tests. */
 export function pagePathOf(rel) {
   const path = rel.split(sep).join("/");
@@ -325,9 +333,7 @@ async function main() {
   }
   const envFile = join(root, ".env");
   const fromEnvFile = existsSync(envFile)
-    ? /^BASCIK_SITE_URL=["']?([^"'\n]+)/m.exec(
-        readFileSync(envFile, "utf8"),
-      )?.[1]
+    ? siteUrlFromEnv(readFileSync(envFile, "utf8"))
     : undefined;
   const siteUrl =
     values["site-url"] ?? process.env.BASCIK_SITE_URL ?? fromEnvFile;

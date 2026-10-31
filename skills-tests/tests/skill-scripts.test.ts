@@ -1,6 +1,9 @@
 // Unit tests for the pure functions in the public agent skills' scripts and the starter site's helpers.
 // The end-to-end checks (copy, build, lint, audit) are in examples.integration.test.ts.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +17,7 @@ import {
   auditPages,
   inspectPage,
   pagePathOf,
+  siteUrlFromEnv,
 } from "../../skills/bascik-seo/scripts/audit-seo.mjs";
 import {
   checkSite,
@@ -285,6 +289,66 @@ describe("audit-seo", () => {
       file: "404.html",
     };
     expect(auditPages([notFound])).toEqual([]);
+  });
+
+  it("reads BASCIK_SITE_URL from a CRLF .env without the carriage return, as Bascik's parseEnv does", () => {
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=https://example.com\r\n")).toBe(
+      "https://example.com",
+    );
+    expect(
+      siteUrlFromEnv(
+        '# site\r\nOTHER=1\r\nBASCIK_SITE_URL="https://example.com"\r\n',
+      ),
+    ).toBe("https://example.com");
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=https://example.com # prod\n")).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("misuse: an empty or missing BASCIK_SITE_URL in .env reads as unset", () => {
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=\r\n")).toBeUndefined();
+    expect(siteUrlFromEnv("OTHER=1\n")).toBeUndefined();
+    expect(siteUrlFromEnv("")).toBeUndefined();
+  });
+
+  it("the CLI matches canonicals against a site URL read from a CRLF .env", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-audit-seo-"));
+    try {
+      writeFileSync(join(root, "package.json"), "{}");
+      writeFileSync(
+        join(root, ".env"),
+        "BASCIK_SITE_URL=https://example.com\r\n",
+      );
+      mkdirSync(join(root, "dist"));
+      writeFileSync(
+        join(root, "dist/about.html"),
+        good("/about", "About us", "x".repeat(80)).html,
+      );
+      const env = { ...process.env };
+      delete env.BASCIK_SITE_URL;
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik-seo/scripts/audit-seo.mjs",
+              import.meta.url,
+            ),
+          ),
+          "--json",
+        ],
+        { cwd: root, encoding: "utf8", env },
+      );
+      const report = JSON.parse(result.stdout);
+      expect(report.siteUrl).toBe("https://example.com");
+      expect(
+        report.findings.filter((f: { message: string }) =>
+          /canonical/.test(f.message),
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
