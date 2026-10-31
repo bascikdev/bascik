@@ -16,7 +16,10 @@ import {
 import { execute } from "../../bench/profile-runner.ts";
 import { createFixtureTrust, http2Request } from "../../bench/profile-tls.ts";
 import type { ScriptRegistry } from "./script-registry.ts";
-import { analyzeRetentionHeap } from "./module-retention-heap.test-helper.ts";
+import {
+  analyzeRetentionHeap,
+  NODE_HTTP_DATE_CACHE_TIMEOUT,
+} from "./module-retention-heap.test-helper.ts";
 import {
   LIVE_RELOAD_VERSION_ATTR,
   getLiveReloadScript,
@@ -188,6 +191,10 @@ export function assertRetentionOraclesObserved(
  * framework registry was found (so the namespace attribution looked at the
  * real one), and no snapshot holds more `Timeout` objects than the first.
  * `getActiveResourcesInfo()` does not list unref'd timers; the heap does.
+ * Node's own HTTP Date-cache timer is counted apart: it lives for the rest of
+ * the second after any response, so a snapshot holds it by timing alone (a
+ * loaded runner once took the baseline after it fired and batch-2 before).
+ * Node keeps at most one, so more than one is a failure too.
  */
 export function assertSettledHeaps(
   heaps: {
@@ -197,7 +204,11 @@ export function assertSettledHeaps(
   }[],
 ): void {
   assert(heaps.length > 0, "retention experiment recorded no heap snapshots");
-  const baseline = heaps[0].classes.Timeout ?? 0;
+  const dateCacheTimers = (heap: (typeof heaps)[number]) =>
+    heap.classes[NODE_HTTP_DATE_CACHE_TIMEOUT] ?? 0;
+  const timers = (heap: (typeof heaps)[number]) =>
+    (heap.classes.Timeout ?? 0) - dateCacheTimers(heap);
+  const baseline = timers(heaps[0]);
   for (const heap of heaps) {
     assert.equal(
       heap.registries,
@@ -205,8 +216,12 @@ export function assertSettledHeaps(
       `retention heap ${heap.phase}: expected exactly one ScriptRegistry`,
     );
     assert(
-      (heap.classes.Timeout ?? 0) <= baseline,
-      `retention heap ${heap.phase}: ${heap.classes.Timeout} Timeout objects, baseline ${baseline} (a timer left running)`,
+      dateCacheTimers(heap) <= 1,
+      `retention heap ${heap.phase}: ${dateCacheTimers(heap)} Node HTTP Date-cache timers (Node keeps at most one)`,
+    );
+    assert(
+      timers(heap) <= baseline,
+      `retention heap ${heap.phase}: ${timers(heap)} Timeout objects besides Node's HTTP Date cache, baseline ${baseline} (a timer left running)`,
     );
   }
 }

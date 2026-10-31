@@ -14,6 +14,15 @@ export interface HeapSnapshot {
   strings: string[];
 }
 
+/**
+ * `classes` key for the one timer Node's own HTTP Date header cache keeps
+ * (`utcDate` in node:internal/http arms an unref'd `resetCache` timer that
+ * fires at the next whole second after a response). Whether a snapshot holds
+ * it depends only on when in that second it was taken, so the settled-heap
+ * check counts it apart from the timers a leak would leave.
+ */
+export const NODE_HTTP_DATE_CACHE_TIMEOUT = "Timeout:node-http-date-cache";
+
 export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
   const meta = heap.snapshot.meta;
   const nodeWidth = meta.node_fields.length;
@@ -70,6 +79,28 @@ export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
     }
     return undefined;
   };
+  const internal = (node: number, name: string) => {
+    for (let edge = starts[node]; edge < starts[node + 1]; edge += edgeWidth) {
+      if (edgeTypeOf(edge) === "internal" && edgeNameOf(edge) === name)
+        return heap.edges[edge + edgeTarget] / nodeWidth;
+    }
+    return undefined;
+  };
+  // WHY by script, not only by name: a framework or fixture function called
+  // resetCache must still count as a timer left running.
+  const isNodeHttpDateCacheTimer = (timer: number) => {
+    const callback = property(timer, "_onTimeout");
+    if (
+      callback === undefined ||
+      typeOf(callback) !== "closure" ||
+      nameOf(callback) !== "resetCache"
+    )
+      return false;
+    const shared = internal(callback, "shared");
+    const script =
+      shared === undefined ? undefined : internal(shared, "script");
+    return script !== undefined && nameOf(script) === "node:internal/http";
+  };
   const textOf = (node: number, depth = 0): string => {
     if (typeOf(node) !== "concatenated string" || depth > 20)
       return nameOf(node);
@@ -109,6 +140,13 @@ export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
       ].includes(name)
     )
       classes[name] = (classes[name] ?? 0) + 1;
+    if (
+      type === "object" &&
+      name === "Timeout" &&
+      isNodeHttpDateCacheTimer(node)
+    )
+      classes[NODE_HTTP_DATE_CACHE_TIMEOUT] =
+        (classes[NODE_HTTP_DATE_CACHE_TIMEOUT] ?? 0) + 1;
     if (
       type === "closure" &&
       ["toError", "onAbort", "runStreamJob"].includes(name)
