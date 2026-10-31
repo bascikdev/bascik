@@ -105,8 +105,21 @@ const RAW_ELEMENT_SCAN: ElementScanOptions = {
   closer: "attributes",
 };
 
-const sha256Source = (body: string): string =>
-  `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
+/**
+ * The CSP source expression for one inline script or style body. The HTML
+ * parser turns CR LF and lone CR into LF before the body exists, and the
+ * browser hashes that text, so a page saved with Windows line endings is
+ * hashed as its LF spelling; hashing the bytes as written would block it.
+ */
+export const sha256Source = (body: string): string =>
+  `sha256-${createHash("sha256")
+    .update(
+      Buffer.from(
+        body.replace(/\r\n?/g, () => "\n"),
+        "utf8",
+      ),
+    )
+    .digest("base64")}`;
 
 /**
  * Regex scan for the part of a page the tokenizer could not follow. It errs
@@ -169,8 +182,7 @@ const scanWithRegexFallback = (
       }
     }
 
-    const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
-    scripts.add(hash);
+    scripts.add(sha256Source(body));
   }
 
   // Blank script bodies before scanning for <style> so a literal `<style>` inside
@@ -192,8 +204,7 @@ const scanWithRegexFallback = (
     RAW_ELEMENT_SCAN,
   )) {
     const body = styleScannable.slice(match.contentStart, match.contentEnd);
-    const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
-    styles.add(hash);
+    styles.add(sha256Source(body));
   }
 
   return { scripts, styles };

@@ -67,8 +67,8 @@ When configuring a custom `base` in `bascik.config.ts`, API routes compose clean
 
 A route file exports functions corresponding to standard HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
 
-- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods.
-- **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence.
+- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods. Only the seven names above are methods: an export such as `PURGE` or `SEARCH` is never called, and a request with that method gets the same `405`.
+- **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence. A body a `HEAD` answer does not send is canceled, so a streamed source (a `fetch()` pass-through, a file) is released at once.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
 
 This recording sends two real requests to a dev server whose `src/api/users/[id].ts` exports only `GET`. The `GET` returns the handler's JSON with a `200`. The `DELETE` is refused with a `405`, and the `Allow` header lists exactly what the route accepts:

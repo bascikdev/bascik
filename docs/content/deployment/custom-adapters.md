@@ -490,7 +490,7 @@ The `--target` flag resolves in three ways:
    bascik --build --target bascik-adapter-fastly
    ```
 
-Bascik dynamically imports the resolved module and reads its default export.
+Bascik dynamically imports the resolved module and reads its default export. A package is found the way Node finds it, in the `node_modules` folders from the project up, and its `exports` may offer only an `import` condition (an ESM-only package); a subpath such as `--target @acme/adapter/workers` resolves through `exports` too. Official targets such as `cloudflare` resolve their package the same way. As in Node, an `exports` target or `*` match with a `.`, `..` or `node_modules` segment is never followed, so an entry cannot point outside the package folder. An installed package whose `exports` have no entry for the name you passed fails with a message naming the folder it is installed in, not a request to install it.
 
 ---
 

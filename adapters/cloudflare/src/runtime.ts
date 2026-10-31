@@ -561,6 +561,10 @@ export const createCloudflareWorker = (
         https,
         security,
       });
+      // A HEAD answer sends no body: release the one an explicit HEAD
+      // handler returned (a derived HEAD's GET body is released by the core).
+      if (request.method === "HEAD" && response.body && !response.body.locked)
+        response.body.cancel().catch(() => {});
       return new Response(request.method === "HEAD" ? null : response.body, {
         status: response.status,
         statusText: response.statusText,

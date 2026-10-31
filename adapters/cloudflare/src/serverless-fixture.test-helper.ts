@@ -630,6 +630,28 @@ export default async function () {
 export default function () { return "<nest-card></nest-card><nest-card></nest-card><nest-card></nest-card>"; }
 </script>`,
   );
+  // Sibling nested jobs that return different stylesheets and finish in a
+  // random order: the style blocks follow the sites, not completion order.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/nest-link-card/nest-link-card.html",
+    `<div class="nest-link" data-testid="nest-link-card">
+<script data-bascik-server>
+export default async function () {
+  await new Promise((resolve) => setTimeout(resolve, Math.random() * 40));
+  return '<link-card data-bascik-prop-target="/pricing"></link-card>';
+}
+</script>
+</div>
+<style>.nest-link { color: rgb(22, 23, 24); }</style>`,
+  );
+  await page(
+    "src/pages/components-nest-mixed.html",
+    "Nest mixed",
+    `<script data-bascik-server>
+export default function () { return "<nest-link-card></nest-link-card><nest-card></nest-card>"; }
+</script>`,
+  );
   // A component script printing terminal colors: stripped on both hosts.
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag

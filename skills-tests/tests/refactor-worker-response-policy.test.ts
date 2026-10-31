@@ -527,6 +527,13 @@ describe("sha256Base64 and buildCsp", () => {
     }
   });
 
+  it("misuse: a body saved with CRLF or lone CR hashes as its LF text, as the browser does", async () => {
+    // The HTML parser turns CR LF and lone CR into LF before the browser hashes a body.
+    const lf = "window.ready = true;\nconsole.log(1);\n";
+    expect(await sha256Base64(lf.replace(/\n/g, "\r\n"))).toBe(nodeHash(lf));
+    expect(await sha256Base64(lf.replace(/\n/g, "\r"))).toBe(nodeHash(lf));
+  });
+
   it("builds a strict policy from hashes with no unsafe-inline", () => {
     const csp = buildCsp({ scriptHashes: ["abc="], styleHashes: ["def="] });
     expect(csp).toContain("script-src 'self' 'sha256-abc='");

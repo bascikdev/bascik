@@ -7,7 +7,7 @@
  * binding, a route module that fails to load, a wrong method, a script that
  * fails before a stream commits, and the static 404 page under its own URLs.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createCloudflareWorker,
   stripBase,
@@ -277,6 +277,43 @@ describe("createCloudflareWorker: API routes", () => {
     expect(res.headers.get("strict-transport-security")).toMatch(/max-age=/);
     expect(seen).toEqual([{ id: "42" }, "203.0.113.7", "cloudflare", env]);
     expect(waits.waited).toHaveLength(1);
+  });
+
+  it("HEAD releases the handler's streamed body, derived from GET or exported, instead of leaving it open (F088)", async () => {
+    const cancels: string[] = [];
+    const streamed = (label: string) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode(label));
+          },
+          cancel: () => {
+            cancels.push(label);
+          },
+        }),
+        { headers: { "x-k": label } },
+      );
+    const w = worker(
+      graphOf({
+        apiRoutes: [
+          route("/api/derived", async () => ({
+            GET: () => streamed("derived"),
+          })),
+          route("/api/explicit", async () => ({
+            GET: () => streamed("get"),
+            HEAD: () => streamed("explicit"),
+          })),
+        ],
+      }),
+    );
+    for (const path of ["/api/derived", "/api/explicit"]) {
+      const head = await w.fetch(get(path, { method: "HEAD" }), {}, ctx());
+      expect(head.status, path).toBe(200);
+      expect(await head.text(), path).toBe("");
+    }
+    await vi.waitFor(() =>
+      expect(cancels.sort()).toEqual(["derived", "explicit"]),
+    );
   });
 
   it("HEAD derives from GET with no body; a method the module lacks is a 405 naming the allowed ones", async () => {

@@ -258,11 +258,15 @@ export function inlineStyles(html) {
   return rawTextElements(html, "style").map((element) => element.body);
 }
 
-/** Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. */
+/**
+ * Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. The HTML parser
+ * turns CR LF and lone CR into LF before the browser hashes a body, so this
+ * hashes the LF text too.
+ */
 export async function sha256Base64(text) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(text),
+    new TextEncoder().encode(text.replace(/\r\n?/g, () => "\n")),
   );
   let binary = "";
   for (const byte of new Uint8Array(digest))

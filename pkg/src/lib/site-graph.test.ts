@@ -619,12 +619,13 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
   const withDist = async (
     files: Record<string, string>,
     run: (testDir: string, distDir: string) => Promise<void>,
+    outName = "dist",
   ) => {
     const testDir = join(
       tmpdir(),
       `bascik-site-graph-components-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     );
-    const distDir = join(testDir, "dist");
+    const distDir = join(testDir, outName);
     await mkdir(privateDirFor(distDir), { recursive: true });
     await mkdir(distDir, { recursive: true });
     await mkdir(join(testDir, "src/api"), { recursive: true });
@@ -780,6 +781,77 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
         expect(about).toHaveLength(1);
         expect(about[0]).toContain("reference");
         expect(about[0]).toMatch(/srv-card|components\.json|component tags/);
+      },
+    );
+  });
+
+  it("misuse: the components warning names the private folder of a custom directory.out and goes through the build's log (F091)", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const log = vi.fn();
+        await emitServerlessArtifacts(
+          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+          { version: "1.0.0", projectRoot: testDir, distDir, log },
+        );
+        const about = log.mock.calls
+          .map((call) => call.join(" "))
+          .filter((line) => /does not declare components/.test(line));
+        expect(about).toHaveLength(1);
+        expect(about[0]).toContain(
+          ".bascik/build/components.json lists <srv-card>",
+        );
+        expect(about[0]).not.toContain(".bascik/dist/");
+        expect(
+          warn.mock.calls.filter((call) =>
+            /does not declare components/.test(call.join(" ")),
+          ),
+        ).toEqual([]);
+      },
+      "build",
+    );
+  });
+
+  it("misuse: the components warning names the absolute private folder, with forward slashes, for an output outside the project (F091)", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        // The project is a sibling of the output folder, so the manifest
+        // is outside the project root and only an absolute path finds it.
+        const projectRoot = join(testDir, "site");
+        await mkdir(join(projectRoot, "src/api"), { recursive: true });
+        const log = vi.fn();
+        await emitServerlessArtifacts(
+          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+          { version: "1.0.0", projectRoot, distDir, log },
+        );
+        const about = log.mock.calls
+          .map((call) => call.join(" "))
+          .filter((line) => /does not declare components/.test(line));
+        expect(about).toHaveLength(1);
+        const absolute = `${privateDirFor(distDir).replace(/\\/g, "/")}/components.json`;
+        expect(about[0]).toContain(`(${absolute} lists <srv-card>)`);
+        expect(about[0]).not.toContain("\\");
+        expect(about[0]).not.toMatch(/\(\.\.\//);
       },
     );
   });

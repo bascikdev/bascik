@@ -42,13 +42,12 @@
  * The manifest exists only for releases whose sidecar has page-owned server
  * or stream entries (ownership.ts); a static site never gets one.
  */
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rewriteCssBasePaths } from "./base-path.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { scanWholeAttributes } from "./component-attribute-scan.ts";
-import { computePageCspHashes } from "./csp-hashes.ts";
+import { computePageCspHashes, sha256Source } from "./csp-hashes.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
@@ -131,9 +130,6 @@ const SENTINEL_ID = "rsentinel";
 const VERIFY_ID = "rverified";
 
 const identity = (input: string): string => input;
-
-const sha256 = (body: string): string =>
-  `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
 
 /**
  * Attributes whose bound value scoping would have rewritten (id, class) or
@@ -755,7 +751,7 @@ const buildEntry = async (
           text,
           hash:
             computePageCspHashes(`<style>${text}</style>`).styles[0] ??
-            sha256(text),
+            sha256Source(text),
         };
       }
     }

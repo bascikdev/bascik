@@ -398,7 +398,9 @@ export class ApiRouteRegistry {
           body = read.rest;
         }
         if (isHead) {
-          // HEAD-derived responses: commit headers with no body.
+          // HEAD responses: commit headers with no body, and release the
+          // body an explicit HEAD handler returned anyway.
+          body.cancel().catch(() => {});
           res.respond(webRes.status, outHeaders);
           if (!res.destroyed) res.end();
         } else {
