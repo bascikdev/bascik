@@ -47,6 +47,14 @@ export interface RetentionCheckpoint {
   cache: number;
   inlineLoads: number;
   staleInlineLoads: number;
+  /** Superseded file-module entries still reachable after GC (framework retention). */
+  staleModuleEntries: number;
+  /** File-module entries the subject saw `scriptRegistry.load` resolve (proves the oracle observed). */
+  observedModuleEntries: number;
+  /** Accepted sockets that are destroyed but still reachable after GC. */
+  closedSockets: number;
+  /** Sockets the subject's servers accepted (proves the oracle observed). */
+  observedSockets: number;
   graph: number;
   liveRequests: number;
   liveRequestClosures: number;
@@ -120,6 +128,87 @@ export interface CancellationObservation {
   pending: number;
   /** Row 2 cancel-after-prefix detailed stream & writer metrics. */
   midBody?: MidBodyCancellationObservation;
+}
+
+/**
+ * Leak invariants every settled sample must hold, checked by the harness for
+ * every lane so a test cannot pass by forgetting to assert them. Each is a
+ * count of framework objects that are still reachable after GC although
+ * nothing current owns them (a superseded inline load or module entry, a
+ * destroyed socket), or a live handle (a timer, a server) that the baseline
+ * did not have. The messages name the phase so a failure points at the batch
+ * that leaked.
+ */
+export function assertSettledCheckpoint(
+  checkpoint: RetentionCheckpoint,
+  baseline: RetentionCheckpoint,
+): void {
+  const where = `retention ${checkpoint.mode} ${checkpoint.phase}`;
+  for (const field of [
+    "staleInlineLoads",
+    "staleModuleEntries",
+    "closedSockets",
+  ] as const) {
+    assert.equal(
+      checkpoint[field],
+      0,
+      `${where}: ${field} must be 0 after GC (framework retention)`,
+    );
+  }
+  assert.deepEqual(
+    checkpoint.resources,
+    baseline.resources,
+    `${where}: active resources differ from the baseline (a timer, socket or server left running)`,
+  );
+}
+
+/**
+ * The finalization oracles above are only evidence when they observed
+ * something: an experiment whose subject never saw a socket or a module entry
+ * (a renamed hook, a bypassed wrapper, a channel Node stopped publishing)
+ * would report zero retained objects for the wrong reason.
+ */
+export function assertRetentionOraclesObserved(
+  checkpoints: RetentionCheckpoint[],
+): void {
+  const last = checkpoints.at(-1);
+  assert(last, "retention experiment recorded no checkpoints");
+  assert(
+    last.observedSockets > 0,
+    "retention socket oracle observed no accepted sockets",
+  );
+  assert(
+    last.observedModuleEntries > 0,
+    "retention module-entry oracle observed no file-module loads",
+  );
+}
+
+/**
+ * Heap-level leak invariants for one experiment's snapshots: exactly one
+ * framework registry was found (so the namespace attribution looked at the
+ * real one), and no snapshot holds more `Timeout` objects than the first.
+ * `getActiveResourcesInfo()` does not list unref'd timers; the heap does.
+ */
+export function assertSettledHeaps(
+  heaps: {
+    phase: string;
+    registries: number;
+    classes: Record<string, number>;
+  }[],
+): void {
+  assert(heaps.length > 0, "retention experiment recorded no heap snapshots");
+  const baseline = heaps[0].classes.Timeout ?? 0;
+  for (const heap of heaps) {
+    assert.equal(
+      heap.registries,
+      1,
+      `retention heap ${heap.phase}: expected exactly one ScriptRegistry`,
+    );
+    assert(
+      (heap.classes.Timeout ?? 0) <= baseline,
+      `retention heap ${heap.phase}: ${heap.classes.Timeout} Timeout objects, baseline ${baseline} (a timer left running)`,
+    );
+  }
 }
 
 export function compareRetentionTrends(
@@ -1844,13 +1933,12 @@ export default function retentionShared129(request, context) { ${requestObservat
     completed: number,
     snapshot = false,
   ) {
-    checkpoints.push(
-      await command<RetentionCheckpoint>("sample", {
-        phase,
-        completed,
-        snapshot,
-      }),
-    );
+    const sampled = await command<RetentionCheckpoint>("sample", {
+      phase,
+      completed,
+      snapshot,
+    });
+    checkpoints.push(sampled);
     await writeFile(
       join(directory, "checkpoints.json"),
       JSON.stringify(
@@ -1860,6 +1948,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       ),
       { mode: 0o600 },
     );
+    assertSettledCheckpoint(sampled, checkpoints[0]);
   }
   async function stopSubject(): Promise<void> {
     pending.assertIdle();
@@ -3934,6 +4023,8 @@ export default function retentionShared129(request, context) { ${requestObservat
       JSON.stringify(heaps, null, 2),
       { mode: 0o600 },
     );
+    assertRetentionOraclesObserved(checkpoints);
+    assertSettledHeaps(heaps);
     const snapshotNames =
       fixedProductionBatch ||
       beforeHeadersCancellation ||
