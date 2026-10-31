@@ -663,3 +663,42 @@ describe("component-name-not-hyphenated", () => {
     ).not.toContain("component-name-not-hyphenated");
   });
 });
+
+describe("attr-prop-unsupplied", () => {
+  const ITEM = '<a data-bascik-attr-href="href">x</a>';
+  // A component root outside src, as a monorepo's shared components are (directory.components: ["components"]).
+  const sharedProject = (listSource: string) =>
+    snapshot({
+      componentRoots: ["/site/components"],
+      componentMap: new Map([
+        ["card-item", "/site/components/card-item.html"],
+        ["card-list", "/site/components/card-list.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/components/card-item.html", ITEM],
+        ["/site/components/card-list.html", listSource],
+      ]),
+    });
+
+  it("counts a usage in a sibling component under a root outside src", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-href="/x"></card-item>'),
+      ),
+    ).not.toContain("attr-prop-unsupplied");
+  });
+
+  it("still hints when that sibling misspells the prop", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-hrf="/x"></card-item>'),
+      ),
+    ).toContain("attr-prop-unsupplied");
+  });
+});

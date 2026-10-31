@@ -965,9 +965,12 @@ export function createDiagnostics(
         const suppliedInOpen = openDocumentTexts.some(({ text }) =>
           htmlSuppliesComponentProp(text, componentName, propName),
         );
-        const suppliedInDisk = Array.from(
-          snapshot.htmlUsageByFile.values(),
-        ).some((usageHtml) =>
+        // Pages and HTML under src, plus every component file: a component root outside src (shared
+        // components in a monorepo) is not in htmlUsageByFile, as Find All References also allows for.
+        const suppliedInDisk = [
+          ...snapshot.htmlUsageByFile.values(),
+          ...(snapshot.componentSourceByFile?.values() ?? []),
+        ].some((usageHtml) =>
           htmlSuppliesComponentProp(usageHtml, componentName, propName),
         );
         if (suppliedInOpen || suppliedInDisk) continue;
