@@ -42,7 +42,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.ts";
 import { scaffold } from "./scaffold.ts";
 
@@ -586,6 +586,114 @@ describe("scaffold-to-compiler integration", () => {
       expect(build.output).toContain("BASCIK_SITE_URL is not set");
     },
     90_000,
+  );
+
+  it.each([
+    {
+      source: "nothing",
+      shellUrl: undefined,
+      dotEnvUrl: undefined,
+      expected: "http://localhost:8080",
+    },
+    {
+      source: "BASCIK_SITE_URL in the shell, over .env",
+      shellUrl: "https://frother.example.com",
+      dotEnvUrl: "https://dotenv.example.com",
+      expected: "https://frother.example.com",
+    },
+    {
+      source: "the project's .env",
+      shellUrl: undefined,
+      dotEnvUrl: "https://dotenv.example.com",
+      expected: "https://dotenv.example.com",
+    },
+  ])(
+    "misuse: the scaffolded e2e lane's build, with its site URL set by $source, writes a sitemap for $expected",
+    async ({ shellUrl, dotEnvUrl, expected }) => {
+      const parentDir = await createTempDir("e2e-webserver");
+      const projectDir = join(parentDir, "e2e-site");
+      await scaffold("e2e-site", parentDir);
+      if (dotEnvUrl !== undefined) {
+        await writeFile(
+          join(projectDir, ".env"),
+          `BASCIK_SITE_URL=${dotEnvUrl}\n`,
+        );
+      }
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+      };
+      delete env.BASCIK_SITE_URL;
+      if (shellUrl !== undefined) env.BASCIK_SITE_URL = shellUrl;
+
+      // Evaluate the generated config as Playwright would, with that env, from
+      // another folder; only its @playwright/test import is stubbed, because a
+      // scaffold run with --no-install has no node_modules.
+      const config = await readFile(
+        join(projectDir, "e2e/playwright.config.ts"),
+        "utf8",
+      );
+      const playwrightImport = "from '@playwright/test';";
+      expect(config).toContain(playwrightImport);
+      const stub = `from '${"data:text/javascript," + encodeURIComponent("export const defineConfig = (config) => config;")}';`;
+      const evaluated = join(projectDir, "e2e/playwright.config.eval.ts");
+      await writeFile(
+        evaluated,
+        config.replace(playwrightImport, () => stub),
+      );
+      const printed = await execFileAsync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const { default: c } = await import(${JSON.stringify(pathToFileURL(evaluated).href)}); console.log(JSON.stringify(c.webServer));`,
+        ],
+        { cwd: parentDir, encoding: "utf8", env, timeout: 30_000 },
+      );
+      await rm(evaluated);
+      const webServer = JSON.parse(printed.stdout) as {
+        command: string;
+        cwd: string;
+        env: Record<string, string>;
+      };
+      expect(webServer.env.BASCIK_SITE_URL).toBe(expected);
+
+      // Run its build step where Playwright would, with webServer.env merged
+      // over the environment, as Playwright does.
+      const buildStep = webServer.command.split("&&")[0].trim();
+      expect(buildStep).toBe("npx bascik --build");
+      const build = await execFileAsync(
+        process.execPath,
+        [PKG_CLI, "--build"],
+        {
+          cwd: resolve(projectDir, "e2e", webServer.cwd),
+          encoding: "utf8",
+          env: { ...env, ...webServer.env },
+          timeout: 60_000,
+        },
+      ).then(
+        () => ({ code: 0, output: "" }),
+        (err: { code?: number; stdout?: string; stderr?: string }) => ({
+          code: err.code ?? 1,
+          output: `${err.stdout ?? ""}${err.stderr ?? ""}`,
+        }),
+      );
+      expect(build.code, build.output).toBe(0);
+      const sitemap = await readFile(
+        join(projectDir, "dist/sitemap.xml"),
+        "utf8",
+      );
+      expect(sitemap).toContain(`<loc>${expected}/</loc>`);
+      if (expected !== "http://localhost:8080") {
+        expect(sitemap).not.toContain("localhost");
+      }
+      // The fallback lives in the e2e config, not in a .env the real build would read.
+      if (dotEnvUrl === undefined) {
+        expect(existsSync(join(projectDir, ".env"))).toBe(false);
+      }
+    },
+    60_000,
   );
 
   it("the scaffolded default and cloudflare starters pass the bascik skill's semantic HTML audit", async () => {

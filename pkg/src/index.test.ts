@@ -188,6 +188,25 @@ describe("index.ts CLI runner functions", () => {
     expect(verRes).toEqual({ action: "version", exitCode: 0 });
   });
 
+  it("runCli warns about a leading Node option it ignores, naming NODE_OPTIONS", async () => {
+    const { runCli } = await import("./index.ts");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const res = await runCli(["--max-old-space-size=4096", "--help"], {
+        exitOnFinish: false,
+      });
+      expect(res.action).toBe("help");
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain("--max-old-space-size=4096");
+      expect(message).toContain('NODE_OPTIONS="--max-old-space-size=4096"');
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+    }
+  });
+
   it("runCli handles unknown flags with error", async () => {
     const { runCli } = await import("./index.ts");
     const errRes = await runCli(["--unknown-flag"], { exitOnFinish: false });
@@ -209,6 +228,40 @@ describe("index.ts CLI runner functions", () => {
     );
   });
 
+  it("setupBuildLogging has written a line to the log by the time the call returns, so an exit right after keeps it", async () => {
+    const { setupBuildLogging } = await import("./index.ts");
+    const { readFileSync } = await import("node:fs");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-log-tail-"));
+    const saved = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      env: process.env.BASCIK_BUILD_LOG,
+    };
+    const quiet = () => {};
+    console.log = quiet;
+    console.warn = quiet;
+    console.error = quiet;
+    try {
+      const path = await setupBuildLogging(join(dir, "build.log"));
+      console.error("[bascik] build failed: page error in src/pages/x.html");
+      // No await between the line and the read: exitAfterStopping calls
+      // process.exit synchronously when nothing is left to stop.
+      expect(readFileSync(path, "utf8")).toContain(
+        "[bascik] build failed: page error in src/pages/x.html",
+      );
+    } finally {
+      console.log = saved.log;
+      console.warn = saved.warn;
+      console.error = saved.error;
+      if (saved.env === undefined) delete process.env.BASCIK_BUILD_LOG;
+      else process.env.BASCIK_BUILD_LOG = saved.env;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The first runCli call imports index.ts and its whole module graph cold;
+  // under load that takes longer than the 5 s default, as the neighbors allow.
   it("runCli executes subcommands init, check, server, and dev/build", async () => {
     const { runCli } = await import("./index.ts");
 
@@ -251,7 +304,7 @@ describe("index.ts CLI runner functions", () => {
     const buildRes = await runCli(["--build"], { exitOnFinish: false });
     expect(buildRes.action).toBe("build");
     expect(transpileSpy).toHaveBeenCalled();
-  });
+  }, 30000);
 
   it("prints a clean error (no unhandled rejection banner, no Node stack) when the config fails to load", async () => {
     // Regression anchor: a syntax error in bascik.config must surface as one

@@ -39,6 +39,21 @@ describe("MIME_MAP", () => {
     ).toEqual([]);
   });
 
+  // F083: publishable text formats a site serves on purpose. Without a type
+  // they fell back to application/octet-stream, which, with nosniff, makes
+  // a browser download a feed or refuse a caption track. YAML stays
+  // untyped on purpose (config files, see above).
+  it.each([
+    [".rss", "application/rss+xml; charset=utf-8"],
+    [".atom", "application/atom+xml; charset=utf-8"],
+    [".vtt", "text/vtt; charset=utf-8"],
+    [".srt", "text/plain; charset=utf-8"],
+    [".xhtml", "application/xhtml+xml; charset=utf-8"],
+    [".jsonld", "application/ld+json; charset=utf-8"],
+  ])("%s → %s", (extension, type) => {
+    expect(MIME_MAP.get(extension)).toBe(type);
+  });
+
   it(".css → text/css; charset=utf-8", () => {
     expect(MIME_MAP.get(".css")).toBe("text/css; charset=utf-8");
   });

@@ -115,6 +115,34 @@ describe("targeted build CLI parsing & glob matching", () => {
       filterPagesByOnlyGlobs(pageFiles, ["non-existent/**"], pagesDir);
     }).toThrow(/--only "non-existent\/\*\*" matched no pages/);
   });
+
+  // F056 misuse lens: the docs once showed a project-relative glob. A glob
+  // that starts with the pages folder itself gets the spelling that works.
+  it.each([
+    ["src/pages/internals/*", "internals/*"],
+    ["./src/pages/internals/*", "internals/*"],
+    [resolve("src/pages") + "/internals/*", "internals/*"],
+  ])(
+    "suggests the directory.pages-relative glob for %s",
+    (glob, suggestion) => {
+      const pageFiles = ["src/pages/internals/architecture.html"];
+      expect(() =>
+        filterPagesByOnlyGlobs(pageFiles, [glob], "src/pages"),
+      ).toThrow(
+        `Globs are matched relative to directory.pages: use --only "${suggestion}".`,
+      );
+    },
+  );
+
+  it("adds no suggestion to a glob that does not start with the pages folder", () => {
+    expect(() =>
+      filterPagesByOnlyGlobs(
+        ["src/pages/index.html"],
+        ["blog/**"],
+        "src/pages",
+      ),
+    ).toThrow(/matched no pages in "src\/pages"\.$/);
+  });
 });
 
 describe("targeted build artifact merging and warnings", () => {

@@ -16,7 +16,10 @@ import { join } from "node:path";
 import {
   parseArgsFor,
   routeSlug,
+  validateRouteSet,
 } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
+import { parseCliArgs as parseRunChecks } from "../../skills/bascik-refactor/scripts/run-checks.mjs";
+import { parseCliArgs as parseReviewPage } from "../../skills/bascik-refactor/scripts/review-page.mjs";
 import {
   diffEffects,
   effectOf,
@@ -76,6 +79,36 @@ describe("routeSlug keeps distinct routes in distinct files", () => {
     expect(new Set(slugs).size).toBe(routes.length);
     expect(routeSlug("/index")).toMatch(/^index-[0-9a-f]{8}$/);
     expect(routeSlug("/docs/a_b")).toMatch(/^docs_a_b-[0-9a-f]{8}$/);
+  });
+
+  it("a route with and without its trailing slash shares a name, so passing both is rejected naming both", () => {
+    // Both are plain ("/pricing" and "/pricing/" -> "pricing"); a run with both would overwrite one report with the
+    // other and sign one review for two routes.
+    expect(routeSlug("/pricing")).toBe(routeSlug("/pricing/"));
+    expect(() => validateRouteSet(["/pricing", "/pricing/"])).toThrow(
+      /--route \/pricing and --route \/pricing\/ .*"pricing".*pass one/,
+    );
+    expect(() =>
+      validateRouteSet(["/", "/about", "/about/team"]),
+    ).not.toThrow();
+    expect(() => validateRouteSet(["/about", "/about"])).toThrow(
+      /--route \/about is given twice/,
+    );
+  });
+
+  it("every check, run-checks and review-page reject the pair", () => {
+    const base = [
+      "--prod",
+      "https://example.com",
+      "--target",
+      "http://localhost:8080",
+    ];
+    const pair = ["--route", "/pricing", "--route", "/pricing/"];
+    expect(() => parseArgsFor([...base, ...pair])).toThrow(/share/);
+    expect(() =>
+      parseRunChecks([...base, ...pair, "--legacy-src", "../legacy"]),
+    ).toThrow(/share/);
+    expect(() => parseReviewPage(["--verify", ...pair])).toThrow(/share/);
   });
 });
 

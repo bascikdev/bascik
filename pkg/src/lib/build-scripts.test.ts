@@ -661,6 +661,35 @@ describe("executeBuildScripts", () => {
     expect(result).not.toContain("data-bascik-build");
   });
 
+  it("replaces a failed script with an empty string and logs nothing when onBuildScriptError is 'ignore'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "ignore",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      rejectWith("syntax error");
+      const result = await executeBuildScripts(
+        "<p>before</p><script data-bascik-build>bad code</script><p>after</p>",
+        "src/pages/index.html",
+      );
+      expect(result).toBe("<p>before</p><p>after</p>");
+      // An unreadable src= is ignored the same way.
+      expect(
+        await executeBuildScripts(
+          '<p>a</p><script data-bascik-build src="./missing.ts"></script>',
+          "src/pages/index.html",
+        ),
+      ).toBe("<p>a</p>");
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("still removes the temp file when execution fails", async () => {
     (BascikConfig as any).scripts = {
       ...BascikConfig.scripts,
@@ -1116,7 +1145,7 @@ describe("executeBuildScripts – component build output scope", () => {
   const scope = (value: unknown) => encodeURIComponent(JSON.stringify(value));
   const SCOPE = scope({
     classes: { item: "bascik__my-comp__item", wrap: "bascik__my-comp__wrap" },
-    elements: { h2: "bascik__my-comp__el__h2", a: "bascik__my-comp__el__a" },
+    elements: { h2: "b_el_my-comp_h2", a: "b_el_my-comp_a" },
   });
 
   it("scopes classes and elements in the output of a script carrying an output scope", async () => {
@@ -1131,7 +1160,7 @@ describe("executeBuildScripts – component build output scope", () => {
     );
     expect(result).toBe(
       '<div><p class="bascik__my-comp__item global-only">x</p>' +
-        '<h2 class="bascik__my-comp__el__h2"><a class="bascik__my-comp__el__a" href="/">y</a></h2>' +
+        '<h2 class="b_el_my-comp_h2"><a class="b_el_my-comp_a" href="/">y</a></h2>' +
         '<section class="bascik__my-comp__wrap"></section></div>',
     );
   });
@@ -1740,6 +1769,46 @@ describe("build-script output cache", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
+  it('keys a type="text/typescript" body apart from the same body unmarked', async () => {
+    // Unmarked, the body is JavaScript and fails; a cached TypeScript run of
+    // the same text must not hide that.
+    const body =
+      'export default (): string => { const n: number = 1; return "<p>" + n + "</p>"; };';
+    resolveWith("<p>1</p>");
+    expect(
+      await executeBuildScripts(
+        `<script data-bascik-build type="text/typescript">${body}</script>`,
+      ),
+    ).toBe("<p>1</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const keyOf = (call: unknown[]) => String(call[0]);
+    const tsCacheWrite = mockWriteFile.mock.calls
+      .map(keyOf)
+      .find((path) => path.includes("script-cache"));
+    expect(tsCacheWrite).toBeDefined();
+
+    mockExecFile.mockClear();
+    mockWriteFile.mockClear();
+    // A disk lookup for the TypeScript key would answer with its record.
+    mockReadFile.mockImplementation(async (path: string) => {
+      if (String(path) === tsCacheWrite)
+        return JSON.stringify({ v: SCRIPT_CACHE_VERSION, output: "<p>1</p>" });
+      if (String(path).endsWith("result.json"))
+        return JSON.stringify({
+          version: 1,
+          kind: "build",
+          result: "<p>js</p>",
+          readsPageContext: true,
+        });
+      throw new Error("ENOENT");
+    });
+    resolveWith("<p>js</p>");
+    expect(
+      await executeBuildScripts(`<script data-bascik-build>${body}</script>`),
+    ).toBe("<p>js</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses cached output for a static component build script", async () => {
     const sourceFile = "src/components/base-head.html";
     const html =
@@ -1811,6 +1880,32 @@ describe("build-script output cache", () => {
 
     beforeEach(() => {
       mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    });
+
+    it("keeps no pending dependency list for a key that was never memoized", async () => {
+      const edit = (n: number) =>
+        `<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fsite-footer.html">year(${n})</script>`;
+      // A failing component script, saved again and again while it is fixed.
+      (BascikConfig as any).scripts = {
+        ...BascikConfig.scripts,
+        onBuildScriptError: "warn",
+      };
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        rejectWith("still broken");
+        for (let n = 0; n < 5; n++)
+          await runForPage("src/pages/a.html", edit(n));
+        expect(cacheHooks.pendingDependencyListCount).toBe(0);
+
+        // A run that read page context never writes the shared record.
+        state.readsPageContext = true;
+        resolveWith("<p>page</p>");
+        await runForPage("src/pages/a.html", edit(99));
+        expect(cacheHooks.pendingDependencyListCount).toBe(0);
+        expect(cacheHooks.outputCacheSize).toBe(1);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
 
     it("reuses a component script's output on other pages when it read no page context", async () => {
@@ -3001,5 +3096,88 @@ describe("dependency scan memo", () => {
     // FIFO: the oldest entry was evicted and is scanned again.
     extractScriptDeps(source, resolve("src"));
     expect(scansOf(source)).toBe(3);
+  });
+});
+
+describe("src= that cannot be used", () => {
+  const MISSING_SRC_PAGE =
+    '<nav>\n  <script data-bascik-build src="./scripts/nav-missing.ts"></script>\n</nav>';
+
+  it("reports an unreadable src= file as the located build script error, without running an empty module", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const run = executeBuildScripts(MISSING_SRC_PAGE, "src/pages/index.html");
+      await expect(run).rejects.toBeInstanceOf(BuildScriptError);
+      await expect(run).rejects.toThrow(
+        /build script error in "src\/pages\/index\.html" at \(line 2, column 3\):\nCannot read build script src "\.\/scripts\/nav-missing\.ts" \(.*src\/pages\/scripts\/nav-missing\.ts\): ENOENT/,
+      );
+      await expect(run).rejects.not.toThrow(/missing default export/);
+      expect(mockExecFile).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("warns once and leaves an empty slot for an unreadable src= under onBuildScriptError 'warn'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        MISSING_SRC_PAGE,
+        "src/pages/index.html",
+      );
+      expect(result).toBe("<nav>\n  \n</nav>");
+      expect(mockExecFile).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0][0])).toContain(
+        'Cannot read build script src "./scripts/nav-missing.ts"',
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it.each(["data-bascik-build", "data-bascik-build-once"])(
+    "rejects a %s tag with both src= and an inline body, naming both",
+    async (directive) => {
+      resolveWith("<p>ran</p>");
+      await expect(
+        executeBuildScripts(
+          `<main>\n<script ${directive} src="./nav.ts">\n  export default () => "<p>inline</p>";\n</script></main>`,
+          "src/pages/index.html",
+        ),
+      ).rejects.toThrow(
+        /<script> tag has both src="\.\/nav\.ts" and an inline body in "src\/pages\/index\.html" at \(line 2, column 1\)\. A script with src= runs only that file, as in a browser: move the body into "\.\/nav\.ts" or remove src=\./,
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it("carries the src= plus body location as data for the dev overlay", async () => {
+    const error = await executeBuildScripts(
+      `<main>\n<script data-bascik-build src="./nav.ts">\n  export default () => "<p>inline</p>";\n</script></main>`,
+      "src/pages/index.html",
+    ).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ line: 2, column: 1 });
+    expect((error as BuildScriptError).sourceFile).toMatch(
+      /src[\\/]pages[\\/]index\.html$/,
+    );
+  });
+
+  it("accepts a src= tag whose body is only whitespace", async () => {
+    mockReadFile.mockResolvedValueOnce('export default () => "<p>file</p>";');
+    resolveWith("<p>file</p>");
+    expect(
+      await executeBuildScripts(
+        '<script data-bascik-build src="./nav.ts">\n  \n</script>',
+        "src/pages/index.html",
+      ),
+    ).toBe("<p>file</p>");
   });
 });

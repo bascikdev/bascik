@@ -13,6 +13,7 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  masksOf,
   parseArgsFor,
   result,
   routesOf,
@@ -21,6 +22,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { decodeCharacterReferences } from "./lib/character-references.mjs";
 
 export const CHECK = "repeated-sections";
 
@@ -39,6 +41,8 @@ Options:
   --target <url>       Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>       Route to fingerprint (repeatable; two or more)
   --target-src <dir>   The Bascik project, holding src/pages and src/components (default .)
+  --mask <selector>    A documented dynamic region to leave out of fingerprints and signatures, such as a carousel
+                       (repeatable)
   --settle-ms <ms>     Least time after navigation before measuring (default 5000)
   --matrix <file>      Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>          Report folder (default artifacts/checks)
@@ -332,8 +336,23 @@ export function diffInstances(key, instances, ignore = new Set()) {
   return findings;
 }
 
+/**
+ * A class Bascik scoped to a component, capturing the component name: an authored class (`bascik__plan-card__title`)
+ * or a class generated from an element or `#id` selector (`b_el_plan-card_p`, `b_id_plan-card_buy`). A component root
+ * styled only by an element rule carries just the generated class. Hashed names (`minify.identifiers`) carry no name.
+ */
+export const SCOPED_CLASS_PATTERN =
+  /^(?:bascik__([a-z][a-z0-9-]*)__|b_(?:el|id)_([a-z][a-z0-9-]*)_)/;
+
+/** The component a scoped class belongs to, or undefined for any other class. */
+export const scopedComponentOf = (className) => {
+  const m = SCOPED_CLASS_PATTERN.exec(className);
+  return m ? (m[1] ?? m[2]) : undefined;
+};
+
 /** In the page: every section with its tree, key, signature and component hints. */
 function collectSections(arg) {
+  const scopedClass = new RegExp(arg.scopedClass);
   const SKIP = new Set([
     "SCRIPT",
     "STYLE",
@@ -342,10 +361,13 @@ function collectSections(arg) {
     "LINK",
     "META",
   ]);
+  // A masked region (an autoplay carousel, a ticker) is left out of the fingerprint and the signature, and a section
+  // inside one is not collected at all.
+  const masked = (el) => isMasked(el, arg.masks);
   const tree = (el) => ({
     tag: tagOf(el),
     children: [...el.children]
-      .filter((c) => !SKIP.has(tagOf(c)))
+      .filter((c) => !SKIP.has(tagOf(c)) && !masked(c))
       .map((c) => tree(c)),
   });
   const pick = (el) => {
@@ -356,8 +378,10 @@ function collectSections(arg) {
   };
   const out = [];
   for (const el of document.querySelectorAll(arg.selector)) {
-    if (!isRendered(el)) continue;
-    const heading = el.querySelector("h1, h2, h3, h4, h5, h6");
+    if (!isRendered(el) || masked(el)) continue;
+    const heading = [...el.querySelectorAll("h1, h2, h3, h4, h5, h6")].find(
+      (h) => !masked(h),
+    );
     const label = norm(heading?.textContent) || accName(el);
     const signature = {};
     for (const [p, v] of Object.entries(pick(el))) signature[p] = v;
@@ -365,7 +389,8 @@ function collectSections(arg) {
     const visit = (node, path) => {
       const seen = new Map();
       for (const child of node.children) {
-        if (SKIP.has(tagOf(child)) || !isRendered(child)) continue;
+        if (SKIP.has(tagOf(child)) || !isRendered(child) || masked(child))
+          continue;
         const n = (seen.get(tagOf(child)) ?? 0) + 1;
         seen.set(tagOf(child), n);
         const sub = `${path}${path ? " " : ""}${tagOf(child)}${n > 1 ? `:${n}` : ""}`;
@@ -378,15 +403,18 @@ function collectSections(arg) {
     const classes = new Set();
     for (const node of [el, ...el.querySelectorAll("*")])
       for (const c of node.classList ?? []) {
-        const m = /^bascik__([a-z][a-z0-9-]*)__/.exec(c);
-        if (m) classes.add(m[1]);
+        const m = scopedClass.exec(c);
+        if (m) classes.add(m[1] ?? m[2]);
       }
     // The component that renders the section: one whose scoped class is on the section itself, on a wrapper around
     // nothing but the section (a component root), or on the one element inside it that holds all its content. A
     // layout component around a page's slot holds more than the section, so it is not the section's owner.
     const scoped = (n) =>
       [...(n.classList ?? [])]
-        .map((c) => /^bascik__([a-z][a-z0-9-]*)__/.exec(c)?.[1])
+        .map((c) => {
+          const m = scopedClass.exec(c);
+          return m ? (m[1] ?? m[2]) : undefined;
+        })
         .find(Boolean);
     const text = norm(el.textContent);
     let owner = null;
@@ -423,6 +451,7 @@ function collectSections(arg) {
 }
 
 async function sections(browser, origin, route, c, options) {
+  const masks = masksOf(options);
   return withPage(
     browser,
     origin,
@@ -432,44 +461,16 @@ async function sections(browser, origin, route, c, options) {
       inPage(page, collectSections, {
         selector: SECTION_SELECTOR,
         props: SIGNATURE_PROPS,
+        scopedClass: SCOPED_CLASS_PATTERN.source,
+        masks,
       }),
-    [],
+    masks,
     settleOf(options),
   );
 }
 
-const ENTITIES = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  rsquo: "\u2019",
-  lsquo: "\u2018",
-  rdquo: "\u201d",
-  ldquo: "\u201c",
-  mdash: "\u2014",
-  ndash: "\u2013",
-  hellip: "\u2026",
-  copy: "\u00a9",
-  reg: "\u00ae",
-  trade: "\u2122",
-  middot: "\u00b7",
-  eacute: "\u00e9",
-};
-
 /** Decodes the character references an author writes in HTML text (&amp;, &rsquo;, &#39;, &#x2014;). */
-export function decodeEntities(text) {
-  return String(text).replace(
-    /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi,
-    (all, dec, hex, name) => {
-      if (dec) return String.fromCodePoint(Number(dec));
-      if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
-      return ENTITIES[name.toLowerCase()] ?? all;
-    },
-  );
-}
+export const decodeEntities = decodeCharacterReferences;
 
 /**
  * The text of every page and component source with tags removed, character references decoded and whitespace
@@ -491,7 +492,7 @@ function sourceTexts(root, usage) {
 
 /**
  * The component that renders a target instance, or null when its page pastes the markup. In order: its scoped class
- * name (bascik__<name>__), its data-testid, then the source: a page whose own source holds the section's heading text
+ * name (bascik__<name>__, or b_el_<name>_ and b_id_<name>_ for element and #id rules), its data-testid, then the source: a page whose own source holds the section's heading text
  * pastes it; a component the page renders that holds the text renders it. Only when the text is in no source (it
  * comes from data or props) does the one component every page shares get the credit, and only if the section sits
  * inside it or nothing says which component it sits in.

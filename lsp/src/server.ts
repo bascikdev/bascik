@@ -33,9 +33,22 @@ import {
   createCodeActions,
 } from "./analyzer.js";
 import { createReferences } from "./references.js";
+import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
 
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
+
+/**
+ * The packages whose presence in a package.json makes a folder without a config a Bascik project: Bascik itself
+ * (a zero-config site), or the language server on its own (a linter-only component library).
+ */
+const BASCIK_PACKAGES = ["@bascik/bascik", "@bascik/language-server"];
+const DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+];
 
 /** Quiet period before open documents are checked again after a change elsewhere in the project. */
 const REVALIDATION_DELAY_MS = 50;
@@ -95,6 +108,13 @@ export class BascikLanguageServer {
    * the file comes back.
    */
   private readonly deletedBuffers = new Map<string, number>();
+  /** What each project root's package.json said about @bascik/bascik, keyed by its path, until the file changes. */
+  private readonly packageJsonChecks = new Map<
+    string,
+    { mtimeMs: number; size: number; dependsOnBascik: boolean }
+  >();
+  /** Project roots already named in the output panel as not Bascik projects, so the note is written once. */
+  private readonly reportedNonBascikRoots = new Set<string>();
 
   constructor(private readonly connection: Connection) {
     this.documents.listen(this.connection);
@@ -257,6 +277,21 @@ export class BascikLanguageServer {
   }
 
   /**
+   * A buffer the editor keeps open for a file deleted on disk (VS Code keeps the model of a file it showed
+   * in Peek or References), unedited since. It is not a source of usages for references or diagnostics.
+   */
+  private isOrphanedBuffer(document: TextDocument): boolean {
+    return this.deletedBuffers.get(document.uri) === document.version;
+  }
+
+  /** Open documents that still stand for a file or unsaved work, so their usages count. */
+  private liveOpenDocuments(): TextDocument[] {
+    return this.documents
+      .all()
+      .filter((document) => !this.isOrphanedBuffer(document));
+  }
+
+  /**
    * The text of every HTML file in a project that can use a component: pages and other HTML under `src` and
    * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
    * A buffer left open for a deleted file is not a source.
@@ -270,7 +305,7 @@ export class BascikLanguageServer {
         continue;
       const fsPath = uriToFsPath(document.uri);
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
-      if (this.deletedBuffers.get(document.uri) === document.version) continue;
+      if (this.isOrphanedBuffer(document)) continue;
       if (this.findProjectRoot(fsPath) !== snapshot.projectRoot) continue;
       if (isExcludedProjectPath(fsPath, snapshot.projectRoot)) continue;
       if (
@@ -328,10 +363,19 @@ export class BascikLanguageServer {
         )
       : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
-    this.watcherRegistration = await this.connection.client.register(
-      DidChangeWatchedFilesNotification.type,
-      { watchers },
-    );
+    // Called with `void`, so a rejection here (an editor refusing the registration, or a connection
+    // closing mid-request) would be unhandled and end the process. Without watchers the server still
+    // works; it only misses changes made outside open documents.
+    try {
+      this.watcherRegistration = await this.connection.client.register(
+        DidChangeWatchedFilesNotification.type,
+        { watchers },
+      );
+    } catch (error) {
+      this.connection.console.error(
+        `Bascik could not ask the editor to watch config and HTML files, so changes made outside open documents are not picked up until a reload: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /** Forgets every project snapshot, so the next request rebuilds them from disk. */
@@ -499,6 +543,74 @@ export class BascikLanguageServer {
     return roots.find((r) => isPathInside(fsPath, r));
   }
 
+  /**
+   * Does Bascik check this project? A folder with a `bascik.config.*` does. A workspace folder without one (the
+   * fallback in `findProjectRoot`) is a Bascik project only when its root has a language server config
+   * (`bascik.ext.json` and the rest of {@link EXTENSION_CONFIG_FILES}, which a global install of the linter
+   * relies on) or its package.json lists one of {@link BASCIK_PACKAGES}. Otherwise it is some other project, and
+   * the output panel says so once. Navigation, hover and completion still work there; only diagnostics are
+   * withheld.
+   */
+  private isBascikProject(projectRoot: string): boolean {
+    if (
+      [...CONFIG_FILE_CANDIDATES, ...EXTENSION_CONFIG_FILES].some((candidate) =>
+        fs.existsSync(path.join(projectRoot, candidate)),
+      )
+    ) {
+      this.reportedNonBascikRoots.delete(projectRoot);
+      return true;
+    }
+    const isBascik = this.packageJsonDependsOnBascik(projectRoot);
+    if (isBascik) {
+      this.reportedNonBascikRoots.delete(projectRoot);
+    } else if (!this.reportedNonBascikRoots.has(projectRoot)) {
+      this.reportedNonBascikRoots.add(projectRoot);
+      this.connection.console.info(
+        `${projectRoot} is not a Bascik project: it has no ${CONFIG_FILE_CANDIDATES.join(", ")} or ${EXTENSION_CONFIG_FILES.join(", ")}, and its package.json does not list ${BASCIK_PACKAGES.join(" or ")}, so it gets no Bascik diagnostics. Add any one of them to check it.`,
+      );
+    }
+    return isBascik;
+  }
+
+  /** Reads `<projectRoot>/package.json` again only when its size or modification time changed. */
+  private packageJsonDependsOnBascik(projectRoot: string): boolean {
+    const file = path.join(projectRoot, "package.json");
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (!stat) {
+      this.packageJsonChecks.delete(file);
+      return false;
+    }
+    const cached = this.packageJsonChecks.get(file);
+    if (cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.dependsOnBascik;
+    }
+    let dependsOnBascik = false;
+    try {
+      const manifest: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      dependsOnBascik = DEPENDENCY_FIELDS.some((field) => {
+        const dependencies =
+          typeof manifest === "object" && manifest !== null
+            ? (manifest as Record<string, unknown>)[field]
+            : undefined;
+        return (
+          typeof dependencies === "object" &&
+          dependencies !== null &&
+          BASCIK_PACKAGES.some((name) => Object.hasOwn(dependencies, name))
+        );
+      });
+    } catch (error) {
+      this.connection.console.info(
+        `${file} could not be read (${error instanceof Error ? error.message : String(error)}), so it does not make ${projectRoot} a Bascik project.`,
+      );
+    }
+    this.packageJsonChecks.set(file, {
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      dependsOnBascik,
+    });
+    return dependsOnBascik;
+  }
+
   private async validateDocument(document: TextDocument): Promise<void> {
     // Only files on disk have a project. Other schemes (git, output, untitled) must not get diagnostics.
     if (!document.uri.startsWith("file:")) return;
@@ -513,10 +625,20 @@ export class BascikLanguageServer {
       });
       return;
     }
+    // A React or Vue app has its own src/components and src/api; Bascik's rules do not apply there.
+    const projectRoot = this.findProjectRoot(fsPath);
+    if (projectRoot && !this.isBascikProject(projectRoot)) {
+      this.connection.sendDiagnostics({
+        uri: document.uri,
+        version,
+        diagnostics: [],
+      });
+      return;
+    }
     const snapshot = await this.getSnapshotForFile(fsPath);
     // The document was edited or closed while the project was read; a newer check follows or the file is gone.
     if (this.documents.get(document.uri)?.version !== version) return;
-    const openDocs = this.documents.all().map((d) => ({
+    const openDocs = this.liveOpenDocuments().map((d) => ({
       fsPath: uriToFsPath(d.uri),
       text: d.getText(),
     }));

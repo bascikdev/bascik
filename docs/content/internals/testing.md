@@ -224,7 +224,11 @@ This keeps ordinary feature tests robust while still verifying compiler transfor
 
 ### Repeated-instance scoping verification
 
-The Vitest projects in `pkg/` and `docs/`, and every Playwright config, set `BASCIK_VERIFY_SCOPING_TEMPLATES=1`. With it, each scoping result reused for a repeated component instance is also recomputed by the full pipeline, and any difference throws. `scoping-parametricity.test.ts` checks the underlying property directly: on random components (fast-check) and on every component in `docs/` and `pkg/e2e/`, renaming one instance's generated names must give exactly the full pipeline's output for another instance ID, with and without identifier minification. Set `SCOPING_PROPERTY_RUNS` to raise the number of random cases for a deeper local run. `scoping-template.test.ts` pins the component fields and config the pipeline reads and writes with recording proxies, so a new input fails a test instead of being left out of the reuse key.
+The Vitest projects in `pkg/`, `docs/`, and `adapters/cloudflare/`, and every Playwright config, set `BASCIK_VERIFY_SCOPING_TEMPLATES=1` (the builds those tests spawn inherit it). With it, each scoping result reused for a repeated component instance is also recomputed by the full pipeline, and any difference throws. `scoping-parametricity.test.ts` checks the underlying property directly: on random components (fast-check) and on every component in `docs/` and `pkg/e2e/`, renaming one instance's generated names must give exactly the full pipeline's output for another instance ID, with and without identifier minification. `scoping-template-adversarial.test.ts` does the same for the constructs the scoping engine reads by pattern (escaped and non-ASCII class selectors, dotted `@layer` names, `[id]` forms, multi-name containers, nested `&` chains, compound `querySelector` selectors, comparisons in scripts) and typo'd variants of each, and `request-render-node-scoping-parity.test.ts` and the Cloudflare adapter's `serverless-parity.integration.test.ts` check the request-time replay of the same templates against the build. Set `SCOPING_PROPERTY_RUNS` to raise the number of random cases for a deeper local run. `scoping-template.test.ts` pins the component fields and config the pipeline reads and writes with recording proxies, so a new input fails a test instead of being left out of the reuse key.
+
+### Incremental mask verification
+
+The component expansion loop keeps the page's mask (comments and raw-text element contents blanked) current across splices instead of re-masking the page, and resumes each component search at a cursor. `component-expansion-mask-oracle.test.ts` checks that against a whole re-read: a test-only probe (`__expansionProbeForTests` in `component-scan-stats.ts`) hands it the loop's state after every splice and every search, and on random pages from a grammar of nested components, slots, raw-text elements, comments, CDATA, multi-line tags and unclosed elements (fast-check) it compares the mask with `maskRawTextContent`, the last-close facts with the closes in that mask, and the search with one from the start of the page. A shrunk counterexample is pinned there as a fixed input. Set `MASK_ORACLE_RUNS` to raise the number of random pages for a deeper local run.
 
 ## E2E Test Files
 
@@ -361,6 +365,25 @@ describe("prefixElementAttribute", () => {
 
 > **Important.** Always import the module under test _after_ calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
+### Bounding Property Tests
+
+A fast-check property with no explicit bounds draws a new random seed on every run and runs under Vitest's 5 s default timeout, so its cost changes from run to run and a slow CI runner can time it out. Pass each `fc.assert` the options from `propertyBounds(ciRuns, runsVariable?)` in `pkg/src/lib/property-runs.test-helper.ts`, and its `timeoutMs` to `it`:
+
+```ts
+import { propertyBounds } from "./property-runs.test-helper.ts";
+
+const BOUNDS = propertyBounds(100, "MASK_ORACLE_RUNS");
+it(
+  "keeps the mask equal to a whole re-read",
+  () => {
+    fc.assert(fc.property(pageArb, checkPage), BOUNDS.options);
+  },
+  BOUNDS.timeoutMs,
+);
+```
+
+The property then runs `ciRuns` cases from a fixed seed with a 30 s timeout. Size `ciRuns` so the test takes well under a second on a developer machine; the timeout is the margin for a slow runner, such as the Node 22.22 floor job. The optional variable raises the count for a deeper local run (`MASK_ORACLE_RUNS=20000 yarn pkg:unit`), and the timeout grows with it. `PROPERTY_SEED` starts every bounded property from another seed. A variable that is empty or not a positive whole number throws with its name and value, because fast-check runs no case at all for a `numRuns` of `NaN` or 0 and passes.
+
 ## Boundary Test Patterns
 
 ### Real-Filesystem Watch Testing
@@ -395,7 +418,7 @@ Exec scripts run in `pre`, `parallel`, and `post` phases around compilation. The
 
 Some integration tests measure the runtime itself rather than a single feature:
 
-- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#in-process-script-module-registry): clearing framework caches does not evict Node's ESM cache.
+- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#in-process-script-module-registry): clearing framework caches does not evict Node's ESM cache. The harness checks every sample itself, so a lane cannot pass by forgetting an assertion: superseded module entries and inline loads, and destroyed sockets, must be collected after GC (each tracked through a `WeakRef`, and each tracker must have observed something), active resources must match the baseline, and no heap snapshot may hold more `Timeout` objects than the first, which catches unref'd timers that `process.getActiveResourcesInfo()` does not list. Node's own HTTP `Date` header cache timer (`resetCache` in `node:internal/http`, identified by its script in the snapshot) is counted apart and may appear at most once: it lives until the next whole second after any response, so whether a snapshot holds it depends only on timing. The HTTP/2 rows need Node 24's TLS cleanup callback ordering; on the Node 22.22 floor they skip and print why, and the dev and HTTP/1.1 rows still run.
 - `profile-resource-boundaries.integration.test.ts` verifies that timers, descriptors, streams, child processes, and worker transfers are released at each boundary, using explicit producer and consumer gates and event-loop checkpoints.
 - `profile-workload.integration.test.ts` and `profile-fixture-tls.integration.test.ts` validate the profiling harness itself.
 

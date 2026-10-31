@@ -427,3 +427,71 @@ describe("rewriteIdReferencesInCss", () => {
     );
   });
 });
+
+describe("rewriteIdReferencesInHtml – attribute-like text inside another value", () => {
+  const ids = new Map([
+    ["x", "X"],
+    ["y", "Y"],
+  ]);
+  const resolve = (id: string) => ids.get(id) ?? null;
+
+  it.each([
+    [
+      '<a title="see href=#x here" href="#y">',
+      '<a title="see href=#x here" href="#Y">',
+    ],
+    [
+      "<a data-note='href=\"#x\"' href='#y'>",
+      "<a data-note='href=\"#x\"' href='#Y'>",
+    ],
+    ['<label title="a for=x b" for="y">', '<label title="a for=x b" for="Y">'],
+    [
+      '<input aria-label="the form=x field" form=y>',
+      '<input aria-label="the form=x field" form="Y">',
+    ],
+  ])("rewrites only the real attribute of %s", (tag, expected) => {
+    expect(rewriteIdReferencesInHtml(tag, resolve)).toBe(expected);
+  });
+
+  it("leaves a tag whose only match is inside another value alone", () => {
+    const tag = '<a title="see href=#x here">';
+    expect(rewriteIdReferencesInHtml(tag, resolve)).toBe(tag);
+  });
+});
+
+describe("rewriteIdReferencesInHtml – SVG href references", () => {
+  const resolve = (id: string) => (id === "curve" ? "S" : null);
+
+  it.each([
+    "textPath",
+    "mpath",
+    "feImage",
+    "pattern",
+    "linearGradient",
+    "radialGradient",
+    "filter",
+    "animate",
+    "animateMotion",
+    "animateTransform",
+    "set",
+  ])("rewrites href and xlink:href on <%s>", (tagName) => {
+    expect(
+      rewriteIdReferencesInHtml(
+        `<${tagName} href="#curve"></${tagName}><${tagName} xlink:href="#curve"/>`,
+        resolve,
+      ),
+    ).toBe(`<${tagName} href="#S"></${tagName}><${tagName} xlink:href="#S"/>`);
+  });
+
+  it("rewrites xlink:href on an SVG <a>", () => {
+    expect(
+      rewriteIdReferencesInHtml('<a xlink:href="#curve">x</a>', resolve),
+    ).toBe('<a xlink:href="#S">x</a>');
+  });
+
+  it("leaves undeclared, external and non-fragment references alone", () => {
+    const html =
+      '<textPath href="#other"></textPath><feImage href="pic.png#curve"/><pattern href="https://x.test/#curve"></pattern><link href="#curve">';
+    expect(rewriteIdReferencesInHtml(html, resolve)).toBe(html);
+  });
+});

@@ -54,6 +54,12 @@ Check a specific path or page:
 npx @bascik/language-server --check src/pages
 ```
 
+Name several paths to check them in one run. The project is found from the first one, and an option the checker does not know, such as a misspelled `--fixx`, stops it with a usage error instead of being ignored:
+
+```sh
+npx @bascik/language-server --check src/components src/pages
+```
+
 The checker reads `bascik.config.ts` to know which folders hold components. A component folder outside the project, such as a monorepo's shared components, is not under the directory you check, so check it separately. Run from the site, the checker uses the site's config for any folder listed in its `directory.components`; `--project` names the project explicitly from anywhere:
 
 ```sh
@@ -151,6 +157,15 @@ When the shared group is what you want, silence it on the line above the attribu
 
 `bascik-ignore` covers its own line and the next, so for a group spread over many lines use `<!-- bascik-disable shared-name-group -->` and `<!-- bascik-enable -->`, or turn the rule off for the project with `"disabledRules": ["shared-name-group"]` in `bascik.ext.json`.
 
+### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
+
+Two rules are hints: advice that is easy to ignore and never fails a run.
+
+- `attr-prop-unsupplied` marks a `data-bascik-attr-*` binding in a component whose prop no usage supplies: no page, no other component, and no open editor buffer has a `<my-card data-bascik-prop-href="...">` for `data-bascik-attr-href="href"`. It cannot see usages written in Markdown or produced by a build script, which is why it is a hint.
+- `api-unguarded-json` marks a `request.json()` (or `req.json()`) call in an API route that is not inside a `try` block, because a malformed body then throws and the route answers 500.
+
+Silence either with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks. Hints are shown in the editor and by this command, and never fail anything:
@@ -163,6 +178,8 @@ The CLI checker exits with code `0` when clean (or only warnings) and code `1` w
 ---
 
 ## Editor Setup
+
+In every editor, the language server checks only folders that are Bascik projects: a folder with a `bascik.config.*`, a language server config at its root (`bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`), or a `package.json` that lists `@bascik/bascik` or `@bascik/language-server` in any dependency field. A shared component library that uses the linter on its own, or a global install with no `package.json` entry, opts in with a `bascik.ext.json`. Any other folder, such as a React or Vue app with its own `src/components`, gets no diagnostics, while navigation, hover, and completion still work, and the server logs why once (in VS Code, to the **Bascik** output panel). `--check` does not apply this rule: it checks the files you name in any folder.
 
 ### VS Code
 
@@ -198,7 +215,7 @@ if not configs.bascik then
     default_config = {
       cmd = { 'npx', '@bascik/language-server', '--stdio' },
       filetypes = { 'html' },
-      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', '.git'),
+      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', 'bascik.ext.json', '.git'),
       settings = {},
     },
   }
@@ -259,6 +276,8 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
   }
 }
 ```
+
+A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
 
 `serverScriptRules: false` turns off every rule for server and stream scripts. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`.
 

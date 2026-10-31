@@ -95,10 +95,20 @@ targets. Obsolete outputs are deleted **only after** those commits succeed.
 - A rename failure surfaces and aborts **before** deleting any obsolete output,
   so a failed targeted update never deletes a file the committed metadata still
   references.
+- Either failure, or any other step that throws once staging has begun (a
+  component build script failing while the component manifest is built),
+  removes every temp sibling still on disk before the error surfaces. A
+  targeted build never clears the private folder, so leftover
+  `.<name>.<pid>.tmp` files would otherwise pile up, one per failed run.
 - Corrupt or schema-incompatible `ownership.json` (or a missing one) is treated
   as **no reliable ownership**: the targeted build degrades to the safe additive
   merge, logs a warning, and writes a fresh inventory so future builds are
-  correct. This is the explicit safe first-targeted-build behavior.
+  correct. This is the explicit safe first-targeted-build behavior. The
+  manifest and CSP keep every prior entry, and the sidecar keeps every prior
+  page script no rebuilt page claims, under the synthetic `retained-scripts`
+  owner, so an untouched page's placeholder still resolves in this build and
+  in the next targeted one. A rebuilt page that claims one of those scripts
+  takes it back; a full build drops the owner.
 - Full removal of a source page is only pruned when that page is rebuilt. A page
   deleted without being in a later targeted build is retained until a full build
   because a targeted build cannot know whether a source was deleted versus merely
@@ -210,6 +220,7 @@ The key is the SHA-256 hex digest of:
 10. The normalized path and full content of every detected local dependency. Relative ESM imports are followed recursively from each containing module, while generic quoted data paths are rooted at `process.cwd()`.
 11. The resolved package identity for every external (bare, scoped, subpath) package the script imports: resolved entry content and manifest, plus the bounded transitive package graph (`package-identity.ts`). A script with no package imports contributes nothing for this item.
 12. The content of the source file and page file, only when the script or one of its local dependencies names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`. A helper that reads its own page (for example to copy `<title>` into `og:title`) re-runs when that page changes. Both files are recorded as dependencies, so a dev edit drops the memoized output. Scripts that name neither variable keep their key across page edits.
+13. The script's language, only when it is TypeScript: `ts` for a `type="text/typescript"` tag or a `.ts` `src=`, `ts-compiler` when `scripts.typescript` names a compiler. The same text runs as different code in each, so a cached TypeScript run never answers the body once its marker is removed. JavaScript contributes nothing, so existing JavaScript entries keep their keys.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`). It lexically identifies genuine relative and import-root (`@/`) ESM specifiers and path-like string arguments used in code, so editing an alias-imported helper invalidates the cache and triggers a dev rebuild. The following paths are illustrative examples, not an exhaustive list of supported directories or extensions:
 
@@ -306,6 +317,12 @@ bascik__my-nav__a1b2c3d4__search-input
 
 # class attributes use component name only (no instanceId):
 bascik__my-nav__toggle-btn
+
+# classes generated for element and #id selectors (p { }, #btn { }):
+b_el_my-nav_p
+b_id_my-nav_btn
 ```
 
-When `minify.identifiers` is enabled (the default for builds), each full scoped name is hashed to a short alphanumeric string using SHA-256 with Base62 encoding before being written to the output, e.g. `b2Y4G9eD1K8b`. See [Scoping System](/internals/scoping-system) for full details.
+The generated classes start with `b_el_` and `b_id_` so they never equal an authored class, which always starts with `bascik__`.
+
+When `minify.identifiers` is enabled (the default for builds), each full scoped or generated name is hashed to a short alphanumeric string using SHA-256 with Base62 encoding before being written to the output, e.g. `b2Y4G9eD1K8b`. See [Scoping System](/internals/scoping-system#the-naming-scheme) for full details.

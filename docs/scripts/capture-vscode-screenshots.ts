@@ -97,7 +97,7 @@ Displays a person's identity and available actions.
 @slot default - The primary profile content.
 -->
 <article class="card" data-bascik-attr-aria-label="role">
-  <p class="role" data-bascik-text="role"></p>
+  <p class="role" data-bascik-prop-role></p>
   <div data-bascik-slot></div>
   <footer data-bascik-slot="actions"></footer>
 </article>
@@ -115,7 +115,7 @@ A small label that marks a person's status.
 @prop status - The status text shown in the badge.
 @prop tone - Visual emphasis: neutral, success, or warning.
 -->
-<span class="badge" data-bascik-attr-title="tone" data-bascik-text="status"></span>
+<span class="badge" data-bascik-attr-title="tone" data-bascik-prop-status></span>
 
 <style>
   .badge {

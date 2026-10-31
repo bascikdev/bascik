@@ -555,6 +555,43 @@ describe("over-limit request bodies (lingering close)", () => {
     expect(out.calls).not.toContain("lingerClose");
   });
 
+  it("misuse: a declared Content-Length over the limit to an exported method outside the allowlist gets 405, not 413 (F086)", async () => {
+    const purge = vi.fn(async () => new Response("purged"));
+    routeModule = { GET: vi.fn(async () => new Response("ok")), PURGE: purge };
+    const out = await post(
+      { "content-length": String(LIMIT * 2) },
+      [Buffer.alloc(10)],
+      "PURGE",
+    );
+    expect(out.status).toBe(405);
+    expect(out.headers["allow"]).toBe("GET, HEAD, OPTIONS");
+    expect(purge).not.toHaveBeenCalled();
+    expect(out.calls).not.toContain("lingerClose");
+  });
+
+  it("an explicit HEAD export that returns a streamed body gets headers only, and the body is canceled (F088)", async () => {
+    const cancel = vi.fn();
+    routeModule = {
+      HEAD: vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                controller.enqueue(new TextEncoder().encode("never sent"));
+              },
+              cancel,
+            }),
+            { headers: { "x-k": "v" } },
+          ),
+      ),
+    };
+    const out = await post({}, [], "HEAD");
+    expect(out.status).toBe(200);
+    expect(out.headers["x-k"]).toBe("v");
+    expect(out.body).toBe("");
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
   it("an auto OPTIONS with a declared Content-Length over the limit still gets 204", async () => {
     const out = await post(
       { "content-length": String(LIMIT * 2) },
@@ -589,6 +626,72 @@ describe("over-limit request bodies (lingering close)", () => {
     ]);
     expect(out.status).toBe(200);
     expect(out.calls).toEqual(["respond", "lingerClose", "close"]);
+  });
+
+  // F087: undici's Request constructor rejects CONNECT, TRACE and TRACK,
+  // so these were a logged 500 before dispatch instead of the 405 + Allow
+  // the method policy documents.
+  it.each(["TRACE", "TRACK", "trace"])(
+    "%s to an API route gets 405 with Allow, and no handler runs",
+    async (method) => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const get = vi.fn(async () => new Response("ok"));
+      routeModule = { GET: get, POST: postHandler };
+      const out = await post({}, [], method);
+      expect(out.status).toBe(405);
+      expect(out.headers["allow"]).toBe("GET, HEAD, OPTIONS, POST");
+      expect(out.body).toBe("Method Not Allowed");
+      expect(out.headers["x-content-type-options"]).toBe("nosniff");
+      expect(get).not.toHaveBeenCalled();
+      expect(postHandler).not.toHaveBeenCalled();
+      expect(errors).not.toHaveBeenCalled();
+    },
+  );
+
+  it("TRACE to an API route whose module fails to load is a 500, as for any method", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(scriptRegistry, "load").mockRejectedValue(new Error("boom"));
+    const out = await post({}, [], "TRACE");
+    expect(out.status).toBe(500);
+    expect(errors).toHaveBeenCalled();
+  });
+
+  // F074: a request-target starting with `//` is scheme-relative to WHATWG
+  // URL; the host of request.url must still come from the request origin.
+  it.each([
+    ["//api/upload", "http://localhost//api/upload"],
+    ["//api/upload?x=1", "http://localhost//api/upload?x=1"],
+  ])("%s reaches the handler with request.url %s", async (path, expected) => {
+    let seen = "";
+    routeModule = {
+      GET: vi.fn(async (request: Request) => {
+        seen = request.url;
+        return new Response("ok");
+      }),
+    };
+    const res: BascikResponse = {
+      headersSent: false,
+      destroyed: false,
+      writable: {} as any,
+      respond: () => {
+        res.headersSent = true;
+      },
+      write: () => true,
+      end: () => {},
+      close: () => {},
+      on: () => {},
+      off: () => {},
+    };
+    await createRequestHandler()(
+      {
+        method: "GET",
+        path,
+        headers: { host: "localhost" },
+        remoteIp: "127.0.0.1",
+      },
+      res,
+    );
+    expect(seen).toBe(expected);
   });
 
   describe("a handler that catches the rejection and answers itself", () => {

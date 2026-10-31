@@ -10,7 +10,7 @@ describe("analyzeComponentSource", () => {
       "</SCRIPT\n>",
     ]) {
       const metadata = analyzeComponentSource(
-        `<script>const s = "data-bascik-prop-fake";${endTag}<p data-bascik-text="real"></p>`,
+        `<script>const s = "data-bascik-prop-fake";${endTag}<p data-bascik-prop-real></p>`,
       );
       expect(
         metadata.props.map((prop) => prop.name),
@@ -33,9 +33,9 @@ describe("analyzeComponentSource", () => {
 
   it("infers every prop form in source order and deduplicates names", () => {
     const metadata = analyzeComponentSource(`
-      <p data-bascik-text="label"></p>
+      <p data-bascik-prop-label></p>
       <a data-bascik-attr-href="link" data-bascik-prop-label></a>
-      <div data-bascik-html='content' data-bascik-prop-link></div>
+      <div data-bascik-attr-title='content' data-bascik-prop-link></div>
       <img data-bascik-attr-src = unquotedSrc />
     `);
 
@@ -45,6 +45,13 @@ describe("analyzeComponentSource", () => {
       { name: "content" },
       { name: "unquotedSrc" },
     ]);
+  });
+
+  it("does not infer props from data-bascik-text or data-bascik-html, which the compiler does not read", () => {
+    const metadata = analyzeComponentSource(
+      '<p data-bascik-text="title"></p><div data-bascik-html="body"></div><h2 data-bascik-prop-heading></h2>',
+    );
+    expect(metadata.props).toEqual([{ name: "heading" }]);
   });
 
   it("infers unquoted slot names on self-closing tags without trailing slash", () => {

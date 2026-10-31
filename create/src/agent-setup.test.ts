@@ -364,6 +364,17 @@ describe("AGENTS.md", () => {
     expect(cloudflare).not.toContain("--server");
   });
 
+  it("misuse: says the build needs the site URL, so an agent building a fresh project knows the fix", () => {
+    const line = brief
+      .split("\n")
+      .find((l) => l.startsWith("- `npm run build`"));
+    expect(line).toContain("`BASCIK_SITE_URL`");
+    expect(line).toContain("`.env`");
+    expect(line).toContain(
+      "https://bascik.dev/cli#environment-files-and-the-site-url",
+    );
+  });
+
   it("misuse: names npx bascik when the project's npm scripts run something else, so an agent never mistakes them for Bascik", () => {
     const section = agentsSection({
       commands: { dev: "npx bascik", build: "npx bascik --build" },

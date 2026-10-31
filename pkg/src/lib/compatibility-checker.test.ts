@@ -17,12 +17,48 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[id] { color: red; }",
         '[id="hero"] { color: blue; }',
         ".card, [id^='panel'] { margin: 0; }",
+        // Every form the compiler strips is reported, not only a leading one.
+        ".a:not([id]) { color: red; }",
+        ".a:is([id]) { color: red; }",
+        '.a:where([id="x"]) { color: red; }',
+        ".a:has([id]) { color: red; }",
+        ".a[id] { color: red; }",
+        'div[id="x"] { color: red; }',
+        "[ID] { color: red; }",
+        "[ id ] { color: red; }",
       ],
       negative: [
         "#hero { color: red; }",
+        ".card[id-ref] { color: red; }",
+        ".card[idx] { color: red; }",
+        ".card { content: '[id]'; }",
         ".card[data-id='hero'] { color: blue; }",
         "/* [id] { color: red; } */",
         '.card::before { content: "[id]"; }',
+        // The compiler keeps an @supports selector() test, so lint does too.
+        "@supports selector([id]) { .a { color: red; } }",
+        "@supports not SELECTOR( [id] ) { .a { color: red; } }",
+      ],
+    },
+    "css-reserved-class-prefix": {
+      kind: "css",
+      positive: [
+        ".b_el_p { color: blue; }",
+        ".card .b_id_btn { color: blue; }",
+        ".card, .b_el_item:hover { color: blue; }",
+        ".b_el_card_p { color: blue; }",
+        ".b_id_card_btn > span { color: blue; }",
+      ],
+      negative: [
+        ".block__el { color: blue; }",
+        ".model__p { color: blue; }",
+        ".el-p, .id-btn, .el_p { color: blue; }",
+        // The generated names start with b_el_ and b_id_, so the double
+        // underscore forms an authored class compiles to stay distinct.
+        ".el__p, .id__btn { color: blue; }",
+        ".b-el-p, .bel_p, .b_elx, .ab_el_x, .B_EL_p { color: blue; }",
+        '.card::before { content: ".b_el_p"; }',
+        "/* .b_el_p { color: blue; } */",
       ],
     },
     "css-attribute-selector": {
@@ -35,6 +71,7 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[data-state]:is(.disabled, button) { color: red; }",
         '[data-open="true"] { display: block; }',
         ".ok, [aria-expanded='true'] { opacity: 1; }",
+        '[id-test="x"] { color: red; }',
       ],
       negative: [
         ".card[data-state] { color: red; }",

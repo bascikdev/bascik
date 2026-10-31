@@ -33,16 +33,22 @@ Copies a text value to the clipboard and announces the result to screen readers.
     font-size: 0.875em;
   }
 </style>
-<span class="copy-button">
+<span class="copy-button" data-testid="copy-button">
   <button
     class="button"
     id="button"
     type="button"
     data-bascik-attr-data-text="text"
+    data-testid="copy-button-trigger"
   >
     <span data-bascik-prop-label>Copy</span>
   </button>
-  <span class="status" id="status" role="status"></span>
+  <span
+    class="status"
+    id="status"
+    role="status"
+    data-testid="copy-button-status"
+  ></span>
 </span>
 <script type="text/typescript">
   const button = document.getElementById("button") as HTMLButtonElement;

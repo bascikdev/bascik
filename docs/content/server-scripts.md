@@ -61,7 +61,7 @@ export default async function (request, context, { signal });
 
 ### TypeScript
 
-Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`. Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript.
+Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`. Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript. A tag with both `src=` and an inline body is rejected: move the body into the file or remove `src=`.
 
 Both forms are compiled and parsed when the page is built, in dev and by `bascik --build`, so a syntax error, an `enum`, or a redeclared variable fails the build naming the file, line, and column, not the first request. The Node build and the Cloudflare build print the same message.
 
@@ -95,6 +95,40 @@ The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=Ada`
 ```html
 <p>Hello, Ada</p>
 ```
+
+## Return Values
+
+The value the default export returns, or resolves to, replaces the script tag. A server script returns markup, so a string is inserted as it is; build it with [`html`](/html-helpers) so the values in it are escaped. Every other value follows the rules `html` uses for a text hole:
+
+| Returned value                                      | Printed                                     |
+| :-------------------------------------------------- | :------------------------------------------ |
+| string                                              | As it is (it is markup)                     |
+| `html` or `raw()` value                             | Its markup                                  |
+| number, bigint, `true`                              | `String(value)`                             |
+| `null`, `undefined`, `false`                        | Nothing                                     |
+| Array (up to 1000 levels deep)                      | Each item by these rules, with no separator |
+| An object with its own `toString` (a `Date`)        | Its `toString()` text                       |
+| A plain object, `Map`, `Response`, function, symbol | Refused (see below)                         |
+| An `Error` (`return e` in a `catch`)                | Refused (see below)                         |
+| An array holding a Promise                          | Refused (see below)                         |
+
+Because an array is joined with no separator, `.map` needs no `.join("")`:
+
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
+  export default function () {
+    const products = [{ name: "Milk frother" }, { name: "Kettle" }];
+    return products.map((p) => html`<li>${p.name}</li>`);
+  }
+</script>
+```
+
+A returned value that is not markup is a mistake `String()` would print as `[object Object]`, `[object Response]` or `[object Promise]`, so Bascik refuses it instead. The usual causes are returning the data instead of markup built from it, returning a `Response` (that belongs in an [API route](/api-routes)), returning a caught `Error` (its text is an internal message, so throw it instead), and an `async` callback in `.map`, which makes an array of Promises: write `return await Promise.all(items.map(async (item) => ...))`. A Promise returned on its own is awaited, so it never reaches the page.
+
+- **Dev server (`bascik`).** A refused value is a server script error, handled by `scripts.onServerScriptError` like a throw: under `'error'` (the default) the page is a 500 (a stream script's slot is empty instead, as for any stream failure), `'warn'` logs and leaves the slot empty, and `'ignore'` leaves it empty without a log. The message names the route, the script's file and line, and what was returned, such as `The server script in src/pages/shop.html:12 returned an array holding a Promise at [0]`.
+- **Production (`bascik --server` and the Cloudflare adapter).** A refused value never fails the page: the slot is empty, and the same message is logged once per script, as a warning, until the server restarts (the Worker logs it once per isolate). `'ignore'` silences it.
 
 ## Escaping and injection
 
@@ -867,7 +901,7 @@ Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-pro
 | :------------------- | :----------------------------------------------------- | :------------------------------------------------------------ |
 | **Destination**      | Injected directly into HTML pages                      | Standalone JSON, streaming, or binary HTTP endpoints          |
 | **Methods**          | `GET` and `HEAD` (page render)                         | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`    |
-| **Contract**         | Takes WHATWG `Request`, returns HTML string            | Takes WHATWG `Request`, returns WHATWG `Response`             |
+| **Contract**         | Takes WHATWG `Request`, returns markup                 | Takes WHATWG `Request`, returns WHATWG `Response`             |
 | **Response Control** | Cannot set HTTP status code or custom headers          | Full control over status codes, response headers, and cookies |
 | **Use Cases**        | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs  |
 
@@ -875,11 +909,12 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 
 ## Rules and Behavior
 
-- A server script must `export default` a function. A script without one is a located build error naming the file and line.
+- A server script must `export default` a function. Any ES module form counts: `export default handler`, `export { handler as default }`, `export { default } from "./helper.ts"`. A script without one is a located build error naming the file and line.
 - Scripts run on **every request** and are **never cached:** the output is always fresh.
 - During `bascik --build`, server script tags are stripped and stored in `.bascik/dist/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
 - Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as the [Cloudflare Adapter](/deployment/cloudflare). A static-only host leaves the placeholders inert.
 - On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, `'warn'` logs to stderr and replaces the tag with an empty string, and `'ignore'` replaces it with an empty string without a log. Stack traces remap to your original source file line and column.
+- A returned array is joined with no separator. A return that is not markup (a plain object, a `Response`, a function, an array holding a Promise) is an empty slot with a located report: an error under the policy in dev, a once-per-script warning in production. See [Return Values](#return-values).
 - Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
 
 > **Next:** See [Stream Scripts](/stream-scripts) for chunked streaming scripts (`data-bascik-stream`), or consult the [Production Server](/production-server) reference for server runtime configuration.

@@ -325,6 +325,16 @@ const buildTimeCases: HostileCase[] = [
       addIdClassesInHtml(html, [{ idName: "main", className: "k" }]),
   },
   {
+    // The marker scanner (createIdMarkerTest): quoted values that never
+    // close, and scoped prefixes, from every `id`.
+    site: "styles: id class injection, unclosed quoted scoped values",
+    input: (size) => repeatTo(`<a id="x__main id='c__main `, size),
+    run: (html) =>
+      addIdClassesInHtml(html, [{ idName: "main", className: "k" }], {
+        main: "bascik__c__i1__main",
+      }),
+  },
+  {
     site: "styles: element class injection",
     input: (size) => repeatTo("<div x", size),
     run: (html) => addElementClassesInHtml(html, "cmp", ["div"]),
@@ -348,6 +358,13 @@ const buildTimeCases: HostileCase[] = [
       namespaceScriptTags(component(html)),
     ],
   })),
+  {
+    // Each `<b ` in script code is a tag candidate the code lookup must reject cheaply.
+    site: "javascript: attribute scoping on script code comparisons",
+    input: (size) =>
+      `<div id="i"></div><script>${repeatTo("a<b && id = c; '<p id=\"i\">' ", size)}</script>`,
+    run: (html) => prefixElementAttribute(component(html), "id", "i1"),
+  },
   {
     site: "site-graph: placeholder script tags",
     input: (size) => repeatTo("<script '", size),

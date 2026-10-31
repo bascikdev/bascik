@@ -72,9 +72,20 @@ describe("parseCliArgs", () => {
       spacingTolerance: 2,
       overlapTolerance: 1,
       mask: [],
+      skipControls: [],
       out: "artifacts/checks",
       only: [...CHECKS],
     });
+  });
+
+  it("--skip-control passes side-effecting controls to the crawl and state capture, and rejects a broken selector", () => {
+    expect(
+      parseCliArgs([...base, "--skip-control", "[data-add-to-cart]"])
+        .skipControls,
+    ).toEqual(["[data-add-to-cart]"]);
+    expect(() =>
+      parseCliArgs([...base, "--skip-control", "button[type=button"]),
+    ).toThrow(/--skip-control/);
   });
 
   it("--only and --skip take check names and reject a typo, listing the valid ones", () => {

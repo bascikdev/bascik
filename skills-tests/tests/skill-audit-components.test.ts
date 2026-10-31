@@ -599,21 +599,61 @@ describe("audit-components", () => {
     );
   });
 
-  it('misuse: flags a page <script src="x.ts">, which Bascik does not compile, even with allowJs', async () => {
+  it("flags a page's inline JavaScript module and warns that a relative import in its .ts file fails the build", async () => {
+    const root = project({
+      ...clean,
+      "src/pages/tool.html": page(`      <script type="module">
+        import { start } from "./util.js";
+        start();
+      </script>`),
+    });
+    const { findings } = await audit(root);
+    const js = findings.filter((f) => f.rule === "js-not-ts");
+    expect(js).toHaveLength(1);
+    expect(js[0]).toMatchObject({ file: "src/pages/tool.html", line: 9 });
+    expect(js[0].suggestion).toContain('<script type="module" src="name.ts">');
+    expect(js[0].suggestion).toMatch(/relative.*import fails the build/);
+    expect(js[0].suggestion).toMatch(/esbuild/);
+  });
+
+  it('accepts a page <script src="x.ts">, which Bascik compiles and inlines, and counts it as TypeScript', async () => {
     const root = project({
       ...clean,
       "src/pages/app.ts": `const n: number = 1;\n`,
-      "src/pages/tool.html": page(`      <script src="app.ts"></script>`),
+      "src/pages/tool.html": page(
+        `      <script src="app.ts"></script>\n      <script type="module" src="app.ts" defer></script>`,
+      ),
+    });
+    const before = (await audit(project(clean))).stats;
+    for (const allowJs of [false, true]) {
+      const { findings, stats } = await audit(root, { allowJs });
+      expect(findings).toEqual([]);
+      expect(stats.tsScripts).toBe(before.tsScripts + 2);
+      expect(stats.jsScripts).toBe(before.jsScripts);
+    }
+  });
+
+  it('misuse: flags a classic page <script src="x.ts" defer> or async, which the build refuses, even with allowJs', async () => {
+    const root = project({
+      ...clean,
+      "src/pages/app.ts": `const n: number = 1;\n`,
+      "src/pages/tool.html": page(
+        `      <script src="app.ts" defer></script>\n      <script src="app.ts" async></script>`,
+      ),
     });
     for (const allowJs of [false, true]) {
       const { findings } = await audit(root, { allowJs });
-      expect(findings).toHaveLength(1);
+      expect(findings).toHaveLength(2);
       expect(findings[0]).toMatchObject({
         rule: "js-not-ts",
         file: "src/pages/tool.html",
         line: 9,
       });
-      expect(findings[0].message).toMatch(/not compiled/);
+      expect(findings[1]).toMatchObject({ line: 10 });
+      expect(findings[0].message).toMatch(/defer/);
+      expect(findings[1].message).toMatch(/async/);
+      expect(findings[0].message).toMatch(/fails the build/);
+      expect(findings[0].suggestion).toMatch(/type="module"/);
     }
   });
 
@@ -1073,6 +1113,103 @@ describe("audit-components: semantic HTML", () => {
     );
     expect(found[0].message).toMatch(/<h3>.*after.*<h1>/);
     expect(found[0].suggestion).toMatch(/<h2>/);
+  });
+
+  it("follows a named slot a component passes to a child, even when the page passes the same slot name to the parent", async () => {
+    // Bascik drops a named wrapper and fills the child's slot with what is inside it; the wrapper is the outer
+    // template's own content for the child, never a placeholder for the page's same-named slot.
+    const root = project({
+      ...clean,
+      "src/components/inner-card/inner-card.html": `<article class="card" data-testid="inner-card">
+  <header data-bascik-slot="title"></header>
+</article>
+`,
+      "src/components/outer-section/outer-section.html": `<section class="outer" data-testid="outer-section">
+  <div data-bascik-slot="title"></div>
+  <inner-card>
+    <div data-bascik-slot="title"><h4>Inner</h4></div>
+  </inner-card>
+</section>
+`,
+      "src/components/main-shell/main-shell.html": `<div class="shell" data-testid="main-shell">
+  <div data-bascik-slot="title"></div>
+  <inner-card>
+    <div data-bascik-slot="title"><main id="main"><h2>Body</h2></main></div>
+  </inner-card>
+</div>
+`,
+      "src/pages/nested.html": page(`      <h1>Nested</h1>
+      <outer-section>
+        <div data-bascik-slot="title"><h2>Outer</h2></div>
+      </outer-section>`),
+      "src/pages/shell.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <h1>Shell</h1>
+    <main-shell>
+      <div data-bascik-slot="title"><p>Lead</p></div>
+    </main-shell>
+  </body>
+</html>
+`,
+    });
+    const { findings } = await audit(root);
+    const skipped = only(findings, "skipped-heading");
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({ file: "src/pages/nested.html" });
+    expect(skipped[0].message).toContain(
+      "src/components/outer-section/outer-section.html:4",
+    );
+    expect(skipped[0].message).toMatch(/<h2>.*to <h4>/);
+    expect(
+      only(findings, "missing-main").filter(
+        (f) => f.file === "src/pages/shell.html",
+      ),
+    ).toEqual([]);
+  });
+
+  it("forwards the page's default slot through a named wrapper a component passes to a child", async () => {
+    // A valueless marker inside a child's usage content is the outer template's own default slot, even inside a
+    // named wrapper: the build fills it with the page's default content (component-expansion-core forwards it).
+    const root = project({
+      ...clean,
+      "src/components/inner-frame/inner-frame.html": `<article class="frame" data-testid="inner-frame">
+  <div data-bascik-slot="body"></div>
+</article>
+`,
+      "src/components/outer-frame/outer-frame.html": `<section class="outer" data-testid="outer-frame">
+  <inner-frame>
+    <div data-bascik-slot="body"><div data-bascik-slot></div></div>
+  </inner-frame>
+</section>
+`,
+      "src/pages/forwarded-main.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <outer-frame>
+      <main id="main"><h1>Forwarded</h1></main>
+    </outer-frame>
+  </body>
+</html>
+`,
+      "src/pages/forwarded-heading.html": page(`      <h1>Forwarded</h1>
+      <outer-frame>
+        <h3>Skip</h3>
+      </outer-frame>`),
+    });
+    const { findings } = await audit(root);
+    expect(
+      only(findings, "missing-main").filter(
+        (f) => f.file === "src/pages/forwarded-main.html",
+      ),
+    ).toEqual([]);
+    const skipped = only(findings, "skipped-heading").filter(
+      (f) => f.file === "src/pages/forwarded-heading.html",
+    );
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].message).toMatch(/<h1>.*to <h3>/);
   });
 
   it("misuse: does not guess past headings a build script prints, and skips missing-main when a script may print <main>", async () => {

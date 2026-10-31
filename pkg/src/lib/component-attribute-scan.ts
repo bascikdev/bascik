@@ -57,15 +57,12 @@ const isSpaceOrSlash = (c: number): boolean => c === 47 || isJsSpace(c);
 /** `[\s=/>]` */
 const isNameEnd = (c: number): boolean =>
   c === 61 || c === 47 || c === 62 || isJsSpace(c);
-/** `[\s"'=<>\`]` */
-const isUnquotedEnd = (c: number): boolean =>
-  c === 34 ||
-  c === 39 ||
-  c === 61 ||
-  c === 60 ||
-  c === 62 ||
-  c === 96 ||
-  isJsSpace(c);
+/**
+ * `[\s>]`: the WHATWG "attribute value (unquoted) state" ends only at
+ * whitespace or `>`. Quotes, `=`, `<` and backtick there are parse errors
+ * that the browser keeps in the value (`href=/a?b=c`, `title=it's`).
+ */
+const isUnquotedEnd = (c: number): boolean => c === 62 || isJsSpace(c);
 
 /**
  * Scan the attributes of one opening tag string (the text between `<` and
@@ -74,7 +71,24 @@ const isUnquotedEnd = (c: number): boolean =>
  * attribute's quoted value (e.g. `data-bascik-prop-x` inside `title=...`) is
  * never reported as an attribute.  Returns the attributes in document order.
  */
-export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
+export const scanWholeAttributes = (openTag: string): ScannedAttribute[] =>
+  scanStartTag(openTag).attributes;
+
+/**
+ * The start tag at the beginning of `html`: its attributes, read with the
+ * same rules as scanWholeAttributes, and its length through its `>` (`end`),
+ * or -1 when it has no `>`. A `>` inside a quoted value does not end it, and
+ * a quote inside an unquoted value (`title=it's`) does not start one. The
+ * attributes are the ones scanWholeAttributes finds in `html.slice(0, end)`,
+ * so a caller reads the tag once.
+ */
+export const readStartTag = (
+  html: string,
+): { attributes: ScannedAttribute[]; end: number } => scanStartTag(html);
+
+const scanStartTag = (
+  openTag: string,
+): { attributes: ScannedAttribute[]; end: number } => {
   const attrs: ScannedAttribute[] = [];
   // Skip the `<` and the tag name: the first attribute can start anywhere
   // after the name (whitespace or directly, as in `<div/disabled>`).
@@ -86,6 +100,8 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
     while (i < n && isSpaceOrSlash(openTag.charCodeAt(i))) i++;
     if (i >= n || openTag[i] === ">") break;
     const nameStart = i;
+    // A name may start with `=` (a parse error the browser keeps in the name).
+    if (openTag[i] === "=") i++;
     while (i < n && !isNameEnd(openTag.charCodeAt(i))) i++;
     const nameEnd = i;
     let valueStart = -1;
@@ -103,8 +119,8 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
         valueEnd = i;
         if (i < n) i++; // past the closing quote
       } else {
-        // Unquoted value: characters other than whitespace, quotes, `=`, `<`,
-        // `>`, and backtick. `/` is allowed (e.g. `path=/about`).
+        // Unquoted value: every character up to whitespace or `>`, `/`
+        // included (e.g. `path=/about`).
         valueStart = i;
         while (i < n && !isUnquotedEnd(openTag.charCodeAt(i))) i++;
         valueEnd = i;
@@ -121,19 +137,27 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
       end: attrEnd,
     });
   }
-  return attrs;
+  return { attributes: attrs, end: i < n ? i + 1 : -1 };
 };
 
 /**
- * Where the tokenizer stands: in text; inside a tag's name (`name`, where
- * `=` and quotes are name characters, up to tag whitespace, `/` or `>`), at
- * or in an attribute name or between attributes (`tag`), or in an attribute
+ * Where the tokenizer stands: in text; at the `/` of an end tag's `</`
+ * (`end-tag-open`, before its name); inside a tag's name (`name`, where `=`
+ * and quotes are name characters, up to tag whitespace, `/` or `>`), at or
+ * in an attribute name or between attributes (`tag`), or in an attribute
  * value (`before-value`, `quoted`, `unquoted`); or in a bogus comment
  * (`bogus`), which `<!` (other than `<!--`), `<?`, or `</` before a
  * character that is not a letter opens, and the next `>` ends, quotes or not.
  */
 export type AttributeScanState =
-  "text" | "name" | "tag" | "before-value" | "quoted" | "unquoted" | "bogus";
+  | "text"
+  | "end-tag-open"
+  | "name"
+  | "tag"
+  | "before-value"
+  | "quoted"
+  | "unquoted"
+  | "bogus";
 
 /**
  * Tokenizer state after reading `html[0, cursor)`. It also depends on
@@ -190,7 +214,9 @@ const isLetterCode = (code: number): boolean =>
  * The state a `<` at `at`, read in text, leads to, as the tokenizer reads
  * it from the characters after it (up to three: `<!--`):
  *
- * - `<` and a letter, or `</` and a letter, starts a tag's name (`name`).
+ * - `<` and a letter starts a tag's name (`name`); `</` and a letter, an end
+ *   tag's (`end-tag-open`, whose `/` is the end tag's own, not the end of a
+ *   name: `</p"='x>` is one end tag, `p"='x` its name).
  * - `<!--` starts a comment. The masker resolves comments itself and blanks
  *   their insides, and leaves one with no end as text, so it stays `text`.
  * - `<!`, `<?`, or `</` and anything else but the end of input, starts a
@@ -206,7 +232,7 @@ const stateAfterLess = (html: string, at: number): AttributeScanState => {
   if (next !== 47) return "text";
   const after = html.charCodeAt(at + 2);
   if (Number.isNaN(after)) return "text";
-  return isLetterCode(after) ? "name" : "bogus";
+  return isLetterCode(after) ? "end-tag-open" : "bogus";
 };
 
 /** `[\t\n\f\r /]`: what ends a tag name and starts the attributes. */
@@ -261,7 +287,8 @@ export const createAttributeValueScanner = (
         continue;
       }
       const code = html.charCodeAt(cursor);
-      if (state === "name") {
+      if (state === "end-tag-open") state = "name";
+      else if (state === "name") {
         if (code === 62) state = "text";
         else if (isTagNameSpaceOrSlash(code)) state = "tag";
       } else if (state === "unquoted") {
@@ -326,6 +353,8 @@ export const stepAttributeValueState = (
         : { state, quote };
     case "bogus":
       return code === 62 ? { state: "text", quote } : { state, quote };
+    case "end-tag-open":
+      return { state: "name", quote };
     case "name":
       if (code === 62) return { state: "text", quote };
       return isTagNameSpaceOrSlash(code)

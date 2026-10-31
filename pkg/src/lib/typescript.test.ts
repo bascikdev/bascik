@@ -155,6 +155,77 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
   });
 });
 
+describe("scripts.typescript function output validation (F040)", () => {
+  const accepted = [
+    // esbuild with minify: true puts `export` mid-line.
+    ["minified export default", "const a=1;export default()=>1;\n"],
+    [
+      "minified top-level await with export",
+      "const t=await fetch(url),e=await t.text();export default()=>e;\n",
+    ],
+    [
+      "top-level await with no import or export",
+      'const res = await fetch("https://example.com");\nconsole.log(await res.text());\n',
+    ],
+    ["minified import", 'import{a}from"./a.js";console.log(a);'],
+  ] as const;
+
+  for (const runtime of ["server", "browser"] as const) {
+    it.each(accepted)(
+      `accepts valid module output (${runtime}): %s`,
+      async (_label, output) => {
+        (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+          output;
+        await expect(
+          transformBrowserTypeScript("const x: number = 1;", {
+            sourcePath: "src/pages/index.html",
+            kind: "inline",
+            runtime,
+          }),
+        ).resolves.toBe(output);
+      },
+    );
+  }
+
+  it.each([
+    ["TypeScript left in place", "const a: number = await f();\n"],
+    [
+      "an export only inside a string",
+      'const s = "\nexport default 1";\nconst a: number = 1;\n',
+    ],
+    ["an export only inside a comment", "// export default\nlet b: string;\n"],
+  ])(
+    "still rejects output that is not JavaScript: %s",
+    async (_label, output) => {
+      (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+        output;
+      await expect(
+        transformBrowserTypeScript("const x: number = 1;", {
+          sourcePath: "src/pages/index.html",
+          kind: "inline",
+          runtime: "server",
+        }),
+      ).rejects.toThrow(
+        /src\/pages\/index\.html[\s\S]*did not return valid JavaScript/,
+      );
+    },
+  );
+
+  it("lets compileDirectiveTypeScript return top-level-await output from a function compiler", async () => {
+    const output =
+      "const r = await Promise.resolve(1);\nexport default () => String(r);\n";
+    (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+      output.replaceAll("\n", " ");
+    await expect(
+      compileDirectiveTypeScript(
+        "const r: number = await Promise.resolve(1);\nexport default () => String(r);",
+        "src/pages/index.html",
+        "inline",
+      ),
+    ).resolves.toBe(output.replaceAll("\n", " "));
+  });
+});
+
 describe("isTypeScriptFile", () => {
   it("recognizes .ts and .mts browser script files", () => {
     expect(isTypeScriptFile("src/components/demo/demo.ts")).toBe(true);
@@ -370,6 +441,25 @@ describe("looksLikeTypeScript", () => {
     expect(looksLikeTypeScript("const y = z!;")).toBe(true);
   });
 
+  it("returns true for module-shaped TypeScript wherever import/export sit", () => {
+    expect(looksLikeTypeScript('const z: string = "x"; export {}')).toBe(true);
+    expect(looksLikeTypeScript("const r: Response = await fetch(u);")).toBe(
+      true,
+    );
+  });
+
+  it("does not take `export` text inside a template for module syntax", () => {
+    // Invalid in both languages; only the template's text looks like an export.
+    expect(
+      looksLikeTypeScript("const s = `\nexport {}`; const n: number = ;"),
+    ).toBe(false);
+  });
+
+  it("returns false for module-shaped JavaScript", () => {
+    expect(looksLikeTypeScript('const z = "x"; export {}')).toBe(false);
+    expect(looksLikeTypeScript("const r = await fetch(u);")).toBe(false);
+  });
+
   it("returns false for code that is invalid in both JavaScript and TypeScript", () => {
     expect(looksLikeTypeScript("const = ;")).toBe(false);
     expect(looksLikeTypeScript("function {")).toBe(false);
@@ -454,6 +544,36 @@ describe("transformTypeScriptScriptTags", () => {
     expect(out).not.toContain(": string");
   });
 
+  it.each([
+    [
+      '<script data-x="a type=b" type="text/typescript">const a: number = 1;</script>',
+      '<script data-x="a type=b">const a         = 1;</script>',
+    ],
+    [
+      "<script data-x='a type=b' type=\"text/typescript\">const a: number = 1;</script>",
+      "<script data-x='a type=b'>const a         = 1;</script>",
+    ],
+    [
+      '<script\n  data-x="a\n  type=b"\n  type="text/typescript"\n  defer\n>const a: number = 1;</script>',
+      '<script data-x="a\n  type=b"\n  defer\n>const a         = 1;</script>',
+    ],
+    [
+      '<script type="text/typescript" data-x="a type=b">const a: number = 1;</script>',
+      '<script data-x="a type=b">const a         = 1;</script>',
+    ],
+    [
+      "<script type=text/typescript defer>const a: number = 1;</script>",
+      "<script defer>const a         = 1;</script>",
+    ],
+  ])(
+    "removes the real type attribute, not ` type=` text in another value (F044): %j",
+    async (html, expected) => {
+      expect(
+        await transformTypeScriptScriptTags(html, "src/pages/index.html"),
+      ).toBe(expected);
+    },
+  );
+
   it("does not strip data-type or treat data-src as external when transforming TypeScript scripts", async () => {
     const html =
       '<!-- <script type="text/typescript">enum Broken { A }</script> -->' +
@@ -537,6 +657,51 @@ describe("transformTypeScriptScriptTags", () => {
     expect(message).toContain('type="text/typescript"');
     expect(message).toMatch(/TypeScript/);
   });
+
+  it.each([
+    '<script type="module">const z: string = "x";</script>',
+    '<script type="module">const z: string = "x"; export {}</script>',
+    '<script type="module">\nimport { a } from "/js/a.js";\nconst n: number = a;\n</script>',
+    '<script type="module">const r: Response = await fetch("/x");</script>',
+    '<script type="application/javascript">let a: number = 1;</script>',
+    '<script type="text/ecmascript">let a: number = 1;</script>',
+  ])(
+    "warns for TypeScript in any JavaScript script type (F045): %s",
+    async (html) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const out = await transformTypeScriptScriptTags(
+        html,
+        "src/pages/index.html",
+      );
+      expect(out).toBe(html);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain("src/pages/index.html");
+      if (html.includes('type="module"')) {
+        // A text/typescript block is a classic script, so a module goes to a companion.
+        expect(message).toContain('<script type="module" src="name.ts">');
+        expect(message).not.toContain(
+          'Mark it <script type="text/typescript">',
+        );
+      }
+      warn.mockRestore();
+    },
+  );
+
+  it.each([
+    '<script type="module">import { a } from "/js/a.js";\nexport const b = a < 2 ? "x" : "y";</script>',
+    '<script type="module">const r = await fetch("/x"); export default r;</script>',
+    '<script type="application/ld+json">{"a": 1}</script>',
+    '<script type="text/template"><p>{{ a: b }}</p></script>',
+  ])(
+    "does not warn for valid JavaScript or non-JavaScript types: %s",
+    async (html) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await transformTypeScriptScriptTags(html, "src/pages/index.html");
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    },
+  );
 
   it("does not warn for ordinary inline JavaScript", async () => {
     const html =

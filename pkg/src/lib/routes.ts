@@ -3,7 +3,7 @@ import {
   compileDirectiveTypeScript,
   isTypeScriptDirectiveScript,
 } from "./typescript.ts";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { pathToFileURL } from "node:url";
@@ -23,6 +23,7 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { pruneStaleTempModules } from "./script-cache.ts";
 import {
   ATTR,
   ROUTES_FLAG,
@@ -39,6 +40,43 @@ import type { RouteEntry } from "./types.ts";
 import { extractRouteParamNames, isDynamicRoute } from "./route-matching.ts";
 
 export { extractRouteParamNames, isDynamicRoute };
+
+/** The path relative to `directory.pages` with forward slashes, or undefined when outside it. */
+const pagesRelativePath = (filePath: string): string | undefined => {
+  const pagesRoot = resolve(
+    process.cwd(),
+    BascikConfig.directory?.pages ?? "src/pages",
+  );
+  const rel = relative(pagesRoot, resolve(process.cwd(), filePath));
+  if (
+    rel === "" ||
+    rel === ".." ||
+    rel.startsWith("../") ||
+    rel.startsWith("..\\") ||
+    isAbsolute(rel)
+  ) {
+    return undefined;
+  }
+  return rel.replace(/\\/g, "/");
+};
+
+/**
+ * The part of a page's path that names its route: the path relative to
+ * `directory.pages`. Folders above the pages directory
+ * (`~/Projects [2026]/site/src/pages/...`) are not part of any route, so a
+ * bracket in one of them must not make a page a `[param]` template. A path
+ * outside the pages directory (a hand-built path in a test) is used as given.
+ */
+export const pageRoutePath = (pagePath: string): string =>
+  pagesRelativePath(pagePath) ?? pagePath;
+
+/** True when the page is a `[param]` template: a bracket inside `directory.pages`. */
+export const isDynamicPagePath = (pagePath: string): boolean =>
+  isDynamicRoute(pageRoutePath(pagePath));
+
+/** Ordered param names of a page template, from its path inside `directory.pages`. */
+export const extractPageRouteParamNames = (pagePath: string): string[] =>
+  extractRouteParamNames(pageRoutePath(pagePath));
 
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
 const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
@@ -316,7 +354,7 @@ export const executeRoutesScript = async (
   }
 
   if (matches.length === 0) {
-    if (filePath && isDynamicRoute(filePath)) {
+    if (filePath && isDynamicPagePath(filePath)) {
       console.warn(
         `[bascik] warning: Bracket filename "${getRelativePath(filePath, "pages")}" has no <script data-bascik-routes> tag. Skipping template.`,
       );
@@ -350,13 +388,16 @@ export const executeRoutesScript = async (
 
   const cleanedHtml = html.slice(0, index) + html.slice(index + fullTag.length);
 
+  // The folder-name fallbacks only apply outside directory.pages: a project
+  // living under a folder called `components` still has pages.
   const isComponent =
     filePath &&
     (findComponentRoot(filePath) !== undefined ||
-      filePath.includes("/components/") ||
-      filePath.includes("\\components\\") ||
-      filePath.startsWith("components/") ||
-      filePath.startsWith("components\\"));
+      (pagesRelativePath(filePath) === undefined &&
+        (filePath.includes("/components/") ||
+          filePath.includes("\\components\\") ||
+          filePath.startsWith("components/") ||
+          filePath.startsWith("components\\"))));
   if (isComponent) {
     console.warn(
       `[bascik] warning: <script data-bascik-routes> inside a component ("${getRelativePath(filePath, "components")}") will be ignored.`,
@@ -364,7 +405,7 @@ export const executeRoutesScript = async (
     return { routes: null, cleanedHtml };
   }
 
-  if (filePath && !isDynamicRoute(filePath)) {
+  if (filePath && !isDynamicPagePath(filePath)) {
     console.warn(
       `[bascik] warning: <script data-bascik-routes> found in "${getRelativePath(filePath, "pages")}" which has no bracket parameters. The tag will be ignored.`,
     );
@@ -395,8 +436,16 @@ export const executeRoutesScript = async (
   // The module keeps the script untrimmed, so its lines and columns stay where they are in the file.
   let moduleSource = scriptContent;
   let moduleFilePath: string | undefined;
+  const srcAttribute = getHtmlAttributeValue(openTag, "src");
+  // Browsers run only the file when a script has src=; build and server
+  // scripts reject the same ambiguous tag.
+  if (srcAttribute && trimmedScript) {
+    throw new Error(
+      `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${tagLocation(index, openTag)}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`,
+    );
+  }
   if (!trimmedScript) {
-    const srcPath = getHtmlAttributeValue(openTag, "src");
+    const srcPath = srcAttribute;
     if (srcPath) {
       const containingDir = filePath
         ? dirname(resolve(process.cwd(), filePath))
@@ -412,17 +461,31 @@ export const executeRoutesScript = async (
         trimmedScript = await readFile(resolvedPath, "utf8");
         moduleSource = trimmedScript;
       } catch (err) {
-        console.warn(
-          '[bascik] warning: Failed to read routes script src "%s":',
-          srcPath,
-          err,
-        );
+        // The missing file is the failure, not the empty module that would
+        // otherwise run and report a missing default export.
+        if (
+          (BascikConfig.scripts?.onRoutesScriptError ?? "error") === "error"
+        ) {
+          const reason = err instanceof Error ? err.message : String(err);
+          const errorMsg = `[bascik] routes script error${tagLocation(index, openTag)}:\nCannot read routes script src "${srcPath}" (${getProjectPath(resolvedPath)}): ${reason}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg, { cause: err });
+        }
+        if (BascikConfig.scripts?.onRoutesScriptError !== "ignore")
+          console.warn(
+            '[bascik] warning: Failed to read routes script src "%s":',
+            srcPath,
+            err,
+          );
+        return { routes: [], cleanedHtml };
       }
     }
   }
 
   const tempDir = join(process.cwd(), "node_modules", ".cache", "bascik");
   await mkdir(tempDir, { recursive: true });
+  // A process killed while a routes or build script ran left its module.
+  await pruneStaleTempModules(tempDir);
   const tmpPath = join(
     tempDir,
     `routes-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
@@ -521,7 +584,7 @@ export const executeRoutesScript = async (
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${cleanedMsg}`);
       throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-    } else {
+    } else if (behavior === "warn") {
       console.warn(`${errorMsg}:\n${cleanedMsg}`);
     }
     return { routes: [], cleanedHtml };
@@ -529,7 +592,7 @@ export const executeRoutesScript = async (
     await unlink(tmpPath).catch(() => {});
   }
 
-  const paramNames = filePath ? extractRouteParamNames(filePath) : [];
+  const paramNames = filePath ? extractPageRouteParamNames(filePath) : [];
   const {
     routes: parsedRoutes,
     warnings: parseWarnings,
@@ -542,7 +605,7 @@ export const executeRoutesScript = async (
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${parseError}`);
       throw new Error(`${errorMsg}:\n${parseError}`);
-    } else {
+    } else if (behavior === "warn") {
       console.warn(`${errorMsg}:\n${parseError}`);
     }
     return { routes: [], cleanedHtml };

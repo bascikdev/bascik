@@ -12,6 +12,7 @@ import { getScriptType } from "./script-types.ts";
 import { replaceSpans } from "./element-content-scan.ts";
 import { OUTPUT_SCOPE_ATTRIBUTE } from "./output-scope.ts";
 import { ensurePrivateDir, privateDirFor } from "./private-dir.ts";
+import { fileInPlaceOfFolder } from "./fs-errors.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -174,11 +175,34 @@ class ServerSidecarRegistry {
       this.loadedSidecar = null;
       this.sidecarPresent = false;
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        // Windows says ENOENT, not ENOTDIR, when the private folder (or the
+        // output folder) is a file: that is a broken layout, not a static one.
+        const file = fileInPlaceOfFolder(targetPath);
+        if (file !== undefined) {
+          throw new Error(
+            `[bascik] --server: Failed to load server scripts sidecar from ${targetPath}: ENOTDIR: ${file} is a file, not a folder`,
+          );
+        }
         // Optional sidecar: a static release with no server scripts is valid.
         return { present: false, scripts: {} };
       }
       throw new Error(
         `[bascik] --server: Failed to load server scripts sidecar from ${targetPath}: ${(err as Error).message}`,
+      );
+    }
+    // `null`, an array or a primitive parses fine but is not a sidecar:
+    // without this, `null.scripts` is a raw TypeError and the rest an
+    // empty registry that hides the broken release.
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      this.loadedSidecar = null;
+      this.sidecarPresent = false;
+      throw new Error(
+        `[bascik] --server: server scripts sidecar at ${targetPath} is not a JSON object. ` +
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
       );
     }
     const scriptsRaw = parsed.scripts ?? {};

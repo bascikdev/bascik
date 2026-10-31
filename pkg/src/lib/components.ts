@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, relative, resolve } from "node:path";
+import { dirname, posix, relative, resolve } from "node:path";
 import {
   getComponentCss,
   extractInlineStyles,
@@ -79,25 +79,35 @@ export {
   mergeAttributesOntoRoot,
 } from "./component-inheritance.ts";
 
-// Warn if a component name shadows a native HTML element
+// Warn if a component name shadows a native HTML element: every element of
+// WHATWG HTML, the obsolete ones its parser still knows included, plus the
+// <svg> and <math> roots of foreign content (web-standards.test.ts checks
+// the set against @webref/elements).
 export const NATIVE_HTML_ELEMENTS = new Set([
   "a",
   "abbr",
+  "acronym",
   "address",
+  "applet",
   "area",
   "article",
   "aside",
   "audio",
   "b",
   "base",
+  "basefont",
   "bdi",
   "bdo",
+  "bgsound",
+  "big",
+  "blink",
   "blockquote",
   "body",
   "br",
   "button",
   "canvas",
   "caption",
+  "center",
   "cite",
   "code",
   "col",
@@ -109,6 +119,7 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "details",
   "dfn",
   "dialog",
+  "dir",
   "div",
   "dl",
   "dt",
@@ -117,8 +128,11 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "fieldset",
   "figcaption",
   "figure",
+  "font",
   "footer",
   "form",
+  "frame",
+  "frameset",
   "h1",
   "h2",
   "h3",
@@ -135,18 +149,29 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "img",
   "input",
   "ins",
+  "isindex",
   "kbd",
+  "keygen",
   "label",
   "legend",
   "li",
   "link",
+  "listing",
   "main",
   "map",
   "mark",
+  "marquee",
+  "math",
   "menu",
+  "menuitem",
   "meta",
   "meter",
+  "multicol",
   "nav",
+  "nextid",
+  "nobr",
+  "noembed",
+  "noframes",
   "noscript",
   "object",
   "ol",
@@ -154,12 +179,16 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "option",
   "output",
   "p",
+  "param",
   "picture",
+  "plaintext",
   "pre",
   "progress",
   "q",
+  "rb",
   "rp",
   "rt",
+  "rtc",
   "ruby",
   "s",
   "samp",
@@ -167,15 +196,19 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "search",
   "section",
   "select",
-  "small",
+  "selectedcontent",
   "slot",
+  "small",
   "source",
+  "spacer",
   "span",
+  "strike",
   "strong",
   "style",
   "sub",
   "summary",
   "sup",
+  "svg",
   "table",
   "tbody",
   "td",
@@ -188,11 +221,13 @@ export const NATIVE_HTML_ELEMENTS = new Set([
   "title",
   "tr",
   "track",
+  "tt",
   "u",
   "ul",
   "var",
   "video",
   "wbr",
+  "xmp",
 ]);
 
 let componentListCache: ComponentList | null = null;
@@ -495,6 +530,31 @@ const warnComponentCompatibility = async (
 };
 
 /**
+ * The companion script a component's `<script src>` names, if any. Only a
+ * relative reference can: a URL (`https:`, `//host/`) or a root-absolute
+ * path (`/vendor/x.js`) is another file the browser loads, even when its
+ * last segment is a companion's file name, and stays as written. A relative
+ * reference is resolved against the component's folder; a bare file name
+ * (`nav-bar.js`, `./nav-bar.js`) matches a companion anywhere in the
+ * component's folder, as the companion lookup lists them.
+ */
+const companionScriptFor = <Info>(
+  scriptMap: Map<string, Info>,
+  src: string,
+  componentFileName: string,
+): Info | undefined => {
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(src) || /^[/\\]/.test(src))
+    return undefined;
+  const direct = scriptMap.get(src);
+  if (direct) return direct;
+  const componentDir = relative(
+    process.cwd(),
+    dirname(resolve(process.cwd(), componentFileName)),
+  ).replace(/\\/g, "/");
+  return scriptMap.get(posix.join(componentDir, src.replace(/\\/g, "/")));
+};
+
+/**
  * Derives the component tag name from a file path.
  * Lowercases the base name without the file extension.
  */
@@ -625,15 +685,24 @@ export const listComponents = async (
         }
       };
       try {
+        const fileContentRead = readFile(fileName);
         [fileContentBuffer, cssFileContent, companionScripts] =
           await Promise.all([
-            readFile(fileName),
+            fileContentRead,
             getComponentCss(
               fileName,
               componentCssFileNames,
               importedStylesheets,
             ),
-            getComponentScripts(fileName, componentScriptFileNames),
+            // The HTML tells which scripts are browser companions and which are
+            // directive `src=` modules; the other components' names keep the
+            // flat-layout prefix rule out of a sibling's scripts.
+            fileContentRead.then((buffer) =>
+              getComponentScripts(fileName, componentScriptFileNames, {
+                html: buffer.toString(),
+                componentFileNames: componentHtmlFileNames,
+              }),
+            ),
           ]);
       } catch (e) {
         // A companion `.ts` that cannot be transformed is an authoring error in
@@ -646,6 +715,19 @@ export const listComponents = async (
       }
 
       const rawContent = fileContentBuffer.toString();
+      if (!rawContent.trim()) {
+        // Often a file just created in the editor: say why its usages vanish.
+        const absolute = resolve(fileName);
+        const displayPath = (
+          absolute.startsWith(process.cwd())
+            ? relative(process.cwd(), absolute)
+            : fileName
+        ).replace(/\\/g, "/");
+        console.warn(
+          `warning: Component "${componentName}" (${displayPath}) is empty, ` +
+            `so every <${componentName}> renders nothing until the file has markup.`,
+        );
+      }
       await warnComponentCompatibility(
         rawContent,
         fileName,
@@ -683,10 +765,11 @@ export const listComponents = async (
             if (isDirectiveScriptOpenTag(`<script${preSrc} ${postSrc}>`)) {
               return match;
             }
-            const baseSrc = basename(srcVal);
-            const scriptInfo =
-              companionScripts!.scriptMap.get(baseSrc) ??
-              companionScripts!.scriptMap.get(srcVal);
+            const scriptInfo = companionScriptFor(
+              companionScripts!.scriptMap,
+              srcVal,
+              fileName,
+            );
             if (scriptInfo) {
               if (ignoredBody.trim()) {
                 console.warn(

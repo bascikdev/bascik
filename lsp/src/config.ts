@@ -1,5 +1,9 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  formatExtensionConfigProblem,
+  parseExtensionConfigFile,
+  readConfigFile,
+  type ExtensionConfigResult,
+} from "./config-reader.js";
 
 export interface BascikExtensionConfig {
   diagnostics?: {
@@ -18,36 +22,41 @@ export interface BascikExtensionConfig {
   };
 }
 
+/** Last text read per config path, so an unchanged file is parsed and reported once. */
+const configCache = new Map<
+  string,
+  { raw: string; readError?: string; result: ExtensionConfigResult }
+>();
+
+/**
+ * The project's extension config, `{}` when it has none or it cannot be read. A config that cannot be
+ * read is reported on stderr (the Bascik output panel in the editor, the terminal for `--check`) with
+ * its file and line, once per distinct content, then ignored, so a mistake never fails silently.
+ */
 export function loadExtensionConfig(
   projectRoot: string,
 ): BascikExtensionConfig {
-  const configFiles = [
-    "bascik.ext.json",
-    ".bascikrc.json",
-    "bascik.ext.ts",
-    "bascik.ext.js",
-  ];
-  for (const filename of configFiles) {
-    const fullPath = path.join(projectRoot, filename);
-    if (fs.existsSync(fullPath)) {
-      try {
-        const raw = fs.readFileSync(fullPath, "utf8");
-        if (filename.endsWith(".json")) {
-          return JSON.parse(raw) as BascikExtensionConfig;
-        } else {
-          // Lexical parse for simple JS/TS config export default { ... }
-          const match = /export\s+default\s+({[\s\S]*});?/.exec(raw);
-          if (match) {
-            // Evaluates standard JSON-like object literal safely
-            return Function(
-              `"use strict"; return (${match[1]})`,
-            )() as BascikExtensionConfig;
-          }
-        }
-      } catch {
-        // Fall back to empty config on parse error
-      }
-    }
+  const found = readConfigFile(projectRoot);
+  if (!found) return {};
+  const cached = configCache.get(found.fullPath);
+  if (
+    cached &&
+    cached.raw === found.raw &&
+    cached.readError === found.readError
+  )
+    return cached.result.config;
+  const result = parseExtensionConfigFile(
+    found.fullPath,
+    found.raw,
+    found.readError,
+  );
+  configCache.set(found.fullPath, {
+    raw: found.raw,
+    readError: found.readError,
+    result,
+  });
+  if (result.problem) {
+    console.error(formatExtensionConfigProblem(result.problem));
   }
-  return {};
+  return result.config;
 }

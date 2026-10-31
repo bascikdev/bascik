@@ -10,21 +10,54 @@ The internal raw-text mask has a different semantic: it replaces content with th
 
 ## The Naming Scheme
 
-Every scoped name is constructed using double underscores as delimiters:
+Components have no shadow DOM: their markup and styles land in the page like any other HTML and CSS. Bascik keeps a component's names private by renaming them at build time, so a component's `.title` cannot style another component's `.title`, and two instances of one component never share an `id`.
+
+What is renamed, and the exact shapes:
 
 ```text
-# Class naming (scoped to component name, shared across instances):
+# Class (scoped to the component name, shared by every instance):
 bascik__<componentName>__<originalName>
-# Example:
 bascik__site-nav__toggle-btn
 
-# ID naming, and name with scoping.attributes.name: true (scoped to unique component instance):
+# id, and name with scoping.attributes.name: true (unique per instance):
 bascik__<componentName>__<instanceId>__<originalName>
-# Example:
 bascik__site-nav__a1b2c3d4__search-input
+
+# Class generated for an element selector (p { }):
+b_el_<componentName>_<tagName>
+b_el_site-nav_p
+
+# Class generated for an #id selector (#btn { }):
+b_id_<componentName>_<idName>
+b_id_site-nav_btn
 ```
 
+Keyframes, layers, containers, counter styles, anchors, view transitions, and custom properties declared in the component follow the class shape with a kind word (`bascik__site-nav__keyframe__fade`); their sections below cover them.
+
 The **instanceId** is an 8-hex-character value derived deterministically from the page path, component name, and ordinal occurrence index on that page (`deriveInstanceId` in `pkg/src/lib/names.ts`). It guarantees that DOM identifiers (`id`, and `name` when `scoping.attributes.name` is on) are unique even when the same component is used multiple times on a page, while ensuring identical builds produce byte-identical output across repeated runs. Under the default configuration, class names are scoped to the component name without an instance ID, and `name` ships as written; this deterministic derivation guarantees full reproducibility for pages scoping `id` (and `name`) attributes as well.
+
+### Why element and id rules become classes
+
+A bare `p { }` in a component stylesheet would style every paragraph on the page, because nothing in plain CSS limits a selector to one component's markup. Bascik rewrites the rule to a class and adds that class to every `<p>` in the component's template, so the rule matches only the component's own paragraphs. An `#btn { }` rule has a second problem: the `id` it names is renamed per instance (`bascik__site-nav__a1b2c3d4__btn`), so a selector naming one scoped `id` would style one instance only. Bascik rewrites it to a class shared by every instance and adds the class to each element whose `id` is `btn`. Both conversions give the rule the specificity of one class, `(0,0,1,0)`: higher than a bare element, lower than an `id`.
+
+`styles.ts` builds the two generated names in one place each, `elementSelectorClassName` and `idSelectorClassName`, and every consumer (the CSS passes, the template injection, build-script output scoping) calls them.
+
+### Why the generated head differs from the authored head
+
+An authored class always starts with `bascik__`. The generated classes start with `b_el_` and `b_id_`, which no authored class can produce, so an element rule and an authored class never compile to the same name. Earlier releases named them `bascik__<componentName>__el__<tagName>` and `bascik__<componentName>__id__<idName>`: an authored class `.el__p` then compiled to the same `bascik__card__el__p` as the rule `p { }`, and the two rules styled each other's elements. The double underscore in the authored shape follows the common BEM-style delimiter; the generated shape uses single underscores to keep development output short, and its fixed `b_el_` or `b_id_` head is what keeps it apart.
+
+When a component needs per-instance CSS (its stylesheet references a per-instance `url(#id)`, or `deduplicateCss` is off), `<componentName>` is the per-instance key `<componentName>__<instanceId>`, as in `b_el_site-nav__a1b2c3d4_p`.
+
+### Under `minify.identifiers`
+
+With `minify.identifiers: true` (the default in builds), every readable name above, authored or generated, is hashed to `b` plus 11 Base62 characters (`minifyAttributeName` in `names.ts`, the first 64 bits of a SHA-256 digest of the readable name). The HTML, CSS, and JavaScript use the same hash, so they stay in sync. A hash contains no `_`, so it can never equal a readable generated name, and two different readable names give the same hash only by a 64-bit collision. The readable shape decides which names stay apart; hashing keeps them apart.
+
+### The remaining collision cases
+
+Two cases can still produce one name for two meanings:
+
+- **A global class with the generated shape.** A class that is not in the component's stylesheet stays global, so a page that writes `class="b_el_site-nav_p"`, or a site stylesheet that styles `.b_el_site-nav_p`, shares the class Bascik generates for `p { }` in `site-nav`. This is the same risk any global class name carries. The `css-reserved-class-prefix` lint rule warns about any `.b_el_` or `.b_id_` class in component CSS, in `bascik --check` and the editor. It does not read site stylesheets or `class=` attributes in markup, so those uses are not linted.
+- **A component name with an underscore.** Element names have no underscore, so `b_el_<componentName>_<tagName>` always splits at its last underscore. An `id` can contain one: component `my` with `#card_btn` and component `my_card` with `#btn` both produce `b_id_my_card_btn`. Hyphenated component names, the form custom element names use, avoid this.
 
 ### Class attributes intentionally omit the instanceId
 
@@ -82,14 +115,14 @@ p {
 }
 
 /* Scoped CSS */
-.bascik__site-nav__el__p {
+.b_el_site-nav_p {
   margin: 0;
 }
 ```
 
 ```html
 <!-- Scoped HTML - class injected onto every <p> in the component -->
-<p class="bascik__site-nav__el__p">Content</p>
+<p class="b_el_site-nav_p">Content</p>
 ```
 
 ### Root document boundary and selector preservation
@@ -404,7 +437,7 @@ a[href="#tab"] { }              → skipped  (attribute value is masked first)
 
 The masking is what keeps literal data intact: a hash in an attribute-selector value or a url-like string inside `content:` can never be confused with a selector. Quoted `url("...")` arguments are also masked for this pass so a real URL reference is not mistaken for an ID selector.
 
-Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` selector is converted to a scoped class selector (`.bascik__comp__id__id {}`) and the generated class is injected onto the matching HTML element. Specificity drops from `(0,1,0,0)` to `(0,0,1,0)`, consistent with how element selectors are handled.
+Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` selector is converted to a scoped class selector (`.b_id_<componentName>_<id> {}`) and the generated class is injected onto the matching HTML element. Specificity drops from `(0,1,0,0)` to `(0,0,1,0)`, consistent with how element selectors are handled.
 
 ### CSS `url(#id)` fragment rewriting boundaries
 
@@ -451,15 +484,15 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
 }
 
 /* After scoping, in a card component */
-.bascik__card__card .bascik__card__el__p {
+.bascik__card__card .b_el_card_p {
   color: blue;
 }
-.bascik__card__list > .bascik__card__el__li {
+.bascik__card__list > .b_el_card_li {
   padding: 0;
 }
 ```
 
-This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.bascik__card__el__div .bascik__card__el__p {}` and matches only elements in the component's template.
+This works because `bascik__`, `b_el_`, and `b_id_` never appear in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.b_el_card_div .b_el_card_p {}` and matches only elements in the component's template.
 
 ### CSS nesting element selectors
 

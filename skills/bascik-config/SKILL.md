@@ -29,7 +29,7 @@ If every value would equal a default, do not create the file. If one exists, kee
 node <skill-dir>/scripts/audit-config.mjs
 ```
 
-It reports values that restate defaults, `siteUrl` in config, exec scripts that do not exist, watched output paths, `minify` values in the default export that silently change production builds, and `build.pipeline.exec` lists that drop default scripts. Exit code 1 means an error; `--strict` also fails on redundant values.
+It reports values that restate defaults, `siteUrl` in config, exec scripts that do not exist, `cwd` folders that do not exist outside the output directory (a warning), watched output paths, `minify` values in the default export that silently change production builds, and `build.pipeline.exec` lists that drop default scripts. Exit code 1 means an error; `--strict` also fails on redundant values.
 
 ## Shape
 
@@ -63,11 +63,12 @@ Merge order is: built-in defaults, then the mode's defaults, then your `default`
 
 1. **Never put `siteUrl` in config.** It is an error. Provide it per deployment: `--site-url` flag, then `BASCIK_SITE_URL`, then `.env` (loaded automatically; `--env-file <path>` is repeatable). Sitemap and robots generation (on by default) fail the build without it.
 2. **Do not restate defaults** such as `directory.pages: 'src/pages'`, `scoping.deduplicateCss: true`, `scoping.scriptBlocks: true`, empty `pipeline.exec` or `pipeline.watchPaths`, or `base: '/'`.
-3. **Do not invent `pipeline.exec` scripts.** Reference only script files that exist in the project.
+3. **Do not invent `pipeline.exec` scripts.** Reference only script files that exist in the project. A relative `script` is a project-root path even when the entry sets `cwd` (the directory it starts in). `timeout` (60 s) applies to `parallel` entries too: a watcher such as `tailwindcss --watch` needs `timeout: 0` and belongs only in a dev-mode export, since a build waits for every `parallel` script. Details: `read-doc.mjs /exec-scripts`.
 4. **Exec scripts write to `BASCIK_OUT_DIR` only.** Never into `src/` or any watched path, and never list generated output in `pipeline.watchPaths` or an exec entry's `watch`. There is no `outputs` option.
 5. **Use `phase: 'pre'`** for output that pages depend on (bundles, copied vendor modules); `'parallel'` for independent artifacts (search index); `'post'` for steps that read or edit the compiled `dist/` (feeds, sitemap post-processing).
 6. **`base` is a literal path prefix** such as `'/docs/'`: no full URL, query, fragment, percent escapes, backslashes, or dot segments. Bascik rewrites root-relative URLs in HTML, CSS, and web manifests, but not URLs built in JavaScript; expose `BASCIK_BASE` from a build script for those.
 7. **Keep scoping defaults** (`deduplicateCss`, `scriptBlocks`, `inheritAttributes`) unless a specific integration requires a change, and do not write them out just to keep them.
+8. **`directory.out` is a folder of its own**, such as `dist` or `build`. It is emptied at the start of every build and dev session, so a value that is the project root, holds `src/` or another source folder, or sits inside the pages, components, or API folder is a config error.
 
 ## Exec scripts
 
@@ -95,7 +96,7 @@ export default defineConfig({
 ```
 
 - Exec scripts receive `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_OUT_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`.
-- `watch` reruns the matching script after a source edit in dev; exec-only inputs need no duplicate `pipeline.watchPaths` entry.
+- `watch` reruns the matching script after a source edit in dev; exec-only inputs need no duplicate `pipeline.watchPaths` entry. List every input the script reads, including local modules it imports: `pipeline.watchPaths` never reruns a script.
 - `pipeline.onExecError`: `'warn'` (dev default) reports and continues; `'error'` (`--build` default) stops with exit 1.
 - Full semantics (cycle ordering, retries, reload behavior): `read-doc.mjs /exec-scripts`.
 
@@ -138,7 +139,7 @@ It lists every site with its component roots, import root, base, and Bascik vers
 
 ## Content-Security-Policy (opt in)
 
-Bascik sends no CSP by default. `contentSecurityPolicy` makes every HTML response carry one, built from the directives you list plus each route's inline script and style hashes from the build (it turns on `generate.cspHashes`). The dev server and `bascik --server` send it as a header; on Cloudflare the Worker sends it for the pages it renders and the build writes `public/_headers` rules for static pages.
+Bascik sends no CSP by default. `contentSecurityPolicy` makes every HTML response carry one, built from the directives you list plus each route's inline script and style hashes from the build (it turns on `generate.cspHashes`). The dev server and `bascik --server` send it as a header; on Cloudflare the Worker sends it for the pages it renders and the build writes `public/_headers` rules for static pages. A static `404.html` then has its policy at `/404` only, not on a 404 for another URL (`_headers` cannot match a status; the build warns); `assets.run_worker_first: true` in the Wrangler config makes the Worker send it on every 404.
 
 ```ts
 export default defineConfig({

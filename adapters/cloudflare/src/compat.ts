@@ -70,10 +70,78 @@ const ALL_NODE_BUILTINS: ReadonlySet<string> = new Set([
 
 export type NodeBuiltinClass = "provided" | "unsupported" | "not-builtin";
 
-export const classifyNodeBuiltin = (specifier: string): NodeBuiltinClass => {
-  const bare = specifier.startsWith("node:") ? specifier.slice(5) : specifier;
+/** The compatibility settings a Worker deploys with. */
+export interface CompatSettings {
+  compatibilityDate: string;
+  compatibilityFlags: readonly string[];
+  /** Where they come from, for messages (`wrangler.jsonc env.staging`). */
+  source?: string;
+}
+
+const PINNED: CompatSettings = {
+  compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+  compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+};
+
+interface DateGate {
+  /** The first compatibility date that provides the module. */
+  since: string;
+  /** The flag that provides it before then. */
+  enable: string;
+  /** The flag that removes it at any date. */
+  disable: string;
+}
+
+const gate = (since: string, flag: string): DateGate => ({
+  since,
+  enable: `enable_${flag}`,
+  disable: `disable_${flag}`,
+});
+
+/**
+ * Supported modules that workerd (with `nodejs_compat`) provides only from a
+ * compatibility date on: the dates and flags of `@cloudflare/unenv-preset`,
+ * which Wrangler bundles with, checked against workerd itself
+ * (authored-wrangler.test.ts loads each one at its date). An older date
+ * fails at deploy or at the first request with `No such module`, so the
+ * build classifies against the date the Worker deploys with.
+ */
+export const NODE_BUILTIN_DATE_GATES: Readonly<Record<string, DateGate>> = {
+  http: gate("2025-08-15", "nodejs_http_modules"),
+  https: gate("2025-08-15", "nodejs_http_modules"),
+  fs: gate("2025-09-15", "nodejs_fs_module"),
+  "fs/promises": gate("2025-09-15", "nodejs_fs_module"),
+  os: gate("2025-09-15", "nodejs_os_module"),
+  perf_hooks: gate("2026-03-17", "nodejs_perf_hooks_module"),
+};
+
+const bareName = (specifier: string): string =>
+  specifier.startsWith("node:") ? specifier.slice(5) : specifier;
+
+/** Whether `compat` provides a supported module (its date gate, if any). */
+const providedAt = (bare: string, compat: CompatSettings): boolean => {
+  const dateGate = NODE_BUILTIN_DATE_GATES[bare];
+  if (!dateGate) return true;
+  if (compat.compatibilityFlags.includes(dateGate.disable)) return false;
+  return (
+    compat.compatibilityDate >= dateGate.since ||
+    compat.compatibilityFlags.includes(dateGate.enable)
+  );
+};
+
+/**
+ * Whether the Workers runtime provides a `node:*` import (or its bare
+ * spelling) under `compat`, the adapter's pinned settings by default.
+ */
+export const classifyNodeBuiltin = (
+  specifier: string,
+  compat: CompatSettings = PINNED,
+): NodeBuiltinClass => {
+  const bare = bareName(specifier);
   if (!ALL_NODE_BUILTINS.has(bare)) return "not-builtin";
-  return WORKERS_SUPPORTED_NODE_BUILTINS.has(bare) ? "provided" : "unsupported";
+  return WORKERS_SUPPORTED_NODE_BUILTINS.has(bare) && providedAt(bare, compat)
+    ? "provided"
+    : "unsupported";
 };
 
 export const formatUnsupportedImport = (input: {
@@ -81,15 +149,30 @@ export const formatUnsupportedImport = (input: {
   importer: string;
   projectRoot: string;
   owners: string[];
+  /** The settings the Worker deploys with; the pinned ones by default. */
+  compat?: CompatSettings;
 }): string => {
+  const compat = input.compat ?? PINNED;
   const rel = relative(input.projectRoot, input.importer).replace(/\\/g, "/");
   const owners = input.owners.length
     ? `\n  Reached from: ${input.owners.join(", ")}`
     : "";
+  const bare = bareName(input.specifier);
+  const dateGate = WORKERS_SUPPORTED_NODE_BUILTINS.has(bare)
+    ? NODE_BUILTIN_DATE_GATES[bare]
+    : undefined;
+  const needs = dateGate
+    ? compat.compatibilityFlags.includes(dateGate.disable)
+      ? `\n  "${input.specifier}" is turned off by the ${dateGate.disable} flag. Remove the flag.`
+      : `\n  "${input.specifier}" needs compatibility_date "${dateGate.since}" or later, or the ${dateGate.enable} flag.`
+    : "";
+  const supported = Array.from(WORKERS_SUPPORTED_NODE_BUILTINS)
+    .filter((name) => providedAt(name, compat))
+    .sort();
   return (
     `[bascik] --target: "${input.specifier}" (imported by ${rel}) is not available in the Cloudflare Workers runtime ` +
-    `for compatibility date ${CLOUDFLARE_COMPATIBILITY_DATE}.${owners}\n` +
-    `  Supported node:* modules are: ${Array.from(WORKERS_SUPPORTED_NODE_BUILTINS).sort().join(", ")}.\n` +
+    `for compatibility date ${compat.compatibilityDate}${compat.source ? ` (${compat.source})` : ""}.${owners}${needs}\n` +
+    `  Supported node:* modules are: ${supported.join(", ")}.\n` +
     `  Replace it with a Web standard API or a pure-JS package.`
   );
 };

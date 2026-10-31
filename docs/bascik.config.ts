@@ -39,13 +39,24 @@ export default defineConfig({
       {
         script: "scripts/generate-search-index.ts",
         phase: "parallel",
-        watch: ["content/"],
+        // The content, the Home page's title and description, and every module the script imports (nav.ts holds
+        // the page list). A script reruns only for its own watch list; watch-paths.test.ts checks it.
+        watch: [
+          "content/",
+          "src/pages/index.html",
+          "src/lib/search-index.ts",
+          "src/lib/nav.ts",
+          "src/lib/content-path.ts",
+          "src/lib/meta-tags.ts",
+          "src/lib/heading-slug.ts",
+          "src/lib/html-entities.ts",
+        ],
         // Fetched by the browser. Completion does not trigger compilation.
       },
       {
         script: "scripts/publish-agent-skill.ts",
         phase: "parallel",
-        watch: ["../skills/"],
+        watch: ["../skills/", "scripts/skill-bundle.ts"],
         // Publishes the agent skills from the repo-root skills/ directory: /assets/skills.tar.gz (every skill)
         // and /assets/SKILL.md (the core skill, the one intentional Markdown download). Static asset copying
         // denies .md by design; the authored skills are watched, the generated outputs never are.
@@ -53,7 +64,7 @@ export default defineConfig({
       {
         script: "scripts/publish-examples.ts",
         phase: "parallel",
-        watch: ["../examples/"],
+        watch: ["../examples/", "scripts/examples-bundle.ts"],
         // Publishes /assets/examples.json for skills/bascik/scripts/add-example.mjs.
       },
       {
@@ -62,9 +73,11 @@ export default defineConfig({
         watch: [
           "src/pages/assets/bascik-logo.svg",
           "src/pages/assets/favicon.svg",
+          "src/lib/press-logo.ts",
         ],
         // Generates the brand kit (logos, PNG exports, social images, and the zip) into dist/assets/press/.
-        // Only the two authored logo SVGs are watched; the generated kit never is.
+        // Only the two authored logo SVGs and the logo parser it shares with the /press page are watched;
+        // the generated kit never is.
       },
     ],
   },

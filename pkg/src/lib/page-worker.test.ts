@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { MessageChannel } from "node:worker_threads";
+import { resolve } from "node:path";
+import { BuildScriptError } from "./build-error.ts";
+import { mem } from "./mem.ts";
 
 const { _mockTranspilePage } = vi.hoisted(() => ({
   _mockTranspilePage: vi.fn(),
@@ -169,6 +172,59 @@ describe("handlePageWorkerMessage", () => {
       ok: false,
       error: "Transpile failed",
     });
+  });
+
+  // F054: a structured clone keeps neither the class nor the fields of a
+  // BuildScriptError, so the worker posts them as data.
+  it("posts a build script failure's location beside its message", async () => {
+    _mockTranspilePage.mockRejectedValueOnce(
+      new BuildScriptError("build script error in site-footer", {
+        sourceFile: "components/site-footer.html",
+        line: 7,
+        column: 3,
+      }),
+    );
+    const port = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(port, null, "src/pages/index.html");
+    expect(port.postMessage).toHaveBeenCalledWith({
+      ok: false,
+      error: "build script error in site-footer",
+      detail: {
+        message: "build script error in site-footer",
+        location: {
+          sourceFile: "components/site-footer.html",
+          line: 7,
+          column: 3,
+        },
+      },
+    });
+  });
+
+  // F053: the helpers a failed compile could not import were recorded only
+  // in this worker's own store; they now travel with the failure.
+  it("posts the missing helpers the failed compile recorded, and only this compile's", async () => {
+    const page = resolve("src/pages/index.html");
+    mem.recordFailedDependencies(page, ["src/pages/lib/stale.ts"]);
+    _mockTranspilePage.mockImplementationOnce(async () => {
+      mem.recordFailedDependencies(page, ["src/pages/lib/prices.ts"]);
+      throw new Error("Cannot find module './lib/prices.ts'");
+    });
+    const port = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(port, null, page);
+    expect(firstMessage(port)).toEqual({
+      ok: false,
+      error: "Cannot find module './lib/prices.ts'",
+      detail: {
+        message: "Cannot find module './lib/prices.ts'",
+        failedDependencies: ["src/pages/lib/prices.ts"],
+      },
+    });
+
+    // A later failure that records nothing must not resend the old list.
+    _mockTranspilePage.mockRejectedValueOnce(new Error("no body"));
+    const again = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(again, null, page);
+    expect(firstMessage(again)).toEqual({ ok: false, error: "no body" });
   });
 
   it("handles non-Error objects thrown during transpile", async () => {

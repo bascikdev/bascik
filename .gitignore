@@ -83,6 +83,7 @@ pkg/e2e/dist-*
 pkg/e2e/base-fixture/dist-*
 create/dist
 extensions/vscode-bascik/dist
+extensions/vscode-bascik/out
 pkg/test-results
 test-results
 hint-report/

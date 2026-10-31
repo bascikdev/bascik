@@ -663,4 +663,149 @@ describe("bascik add", () => {
       ),
     ).toBe(true);
   });
+
+  // A workspace hoists the package to the repo root node_modules, and its
+  // exports map does not list package.json. Node's own resolution walks up
+  // from the project, so `bascik add` must find it there too.
+  it("finds a package hoisted to an ancestor node_modules even when its exports map omits package.json", async () => {
+    const siteDir = join(testDir, "packages", "site");
+    await mkdir(join(siteDir, "src", "components"), { recursive: true });
+    await setupFixturePackage(
+      "@acme/hoisted",
+      {
+        name: "@acme/hoisted",
+        version: "2.1.0",
+        exports: { ".": "./index.js" },
+        bascik: { components: "./components" },
+      },
+      {
+        "index.js": "export {};\n",
+        "components/hoisted-card.html": "<article>hoisted</article>",
+      },
+    );
+
+    const result = await addComponents(["@acme/hoisted"], { cwd: siteDir });
+    expect(result.copiedFiles.map((file) => file.componentTag)).toEqual([
+      "hoisted-card",
+    ]);
+    expect(
+      await readFile(
+        join(siteDir, "src", "components", "hoisted-card.html"),
+        "utf8",
+      ),
+    ).toBe("<article>hoisted</article>");
+    const lock = JSON.parse(
+      await readFile(join(siteDir, "bascik-lock.json"), "utf8"),
+    );
+    expect(lock.components["@acme/hoisted"].version).toBe("2.1.0");
+  });
+
+  it("prefers the nearest node_modules copy over a hoisted one", async () => {
+    const siteDir = join(testDir, "packages", "site");
+    await mkdir(join(siteDir, "src", "components"), { recursive: true });
+    await setupFixturePackage(
+      "near-kit",
+      { name: "near-kit", version: "1.0.0", bascik: { components: "c" } },
+      { "c/kit-badge.html": "<span>hoisted</span>" },
+    );
+    const nearDir = join(siteDir, "node_modules", "near-kit");
+    await mkdir(join(nearDir, "c"), { recursive: true });
+    await writeFile(
+      join(nearDir, "package.json"),
+      JSON.stringify({
+        name: "near-kit",
+        version: "3.0.0",
+        bascik: { components: "c" },
+      }),
+      "utf8",
+    );
+    await writeFile(join(nearDir, "c", "kit-badge.html"), "<span>near</span>");
+
+    await addComponents(["near-kit"], { cwd: siteDir });
+    expect(
+      await readFile(
+        join(siteDir, "src", "components", "kit-badge.html"),
+        "utf8",
+      ),
+    ).toBe("<span>near</span>");
+  });
+
+  // Misuse: a typo'd package name still reports "not installed", naming the
+  // project folder the lookup started from.
+  it("reports a typo'd package name as not installed, naming where it looked", async () => {
+    const siteDir = join(testDir, "packages", "site");
+    await mkdir(siteDir, { recursive: true });
+    await setupFixturePackage(
+      "@acme/hoisted",
+      { name: "@acme/hoisted", version: "1.0.0", bascik: { components: "c" } },
+      { "c/hoisted-card.html": "<p></p>" },
+    );
+    const failure = addComponents(["@acme/hoistd"], { cwd: siteDir });
+    await expect(failure).rejects.toThrow(
+      /Package "@acme\/hoistd" is not installed\. Please install it first/,
+    );
+    await expect(failure).rejects.toThrow(siteDir);
+  });
+
+  // A merge conflict or hand edit corrupts bascik-lock.json. Replacing it
+  // with only the current package's entries would drop every other package's
+  // version and hash records, so `bascik add` refuses and names the file.
+  it("refuses to overwrite a bascik-lock.json it cannot parse, and copies nothing", async () => {
+    const corrupt =
+      '{\n  "components": {\n<<<<<<< HEAD\n    "@acme/old": {}\n=======\n>>>>>>> branch\n  }\n}\n';
+    await writeFile(join(testDir, "bascik-lock.json"), corrupt, "utf8");
+    await setupFixturePackage(
+      "@acme/ui",
+      { name: "@acme/ui", version: "1.0.0", bascik: { components: "c" } },
+      { "c/ui-card.html": "<article></article>" },
+    );
+
+    const failure = addComponents(["@acme/ui"], { cwd: testDir });
+    await expect(failure).rejects.toThrow(/bascik-lock\.json/);
+    await expect(failure).rejects.toThrow(/could not be parsed/);
+    expect(await readFile(join(testDir, "bascik-lock.json"), "utf8")).toBe(
+      corrupt,
+    );
+    await expect(
+      readFile(join(componentsDir, "ui-card.html"), "utf8"),
+    ).rejects.toThrow();
+  });
+
+  it("refuses a bascik-lock.json whose components field is not an object", async () => {
+    await writeFile(
+      join(testDir, "bascik-lock.json"),
+      '{ "components": [] }\n',
+      "utf8",
+    );
+    await setupFixturePackage(
+      "@acme/ui",
+      { name: "@acme/ui", version: "1.0.0", bascik: { components: "c" } },
+      { "c/ui-card.html": "<article></article>" },
+    );
+    await expect(addComponents(["@acme/ui"], { cwd: testDir })).rejects.toThrow(
+      /bascik-lock\.json/,
+    );
+  });
+
+  it("starts a fresh lockfile when none exists and keeps other packages' records", async () => {
+    await setupFixturePackage(
+      "@acme/ui",
+      { name: "@acme/ui", version: "1.0.0", bascik: { components: "c" } },
+      { "c/ui-card.html": "<article></article>" },
+    );
+    await setupFixturePackage(
+      "@acme/forms",
+      { name: "@acme/forms", version: "4.0.0", bascik: { components: "c" } },
+      { "c/form-field.html": "<label></label>" },
+    );
+    await addComponents(["@acme/forms"], { cwd: testDir });
+    await addComponents(["@acme/ui"], { cwd: testDir });
+    const lock = JSON.parse(
+      await readFile(join(testDir, "bascik-lock.json"), "utf8"),
+    );
+    expect(Object.keys(lock.components).sort()).toEqual([
+      "@acme/forms",
+      "@acme/ui",
+    ]);
+  });
 });

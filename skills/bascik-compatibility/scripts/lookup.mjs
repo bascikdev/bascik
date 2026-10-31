@@ -2,7 +2,8 @@
 // Search Bascik's live compatibility matrix (https://bascik.dev/compatibility) for an HTML, CSS, JavaScript, server,
 // or HTTP pattern and print whether Bascik supports it. Dependency-free; Node.js 22.22+.
 import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
 const HELP = `Usage: node lookup.mjs <query...> [--section <name>] [--limit 15] [--json]
@@ -43,10 +44,46 @@ const ENTITIES = {
   apos: "'",
   nbsp: " ",
 };
+/** What a numeric reference in 0x80-0x9F stands for (windows-1252). */
+const C1_REMAP = {
+  0x80: 0x20ac,
+  0x82: 0x201a,
+  0x83: 0x192,
+  0x84: 0x201e,
+  0x85: 0x2026,
+  0x86: 0x2020,
+  0x87: 0x2021,
+  0x88: 0x2c6,
+  0x89: 0x2030,
+  0x8a: 0x160,
+  0x8b: 0x2039,
+  0x8c: 0x152,
+  0x8e: 0x17d,
+  0x91: 0x2018,
+  0x92: 0x2019,
+  0x93: 0x201c,
+  0x94: 0x201d,
+  0x95: 0x2022,
+  0x96: 0x2013,
+  0x97: 0x2014,
+  0x98: 0x2dc,
+  0x99: 0x2122,
+  0x9a: 0x161,
+  0x9b: 0x203a,
+  0x9c: 0x153,
+  0x9e: 0x17e,
+  0x9f: 0x178,
+};
+/** A numeric reference's character as the browser's tokenizer maps it: windows-1252 for 0x80-0x9F, U+FFFD for 0, a surrogate or past U+10FFFF. */
+const numeric = (code) => {
+  if (code === 0 || !(code <= 0x10ffff) || (code >= 0xd800 && code <= 0xdfff))
+    return "\ufffd";
+  return String.fromCodePoint(C1_REMAP[code] ?? code);
+};
 const decode = (text) =>
   text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, (whole, name) => {
     if (name[0] === "#")
-      return String.fromCodePoint(
+      return numeric(
         name[1].toLowerCase() === "x"
           ? parseInt(name.slice(2), 16)
           : parseInt(name.slice(1), 10),
@@ -242,9 +279,20 @@ async function main() {
     );
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+// Compare real paths: Node resolves symlinks in the main module's path before it sets import.meta.url, so comparing it
+// with argv[1] as typed made the script a silent no-op (exit 0, no output) whenever a folder on the path was a symlink
+// or junction, such as the skills CLI's install into .claude/skills.
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+  }
+})();
 if (invokedDirectly) await main();
 
 /**

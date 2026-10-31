@@ -17,6 +17,10 @@ import { cpus } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import {
+  DOCS_FIXTURE_SIBLING_DIRECTORIES,
+  DOCS_FIXTURE_SIBLING_FILES,
+} from "./docs-fixture-files.ts";
 import { execute, clinicEnvironment } from "./profile-runner.ts";
 import {
   cleanGeneratorEnvironment,
@@ -398,24 +402,12 @@ export async function runCompilerTimeline(options: TimelineOptions) {
         );
         if (isRepositoryDocs) {
           // Docs build scripts and config read these sibling repository files and directories.
-          await cp(
-            join(repository, "CHANGELOG.md"),
-            join(fixtureRoot, "CHANGELOG.md"),
-          );
-          for (const dir of ["examples", "skills"]) {
+          for (const dir of DOCS_FIXTURE_SIBLING_DIRECTORIES) {
             await cp(join(repository, dir), join(fixtureRoot, dir), {
               recursive: true,
             });
           }
-          for (const path of [
-            "pkg/package.json",
-            "pkg/test-coverage.json",
-            "pkg/e2e-test-coverage.json",
-            "create/test-coverage.json",
-            "extensions/vscode-bascik/test-coverage.json",
-            "adapters/cloudflare/test-coverage.json",
-            "lsp/test-coverage.json",
-          ]) {
+          for (const path of DOCS_FIXTURE_SIBLING_FILES) {
             await mkdir(join(fixtureRoot, path, ".."), { recursive: true });
             await cp(join(repository, path), join(fixtureRoot, path));
           }

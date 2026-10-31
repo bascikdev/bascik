@@ -194,6 +194,31 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
     expect(getOnTheFlyCompressionCount()).toBe(codecRunsBefore);
   });
 
+  // F050: the server looked for `<asset>.gzip`, so the `.gz` sidecar the
+  // build writes was never served to a gzip-only client.
+  it("the server's representation owner accepts the emitted gzip sidecar verbatim too", async () => {
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
+    const asset = join(dist, "styles.css");
+    const sidecar = await readFile(`${asset}.gz`);
+    const codecRunsBefore = getOnTheFlyCompressionCount();
+    const repr = await getStaticRepresentation(asset, "gzip");
+    expect(repr).not.toBeNull();
+    expect(repr!.encoding).toBe("gzip");
+    expect(repr!.buffer.equals(sidecar)).toBe(true);
+    expect(getOnTheFlyCompressionCount()).toBe(codecRunsBefore);
+  });
+
+  it("a stale gzip sidecar (asset edited after the build) is not served", async () => {
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
+    const asset = join(dist, "styles.css");
+    await writeFile(asset, "body { color: rebeccapurple; }\n".repeat(40));
+    const sidecar = await readFile(`${asset}.gz`);
+    const codecRunsBefore = getOnTheFlyCompressionCount();
+    const repr = await getStaticRepresentation(asset, "gzip");
+    expect(repr!.buffer.equals(sidecar)).toBe(false);
+    expect(getOnTheFlyCompressionCount()).toBe(codecRunsBefore + 1);
+  });
+
   it("emits nothing when http.precompress is off (default)", async () => {
     (BascikConfig as any).http.precompress = false;
     await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });

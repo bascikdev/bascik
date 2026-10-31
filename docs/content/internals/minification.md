@@ -33,13 +33,13 @@ The goal is that the minified page parses to the same document, with the same sc
 
 1. **Comment Stripping**: Every HTML comment the browser would parse is removed, including ones ending in `--!>`, except inside `<pre>` and `<listing>`, whose content stays verbatim. Comment-like text inside raw text and RCDATA elements (`<script>`, `<style>`, `<textarea>`, `<title>`, `<noscript>`) is not a comment and is left in place, so CSS CDO/CDC tokens (`<!--` and `-->`) inside a `<style>` element survive. Removing markup never joins the text around it into new markup: where it could (`<` then `<!-- c -->script>`, or `&am<!-- -->p;`), an empty `<!---->` takes its place.
 2. **Verbatim Content**: `<pre>` and `<listing>` content, raw text and RCDATA bodies (`<script>`, `<style>`, `<textarea>`, `<xmp>`, `<noscript>`, `<iframe>`), SVG and MathML `<script>` and `<style>`, attribute values, DOCTYPEs, and CDATA sections are never changed. Whitespace between a tag's attributes collapses, since it never renders. `<title>` text collapses, because `document.title` collapses it anyway.
-3. **Whitespace Collapsing**: In other text, every line break and every run of spaces, tabs, and line breaks becomes one space. Only that whitespace is touched: U+00A0 (`&nbsp;` written as a character), other Unicode spaces, and form feeds are content and stay. Whitespace-only text between two tags is removed, or kept as one space when both are inline elements (`INLINE_TAGS`: `a`, `span`, `b`, `strong`, `code`, `textarea`, ...). A comment renders nothing, so the whitespace around an `<!---->` a table keeps where a comment or script stood still separates two inline elements: one space stays, after the last comment. While a formatting element such as `<a>` or `<b>` may be open, it is kept as one space instead, because whitespace makes the parser re-create a misnested formatting element.
-4. **Script Consolidation**: Eligible classic and module client scripts are moved to the end of the document, in their original order. Build, routes, server, and data scripts stay in place, as do scripts in `<template>`, `<pre>`, SVG, or MathML. A script that must run in place (an import map, or one of those) keeps every earlier script before it. When the document ends inside markup where an appended script would not run, such as an unclosed tag, comment, `<template>`, or `<textarea>`, the scripts go just before it.
+3. **Whitespace Collapsing**: In other text, every line break and every run of spaces, tabs, and line breaks becomes one space. Only that whitespace is touched: U+00A0 (`&nbsp;` written as a character), other Unicode spaces, and form feeds are content and stay. Whitespace-only text between two tags is removed, or kept as one space when both are elements the browser displays inline by default: `INLINE_TAGS` (`a`, `span`, `b`, `strong`, `code`, `textarea`, `ins`, `svg`, `math`, `video`, `iframe`, ...), any custom element (a name with a hyphen), and the SVG text content elements `<tspan>`, `<textPath>`, and `<tref>`, so `</tspan> <tspan>` inside an SVG `<text>` keeps its space. A comment renders nothing, so the whitespace around an `<!---->` a table keeps where a comment or script stood still separates two inline elements: one space stays, after the last comment. While a formatting element such as `<a>` or `<b>` may be open, it is kept as one space instead, because whitespace makes the parser re-create a misnested formatting element.
+4. **Script Consolidation**: Eligible classic and module client scripts are moved to the end of the document, in their original order. Build, routes, server, and data scripts stay in place, as do scripts in `<template>`, `<pre>`, SVG, or MathML. A script that must run in place (an import map, or one of those) keeps every earlier script before it. When the document ends inside markup where an appended script would not run, such as an unclosed tag, comment, `<template>`, `<textarea>`, or SVG, the scripts go just before it. An unclosed `<svg>` or `<math>` that a later `<p>`, `<div>`, or `<span>` closes, as the browser does, is not such markup, so the scripts still go at the end. Inside `<foreignObject>` or `<mi>`, the scan follows the HTML elements that decide whether `</svg>` or `</math>` closes it, as the browser builds them: a `<div>` or heading closes an open `<p>` first, and a stray `<td>`, `<tr>`, `<head>`, or `<body>` with no table open opens nothing.
 
 ### Known HTML Limits
 
 - **CSS-dependent whitespace**: The minifier does not read your CSS. An element other than `<pre>` or `<listing>` styled `white-space: pre`, `pre-wrap`, `pre-line`, or `break-spaces` loses its extra spaces and line breaks, and an element made inline with CSS can lose the space next to it. Use `<pre>` for preformatted text, or set `minify.html: false`.
-- **Malformed markup the scan cannot follow**: In a few rare constructs, such as raw text or SVG elements inside `<select>`, `<frameset>`, CDATA inside SVG `<title>`, SVG and MathML end tags that close elements outside them, or a table tag such as `<tr>` or `</table>` inside SVG or MathML that opened in a table (the browser may leave the SVG or MathML there, depending on where in the table it is), the scan stops and the rest of the document is left as written. Inside `<pre>` after a `<table>` or `<select>`, it keeps treating the content as preformatted until the next `<template>` boundary, which only keeps more whitespace.
+- **Malformed markup the scan cannot follow**: In a few rare constructs, such as raw text or SVG elements inside `<select>`, an end tag other than `</option>` or `</optgroup>` inside a `<select>` in SVG or MathML, `<frameset>`, CDATA inside SVG `<title>`, SVG and MathML end tags that close elements outside them, or a table tag such as `<tr>` or `</table>` inside SVG or MathML that opened in a table (the browser may leave the SVG or MathML there, depending on where in the table it is), the scan stops and the rest of the document is left as written. Inside `<pre>` after a `<table>` or `<select>`, it keeps treating the content as preformatted until the next `<template>` boundary, which only keeps more whitespace.
 
 JavaScript minification applies to scripts with no `type` and to `text/javascript`, `module`, `application/javascript`, `text/ecmascript`, and `application/ecmascript`. External `src` scripts and non-JavaScript data scripts are not minified.
 
@@ -96,11 +96,13 @@ type Segment = {
   literal: boolean;
   text: string;
   controlHeaderCloses?: Set<number>; // `)` closing an if/while/for/with header
-  postfixUpdateEnds?: Set<number>;
+  postfixUpdateEnds?: Set<number>; // end of each postfix `++`/`--`
+  arrowBodyCloses?: Set<number>; // `}` closing an arrow function body (`=> {...}`)
+  asiBefore?: boolean; // literal only: a line break before it ends the statement
 };
 ```
 
-Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments.
+Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified.
 
 ### Regex Disambiguation
 
@@ -122,10 +124,15 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "instanceof",
   "new",
   "do",
+  "else",
 ]);
 ```
 
-When `/` follows an operator or expression keyword, it is parsed as a regular expression literal and preserved intact.
+When `/` follows an operator or one of these keywords, it is parsed as a regular expression literal and preserved intact. A `/` after a value, `]`, a quote, a `)` that does not close an `if`/`while`/`for`/`with` header, or a postfix `++`/`--` (`count++ / 2`) is division. After `}` the scanner tries a regex, because a block can end there, and keeps it only when it closes on the same line. `js-literal-spans.ts`, which finds the string literals that attribute scoping reads, imports this keyword set but reads a `/` after `}` or any `)` as division.
+
+### Line Breaks (ASI)
+
+Collapsing a line break must keep the statement boundary that JavaScript's automatic semicolon insertion puts there, so the minified script runs the same program as the unminified one. The scanner records what it needs for this on each segment (`controlHeaderCloses`, `postfixUpdateEnds`, `arrowBodyCloses`, `asiBefore`). The rules are listed in the "Semicolon-free scripts in `minify.js`" row of the [compatibility page](/compatibility).
 
 ## Identifier Hashing (`names.ts`)
 

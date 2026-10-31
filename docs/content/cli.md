@@ -10,12 +10,12 @@ npm create bascik@rc
 # or: npm create bascik@rc my-project -- --template cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/
   package.json
-  vite.config.js
+  vite.config.ts
   .gitignore
   .vscode/
     launch.json
@@ -63,7 +63,7 @@ my-project/
         contact-form.test.ts
 ```
 
-Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.js`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
+Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.ts`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
 
 After scaffolding, the tool prompts you interactively:
 
@@ -75,13 +75,13 @@ Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
 | Flag                | Description                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
 | `--no-skills`       | Do not install the agent skills                                                                                     |
-| `--no-install`      | Do not run `npm install`                                                                                            |
+| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                  |
 | `--no-dev`          | Do not start the dev server                                                                                         |
 | `--template <name>` | `default` (alias `static`) or `cloudflare`                                                                          |
 
@@ -95,7 +95,15 @@ bascik init -y           # install the agent skills without asking
 bascik init --no-skills  # skip the agent skills
 ```
 
-`bascik init` creates `src/pages/index.html` and `src/components/`, adds `dist/` to `.gitignore`, adds the `dev` and `build` scripts to `package.json`, sets up VS Code, writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), and asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version. It adds to files you already have and never replaces them.
+`bascik init` adds what Bascik needs to the folder it runs in. It adds to files you already have and never replaces them:
+
+- creates `src/pages/index.html` and `src/components/`
+- adds `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0-rc.10`) and is skipped when `dependencies` or `devDependencies` already lists it
+- sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
+- asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
+
+A `package.json` that sets `"type": "commonjs"` stops `init` before it writes anything, because Bascik config files use ESM syntax.
 
 ## CLI reference
 
@@ -141,7 +149,9 @@ bascik --build --port=4321
 Rules the parser enforces:
 
 - `--build` and `--server` cannot be combined. Run the build first, then serve the output.
-- Unknown flags are rejected, as are positional arguments other than `init` and `add`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server.
+- Unknown flags are rejected, as are positional arguments other than `init` and `add`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server. Position does not matter: `bascik --quite --check` is refused with `Did you mean "--quiet"?` too.
+- A Node option written before the first Bascik flag, such as `bascik --max-old-space-size=4096 --build`, does nothing, because Node reads its own options before the script name. Bascik runs the command and prints a warning that names the option and says to pass it with `NODE_OPTIONS="--max-old-space-size=4096" bascik --build`.
+- `--host` takes a hostname like `localhost` or `0.0.0.0`, or a bare IPv6 address such as `::1` or `fe80::1%en0`, by the same rule as `http.hostname`; a URL such as `http://0.0.0.0`, a host with a port, or a bracketed `[::1]` is an error.
 - A flag that takes a value requires one (`--config` with no path is an error); a flag that takes none rejects one (`--build=yes` is an error).
 - Repeating a boolean flag is a no-op. For value flags the last occurrence wins; `--env-file` appends.
 - A flag always beats the matching environment variable, which beats the config file. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
@@ -166,6 +176,8 @@ bascik add @acme/ui --dry-run
 bascik add @acme/ui --force
 ```
 
+The package is looked up the way Node resolves a dependency: `node_modules/<package>` in the project folder, then in each parent folder, so a package a workspace hoisted to the repository root is found from a site in `packages/site`. The package's `exports` map does not need to list `package.json`.
+
 ### The `bascik-lock.json` lockfile
 
 `bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `.bascik/dist/`, `bascik-lock.json` is committed project state that tracks:
@@ -179,6 +191,8 @@ When re-running `bascik add`:
 - Unmodified files are updated cleanly to newer package versions.
 - If a copied file was customized locally, `bascik add` detects the content hash mismatch and refuses to overwrite it without `--force`.
 
+If `bascik-lock.json` exists but is not valid JSON (for example, after a merge left conflict markers in it), `bascik add` stops before copying anything and names the file. It does not replace the file, because that would drop the records of every other package. Fix the file or delete it to start over.
+
 ## Environment files and the site URL
 
 Bascik loads `./.env` automatically when it exists and skips it silently when it does not. Pass `--env-file <path>` to load additional or alternative files:
@@ -189,6 +203,8 @@ bascik --build --env-file .env.base --env-file .env.staging  # later files win
 ```
 
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
+
+Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
 
 The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
 
@@ -220,12 +236,12 @@ Use `--only <glob>` to selectively rebuild a subset of pages without compiling t
 ```sh
 bascik --build --only "blog/**"
 bascik --build --only "blog/**" --only "about.html"
-bascik --build --only="docs/pages/internals/*"
+bascik --build --only="internals/*"
 ```
 
 Important rules for targeted builds:
 
-- The glob is matched relative to `directory.pages`.
+- The glob is matched relative to `directory.pages`: `internals/*` builds `src/pages/internals/*.html`. A glob that starts with the pages folder itself (`src/pages/internals/*`) matches nothing, and the error names the glob to use instead.
 - Multiple `--only` flags union together.
 - `--only` is only valid with `--build`. Passing `--only` without `--build` is an error.
 - A glob that matches zero pages produces an error.
@@ -244,7 +260,7 @@ bascik --build --target cloudflare-pages
 bascik --build --target cloudflare-workers
 ```
 
-`--target <name>` accepts an official target name, an installed adapter package, or a local file path. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) guide for the full workflow.
+`--target <name>` accepts an official target name, an installed adapter package, or a local file path: an absolute path, or one starting with `./` or `../` (on Windows also `.\` or `..\`, as PowerShell completes it). Anything else is read as a package name. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) guide for the full workflow.
 
 ## Starting the dev server
 
@@ -398,21 +414,21 @@ Per-file checks (2)
 
 `bascik --check` runs the following validations. The first table is the project checks, which `bascik` runs itself. The second is the per-file checks, which come from the language server:
 
-| Check                                                                                                  | Category                       | Severity                |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------- |
-| Configuration key and value validation                                                                 | `config-validation`            | Error or warning by key |
-| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning                 |
-| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error                   |
-| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error                   |
-| Circular component references                                                                          | `circular-component-reference` | Error                   |
-| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error                   |
-| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error                   |
-| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error                   |
-| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning                 |
-| Unused component file                                                                                  | `unused-component`             | Warning                 |
-| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error                   |
-| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning                 |
-| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning                 |
+| Check                                                                                                  | Category                       | Severity |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------ | -------- |
+| Configuration key and value validation                                                                 | `config-validation`            | Error    |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning  |
+| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error    |
+| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error    |
+| Circular component references                                                                          | `circular-component-reference` | Error    |
+| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error    |
+| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error    |
+| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error    |
+| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning  |
+| Unused component file                                                                                  | `unused-component`             | Warning  |
+| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error    |
+| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning  |
+| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning  |
 
 The per-file checks, from `@bascik/language-server`:
 
@@ -449,12 +465,9 @@ npm install --save-dev parse5
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
 
-Key severity mapping details for configuration validation:
+Every configuration validation finding is an error, because each one also stops `bascik` and `bascik --build` at startup: a missing `pipeline.exec[].script`, an unreadable `http.tls.keyFile` or `http.tls.certFile`, and a missing `pipeline.watchPaths[]` or `assets.inlineStyles[]` path alike. A project that passes `bascik --check` starts without a configuration error.
 
-- `pipeline.exec[].script` missing path: Error
-- `http.tls.keyFile`/`http.tls.certFile` unreadable: Error
-- `pipeline.watchPaths[]` missing path: Warning
-- `assets.inlineStyles[]` missing path: Warning
+The rest of the check runs with the configuration minus the rejected settings: a mistyped `http.port` leaves `directory.pages` and every other valid setting in place, so pages and components are checked in the folders you configured. A rejected `directory.pages` is reported once, as a configuration error.
 
 Success exits with code `0` when no errors are found.
 

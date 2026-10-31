@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // One verification loop for a Bascik project: bascik --check (which includes the language server's per-file checks
 // when it is installed), the linter on component folders outside the project, and optionally a build.
+import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { isAbsolute, relative, sep } from "node:path";
+import { isAbsolute, relative, sep, win32 } from "node:path";
 import {
   componentRoots,
   docsBaseUrl,
@@ -65,6 +66,41 @@ function report(title, result) {
   if (status === "FAIL" && /site ?url/i.test(output))
     console.log(`\n${SITE_URL_HINT}`);
   return status;
+}
+
+/**
+ * How to run `npx <args>`. On Windows npx is a .cmd file, and a .cmd file only starts through cmd.exe, which
+ * re-parses the command line: it expands %VAR% even inside quotes, so a project path holding a % changed the
+ * command. Instead Node runs npm's own npx-cli.js with an argument array and no shell in between: the copy next to
+ * the npm that started this script (npm_execpath), else the one npm installs next to node.exe. With neither, the
+ * result is `{ skipped }` saying what to do. Exported for tests.
+ */
+export function npxInvocation(
+  args,
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath,
+  exists = existsSync,
+) {
+  if (platform !== "win32") return { command: "npx", args };
+  const fromNpm =
+    env.npm_execpath &&
+    /^np[mx]-cli\.js$/i.test(win32.basename(env.npm_execpath))
+      ? [win32.join(win32.dirname(env.npm_execpath), "npx-cli.js")]
+      : [];
+  const nodeDir = win32.dirname(execPath);
+  const bundled = win32.join(
+    nodeDir,
+    "node_modules",
+    "npm",
+    "bin",
+    "npx-cli.js",
+  );
+  const cli = [...fromNpm, bundled].find((candidate) => exists(candidate));
+  if (cli) return { command: execPath, args: [cli, ...args] };
+  return {
+    skipped: `npm's npx-cli.js is not in ${nodeDir}\\node_modules\\npm\\bin; npm install -D @bascik/language-server and rerun without --npx`,
+  };
 }
 
 export function integratedPerFileChecksCompleted(output) {
@@ -140,16 +176,18 @@ async function main() {
       );
     }
   } else if (values.npx) {
-    const npx = process.platform === "win32" ? "npx.cmd" : "npx";
     for (const target of lintTargets) {
-      const args = ["--yes", "@bascik/language-server", ...lintArgs(target)];
+      const npx = npxInvocation([
+        "--yes",
+        "@bascik/language-server",
+        ...lintArgs(target),
+      ]);
       statuses.push(
         report(
           `npx ${label(target).replace("bascik-language-server", "@bascik/language-server")}`,
-          await run(npx, args, {
-            ...options,
-            shell: process.platform === "win32",
-          }),
+          npx.skipped
+            ? { skipped: npx.skipped }
+            : await run(npx.command, npx.args, options),
         ),
       );
     }

@@ -335,6 +335,11 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     const banner = page.locator("#bascik-live-reload-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
     await expect(banner).toContainText("Live reload disconnected");
+    // A polite status message: announced without taking focus.
+    await expect(page.getByRole("status")).toContainText(
+      "Live reload disconnected",
+    );
+    await expect(banner).toHaveAttribute("aria-live", "polite");
 
     // Retries exhaust and offline message is rendered (5 retries * 1s = 5s)
     await expect(banner).toContainText(
@@ -1027,6 +1032,65 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     );
   });
 
+  test("the build-error overlay is a modal alert dialog: focus moves in, Escape closes it and returns focus, and the next error shows it again", async ({
+    page,
+  }) => {
+    await page.goto("/scope-test");
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+    // A control the visitor was using when the error arrived; focus must come back to it.
+    await page.evaluate(() => {
+      const probe = document.createElement("button");
+      probe.type = "button";
+      probe.textContent = "Focus probe";
+      probe.setAttribute("data-testid", "overlay-focus-probe");
+      document.body.append(probe);
+      probe.focus();
+    });
+    const probe = page.getByTestId("overlay-focus-probe");
+    await expect(probe).toBeFocused();
+
+    const broken = originalPageContent.replace(
+      /<body>[\s\S]*<\/body>/,
+      "<body></body>",
+    );
+    await writeFile(pagePath, broken, "utf8");
+
+    const overlay = page.getByRole("alertdialog", {
+      name: "Bascik Build Error",
+    });
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toHaveAttribute(
+      "data-testid",
+      "bascik-build-error-overlay",
+    );
+    await expect(overlay).toHaveAccessibleDescription(/body/);
+    const dismiss = overlay.getByRole("button", { name: "Dismiss" });
+    await expect(dismiss).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("bascik-build-error-overlay")).toHaveCount(0);
+    await expect(probe).toBeFocused();
+
+    // Dismissing used to leave the client holding a detached overlay, so every later error stayed invisible.
+    await writeFile(pagePath, `${broken}\n<!-- still broken -->\n`, "utf8");
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await dismiss.click();
+    await expect(page.getByTestId("bascik-build-error-overlay")).toHaveCount(0);
+    await writeFile(pagePath, `${broken}\n<!-- broken again -->\n`, "utf8");
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+
+    await writeFile(pagePath, originalPageContent, "utf8");
+    await expect(page.getByTestId("bascik-build-error-overlay")).toHaveCount(
+      0,
+      { timeout: 15000 },
+    );
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+  });
+
   test("delivers a build-error to each open tab of the affected page exactly once", async ({
     context,
   }) => {
@@ -1644,6 +1708,8 @@ export default async function () {
       // 2. The boot loading screen, while the initial transpile is held.
       expect(bootPage!.status).toBe(200);
       expect(bootPage!.html).toContain("Building site");
+      expect(bootPage!.html).toMatch(/<main class="box">/);
+      expect(bootPage!.html).toContain('<p role="status">');
       expect(bootFinished).toBe(false);
 
       // 3. Release the transpile and wait for boot to complete.

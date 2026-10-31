@@ -93,6 +93,10 @@ Same cause as the previous entry: Bascik has no allowlist of custom element name
 
 The full message is `warning: Component "nav" has the same name as a native HTML element. This may cause unexpected behavior — consider a hyphenated name like "my-nav".` Bascik prints it when the dev server starts or a build runs, and still loads the component. The VS Code extension does not flag native names; only the CLI does. A file such as `nav.html` or `div.html` then replaces every `<nav>` or `<div>` on your pages with the component, most likely breaking the site. Rename it to a hyphenated name like `site-nav.html`: a hyphen is how browsers and Bascik tell a custom element from a built-in one. The sibling warning `Component "card" is not hyphenated.` means the same thing one step earlier: custom elements need a hyphen. See [Component Naming and Hyphens](/components#component-naming-and-hyphens).
 
+### `warning: Component "stub-card" (src/components/stub-card.html) is empty`
+
+The full message ends `so every <stub-card> renders nothing until the file has markup.` Bascik prints it when the dev server starts or a build runs, for a component file that is empty or holds only whitespace, which is usually a file just created in the editor. Each usage of the tag, and whatever it wraps, is removed from the output; the rest of the page builds as usual. Add the component's markup, or delete the file if the tag belongs to a third-party web component (see [`components.external`](/configuration#componentsexternal)).
+
 ### Two component files define the same tag name
 
 The build fails with `error: two component files both define the tag <card>`, both file paths, and the note that "Component names come from the filename, so neither subfolders nor the roots listed in directory.components create separate namespaces." The tag is the filename up to its first dot, lowercased: `marketing/card.html` and `admin/card.html` are both `<card>`, and so are `card.html` and `card.v2.html`. Rename one, for example `marketing-card.html`. See [Subfolder Layout](/components#subfolder-layout).
@@ -540,7 +544,13 @@ The linter reports both shapes: `html-joined-string` for the join and `html-esca
 
 ### My page shows [object Promise] or commas between cards
 
-`[object Promise]` means an `async` value reached a plain template literal unawaited; await it (inside `html` it is an error instead). Commas between cards mean the script returned an array of `html` fragments directly, which becomes a string with `String(array)`. Return `` html`${cards}` `` instead.
+`[object Promise]` in the middle of markup means an `async` value reached a plain template literal unawaited, as in `` `<ul>${loadItems()}</ul>` ``; await it. Inside `html` the same value is an error instead, and a script that returns an array holding a Promise is refused with the message in the next entry.
+
+Commas between cards mean an array became a string with `String(array)`. A script that returns the array itself gets its items joined with no separator, so the commas come from a plain template literal around the array (`` `<ul>${cards}</ul>` ``) or a `.join(",")`. Return the array, or `` html`<ul>${cards}</ul>` ``. Releases before the return-value rule printed a returned array with commas too; update `@bascik/bascik` if a returned array still shows them.
+
+### `The server script in src/pages/shop.html:12 returned an array holding a Promise at [0], which is not markup.`
+
+A server or stream script returned a value that `String()` would print as `[object ...]`: a plain object or `Map` (`returned an object ([object Object])`), a `Response` (`returned a Response`; that belongs in an [API route](/api-routes)), a caught `Error` (`returned an Error (TypeError)`; throw it instead, so `scripts.onServerScriptError` handles it), a function, a symbol, or an array holding a Promise, which an `async` callback in `.map` makes. Return markup instead: a string, an `html` value or an array of them, and for an async `.map`, `return await Promise.all(items.map(async (item) => ...))`. In dev the message is a server script error under `scripts.onServerScriptError`; in production the slot is empty and the message is logged once per script. See [Return Values](/server-scripts#return-values).
 
 ## Dynamic routes
 
@@ -612,7 +622,7 @@ Bascik sends a comment heartbeat every 20 seconds so a corporate proxy or VPN do
 
 ### The browser rejects the dev TLS certificate
 
-With `http.tls.enabled: true` and no `keyFile`/`certFile`, Bascik generates a certificate. If `mkcert` is installed, it issues a locally trusted one (covering `localhost`, `127.0.0.1`, and `::1`) once mkcert's local CA is installed with `mkcert -install`. Otherwise Bascik falls back to an openssl self-signed certificate. It carries the SubjectAltName (SAN) entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`), which prevents a name-mismatch error, but browsers still warn because nothing trusts it. Bascik reuses an existing `bascik-privkey.pem` and `bascik-cert.pem` instead of regenerating, so after installing mkcert, delete those two files and restart to get a trusted certificate. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
+With `http.tls.enabled: true` and no `keyFile`/`certFile`, Bascik generates a certificate. If `mkcert` is installed, it issues a locally trusted one (covering `localhost`, `127.0.0.1`, and `::1`) once mkcert's local CA is installed with `mkcert -install`. Otherwise Bascik falls back to an openssl self-signed certificate. It carries the SubjectAltName (SAN) entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`), which prevents a name-mismatch error, but browsers still warn because nothing trusts it. Bascik reuses an existing `bascik-privkey.pem` and `bascik-cert.pem` instead of regenerating, so after installing mkcert, delete those two files and restart to get a trusted certificate. An expired or not-yet-valid generated certificate is the exception: the console prints `SSL: the generated certificate ... expired on ...; generating a new one.` and Bascik replaces it. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
 
 ### `could not create static-asset symlinks; copying assets instead.`
 
@@ -648,7 +658,7 @@ Point the orchestrator's readiness probe at `GET /_health`. On `SIGTERM` the ser
 
 ### Requests are missing from the logs
 
-Bascik logs static asset and page requests when the response finishes, with the HTTP status and total transfer time, so a request still in flight has no line yet. `/_health` probes are never logged. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
+Bascik logs static asset and page requests when its request handler returns, with the HTTP status and the time taken. A buffered page or asset logs as soon as its body is handed to the network, so its time does not include a slow client's download; a streamed response logs when the stream ends, so a stream still in flight has no line yet. `/_health` probes are never logged. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
 
 ## Build output and deployment
 
@@ -684,4 +694,4 @@ Bascik inlines component scripts and styles and sends no CSP header unless you s
 
 ### Cloudflare: `"node:fs" (imported by ...) is not available in the Cloudflare Workers runtime`
 
-A server script or API route imports a Node module the Workers runtime does not provide. The message lists the supported `node:*` modules; replace the import with a Web standard API or a pure JavaScript package. `authored file "..." collides with a generated control file` means a file in `src/pages/` has the same name as a file the adapter writes (such as `_routes.json`); rename it. See [Cloudflare Adapter](/deployment/cloudflare).
+A server script or API route imports a Node module the Workers runtime does not provide. The message lists the supported `node:*` modules; replace the import with a Web standard API or a pure JavaScript package. When it names a date from your `wrangler.jsonc` (`for compatibility date 2024-10-01 (wrangler.jsonc)`), the module exists from a later date on: the next line names it, so raise `compatibility_date` there (or in the `env.<name>` section it names), or add the module's flag. `authored file "..." collides with a generated control file` means a file in `src/pages/` has the same name as a file the adapter writes (such as `_routes.json`); rename it. On the Workers variant the message reads `would never be served`: the Worker answers 404 for `_routes.json` and `_worker.js` on every target. See [Cloudflare Adapter](/deployment/cloudflare).

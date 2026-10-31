@@ -9,9 +9,11 @@ The package's source files have distinct responsibilities:
 - `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
 - `create/src/agent-setup.ts`: the coding-assistant setup shared with `bascik init`: the `AGENTS.md` brief and the `CLAUDE.md` that imports it (merged into existing files), the agent skills install through the skills CLI, and the prompt helper that keeps a run without a terminal from hanging.
 - `create/src/index.ts`: the CLI entry point. Handles prompts, including the Cloudflare template and agent skills questions, and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
-- `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_skills` and `npm_config_template` variables npm sets instead.
+- `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_template`, `npm_config_skills` and `npm_config_install` variables npm sets instead (npm sets a `--no-*` flag's variable to the empty string). npm takes `--no-dev` as its own `dev` setting and sets nothing, so that flag only works after `--`.
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
+
+`validateProjectName` refuses `.`, `..`, an absolute path, spaces and empty or hidden path segments, so the project is always a new folder under the current one; its last segment names the site, and lowercased, the package. Before writing anything, `scaffold` checks the target: a file where the project folder goes, or a folder that already has one of the starter's own files (or a file where one of its folders goes), throws a `ScaffoldTargetError` naming them, which the CLI prints in one line and exits 1. AGENTS.md, CLAUDE.md and `.vscode/` are not in the way, since those are merged. Any other filesystem error is printed as `Error: could not create <name>: <reason>`.
 
 ## What the CLI generates
 
@@ -20,7 +22,7 @@ Running `npx create-bascik <name>` writes this structure:
 ```text
 <name>/
   package.json
-  vite.config.js
+  vite.config.ts
   .gitignore
   .vscode/
     launch.json
@@ -68,9 +70,9 @@ Running `npx create-bascik <name>` writes this structure:
         contact-form.test.ts
 ```
 
-The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `vite.config.js` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
+The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `vite.config.ts` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
 
-After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one.
+After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one. The dev server question is skipped when the install is, and `npm run dev` runs only when `npm install` exits 0; otherwise the CLI prints the next steps, `npm install` included.
 
 ## Agent skills
 

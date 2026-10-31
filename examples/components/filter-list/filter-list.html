@@ -14,6 +14,11 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
     gap: 0.25rem;
   }
 
+  /* An author display value beats the hidden attribute, so restate it: without JavaScript the box stays hidden. */
+  .controls[hidden] {
+    display: none;
+  }
+
   .input {
     padding: 0.5rem 0.75rem;
     border: 1px solid
@@ -45,13 +50,25 @@ A list with a live text filter. Pass <li> items in the default slot. Without Jav
     font-size: 0.875em;
   }
 </style>
-<div class="filter-list">
-  <div class="controls" id="controls" hidden>
+<div class="filter-list" data-testid="filter-list">
+  <!-- <search> is the element HTML defines for filtering controls; the results stay outside it. -->
+  <search
+    class="controls"
+    id="controls"
+    data-testid="filter-list-search"
+    hidden
+  >
     <label for="query" data-bascik-prop-label>Filter</label>
-    <input class="input" id="query" type="search" autocomplete="off" />
+    <input
+      class="input"
+      id="query"
+      type="search"
+      autocomplete="off"
+      data-testid="filter-list-query"
+    />
     <p class="count" id="count" aria-live="polite"></p>
-  </div>
-  <ul class="items" id="items">
+  </search>
+  <ul class="items" id="items" data-testid="filter-list-items">
     <li data-bascik-slot></li>
   </ul>
 </div>

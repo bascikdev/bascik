@@ -111,4 +111,74 @@ describe("articleSchema", () => {
     expect(result).toContain('"description": "Single quote description."');
     expect(result).toContain('"url": "https://bascik.dev/topic"');
   });
+
+  async function schemaDescription(metaTag: string): Promise<unknown> {
+    const pageFile = join(tempDir, "topic.html");
+    await writeFile(
+      pageFile,
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>Topic Page</title>
+  ${metaTag}
+</head>
+<body></body>
+</html>`,
+    );
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
+    const result = await articleSchema();
+    const json =
+      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(result);
+    return json ? JSON.parse(json[1]).description : undefined;
+  }
+
+  it("keeps an apostrophe inside a double-quoted description", async () => {
+    expect(
+      await schemaDescription(
+        `<meta name="description" content="Bascik's build tool compiles components." />`,
+      ),
+    ).toBe("Bascik's build tool compiles components.");
+  });
+
+  it("keeps a double quote inside a single-quoted description, in either attribute order", async () => {
+    expect(
+      await schemaDescription(
+        `<meta content='Say "frothy" milk.' name='description' />`,
+      ),
+    ).toBe('Say "frothy" milk.');
+  });
+
+  it("decodes entities written in the description, so the schema says what the page says", async () => {
+    expect(
+      await schemaDescription(
+        `<meta name="description" content="Milk &amp; foam: Bascik&#39;s frother." />`,
+      ),
+    ).toBe("Milk & foam: Bascik's frother.");
+  });
+
+  it("decodes an entity in the title for the headline", async () => {
+    const pageFile = join(tempDir, "topic.html");
+    await writeFile(
+      pageFile,
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>Benchmarking &amp; Profiling - Bascik Docs</title>
+  <meta name="description" content="Measure the frother build." />
+</head>
+<body></body>
+</html>`,
+    );
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
+    const result = await articleSchema();
+    const json =
+      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(result);
+    expect(JSON.parse(json![1]).headline).toBe(
+      "Benchmarking & Profiling - Bascik Docs",
+    );
+  });
 });

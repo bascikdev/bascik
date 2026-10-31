@@ -2,12 +2,16 @@ name: Release
 
 # The tag must be <prefix><version in that package's package.json>.
 # Prerelease versions (1.0.0-rc.1) publish under the matching dist-tag (rc), not latest.
-# pkg:      git tag v1.0.0-rc.1 && git push --tags
-# create:   git tag create-v1.0.0-rc.1 && git push --tags
-# adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 && git push --tags
-# lsp:      git tag lsp-v0.1.0-rc.1 && git push --tags
-# ext:      git tag ext-v0.2.0 && git push --tags            (Marketplace stable, even minor)
-#           git tag ext-pre-v0.1.0 && git push --tags        (Marketplace pre-release, odd minor)
+# Push each tag by name, never with --tags, and in the publish order in RELEASING.md.
+# Tag only commits on main: every job fails before building when the tagged commit is not an ancestor of
+# origin/main (.github/scripts/release-on-main.mjs), so a tag on an unmerged branch publishes nothing.
+# Run `git fetch origin main` first; each example tags origin/main, not the current checkout.
+# pkg:      git tag v1.0.0-rc.1 origin/main && git push origin v1.0.0-rc.1
+# create:   git tag create-v1.0.0-rc.1 origin/main && git push origin create-v1.0.0-rc.1
+# adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 origin/main && git push origin adapter-cloudflare-v1.0.0-rc.1
+# lsp:      git tag lsp-v0.1.0-rc.1 origin/main && git push origin lsp-v0.1.0-rc.1
+# ext:      git tag ext-v0.2.0 origin/main && git push origin ext-v0.2.0            (Marketplace stable, even minor)
+#           git tag ext-pre-v0.1.0 origin/main && git push origin ext-pre-v0.1.0    (Marketplace pre-release, odd minor)
 on:
   push:
     tags:
@@ -28,7 +32,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -64,7 +75,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -105,7 +123,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -141,7 +166,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -179,7 +211,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable

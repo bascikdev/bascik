@@ -423,6 +423,27 @@ describe("dispatchApiHandler", () => {
     expect(res.headers.has("connection")).toBe(false);
   });
 
+  it("misuse: an export named after a method outside the allowlist is never dispatched; the request is a 405 with the route's Allow (F086)", async () => {
+    const PURGE = vi.fn(async () => new Response("purged"));
+    // A helper whose name merely looks like a method.
+    const SEARCH = vi.fn((q: unknown) => String(q));
+    const onError = vi.fn();
+    const custom = { GET: mod.GET, PURGE, SEARCH, QUERY: "not a function" };
+    for (const method of ["PURGE", "SEARCH", "purge", "QUERY", "REPORT"]) {
+      const res = await dispatchApiHandler(
+        custom,
+        new Request("http://x/api/u/7", { method }),
+        ctx,
+        { onError },
+      );
+      expect(res.status, method).toBe(405);
+      expect(res.headers.get("allow"), method).toBe("GET, HEAD, OPTIONS");
+    }
+    expect(PURGE).not.toHaveBeenCalled();
+    expect(SEARCH).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("auto-OPTIONS is 204 with Allow and no CORS", async () => {
     const res = await dispatchApiHandler(
       mod,
@@ -443,6 +464,60 @@ describe("dispatchApiHandler", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.body).toBeNull();
+  });
+
+  it("derived HEAD cancels the GET handler's body, so a streamed upstream is released (F088)", async () => {
+    const cancel = vi.fn();
+    let pulls = 0;
+    const streaming = {
+      GET: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              pulls++;
+              controller.enqueue(new TextEncoder().encode("chunk"));
+            },
+            cancel,
+          }),
+          { headers: { "content-type": "text/plain" } },
+        ),
+    };
+    const res = await dispatchApiHandler(
+      streaming,
+      new Request("http://x/api/u/7", { method: "HEAD" }),
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toBeNull();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(pulls).toBeLessThanOrEqual(1);
+  });
+
+  it("misuse: derived HEAD over a GET body whose cancel() throws still answers with the headers", async () => {
+    const onError = vi.fn();
+    const failing = {
+      GET: async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              throw new Error("cancel failed");
+            },
+          }),
+          { status: 203 },
+        ),
+    };
+    const res = await dispatchApiHandler(
+      failing,
+      new Request("http://x/api/u/7", { method: "HEAD" }),
+      ctx,
+      { onError },
+    );
+    expect(res.status).toBe(203);
+    expect(res.body).toBeNull();
+    // A rejected cancel() is swallowed: no unhandled rejection, no log.
+    await tick();
+    await tick();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("passes params and the request through and preserves multiple Set-Cookie", async () => {

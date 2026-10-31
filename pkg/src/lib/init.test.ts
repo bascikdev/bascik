@@ -110,7 +110,7 @@ describe("initProject", () => {
     expect(pkgWrite).toBeDefined();
     const parsed = JSON.parse(pkgWrite!);
     expect(parsed.type).toBe("module");
-    expect(parsed.dependencies["@bascik/bascik"]).toBe("latest");
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.2.3");
     expect(parsed.scripts.dev).toBe("bascik");
     expect(parsed.scripts.build).toBe("bascik --build");
   });
@@ -144,7 +144,7 @@ describe("initProject", () => {
     const parsed = JSON.parse(pkgWrite!);
     expect(parsed.scripts.dev).toBe("bascik"); // untouched
     expect(parsed.scripts.build).toBe("bascik --build"); // added
-    expect(parsed.dependencies["@bascik/bascik"]).toBe("latest");
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.2.3");
   });
 
   it("refuses to overwrite package type commonjs", async () => {
@@ -152,11 +152,93 @@ describe("initProject", () => {
     await expect(init()).rejects.toThrow("init aborted");
   });
 
+  // The abort message says nothing happened, so nothing may have happened:
+  // package.json is checked before any folder or file is created.
+  it("misuse: a commonjs project is refused before any folder or file is written", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    await expect(init()).rejects.toThrow("init aborted");
+    expect(mockMkdir).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(mockInstall).not.toHaveBeenCalled();
+  });
+
+  it("pins @bascik/bascik to a caret range on the running version, not the latest dist-tag", async () => {
+    await init({ version: "1.0.0-rc.10" });
+    const parsed = JSON.parse(writtenTo("package.json")!);
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.10");
+  });
+
+  it("falls back to the latest dist-tag only when the running version is unknown", async () => {
+    await init({ version: "unknown" });
+    const parsed = JSON.parse(writtenTo("package.json")!);
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("latest");
+  });
+
+  it("misuse: does not add a second @bascik/bascik when it is already a devDependency", async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        name: "my-app",
+        devDependencies: { "@bascik/bascik": "^1.0.0-rc.9" },
+      }),
+    );
+    await init();
+    const parsed = JSON.parse(writtenTo("package.json")!);
+    expect(parsed.dependencies?.["@bascik/bascik"]).toBeUndefined();
+    expect(parsed.devDependencies["@bascik/bascik"]).toBe("^1.0.0-rc.9");
+  });
+
+  it("ignores the TLS key and certificate Bascik generates in the project folder", async () => {
+    await init();
+    const lines = writtenTo(".gitignore")!.split("\n");
+    expect(lines).toContain("bascik-privkey.pem");
+    expect(lines).toContain("bascik-cert.pem");
+  });
+
+  it("keeps a CRLF .gitignore CRLF, appending only the missing lines", async () => {
+    const original = "node_modules/\r\ndist/\r\n.env\r\n";
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      String(path).endsWith(".gitignore") ? original : '{"name":"my-app"}',
+    );
+    await init();
+    const gitignore = writtenTo(".gitignore")!;
+    expect(gitignore.startsWith(original)).toBe(true);
+    expect(gitignore.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(gitignore.slice(original.length).split("\r\n")).toEqual([
+      "node_modules/.cache/bascik/",
+      "bascik-privkey.pem",
+      "bascik-cert.pem",
+      "",
+    ]);
+  });
+
+  it("misuse: a CRLF .gitignore without a final newline gets one before the new lines", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      String(path).endsWith(".gitignore")
+        ? "node_modules/\r\n.env"
+        : '{"name":"my-app"}',
+    );
+    await init();
+    expect(writtenTo(".gitignore")!).toMatch(
+      /^node_modules\/\r\n\.env\r\ndist\/\r\n/,
+    );
+  });
+
+  it("leaves .gitignore alone when every entry is already there", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      String(path).endsWith(".gitignore")
+        ? "dist/\nnode_modules/.cache/bascik/\nbascik-privkey.pem\nbascik-cert.pem\n"
+        : '{"name":"my-app"}',
+    );
+    await init();
+    expect(writtenTo(".gitignore")).toBeUndefined();
+  });
+
   it("appends .gitignore entries without clobbering existing content", async () => {
-    // access(index) throws, .gitignore read succeeds.
-    mockReadFile
-      .mockResolvedValueOnce("node_modules/\n")
-      .mockResolvedValueOnce('{"name":"my-app"}');
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      String(path).endsWith(".gitignore")
+        ? "node_modules/\n"
+        : '{"name":"my-app"}',
+    );
 
     await init();
 

@@ -6,7 +6,7 @@
  *   - CSS @scope inner rules are scoped
  *   - @scope "to" clause excludes elements inside the boundary element
  *   - Pass 4: descendant element selectors (.card p, .list > li, .article > h2)
- *     are scoped by injecting bascik__...__el__<tag> onto matching HTML elements
+ *     are scoped by injecting b_el_<component>_<tag> onto matching HTML elements
  *   - Both instances render correctly (instance isolation)
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
@@ -75,7 +75,7 @@ test.describe("new-selectors-test page", () => {
     page,
   }) => {
     const li = inst(page, 0)
-      .locator(".bascik__new-selectors__list > .bascik__new-selectors__el__li")
+      .locator(".bascik__new-selectors__list > .b_el_new-selectors_li")
       .first();
     const color = await li.evaluate((el) => getComputedStyle(el).color);
     expect(color).toBe("rgb(167, 139, 250)");
@@ -83,7 +83,7 @@ test.describe("new-selectors-test page", () => {
 
   test("Pass 4: h2 inside .article has yellow color", async ({ page }) => {
     const h2 = inst(page, 0).locator(
-      ".bascik__new-selectors__article > .bascik__new-selectors__el__h2",
+      ".bascik__new-selectors__article > .b_el_new-selectors_h2",
     );
     const color = await h2.evaluate((el) => getComputedStyle(el).color);
     expect(color).toBe("rgb(251, 191, 36)");

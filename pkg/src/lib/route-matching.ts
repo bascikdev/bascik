@@ -243,6 +243,9 @@ export const normalizeApiRouteDefinition = (
 
 /** Decode one raw path segment exactly once; `null` on malformed percent-encoding. */
 const decodeSegmentOnce = (segment: string): string | null => {
+  // Without a `%` there is nothing to decode (decodeURIComponent returns it
+  // unchanged), and most request segments have none.
+  if (!segment.includes("%")) return segment;
   try {
     return decodeURIComponent(segment);
   } catch {
@@ -316,46 +319,47 @@ const matchCatchAll = (
   return { params };
 };
 
-/** Exact and `[param]` matching against decoded path segments. Dynamic params decode once from raw segments. */
+/**
+ * Exact and `[param]` matching. An exact (static) route matches the decoded
+ * path segments, as hosts always have. A `[param]` route matches the raw
+ * request segments instead (doubled slashes collapse, as on the decoded
+ * path): each is decoded exactly once, so an encoded `%2F` can never forge a
+ * segment boundary and `100%2520` stays `100%20`. A structural match whose
+ * `[param]` value is unsafe (an encoded `/` or `\`, a dot segment, a control
+ * character) yields `{ invalid }`, so precedence is decided before the
+ * request is rejected, as for catch-all routes.
+ */
 const matchExactOrParam = (
   route: ApiRouteDefinition,
   routeSegments: string[],
   pathSegments: string[],
   rawNonEmptySegments: string[],
-): Record<string, string> | null => {
-  if (pathSegments.length !== routeSegments.length) return null;
-
+): CatchAllOutcome => {
   if (!route.isDynamic) {
-    return routeSegments.every((seg, i) => seg === pathSegments[i]) ? {} : null;
+    if (pathSegments.length !== routeSegments.length) return null;
+    return routeSegments.every((seg, i) => seg === pathSegments[i])
+      ? { params: {} }
+      : null;
   }
 
-  // When rawNonEmptySegments aligns with pathSegments (i.e. every non-empty raw segment
-  // corresponds to the non-empty decoded segment), extract from raw segment to decode once.
-  // Otherwise fall back to the decoded path segment.
-  const rawAligned = rawNonEmptySegments.length === pathSegments.length;
-
+  if (rawNonEmptySegments.length !== routeSegments.length) return null;
   const params: Record<string, string> = {};
+  let invalid: InvalidApiPathError | undefined;
   for (let i = 0; i < routeSegments.length; i++) {
     const rSeg = routeSegments[i];
-    const pSeg = pathSegments[i];
-
+    const decoded = decodeSegmentOnce(rawNonEmptySegments[i]);
     if (rSeg.startsWith("[") && rSeg.endsWith("]")) {
-      const paramName = rSeg.slice(1, -1);
-      if (rawAligned) {
-        const rawSeg = rawNonEmptySegments[i];
-        params[paramName] = decodeSegmentOnce(rawSeg) ?? rawSeg;
-      } else {
-        try {
-          params[paramName] = decodeURIComponent(pSeg);
-        } catch {
-          params[paramName] = pSeg;
-        }
-      }
-    } else if (rSeg !== pSeg) {
+      // Malformed encoding keeps the raw text, as it always has (hosts
+      // answer 400 for it before matching).
+      const reason = decoded === null ? null : unsafeDecodedSegment(decoded);
+      if (reason)
+        invalid ??= new InvalidApiPathError(`Invalid API path: ${reason}`);
+      else params[rSeg.slice(1, -1)] = decoded ?? rawNonEmptySegments[i];
+    } else if (decoded !== rSeg) {
       return null;
     }
   }
-  return params;
+  return invalid ? { invalid } : { params };
 };
 
 /**
@@ -370,9 +374,9 @@ const matchExactOrParam = (
  * `100%2520` are not decoded twice into spaces.
  *
  * Of all matching routes the most specific wins regardless of array order.
- * Throws `InvalidApiPathError` when the winner is a catch-all whose capture is
- * unsafe (malformed encoding, encoded separator, dot or empty segment, control
- * character).
+ * Throws `InvalidApiPathError` when the winner is a `[param]` or catch-all
+ * route whose capture is unsafe (malformed encoding, encoded separator, dot
+ * or empty segment, control character).
  */
 export const matchApiRoute = <R extends ApiRouteDefinition>(
   routes: R[],
@@ -410,14 +414,12 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
     if (catchAllName !== null) {
       outcome = matchCatchAll(routeSegments, catchAllName, rawSegments);
     } else {
-      const rawNonEmptySegments = rawSegments.filter(Boolean);
-      const params = matchExactOrParam(
+      outcome = matchExactOrParam(
         route,
         routeSegments,
         pathSegments,
-        rawNonEmptySegments,
+        rawSegments.filter(Boolean),
       );
-      outcome = params ? { params } : null;
     }
 
     if (
@@ -507,13 +509,24 @@ export const WELL_KNOWN_SEGMENT = ".well-known";
  * well-known directory; a path outside the base uses the root rule and is
  * rejected by base matching anyway.
  */
+/**
+ * Segment boundaries for the private-path rules: `/`, and `\` because
+ * Windows `path.resolve` treats a backslash as a separator, so `/a\.env`
+ * opens `dist\a\.env` there. Treating it as a boundary everywhere keeps the
+ * rule the same on every platform (a POSIX file name with a backslash before
+ * a dot is refused too, which is the safe side).
+ */
+const PATH_SEGMENT_SEPARATOR = /[/\\]/;
+
 export const hasHiddenSegment = (pathname: string, base = "/"): boolean => {
   let path = pathname;
   if (base !== "/" && base.length > 1) {
     const prefix = base.endsWith("/") ? base : `${base}/`;
     if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
   }
-  const segments = path.split("/").filter((segment) => segment.length > 0);
+  const segments = path
+    .split(PATH_SEGMENT_SEPARATOR)
+    .filter((segment) => segment.length > 0);
   return segments.some(
     (segment, index) =>
       segment.startsWith(".") &&
@@ -540,7 +553,9 @@ export const isPrivatePathname = (
     const prefix = base.endsWith("/") ? base : `${base}/`;
     if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
   }
-  const first = path.split("/").find((segment) => segment.length > 0);
+  const first = path
+    .split(PATH_SEGMENT_SEPARATOR)
+    .find((segment) => segment.length > 0);
   return first !== undefined && isBascikFolderName(first);
 };
 

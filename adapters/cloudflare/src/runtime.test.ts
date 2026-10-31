@@ -7,7 +7,7 @@
  * binding, a route module that fails to load, a wrong method, a script that
  * fails before a stream commits, and the static 404 page under its own URLs.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createCloudflareWorker,
   stripBase,
@@ -228,6 +228,23 @@ describe("createCloudflareWorker: API routes", () => {
     ...extra,
   });
 
+  it("returns a WebSocket upgrade (status 101 or a webSocket) as the handler made it", async () => {
+    // Node's Response refuses 101; the Workers one takes it with a socket.
+    const upgrade = new Response(null);
+    Object.defineProperty(upgrade, "status", { value: 101 });
+    const socketed = Object.assign(new Response(null), { webSocket: {} });
+    const w = worker(
+      graphOf({
+        apiRoutes: [
+          route("/api/live", async () => ({ GET: () => upgrade })),
+          route("/api/socket", async () => ({ GET: () => socketed })),
+        ],
+      }),
+    );
+    expect(await w.fetch(get("/api/live"), {}, ctx())).toBe(upgrade);
+    expect(await w.fetch(get("/api/socket"), {}, ctx())).toBe(socketed);
+  });
+
   it("passes params, the platform (env, waitUntil) and the trusted client IP to the handler; never X-Forwarded-For", async () => {
     const seen: unknown[] = [];
     const waits = ctx();
@@ -277,6 +294,43 @@ describe("createCloudflareWorker: API routes", () => {
     expect(res.headers.get("strict-transport-security")).toMatch(/max-age=/);
     expect(seen).toEqual([{ id: "42" }, "203.0.113.7", "cloudflare", env]);
     expect(waits.waited).toHaveLength(1);
+  });
+
+  it("HEAD releases the handler's streamed body, derived from GET or exported, instead of leaving it open (F088)", async () => {
+    const cancels: string[] = [];
+    const streamed = (label: string) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode(label));
+          },
+          cancel: () => {
+            cancels.push(label);
+          },
+        }),
+        { headers: { "x-k": label } },
+      );
+    const w = worker(
+      graphOf({
+        apiRoutes: [
+          route("/api/derived", async () => ({
+            GET: () => streamed("derived"),
+          })),
+          route("/api/explicit", async () => ({
+            GET: () => streamed("get"),
+            HEAD: () => streamed("explicit"),
+          })),
+        ],
+      }),
+    );
+    for (const path of ["/api/derived", "/api/explicit"]) {
+      const head = await w.fetch(get(path, { method: "HEAD" }), {}, ctx());
+      expect(head.status, path).toBe(200);
+      expect(await head.text(), path).toBe("");
+    }
+    await vi.waitFor(() =>
+      expect(cancels.sort()).toEqual(["derived", "explicit"]),
+    );
   });
 
   it("HEAD derives from GET with no body; a method the module lacks is a 405 naming the allowed ones", async () => {
@@ -458,6 +512,112 @@ describe("createCloudflareWorker: dynamic pages", () => {
     );
   });
 
+  describe("return values (prompt 158 R3-04, F060), as on Node", () => {
+    it("an array is joined with no separator, nested arrays flattened and null holes empty", async () => {
+      const brand = Object.freeze({
+        [Symbol.for("bascik.html")]: "<li>html</li>",
+      });
+      const res = await worker(
+        graphOf({
+          pages: {
+            "/list": page("/list", () => [
+              ["<li>Milk frother</li>", null],
+              brand,
+              undefined,
+              ["<li>Kettle</li>"],
+            ]),
+          },
+        }),
+      ).fetch(get("/list"), {}, ctx());
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(
+        "<main><li>Milk frother</li><li>html</li><li>Kettle</li></main>",
+      );
+    });
+
+    for (const policy of ["error", "warn"] as const) {
+      it(`misuse: under "${policy}" an object, a Response or an async .map is an empty slot, never a 500 or [object ...], logged once per script with its owner`, async () => {
+        for (const [handler, received] of [
+          [
+            () => ({ name: "Milk frother" }),
+            "returned an object ([object Object])",
+          ],
+          [() => new Response("<p>x</p>"), "returned a Response"],
+          [
+            () => ["a"].map(async (x) => x),
+            "returned an array holding a Promise at [0]",
+          ],
+        ] as const) {
+          const logged: string[] = [];
+          const scripted = page("/account", handler);
+          scripted.jobs.server_script_a!.owner =
+            "server script in src/pages/account.html:4";
+          const w = worker(
+            graphOf({
+              onServerScriptError: policy,
+              pages: { "/account": scripted },
+            }),
+            logged,
+          );
+          for (let i = 0; i < 3; i++) {
+            const res = await w.fetch(get(`/account?i=${i}`), {}, ctx());
+            expect(res.status).toBe(200);
+            const body = await res.text();
+            expect(body).toBe("<main></main>");
+          }
+          expect(logged).toHaveLength(1);
+          expect(logged[0]).toMatch(
+            /^\[bascik\] server script error at "\/account":\n/,
+          );
+          expect(logged[0]).toContain(
+            `The server script in src/pages/account.html:4 ${received}`,
+          );
+          expect(logged[0]).toContain("The slot is empty");
+        }
+      });
+    }
+
+    it('misuse: a returned object whose own toString throws fails like a throw from the script: logged and empty under "warn", the 500 page under "error"', async () => {
+      const handler = () => ({
+        toString() {
+          throw new Error("toString SECRET_DETAIL");
+        },
+      });
+      const logged: string[] = [];
+      const warned = await worker(
+        graphOf({
+          onServerScriptError: "warn",
+          pages: { "/account": page("/account", handler) },
+        }),
+        logged,
+      ).fetch(get("/account"), {}, ctx());
+      expect(warned.status).toBe(200);
+      expect(await warned.text()).toBe("<main></main>");
+      expect(logged.join("\n")).toMatch(
+        /server script error at "\/account"[\s\S]*toString SECRET_DETAIL/,
+      );
+      const failed = await worker(
+        graphOf({ pages: { "/account": page("/account", handler) } }),
+      ).fetch(get("/account"), {}, ctx());
+      expect(failed.status).toBe(500);
+      expect(await failed.text()).not.toContain("SECRET_DETAIL");
+    });
+
+    it('misuse: under "ignore" a refused return is an empty slot and logs nothing', async () => {
+      const logged: string[] = [];
+      const res = await worker(
+        graphOf({
+          onServerScriptError: "ignore",
+          pages: { "/account": page("/account", () => Symbol("x")) },
+        }),
+        logged,
+      ).fetch(get("/account"), {}, ctx());
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("<main></main>");
+      expect(logged).toEqual([]);
+    });
+  });
+
   describe("streamed pages", () => {
     const streamed = (serverHandler: unknown): GraphPage => ({
       path: "/live",
@@ -498,6 +658,26 @@ describe("createCloudflareWorker: dynamic pages", () => {
         String("<p>early|late</p>".length),
       );
       expect(await res.text()).toBe("");
+    });
+
+    it("misuse: a stream script that returns a function is an empty slot after commit, logged once", async () => {
+      const logged: string[] = [];
+      const live = streamed(() => "early");
+      live.jobs.stream_script_b = job(
+        "stream_script_b",
+        () => () => "never called",
+        "stream",
+      );
+      const w = worker(graphOf({ pages: { "/live": live } }), logged);
+      for (let i = 0; i < 2; i++) {
+        const waits = ctx();
+        const res = await w.fetch(get("/live"), {}, waits);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("<p>early|</p>");
+        await Promise.all(waits.waited);
+      }
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain("The stream script returned a function");
     });
 
     it("misuse: a server script failing before the stream commits is the generic 500 page and a log line", async () => {
@@ -589,6 +769,23 @@ describe("createCloudflareWorker: a static 404.html under its own URLs", () => {
     );
     expect(res.status).toBe(404);
     expect(await res.text()).toBe("<h1>Not here</h1>");
+  });
+
+  it("when the canonical URL misses (html_handling none), the page is fetched by its file name", async () => {
+    const { env, requests } = assets((request) =>
+      new URL(request.url).pathname.endsWith(".html")
+        ? new Response("<h1>Not here</h1>")
+        : new Response("", { status: 404 }),
+    );
+    const res = await worker(
+      graphOf({ base: "/shop/", staticNotFoundPage: true }),
+    ).fetch(get("/shop/404/"), env, ctx());
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("<h1>Not here</h1>");
+    expect(requests.map((r) => r.url)).toEqual([
+      "https://example.test/shop/404",
+      "https://example.test/shop/404.html",
+    ]);
   });
 
   it("without staticNotFoundPage, /404 is forwarded as any other asset", async () => {
@@ -684,6 +881,42 @@ describe("createCloudflareWorker: run_worker_first sends the static files' heade
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("x-frame-options")).toBeNull();
     expect(res.headers.get("strict-transport-security")).toBeNull();
+  });
+
+  it("a miss the asset layer answers with a 404 page carries that page's policy, under the base too", async () => {
+    const notFound = (overrides: Partial<SiteGraph> = {}) =>
+      workerFirst({
+        assetHeaders: { cspRoutes: ["/", "/404", "/docs/404"] },
+        contentSecurityPolicy: {
+          policy,
+          hashes: {
+            "/404": { scripts: [], styles: ["sha256-NF"] },
+            "/docs/404": { scripts: [], styles: ["sha256-DOCSNF"] },
+          },
+        },
+        ...overrides,
+      });
+    const { env } = assets(() => new Response("lost", { status: 404 }));
+    const csp = async (path: string, graph = notFound()) =>
+      (await graph.fetch(get(path), env, ctx())).headers.get(
+        "content-security-policy",
+      );
+    expect(await csp("/nope")).toBe("style-src 'self' 'sha256-NF'");
+    expect(await csp("/docs/a/b")).toBe("style-src 'self' 'sha256-DOCSNF'");
+    expect(await csp("/shop/docs/x", notFound({ base: "/shop/" }))).toBe(
+      "style-src 'self' 'sha256-DOCSNF'",
+    );
+  });
+
+  it("misuse: a 404 with no static 404 page listed, or a 200 at an unlisted URL, gets no policy", async () => {
+    const { env: missEnv } = assets(() => new Response("", { status: 404 }));
+    const miss = await workerFirst().fetch(get("/nope"), missEnv, ctx());
+    expect(miss.headers.get("content-security-policy")).toBeNull();
+    const { env: okEnv } = assets(() => new Response("x", { status: 200 }));
+    const ok = await workerFirst({
+      assetHeaders: { cspRoutes: ["/404"] },
+    }).fetch(get("/logo.txt"), okEnv, ctx());
+    expect(ok.headers.get("content-security-policy")).toBeNull();
   });
 
   it("applies to the static 404 page it fetches too", async () => {

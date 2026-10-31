@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { executeRoutesScript } from "./routes.ts";
@@ -336,6 +336,69 @@ describe("executeRoutesScript", () => {
     warnSpy.mockRestore();
   });
 
+  it("reports an unreadable src= as the located routes script error, without running an empty module", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockReadFile.mockRejectedValueOnce(new Error("ENOENT: no such file"));
+    try {
+      await expect(
+        executeRoutesScript(
+          `<script data-bascik-routes src="./missing-routes.ts"></script>`,
+          "src/pages/blog/[slug].html",
+        ),
+      ).rejects.toThrow(
+        /routes script error in "src\/pages\/blog\/\[slug\]\.html" at \(line 1, column 1\):\nCannot read routes script src "\.\/missing-routes\.ts" \(src\/pages\/blog\/missing-routes\.ts\): ENOENT/,
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("rejects a routes tag with both src= and an inline body, naming both", async () => {
+    await expect(
+      executeRoutesScript(
+        `<script data-bascik-routes src="./routes.ts">export default () => [];</script>`,
+        "src/pages/blog/[slug].html",
+      ),
+    ).rejects.toThrow(
+      /<script> tag has both src="\.\/routes\.ts" and an inline body in "src\/pages\/blog\/\[slug\]\.html" at \(line 1, column 1\)\. A script with src= runs only that file/,
+    );
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("returns no routes and logs nothing when onRoutesScriptError is 'ignore'", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    (BascikConfig as any).scripts = { onRoutesScriptError: "ignore" };
+    try {
+      mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+      expect(
+        (
+          await executeRoutesScript(
+            `<script data-bascik-routes src="./missing-routes.ts"></script>`,
+            "src/pages/blog/[slug].html",
+          )
+        ).routes,
+      ).toEqual([]);
+      resolveWith("Invalid String Output");
+      expect(
+        (
+          await executeRoutesScript(
+            `<script data-bascik-routes>export default () => 'not array';</script>`,
+            "src/pages/blog/[slug].html",
+          )
+        ).routes,
+      ).toEqual([]);
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("supports unquoted src attribute in routes script tag", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));
@@ -389,6 +452,85 @@ describe("executeRoutesScript", () => {
       '[bascik] warning: Failed to read routes script src "%s":',
       "./spaced-unquoted-routes.ts",
       expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+});
+
+// F048: folders above directory.pages are not part of any route. A bracket or
+// a `components` folder in the project's own location must not turn every
+// page into a template (or a component).
+describe("executeRoutesScript: brackets in folders above directory.pages", () => {
+  const projectRoot = "/Users/me/Projects [2026]/[client]/site";
+  const pagesRoot = `${projectRoot}/src/pages`;
+  let savedDirectory: unknown;
+
+  beforeEach(() => {
+    savedDirectory = (BascikConfig as any).directory;
+    (BascikConfig as any).directory = {
+      pages: pagesRoot,
+      components: [`${projectRoot}/src/components`],
+      out: `${projectRoot}/dist`,
+    };
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).directory = savedDirectory;
+  });
+
+  it("treats a plain page as static, with no bracket warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const html = "<p>About</p>";
+    const result = await executeRoutesScript(html, `${pagesRoot}/about.html`);
+    expect(result.routes).toBeNull();
+    expect(result.cleanedHtml).toBe(html);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("asks a real template only for the params in its own name", async () => {
+    const routesData = [{ params: { slug: "hello" } }];
+    resolveWith(routesData);
+    const html = `<script data-bascik-routes>export default () => [{ params: { slug: "hello" } }];</script><p>Post</p>`;
+    const result = await executeRoutesScript(
+      html,
+      `${pagesRoot}/blog/[slug].html`,
+    );
+    expect(result.routes).toEqual(routesData);
+  });
+
+  it("still warns, naming the page, when a routes tag sits in a page with no bracket of its own", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const html = `<script data-bascik-routes>export default () => []</script><p>About</p>`;
+    const result = await executeRoutesScript(html, `${pagesRoot}/about.html`);
+    expect(result.routes).toBeNull();
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '"pages/about.html" which has no bracket parameters',
+      ),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not mistake a page for a component when the project sits in a folder named components", async () => {
+    const root = "/Users/me/components/site";
+    (BascikConfig as any).directory = {
+      pages: `${root}/src/pages`,
+      components: [`${root}/src/components`],
+      out: `${root}/dist`,
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const routesData = [{ params: { slug: "hello" } }];
+    resolveWith(routesData);
+    const html = `<script data-bascik-routes>export default () => [{ params: { slug: "hello" } }];</script><p>Post</p>`;
+    const result = await executeRoutesScript(
+      html,
+      `${root}/src/pages/blog/[slug].html`,
+    );
+    expect(result.routes).toEqual(routesData);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("inside a component"),
     );
     warnSpy.mockRestore();
   });

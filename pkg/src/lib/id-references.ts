@@ -1,5 +1,6 @@
 import { maskCssSyntax } from "./css-tokenizer.ts";
 import { replaceSpans, scanOpeningTags } from "./element-content-scan.ts";
+import { scanWholeAttributes } from "./component-attribute-scan.ts";
 
 /**
  * `html.replace(/<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g, replace)`
@@ -58,19 +59,46 @@ export const collectDeclaredIds = (html: string): Set<string> => {
   // The opening tags `/<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g`
   // finds, in linear time.
   for (const [tagStart, tagEnd] of scanOpeningTags(shieldedHtml)) {
-    const idMatch = shieldedHtml
-      .slice(tagStart, tagEnd)
-      .match(
-        /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/i,
-      );
-    const rawUnquoted = idMatch?.[3];
-    const unquoted = rawUnquoted?.endsWith("/")
-      ? rawUnquoted.slice(0, -1)
-      : rawUnquoted;
-    const id = idMatch?.[1] ?? idMatch?.[2] ?? unquoted;
+    const id = readAttributeValue(
+      shieldedHtml.slice(tagStart, tagEnd),
+      "id",
+    )?.value;
     if (id) declaredIds.add(id);
   }
   return declaredIds;
+};
+
+/**
+ * The value of the first attribute named `attribute` (any case) in one
+ * opening tag, read as the browser's tokenizer reads it
+ * (component-attribute-scan): a quoted value ends at its closing quote, an
+ * unquoted one at whitespace or `>`, and text that only looks like an
+ * attribute inside another attribute's quoted value is never read. One rule
+ * of Bascik's own: an unquoted value's final `/` (`id=x/>`) is left out,
+ * since its author meant a self-closing tag; declared ids and references
+ * read it the same way.
+ */
+const readAttributeValue = (
+  tag: string,
+  attribute: string,
+):
+  | { value: string; quoted: boolean; start: number; end: number }
+  | undefined => {
+  const name = attribute.toLowerCase();
+  const found = scanWholeAttributes(tag).find(
+    (scanned) => scanned.name.toLowerCase() === name,
+  );
+  if (found === undefined || found.valueStart < 0) return undefined;
+  const before = tag[found.valueStart - 1];
+  const quoted = before === '"' || before === "'";
+  let end = found.valueEnd;
+  if (!quoted && end - found.valueStart > 1 && tag[end - 1] === "/") end--;
+  return {
+    value: tag.slice(found.valueStart, end),
+    quoted,
+    start: found.valueStart,
+    end,
+  };
 };
 
 const replaceAttributeValue = (
@@ -78,39 +106,14 @@ const replaceAttributeValue = (
   attribute: string,
   replaceValue: (value: string) => string,
 ): string => {
-  const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const attributePattern = new RegExp(
-    `(\\s${escapedAttribute}\\s*=\\s*)(?:(["'])([\\s\\S]*?)\\2|([^\\s"'=<>` +
-      "`" +
-      `]+?))(?=\\s|\\/>|>|$)`,
-    "i",
-  );
-  return tag.replace(
-    attributePattern,
-    (
-      full,
-      prefix: string,
-      quote: string | undefined,
-      quotedVal: string | undefined,
-      unquotedVal: string | undefined,
-    ) => {
-      if (quote !== undefined && quotedVal !== undefined) {
-        const replaced = replaceValue(quotedVal);
-        return replaced === quotedVal
-          ? full
-          : `${prefix}${quote}${replaced}${quote}`;
-      }
-      if (unquotedVal !== undefined) {
-        const trailingSlash = unquotedVal.endsWith("/") ? "/" : "";
-        const raw = trailingSlash ? unquotedVal.slice(0, -1) : unquotedVal;
-        const replaced = replaceValue(raw);
-        return replaced === raw
-          ? full
-          : `${prefix}"${replaced}"${trailingSlash}`;
-      }
-      return full;
-    },
+  const read = readAttributeValue(tag, attribute);
+  if (read === undefined) return tag;
+  const replaced = replaceValue(read.value);
+  if (replaced === read.value) return tag;
+  return (
+    tag.slice(0, read.start) +
+    (read.quoted ? replaced : `"${replaced}"`) +
+    tag.slice(read.end)
   );
 };
 
@@ -177,9 +180,28 @@ const SVG_PRESENTATION_ATTRIBUTES = [
   "marker-end",
 ];
 
+// Elements whose `href` (and, in SVG, legacy `xlink:href`) can point at an
+// element of the same document by fragment: links, and the SVG elements that
+// reuse, follow, paint with, filter with or animate a referenced element.
+const FRAGMENT_HREF_ELEMENTS = new Set([
+  "a",
+  "use",
+  "textpath",
+  "mpath",
+  "feimage",
+  "pattern",
+  "lineargradient",
+  "radialgradient",
+  "filter",
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "set",
+]);
+
 /** Rewrite ID-holding attributes in HTML, using a resolver for declared IDs. */
 const QUICK_ID_REF_RE =
-  /\s(?:for|form|list|popovertarget|commandfor|aria-[\w-]+|itemref|headers|href|xlink:href|fill|stroke|mask|clip-path|filter|marker-[\w-]+|style)\s*=/i;
+  /[\s\/](?:for|form|list|popovertarget|commandfor|aria-[\w-]+|itemref|headers|href|xlink:href|fill|stroke|mask|clip-path|filter|marker-[\w-]+|style)\s*=/i;
 
 export const rewriteIdReferencesInHtml = (
   html: string,
@@ -224,12 +246,12 @@ export const rewriteIdReferencesInHtml = (
         rewriteIdList(value, resolve),
       );
     }
-    if (tagName === "a" || tagName === "area" || tagName === "use") {
+    if (tagName === "area" || FRAGMENT_HREF_ELEMENTS.has(tagName)) {
       tag = replaceAttributeValue(tag, "href", (value) =>
         rewriteFragment(value, resolve),
       );
     }
-    if (tagName === "use") {
+    if (FRAGMENT_HREF_ELEMENTS.has(tagName) && tag.includes("xlink:href")) {
       tag = replaceAttributeValue(tag, "xlink:href", (value) =>
         rewriteFragment(value, resolve),
       );

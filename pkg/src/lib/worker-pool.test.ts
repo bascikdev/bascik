@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WorkerPool } from "./worker-pool.ts";
+import { WorkerPool, WorkerTaskError } from "./worker-pool.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;
@@ -104,6 +104,18 @@ describe("WorkerPool", () => {
     await pool.terminate();
   });
 
+  it("passes the worker's failure detail through untouched (F054)", async () => {
+    const pool = makePool(1);
+    const promise = pool.run("task-a");
+    const detail = { message: "boom", location: { sourceFile: "a.html" } };
+    workers[0].emit("message", { ok: false, error: "boom", detail });
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(WorkerTaskError);
+    expect((error as WorkerTaskError).message).toBe("boom");
+    expect((error as WorkerTaskError).detail).toEqual(detail);
+    await pool.terminate();
+  });
+
   it("rejects in-flight task and respawns worker when worker exits unexpectedly", async () => {
     const pool = makePool(1);
     const promise = pool.run("task-a");
@@ -164,6 +176,39 @@ describe("WorkerPool", () => {
       expect(workers[1].postMessage).toHaveBeenCalledWith("task-b");
       completeWith(workers[1], "recovered");
       await expect(next).resolves.toBe("recovered");
+      await pool.terminate();
+    });
+
+    it("rejects the task whose result could not be received (messageerror) and keeps the worker serving", async () => {
+      const pool = makePool(1);
+      const lost = pool.run("src/pages/lost.html");
+      const queued = pool.run("src/pages/next.html");
+      workers[0].emit(
+        "messageerror",
+        new TypeError("Missing internal module 'internal/nope'"),
+      );
+      await expect(lost).rejects.toThrow(
+        /result could not be received.*Missing internal module 'internal\/nope'/,
+      );
+      // Not a failure the worker reported: there is no detail to read.
+      await expect(lost).rejects.not.toBeInstanceOf(WorkerTaskError);
+      // The worker itself is fine: it was not retired, and it takes the next task.
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+      expect(workers[0].postMessage).toHaveBeenLastCalledWith(
+        "src/pages/next.html",
+      );
+      completeWith(workers[0], "next-done");
+      await expect(queued).resolves.toBe("next-done");
+      await pool.terminate();
+    });
+
+    it("ignores a messageerror from an idle worker instead of failing a later task", async () => {
+      const pool = makePool(1);
+      workers[0].emit("messageerror", new Error("stray"));
+      const task = pool.run("src/pages/a.html");
+      completeWith(workers[0], "a-done");
+      await expect(task).resolves.toBe("a-done");
       await pool.terminate();
     });
 

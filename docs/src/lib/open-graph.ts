@@ -9,6 +9,7 @@
  *   export default async () => await openGraph();
  */
 import { readFile } from "node:fs/promises";
+import { pageDescription, pageTitle } from "./meta-tags.ts";
 import { NAV } from "./nav.ts";
 
 function escapeHtmlAttr(value: string): string {
@@ -17,24 +18,6 @@ function escapeHtmlAttr(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function extractTitle(html: string): string {
-  const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  return m ? m[1].trim() : "";
-}
-
-function extractDescription(html: string): string {
-  const metaRe = /<meta([^>]+)>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = metaRe.exec(html)) !== null) {
-    const attrs = m[1];
-    if (/name\s*=\s*["']description["']/i.test(attrs)) {
-      const cm = /content\s*=\s*["']([^"']+)["']/i.exec(attrs);
-      if (cm) return cm[1].trim();
-    }
-  }
-  return "";
 }
 
 /**
@@ -73,8 +56,8 @@ export async function openGraph(): Promise<string> {
     );
     return "";
   }
-  const rawTitle = extractTitle(html);
-  const description = extractDescription(html);
+  const rawTitle = pageTitle(html);
+  const description = pageDescription(html);
 
   const relPath = pageFile.startsWith(pagesDir)
     ? pageFile

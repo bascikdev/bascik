@@ -5,7 +5,9 @@ import { getLiveReloadScript } from "./live-reload.ts";
  *
  * Shown while the initial transpile/build is in progress. The page
  * connects to the live-reload endpoint and reloads automatically once
- * the build completes or when the user focuses the tab.
+ * the build completes or when the user focuses the tab. The message is a
+ * status message in the page's <main>, and the spinner stops for visitors
+ * who ask for reduced motion.
  */
 
 export const getBootPageHtml = (
@@ -24,14 +26,15 @@ font-family:system-ui,sans-serif;background:#0f0f0f;color:#ccc}
 .spinner{width:36px;height:36px;border:3px solid #333;border-top-color:#888;
 border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 1rem}
 @keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
 p{margin:0;font-size:.875rem;opacity:.5}
 </style>
 </head>
 <body>
-<div class="box">
+<main class="box">
   <div class="spinner"></div>
-  <p>Building site\u2026</p>
-</div>
+  <p role="status">Building site\u2026</p>
+</main>
 ${getLiveReloadScript(liveReloadUrl)}
 </body>
 </html>`);

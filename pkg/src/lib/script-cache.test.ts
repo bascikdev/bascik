@@ -23,6 +23,7 @@ vi.mock("./config.js", () => ({
 import {
   isScriptCacheEnabledForPath,
   pruneScriptCache,
+  pruneStaleTempModules,
   resetScriptCachePruneThrottle,
 } from "./script-cache.ts";
 import { BascikConfig } from "./config.ts";
@@ -260,5 +261,78 @@ describe("script-cache - deterministic clock-driven TTL and throttle boundaries"
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
+  });
+});
+
+// F193: build and routes scripts run from temp modules in the cache folder,
+// removed when they finish. A process killed mid-script (Ctrl-C, a crash, a
+// CI timeout) left them behind for good: only *.json cache entries were
+// ever pruned.
+describe("script-cache - orphaned temp modules", () => {
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  let tempDir: string;
+  const age = async (name: string, ms: number, now: number) => {
+    const path = join(tempDir, name);
+    await writeFile(path, "export default () => 1;", "utf8");
+    await utimes(path, new Date(now - ms), new Date(now - ms));
+  };
+  const clockAt = (now: number) =>
+    ({
+      now: () => now,
+      setTimeout: () => {
+        throw new Error("unused");
+      },
+      clearTimeout: () => {},
+      setInterval: () => {
+        throw new Error("unused");
+      },
+      clearInterval: () => {},
+    }) as never;
+
+  beforeEach(async () => {
+    resetScriptCachePruneThrottle();
+    tempDir = join(
+      tmpdir(),
+      `bascik-temp-modules-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("removes build and routes temp modules older than a day, and keeps everything else", async () => {
+    const now = Date.UTC(2026, 9, 30, 12, 0, 0);
+    await age("build-1761800000000-abc123.mjs", ONE_DAY_MS + 1, now);
+    await age("routes-1761800000000-k9z.mjs", ONE_DAY_MS + 1, now);
+    // A script of a process still running: fresh.
+    await age("build-1761890000000-fresh1.mjs", 60_000, now);
+    // Not a temp module, however old.
+    await age("resolver.mjs", 30 * ONE_DAY_MS, now);
+    await age("my-build-notes.mjs", 30 * ONE_DAY_MS, now);
+    await mkdir(join(tempDir, "script-cache"), { recursive: true });
+
+    await pruneStaleTempModules(tempDir, true, clockAt(now));
+
+    expect((await readdir(tempDir)).sort()).toEqual(
+      [
+        "build-1761890000000-fresh1.mjs",
+        "my-build-notes.mjs",
+        "resolver.mjs",
+        "script-cache",
+      ].sort(),
+    );
+  });
+
+  it("is throttled like the cache prune and never throws on a missing folder", async () => {
+    const now = Date.UTC(2026, 9, 30, 12, 0, 0);
+    await pruneStaleTempModules(tempDir, false, clockAt(now));
+    await age("build-1-old.mjs", ONE_DAY_MS + 1, now);
+    await pruneStaleTempModules(tempDir, false, clockAt(now + 1000));
+    expect(await readdir(tempDir)).toContain("build-1-old.mjs");
+    await expect(
+      pruneStaleTempModules(join(tempDir, "missing"), true, clockAt(now)),
+    ).resolves.toBeUndefined();
   });
 });

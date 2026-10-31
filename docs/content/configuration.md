@@ -19,6 +19,8 @@ Bascik loads the first file it finds and ignores the rest, so a `bascik.config.j
 
 Only these three filenames are discovered: no `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
 
+Bascik reads the file's `export default` object and the mode exports `dev`, `build` and `server` (see [Mode Overrides](#mode-overrides-dev-build-server)). Each one it finds must be a plain object: `export default () => ({ ... })` or `export const build = "prod"` is an error naming the export, not a config that is quietly ignored. A file whose only exports are names Bascik does not read, such as `export const config = defineConfig({ ... })`, is an error too, and a file that exports nothing prints a warning, since the built-in defaults then apply. Other named exports next to `export default` are fine.
+
 TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
 
 ### Config Changes Need a Restart
@@ -56,7 +58,7 @@ Configuration errors in bascik.config.ts
 5 configuration errors
 ```
 
-Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Values are checked against their type as well: a setting that takes `true` or `false` rejects the string `"false"`, a section such as `generate` must be an object, and `scripts.cache` and each `pipeline.exec` entry's `watch`, `cwd`, `env`, `args`, and `timeout` must have the documented shape. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. A missing `pipeline.exec[].cwd` is only a warning, since an earlier step may create it, and a `cwd` inside `directory.out` (a `post` script that runs in `dist/`) is not reported at all. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
 
 ## Create a Config Only for a Non-Default Requirement
 
@@ -91,6 +93,8 @@ The flags that override specific config keys:
 | `--host <name>`       | `BASCIK_SERVER_HOST`    | `http.hostname` |
 | `--log-level <level>` | `BASCIK_LOG_LEVEL`      | `logging.level` |
 | `--quiet`, `-q`       | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
+
+Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. When `BASCIK_SERVER_PORT` is unset, the server reads `PORT`, the variable many hosting platforms set, by the same rule. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0`, a path, or a host with a port such as `localhost:3000` is an error naming the flag or variable. Pass the port on its own, with `--port`, `BASCIK_SERVER_PORT` or `http.port`. An IPv6 address is written bare, as Node's `server.listen` takes it: `::` binds every interface, `::1` is the loopback, and a link-local address carries its interface as a zone (`fe80::1%en0`). The bracketed form `[::1]` belongs in URLs, so it is an error that says to drop the brackets; the server prints its URL with them (`http://[::1]:8080`).
 
 One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 
@@ -295,6 +299,8 @@ Rules that apply across all roots:
 - **A listed root must exist.** A missing root fails the build and `bascik --check` with a message that names it, since a missing root is usually a typo. Only the default, `src/components`, may be absent: the project then has no components.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
+`directory.out` is emptied at the start of every build and dev session, so it must be a folder of its own inside the project. A value that is the project root, resolves outside it, or holds a source folder (`directory.pages`, a `directory.components` root, `directory.api`, or `scripts.importRoot`) is a config error that names the folder it would delete, and so is an output directory inside the pages, components, or API folder, where the build output would be read back as source. `out: "src"` with the default layout is rejected before anything is deleted, and so is `out: "SRC"` on a case-insensitive file system such as the macOS and Windows defaults, where it names the same folder; `out: "build"` or `out: "src/dist"` is fine.
+
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.
 
 The following built-in exclusions always apply:
@@ -421,6 +427,8 @@ For one element rather than every matching tag, use `data-bascik-preserve` or a 
 
 Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
 
+`minify: true` or `minify: false` sets all four (`html`, `css`, `js`, `identifiers`) at once. It is shorthand for that object, so a mode export can refine it: `export default { minify: false }` with `export const build = { minify: { identifiers: true } }` builds with only identifier minification on.
+
 `minify.html: false` disables HTML minification for both page templates and component templates. Component whitespace and script placement remain as authored when it is off.
 
 Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, or terser. A `minify.js` function always receives valid JavaScript: browser TypeScript on the supported paths (`.ts` companions, `type="text/typescript"` blocks) is stripped before this hook runs, and Bascik holds back its `//# sourceURL` directive and re-attaches it on its own line after the function returns.
@@ -450,7 +458,7 @@ export const build = defineConfig({
 
 ### `minify.identifiers`
 
-Hash generated class, ID, and name attributes to short alphanumeric strings instead of the verbose `bascik__component__id__name` format. Enabled by default in builds.
+Hash generated class, ID, and name attributes to short alphanumeric strings instead of the readable `bascik__<component>__<name>`, `bascik__<component>__<instance>__<name>`, `b_el_<component>_<tag>`, and `b_id_<component>_<id>` forms. Enabled by default in builds.
 
 ### `assets`
 
@@ -671,7 +679,7 @@ http: {
     keyFile: undefined,     // path to TLS private key
     certFile: undefined,    // path to TLS certificate
   },
-  rateLimit: true,          // boolean or { window?: number, max?: number } (default: 500 req / 10s)
+  rateLimit: true,          // boolean or { window?, max?, maxTrackedIps? } (default: 500 req / 10s, 10000 clients)
   trustProxy: false,        // trust X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
@@ -693,6 +701,8 @@ http: {
 - `headers` is the time to receive the request line and headers, which stops a client that opens a connection and then trickles its headers (slowloris). It must not be more than `request`, because the headers are part of the request. Left unset, it is 10000 or `request`, whichever is lower, so lowering only `request` works. A config that sets `headers` higher than `request` fails at startup with an error naming both values, for each of the dev server and `bascik --server` that would run with that pair.
 - `keepAlive` is how long a connection waits, idle between responses, for its next request before the server closes it. It never applies while a response is being sent.
 - `drain` is how long in-flight requests get to finish on shutdown (see [Production Server](/production-server)).
+
+`maxBodySize` is a whole number of bytes; a request body over it gets `413 Payload Too Large`, and `0` turns the limit off. `apiTimeout` is a number of milliseconds up to 2147483647, the longest delay a timer can wait; `0` turns it off. `httpCache` is `true` or `false`. Any other value, such as `maxBodySize: "1mb"`, is a config error, so a typo can never leave API routes without a body limit.
 
 With `tls.enabled`, `request` and `headers` apply to clients that negotiate HTTP/1.1. HTTP/2 has no per-request equivalent in Node, so for an HTTP/2 connection only `keepAlive` applies: once it has had no open request for that long, the server closes it with a `GOAWAY` and the browser opens a new one for its next request. A request still open, such as a live-reload event stream, keeps the connection open however quiet it is.
 

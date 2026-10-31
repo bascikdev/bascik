@@ -3,10 +3,13 @@ import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
 import { basename, extname, resolve, sep } from "node:path";
+import { folderPrefix, isSameOrInside } from "./path-containment.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
 import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
+import { formatServerOrigin, parsePort } from "./server-address.ts";
 import {
   eventEmitter,
   registerShutdownHandler,
@@ -54,11 +57,7 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import {
-  InvalidApiPathError,
-  isBascikFolderName,
-  isPrivatePathname,
-} from "./route-matching.ts";
+import { InvalidApiPathError, isPrivatePathname } from "./route-matching.ts";
 import {
   resolveResponseSecurity,
   type ResponseSecurity,
@@ -172,7 +171,19 @@ export const getActiveRateLimiter = (): RateLimiter => {
       typeof rateLimitConfig === "object" && rateLimitConfig?.max
         ? rateLimitConfig.max
         : DEFAULT_RATE_LIMIT_MAX;
-    activeRateLimiter = new RateLimiter({ windowMs, max });
+    const maxTrackedIps =
+      typeof rateLimitConfig === "object"
+        ? rateLimitConfig?.maxTrackedIps
+        : undefined;
+    activeRateLimiter = new RateLimiter({
+      windowMs,
+      max,
+      maxTrackedIps,
+      warn: (message) => {
+        if (shouldLog(BascikConfig.logging.level ?? "info", "warn"))
+          console.warn(message);
+      },
+    });
     activeRateLimiter.startSweep();
     registerShutdownHandler(() => {
       resetActiveRateLimiter();
@@ -261,7 +272,7 @@ export const onError = (
 
   try {
     if (!res.headersSent) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (isNoSuchFileError(error)) {
         res.respond(404, { ...secHeaders });
         res.end();
         return 404;
@@ -474,6 +485,7 @@ const serveStreamedAsset = async (
 
 export const createRequestHandler = () => {
   const distDir = resolve(BascikConfig.directory.out);
+  const distDirPrefix = folderPrefix(distDir);
 
   return async (req: BascikRequest, res: BascikResponse) => {
     const start = performance.now();
@@ -571,7 +583,12 @@ export const createRequestHandler = () => {
       ) {
         responseStatus = 429;
         res.respond(429, {
-          "retry-after": String(RATE_WINDOW_MS / 1000),
+          // The configured window, in whole seconds (delay-seconds, RFC 9110
+          // 10.2.3): by then every request counted against the client has
+          // left the sliding window.
+          "retry-after": String(
+            Math.ceil(getActiveRateLimiter().windowMs / 1000),
+          ),
           "content-type": "text/plain; charset=utf-8",
           ...secHeaders,
         });
@@ -691,18 +708,30 @@ export const createRequestHandler = () => {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);
-        if (!fullPath.startsWith(distDir + sep)) {
+        // isSameOrInside decides; the startsWith on the resolved path repeats
+        // the same answer (path-containment.test.ts pins the agreement) in
+        // the shape CodeQL's js/path-injection query models as a barrier for
+        // the stat and reads below.
+        if (
+          !isSameOrInside(fullPath, distDir) ||
+          fullPath === distDir ||
+          !fullPath.startsWith(distDirPrefix)
+        ) {
           responseStatus = 400;
           res.respond(400, { ...secHeaders });
           res.end("Bad Request");
           return;
         }
-        // dist/.bascik holds server script source and adapter output. The
-        // path check above already refuses it; this guards the file actually
-        // opened, whatever spelling reached it.
+        // dist/.bascik holds server script source and adapter output, and
+        // with security.hideDotfiles on every dot segment is private. The
+        // request-path check above already refuses both; this applies the
+        // same rule to the file actually opened, whatever spelling reached it
+        // (on Windows `resolve` also splits on `\`).
         if (
-          isBascikFolderName(
-            fullPath.slice(distDir.length + 1).split(sep)[0] ?? "",
+          isPrivatePathname(
+            "/" + fullPath.slice(distDirPrefix.length).split(sep).join("/"),
+            "/",
+            BascikConfig.security?.hideDotfiles !== false,
           )
         ) {
           responseStatus = 404;
@@ -718,8 +747,7 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
-          responseStatus =
-            (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+          responseStatus = isNoSuchFileError(err) ? 404 : 500;
           res.respond(responseStatus, { ...secHeaders });
           res.end(
             responseStatus === 404 ? "Not Found" : "Internal Server Error",
@@ -865,6 +893,21 @@ export const createRequestHandler = () => {
           new URL(req.path, "http://localhost").searchParams.get("boot") ===
           "1";
 
+        // Refuse over the connection cap before committing the 200: once the
+        // event-stream headers are sent the response can no longer become a
+        // 503, and an accepted-but-unregistered stream would hang open with
+        // no events and no heartbeat.
+        const sseManager = getSseManager();
+        if (sseManager.isAtCapacity) {
+          responseStatus = 503;
+          res.respond(503, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          res.end("Too Many SSE Connections");
+          return;
+        }
+
         responseStatus = 200;
         res.respond(200, {
           "content-type": "text/event-stream",
@@ -885,9 +928,7 @@ export const createRequestHandler = () => {
               openPagePath = getHttpPath(relativeRefererPath);
           }
         } catch {}
-        if (openPagePath) mem.trackOpenPage(openPagePath);
 
-        const sseManager = getSseManager();
         const storedPage = openPagePath
           ? mem.getPageExact(openPagePath)
           : undefined;
@@ -899,8 +940,14 @@ export const createRequestHandler = () => {
             : null,
         );
         if (!client) {
+          // The manager was destroyed (shutdown) or filled between the check
+          // above and here; it has ended the committed stream. Nothing was
+          // tracked yet, so there is nothing to balance.
           return;
         }
+        // Tracked only once the client is registered, so every trackOpenPage
+        // is paired with the untrackOpenPage in the close handler below.
+        if (openPagePath) mem.trackOpenPage(openPagePath);
 
         // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
         const strip = (p: string) => p.replace(/\/$/, "") || "/";
@@ -1103,14 +1150,29 @@ export const createRequestHandler = () => {
           // No `stream` scripts (or HEAD): today's buffered path, byte for byte.
           // HEAD keeps this path so it can report content-length with no body,
           // matching the static-file HEAD branch.
-          const htmlBuf = await executeServerScriptPlan(
-            plan,
-            request,
-            context,
-            timeout,
-            page.absolutePagePath,
-            page.componentManifest,
-          );
+          // A client that goes away before the page is ready aborts the
+          // scripts' `signal`, as on a streamed page, and gets no response.
+          const abort = new AbortController();
+          const onClose = (): void => {
+            if (!abort.signal.aborted)
+              abort.abort(new Error("client disconnected"));
+          };
+          res.on("close", onClose);
+          let htmlBuf: Buffer;
+          try {
+            htmlBuf = await executeServerScriptPlan(
+              plan,
+              request,
+              context,
+              timeout,
+              page.absolutePagePath,
+              page.componentManifest,
+              abort.signal,
+            );
+          } finally {
+            res.off("close", onClose);
+          }
+          if (abort.signal.aborted || res.destroyed) return;
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
           return res.end(isHead ? undefined : htmlBuf);
@@ -1244,8 +1306,11 @@ export const startServerInstance = async (
 ): Promise<string> => {
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
+  // Strict like --port: a malformed value is ignored (config.ts warns about
+  // BASCIK_SERVER_PORT and PORT), never partly parsed, so `8080abc` is not
+  // port 8080.
   const envPortStr = process.env.BASCIK_SERVER_PORT || process.env.PORT;
-  const envPort = envPortStr ? parseInt(envPortStr, 10) : undefined;
+  const envPort = parsePort(envPortStr);
   const rawStartPort =
     envPort && !isNaN(envPort)
       ? envPort
@@ -1287,7 +1352,7 @@ export const startServerInstance = async (
       server.once("error", errorHandler);
       server.listen(p, hostname, () => {
         server.removeListener("error", errorHandler);
-        origin = `${protocol}://${hostname}:${p}`;
+        origin = formatServerOrigin(protocol, hostname, p);
         setServerHealthState("ready");
         resolve();
       });

@@ -205,6 +205,8 @@ import {
   renderFailureMessage,
   requestRoutePath,
   scriptTimeoutError,
+  serverScriptOutput,
+  serverScriptOutputErrorMessage,
   streamComposedResponse,
   stripAnsiEscapeCodes,
   wrapRunner,
@@ -215,6 +217,9 @@ const publicDir = join(import.meta.dirname, "public");
 const encoder = new TextEncoder();
 const platform = { name: "custom-node" };
 
+/** Scripts whose refused return value was already logged. */
+const warnedRefused = new WeakSet();
+
 /** Run one script job under the deadline and the onServerScriptError policy. */
 const runJob = async (job, load, request, context, signal, timeoutMs) => {
   const result = await invokeLoadedWithDeadline(
@@ -223,8 +228,35 @@ const runJob = async (job, load, request, context, signal, timeoutMs) => {
       mod.default(request, context, { signal: jobSignal }),
     { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
+  let printed;
+  let failure = result.error;
   if (result.ok) {
-    const output = stripAnsiEscapeCodes(String(result.value ?? ""));
+    try {
+      // What the value prints, by the rule every host uses: an array joined
+      // with no separator; an object, a Response or an array of Promises refused.
+      printed = serverScriptOutput(result.value);
+    } catch (error) {
+      // The author's own toString threw while printing: the script failed.
+      failure = error;
+    }
+  }
+  if (printed) {
+    if (printed.error) {
+      // Production: an empty slot and one warning per script.
+      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+        warnedRefused.add(job);
+        console.warn(
+          serverScriptOutputErrorMessage(
+            printed.error,
+            request.url,
+            job.owner ?? `${job.mode} script`,
+            { production: true },
+          ),
+        );
+      }
+      return "";
+    }
+    const output = stripAnsiEscapeCodes(printed.text);
     // A component's script gets the component's scoped class names.
     const scope = decodeOutputScope(job.outputScope);
     return scope ? applyOutputScope(output, scope) : output;
@@ -233,7 +265,7 @@ const runJob = async (job, load, request, context, signal, timeoutMs) => {
   if (result.aborted && !result.timedOut) return "";
   const message =
     `[bascik] server script error at "${new URL(request.url).pathname}":\n` +
-    `${result.error?.stack ?? result.error}\n    in the ${job.owner}`;
+    `${failure?.stack ?? failure}\n    in the ${job.owner}`;
   if (graph.onServerScriptError === "error") throw new Error(message);
   if (graph.onServerScriptError === "warn") console.warn(message);
   return "";
@@ -490,7 +522,7 @@ The `--target` flag resolves in three ways:
    bascik --build --target bascik-adapter-fastly
    ```
 
-Bascik dynamically imports the resolved module and reads its default export.
+Bascik dynamically imports the resolved module and reads its default export. A package is found the way Node finds it, in the `node_modules` folders from the project up, and its `exports` may offer only an `import` condition (an ESM-only package); a subpath such as `--target @acme/adapter/workers` resolves through `exports` too. Official targets such as `cloudflare` resolve their package the same way. As in Node, an `exports` target or `*` match with a `.`, `..` or `node_modules` segment is never followed, so an entry cannot point outside the package folder. An installed package whose `exports` have no entry for the name you passed fails with a message naming the folder it is installed in, not a request to install it.
 
 ---
 
@@ -766,7 +798,7 @@ Adapters bundle `@bascik/bascik/runtime` into their function entry points. It us
 | Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `isPrivatePathname(pathname, base, hideDotfiles)`, `GENERATED_CONTROL_PATHS`.                                                                  |
 | Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`. |
 | Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                  |
-| Script output       | `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                                                        |
+| Script output       | `serverScriptOutput(value)` (the text a returned value prints, or why it is refused), `serverScriptOutputErrorMessage(error, url, owner, options)`, `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                    |
 | Content policy      | `contentSecurityPolicyHeader(policy, hashes)`, which returns the header name and value for one HTML response, from the graph's content security policy and the route's hashes.                                                                                                        |
 
 A buffered page response for a page without stream scripts, given a `page` from `graph.pages` and a `run` like the tutorial's:

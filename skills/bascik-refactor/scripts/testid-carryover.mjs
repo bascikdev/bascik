@@ -41,8 +41,8 @@ each on the target with the same attribute name and value on the same element (t
 position among identical elements), and on no more elements than in production (a hook copied onto a wrapper breaks
 a strict getByTestId locator). Static hooks in the legacy source that the first render never shows (a box that
 appears on scroll, a modal) must be somewhere on the target's rendered pages or in its source, on the same kind of
-element (the Close button's hook on a <button>, not on the modal's heading). Dynamic values (data-testid={id}) are left
-to the rendered comparison. Exits 1 on any finding.
+element (the Close button's hook on a <button>, not on the modal's heading). Dynamic values (data-testid={id},
+:data-testid="id", v-bind:, [attr.data-testid], data-testid="{{ id }}") are left to the rendered comparison. Exits 1 on any finding.
 
 Options:
   --prod <url>          Live production origin
@@ -70,19 +70,32 @@ const SKIP_DIRS = new Set([
   ".bascik",
 ]);
 
+// Group 1 is a binding sigil written before the name (Vue :x and v-bind:x, Svelte bind:x, Angular [attr.x]); group 3
+// is the ] that closes an Angular binding. A [ without its ] is a CSS attribute selector ('[data-testid="x"]'), which
+// names the hook statically.
 const HOOK_RE =
-  /(?<![\w-])(data-(?:testid|test-id|test|cy|qa))(?![\w-])\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)\s*\}|(\{))/g;
+  /(?<![\w-])(:|v-bind:|bind:|\[(?:attr\.)?)?(data-(?:testid|test-id|test|cy|qa))(?![\w-])(\])?\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)\s*\}|(\{))/g;
+
+/** A quoted value that a template fills in: {{ id }}, ${id}, Svelte's row-{id}, <%= id %>, <?= $id ?>. */
+const TEMPLATED_VALUE = /\{|<%|<\?/;
 
 /**
  * The test hooks in one source file's text: [{ attr, value, dynamic, file, line, tag, text }]. Static values are read
- * from "x", 'x', {"x"}, {'x'} and {`x`}; anything computed ({id}, {`plan-${id}`}) is kept with value null and dynamic
- * true. `tag` is the element the attribute sits on as written (a JSX component keeps its capital: Button), and `text`
- * the text right after its opening tag, when there is any.
+ * from "x", 'x', {"x"}, {'x'} and {`x`}; anything computed ({id}, {`plan-${id}`}, a Vue :data-testid or v-bind:,
+ * an Angular [attr.data-testid], a Svelte bind:, or a quoted template value such as "{{ id }}") is kept with value
+ * null and dynamic true. `tag` is the element the attribute sits on as written (a JSX component keeps its capital:
+ * Button), and `text` the text right after its opening tag, when there is any.
  */
 export function collectSourceHooks(text, file) {
   const hooks = [];
   for (const m of text.matchAll(HOOK_RE)) {
-    const value = m[2] ?? m[3] ?? m[4] ?? m[5] ?? m[6];
+    const sigil = m[1];
+    const bound = sigil !== undefined && (!sigil.startsWith("[") || !!m[3]);
+    const quoted = m[4] ?? m[5];
+    const value =
+      bound || (quoted !== undefined && TEMPLATED_VALUE.test(quoted))
+        ? undefined
+        : (quoted ?? m[6] ?? m[7] ?? m[8]);
     const line = text.slice(0, m.index).split("\n").length;
     const open = text.slice(0, m.index).lastIndexOf("<");
     const tag =
@@ -95,8 +108,8 @@ export function collectSourceHooks(text, file) {
     const element = { tag, text: normalize(after ?? "") };
     hooks.push(
       value === undefined
-        ? { attr: m[1], value: null, dynamic: true, file, line, ...element }
-        : { attr: m[1], value, dynamic: false, file, line, ...element },
+        ? { attr: m[2], value: null, dynamic: true, file, line, ...element }
+        : { attr: m[2], value, dynamic: false, file, line, ...element },
     );
   }
   return hooks;

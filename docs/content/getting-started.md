@@ -26,15 +26,15 @@ Edit a page or a component and save. The browser updates on its own, with no man
 npm create bascik@rc my-site
 ```
 
-Pass a different name to use it as both the directory name and the site title.
+Pass a different name to use it as both the directory name and the site title. The name is a new folder under the current one, such as `my-site` or `sites/my-site`: `.`, `..`, an absolute path and spaces are refused. If the folder already has a file the starter would replace, such as `package.json` or `src/pages/index.html`, nothing is written; to add Bascik to an existing project, see [Manual Setup](#manual-setup).
 
 If you omit `-y`, the CLI steps through the setup prompts interactively.
 
-`npm create bascik@rc` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, `.vscode/settings.json` that turns off a VS Code check which gives false errors on Bascik pages, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
+`npm create bascik@rc` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.ts`, `.vscode/extensions.json` recommending the official Bascik extension, `.vscode/settings.json` that turns off a VS Code check which gives false errors on Bascik pages, and a `.gitignore` with Vitest, `npm run lint` (`bascik --check`, with the `@bascik/language-server` linter installed), E2E testing, and code coverage pre-configured.
 
 Its component scripts are TypeScript (`<script type="text/typescript">`), and every component root and interactive part carries a `data-testid` for tests. Run `npm create bascik@rc -- --help` to list every option.
 
-It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults. A fresh project passes `npm run lint`; until you set the site's production URL, `bascik --check` warns that `BASCIK_SITE_URL` is not set and `npm run build` fails, because the sitemap and `robots.txt` need it. Set it where the site is built (see [Environment files and the site URL](/cli#environment-files-and-the-site-url)), or turn off `generate.sitemap` and `generate.robots`.
+It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults. A fresh project passes `npm run lint`; until you set the site's production URL, `bascik --check` warns that `BASCIK_SITE_URL` is not set and `npm run build` fails, because the sitemap and `robots.txt` need it. Set it where the site is built (see [Environment files and the site URL](/cli#environment-files-and-the-site-url)), or turn off `generate.sitemap` and `generate.robots`. `npm run e2e` works before that: while neither `BASCIK_SITE_URL` nor `.env` sets a URL, its Playwright config gives the test build `http://localhost:8080`, the server it runs. Once you set one, the e2e build uses it, so the `dist/` it leaves behind keeps your real sitemap.
 
 For coding assistants, it writes an `AGENTS.md` brief with the project's commands and house rules, and a `CLAUDE.md` that imports it for Claude Code. It then asks whether to install the [Bascik agent skills](/agent-skills#new-projects) (yes by default, and with `-y`); pass `--no-skills` to skip them. See [Project Brief](/agent-skills#project-brief) for what the brief says.
 
@@ -44,7 +44,7 @@ To start a site that deploys to Cloudflare Workers, pass `--template cloudflare`
 npm create bascik@rc my-site -- --template cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik@rc my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt.
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik@rc my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt. `--no-skills` and `--no-install` work on either side too, but `--no-dev` has to follow the `--`: npm treats it as one of its own settings and does not pass it on.
 
 ## Manual Setup
 

@@ -75,11 +75,19 @@ export function findCommentEnd(html: string, start: number): number {
 }
 
 type TagState =
-  "text" | "name" | "tag" | "quoted" | "unquoted" | "before-value" | "bogus";
+  | "text"
+  | "end-tag-open"
+  | "name"
+  | "tag"
+  | "quoted"
+  | "unquoted"
+  | "before-value"
+  | "bogus";
 
 /**
- * What a `<` at `at`, read in text, starts (the compiler's `stateAfterLess`): a tag's name for `<` or `</`
- * and a letter (where `=` and quotes are name characters, up to tag whitespace, `/` or `>`); nothing for `<!--` (comments are resolved apart) or a `<` before anything else or the end; a bogus
+ * What a `<` at `at`, read in text, starts (the compiler's `stateAfterLess`): a tag's name for `<` and a
+ * letter (where `=` and quotes are name characters, up to tag whitespace, `/` or `>`), or for `</` and a
+ * letter after the end tag's own `/` (`end-tag-open`: `</p"='x>` is one end tag); nothing for `<!--` (comments are resolved apart) or a `<` before anything else or the end; a bogus
  * comment up to `>` for `<!`, `<?`, or `</` and anything else.
  */
 const stateAfterLess = (html: string, at: number): TagState => {
@@ -90,7 +98,7 @@ const stateAfterLess = (html: string, at: number): TagState => {
   if (next !== 47) return "text";
   const after = html.charCodeAt(at + 2);
   if (Number.isNaN(after)) return "text";
-  return isLetterCode(after) ? "name" : "bogus";
+  return isLetterCode(after) ? "end-tag-open" : "bogus";
 };
 
 /**
@@ -124,7 +132,8 @@ function createTagStateReader(html: string, origin = 0) {
         continue;
       }
       const code = html.charCodeAt(cursor);
-      if (state === "name") {
+      if (state === "end-tag-open") state = "name";
+      else if (state === "name") {
         if (code === 62) state = "text";
         else if (isTagSpace(code) || code === 47) state = "tag";
       } else if (state === "unquoted") {

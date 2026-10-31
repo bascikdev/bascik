@@ -743,6 +743,49 @@ const instancesOf = (
     ),
   ].map((m) => ({ id: m[1], className: m[2], index: m.index ?? -1 }));
 
+/**
+ * The outer HTML of every element carrying `data-testid="<testid>"` (quoted
+ * or, under minify.html, unquoted), up to its first closing tag of the same
+ * name: the scoping fixtures nest no element of their root's own name.
+ */
+const rootsOf = (html: string, testid: string): string[] =>
+  [
+    ...html.matchAll(
+      new RegExp(
+        `<(div|section)\\b[^>]*\\bdata-testid="?${testid}"?[\\s>][\\s\\S]*?</\\1>`,
+        "g",
+      ),
+    ),
+  ].map((m) => m[0]);
+
+/** The text of every `<style>` block of `html`, in document order. */
+const styleTexts = (html: string): string[] =>
+  [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+
+/**
+ * `text` with every instance-dependent name numbered by first appearance:
+ * the instance id inside readable names (a build id is 8 hex, a request id
+ * `r` + 7 hex), or every 12-character hash under minify.identifiers. Two
+ * renders of the same markup for different instances then compare equal.
+ */
+const numberInstanceNames = (text: string): string => {
+  const seen = new Map<string, number>();
+  const number = (token: string): string => {
+    if (!seen.has(token)) seen.set(token, seen.size);
+    return `#${seen.get(token)}`;
+  };
+  return (
+    text
+      // `bascik__<name>__<id>__x`, and `b_id_<name>__<id>_x` for the class an
+      // #id rule generates in a per-instance stylesheet.
+      .replace(
+        /__(r[0-9a-f]{7}|[0-9a-f]{8})(?=_)/g,
+        (_m, id: string) => `__${number(id)}`,
+      )
+      .replace(/\bb[0-9a-zA-Z]{11}\b/g, (hash) => number(hash))
+  );
+};
+
 const PRODUCT_NAMES = [
   "Pour-over kettle",
   "Ceramic dripper",
@@ -879,6 +922,52 @@ for (const config of [
       }
     });
 
+    it("components-scoping.html: escaped classes and @layer render identically on both hosts and exactly as the build scopes the same tags (prompt 158)", async () => {
+      const { node: n, cf } = await both("/components-scoping");
+      expect(n.status).toBe(200);
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(markup(cf.body)).not.toContain("<edge-");
+      const built = (await both("/components-scoping-static")).cf.body;
+      expect(markup(built)).not.toContain("<edge-");
+
+      // Shared classes: every instance is the build's bytes.
+      for (const testid of ["edge-escaped", "edge-layer"]) {
+        const requested = rootsOf(cf.body, testid);
+        expect(requested, testid).toHaveLength(4);
+        expect(requested, testid).toEqual(rootsOf(built, testid));
+      }
+      // Per-instance classes (url(#id)): the same bytes once each instance's
+      // id-dependent names are numbered by first appearance.
+      const glow = rootsOf(cf.body, "edge-glow");
+      expect(glow).toHaveLength(4);
+      expect(new Set(glow).size).toBe(4);
+      expect(glow.map(numberInstanceNames)).toEqual(
+        rootsOf(built, "edge-glow").map(numberInstanceNames),
+      );
+      // The stylesheets: one block per response for each shared component,
+      // one per instance otherwise; together the build's page stylesheet.
+      const requestCss = styleTexts(cf.body);
+      expect(requestCss).toHaveLength(2 + 4);
+      expect(numberInstanceNames(requestCss.join(""))).toBe(
+        numberInstanceNames(styleTexts(built).join("")),
+      );
+      if (!config.identifiers) {
+        expect(requestCss[0]).toContain(
+          ".bascik__edge-escaped__md\\:flex .b_el_edge-escaped_p",
+        );
+        // The space ending the hex escape stays apart from the combinator.
+        expect(requestCss[0]).toContain(
+          ".bascik__edge-escaped__esc\\1  .b_el_edge-escaped_b",
+        );
+        expect(requestCss[1]).toContain(
+          "@layer bascik__edge-layer__layer__base.bascik__edge-layer__layer__theme,",
+        );
+        for (const block of requestCss.slice(2))
+          expect(block).toMatch(/bascik__edge-glow__r[0-9a-f]{7}__glow/);
+      }
+    });
+
     it("catalog-stream.html: identical ordered fragments on both hosts, one <style> ahead of the first tile", async () => {
       // Batch 1 is the slowest and batch 2 the fastest: completion order is
       // not document order, so the style decision must follow the document.
@@ -1010,6 +1099,25 @@ for (const config of [
       expect(new Set(inner.map((card) => card.id)).size).toBe(3);
     });
 
+    it("css: sibling nested jobs that return different stylesheets and finish in random order emit them in site order on every request, on both hosts", async () => {
+      const bodies = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const { node: n, cf } = await both("/components-nest-mixed");
+        expect(n.status, `request ${i}`).toBe(200);
+        expect(cf.status, `request ${i}`).toBe(200);
+        expect(cf.body, `request ${i}`).toBe(n.body);
+        bodies.add(n.body);
+      }
+      expect(bodies.size).toBe(1);
+      const [body] = bodies;
+      // link-card (returned by the first site) before product-card (the
+      // second), each found by its color however the CSS minifier spells it.
+      const link = body.search(/#040506|rgb\(4, ?5, ?6\)/);
+      const product = body.search(/#d3ff8d|rgb\(211, ?255, ?141\)/);
+      expect(link).toBeGreaterThan(-1);
+      expect(product).toBeGreaterThan(link);
+    });
+
     it("misuse: ANSI escapes printed by a component script and by a page script are stripped the same way on both hosts", async () => {
       const { node: n, cf } = await both("/components-ansi");
       expect(n.status).toBe(200);
@@ -1124,6 +1232,101 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       expect(stream.cf.body).toContain('data-testid="tail"');
       expect(stream.cf.body).not.toContain("SECRET_DETAIL");
     });
+
+    // Prompt 158 R3-04 (F060): what a script's return value prints, and how
+    // a return that is not markup is reported, in production on both hosts.
+    it("return values: an array is joined with no separator and its component tags render, the same bytes on both hosts", async () => {
+      for (const path of ["/returns-array", "/returns-array-stream"]) {
+        const r = await both(path);
+        expect(r.node.status, path).toBe(200);
+        expect(r.cf.status, path).toBe(200);
+        expect(r.cf.body, path).toBe(r.node.body);
+        expect(r.cf.body, path).toContain(
+          "<li>Milk frother</li><li>Kettle</li>",
+        );
+        expect(r.cf.body, path).not.toContain("</li>,");
+      }
+      expect((await both("/returns-array")).cf.body).toContain(
+        'data-testid="product-card"',
+      );
+    });
+
+    const refusedReturns: Array<{ path: string; received: string }> = [
+      {
+        path: "/returns-object",
+        received: "returned an object ([object Object])",
+      },
+      { path: "/returns-response", received: "returned a Response" },
+      { path: "/returns-error", received: "returned an Error (TypeError)" },
+      {
+        path: "/returns-async-map",
+        received: "returned an array holding a Promise at [0]",
+      },
+      {
+        path: "/returns-component",
+        received: "returned an object ([object Object])",
+      },
+    ];
+    for (const refused of refusedReturns) {
+      it(`misuse: ${refused.path} is an empty slot under "${policy}", never a 500 or [object ...], with ${policy === "ignore" ? "no log" : "one located warning per script"}, the same on both hosts`, async () => {
+        const escaped = refused.received.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          (c) => `\\${c}`,
+        );
+        for (let i = 0; i < 2; i++) {
+          const logged = policy !== "ignore" && i === 0;
+          const r = await bothWithLogs(
+            refused.path,
+            logged ? new RegExp(escaped) : null,
+          );
+          expect(r.node.status, `node ${refused.path}`).toBe(200);
+          expect(r.cf.status, `cf ${refused.path}`).toBe(200);
+          expect(r.cf.body, refused.path).toBe(r.node.body);
+          expect(r.cf.body, refused.path).not.toContain("[object");
+          expect(r.cf.body, refused.path).not.toContain("api habit");
+          expect(r.cf.body, refused.path).not.toContain("SECRET_DETAIL");
+          expect(r.cf.body, refused.path).toContain('data-testid="shell"');
+          expect(r.cf.body, refused.path).toContain('data-testid="tail"');
+          if (refused.path === "/returns-component")
+            expect(r.cf.body).toContain('data-testid="object-card"');
+          if (!logged) {
+            expect(r.nodeLog, `node log ${refused.path} #${i}`).toBe("");
+            expect(r.cfLog, `cf log ${refused.path} #${i}`).toBe("");
+            continue;
+          }
+          expect(r.nodeLog, refused.path).toContain(
+            `[bascik] server script error at "${refused.path}":\n`,
+          );
+          expect(r.nodeLog, refused.path).toContain(refused.received);
+          expect(r.nodeLog, refused.path).toContain("The slot is empty");
+          // A component job carries its owner on both hosts, so the logs
+          // are identical. A page job has no owner in the Worker's graph (the
+          // bundle entry is unchanged for page jobs): Node names the page
+          // file and line where the Worker names the script's kind, and
+          // the route names the page on both.
+          const unlocated = (log: string) =>
+            log.replace(
+              /The (server|stream) script in \S+:\d+ returned/,
+              (_, mode: string) => `The ${mode} script returned`,
+            );
+          if (refused.path === "/returns-component") {
+            expect(r.cfLog, `cf log ${refused.path}`).toBe(r.nodeLog);
+            expect(r.nodeLog).toMatch(
+              /The server script in \S*components\/object-card\/object-card\.html:\d+ returned/,
+            );
+          } else {
+            expect(r.nodeLog).toMatch(
+              new RegExp(
+                `The (server|stream) script in src/pages${refused.path}\\.html:\\d+ returned`,
+              ),
+            );
+            expect(r.cfLog, `cf log ${refused.path}`).toBe(
+              unlocated(r.nodeLog),
+            );
+          }
+        }
+      }, 60_000);
+    }
 
     // D4.6: every kind of request-time render failure (the instance,
     // nested-job, depth and size budgets, and a "failed during <stage>")

@@ -278,6 +278,24 @@ describe("loadSidecar production readiness distinctions", () => {
     }
   });
 
+  // R2-05-d: only ENOENT means "no sidecar". A file where Bascik's private
+  // folder should be is a broken release layout, not a static one: serving
+  // it with every server script silently off would hide that.
+  it("refuses a sidecar path whose private folder is a file, naming the path", async () => {
+    const dir = outDir();
+    await mkdir(dir, { recursive: true });
+    try {
+      await writeFile(join(dir, ".bascik"), "not a folder");
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+        `[bascik] --server: Failed to load server scripts sidecar from ${path}: ENOTDIR`,
+      );
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a present sidecar with a valid empty scripts map", async () => {
     const dir = outDir();
     await mkdir(join(dir, ".bascik"), { recursive: true });
@@ -434,6 +452,31 @@ describe("loadSidecar production readiness distinctions", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  // F076: a document that is not an object (a truncated deploy, a tool that
+  // wrote `null`) gets the same actionable message, never a raw TypeError.
+  it.each(["null", "[]", "5", '"scripts"', "true"])(
+    "rejects a sidecar document that is %s, naming the file and the rebuild",
+    async (content) => {
+      const dir = outDir();
+      await mkdir(join(dir, ".bascik"), { recursive: true });
+      try {
+        const path = join(dir, ".bascik", "server-scripts.json");
+        await writeFile(path, content, "utf8");
+        const load = serverSidecarRegistry.loadSidecar(path);
+        await expect(load).rejects.toThrow(/is not a JSON object/);
+        await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+          path,
+        );
+        await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+          /Run `bascik --build`/,
+        );
+        expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a malformed scripts member", async () => {
     const dir = outDir();

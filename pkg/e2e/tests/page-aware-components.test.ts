@@ -59,7 +59,7 @@ test.describe("Component build scripts", () => {
     await expect(label).toHaveClass(/bascik__page-aware-badge__badge-label/);
     await expect(label).toHaveCSS("color", "rgb(0, 128, 0)");
     const em = page.getByTestId("page-aware-em");
-    await expect(em).toHaveClass(/bascik__page-aware-badge__el__em/);
+    await expect(em).toHaveClass(/b_el_page-aware-badge_em/);
     await expect(em).toHaveCSS("font-weight", "700");
     expect(await page.content()).not.toContain("data-bascik-output-scope");
   });

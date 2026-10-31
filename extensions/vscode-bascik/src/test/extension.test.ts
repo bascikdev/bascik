@@ -2446,6 +2446,55 @@ suite("Extension Integration Suite", () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
+    // The "plain" folder has no bascik.config and no package.json listing @bascik/bascik: a React or Vue app with its
+    // own src/components and src/api must not get Bascik's scoping or API route rules.
+    test("reports nothing in a workspace folder that is not a Bascik project", async () => {
+      const plain = getWorkspaceFolder("plain");
+      const plainSource = vscode.Uri.file(path.join(plain.uri.fsPath, "src"));
+      const files: [string, string][] = [
+        ["src/components/menu-button.css", "[data-state] { color: red; }"],
+        [
+          "src/components/menu-button.ts",
+          'document.querySelector("[data-target]");',
+        ],
+        ["src/api/users.ts", "export default function handler() {}"],
+      ];
+      try {
+        const documents: vscode.TextDocument[] = [];
+        for (const [relative, content] of files) {
+          const uri = vscode.Uri.file(path.join(plain.uri.fsPath, relative));
+          await vscode.workspace.fs.writeFile(uri, Buffer.from(content));
+          documents.push(await vscode.workspace.openTextDocument(uri));
+        }
+        // The same CSS in the Bascik folder is flagged, so the server has answered by the time it is.
+        const control = await openWorkspaceDocument({
+          language: "css",
+          directory: "src/components",
+          content: "[data-state] { color: red; }",
+        });
+        await waitForDiagnostic(
+          control.uri,
+          (d) =>
+            d.message.includes("Standalone attribute selectors are not scoped"),
+          "Expected the Bascik folder's CSS to be flagged",
+        );
+        for (const document of documents) {
+          const diagnostics = vscode.languages
+            .getDiagnostics(document.uri)
+            .filter((d) => d.source === "bascik");
+          assert.deepStrictEqual(
+            diagnostics.map((d) => d.message),
+            [],
+            `${path.basename(document.uri.fsPath)} is not in a Bascik project`,
+          );
+        }
+      } finally {
+        try {
+          await vscode.workspace.fs.delete(plainSource, { recursive: true });
+        } catch {}
+      }
+    });
+
     test("reports compatibility warning in a component companion JS file", async () => {
       const doc = await openWorkspaceDocument({
         language: "javascript",
@@ -2816,6 +2865,75 @@ suite("Extension Integration Suite", () => {
         .getDiagnostics(doc.uri)
         .filter((d) => d.source === "bascik");
       assert.strictEqual(diagnostics.length, 0);
+    });
+  });
+
+  // Highlighting comes from a TextMate grammar injected into the `html` language, whose root grammar is
+  // `text.html.derivative`, not `text.html.basic`. VS Code has no public token API; `_workbench.captureSyntaxTokens`
+  // is the command its own colorization tests use. Each token is `{ c: text, t: space-separated scopes }`.
+  suite("Bascik attribute highlighting", () => {
+    interface CapturedToken {
+      c: string;
+      t: string;
+    }
+
+    async function tokensOf(content: string): Promise<CapturedToken[]> {
+      const document = await openWorkspaceDocument({
+        language: "html",
+        content,
+        directory: "src/components",
+      });
+      return vscode.commands.executeCommand<CapturedToken[]>(
+        "_workbench.captureSyntaxTokens",
+        document.uri,
+      );
+    }
+
+    function scopesOf(tokens: CapturedToken[], text: string): string[] {
+      const token = tokens.find((candidate) => candidate.c === text);
+      assert.ok(
+        token,
+        `Expected a token "${text}" in ${JSON.stringify(tokens.map((t) => t.c))}`,
+      );
+      return token.t.split(" ");
+    }
+
+    test("scopes Bascik attribute names in an .html document and keeps their values", async () => {
+      const tokens = await tokensOf(
+        '<user-card data-bascik-prop-role="Admin" data-bascik-slot>\n<script data-bascik-build>export default () => 1;</script>\n</user-card>\n',
+      );
+      for (const name of [
+        "data-bascik-prop-role",
+        "data-bascik-slot",
+        "data-bascik-build",
+      ]) {
+        assert.ok(
+          scopesOf(tokens, name).includes("entity.other.attribute-name.bascik"),
+          `${name} should be scoped as a Bascik attribute name`,
+        );
+      }
+      const valueScopes = scopesOf(tokens, "Admin");
+      assert.ok(
+        valueScopes.includes("string.quoted.double.html"),
+        `The attribute value should stay an HTML string, got ${valueScopes.join(" ")}`,
+      );
+      assert.ok(
+        tokens.every((token) => !token.t.includes("invalid.illegal")),
+        `No token should be marked illegal: ${JSON.stringify(tokens)}`,
+      );
+    });
+
+    test("leaves Bascik names in text, comments and unknown attributes alone", async () => {
+      const tokens = await tokensOf(
+        "<p data-bascik-slotted>data-bascik-slot</p>\n<!-- data-bascik-build -->\n",
+      );
+      assert.ok(tokens.length > 0, "The document should be tokenized");
+      assert.ok(
+        tokens.every(
+          (token) => !token.t.includes("entity.other.attribute-name.bascik"),
+        ),
+        `Nothing here is a Bascik attribute: ${JSON.stringify(tokens)}`,
+      );
     });
   });
 

@@ -8,7 +8,8 @@ import { readStartTagAttributes } from "./html-scanner.ts";
 import {
   createMarkerWalk,
   createOpenTagScanner,
-  findWhitespaceMarkerAnchors,
+  findMarkerAnchors,
+  isRegexWhitespace,
   openTagsOf,
   replaceScannedElements,
   replaceSpans,
@@ -43,6 +44,35 @@ const elementOpenTags = (
       : -1;
   });
 import type { BascikComponent } from "./types.ts";
+
+/**
+ * The class Bascik generates for an element selector: `p { }` in component
+ * `card` becomes `.b_el_card_p`, and the class is added to every `<p>` in the
+ * template. Components have no shadow DOM, so a bare `p { }` would style
+ * every paragraph on the page; a class keeps the rule inside the component.
+ *
+ * The head `b_el_` differs from the authored head on purpose: an authored
+ * class `.el__p` becomes `bascik__card__el__p`, which an element rule can
+ * never produce, so the two rules never merge. `scopeKey` is the component
+ * name, or `<name>__<instanceId>` when the component needs per-instance CSS.
+ * Under `minify.identifiers` the name is hashed to `b` plus 11 Base62
+ * characters, which cannot contain `_`, so a hash never equals a readable
+ * generated name.
+ */
+export const elementSelectorClassName = (
+  scopeKey: string,
+  tagName: string,
+): string => minifyAttributeName(`b_el_${scopeKey}_${tagName}`);
+
+/**
+ * The class Bascik generates for an `#id` selector: `#btn { }` in component
+ * `card` becomes `.b_id_card_btn`, added to the element whose `id` is `btn`.
+ * The `id` itself is scoped per instance (`bascik__card__<instanceId>__btn`),
+ * so a selector naming it could only style one instance; a class shared by
+ * every instance styles them all. See `elementSelectorClassName` for the head.
+ */
+export const idSelectorClassName = (scopeKey: string, idName: string): string =>
+  minifyAttributeName(`b_id_${scopeKey}_${idName}`);
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
 // error (e.g. breaking `0.7rem 1em` across two lines) can place a unit
@@ -119,6 +149,52 @@ const CSS_UNIT_KEYWORDS = new Set([
   "head",
 ]);
 
+/**
+ * `css.replace(pattern, ...)` for a pattern capturing `(prefix)(element)`,
+ * replacing a match only when the first `{`, `}` or `;` (and `)` when
+ * `parenStops`) after it is a `{`: what `(?=[^{};]*\{)` answered, the test
+ * that an element name sits in selector position. The lookahead rescanned
+ * to the next stop from every candidate, quadratic in a long selector list
+ * or a long run of text without a stop; match ends only grow, so one
+ * forward cursor answers them all in a single scan.
+ *
+ * A match never spans a stop past its first character (only an escaped one
+ * inside a scoped class name), so a match the lookahead refused lies in a
+ * stretch where every other match is refused too, and skipping over it
+ * changes no result.
+ */
+const replaceInSelectorPosition = (
+  css: string,
+  pattern: RegExp,
+  parenStops: boolean,
+  convert: (prefix: string, elementName: string) => string,
+): string => {
+  // The first stop at or after the last match end asked about.
+  let stop = -1;
+  return css.replace(
+    pattern,
+    (match: string, prefix: string, elementName: string, offset: number) => {
+      const end = offset + match.length;
+      if (end > stop) {
+        stop = end;
+        for (; stop < css.length; stop++) {
+          const code = css.charCodeAt(stop);
+          if (
+            code === 123 /* { */ ||
+            code === 125 /* } */ ||
+            code === 59 /* ; */ ||
+            (parenStops && code === 41) /* ) */
+          )
+            break;
+        }
+      }
+      return css.charCodeAt(stop) === 123
+        ? convert(prefix, elementName)
+        : match;
+    },
+  );
+};
+
 export const convertCssElementSelectorsToClasses = (
   css: string,
   componentName: string,
@@ -138,13 +214,22 @@ export const convertCssElementSelectorsToClasses = (
       seen.add(elementName);
       elementsConvertedClasses.push(elementName);
     }
-    return `.${minifyAttributeName(`bascik__${componentName}__el__${elementName}`)}`;
+    return `.${elementSelectorClassName(componentName, elementName)}`;
   };
 
   // Shield strings and url() contents so braces or commas inside string
   // literals (e.g. `content: "p {"` or `[data-x="a { b"]`) never trigger
   // element-selector lookaheads.
-  const { css: shielded, restore } = shieldCssStrings(css);
+  const { css: stringShielded, restore: restoreStrings } =
+    shieldCssStrings(css);
+  // Shield at-rule preludes too (`@media screen, print`, a wrapped
+  // `@supports (a)\n  and (b)`, `@keyframes\nfade`): their keywords sit in
+  // selector position for the passes below and would become element classes.
+  // `@scope` is left visible because its prelude holds real selectors.
+  const { css: shielded, restore: restorePreludes } =
+    shieldAtRulePreludes(stringShielded);
+  const restore = (value: string): string =>
+    restoreStrings(restorePreludes(value));
 
   // Pass 1: standalone element selectors after a selector boundary.
   // Handles top-level rules and indented selectors inside at-rules:
@@ -156,10 +241,13 @@ export const convertCssElementSelectorsToClasses = (
   // The context-aware lookahead confirms we are still in selector position.
   // Element names start with a letter (`[a-z][a-z1-6]*`), so @keyframes stops
   // such as `40%` or `0%, 100%` are never mistaken for element selectors.
-  let result = shielded.replace(
-    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/gim,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  const prefixed = (prefix: string, elementName: string): string =>
+    `${prefix}${toClass(elementName)}`;
+  let result = replaceInSelectorPosition(
+    shielded,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])/gim,
+    false,
+    prefixed,
   );
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
@@ -170,51 +258,113 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(
-    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};)]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g,
+    true,
+    prefixed,
   );
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
   //   - Explicit nesting: `& p { }`, `& > h2 { }`, `&>h2 { }`, `& + li { }`, `& ~ span { }`.
+  //   - `&` followed by pseudo-classes, pseudo-elements or attribute
+  //     selectors, then a combinator: `&:hover p { }`, `&[open] > summary { }`
+  //     (the same chain Pass 4 accepts after a scoped class).
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
-  result = result.replace(
-    /(&\s*(?:[>+~]\s*)?)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/g,
+    false,
+    prefixed,
   );
-  result = result.replace(
-    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-    (_match, prefix: string, elementName: string) =>
-      `${prefix}${toClass(elementName)}`,
+  result = replaceInSelectorPosition(
+    result,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/g,
+    false,
+    prefixed,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
   // Handles `.foo p {}`, `.foo > h2 {}`, `.foo>h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
   // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
-  // After Pass 1 (class scoping), class names become `bascik__…__foo` or a
+  // After class scoping, class names become `bascik__…__foo`, the classes
+  // generated for `#id` and element selectors `b_id_…` and `b_el_…`, or a
   // 12-character hash when identifier minification is enabled. Matching the
   // class selector itself keeps the anchor in selector position. The negative
   // lookahead `(?![\w-])` prevents
   // matching the start of another scoped class name (e.g. `bascik__comp__bar`)
   // or a prefix of a hyphenated custom element such as `code-block`.
   //
+  // An escape in a scoped name is one unit: a hex escape takes up to six
+  // digits and the one whitespace that ends it (`.a\1 b` is the class
+  // `a<U+0001>b`, never `.a\1` and an element `b`), written so each step has
+  // exactly one way to match.
+  //
   // Note: this pass only applies after Pass 1 has scoped the class selector.
+  // Every argument and attribute scan stops at `{`, `}` or `;`: a missing `)`
+  // or `]` (a typo) would otherwise rescan the rest of the stylesheet from
+  // each scoped class, which is quadratic.
+  //
+  // Each round converts the next element of a descendant chain
+  // (`.card p span` takes two), so a stylesheet costs one pass per level of
+  // its deepest chain: linear for any realistic depth, quadratic only for a
+  // single selector chaining thousands of elements.
   let previousResult: string;
   do {
     previousResult = result;
-    result = result.replace(
-      /((?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
-      (_match, prefix: string, elementName: string) =>
-        `${prefix}${toClass(elementName)}`,
+    // The `:is(` argument is checked for a scoped class with a lazy
+    // lookahead and read once: two `[^){};]*` runs around the class
+    // backtracked over every class in an unclosed argument (quadratic).
+    // A scoped class name may carry a CSS hex escape (`\31 `), which
+    // consumes one whitespace after it; that space is part of the name, not
+    // a descendant combinator.
+    result = replaceInSelectorPosition(
+      result,
+      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
+      false,
+      prefixed,
     );
   } while (result !== previousResult);
 
   return { css: restore(result), elementsConvertedClasses };
+};
+
+const HTML_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
+
+/**
+ * The quoted attribute values of one open tag, as `[start, end]` index pairs
+ * of their opening and closing quotes. Follows the HTML tokenizer: a quote
+ * opens a value only right after `=` (and optional whitespace), the value
+ * ends at the next matching quote, and backslashes are plain characters.
+ * A quote anywhere else (inside an attribute name or an unquoted value) is
+ * an ordinary character.
+ */
+export const quotedAttributeValueRanges = (
+  openTag: string,
+): Array<{ start: number; end: number }> => {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let afterEquals = false;
+  for (let j = 0; j < openTag.length; j++) {
+    const char = openTag[j];
+    if (afterEquals && (char === '"' || char === "'")) {
+      const end = openTag.indexOf(char, j + 1);
+      if (end === -1) {
+        ranges.push({ start: j, end: openTag.length });
+        break;
+      }
+      ranges.push({ start: j, end });
+      j = end;
+      afterEquals = false;
+    } else if (char === "=") {
+      afterEquals = true;
+    } else if (!HTML_WHITESPACE.has(char)) {
+      afterEquals = false;
+    }
+  }
+  return ranges;
 };
 
 /**
@@ -231,23 +381,7 @@ export const injectClassIntoTag = (
       (tagHead) => `${tagHead} class="${className}"`,
     );
   }
-  const stringRanges: Array<{ start: number; end: number }> = [];
-  let j = 0;
-  let strChar = null;
-  let strStart = -1;
-  while (j < openTag.length) {
-    if (strChar) {
-      if (openTag[j] === "\\") j++;
-      else if (openTag[j] === strChar) {
-        stringRanges.push({ start: strStart, end: j });
-        strChar = null;
-      }
-    } else if (openTag[j] === '"' || openTag[j] === "'") {
-      strChar = openTag[j];
-      strStart = j;
-    }
-    j++;
-  }
+  const stringRanges = quotedAttributeValueRanges(openTag);
 
   let replaced = false;
   let finalStr = "";
@@ -324,7 +458,7 @@ export const addElementClassesInHtml = (
     if (!elementClassMap.has(lower)) {
       elementClassMap.set(
         lower,
-        minifyAttributeName(`bascik__${componentName}__el__${element}`),
+        elementSelectorClassName(componentName, element),
       );
       escapedElements.push(element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     }
@@ -572,7 +706,8 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
   }
   if (scopedNames.size === 0) return css;
   // Scope @keyframes declarations and animation / animation-name property values
-  // so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
+  // (a declaration starts after `{`, `;`, or a nested rule's `}`, and its value
+  // ends at `;` or `}`, never at a `{`) so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
   // property names, unrelated declarations, or selectors.
   const { css: shielded, restore } = shieldCssStrings(css);
   const replaced = shielded
@@ -582,7 +717,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
         `${prefix}${scopedNames.get(name) ?? name}`,
     )
     .replace(
-      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation-name\s*:\s*)([^;{}]+)/gim,
+      /((?:^|[;{}])\s*(?:-[a-z]+-)?animation-name\s*:\s*)([^;{}]+)(?=[;}]|(?![\s\S]))/gi,
       (_match, prefix: string, value: string) =>
         `${prefix}${value.replace(
           /(?<![@.\w#-])([\w-]+)(?![\w(-])/g,
@@ -590,34 +725,87 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
         )}`,
     )
     .replace(
-      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation\s*:\s*)([^;{}]+)/gim,
+      /((?:^|[;{}])\s*(?:-[a-z]+-)?animation\s*:\s*)([^;{}]+)(?=[;}]|(?![\s\S]))/gi,
       (_match, prefix: string, value: string) =>
         `${prefix}${scopeAnimationShorthandValue(value, scopedNames)}`,
     );
   return restore(replaced);
 };
 
+// An `[id]` attribute selector (`[id]`, `[ ID ]`, `[id="x"]`, `[id~=x]`), but
+// not a longer attribute name such as `[id-ref]` or `[idx]`.
+const ID_ATTRIBUTE_SELECTOR = /\[\s*id\s*(?:[~|^$*]?=|\])/i;
+
+/** Split a selector list at its top-level commas (not inside `()` or `[]`). */
+const splitSelectorList = (selectorList: string): string[] => {
+  const parts: string[] = [];
+  let depth = 0;
+  let partStart = 0;
+  for (let i = 0; i < selectorList.length; i++) {
+    const char = selectorList[i];
+    if (char === "(" || char === "[") depth++;
+    else if ((char === ")" || char === "]") && depth > 0) depth--;
+    else if (char === "," && depth === 0) {
+      parts.push(selectorList.slice(partStart, i));
+      partStart = i + 1;
+    }
+  }
+  parts.push(selectorList.slice(partStart));
+  return parts;
+};
+
+/** The index just past the `}` that closes the block opened at `open`. */
+const blockEnd = (css: string, open: number): number => {
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) return i + 1;
+  }
+  return css.length;
+};
+
 export const removeIdSelectors = (css: string): string => {
-  if (!/\[id\b/i.test(css)) return css;
+  if (!ID_ATTRIBUTE_SELECTOR.test(css)) return css;
   // Strips the [id] / [id="…"] attribute-selector form which cannot be
   // reliably scoped without DOM wrapping.  The hash form (#foo) is now
   // handled by convertCssIdSelectorsToClasses.
   // Shield string literals first so a `}` inside a quoted value (e.g.
-  // content: "x}y") can't terminate the rule match early.
+  // content: "x}y") can't end a block early.
   const { css: shielded, restore } = shieldCssStrings(css);
-  const replaced = shielded.replace(
-    /((?:^|[;{}])\s*)([^{};]*?\[id\b[^\]]*\][^{};]*?)(\{[\s\S]*?\})/gim,
-    (_match, prefix: string, selectorHeader: string, block: string) => {
-      const keptSelectors = selectorHeader
-        .split(",")
-        .filter((part) => !/\[id\b/i.test(part))
-        .map((part) => part.trim())
-        .filter(Boolean);
-      if (keptSelectors.length === 0) return prefix;
-      return `${prefix}${keptSelectors.join(", ")} ${block}`;
-    },
-  );
-  return restore(replaced);
+  let result = "";
+  let copiedTo = 0;
+  // A rule prelude is the text from the last `{`, `}` or `;` to the next `{`.
+  let preludeStart = 0;
+  for (let i = 0; i < shielded.length; i++) {
+    const char = shielded[i];
+    if (char === ";" || char === "}") {
+      preludeStart = i + 1;
+      continue;
+    }
+    if (char !== "{") continue;
+    const prelude = shielded.slice(preludeStart, i);
+    const selectorStart =
+      preludeStart + (prelude.length - prelude.trimStart().length);
+    preludeStart = i + 1;
+    // At-rule preludes (`@supports selector([id])`) are not selectors.
+    if (shielded[selectorStart] === "@" || !ID_ATTRIBUTE_SELECTOR.test(prelude))
+      continue;
+    const keptSelectors = splitSelectorList(prelude)
+      .filter((part) => !ID_ATTRIBUTE_SELECTOR.test(part))
+      .map((part) => part.trim())
+      .filter(Boolean);
+    result += shielded.slice(copiedTo, selectorStart);
+    if (keptSelectors.length > 0) {
+      result += `${keptSelectors.join(", ")} `;
+      copiedTo = i;
+    } else {
+      // Drop the whole rule, nested blocks included.
+      copiedTo = blockEnd(shielded, i);
+      i = copiedTo - 1;
+      preludeStart = copiedTo;
+    }
+  }
+  return restore(result + shielded.slice(copiedTo));
 };
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────
@@ -649,7 +837,7 @@ export const removeIdSelectors = (css: string): string => {
  * In valid component CSS this does not occur.
  *
  * @example
- *   #btn { color: red }  →  .bascik__my-comp__id__btn { color: red }
+ *   #btn { color: red }  →  .b_id_my-comp_btn { color: red }
  */
 export const convertCssIdSelectorsToClasses = (
   css: string,
@@ -669,9 +857,7 @@ export const convertCssIdSelectorsToClasses = (
     /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g,
     (_: string, idName: string) => {
       if (!seen.has(idName)) {
-        const className = minifyAttributeName(
-          `bascik__${componentName}__id__${idName}`,
-        );
+        const className = idSelectorClassName(componentName, idName);
         seen.set(idName, className);
         idsConverted.push({ idName, className });
       }
@@ -695,12 +881,14 @@ export const convertCssIdSelectorsToClasses = (
  */
 const replaceIdTags = (
   html: string,
-  idMarker: string,
+  isMarkerAt: (html: string, at: number) => boolean,
   replace: (openTag: string) => string,
 ): string => {
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const marker = new RegExp(idMarker, "iy");
-  const anchors = findWhitespaceMarkerAnchors(html, /id/gi, marker);
+  // Each `id` preceded by the whitespace the marker starts with, where the
+  // marker matches from that whitespace (`findWhitespaceMarkerAnchors`).
+  const anchors = findMarkerAnchors(html, /id/gi, (index) =>
+    index > 0 && isMarkerAt(html, index - 1) ? index - 1 : -1,
+  );
   if (anchors.length === 0) return html;
   const markerAt = createMarkerWalk(html, anchors, "first");
   // `[a-zA-Z0-9-]+`: the chain takes any name characters after the first.
@@ -724,6 +912,133 @@ const replaceIdTags = (
   return replaceSpans(html, matching(), replace);
 };
 
+/**
+ * The marker for an `id` attribute naming `idName`: unscoped (`id="panel"`),
+ * scoped by any prefix ending in `__`, or exactly `scopedId` (its minified
+ * form), in any quoting. Used with the `i` flag.
+ */
+export const idMarkerPattern = (idName: string, scopedId?: string): string => {
+  const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedScoped = scopedId
+    ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    : "";
+  const idGroup = escapedScoped
+    ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
+    : `(?:[^"]*__)?${escaped}`;
+  const idGroupSingle = escapedScoped
+    ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
+    : `(?:[^']*__)?${escaped}`;
+  const idGroupUnquoted = escapedScoped
+    ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
+    : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
+  return `\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))`;
+};
+
+/**
+ * A name the id marker scanner covers: printable ASCII, none of the
+ * characters with a role in the marker (whitespace, quotes, `=`, `<`, `>`,
+ * backtick, `/`). The `i` flag folds ASCII letters only onto ASCII letters.
+ */
+const isPlainMarkerName = (name: string): boolean =>
+  /^[\x21-\x7e]+$/.test(name) && !/["'=<>`/]/.test(name);
+
+/** ASCII letters upper-cased: the `i` flag's folding (without `u`) for ASCII. */
+const foldAscii = (code: number): number =>
+  code >= 0x61 && code <= 0x7a ? code - 32 : code;
+
+/** `[\s"'=<>\`]`: what ends the marker's unquoted value run. */
+const isUnquotedMarkerEnd = (code: number): boolean =>
+  code === 34 ||
+  code === 39 ||
+  code === 61 ||
+  code === 60 ||
+  code === 62 ||
+  code === 96 ||
+  isRegexWhitespace(code);
+
+/**
+ * `new RegExp(idMarkerPattern(idName, scopedId), "iy")` tested at `at`
+ * (`lastIndex = at`), without a regex, or undefined when a name is not plain
+ * (`isPlainMarkerName`) and the caller keeps the regex. The scoped id names
+ * the instance, so the regex was compiled once per component instance: most
+ * of a build's id scoping time.
+ *
+ * After `\sid\s*=\s*`, a quote opens a value that runs to the next same quote;
+ * otherwise the value is a run of characters other than `[\s"'=<>\`]`, and the
+ * name must end at the run's end before whitespace or `>`, or one character
+ * earlier at a `/` before that `>` (`/>`). The value matches when it is the
+ * name, the scoped id, or ends in `__` and the name (ASCII case-insensitively).
+ */
+export const createIdMarkerTest = (
+  idName: string,
+  scopedId?: string,
+): ((html: string, at: number) => boolean) | undefined => {
+  const scoped = scopedId || undefined;
+  if (
+    !isPlainMarkerName(idName) ||
+    (scoped !== undefined && !isPlainMarkerName(scoped))
+  )
+    return undefined;
+  const nameAt = (html: string, start: number, name: string): boolean => {
+    for (let k = 0; k < name.length; k++)
+      if (
+        foldAscii(html.charCodeAt(start + k)) !== foldAscii(name.charCodeAt(k))
+      )
+        return false;
+    return true;
+  };
+  const valueMatches = (html: string, start: number, end: number): boolean => {
+    const length = end - start;
+    if (length === idName.length && nameAt(html, start, idName)) return true;
+    if (
+      scoped !== undefined &&
+      length === scoped.length &&
+      nameAt(html, start, scoped)
+    )
+      return true;
+    const nameStart = end - idName.length;
+    return (
+      length >= idName.length + 2 &&
+      html.charCodeAt(nameStart - 1) === 95 &&
+      html.charCodeAt(nameStart - 2) === 95 &&
+      nameAt(html, nameStart, idName)
+    );
+  };
+  return (html, at) => {
+    if (!isRegexWhitespace(html.charCodeAt(at))) return false;
+    if (
+      foldAscii(html.charCodeAt(at + 1)) !== 0x49 ||
+      foldAscii(html.charCodeAt(at + 2)) !== 0x44
+    )
+      return false;
+    let index = at + 3;
+    while (isRegexWhitespace(html.charCodeAt(index))) index++;
+    if (html.charCodeAt(index) !== 61) return false;
+    index++;
+    while (isRegexWhitespace(html.charCodeAt(index))) index++;
+    const code = html.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      const close = html.indexOf(code === 34 ? '"' : "'", index + 1);
+      return close !== -1 && valueMatches(html, index + 1, close);
+    }
+    let end = index;
+    while (end < html.length && !isUnquotedMarkerEnd(html.charCodeAt(end)))
+      end++;
+    const next = html.charCodeAt(end);
+    if (
+      (next === 62 || isRegexWhitespace(next)) &&
+      valueMatches(html, index, end)
+    )
+      return true;
+    return (
+      next === 62 &&
+      end - 1 > index &&
+      html.charCodeAt(end - 1) === 47 &&
+      valueMatches(html, index, end - 1)
+    );
+  };
+};
+
 export const addIdClassesInHtml = (
   html: string,
   idsConverted: { idName: string; className: string }[],
@@ -736,21 +1051,8 @@ export const addIdClassesInHtml = (
     const scopedId = scopedIdNames?.[idName];
     if (!result.includes(idName) && (!scopedId || !result.includes(scopedId)))
       return;
-    const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const escapedScoped = scopedId
-      ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      : "";
-    const idGroup = escapedScoped
-      ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
-      : `(?:[^"]*__)?${escaped}`;
-    const idGroupSingle = escapedScoped
-      ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
-      : `(?:[^']*__)?${escaped}`;
-    const idGroupUnquoted = escapedScoped
-      ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
-      : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
-    const idMarker = `\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))`;
     if (/["'>\s]/.test(idName + (scopedId ?? ""))) {
+      const idMarker = idMarkerPattern(idName, scopedId);
       // Not a CSS id (those are `[a-zA-Z][\w-]*`): keep the regex.
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const idPattern = new RegExp(
@@ -762,7 +1064,17 @@ export const addIdClassesInHtml = (
       );
       return;
     }
-    result = replaceIdTags(result, idMarker, (openTag) =>
+    const isMarkerAt =
+      createIdMarkerTest(idName, scopedId) ??
+      (() => {
+        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        const marker = new RegExp(idMarkerPattern(idName, scopedId), "iy");
+        return (markup: string, at: number): boolean => {
+          marker.lastIndex = at;
+          return marker.test(markup);
+        };
+      })();
+    result = replaceIdTags(result, isMarkerAt, (openTag) =>
       injectClassIntoTag(openTag, className),
     );
   });
@@ -792,6 +1104,111 @@ export const shieldCssStrings = (
   );
   return {
     css: shielded,
+    restore: shield.restore,
+  };
+};
+
+// One CSS escape: a hex code point (1-6 digits, one optional whitespace
+// terminator) or any other character except a newline.
+// CSS Syntax preprocessing makes CRLF one newline, so a hex escape's one
+// terminating whitespace may be the two characters `\r\n`.
+const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
+
+/**
+ * The class name after each `.` in CSS whose strings and `url()` contents are
+ * shielded: an identifier that starts with a letter, `_`, a non-ASCII
+ * character or an escape, and runs over word characters, `-`, non-ASCII
+ * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`).
+ */
+const cssClassSelectorNames = (): RegExp =>
+  new RegExp(
+    String.raw`(?<=\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
+    "g",
+  );
+
+/** The identifier a CSS escape sequence stands for (`md\:flex` -> `md:flex`). */
+const unescapeCssIdentifier = (raw: string): string =>
+  raw.includes("\\")
+    ? raw.replace(
+        /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|([\s\S]))/g,
+        (_match, hex: string | undefined, char: string | undefined) => {
+          if (hex === undefined) return char ?? "";
+          const codePoint = Number.parseInt(hex, 16);
+          return codePoint === 0 ||
+            codePoint > 0x10ffff ||
+            (codePoint >= 0xd800 && codePoint <= 0xdfff)
+            ? "\ufffd"
+            : String.fromCodePoint(codePoint);
+        },
+      )
+    : raw;
+
+/**
+ * Escape a class name for use after `.` in a selector, past its first
+ * character: anything other than a word character, `-` or non-ASCII is
+ * escaped (control characters as hex), so `md:flex` -> `md\:flex`.
+ */
+const escapeCssIdentifierTail = (name: string): string =>
+  name.replace(/[^\w\u0080-\uffff-]/g, (char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f
+      ? `\\${code.toString(16)} `
+      : `\\${char}`;
+  });
+
+/** Every class name a (string-shielded) stylesheet declares, unescaped. */
+export const declaredCssClassNames = (shieldedCss: string): string[] =>
+  [...shieldedCss.matchAll(cssClassSelectorNames())].map(([raw]) =>
+    unescapeCssIdentifier(raw),
+  );
+
+/**
+ * Rename every class selector in a (string-shielded) stylesheet to
+ * `bascik__<scopeKey>__<name>`, hashed when identifiers are minified. An
+ * escaped name is unescaped first, so the selector and the class attribute
+ * token it matches get the same scoped name, then escaped again.
+ */
+export const scopeCssClassSelectors = (
+  shieldedCss: string,
+  scopeKey: string,
+): string => {
+  // A dotted layer name (`@layer base.theme`, `layer(base.theme)`) is not a
+  // class selector; scopeLayerNames scopes it.
+  const layerShield = createContentShield(shieldedCss);
+  const css = shieldedCss.includes("layer")
+    ? shieldedCss.replace(/@layer\b[^{};]*|\blayer\([^()]*\)/gi, (layer) =>
+        layerShield.hide(layer),
+      )
+    : shieldedCss;
+  return layerShield.restore(scopeClassNames(css, scopeKey));
+};
+
+const scopeClassNames = (shieldedCss: string, scopeKey: string): string =>
+  shieldedCss.replace(cssClassSelectorNames(), (raw) => {
+    if (!raw.includes("\\"))
+      return minifyAttributeName(`bascik__${scopeKey}__${raw}`);
+    const name = unescapeCssIdentifier(raw);
+    const full = `bascik__${scopeKey}__${name}`;
+    const scoped = minifyAttributeName(full);
+    return scoped === full
+      ? `bascik__${scopeKey}__${escapeCssIdentifierTail(name)}`
+      : escapeCssIdentifierTail(scoped);
+  });
+
+/**
+ * Hide every at-rule prelude except `@scope`'s (from the `@` up to the next
+ * `{`, `;` or `}`) behind shield tokens. Run on CSS whose strings and `url()`
+ * contents are already shielded, so an `@` inside them is never matched.
+ */
+const shieldAtRulePreludes = (
+  css: string,
+): { css: string; restore: (s: string) => string } => {
+  if (!css.includes("@")) return { css, restore: (value) => value };
+  const shield = createContentShield(css);
+  return {
+    css: css.replace(/@(?!scope(?![\w-]))[\w-]+[^{};]*/gi, (prelude) =>
+      shield.hide(prelude),
+    ),
     restore: shield.restore,
   };
 };
@@ -1197,27 +1614,105 @@ export const resolveCssImportsSync = (
  * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
  * which requires @import rules to precede all other style rules.
  */
+/**
+ * A function returning the `{}` nesting depth at an offset of `css`, for
+ * offsets asked in increasing order. Braces in strings and comments do not
+ * count.
+ */
+const braceDepthScanner = (css: string): ((offset: number) => number) => {
+  let index = 0;
+  let depth = 0;
+  return (offset: number): number => {
+    while (index < offset) {
+      const char = css[index];
+      if (char === '"' || char === "'") {
+        let end = index + 1;
+        while (end < css.length && css[end] !== char && css[end] !== "\n")
+          end += css[end] === "\\" ? 2 : 1;
+        index = end + 1;
+        continue;
+      }
+      if (char === "/" && css[index + 1] === "*") {
+        const end = css.indexOf("*/", index + 2);
+        index = end === -1 ? css.length : end + 2;
+        continue;
+      }
+      if (char === "{") depth++;
+      else if (char === "}" && depth > 0) depth--;
+      index++;
+    }
+    return depth;
+  };
+};
+
 export const hoistCssImports = (css: string): string => {
   if (!css || !css.includes("@import")) return css;
 
-  const importRegex =
-    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
-  const imports: string[] = [];
-  const seen = new Set<string>();
-
-  const cleanedCss = css.replace(importRegex, (statement) => {
-    const trimmed = statement.trim();
-    if (!seen.has(trimmed)) {
-      seen.add(trimmed);
-      imports.push(trimmed);
+  // An `@import` statement, or an `@layer a, b;` statement. The spec lets
+  // `@layer` statements precede `@import`, and a statement that names the
+  // layer an import goes into (`@layer base, theme; @import … layer(theme)`)
+  // sets the layer order, so one that came before an import moves up with it.
+  //
+  // Each part scans forward once: a string ends at its closing quote (or a
+  // line break), a bare `url(...)` takes everything up to `)` in one atomic
+  // step (`(?=(...))\1`), and the tail stops at `;`, `{`, `}` or `@`. A lazy
+  // `[\s\S]*?` string, `[^)]*?\s*\)` and a `[^;]*` tail made an unclosed
+  // quote or `url(` cubic, and let an `@import` with no `;` swallow the next
+  // rule up to its first declaration's `;`.
+  const statementRegex =
+    /@import\s+(?:url\((?:\s*(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)\s*|(?=([^)]*))\1)\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)[^;{}@]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
+  // Only top-level `@layer` statements move: one inside `@media` must stay
+  // there.
+  const depthAt = braceDepthScanner(css);
+  const matches = [...css.matchAll(statementRegex)];
+  const hoistableLayerStatements = new Set(
+    matches
+      .filter(
+        (statement) =>
+          !/^@import/i.test(statement[0]) && depthAt(statement.index) === 0,
+      )
+      .map((statement) => statement.index),
+  );
+  // Any other `@layer` (a block, or a statement inside a block) declares a
+  // layer where it stands, so a statement after it must stay after it, or
+  // the layers it names would move ahead of that one.
+  let layerOrderFixedFrom = css.length;
+  for (const layer of css.matchAll(/@layer\b/gi)) {
+    if (!hoistableLayerStatements.has(layer.index)) {
+      layerOrderFixedFrom = layer.index;
+      break;
     }
-    return "";
+  }
+  const statements = matches.filter(
+    (statement) =>
+      /^@import/i.test(statement[0]) ||
+      (hoistableLayerStatements.has(statement.index) &&
+        statement.index < layerOrderFixedFrom),
+  );
+  let lastImport = -1;
+  statements.forEach((statement, index) => {
+    if (/^@import/i.test(statement[0])) lastImport = index;
   });
-
-  if (imports.length === 0) return css;
+  if (lastImport === -1) return css;
+  const hoisted: string[] = [];
+  const seen = new Set<string>();
+  let cleanedCss = "";
+  let copiedTo = 0;
+  for (const statement of statements.slice(0, lastImport + 1)) {
+    const trimmed = statement[0].trim();
+    const isImport = /^@import/i.test(trimmed);
+    // Imports are deduplicated; layer statements are kept as written.
+    if (!isImport || !seen.has(trimmed)) {
+      seen.add(trimmed);
+      hoisted.push(trimmed);
+    }
+    cleanedCss += css.slice(copiedTo, statement.index);
+    copiedTo = statement.index + statement[0].length;
+  }
+  cleanedCss += css.slice(copiedTo);
 
   const body = cleanedCss.trim();
-  return body ? `${imports.join("\n")}\n${body}` : imports.join("\n");
+  return body ? `${hoisted.join("\n")}\n${body}` : hoisted.join("\n");
 };
 
 export const getComponentCss = async (
@@ -1256,48 +1751,83 @@ export const getComponentCss = async (
  *   --brand: #d3ff8d   →  --bascik__my-comp__x1__brand: #d3ff8d
  *   var(--brand)        →  var(--bascik__my-comp__x1__brand)
  */
+/**
+ * Custom property names (without `--`) a stylesheet declares, as `--name:`
+ * declarations or `@property --name` rules, in first-seen order.
+ */
+export const declaredCustomPropertyNames = (css: string): Set<string> =>
+  css.includes("--")
+    ? customPropertyNamesInShielded(shieldCssStrings(css).css)
+    : new Set();
+
+/**
+ * A `--name` at the start of an identifier. The `--` inside a name such as
+ * the BEM class `.btn--primary:hover` is not a custom property, and starting
+ * only at a name's start keeps a run like `--a--a--a` one scan, not one per
+ * `--` (quadratic).
+ */
+const CUSTOM_PROPERTY_DECLARATION =
+  /((?<![\w\u0080-\uffff\\-]))--(\w[\w-]*)(?=\s*:)/gm;
+
+const customPropertyNamesInShielded = (shielded: string): Set<string> => {
+  const names = new Set<string>();
+  for (const m of shielded.matchAll(CUSTOM_PROPERTY_DECLARATION))
+    names.add(m[2]);
+  for (const m of shielded.matchAll(/@property\s+--(\w[\w-]*)\s*\{/gm))
+    names.add(m[1]);
+  return names;
+};
+
+const customPropertyScoper = (
+  names: ReadonlySet<string>,
+  componentName: string,
+) => {
+  const scoped = new Map<string, string>();
+  for (const name of names)
+    scoped.set(name, minifyAttributeName(`bascik__${componentName}__${name}`));
+  // Whole names only, so a later declared property name never matches inside
+  // an earlier generated name or a longer name.
+  return (match: string, prefix: string, name: string): string => {
+    const scopedName = scoped.get(name);
+    return scopedName === undefined ? match : `${prefix}--${scopedName}`;
+  };
+};
+
 export const scopeCssCustomProperties = (
   css: string,
   componentName: string,
 ): string => {
   if (!css.includes("--")) return css;
-  const propMap = new Map<string, string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  // Collect --var-name from element-level declarations:  --name:
-  const declRegex = /(?<!-)--(\w[\w-]*)(?=\s*:)/gm;
-  let m;
-  while ((m = declRegex.exec(shielded)) !== null) {
-    const originalName = m[1];
-    if (!propMap.has(originalName)) {
-      propMap.set(
-        originalName,
-        minifyAttributeName(`bascik__${componentName}__${originalName}`),
-      );
-    }
-  }
-  // Collect --name from @property at-rule declarations:  @property --name {
-  const atPropertyRegex = /@property\s+--(\w[\w-]*)\s*\{/gm;
-  while ((m = atPropertyRegex.exec(shielded)) !== null) {
-    const originalName = m[1];
-    if (!propMap.has(originalName)) {
-      propMap.set(
-        originalName,
-        minifyAttributeName(`bascik__${componentName}__${originalName}`),
-      );
-    }
-  }
-  if (propMap.size === 0) return css;
-  // One pass per pattern over whole names so a later declared property name
-  // never matches inside an earlier generated name or a longer name.
-  const scopeName = (match: string, prefix: string, name: string): string => {
-    const scoped = propMap.get(name);
-    return scoped === undefined ? match : `${prefix}--${scoped}`;
-  };
+  const names = customPropertyNamesInShielded(shielded);
+  if (names.size === 0) return css;
+  const scopeName = customPropertyScoper(names, componentName);
   const replaced = shielded
     .replace(/(@property\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName)
-    .replace(/((?<!-))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
+    .replace(CUSTOM_PROPERTY_DECLARATION, scopeName)
     .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName);
   return restore(replaced);
+};
+
+/**
+ * Rename the custom properties a component's stylesheets declare inside one
+ * `style` attribute value, the way `scopeCssCustomProperties` renames them in
+ * the stylesheet: `--name:` declarations and `var(--name)` references. Names
+ * the stylesheets do not declare stay global.
+ */
+export const scopeCustomPropertiesInStyleValue = (
+  value: string,
+  names: ReadonlySet<string>,
+  componentName: string,
+): string => {
+  if (names.size === 0 || !value.includes("--")) return value;
+  const { css: shielded, restore } = shieldCssStrings(value);
+  const scopeName = customPropertyScoper(names, componentName);
+  return restore(
+    shielded
+      .replace(/((?<![\w-]))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
+      .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName),
+  );
 };
 
 // ─── @layer Name Scoping ─────────────────────────────────────────────────────
@@ -1313,17 +1843,28 @@ export const scopeCssCustomProperties = (
  * Only names that appear in this CSS are scoped — external layer names
  * referenced elsewhere are left untouched.
  */
+// The name in an `@import … layer(name)` statement (strings and `url()`
+// contents shielded first).
+const IMPORT_LAYER_NAME =
+  /(@import\b[^;{}]*?\blayer\(\s*)([\w-]+(?:\.[\w-]+)*)(?=\s*\))/gi;
+// The (dotted) names of an `@layer` block or ordering statement.
+const LAYER_NAME_LIST =
+  /@layer\s+([\w-]+(?:\.[\w-]+)*(?:\s*,\s*[\w-]+(?:\.[\w-]+)*)*)/g;
+
 export const scopeLayerNames = (css: string, componentName: string): string => {
-  if (!css.includes("@layer")) return css;
+  if (!css.includes("@layer") && !css.includes("layer(")) return css;
   const layerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  shielded.replace(
-    /@layer\s+([\w-]+(?:\s*,\s*[\w-]+)*)/g,
-    (_: string, nameList: string) => {
-      nameList.split(",").forEach((n) => layerNames.add(n.trim()));
-      return "";
-    },
-  );
+  // Each segment of a dotted name (`base.theme`) is a layer name of its own,
+  // so `@layer base.theme` and `@layer base { @layer theme }` stay the same
+  // sublayer.
+  for (const [, nameList] of shielded.matchAll(LAYER_NAME_LIST))
+    for (const [segment] of nameList.matchAll(/[\w-]+/g))
+      layerNames.add(segment);
+  // A preserved remote `@import url(…) layer(name)` puts its rules in a layer
+  // of this component too.
+  for (const [, , name] of shielded.matchAll(IMPORT_LAYER_NAME))
+    for (const [segment] of name.matchAll(/[\w-]+/g)) layerNames.add(segment);
   if (layerNames.size === 0) return css;
   const scopedNames = new Map<string, string>();
   layerNames.forEach((name) => {
@@ -1332,11 +1873,19 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
       minifyAttributeName(`bascik__${componentName}__layer__${name}`),
     );
   });
-  const replaced = shielded.replace(
-    /(@layer\s+)([\w-]+(?:\s*,\s*[\w-]+)*)/g,
-    (_: string, prefix: string, nameList: string) =>
-      `${prefix}${nameList.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name)}`,
-  );
+  const scopeSegments = (names: string): string =>
+    names.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name);
+  const replaced = shielded
+    .replace(
+      LAYER_NAME_LIST,
+      (match: string, nameList: string) =>
+        `${match.slice(0, match.length - nameList.length)}${scopeSegments(nameList)}`,
+    )
+    .replace(
+      IMPORT_LAYER_NAME,
+      (_: string, prefix: string, name: string) =>
+        `${prefix}${scopeSegments(name)}`,
+    );
   return restore(replaced);
 };
 
@@ -1353,6 +1902,25 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
  *   container-name: sidebar            →  container-name: bascik__comp__container__sidebar
  *   @container sidebar (min-width: …)  →  @container bascik__comp__container__sidebar (…)
  */
+// CSS-wide keywords and `none` are never container names.
+const NOT_CONTAINER_NAMES = new Set([
+  "none",
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+  "default",
+]);
+
+// A `container-name:` value, or the name part of a `container:` shorthand
+// (before its `/ <type>`), up to `;`, `}`, `/` or `!important`.
+const CONTAINER_DECLARATION =
+  /((?<![\w-])container(?:-name)?\s*:\s*)([^;{}/!]*)/g;
+// One whole identifier in that value; `var(...)` and other functions are not
+// names.
+const CONTAINER_VALUE_NAME = /(?<![\w(-])-?[a-zA-Z_][\w-]*(?![\w(-])/g;
+
 export const scopeContainerNames = (
   css: string,
   componentName: string,
@@ -1360,13 +1928,11 @@ export const scopeContainerNames = (
   if (!css.includes("container")) return css;
   const containerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  shielded.replace(
-    /(?<![\w-])container(?:-name)?\s*:\s*([\w-]+)/g,
-    (_: string, name: string) => {
-      if (name !== "none") containerNames.add(name);
-      return "";
-    },
-  );
+  for (const [, , value] of shielded.matchAll(CONTAINER_DECLARATION)) {
+    for (const [name] of value.matchAll(CONTAINER_VALUE_NAME))
+      if (!NOT_CONTAINER_NAMES.has(name.toLowerCase()))
+        containerNames.add(name);
+  }
   if (containerNames.size === 0) return css;
   // One pass per pattern over whole names: rewriting one name at a time let a
   // later name match inside an earlier generated name or a longer name.
@@ -1377,17 +1943,36 @@ export const scopeContainerNames = (
       minifyAttributeName(`bascik__${componentName}__container__${name}`),
     );
   });
+  const scopeName = (name: string): string => scopedNames.get(name) ?? name;
   const replaced = shielded
     .replace(
-      /(?<=@container\s+)([\w-]+)(?=\s*[({])/gm,
-      (name: string) => scopedNames.get(name) ?? name,
+      /(@container\b)([^{;]*)/gi,
+      (_match, keyword: string, prelude: string) => {
+        // Names sit outside parentheses: `@container a (…), b style(…)`.
+        let depth = 0;
+        let scopedPrelude = "";
+        let copiedTo = 0;
+        for (const token of prelude.matchAll(/[()]|-?[a-zA-Z_][\w-]*/g)) {
+          if (token[0] === "(") depth++;
+          else if (token[0] === ")") depth = Math.max(0, depth - 1);
+          else if (
+            depth === 0 &&
+            prelude[token.index + token[0].length] !== "("
+          ) {
+            const scoped = scopedNames.get(token[0]);
+            if (scoped !== undefined) {
+              scopedPrelude += prelude.slice(copiedTo, token.index) + scoped;
+              copiedTo = token.index + token[0].length;
+            }
+          }
+        }
+        return `${keyword}${scopedPrelude}${prelude.slice(copiedTo)}`;
+      },
     )
     .replace(
-      /((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm,
-      (match: string, prefix: string, name: string) => {
-        const scoped = scopedNames.get(name);
-        return scoped === undefined ? match : `${prefix}${scoped}`;
-      },
+      CONTAINER_DECLARATION,
+      (_match, prefix: string, value: string) =>
+        `${prefix}${value.replace(CONTAINER_VALUE_NAME, scopeName)}`,
     );
   return restore(replaced);
 };
@@ -1618,11 +2203,9 @@ export const extractInlineStyles = (
       readStartTagAttributes(openTag, 0)
         .find((attribute) => attribute.name === "media")
         ?.value.trim() ?? "";
-    if (
-      media &&
-      media.toLowerCase() !== "all" &&
-      media.toLowerCase() !== "screen"
-    ) {
+    // Only `all` (or no value) applies everywhere; `screen` does not apply
+    // when printing, so it keeps its wrapper like any other query.
+    if (media && media.toLowerCase() !== "all") {
       css = `@media ${media} {\n${css}\n}`;
     }
     cssBlocks.push(css);
@@ -1694,11 +2277,7 @@ export const scopeInlineStyleTags = (
       );
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
-      css = restore(
-        shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) =>
-          minifyAttributeName(`bascik__${componentName}__${className}`),
-        ),
-      );
+      css = restore(scopeCssClassSelectors(shieldedCss, componentName));
       const { css: idCss, idsConverted } = convertCssIdSelectorsToClasses(
         css,
         componentName,

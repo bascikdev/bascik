@@ -21,6 +21,7 @@ import {
 } from "./module-retention.test-helper.ts";
 import chokidar from "chokidar";
 import zlib from "node:zlib";
+import diagnosticsChannel from "node:diagnostics_channel";
 
 const [directory, mode, realisticFlag, faultFlag] = process.argv.slice(2);
 const realistic = realisticFlag === "true";
@@ -44,6 +45,25 @@ assert(
 );
 process.umask(0o077);
 const watcherReadiness: Promise<void>[] = [];
+
+/**
+ * Every socket a server in this process accepts, held weakly. A socket the
+ * framework closed but still references (a connection set that never drops
+ * its entries, a listener that captures it) stays reachable after GC: the
+ * sample counts those as `closedSockets`. `net.server.socket` fires for
+ * plain and TLS servers alike, before any framework "connection" listener.
+ */
+const socketRefs: WeakRef<net.Socket>[] = [];
+let observedSockets = 0;
+const serverSocketChannel = diagnosticsChannel.channel("net.server.socket");
+serverSocketChannel.subscribe((message) => {
+  const { socket } = message as { socket: net.Socket };
+  observedSockets++;
+  socketRefs.push(new WeakRef(socket));
+});
+const closedSocketCount = () =>
+  socketRefs.filter((reference) => reference.deref()?.destroyed === true)
+    .length;
 const observedWatchers: object[] = [];
 
 /**
@@ -314,6 +334,37 @@ const planRefs: WeakRef<object>[] = [];
 const seenPlans = new WeakSet<object>();
 const loadRefs: WeakRef<object>[] = [];
 const seenLoads = new WeakSet<object>();
+/**
+ * Every file-module entry `scriptRegistry.load` resolved, held weakly. Once a
+ * generation is superseded only the request that held it may keep it, so
+ * after GC at a settled sample a live entry that is not the published one is
+ * framework retention (`staleModuleEntries`). Node's own ESM cache keeps the
+ * namespace either way; the entry object is the framework's.
+ */
+const moduleEntryRefs: WeakRef<{ key?: string }>[] = [];
+const seenModuleEntries = new WeakSet<object>();
+let observedModuleEntries = 0;
+const staleModuleEntryCount = () => {
+  const published = registryEntries(scriptRegistry);
+  return moduleEntryRefs.filter((reference) => {
+    const entry = reference.deref();
+    if (entry === undefined) return false;
+    assert(
+      entry.key !== undefined,
+      "registry module entry has no identity key",
+    );
+    return published.get(entry.key) !== entry;
+  }).length;
+};
+/** The registry's job-owned inline loads; fails closed when the field moves. */
+function ownedLoadsOf(registry: object): WeakMap<WeakKey, unknown> {
+  const ownedLoads: unknown = Reflect.get(registry, "ownedLoads");
+  assert(
+    ownedLoads instanceof WeakMap,
+    "job-owned load observation unavailable",
+  );
+  return ownedLoads;
+}
 let activeRequests = 0;
 let requests = 0;
 let publications = 0;
@@ -745,8 +796,17 @@ scriptRegistry.invoke = async function <Result>(
 const load = scriptRegistry.load;
 scriptRegistry.load = function (...args: Parameters<typeof load>) {
   const result = load.call(this, ...args);
-  const state: unknown =
-    args[1] && Reflect.get(this, "ownedLoads").get(args[1]);
+  if (!args[1])
+    void result.then(
+      (entry) => {
+        if (seenModuleEntries.has(entry)) return;
+        seenModuleEntries.add(entry);
+        observedModuleEntries++;
+        moduleEntryRefs.push(new WeakRef(entry));
+      },
+      () => {},
+    );
+  const state: unknown = args[1] && ownedLoadsOf(this).get(args[1]);
   if (state && typeof state === "object" && !seenLoads.has(state)) {
     seenLoads.add(state);
     loadRefs.push(new WeakRef(state));
@@ -1184,7 +1244,11 @@ async function sample(
     references.some((reference) => reference.deref());
   for (
     let attempt = 0;
-    attempt < 20 && (anyLive(requestRefs) || anyLive(requestClosureRefs));
+    attempt < 20 &&
+    (anyLive(requestRefs) ||
+      anyLive(requestClosureRefs) ||
+      closedSocketCount() > 0 ||
+      staleModuleEntryCount() > 0);
     attempt++
   ) {
     await delay(25);
@@ -1198,11 +1262,7 @@ async function sample(
       .filter(Boolean),
   );
   const currentLoads = new Set<object>();
-  const ownedLoads: unknown = Reflect.get(scriptRegistry, "ownedLoads");
-  assert(
-    ownedLoads instanceof WeakMap,
-    "job-owned load observation unavailable",
-  );
+  const ownedLoads = ownedLoadsOf(scriptRegistry);
   for (const plan of currentPlans) {
     if (!plan || "error" in plan) continue;
     for (const segment of plan.segments) {
@@ -1216,7 +1276,7 @@ async function sample(
     return (
       plan &&
       !currentPlans.has(
-        plan as import("./types.ts").StoredPage["serverScriptPlan"],
+        plan as import("./stored-page.ts").StoredPage["serverScriptPlan"],
       )
     );
   }).length;
@@ -1250,6 +1310,10 @@ async function sample(
       (sum, key) => sum + scriptRegistry.graph.parentsOf(key).size,
       0,
     ),
+    staleModuleEntries: staleModuleEntryCount(),
+    observedModuleEntries,
+    closedSockets: closedSocketCount(),
+    observedSockets,
     liveRequests: requestRefs.filter((reference) => reference.deref()).length,
     liveRequestClosures: requestClosureRefs.filter((reference) =>
       reference.deref(),
@@ -1340,7 +1404,13 @@ async function sample(
         }
       : {}),
   };
-  for (const references of [requestRefs, requestClosureRefs, loadRefs]) {
+  for (const references of [
+    requestRefs,
+    requestClosureRefs,
+    loadRefs,
+    moduleEntryRefs,
+    socketRefs,
+  ] as WeakRef<object>[][]) {
     for (let index = references.length - 1; index >= 0; index--)
       if (!references[index].deref()) references.splice(index, 1);
   }

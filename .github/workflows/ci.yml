@@ -7,6 +7,11 @@ name: CI
 # job to have succeeded. Tags never run CI (release.yml handles them): a push filter with only `branches` skips
 # tag pushes.
 #
+# Production deploys come only from pull requests merged into main. Because a push to main runs no tests, each deploy
+# job on main first asks GitHub for the pull requests of github.sha and fails, deploying nothing, unless one of them
+# was merged into main (.github/scripts/merged-pull-request.mjs). A commit pushed straight to main therefore never
+# deploys; the manual emergency deploy in DEPLOYMENT.md is the documented bypass.
+#
 # pull_request is here only so pull requests from forks get tested. A pull request from a branch of this repo is
 # already tested by that branch's push run, whose checks are on the same head commit and so show on the pull
 # request; the stage 1 jobs skip on such a pull_request event, and every later job needs them, so the rest of that
@@ -885,6 +890,55 @@ jobs:
       - name: Run create-bascik scaffold generation test
         run: yarn create:test-site
 
+  e2e-extension:
+    name: VS Code Extension E2E (real editor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # @vscode/test-cli downloads the newest stable VS Code into extensions/vscode-bascik/.vscode-test/, asking the
+      # same update API this step asks. Keying the cache on that version downloads each release once and saves it; an
+      # exact-match key never saves again, so a weekly key would re-download a mid-week release on every run. When the
+      # API does not answer, the key falls back to the ISO week.
+      - name: Compute the VS Code cache key
+        id: vscode-version
+        run: |
+          version=$(curl -fsS --retry 2 https://update.code.visualstudio.com/api/releases/stable | jq -r '.[0] // empty') || version=""
+          echo "version=${version:-week-$(date -u +%G-%V)}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the VS Code download
+        uses: actions/cache@v6
+        with:
+          path: extensions/vscode-bascik/.vscode-test/vscode-*
+          key: vscode-test-${{ runner.os }}-${{ steps.vscode-version.outputs.version }}
+
+      # Compiles the extension and bundles the language server from lsp/src, then runs both configurations in
+      # .vscode-test.cjs. VS Code is an Electron app, so on Linux xvfb-run gives it a virtual display.
+      - name: Run the extension tests in VS Code
+        run: xvfb-run -a yarn ext:e2e
+
   # ── Stage 5: Deploy to Cloudflare (after every stage 4 job passes) ──────────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
   # deploys both Workers to production. A push to any other branch uploads a Preview version of each under one alias
@@ -901,6 +955,7 @@ jobs:
       !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
+      pull-requests: read
     needs:
       [
         e2e-pkg-static,
@@ -910,6 +965,7 @@ jobs:
         e2e-adapter-cloudflare,
         e2e-docs,
         e2e-create,
+        e2e-extension,
       ]
     # No job-level concurrency group, on purpose. The workflow's group already cancels an older run of a branch, so a
     # branch has one run in stage 5 at a time. On main a shared job group would hold one pending deploy and let an older
@@ -947,6 +1003,26 @@ jobs:
       # docs:build sets BASCIK_SITE_URL=https://bascik.dev itself.
       - name: Build package and docs
         run: yarn pkg:build && yarn docs:build
+
+      # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. GitHub can take a few
+      # seconds to link a fresh merge commit to its pull request, so the step runs after the build and asks up to three
+      # times, 10 s apart, while the answer is an empty list. Emergency path: DEPLOYMENT.md.
+      - name: Check the commit came from a merged pull request
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PULLS: ${{ runner.temp }}/pulls.json
+        run: |
+          for attempt in 1 2 3; do
+            gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+            [ "$(tr -d '[:space:]' < "$PULLS")" = "[]" ] && [ "$attempt" -lt 3 ] || break
+            echo "No pull request lists $SHA yet (try $attempt of 3); asking again in 10 s."
+            sleep 10
+          done
+          node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
       # finished testing first has already deployed, or will, and this one must not replace it.
@@ -1013,6 +1089,7 @@ jobs:
       !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
+      pull-requests: read
     needs:
       [
         e2e-pkg-static,
@@ -1022,6 +1099,7 @@ jobs:
         e2e-adapter-cloudflare,
         e2e-docs,
         e2e-create,
+        e2e-extension,
       ]
     # No job-level concurrency group: see deploy-docs.
     outputs:
@@ -1053,6 +1131,26 @@ jobs:
       # adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare (config from the fixture's wrangler.jsonc).
       - name: Build package, adapter, and demo
         run: yarn adapter:cf:demo:build
+
+      # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. GitHub can take a few
+      # seconds to link a fresh merge commit to its pull request, so the step runs after the build and asks up to three
+      # times, 10 s apart, while the answer is an empty list. Emergency path: DEPLOYMENT.md.
+      - name: Check the commit came from a merged pull request
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PULLS: ${{ runner.temp }}/pulls.json
+        run: |
+          for attempt in 1 2 3; do
+            gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+            [ "$(tr -d '[:space:]' < "$PULLS")" = "[]" ] && [ "$attempt" -lt 3 ] || break
+            echo "No pull request lists $SHA yet (try $attempt of 3); asking again in 10 s."
+            sleep 10
+          done
+          node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
       # finished testing first has already deployed, or will, and this one must not replace it.

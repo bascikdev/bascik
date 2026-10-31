@@ -68,8 +68,15 @@ const isAncestor = (a, b) => b.startsWith(`${a}.`);
 export const PAINTED_OVERLAP_MIN = 2;
 
 /**
+ * Two boxes that are not nested must intersect by at least this much in both directions to pair, positioned or not:
+ * boxes are rounded to 0.1 px, so two positioned sections that only touch can cross by 0.1 px on one side and not on
+ * the other.
+ */
+export const OVERLAP_MIN = 1;
+
+/**
  * The overlapping pairs among boxes ([{ key, path, rect, positioned, media, paints, nest, layer }]): intersecting with
- * a positive area, both in the same layer (a fixed or sticky layer such as a cookie banner covers the page by design
+ * a positive area (OVERLAP_MIN px in both directions unless nested), both in the same layer (a fixed or sticky layer such as a cookie banner covers the page by design
  * and pairs only with its own parts; presence-by-route owns it), and one of:
  * - neither an ancestor of the other, and at least one positioned or media (an icon on a dot, a badge on an avatar);
  * - one nested in the other, where the inner box names the outer one as its `nest` (an icon absolutely positioned
@@ -97,6 +104,8 @@ export function findOverlaps(boxes) {
       if (right <= x || bottom <= y) continue;
       if (nested) {
         if (b.nest !== a.path && a.nest !== b.path) continue;
+      } else if (right - x < OVERLAP_MIN || bottom - y < OVERLAP_MIN) {
+        continue;
       } else if (!(a.positioned || a.media || b.positioned || b.media)) {
         const painted =
           a.paints &&

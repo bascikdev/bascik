@@ -587,6 +587,73 @@ export default async function () { return "<chain-card></chain-card>"; }
 export default function () { return "<chain-card></chain-card>"; }
 </script>`,
   );
+  // Return values (prompt 158 R3-04, F060): an array is joined with no
+  // separator on both hosts; an object, a Response, an async .map and a
+  // component script's object return are an empty slot in production, with
+  // one located warning per script.
+  await page(
+    "src/pages/returns-array.html",
+    "Returns array",
+    `<ul data-testid="list"><script data-bascik-server>
+export default function () {
+  return [["<li>Milk frother</li>", null], ["<li>Kettle</li>", ["<product-card></product-card>"]]];
+}
+</script></ul>`,
+  );
+  await page(
+    "src/pages/returns-array-stream.html",
+    "Returns array stream",
+    `<ul data-testid="list"><script data-bascik-stream>
+export default async function () {
+  return ["<li>Milk frother</li>", undefined, ["<li>Kettle</li>"]];
+}
+</script></ul>`,
+  );
+  await page(
+    "src/pages/returns-object.html",
+    "Returns object",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return { name: "Milk frother" }; }
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-response.html",
+    "Returns response",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return new Response("<p>api habit</p>"); }
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-error.html",
+    "Returns error",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () {
+  try { throw new TypeError("db SECRET_DETAIL"); } catch (e) { return e; }
+}
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-async-map.html",
+    "Returns async map",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default function () { return ["a", "b"].map(async (n) => "<li>" + n + "</li>"); }
+</script></section>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/object-card/object-card.html",
+    `<div class="object-card" data-testid="object-card"><script data-bascik-server>
+export default function () { return { name: "nested" }; }
+</script></div>
+<style>.object-card { color: rgb(30, 31, 32); }</style>`,
+  );
+  await page(
+    "src/pages/returns-component.html",
+    "Returns component",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return "<object-card></object-card>"; }
+</script></section>`,
+  );
   await page(
     "src/pages/components-boom.html",
     "Boom",
@@ -628,6 +695,28 @@ export default async function () {
     "Nest",
     `<script data-bascik-server>
 export default function () { return "<nest-card></nest-card><nest-card></nest-card><nest-card></nest-card>"; }
+</script>`,
+  );
+  // Sibling nested jobs that return different stylesheets and finish in a
+  // random order: the style blocks follow the sites, not completion order.
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/nest-link-card/nest-link-card.html",
+    `<div class="nest-link" data-testid="nest-link-card">
+<script data-bascik-server>
+export default async function () {
+  await new Promise((resolve) => setTimeout(resolve, Math.random() * 40));
+  return '<link-card data-bascik-prop-target="/pricing"></link-card>';
+}
+</script>
+</div>
+<style>.nest-link { color: rgb(22, 23, 24); }</style>`,
+  );
+  await page(
+    "src/pages/components-nest-mixed.html",
+    "Nest mixed",
+    `<script data-bascik-server>
+export default function () { return "<nest-link-card></nest-link-card><nest-card></nest-card>"; }
 </script>`,
   );
   // A component script printing terminal colors: stripped on both hosts.
@@ -752,6 +841,38 @@ export default async function () { return '<yield-card></yield-card><p data-test
   new Promise<Response>((resolve) => {
     options.signal.addEventListener("abort", () => resolve(new Response("yielded-late")), { once: true });
   });`,
+  );
+
+  // Scoping-template parity (prompt 158 R2-02): escaped and non-ASCII class
+  // selectors, an escape before a descendant element, dotted @layer names,
+  // and one component whose classes are scoped per instance (url(#id)).
+  // The same tags are written into a static page (scoped at build time, four
+  // times, so the build reuses its template) and returned by a server script
+  // (rendered from the manifest per request).
+  const scopingEdges: Record<string, string> = {
+    "edge-escaped": `<div class="md:flex a:b café" data-testid="edge-escaped"><p>x</p><span class="w-1/2">y</span><b class="esc\u0001">z</b></div>
+<style>.md\\:flex p { display: flex; } .a\\:b { color: rgb(25, 26, 27); } .café span { margin: 0; } .w-1\\/2 { width: 50%; } .esc\\1  b { font-weight: 700; }</style>`,
+    "edge-layer": `<section class="a b" data-testid="edge-layer"><p>x</p></section>
+<style>@layer base.theme, base.reset; @layer base.theme { .a p { color: rgb(28, 29, 30); } } @layer base.reset { .b { margin: 0; } }</style>`,
+    "edge-glow": `<div class="md:flex glow" data-testid="edge-glow"><svg><filter id="glow"></filter></svg><p>x</p></div>
+<style>.glow { filter: url(#glow); } .md\\:flex p { color: rgb(31, 32, 33); } @layer base.theme { .glow p { margin: 0; } }</style>`,
+  };
+  for (const [name, html] of Object.entries(scopingEdges))
+    await write(root, `src/components/${name}/${name}.html`, html);
+  const scopingTags = Object.keys(scopingEdges)
+    .map((name) => `<${name}></${name}>`.repeat(4))
+    .join("");
+  await page(
+    "src/pages/components-scoping-static.html",
+    "Scoping static",
+    `<main data-testid="slot">${scopingTags}</main>`,
+  );
+  await page(
+    "src/pages/components-scoping.html",
+    "Scoping",
+    `<main data-testid="slot"><script data-bascik-server>
+export default function () { return ${JSON.stringify(scopingTags)}; }
+</script></main>`,
   );
 };
 

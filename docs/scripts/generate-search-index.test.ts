@@ -33,7 +33,16 @@ describe("generate-search-index", () => {
     );
     expect(producer).toMatchObject({
       phase: "parallel",
-      watch: ["content/"],
+      watch: [
+        "content/",
+        "src/pages/index.html",
+        "src/lib/search-index.ts",
+        "src/lib/nav.ts",
+        "src/lib/content-path.ts",
+        "src/lib/meta-tags.ts",
+        "src/lib/heading-slug.ts",
+        "src/lib/html-entities.ts",
+      ],
     });
     expect(producer).not.toHaveProperty("outputs");
     expect(config.pipeline?.watchPaths).not.toContain(

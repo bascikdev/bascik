@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { mkdir, appendFile } from "node:fs/promises";
+import { appendFileSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
@@ -29,14 +30,21 @@ export const setupBuildLogging = async (
     error: console.error.bind(console),
   };
 
+  // Written synchronously: a failing build often prints its reason and exits
+  // in the same tick (exitAfterStopping), and that reason is the line a CI
+  // log most needs. Build logs are small, so the blocking write is cheap.
   const tee = (target: (...args: unknown[]) => void) => {
     return (...args: unknown[]) => {
       target(...args);
-      appendFile(
-        absoluteLogPath,
-        `${stripColors(format(...args))}\n`,
-        "utf8",
-      ).catch(() => {});
+      try {
+        appendFileSync(
+          absoluteLogPath,
+          `${stripColors(format(...args))}\n`,
+          "utf8",
+        );
+      } catch {
+        // the terminal still has the line
+      }
     };
   };
 
@@ -64,6 +72,13 @@ export const runCli = async (
 
   const decision = resolveCliAction(args);
   const buildLogPath = decision.flags.log;
+  if (decision.ignoredNodeFlags) {
+    const ignored = decision.ignoredNodeFlags.join(" ");
+    console.warn(
+      `[bascik] warning: ignoring ${ignored}: Node reads its own options before the script, so ${decision.ignoredNodeFlags.length > 1 ? "they do" : "it does"} nothing here. ` +
+        `Pass ${decision.ignoredNodeFlags.length > 1 ? "them" : "it"} with NODE_OPTIONS="${ignored}" bascik ...`,
+    );
+  }
 
   if (decision.action === "build" && buildLogPath) {
     await setupBuildLogging(buildLogPath);

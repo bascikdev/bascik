@@ -13,10 +13,14 @@
  *   yarn workspace bascik-docs generate:llms
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NAV } from "../src/lib/nav.ts";
+import {
+  readRouteMarkdown,
+  routeContentCandidates,
+} from "../src/lib/content-path.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, "..");
@@ -44,18 +48,6 @@ function stripMd(text: string): string {
     .replace(/^>\s*/gm, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
 }
 
 function extractDescription(md: string): string {
@@ -118,7 +110,11 @@ for (const { section, pages } of NAV) {
     // External nav entries (e.g. Merch) are off-site and have no local content
     // Markdown, so they are left out of the llms.txt page index.
     if (/^https?:\/\//i.test(href)) continue;
-    const md = await readMd(href);
+    const md = (await readRouteMarkdown(href))?.markdown;
+    if (!md)
+      console.warn(
+        `[llms.txt] warning: no Markdown for nav page ${href}; looked for ${routeContentCandidates(href).join(" or ")}`,
+      );
     const desc = md ? extractDescription(md) : "";
     const url = `${siteUrl}${href}`;
     const descSuffix = desc ? `: ${desc}` : "";

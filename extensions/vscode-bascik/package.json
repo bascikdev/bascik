@@ -27,7 +27,7 @@
         "scopeName": "bascik.html.injection",
         "path": "./syntaxes/bascik-html.tmLanguage.json",
         "injectTo": [
-          "text.html.basic"
+          "text.html"
         ]
       }
     ],
@@ -38,15 +38,13 @@
       },
       {
         "language": "javascript",
-        "path": "./snippets/api-routes.json"
+        "path": "./snippets/api-routes-javascript.json"
       }
     ]
   },
   "scripts": {
-    "precompile": "node ../../docs/scripts/generate-compatibility-rules.ts",
-    "compile": "node build.mjs",
+    "compile": "node ../../docs/scripts/generate-compatibility-rules.ts && node build.mjs",
     "vscode:prepublish": "npm run compile",
-    "pretest": "npm run compile",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "unit": "vitest run",
     "e2e": "npm run compile && vscode-test --config .vscode-test.cjs",

@@ -7,6 +7,7 @@ import {
   parseToml,
   discoverWranglerConfig,
   resolveWorkerName,
+  deploymentCompatSettings,
   generateWranglerConfig,
   WRANGLER_CONFIG_FILES,
 } from "./config.ts";
@@ -961,6 +962,60 @@ describe("generateWranglerConfig: the authored config carried into the generated
     ]);
   });
 
+  it("an env section's own run_worker_first: true is kept, not replaced by the computed routes", () => {
+    const { config, warnings } = generate({
+      assets: { html_handling: "auto-trailing-slash" },
+      env: {
+        production: { assets: { run_worker_first: true } },
+        staging: { assets: { run_worker_first: ["/admin/*"] } },
+      },
+    });
+    const env = config.env as Record<
+      string,
+      { assets: Record<string, unknown> }
+    >;
+    expect(env.production.assets.run_worker_first).toBe(true);
+    expect(env.staging.assets.run_worker_first).toEqual([
+      "/_routes.json",
+      "/_worker.js",
+      "/admin/*",
+    ]);
+    // The top level keeps its computed routes.
+    expect((config.assets as Record<string, unknown>).run_worker_first).toEqual(
+      ["/_routes.json", "/_worker.js"],
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("misuse: a run_worker_first that is neither true nor a list of patterns is reported, naming the file and key", () => {
+    const { config, warnings } = generate({
+      env: {
+        production: { assets: { run_worker_first: "true" } },
+      },
+      assets: { run_worker_first: ["/admin/*", 42] },
+    });
+    const env = config.env as Record<
+      string,
+      { assets: Record<string, unknown> }
+    >;
+    // A string is not Wrangler's true: the computed routes still deploy.
+    expect(env.production.assets.run_worker_first).toEqual([
+      "/_routes.json",
+      "/_worker.js",
+    ]);
+    expect((config.assets as Record<string, unknown>).run_worker_first).toEqual(
+      ["/_routes.json", "/_worker.js", "/admin/*"],
+    );
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "env\.production\.assets\.run_worker_first" must be true or a list of route patterns.*"true"/,
+      ),
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "assets\.run_worker_first" must be true or a list of route patterns.*42/,
+      ),
+    ]);
+  });
+
   it("$schema: an authored relative path is rebased, a URL kept, and the default points at a resolvable schema or is left out", () => {
     expect(
       generate({ $schema: "node_modules/wrangler/config-schema.json" }).config
@@ -995,6 +1050,65 @@ describe("generateWranglerConfig: the authored config carried into the generated
     expect(config.build).toBeNull();
     expect(config.d1_databases).toBe("x");
     expect((config.assets as { directory: string }).directory).toBe("./public");
+  });
+
+  it("misuse: a compatibility_date that is not YYYY-MM-DD is kept for Wrangler to reject, with a warning naming the key", () => {
+    const { config, warnings } = generate({
+      compatibility_date: 20241001,
+      env: { staging: { compatibility_date: "2024-1-1" } },
+    });
+    expect(config.compatibility_date).toBe(20241001);
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "compatibility_date" must be a date like "2026-08-01", but is 20241001/,
+      ),
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "env\.staging\.compatibility_date" must be a date like "2026-08-01", but is "2024-1-1"/,
+      ),
+    ]);
+  });
+
+  it("deploymentCompatSettings: the top level, then each env section with its own date and flags or the top level's", () => {
+    const pinned = {
+      compatibilityDate: "2026-08-01",
+      compatibilityFlags: ["nodejs_compat"],
+    };
+    const { config } = generate({
+      compatibility_date: "2026-09-01",
+      compatibility_flags: ["enable_nodejs_os_module"],
+      env: {
+        staging: {},
+        legacy: { compatibility_date: "2025-01-01", compatibility_flags: [] },
+        broken: { compatibility_date: "soon" },
+        odd: "not a section",
+      },
+    });
+    expect(deploymentCompatSettings(config, "wrangler.jsonc", pinned)).toEqual([
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc",
+      },
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc env.staging",
+      },
+      {
+        compatibilityDate: "2025-01-01",
+        compatibilityFlags: ["nodejs_compat"],
+        source: "wrangler.jsonc env.legacy",
+      },
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc env.broken",
+      },
+    ]);
+    // No authored config: the generated top level, with no file to name.
+    expect(
+      deploymentCompatSettings(generate(undefined).config, undefined, pinned),
+    ).toEqual([pinned]);
   });
 
   it("reports TOML-authored files by their own filename", () => {

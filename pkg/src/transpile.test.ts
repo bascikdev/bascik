@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const {
   _state,
@@ -185,6 +194,10 @@ describe("runTranspile", () => {
     _parallel.reset();
     _state.reset();
     (BascikConfig as any).directory.out = "dist";
+    delete (BascikConfig as any).directory.pages;
+    delete (BascikConfig as any).directory.components;
+    delete (BascikConfig as any).directory.api;
+    delete (BascikConfig as any).scripts;
   });
 
   it("compiles alongside parallel exec and joins before declaring build success", async () => {
@@ -339,6 +352,119 @@ describe("runTranspile", () => {
 
     await expect(runTranspile()).rejects.toThrow(/outside the project root/);
     expect(_mockRm).not.toHaveBeenCalled();
+  });
+
+  // F047: config validation rejects an output directory that holds a source
+  // folder; the clean refuses it again, so a path that skipped validation
+  // (an adapter, a test harness, a future caller) cannot delete the source.
+  it.each([
+    [
+      "the pages folder",
+      { out: "src", pages: resolve("src/pages") },
+      /directory\.pages/,
+    ],
+    [
+      "the pages folder itself",
+      { out: "src/pages", pages: resolve("src/pages") },
+      /directory\.pages/,
+    ],
+    [
+      "a components root",
+      {
+        out: "shared",
+        components: [resolve("src/components"), resolve("shared/ui")],
+      },
+      /directory\.components/,
+    ],
+    ["the API folder", { out: "src", api: "src/api" }, /directory\.api/],
+  ])(
+    "refuses to clean an output directory that holds %s before deleting anything",
+    async (_label, directory, keyPattern) => {
+      Object.assign((BascikConfig as any).directory, directory);
+      const failure = await runTranspile().then(
+        () => null,
+        (err: unknown) => err as Error,
+      );
+      expect(failure?.message).toMatch(
+        /Refusing to clean the output directory/,
+      );
+      expect(failure?.message).toMatch(keyPattern);
+      expect(_mockRm).not.toHaveBeenCalled();
+    },
+  );
+
+  // F092 / F047 on macOS and Windows: "SRC" is the src folder on a
+  // case-insensitive file system, so a string comparison let the clean
+  // delete the sources. The guard compares the folders on disk.
+  it("refuses to clean an output directory that is a source folder spelled in another case", async (ctx) => {
+    // The real path: process.cwd() after chdir is one (/private/var on macOS).
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "bascik-clean-case-")),
+    );
+    const cwd = process.cwd();
+    try {
+      mkdirSync(join(root, "src", "pages"), { recursive: true });
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      if (!existsSync(join(root, "SRC"))) {
+        ctx.skip("the file system is case-sensitive");
+        return;
+      }
+      process.chdir(root);
+      Object.assign((BascikConfig as any).directory, {
+        out: "SRC",
+        pages: join(root, "src", "pages"),
+        components: [join(root, "src", "components")],
+      });
+      const failure = await runTranspile().then(
+        () => null,
+        (err: unknown) => err as Error,
+      );
+      expect(failure?.message).toMatch(
+        /Refusing to clean the output directory/,
+      );
+      expect(failure?.message).toMatch(/directory\.pages src\/pages/);
+      expect(_mockRm).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(cwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to clean an output directory that holds the import root", async () => {
+    (BascikConfig as any).directory.out = "lib";
+    (BascikConfig as any).scripts = { importRoot: "lib/shared" };
+    await expect(runTranspile()).rejects.toThrow(/scripts\.importRoot/);
+    expect(_mockRm).not.toHaveBeenCalled();
+  });
+
+  it("refuses to clean an output directory that holds the loaded config file", async () => {
+    (BascikConfig as any).directory.out = "conf";
+    const argv = process.argv;
+    process.argv = [...argv, `--config=${resolve("conf/bascik.config.ts")}`];
+    try {
+      await expect(runTranspile()).rejects.toThrow(/bascik\.config\.ts/);
+    } finally {
+      process.argv = argv;
+    }
+    expect(_mockRm).not.toHaveBeenCalled();
+  });
+
+  it("still cleans an output directory beside the source folders", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    Object.assign((BascikConfig as any).directory, {
+      out: "src/pages-dist",
+      pages: resolve("src/pages"),
+      components: [resolve("src/components")],
+      api: "src/api",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runTranspile();
+    } finally {
+      logSpy.mockRestore();
+    }
+    expect(_mockRm).toHaveBeenCalledTimes(2);
   });
 
   // A dev server or build already writing the same output directory (a

@@ -9,14 +9,26 @@ interface TestIdGap {
   message: string;
 }
 
+type NpxInvocation =
+  | { command: string; args: string[]; skipped?: undefined }
+  | { command?: undefined; args?: undefined; skipped: string };
+
 interface VerifyScript {
   integratedPerFileChecksCompleted: (output: string) => boolean;
+  npxInvocation: (
+    args: string[],
+    platform?: NodeJS.Platform,
+    env?: NodeJS.ProcessEnv,
+    execPath?: string,
+    exists?: (path: string) => boolean,
+  ) => NpxInvocation;
   testIdAdvisory: (root: string, configModule?: unknown) => TestIdGap[];
   formatTestIdAdvisory: (gaps: TestIdGap[]) => string;
 }
 
 const {
   integratedPerFileChecksCompleted,
+  npxInvocation,
   testIdAdvisory,
   formatTestIdAdvisory,
 } = (await import(
@@ -164,6 +176,104 @@ One plan.
     expect(testIdAdvisory(root)).toEqual([]);
   });
 
+  it("skips a head component whose root is another component that renders only head tags", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<meta name="color-scheme" content="light dark" />\n<script>document.documentElement.dataset.ready = "1";</script>\n`,
+    );
+    write(
+      "src/components/site-head/site-head.html",
+      `<meta charset="utf-8" />\n<theme-init />\n<link rel="stylesheet" href="/css/styles.css" />\n`,
+    );
+    write(
+      "src/components/fancy-head/fancy-head.html",
+      `<site-head />\n<link rel="icon" href="/favicon.svg" />\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root)).toEqual([]);
+  });
+
+  it("reports the first visible root after a head-only helper such as <theme-init /> (PR 115 review)", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<script>document.documentElement.dataset.theme = "light";</script>\n`,
+    );
+    write(
+      "src/components/site-head/site-head.html",
+      `<meta charset="utf-8" />\n<theme-init />\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<theme-init />\n<header class="top"><p>Milk frother</p></header>\n`,
+    );
+    write(
+      "src/components/site-banner/site-banner.html",
+      `<theme-init />\n<theme-init />\n<style>.b { color: red; }</style>\n<div class="b">Froth</div>\n`,
+    );
+    write(
+      "src/components/page-frame/page-frame.html",
+      `<site-head />\n<link rel="icon" href="/favicon.svg" />\n<section class="frame">x</section>\n`,
+    );
+    write(
+      "src/components/done-shell/done-shell.html",
+      `<theme-init />\n<header data-testid="done-shell">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    const gaps = testIdAdvisory(root);
+    expect(
+      gaps.map((gap) => `${gap.file}:${gap.line}  ${gap.message}`),
+    ).toEqual([
+      'src/components/page-frame/page-frame.html:3  <section> root of <page-frame> has no data-testid; add data-testid="page-frame"',
+      'src/components/site-banner/site-banner.html:4  <div> root of <site-banner> has no data-testid; add data-testid="site-banner"',
+      'src/components/site-shell/site-shell.html:2  <header> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+    ]);
+  });
+
+  it("counts <title> and <base> as head tags, so a component that renders only them has no root", () => {
+    write(
+      "src/components/page-title/page-title.html",
+      `<title>Milk frother</title>\n<base href="/" />\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<page-title />\n<header class="top">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<header> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+    ]);
+  });
+
+  it("misuse: a typo'd helper name before the markup is reported as the root, not taken for a head-only helper", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<script>document.documentElement.dataset.theme = "light";</script>\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<theme-int />\n<header class="top">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<theme-int> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+      '<header> in <site-shell> has no data-testid; add data-testid="site-shell-header"',
+    ]);
+  });
+
+  it("misuse: still asks for a test id on a root that is a component with body markup", () => {
+    write(
+      "src/components/plain-card/plain-card.html",
+      `<article class="card" data-testid="plain-card"><slot-x /></article>\n`,
+    );
+    write("src/components/promo-card/promo-card.html", `<plain-card />\n`);
+    write("src/components/ghost-tag/ghost-tag.html", `<not-a-component />\n`);
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<not-a-component> root of <ghost-tag> has no data-testid; add data-testid="ghost-tag"',
+      '<plain-card> root of <promo-card> has no data-testid; add data-testid="promo-card"',
+    ]);
+  });
+
   it("reads the component and page folders from the project config", () => {
     write(
       "site/parts/promo-box/promo-box.html",
@@ -179,5 +289,84 @@ One plan.
       "site/parts/promo-box/promo-box.html:1",
       "site/parts/promo-box/promo-box.html:1",
     ]);
+  });
+});
+
+describe("verify --npx command line", () => {
+  const args = [
+    "--yes",
+    "@bascik/language-server",
+    "--check",
+    "--project",
+    "C:\\Users\\John Smith\\site",
+    "C:\\Users\\John Smith\\shared\\components",
+  ];
+  const node = "C:\\Program Files\\nodejs\\node.exe";
+  const bundledCli =
+    "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js";
+  const only =
+    (...present: string[]) =>
+    (path: string) =>
+      present.includes(path);
+
+  it("runs npx directly with the arguments as given outside Windows", () => {
+    expect(npxInvocation(args, "linux", {})).toEqual({ command: "npx", args });
+    expect(npxInvocation(args, "darwin", {})).toEqual({ command: "npx", args });
+  });
+
+  // npx on Windows is a .cmd file, and starting one goes through cmd.exe, which re-parses the command line: it
+  // expands %VAR% even inside quotes, so a project path such as C:\100%PATH%\site changed the command. Node runs
+  // npm's npx-cli.js instead, with an argument array and no shell between.
+  it("misuse: on Windows a project path with spaces reaches the linter as one argument each", () => {
+    expect(npxInvocation(args, "win32", {}, node, only(bundledCli))).toEqual({
+      command: node,
+      args: [bundledCli, ...args],
+    });
+  });
+
+  it("misuse: on Windows a drive root's trailing backslash and a % reach the linter as written", () => {
+    const rootArgs = [
+      "--check",
+      "--project",
+      "D:\\",
+      "D:\\100%PATH%\\shared dir\\",
+    ];
+    expect(
+      npxInvocation(rootArgs, "win32", {}, node, only(bundledCli)),
+    ).toEqual({ command: node, args: [bundledCli, ...rootArgs] });
+  });
+
+  it("prefers the npx next to the npm that started the script", () => {
+    const npmCli = "D:\\tools\\npm\\bin\\npm-cli.js";
+    const npxCli = "D:\\tools\\npm\\bin\\npx-cli.js";
+    expect(
+      npxInvocation(
+        args,
+        "win32",
+        { npm_execpath: npmCli },
+        node,
+        only(npxCli, bundledCli),
+      ),
+    ).toEqual({ command: node, args: [npxCli, ...args] });
+    // Run from yarn, npm_execpath names yarn: the npx next to node.exe is used.
+    expect(
+      npxInvocation(
+        args,
+        "win32",
+        { npm_execpath: "C:\\site\\.yarn\\releases\\yarn-4.cjs" },
+        node,
+        only(bundledCli),
+      ),
+    ).toEqual({ command: node, args: [bundledCli, ...args] });
+  });
+
+  it("misuse: on Windows with no npx-cli.js to find, the check is skipped with what to do, never run through cmd.exe", () => {
+    const invocation = npxInvocation(args, "win32", {}, node, only());
+    expect(invocation.command).toBeUndefined();
+    expect(invocation.skipped).toMatch(/npx-cli\.js/);
+    expect(invocation.skipped).toContain("C:\\Program Files\\nodejs");
+    expect(invocation.skipped).toMatch(
+      /npm install -D @bascik\/language-server/,
+    );
   });
 });

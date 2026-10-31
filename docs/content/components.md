@@ -185,18 +185,18 @@ btn.addEventListener("click", () => {
 
 ```html
 <div class="bascik__comp-toggle__toggle-wrap">
-  <p class="bascik__comp-toggle__el__p">
+  <p class="b_el_comp-toggle_p">
     Bascik assembles components at build time and ships vanilla HTML files with
     no framework runtime.
   </p>
   <div id="bascik__comp-toggle__a1b__detail" hidden>
-    <p class="bascik__comp-toggle__el__p">
+    <p class="b_el_comp-toggle_p">
       No JavaScript is added to the page. Every script in the output was written
       by you.
     </p>
   </div>
   <button
-    class="bascik__comp-toggle__el__button"
+    class="b_el_comp-toggle_button"
     id="bascik__comp-toggle__a1b__btn"
     type="button"
   >
@@ -226,12 +226,12 @@ btn.addEventListener("click", () => {
   max-width: 420px;
 }
 
-.bascik__comp-toggle__toggle-wrap .bascik__comp-toggle__el__p {
+.bascik__comp-toggle__toggle-wrap .b_el_comp-toggle_p {
   color: var(--text-muted);
   margin: 0 0 16px;
 }
 
-.bascik__comp-toggle__toggle-wrap .bascik__comp-toggle__el__button {
+.bascik__comp-toggle__toggle-wrap .b_el_comp-toggle_button {
   display: inline-block;
   padding: 8px 18px;
   background: var(--accent);
@@ -399,9 +399,11 @@ For inline component blocks, keep `<style>` above the component markup and `<scr
 
 Components do not need literal HTML markup. A component can consist entirely of a `<script data-bascik-build>` block that returns its markup, optionally with a `<style>` block. When there is no literal markup, the ordering warning does not apply.
 
-Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. A companion `.css` file with the same base name (`feature-card.css` beside `feature-card.html`) is merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. A companion `.css` file with the same base name (`feature-card.css` beside `feature-card.html`) is merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module, so a `scripts.typescript` function compiles it with `runtime: "server"` only. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
-> **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories.
+> **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories. In a flat folder, a component's companions are the scripts named after it: `card.ts` and extras such as `card-extra.ts` or `card.utils.ts`. A script named after another component (`card-header.ts` beside `card-header.html`) belongs to that component, unless `card` references it with `<script src>`. A `card-header` component in its own folder owns only the scripts in that folder, so a flat `card-header.ts` stays with `card`.
+>
+> Only a relative `src` names a companion: `nav-bar.js`, `./nav-bar.js`, or `lib/helper.js`, resolved against the component's folder (a bare file name matches a companion anywhere in that folder). A URL such as `https://cdn.example.com/widgets/nav-bar.js` or `//cdn.example.com/nav-bar.js`, or a root-absolute path such as `/vendor/nav-bar.js`, is left as written for the browser to load, even when its file name matches a companion, so a wrapper component can share its name with the library it loads.
 
 <!-- demo:source-usage-card -->
 
@@ -452,8 +454,8 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 
 ```html
 <div class="bascik__feature-card__fcard">
-  <h3 class="bascik__feature-card__el__h3">Build-time Components</h3>
-  <p class="bascik__feature-card__el__p">
+  <h3 class="b_el_feature-card_h3">Build-time Components</h3>
+  <p class="b_el_feature-card_p">
     Bascik resolves tags and ships vanilla HTML.
   </p>
 </div>
@@ -468,10 +470,10 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
   border: 1px solid #3a3d40;
   border-radius: 10px;
 
-  .bascik__feature-card__el__h3 {
+  .b_el_feature-card_h3 {
     color: #f0f1f2;
   }
-  .bascik__feature-card__el__p {
+  .b_el_feature-card_p {
     font-size: 0.875rem;
     color: #8d929e;
   }
@@ -531,6 +533,7 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 - If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), the CLI warns `Component "header" has the same name as a native HTML element.` but still loads the component, which then replaces every `<header>` on your pages and most likely breaks the site. The editor does not flag native names; only the CLI does.
 - If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
+- If a component file is empty (such as one just created in the editor), the CLI warns `Component "stub-card" (src/components/stub-card.html) is empty, so every <stub-card> renders nothing until the file has markup.` Each `<stub-card>` usage, and whatever it wraps, is removed from the output, and every other component on the page still expands.
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
@@ -674,7 +677,7 @@ You can include multiple `<style>` blocks in a single component file. For exampl
 </style>
 ```
 
-At build time, Bascik extracts every `<style>` block from the component file, combines them with any companion `.css` file, applies class and selector scoping, and injects the resulting CSS into the document `<head>`.
+At build time, Bascik extracts every `<style>` block from the component file, combines them with any companion `.css` file, applies class and selector scoping, and injects the resulting CSS into the document `<head>`. A page that leaves out `<head>` (HTML allows it) gets one, written right before `<body>` where the browser would imply it, so its component styles still ship.
 
 > **Readability & Maintainability:** While Bascik supports multiple `<style>` tags in a single component file, using multiple `<style>` tags (or mixing an inline `<style>` tag with a companion `.css` file) is not recommended for readability and maintainability. Choose a single stylesheet pattern per component.
 

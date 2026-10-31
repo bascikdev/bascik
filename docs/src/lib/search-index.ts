@@ -22,7 +22,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV, HOME_SITELINKS } from "./nav.ts";
+import { marked } from "marked";
+import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
+import { NAV, HOME_SITELINKS, type NavSection } from "./nav.ts";
+import { readRouteMarkdown, routeContentCandidates } from "./content-path.ts";
+import { pageDescription, pageTitle } from "./meta-tags.ts";
+
+export { metaDescription } from "./meta-tags.ts";
 import type {
   CompactSearchIndex,
   SearchEntry,
@@ -39,8 +45,11 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
 /**
  * Upper bound on the index file. It was 1.43 MB with the text indented as in the Markdown and each page's
  * fields repeated on every section. Raise it only for new content, never to fit a format that wastes space.
+ * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
+ * index until the content lookup learned folder index.md files. 1.335 MB: the full naming scheme for generated
+ * element and #id classes on the internals scoping page (prompt 158 R3-03).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_300_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
@@ -48,15 +57,6 @@ const MAX_TEXT = 2000;
 /** Searchable text for a section: Markdown removed, whitespace collapsed to single spaces, and capped. */
 function searchText(markdown: string): string {
   return stripMd(markdown).slice(0, MAX_TEXT).replace(/\s+/g, " ").trim();
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
 }
 
 export function stripMd(text: string): string {
@@ -89,61 +89,19 @@ export function stripMd(text: string): string {
     .trim();
 }
 
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
-}
-
-function decodeAttr(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
 /**
  * The Home entry reads its title and description from pages/index.html so the
  * search result can never drift from what the page declares. It is surfaced
  * only for brand queries (see isNavigationalQuery in search-logic.ts).
  */
-/** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
-function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(
-    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
-    "i",
-  ).exec(tag);
-  return match ? (match[1] ?? match[2]) : undefined;
-}
-
-/** The content of `<meta name="description">`, wherever `name` and `content` sit in the tag. */
-export function metaDescription(html: string): string | undefined {
-  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
-    if (attributeValue(tag, "name")?.toLowerCase() === "description")
-      return attributeValue(tag, "content");
-  }
-  return undefined;
-}
-
 async function homeEntry(): Promise<SearchEntry> {
   const homePage = join(docsDir, "src/pages/index.html");
   let title = "Bascik";
   let text = "";
   try {
     const html = await readFile(homePage, "utf8");
-    const t = /<title>([^<]*)<\/title>/i.exec(html);
-    if (t) title = decodeAttr(t[1]).trim();
-    const description = metaDescription(html);
-    if (description !== undefined)
-      text = decodeAttr(description).trim().replace(/\s+/g, " ");
+    title = pageTitle(html) || title;
+    text = pageDescription(html);
   } catch (error) {
     // The Home result still works without them, but a search snippet that silently disappears is a bug to see.
     console.warn(
@@ -161,85 +119,93 @@ async function homeEntry(): Promise<SearchEntry> {
   };
 }
 
-function parseMd(
+/** A heading's display text and anchor id, from its Markdown, exactly as md-renderer.ts renders them. */
+function renderedHeading(markdown: string): { text: string; id: string } {
+  const html = marked.parseInline(markdown, { async: false });
+  return { text: headingPlainText(html), id: slugFromHeadingHtml(html) };
+}
+
+/**
+ * The search entries of one page's Markdown: the intro, then one entry per h2 and h3. The headings come from
+ * marked's lexer, as the page and its "On this page" list get them, so a `## ` line inside a fenced code
+ * block is text, not a section, and each anchor is the id md-renderer.ts puts on that heading. A page with
+ * no h1 is titled by its nav label and indexed from its first line.
+ */
+export function markdownSearchEntries(
   md: string,
   navLabel: string,
   section: string,
   href: string,
 ): SearchEntry[] {
-  const lines = md.split("\n");
-  const entries: SearchEntry[] = [];
-
-  const h1Line = lines.find((l) => /^# /.test(l));
-  const rawTitle = h1Line ? h1Line.slice(2).trim() : navLabel;
-  const title = rawTitle
-    .replace(/`([^`\n]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1");
-
-  const sections: { heading: string | null; lines: string[] }[] = [];
-  let cur: { heading: string | null; lines: string[] } = {
-    heading: null,
-    lines: [],
-  };
-  let pastH1 = false;
-  for (const line of lines) {
-    if (/^# /.test(line)) {
+  const tokens = marked.lexer(md);
+  const hasH1 = tokens.some(
+    (token) => token.type === "heading" && token.depth === 1,
+  );
+  let title: string | null = null;
+  const sections: {
+    heading: string | null;
+    anchor: string | null;
+    raw: string[];
+  }[] = [];
+  let cur: (typeof sections)[number] = { heading: null, anchor: null, raw: [] };
+  let pastH1 = !hasH1;
+  for (const token of tokens) {
+    if (token.type === "heading" && token.depth === 1) {
+      title ??= renderedHeading(token.text).text;
       pastH1 = true;
       continue;
     }
     if (!pastH1) continue;
-    if (/^#{2,3}\s+/.test(line)) {
+    if (token.type === "heading" && (token.depth === 2 || token.depth === 3)) {
       sections.push(cur);
-      const rawHeading = line.replace(/^#{2,3}\s+/, "").trim();
-      const heading = rawHeading
-        .replace(/`([^`\n]+)`/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*\n]+)\*/g, "$1")
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
-      cur = { heading, lines: [] };
+      const heading = renderedHeading(token.text);
+      cur = { heading: heading.text, anchor: heading.id, raw: [] };
     } else {
-      cur.lines.push(line);
+      cur.raw.push(token.raw);
     }
   }
   sections.push(cur);
 
-  const introText = searchText(sections[0].lines.join("\n"));
-  entries.push({
-    title,
-    navLabel,
-    section,
-    path: href,
-    heading: null,
-    text: introText,
-  });
-
-  for (const sec of sections.slice(1)) {
-    if (!sec.heading) continue;
-    const text = searchText(sec.lines.join("\n"));
-    const anchor = slugify(sec.heading);
-    entries.push({
-      title,
+  const entries: SearchEntry[] = [
+    {
+      title: title ?? navLabel,
       navLabel,
       section,
-      path: `${href}#${anchor}`,
+      path: href,
+      heading: null,
+      text: searchText(sections[0].raw.join("")),
+    },
+  ];
+  for (const sec of sections.slice(1)) {
+    if (!sec.heading) continue;
+    entries.push({
+      title: title ?? navLabel,
+      navLabel,
+      section,
+      path: `${href}#${sec.anchor}`,
       heading: sec.heading,
-      text,
+      text: searchText(sec.raw.join("")),
     });
   }
-
   return entries;
 }
 
 /** Every search entry, Home first, then each nav page with its sections, in nav order. */
-export async function buildSearchEntries(): Promise<SearchEntry[]> {
+export async function buildSearchEntries(
+  nav: NavSection[] = NAV,
+): Promise<SearchEntry[]> {
   const entries: SearchEntry[] = [await homeEntry()];
-  for (const { section, pages } of NAV) {
+  for (const { section, pages } of nav) {
     for (const { href, label } of pages) {
       // External nav entries (e.g. Merch) are off-site and have no local content
       // Markdown, so they are not indexed for search.
       if (/^https?:\/\//i.test(href)) continue;
-      const md = await readMd(href);
+      const md = (await readRouteMarkdown(href))?.markdown;
       if (!md) {
+        // A typo'd href or a moved file: the page still gets a title result, but nothing in it is searchable.
+        console.warn(
+          `[search-index] warning: no Markdown for nav page ${href}; looked for ${routeContentCandidates(href).join(" or ")}`,
+        );
         entries.push({
           title: label,
           navLabel: label,
@@ -250,7 +216,7 @@ export async function buildSearchEntries(): Promise<SearchEntry[]> {
         });
         continue;
       }
-      entries.push(...parseMd(md, label, section, href));
+      entries.push(...markdownSearchEntries(md, label, section, href));
     }
   }
   return entries;

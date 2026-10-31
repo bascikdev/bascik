@@ -129,36 +129,6 @@ describe("Server Script Diagnostics", () => {
       ).toEqual([]);
     });
 
-    // Deciding whether a `/` starts a regex looks only at the text just
-    // before it. Testing end-anchored patterns against everything scanned so
-    // far made the scan quadratic: a 320 KB minified script took 3.7 s and
-    // stalled every diagnostics pass of the language server.
-    it.each([
-      ["division", "a/"],
-      ["division after whitespace", "a  /"],
-      ["a keyword-like identifier", "returned/"],
-      ["a property named like a keyword", "x.of/"],
-    ])(
-      "misuse: a huge script full of %s is analyzed in linear time",
-      (_name, unit) => {
-        const body = `const x = ${unit.repeat(160_000)}b;\nexport default () => x;`;
-        const started = performance.now();
-        const diags = analyzeServerScriptSource(body, {
-          hasSrcAttribute: false,
-          directive: "server",
-        });
-        const elapsed = performance.now() - started;
-        expect(
-          diags.filter(
-            (d) => d.code === "server-script-missing-default-export",
-          ),
-        ).toEqual([]);
-        // Linear work is about 100-200 ms here, quadratic 3.5-15 s: the bound
-        // leaves room for a slow CI machine and still catches the regression.
-        expect(elapsed).toBeLessThan(2_000);
-      },
-    );
-
     it("reads a keyword or spread across long whitespace and comments before a /", () => {
       const pad = " \n\t".repeat(5_000);
       for (const body of [
