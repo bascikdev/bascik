@@ -423,6 +423,7 @@ describe("review round 2: a comment that names HTML too, and an XML-named escape
     "// Escape for HTML (not XML)",
     "// Escape text for HTML pages and inline SVG icons",
     "// Not for XML: this escapes page text.",
+    "// escape for html (not xml)",
   ])(
     "a comment that says the escaper is for HTML does not count: %s",
     (comment) => {
@@ -436,6 +437,8 @@ describe("review round 2: a comment that names HTML too, and an XML-named escape
     "// The RSS feed is XML, which html does not build, so it keeps this escaper.",
     "// Sitemap text: html cannot build XML.",
     "// For the Atom feed, not HTML.",
+    "// Escapes XML text for the RSS feed; html builds HTML, not XML.",
+    "// for the rss feed, not html",
     "/* sitemap.xml text */",
   ])("a comment that says it is for XML still counts: %s", (comment) => {
     expect(names(`${comment}\nexport function ${ESC}\n`)).toEqual([]);

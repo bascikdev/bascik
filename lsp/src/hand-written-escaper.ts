@@ -114,12 +114,21 @@ const NEGATED_AFTER =
   /^\s+(?:does\s*n[o']t|doesn't|can\s*not|cannot|can't|won't|will\s+not|is\s*n[o']t|isn't)\b/i;
 
 /**
- * Whether a comment says its escaper is for XML: it names XML, RSS, Atom,
- * a sitemap or SVG (not `not XML`), and names HTML only to say it is not
- * the target (`html does not build XML`, `not HTML`). `Escape for HTML (not
- * XML)` and `for HTML pages and inline SVG icons` are about HTML.
+ * A clause about the `html` helper, from a lower-case `html` to the end of
+ * its sentence: `html does not build XML`, `html builds HTML, not XML`.
+ * It says what the helper does, not what the escaper is for.
  */
-function commentSaysXml(text: string): boolean {
+const HTML_HELPER_CLAUSE = /(?<![\w/@.-])`?html\b`?[^.;:!?\n]*/g;
+
+/**
+ * Whether a comment says its escaper is for XML: once clauses about the
+ * `html` helper are set aside, it names XML, RSS, Atom, a sitemap or SVG
+ * (not `not XML`), and names HTML only to say it is not the target (`not
+ * HTML`). `Escape for HTML (not XML)` and `for HTML pages and inline SVG
+ * icons` are about HTML.
+ */
+function commentSaysXml(comment: string): boolean {
+  const text = comment.replace(HTML_HELPER_CLAUSE, " ");
   const near = (at: number): string => text.slice(Math.max(0, at - 12), at);
   let xml = false;
   for (const m of text.matchAll(XML_WORD))
