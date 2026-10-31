@@ -925,6 +925,114 @@ describe("exec timeout escalation and lifecycle", () => {
     },
   );
 
+  describe("on Windows (taskkill)", () => {
+    const realPlatform = process.platform;
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+    });
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: realPlatform });
+    });
+
+    it("ends the whole tree with taskkill, passing the pid as its own argument", async () => {
+      vi.useFakeTimers();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: "" });
+      const proc = { pid: 4242, kill: vi.fn(), on: vi.fn(() => proc) };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      const [command, args, options] = mockSpawnSync.mock.calls[0];
+      expect(command).toBe("taskkill");
+      expect(args).toEqual(["/pid", "4242", "/T", "/F"]);
+      expect(options).not.toHaveProperty("shell");
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGTERM");
+      vi.advanceTimersByTime(1000);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("warns once and still stops the script when taskkill cannot run", async () => {
+      vi.useFakeTimers();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockSpawnSync.mockReturnValue({
+        status: null,
+        stdout: null,
+        error: Object.assign(new Error("spawnSync taskkill ENOENT"), {
+          code: "ENOENT",
+        }),
+      });
+      const proc = { pid: 4242, kill: vi.fn(), on: vi.fn(() => proc) };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGTERM");
+      vi.advanceTimersByTime(500);
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
+      vi.advanceTimersByTime(500);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(
+        /exec "scripts\/long\.ts": could not run taskkill.*ENOENT.*processes it started may still be running/s,
+      );
+    });
+
+    it("does not crash when taskkill throws, and stays quiet when the pid is already gone", async () => {
+      vi.useFakeTimers();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // taskkill exits 128 when the process no longer exists.
+      mockSpawnSync.mockReturnValueOnce({ status: 128, stdout: "" });
+      mockSpawnSync.mockImplementationOnce(() => {
+        throw new Error("EPERM");
+      });
+      const proc = { pid: 4242, kill: vi.fn(), on: vi.fn(() => proc) };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(500);
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
+      vi.advanceTimersByTime(500);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(/taskkill.*EPERM/s);
+    });
+
+    it("never runs taskkill on the pid of a script that has already exited", async () => {
+      vi.useFakeTimers();
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: "" });
+      const proc = {
+        pid: 4242,
+        exitCode: null as number | null,
+        kill: vi.fn(),
+        on: vi.fn(() => proc),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      // The script exited (Node reaped it) but has not reported close yet:
+      // its pid may already name another program's tree.
+      proc.exitCode = 1;
+      vi.advanceTimersByTime(500);
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(500);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+    });
+  });
+
   it("does not fire SIGKILL if child closes during the 500ms escalation window", async () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;

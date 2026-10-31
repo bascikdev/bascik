@@ -237,24 +237,45 @@ const killPendingLeftovers = (clock: FrameworkClock): void => {
   pendingLeftovers.clear();
 };
 
+/** Set once the taskkill warning has been printed. */
+let warnedTaskkill = false;
+
 /**
  * Signal an exec child and the processes it started (a watcher a wrapper
  * script spawned, a shell), so none outlives a timeout or Bascik's exit.
- * Windows has no signals: `taskkill /T /F` ends the whole tree.
+ * Windows has no signals: `taskkill /T /F` ends the whole tree, run only
+ * while the child has not exited (its pid could name another tree after).
+ * A taskkill that cannot run is a warning: the direct child is still
+ * stopped. A non-zero exit (128: the process is already gone) is not.
  */
 const signalTree = (
   child: ChildProcess,
   signal: NodeJS.Signals,
   descendants: ListedProcess[],
+  script: string,
 ): void => {
-  if (process.platform === "win32" && child.pid !== undefined) {
+  if (
+    process.platform === "win32" &&
+    child.pid !== undefined &&
+    child.exitCode == null &&
+    child.signalCode == null
+  ) {
+    let failure: unknown;
     try {
-      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      failure = spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
         stdio: "ignore",
         windowsHide: true,
-      });
-    } catch {
-      // fall through to the direct child
+      }).error;
+    } catch (error) {
+      failure = error;
+    }
+    if (failure !== undefined && !warnedTaskkill) {
+      warnedTaskkill = true;
+      const reason =
+        failure instanceof Error ? failure.message : String(failure);
+      console.warn(
+        `[bascik] warning: exec "${script}": could not run taskkill (${reason}), so only the script itself was stopped; processes it started may still be running.`,
+      );
     }
   }
   for (const { pid } of descendants) {
@@ -290,6 +311,7 @@ export const resetActiveExecChildrenForTests = (): void => {
     nativeClock.clearTimeout(timer);
   pendingLeftovers.clear();
   warnedNoStartTime = false;
+  warnedTaskkill = false;
   activeChildren.clear();
   childRecords.clear();
   entryExecutions.clear();
@@ -330,7 +352,7 @@ export const execShutdownHandler = async (
   const closePromises = childrenToClose.map((child) => {
     const script = childRecords.get(child)?.script ?? "";
     const descendants = treeOf(child);
-    signalTree(child, "SIGTERM", descendants);
+    signalTree(child, "SIGTERM", descendants, script);
 
     if (!activeChildren.has(child)) {
       return Promise.resolve();
@@ -389,7 +411,8 @@ export const execShutdownHandler = async (
           running: isRunning(child),
           script,
         });
-        if (activeChildren.has(child)) signalTree(child, "SIGKILL", confirmed);
+        if (activeChildren.has(child))
+          signalTree(child, "SIGKILL", confirmed, script);
         else killListed(confirmed);
         resolve();
       }, 200);
@@ -524,7 +547,7 @@ const spawnScript = (
       record.timeoutTimer = clock.setTimeout(() => {
         record.timeoutTimer = null;
         record.timedOut = true;
-        signalTree(child, "SIGTERM", descendantsOf(record));
+        signalTree(child, "SIGTERM", descendantsOf(record), scriptPath);
 
         record.escalationTimer = clock.setTimeout(() => {
           record.escalationTimer = null;
@@ -537,6 +560,7 @@ const spawnScript = (
                 running: isRunning(child),
                 script: scriptPath,
               }),
+              scriptPath,
             );
           record.escalationTimer = clock.setTimeout(() => {
             record.escalationTimer = null;
