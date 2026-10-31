@@ -1722,6 +1722,43 @@ suite("Extension Integration Suite", () => {
   });
 
   suite("Diagnostics", () => {
+    test("a build script's .ts helper shows hand-written-html-escaper and server-script-unescaped-markup, with the esc() quick fix", async () => {
+      const helperUri = vscode.Uri.file(
+        path.join(
+          getWorkspaceFolder("primary").uri.fsPath,
+          "src",
+          "lib",
+          "froth-list.ts",
+        ),
+      );
+      const doc = await vscode.workspace.openTextDocument(helperUri);
+      const escaper = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.code === "hand-written-html-escaper",
+        "The helper's escapeHtml should be reported",
+      );
+      assert.strictEqual(escaper.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(doc.getText(escaper.range), "escapeHtml");
+      const markup = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.code === "server-script-unescaped-markup",
+        "The helper's plain template markup should be reported",
+      );
+      assert.strictEqual(doc.getText(markup.range), "${name}");
+      const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+        "vscode.executeCodeActionProvider",
+        doc.uri,
+        escaper.range,
+      );
+      assert.ok(
+        actions.some(
+          (a) =>
+            a.title === "Make escapeHtml() call esc() from @bascik/bascik/html",
+        ),
+        `Expected the esc() quick fix, got: ${actions.map((a) => a.title).join(", ")}`,
+      );
+    });
+
     test("reports metadata annotation diagnostics from the unsaved component buffer", async () => {
       const workspaceFolder = getWorkspaceFolder("primary");
       const componentUri = vscode.Uri.file(
