@@ -2062,6 +2062,65 @@ describe("replaceTag – nested same-name tags", () => {
 // Bug 2: quote-aware props & attribute scanning
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("extractProps – unquoted values read the way the browser reads them", () => {
+  it.each([
+    [
+      "a URL with a query string",
+      "<my-card data-bascik-prop-href=/docs/page?q=1&x=2></my-card>",
+      { href: "/docs/page?q=1&x=2" },
+    ],
+    [
+      "a URL with a query string and another prop",
+      "<my-card data-bascik-prop-href=/docs/page?q=1&x=2 data-bascik-prop-title=hello></my-card>",
+      { href: "/docs/page?q=1&x=2", title: "hello" },
+    ],
+    [
+      "an apostrophe, which does not drop the other props",
+      "<my-card data-bascik-prop-title=it's data-bascik-prop-x=1></my-card>",
+      { title: "it's", x: "1" },
+    ],
+    [
+      "a backtick",
+      "<my-card data-bascik-prop-title=a`b data-bascik-prop-x=1></my-card>",
+      { title: "a`b", x: "1" },
+    ],
+    [
+      "a self-closing usage",
+      "<my-card data-bascik-prop-href=/a?b=c/>",
+      { href: "/a?b=c" },
+    ],
+    [
+      "a > in a later quoted value",
+      '<my-card data-bascik-prop-href=/a?b=c title="x > y"></my-card>',
+      { href: "/a?b=c" },
+    ],
+  ])("%s", (_case, usage, expected) => {
+    const warn = vi.fn();
+    expect(extractProps(usage, warn)).toEqual(expected);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("returns no props for a usage tag with no closing >", () => {
+    expect(extractProps("<my-card data-bascik-prop-title=a")).toEqual({});
+  });
+});
+
+describe("extractInheritableAttributes – unquoted values", () => {
+  it("keeps =, apostrophes and backticks in unquoted values", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-nav title=it's data-q=a=b data-t=c`d class=x></my-nav>",
+      ),
+    ).toEqual({ title: "it's", "data-q": "a=b", "data-t": "c`d", class: "x" });
+  });
+
+  it("drops the / of a self-closing usage from an unquoted value", () => {
+    expect(extractInheritableAttributes("<my-nav class=top/>")).toEqual({
+      class: "top",
+    });
+  });
+});
+
 describe("extractProps – single-quoted values", () => {
   it("extracts a single-quoted prop value", () => {
     expect(

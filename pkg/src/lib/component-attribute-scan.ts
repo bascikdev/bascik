@@ -57,15 +57,12 @@ const isSpaceOrSlash = (c: number): boolean => c === 47 || isJsSpace(c);
 /** `[\s=/>]` */
 const isNameEnd = (c: number): boolean =>
   c === 61 || c === 47 || c === 62 || isJsSpace(c);
-/** `[\s"'=<>\`]` */
-const isUnquotedEnd = (c: number): boolean =>
-  c === 34 ||
-  c === 39 ||
-  c === 61 ||
-  c === 60 ||
-  c === 62 ||
-  c === 96 ||
-  isJsSpace(c);
+/**
+ * `[\s>]`: the WHATWG "attribute value (unquoted) state" ends only at
+ * whitespace or `>`. Quotes, `=`, `<` and backtick there are parse errors
+ * that the browser keeps in the value (`href=/a?b=c`, `title=it's`).
+ */
+const isUnquotedEnd = (c: number): boolean => c === 62 || isJsSpace(c);
 
 /**
  * Scan the attributes of one opening tag string (the text between `<` and
@@ -74,7 +71,20 @@ const isUnquotedEnd = (c: number): boolean =>
  * attribute's quoted value (e.g. `data-bascik-prop-x` inside `title=...`) is
  * never reported as an attribute.  Returns the attributes in document order.
  */
-export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
+export const scanWholeAttributes = (openTag: string): ScannedAttribute[] =>
+  scanStartTag(openTag).attributes;
+
+/**
+ * The length of the start tag at the beginning of `html` (through its `>`),
+ * read with the same rules as scanWholeAttributes, or -1 when it has no `>`.
+ * A `>` inside a quoted value does not end it, and a quote inside an
+ * unquoted value (`title=it's`) does not start one.
+ */
+export const startTagLength = (html: string): number => scanStartTag(html).end;
+
+const scanStartTag = (
+  openTag: string,
+): { attributes: ScannedAttribute[]; end: number } => {
   const attrs: ScannedAttribute[] = [];
   // Skip the `<` and the tag name: the first attribute can start anywhere
   // after the name (whitespace or directly, as in `<div/disabled>`).
@@ -86,6 +96,8 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
     while (i < n && isSpaceOrSlash(openTag.charCodeAt(i))) i++;
     if (i >= n || openTag[i] === ">") break;
     const nameStart = i;
+    // A name may start with `=` (a parse error the browser keeps in the name).
+    if (openTag[i] === "=") i++;
     while (i < n && !isNameEnd(openTag.charCodeAt(i))) i++;
     const nameEnd = i;
     let valueStart = -1;
@@ -103,8 +115,8 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
         valueEnd = i;
         if (i < n) i++; // past the closing quote
       } else {
-        // Unquoted value: characters other than whitespace, quotes, `=`, `<`,
-        // `>`, and backtick. `/` is allowed (e.g. `path=/about`).
+        // Unquoted value: every character up to whitespace or `>`, `/`
+        // included (e.g. `path=/about`).
         valueStart = i;
         while (i < n && !isUnquotedEnd(openTag.charCodeAt(i))) i++;
         valueEnd = i;
@@ -121,7 +133,7 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] => {
       end: attrEnd,
     });
   }
-  return attrs;
+  return { attributes: attrs, end: i < n ? i + 1 : -1 };
 };
 
 /**

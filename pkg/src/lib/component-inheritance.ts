@@ -1,4 +1,7 @@
-import { ATTR_VALUE, scanWholeAttributes } from "./component-attribute-scan.ts";
+import {
+  scanWholeAttributes,
+  startTagLength,
+} from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import {
   BLOCKED_URL,
@@ -32,34 +35,37 @@ export const extractInheritableAttributes = (
 ): Record<string, string> => {
   if (!componentContent) return {};
   const attrs: Record<string, string> = {};
-  // Grab just the opening tag text (up to the first > outside quotes).
-  // The scan is quote-aware so a `>` inside a quoted attribute value
-  // (e.g. title="a > b") does not end the opening tag early.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openingTag = componentContent.match(
-    new RegExp(`^<[\\w-]+(?:${ATTR_VALUE})>`),
-  )?.[0];
-  if (!openingTag) return attrs;
-  const tagEnd = openingTag.length - 1;
-  for (const attr of scanWholeAttributes(openingTag)) {
-    const { name } = attr;
+  // Just the opening tag, read as the browser reads it: a `>` inside a quoted
+  // value (title="a > b") does not end it, and a quote inside an unquoted
+  // value (title=it's) does not start one.
+  if (!/^<[\w-]/.test(componentContent)) return attrs;
+  const openTagLength = startTagLength(componentContent);
+  if (openTagLength === -1) return attrs;
+  const openTag = componentContent.slice(0, openTagLength);
+  const tagEnd = openTagLength - 1;
+  // Double-quoted, single-quoted, whitespace-spaced, and unquoted values; an
+  // unquoted value runs to whitespace or `>`, as in the browser.
+  for (const attribute of scanWholeAttributes(openTag)) {
+    const { name } = attribute;
     if (/^data-bascik-/i.test(name)) continue;
-    // A quote or `<` cannot be written back in a name (HTML's attribute name
-    // rule excludes them); such a name is the tail of a malformed value, as
-    // in `data-bascik-prop-t="say "hi""`, never an attribute to carry over.
+    // Framework names such as `@click`, `x-on:click.prevent`, `#ref` and
+    // `[hidden]` are carried over whole. A quote or `<` cannot be written back
+    // in a name (HTML's attribute name rule excludes them); such a name is the
+    // tail of a malformed value, as in `data-bascik-prop-t="say "hi""`, never
+    // an attribute to carry over.
     if (/["'<]/.test(name)) continue;
-    if (attr.valueStart === -1) {
+    if (attribute.valueStart === -1) {
       attrs[name] = "";
       continue;
     }
-    let value = openingTag.slice(attr.valueStart, attr.valueEnd);
-    const quote = openingTag[attr.valueStart - 1];
+    let value = openTag.slice(attribute.valueStart, attribute.valueEnd);
+    const quote = openTag[attribute.valueStart - 1];
     // An unquoted value that runs into the tag's `/>` leaves the slash to
     // the self-closing syntax, as Bascik reads `<my-card title=x/>`.
     if (
       quote !== '"' &&
       quote !== "'" &&
-      attr.valueEnd === tagEnd &&
+      attribute.valueEnd === tagEnd &&
       value.endsWith("/")
     )
       value = value.slice(0, -1);

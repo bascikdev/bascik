@@ -6,6 +6,7 @@ import {
   readStartTagAttributes,
   removeHtmlRanges,
   scanHtml,
+  type HtmlRange,
   type ScannedComment,
   type ScannedScript,
 } from "./html-scanner.ts";
@@ -273,6 +274,17 @@ describe("scanHtml", () => {
       ["a trailing </", "<p>a</p></", 8],
       ["a trailing <!", "<p>a</p><!", 8],
       ["a closed template and svg", "<template></template><svg></svg>", 32],
+      // A breakout start tag (p, div, span, b, ...) pops an unclosed <svg> or
+      // <math> off the stack, so what follows is ordinary content again.
+      ["svg left by a breakout tag", "<svg><p>x</p><script>a()</script>", 33],
+      [
+        "math left by a breakout tag",
+        "<math><mi>x</mi><div>y</div><script>a()</script>",
+        48,
+      ],
+      ["svg left by a void breakout tag", "<p>a</p><svg><path/><br>b", 25],
+      ["svg reopened after a breakout tag", "<svg><p>x</p><svg><g>", 13],
+      ["a breakout tag inside a template's svg", "<template><svg><p>x", 0],
     ])(
       "is the start of trailing markup an appended script would not run after: %s",
       (_case, html, point) => {
@@ -369,6 +381,17 @@ describe("removeHtmlRanges", () => {
     ["a text <", "<p><<!-- c -->script>b()</script></p>", "<!-- c -->"],
     ["an unfinished named reference", "<p>&am<!-- c -->p;</p>", "<!-- c -->"],
     ["an unfinished numeric reference", "<p>&#6<!-- c -->0;</p>", "<!-- c -->"],
+    // The tokenizer keeps reading digits however many leading zeros come first.
+    [
+      "a numeric reference with 70 leading zeros",
+      `<p>&#${"0".repeat(70)}<!-- c -->60;</p>`,
+      "<!-- c -->",
+    ],
+    [
+      "a hex reference with 70 leading zeros",
+      `<p>&#x${"0".repeat(70)}<!-- c -->3c;</p>`,
+      "<!-- c -->",
+    ],
   ])(
     "keeps the text around a removal from joining after %s",
     (_case, html, removed) => {
@@ -377,6 +400,59 @@ describe("removeHtmlRanges", () => {
       expect(domSnapshot(result)).toEqual(domSnapshot(html));
     },
   );
+
+  it("writes the separator exactly where the output before a removal ends in < or an unfinished reference", () => {
+    // The reference model: the regex on everything written so far.
+    const pendingRe = /(?:<|&[#0-9A-Za-z]*)$/;
+    // Long reference runs reach past any fixed look-back window.
+    const longReference = fc
+      .string({
+        unit: fc.constantFrom("0", "1", "a", "x"),
+        minLength: 60,
+        maxLength: 100,
+      })
+      .map((run) => `&#${run}`);
+    const piece = fc.oneof(
+      {
+        weight: 9,
+        arbitrary: fc.constantFrom("&", "#", "x", "0", "a", ";", "<", ">", " "),
+      },
+      { weight: 1, arbitrary: longReference },
+    );
+    fc.assert(
+      fc.property(
+        fc.array(fc.array(piece, { maxLength: 80 }), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        (texts) => {
+          const removed = "<!-- c -->";
+          const html = texts.map((t) => t.join("")).join(removed);
+          const ranges: HtmlRange[] = [];
+          let expected = "";
+          let at = 0;
+          texts.forEach((t, k) => {
+            const text = t.join("");
+            expected += text;
+            at += text.length;
+            if (k === texts.length - 1) return;
+            ranges.push({ start: at, end: at + removed.length });
+            if (pendingRe.test(expected)) expected += SEAM_SEPARATOR;
+            at += removed.length;
+          });
+          expect(removeHtmlRanges(html, ranges).html).toBe(expected);
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  it("adds no separator after a long run of letters and digits with no & before it", () => {
+    const html = `<p>${"a1".repeat(100)}<!-- c -->b</p>`;
+    expect(removeHtmlRanges(html, [rangeOf(html, "<!-- c -->")]).html).toBe(
+      `<p>${"a1".repeat(100)}b</p>`,
+    );
+  });
 
   it("drops ranges inside or overlapping an earlier one", () => {
     const html = "<a>0123456789</a>";

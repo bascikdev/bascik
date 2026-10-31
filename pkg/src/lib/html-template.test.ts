@@ -938,6 +938,34 @@ describe("html: the tokenizer follows the browser where it matters", () => {
     expect(s(html`<p>a < ${"<b>"}</p>`)).toBe("<p>a < &lt;b&gt;</p>");
   });
 
+  it("a closed CDATA section ends where both readings agree, so holes after it render", () => {
+    expect(s(html`<svg><![CDATA[a]]></svg><p>${"<"}</p>`)).toBe(
+      "<svg><![CDATA[a]]></svg><p>&lt;</p>",
+    );
+    expect(
+      s(html`<svg><style><![CDATA[.a{}]]></style><text>${"<"}</text></svg>`),
+    ).toBe("<svg><style><![CDATA[.a{}]]></style><text>&lt;</text></svg>");
+    expect(s(html`<![CDATA[x]]><p>${"<"}</p>`)).toBe(
+      "<![CDATA[x]]><p>&lt;</p>",
+    );
+    expect(
+      s(html`<svg><![CDATA[a]]></svg><p>${"a"}</p><p>${"b"}</p>`),
+    ).toBe("<svg><![CDATA[a]]></svg><p>a</p><p>b</p>");
+  });
+
+  it("a CDATA section with > before its ]]> refuses the holes after it, naming the >", () => {
+    // HTML ends the section at the first >, SVG and MathML at ]]>, and which
+    // one applies can change where the fragment is nested.
+    const error = thrown(
+      () => html`<svg><style><![CDATA[.a > .b{}]]></style></svg><p>${x}</p>`,
+    );
+    expect(error).toMatchObject({ code: "comment", hole: 1 });
+    expect(error.message).toMatch(/^html: hole 1 in html`/);
+    expect(error.message).toContain("<![CDATA[");
+    expect(error.message).toContain("Remove > from the CDATA section");
+    expect(error.message).not.toContain("inside an HTML comment");
+  });
+
   it("<plaintext> runs to the end, so any hole after it is text", () => {
     expect(s(html`<plaintext>${"</plaintext><b>"}`)).toBe(
       "<plaintext>&lt;/plaintext&gt;&lt;b&gt;",

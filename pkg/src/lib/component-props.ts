@@ -1,9 +1,9 @@
 import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { decodeCharacterReferences } from "./character-references.ts";
 import {
-  ATTR_VALUE,
   createAttributeValueScanner,
   scanWholeAttributes,
+  startTagLength,
   type AttributeValueScanner,
 } from "./component-attribute-scan.ts";
 import {
@@ -283,11 +283,12 @@ export const extractProps = (
   const props: Record<string, string> = {};
   if (!componentContent || !/data-bascik-prop-/i.test(componentContent))
     return props;
-  const openingTag = componentContent.match(
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
-  )?.[0];
-  if (!openingTag) return props;
+  // The start tag, read as the browser reads it: a quote inside an unquoted
+  // value (`title=it's`) does not start a quoted one.
+  if (!/^<[a-zA-Z]/.test(componentContent)) return props;
+  const openingTagLength = startTagLength(componentContent);
+  if (openingTagLength === -1) return props;
+  const openingTag = componentContent.slice(0, openingTagLength);
   // Only whole attribute names count. A token that looks like a prop marker
   // inside another attribute's quoted value (e.g. a doc reference in
   // `title="see data-bascik-prop-x"`) is text, never a prop.
@@ -315,8 +316,9 @@ export const extractProps = (
       }
       props[propName] = decodePropEntities(rawVal);
     } else {
-      // Unquoted value: it never contains `/>` or `=` delimiters; a trailing
-      // `/` belongs to the self-closing syntax, so drop it.
+      // Unquoted value: everything up to whitespace or `>`, as the browser
+      // reads it (`href=/a?b=c`). A trailing `/` belongs to the self-closing
+      // syntax of a component usage, so drop it.
       const cleanUnquoted = rawVal.endsWith("/") ? rawVal.slice(0, -1) : rawVal;
       props[propName] = decodePropEntities(cleanUnquoted);
     }

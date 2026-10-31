@@ -925,6 +925,15 @@ describe("getRelativePath – multiple component roots", () => {
     });
   });
 
+  it("displays .. for a root that is the project's parent folder (directory.components: '..')", () => {
+    const parent = resolve("..");
+    withRoots([parent], () => {
+      expect(getRelativePath(`${parent}/hello-card.html`, "components")).toBe(
+        "../hello-card.html",
+      );
+    });
+  });
+
   it("toDistPath accepts a component path under an outside root but still rejects unknown absolute paths", () => {
     const outside = resolve("../shared/components");
     withRoots([outside], () => {
