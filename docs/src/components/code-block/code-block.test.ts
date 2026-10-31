@@ -50,9 +50,11 @@ describe("code-block component", () => {
   it("highlighter output is the escaped source plus token spans, for any input", async () => {
     const unescape = (text: string): string =>
       text.replace(
-        /&(lt|gt|amp);/g,
+        /&(lt|gt|quot|#39|amp);/g,
         (_entity, name: string) =>
-          ({ lt: "<", gt: ">", amp: "&" })[name] as string,
+          ({ lt: "<", gt: ">", quot: '"', "#39": "'", amp: "&" })[
+            name
+          ] as string,
       );
     const assertEscaped = (source: string, lang: string): void => {
       const output = highlight(source, lang);

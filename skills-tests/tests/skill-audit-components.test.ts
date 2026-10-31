@@ -1911,7 +1911,7 @@ describe("new-component scaffolds TypeScript by default", () => {
 describe("the repo's own Bascik code builds markup with html", () => {
   // Agents read the examples, the docs site, and the Cloudflare demo Worker as reference code, so none of them
   // may carry the escaper the skills tell agents to delete.
-  const roots = ["examples", "adapters/cloudflare/e2e/fixture/src"];
+  const roots = ["examples", "docs/src", "adapters/cloudflare/e2e/fixture/src"];
   it.each(roots)("%s has no hand-written HTML escaper or stripper", (root) => {
     const base = fileURLToPath(new URL(`../../${root}`, import.meta.url));
     const found: string[] = [];

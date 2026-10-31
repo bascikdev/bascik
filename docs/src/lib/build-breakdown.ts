@@ -5,6 +5,7 @@
  * measured build (cold and warm), each split into the phases the CLI itself reports, drawn to a shared scale
  * so the warm build is visibly shorter. Everything shown is a measured number or a live count, never prose.
  */
+import { esc } from "@bascik/bascik/html";
 import {
   countComponents,
   countSourcePages,
@@ -30,13 +31,6 @@ export interface Segment {
   seconds: number;
   detail: string;
 }
-
-const escapeHtml = (text: string): string =>
-  text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 
 /** `scripts/generate-og-images.ts` becomes `generate-og-images`. */
 export const scriptName = (script: string): string =>
@@ -121,16 +115,16 @@ function renderRun(
     .map(
       (segment) =>
         `<li class="bb-legend-row"><span class="bb-swatch bb-seg-${segment.id}" aria-hidden="true"></span>` +
-        `<span class="bb-legend-label">${escapeHtml(segment.label)}</span>` +
+        `<span class="bb-legend-label">${esc(segment.label)}</span>` +
         `<span class="bb-legend-time">${formatSeconds(segment.seconds)}</span>` +
-        `<span class="bb-legend-detail">${escapeHtml(segment.detail)}</span></li>`,
+        `<span class="bb-legend-detail">${esc(segment.detail)}</span></li>`,
     )
     .join("");
   return (
     `<div class="bb-run">` +
-    `<div class="bb-run-head"><h4 class="bb-run-name">${escapeHtml(name)}</h4><span class="bb-run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
-    `<p class="bb-run-note">${escapeHtml(note)}</p>` +
-    `<div class="bb-bar" role="img" aria-label="${escapeHtml(barLabel(name, run, segments))}" style="width:${width.toFixed(1)}%">${bar}</div>` +
+    `<div class="bb-run-head"><h4 class="bb-run-name">${esc(name)}</h4><span class="bb-run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
+    `<p class="bb-run-note">${esc(note)}</p>` +
+    `<div class="bb-bar" role="img" aria-label="${esc(barLabel(name, run, segments))}" style="width:${width.toFixed(1)}%">${bar}</div>` +
     `<ul class="bb-legend">${legend}</ul>` +
     `</div>`
   );
@@ -143,7 +137,7 @@ function renderRun(
  */
 function renderPerPage(timings: BuildTimings): string {
   const perPage = timings.oneWorker ?? timings.warm;
-  const slowest = escapeHtml(perPage.slowestPage.path.replace(/^pages\//, ""));
+  const slowest = esc(perPage.slowestPage.path.replace(/^pages\//, ""));
   const figures = `Median page ${perPage.pageMedianMs}ms, slowest ${slowest} at ${perPage.slowestPage.ms}ms`;
   return timings.oneWorker
     ? `${figures}, warm, on one worker thread, so no other page competes for its core.`
@@ -151,7 +145,7 @@ function renderPerPage(timings: BuildTimings): string {
 }
 
 function renderFact(value: string, label: string): string {
-  return `<div class="bb-fact"><span class="bb-fact-value">${escapeHtml(value)}</span><span class="bb-fact-label">${escapeHtml(label)}</span></div>`;
+  return `<div class="bb-fact"><span class="bb-fact-value">${esc(value)}</span><span class="bb-fact-label">${esc(label)}</span></div>`;
 }
 
 /** The scripts that run alongside page compilation, each with how long it took in the cold build. */
@@ -163,7 +157,7 @@ function renderParallel(timings: BuildTimings): string {
   const chips = parallel
     .map(
       (script) =>
-        `<li class="bb-chip"><span class="bb-chip-name">${escapeHtml(scriptName(script.script))}</span><span class="bb-chip-time">${formatSeconds(script.seconds)}</span></li>`,
+        `<li class="bb-chip"><span class="bb-chip-name">${esc(scriptName(script.script))}</span><span class="bb-chip-time">${formatSeconds(script.seconds)}</span></li>`,
     )
     .join("");
   return (
@@ -233,9 +227,9 @@ export async function renderBuildBreakdown(
     renderParallel(timings) +
     `<p class="bb-foot">${renderPerPage(timings)} ` +
     (timings.devContentEdit
-      ? `The dev edit figure is the median of ${timings.devContentEdit.samples} warm-cache saves to this site's getting-started Markdown page, measured ${escapeHtml(timings.devContentEdit.measuredOn)} in a private site copy; it includes watching, rebuild, and disk publication, but not browser reload. `
+      ? `The dev edit figure is the median of ${timings.devContentEdit.samples} warm-cache saves to this site's getting-started Markdown page, measured ${esc(timings.devContentEdit.measuredOn)} in a private site copy; it includes watching, rebuild, and disk publication, but not browser reload. `
       : "") +
-    `Production builds measured ${escapeHtml(timings.measuredOn)} on ${escapeHtml(timings.machine)} with Node ${escapeHtml(timings.nodeVersion)}. ` +
+    `Production builds measured ${esc(timings.measuredOn)} on ${esc(timings.machine)} with Node ${esc(timings.nodeVersion)}. ` +
     `Re-measure with <code>yarn docs:measure-build</code>.</p>` +
     `</div>`
   );

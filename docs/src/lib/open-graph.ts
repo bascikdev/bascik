@@ -9,16 +9,9 @@
  *   export default async () => await openGraph();
  */
 import { readFile } from "node:fs/promises";
+import { esc } from "@bascik/bascik/html";
 import { pageDescription, pageTitle } from "./meta-tags.ts";
 import { NAV } from "./nav.ts";
-
-function escapeHtmlAttr(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 /**
  * Resolves the generated social card for a page. Pages outside the nav (stubs, search) fall back to
@@ -86,43 +79,35 @@ export async function openGraph(): Promise<string> {
   const tags = [
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="Bascik" />`,
-    `<meta property="og:url" content="${escapeHtmlAttr(url)}" />`,
+    `<meta property="og:url" content="${esc(url)}" />`,
     `<meta property="og:locale" content="en_US" />`,
   ];
   if (cleanTitle)
-    tags.push(
-      `<meta property="og:title" content="${escapeHtmlAttr(cleanTitle)}" />`,
-    );
+    tags.push(`<meta property="og:title" content="${esc(cleanTitle)}" />`);
   if (description) {
     tags.push(
-      `<meta property="og:description" content="${escapeHtmlAttr(description)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
     );
   }
-  tags.push(
-    `<meta property="og:image" content="${escapeHtmlAttr(imageUrl)}" />`,
-  );
+  tags.push(`<meta property="og:image" content="${esc(imageUrl)}" />`);
   tags.push(`<meta property="og:image:type" content="image/jpeg" />`);
   tags.push(`<meta property="og:image:width" content="1200" />`);
   tags.push(`<meta property="og:image:height" content="630" />`);
   if (cleanTitle) {
     tags.push(
-      `<meta property="og:image:alt" content="${escapeHtmlAttr(cleanTitle)} open graph social card" />`,
+      `<meta property="og:image:alt" content="${esc(cleanTitle)} open graph social card" />`,
     );
   }
   tags.push(`<meta name="twitter:card" content="summary_large_image" />`);
   tags.push(`<meta name="twitter:site" content="@bascikdev" />`);
   if (cleanTitle)
-    tags.push(
-      `<meta name="twitter:title" content="${escapeHtmlAttr(cleanTitle)}" />`,
-    );
+    tags.push(`<meta name="twitter:title" content="${esc(cleanTitle)}" />`);
   if (description) {
     tags.push(
-      `<meta name="twitter:description" content="${escapeHtmlAttr(description)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
     );
   }
-  tags.push(
-    `<meta name="twitter:image" content="${escapeHtmlAttr(imageUrl)}" />`,
-  );
+  tags.push(`<meta name="twitter:image" content="${esc(imageUrl)}" />`);
 
   return tags.join("\n");
 }

@@ -31,6 +31,7 @@ import {
 } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { esc } from "@bascik/bascik/html";
 import { marked } from "marked";
 import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
 import { escapeCode, highlightCode, unescapeCode } from "./highlight.ts";
@@ -205,7 +206,7 @@ function imageReference(src: string): { file: string | null; url: string } {
  */
 function imageUrl(src: string): string {
   const { file, url } = imageReference(src);
-  return escapeAttribute(file === null ? url : url + versionQuery(file));
+  return esc(file === null ? url : url + versionQuery(file));
 }
 
 /** The entities marked writes into an attribute (its `escape` helper), mapped back to their characters. */
@@ -292,10 +293,6 @@ function renderImage(
   return `<picture>${sources.join("")}${image}</picture>`;
 }
 
-/** Escapes text for use inside a double-quoted HTML attribute. */
-const escapeAttribute = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-
 /**
  * Renders a site image for an HTML page, with the same sizing, lazy loading, and reduced-motion handling as
  * images in Markdown. Call it from a `data-bascik-build` script.
@@ -308,7 +305,7 @@ export function demoImage(
   alt: string,
   narrow?: { src: string; maxWidth: number },
 ): string {
-  return renderImage(src, ` alt="${escapeAttribute(alt)}"`, narrow);
+  return renderImage(src, ` alt="${esc(alt)}"`, narrow);
 }
 
 /**
