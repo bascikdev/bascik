@@ -108,8 +108,9 @@ The value the default export returns, or resolves to, replaces the script tag. A
 | `null`, `undefined`, `false`                        | Nothing                                     |
 | Array (up to 1000 levels deep)                      | Each item by these rules, with no separator |
 | An object with its own `toString` (a `Date`)        | Its `toString()` text                       |
-| A plain object, `Map`, `Response`, function, symbol | Refused: an empty slot and a located report |
-| An array holding a Promise                          | Refused: an empty slot and a located report |
+| A plain object, `Map`, `Response`, function, symbol | Refused (see below)                         |
+| An `Error` (`return e` in a `catch`)                | Refused (see below)                         |
+| An array holding a Promise                          | Refused (see below)                         |
 
 Because an array is joined with no separator, `.map` needs no `.join("")`:
 
@@ -124,7 +125,7 @@ Because an array is joined with no separator, `.map` needs no `.join("")`:
 </script>
 ```
 
-A returned value that is not markup is a mistake `String()` would print as `[object Object]`, `[object Response]` or `[object Promise]`, so Bascik refuses it instead. The usual causes are returning the data instead of markup built from it, returning a `Response` (that belongs in an [API route](/api-routes)), and an `async` callback in `.map`, which makes an array of Promises: write `return await Promise.all(items.map(async (item) => ...))`. A Promise returned on its own is awaited, so it never reaches the page.
+A returned value that is not markup is a mistake `String()` would print as `[object Object]`, `[object Response]` or `[object Promise]`, so Bascik refuses it instead. The usual causes are returning the data instead of markup built from it, returning a `Response` (that belongs in an [API route](/api-routes)), returning a caught `Error` (its text is an internal message, so throw it instead), and an `async` callback in `.map`, which makes an array of Promises: write `return await Promise.all(items.map(async (item) => ...))`. A Promise returned on its own is awaited, so it never reaches the page.
 
 - **Dev server (`bascik`).** A refused value is a server script error, handled by `scripts.onServerScriptError` like a throw: under `'error'` (the default) the page is a 500 (a stream script's slot is empty instead, as for any stream failure), `'warn'` logs and leaves the slot empty, and `'ignore'` leaves it empty without a log. The message names the route, the script's file and line, and what was returned, such as `The server script in src/pages/shop.html:12 returned an array holding a Promise at [0]`.
 - **Production (`bascik --server` and the Cloudflare adapter).** A refused value never fails the page: the slot is empty, and the same message is logged once per script, as a warning, until the server restarts (the Worker logs it once per isolate). `'ignore'` silences it.

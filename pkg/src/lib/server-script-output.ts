@@ -18,12 +18,12 @@
  *   flattened (up to 1000 levels), so `items.map((p) => html`...`)` just
  *   works;
  * - an object with its own `toString` (a `Date`, a `URL`, a class) prints
- *   that text.
+ *   that text, except an `Error`, whose text may be an internal message.
  *
  * Anything else is a mistake that `String(value)` would print as
  * `[object ...]` or worse: a Promise (a forgotten `await`, or an async
- * `.map`), a `Response` (the API-route habit), a plain object, a `Map`, a
- * function or a symbol. Those come back as an error the host reports: a
+ * `.map`), a `Response` (the API-route habit), an `Error` (`return e` in a
+ * `catch`), a plain object, a `Map`, a function or a symbol. Those come back as an error the host reports: a
  * located server-script error in development, a once-per-script warning and
  * an empty slot in production.
  *
@@ -39,7 +39,13 @@ const JSON_TEXT = Symbol.for("bascik.json");
 export const MAX_RETURN_ARRAY_DEPTH = 1000;
 
 export type ServerScriptOutputErrorKind =
-  "promise" | "response" | "object" | "function" | "symbol" | "array-depth";
+  | "promise"
+  | "response"
+  | "error"
+  | "object"
+  | "function"
+  | "symbol"
+  | "array-depth";
 
 export interface ServerScriptOutputError {
   kind: ServerScriptOutputErrorKind;
@@ -69,6 +75,17 @@ const objectTag = (value: object): string => {
 
 const OBJECT_TAG = /^\[object [^\]]*\]$/;
 
+/** An Error's name for a message, never its text (which may be internal). */
+const errorName = (value: object): string => {
+  try {
+    const name = (value as { name?: unknown }).name;
+    if (typeof name === "string" && /^[\w$.]{1,64}$/.test(name)) return name;
+  } catch {
+    // A hostile getter: fall back to the generic name.
+  }
+  return "Error";
+};
+
 interface Failure {
   kind: ServerScriptOutputErrorKind;
   what: string;
@@ -94,8 +111,14 @@ const valueText = (value: unknown): string | Failure => {
     (object as Record<symbol, unknown>)[JSON_TEXT];
   if (typeof brand === "string") return brand;
   if (isThenable(object)) return { kind: "promise", what: "a Promise" };
-  if (objectTag(object) === "[object Response]")
+  const tag = objectTag(object);
+  if (tag === "[object Response]")
     return { kind: "response", what: "a Response" };
+  // An Error has its own toString (`Name: message`), but a returned one is
+  // a caught failure, not markup: printing it would show the visitor an
+  // internal message, so it is refused whatever its toString says.
+  if (tag === "[object Error]" || object instanceof Error)
+    return { kind: "error", what: `an Error (${errorName(object)})` };
   let printed: string;
   try {
     printed = String(object);
@@ -176,6 +199,8 @@ const FIXES: Record<ServerScriptOutputErrorKind, (inArray: boolean) => string> =
       inArray
         ? "An async callback in .map returns Promises: return await Promise.all(items.map(...)) instead."
         : "Add await where the value is made (the default export may be async).",
+    error: () =>
+      "To fail the script, throw it instead of returning it (scripts.onServerScriptError decides what the page shows); to show a message, return markup that says it.",
     response: () =>
       "A script on a page prints markup into it; a Response belongs in an API route (src/api/). Return the markup (a string or html`...`) instead.",
     object: () =>

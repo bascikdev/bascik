@@ -1253,6 +1253,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
         received: "returned an object ([object Object])",
       },
       { path: "/returns-response", received: "returned a Response" },
+      { path: "/returns-error", received: "returned an Error (TypeError)" },
       {
         path: "/returns-async-map",
         received: "returned an array holding a Promise at [0]",
@@ -1279,6 +1280,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
           expect(r.cf.body, refused.path).toBe(r.node.body);
           expect(r.cf.body, refused.path).not.toContain("[object");
           expect(r.cf.body, refused.path).not.toContain("api habit");
+          expect(r.cf.body, refused.path).not.toContain("SECRET_DETAIL");
           expect(r.cf.body, refused.path).toContain('data-testid="shell"');
           expect(r.cf.body, refused.path).toContain('data-testid="tail"');
           if (refused.path === "/returns-component")

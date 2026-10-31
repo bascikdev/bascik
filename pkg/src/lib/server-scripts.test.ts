@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import {
   executeServerScripts,
   pageHasServerScripts,
@@ -347,18 +347,33 @@ describe("executeServerScripts in-process execution", () => {
 describe("return values (prompt 158 R3-04, F060): arrays join like html, mistakes are located", () => {
   const page = (body: string, mode = "data-bascik-server") =>
     `<p>before</p>\n<script ${mode}>\n${body}\n</script>\n<p>after</p>`;
-  const run = (body: string, url = "http://localhost/catalog") =>
+  // A production warning is logged once per script start position for the
+  // life of the process, so each production test names its own file: two
+  // tests sharing one would see each other's dedupe and depend on order.
+  const run = (
+    body: string,
+    url = "http://localhost/catalog",
+    file = "src/pages/catalog.html",
+  ) =>
     executeServerScripts(
       page(body),
       new Request(url),
       baseContext,
       30000,
-      "src/pages/catalog.html",
+      file,
     );
 
+  const saved = {
+    isProdServer: (BascikConfig as any).isProdServer,
+    isBuild: (BascikConfig as any).isBuild,
+  };
   beforeEach(() => {
     (BascikConfig as any).isProdServer = false;
     (BascikConfig as any).isBuild = false;
+  });
+  afterAll(() => {
+    (BascikConfig as any).isProdServer = saved.isProdServer;
+    (BascikConfig as any).isBuild = saved.isBuild;
   });
 
   it("an array of strings from .map is joined with no separator, not with commas", async () => {
@@ -424,6 +439,11 @@ export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<l
       "returned a function",
     ],
     ["a symbol", `export default () => Symbol("x");`, "returned a symbol"],
+    [
+      "a caught Error returned instead of thrown",
+      `export default () => { try { throw new TypeError("db SECRET_DETAIL"); } catch (e) { return e; } };`,
+      "returned an Error (TypeError)",
+    ],
   ] as const) {
     it(`misuse: ${label} is a located error in dev under "error", naming the route, the script and the received type`, async () => {
       const failure = run(body).then(
@@ -441,6 +461,7 @@ export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<l
       );
       expect(error!.message).toContain(received);
       expect(error!.message).not.toMatch(/\[object (Promise|Response)\]/);
+      expect(error!.message).not.toContain("SECRET_DETAIL");
     });
   }
 
@@ -479,7 +500,11 @@ export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<l
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const body = `export default () => ({ name: "prod-once" });`;
     for (let i = 0; i < 3; i++) {
-      const result = await run(body, `http://localhost/catalog?i=${i}`);
+      const result = await run(
+        body,
+        `http://localhost/catalog?i=${i}`,
+        "src/pages/prod-once.html",
+      );
       expect(result).toBe("<p>before</p>\n\n<p>after</p>");
     }
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -488,7 +513,7 @@ export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<l
       /^\[bascik\] server script error at "\/catalog":\n/,
     );
     expect(message).toMatch(
-      /The server script in src\/pages\/catalog\.html:\d+ returned an object/,
+      /The server script in src\/pages\/prod-once\.html:\d+ returned an object/,
     );
     expect(message).toContain("The slot is empty");
     // A script in another file is its own warning.
@@ -528,7 +553,11 @@ export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<l
     (BascikConfig as any).isProdServer = true;
     (BascikConfig as any).scripts = { onServerScriptError: "ignore" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await run(`export default () => Symbol("prod-ignore");`);
+    const result = await run(
+      `export default () => Symbol("prod-ignore");`,
+      "http://localhost/catalog",
+      "src/pages/prod-ignore.html",
+    );
     expect(result).toBe("<p>before</p>\n\n<p>after</p>");
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();

@@ -624,6 +624,15 @@ export default function () { return new Response("<p>api habit</p>"); }
 </script></section>`,
   );
   await page(
+    "src/pages/returns-error.html",
+    "Returns error",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () {
+  try { throw new TypeError("db SECRET_DETAIL"); } catch (e) { return e; }
+}
+</script></section>`,
+  );
+  await page(
     "src/pages/returns-async-map.html",
     "Returns async map",
     `<section data-testid="slot"><script data-bascik-stream>

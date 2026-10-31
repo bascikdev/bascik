@@ -168,6 +168,24 @@ describe("serverScriptOutput: values that are a mistake (misuse lens)", () => {
     ).toThrow(boom);
   });
 
+  it("a returned Error (catch (e) { return e; }) is an error error, so its message never reaches the visitor", () => {
+    const e = error(new Error("db password rejected for user admin"));
+    expect(e.kind).toBe("error");
+    expect(e.received).toBe("an Error (Error)");
+    expect(error(new TypeError("x")).received).toBe("an Error (TypeError)");
+    class LookupError extends Error {
+      override name = "LookupError";
+      override toString() {
+        return "custom";
+      }
+    }
+    // Its own toString does not make an Error markup.
+    expect(error(new LookupError("y")).received).toBe("an Error (LookupError)");
+    expect(error(["<a>", new RangeError("z")]).received).toBe(
+      "an array holding an Error (RangeError) at [1]",
+    );
+  });
+
   it("a function (a forgotten call) is a function error", () => {
     const e = error(() => "<p>never called</p>");
     expect(e.kind).toBe("function");
@@ -247,6 +265,9 @@ describe("serverScriptOutputErrorMessage", () => {
         where,
       ),
     ).toContain("Call it");
+    expect(
+      serverScriptOutputErrorMessage(error(new Error("x")), url, where),
+    ).toContain("throw it");
   });
 
   it("without an owner the message still reads", () => {
