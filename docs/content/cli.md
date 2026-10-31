@@ -75,13 +75,13 @@ Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
 | Flag                | Description                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
 | `--no-skills`       | Do not install the agent skills                                                                                     |
-| `--no-install`      | Do not run `npm install`                                                                                            |
+| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                  |
 | `--no-dev`          | Do not start the dev server                                                                                         |
 | `--template <name>` | `default` (alias `static`) or `cloudflare`                                                                          |
 

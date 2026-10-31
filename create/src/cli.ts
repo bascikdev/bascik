@@ -183,7 +183,7 @@ Options:
   -y, --yes          Answer every question with its default: the default template,
                      install the agent skills, install dependencies, start the dev server
   --no-skills        Do not install the Bascik agent skills
-  --no-install       Do not run npm install
+  --no-install       Do not run npm install (nor start the dev server, which needs it)
   --no-dev           Do not start the dev server
   -h, --help         Show this help text
 

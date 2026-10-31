@@ -39,7 +39,7 @@ import {
 } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   CLAUDE_MD,
@@ -160,6 +160,65 @@ describe("npm create bascik and the agent skills", () => {
     expect(output).toContain(LATER[0]);
     expect(existsSync(join(parent, "my-site", ".agents"))).toBe(false);
     expect(existsSync(join(parent, "my-site", "node_modules"))).toBe(false);
+  });
+
+  it("misuse: --no-install also skips the dev server, which cannot start without dependencies", async () => {
+    const { status, output } = await create([
+      "my-site",
+      "-y",
+      "--no-skills",
+      "--no-install",
+    ]);
+    expect(status, output).toBe(0);
+    expect(output).not.toContain("Starting dev server");
+    expect(output).toContain(
+      "Next steps:\n\n  cd my-site\n  npm install\n  npm run dev\n",
+    );
+  });
+
+  it("misuse: answering n to the install does not ask to start the dev server", async () => {
+    // Skills: n, install: n. A dev question would take the third answer.
+    const { status, output } = await create(
+      ["my-site", "--template", "default"],
+      { input: "n\nn\n" },
+    );
+    expect(status, output).toBe(0);
+    expect(output).not.toContain("Start the dev server");
+    expect(output).not.toContain("Starting dev server");
+    expect(output).toContain("  npm install\n  npm run dev\n");
+  });
+
+  it("misuse: a failed npm install does not go on to start the dev server", async () => {
+    // A stand-in npm that records its arguments and fails, as npm install does offline.
+    const fakeBin = await mkdtemp(join(work, "fake-npm-"));
+    const log = join(fakeBin, "npm.log");
+    writeFileSync(
+      join(fakeBin, "npm"),
+      '#!/bin/sh\necho "$@" >> "$NPM_LOG"\nexit 1\n',
+    );
+    chmodSync(join(fakeBin, "npm"), 0o755);
+    writeFileSync(
+      join(fakeBin, "npm.cmd"),
+      '@echo %*>>"%NPM_LOG%"\r\n@exit /b 1\r\n',
+    );
+    const pathKey =
+      Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
+      "PATH";
+    const { status, output } = await create(["my-site", "-y", "--no-skills"], {
+      env: {
+        NPM_LOG: log,
+        [pathKey]: `${fakeBin}${delimiter}${process.env[pathKey] ?? ""}`,
+      },
+    });
+    expect(status, output).toBe(0);
+    expect(readFileSync(log, "utf8").trim().split(/\r?\n/)).toEqual([
+      "install",
+    ]);
+    expect(output).toContain(
+      'npm install did not finish. Run "npm install" in my-site yourself.',
+    );
+    expect(output).not.toContain("Starting dev server");
+    expect(output).toContain("  cd my-site\n  npm install\n  npm run dev\n");
   });
 
   it("-y installs every project skill as real copies in both folders, without bascik-refactor", async () => {

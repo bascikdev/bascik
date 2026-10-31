@@ -54,12 +54,12 @@ Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cur
 
 Yes, the default and what `-y` answers, runs the [skills CLI](https://skills.sh) to install every [Bascik skill](https://bascik.dev/agent-skills) except the opt-in `bascik-refactor`, at the release tag matching the Bascik version scaffolded. `--no-skills` skips it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag.
 
-| Flag           | Effect                                 |
-| :------------- | :------------------------------------- |
-| `-y`, `--yes`  | Answer every question with its default |
-| `--no-skills`  | Do not install the agent skills        |
-| `--no-install` | Do not run `npm install`               |
-| `--no-dev`     | Do not start the dev server            |
+| Flag           | Effect                                             |
+| :------------- | :------------------------------------------------- |
+| `-y`, `--yes`  | Answer every question with its default             |
+| `--no-skills`  | Do not install the agent skills                    |
+| `--no-install` | Do not run `npm install`, nor start the dev server |
+| `--no-dev`     | Do not start the dev server                        |
 
 After scaffolding:
 

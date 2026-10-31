@@ -101,9 +101,10 @@ const shouldInstall = await confirm(
   "Install dependencies now? (Y/n) ",
   noInstallFlag,
 );
+// The dev server needs the dependencies, so it is not offered when the install is skipped.
 const shouldDev = await confirm(
   "Start the dev server after install? (Y/n) ",
-  noDevFlag,
+  noDevFlag || !shouldInstall,
 );
 
 rl.close();
@@ -125,16 +126,22 @@ if (shouldInstallSkills) {
   for (const line of skillsReportLines(result)) console.log(line);
 }
 
+let installed = false;
 if (shouldInstall) {
   console.log("\nInstalling dependencies…\n");
-  const installed = runNpm(["install"], projectDir);
-  if (installed.error)
+  const install = runNpm(["install"], projectDir);
+  installed = install.ok;
+  if (install.error)
     console.error(
-      `\nCould not run npm: ${installed.error}\nRun "npm install" in ${projectName} yourself.\n`,
+      `\nCould not run npm: ${install.error}\nRun "npm install" in ${projectName} yourself.\n`,
+    );
+  else if (!install.ok)
+    console.error(
+      `\nnpm install did not finish. Run "npm install" in ${projectName} yourself.\n`,
     );
 }
 
-if (shouldDev) {
+if (shouldDev && installed) {
   if (skillsLater.length > 0) console.log(`\n${skillsLater.join("\n")}`);
   console.log("\nStarting dev server…\n");
   const started = runNpm(["run", "dev"], projectDir);
@@ -145,8 +152,8 @@ if (shouldDev) {
   console.log(`\nTo start again:  cd ${projectName} && npm run dev\n`);
 } else {
   console.log("\nNext steps:\n");
-  if (!shouldInstall) console.log(`  cd ${projectName}`);
-  if (!shouldInstall) console.log("  npm install");
+  console.log(`  cd ${projectName}`);
+  if (!installed) console.log("  npm install");
   console.log("  npm run dev\n");
   for (const line of skillsLater) console.log(line);
 }
