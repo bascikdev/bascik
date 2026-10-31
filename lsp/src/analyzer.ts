@@ -429,6 +429,24 @@ export function leadingSlashSpecifierMessage(specifier: string): string {
   );
 }
 
+/**
+ * The script directives that run in Node and resolve `./`, `../` and `@/` specifiers against the
+ * file and `scripts.importRoot`. Leading-slash diagnostics and Go to Definition share this list.
+ */
+const MODULE_RESOLVING_DIRECTIVES = [
+  "data-bascik-build",
+  "data-bascik-build-once",
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-stream",
+] as const;
+
+function hasModuleResolvingDirective(
+  attrs: Map<string, string | true>,
+): boolean {
+  return MODULE_RESOLVING_DIRECTIVES.some((name) => attrs.has(name));
+}
+
 export function collectLeadingSlashDiagnostics(
   document: TextDocumentLike,
   openTag: string,
@@ -436,13 +454,7 @@ export function collectLeadingSlashDiagnostics(
   blockStart: number,
   attrs: Map<string, string | true>,
 ): Diagnostic[] {
-  if (
-    !attrs.has("data-bascik-build") &&
-    !attrs.has("data-bascik-build-once") &&
-    !attrs.has("data-bascik-server") &&
-    !attrs.has("data-bascik-routes") &&
-    !attrs.has("data-bascik-stream")
-  ) {
+  if (!hasModuleResolvingDirective(attrs)) {
     return [];
   }
   const out: Diagnostic[] = [];
@@ -1792,12 +1804,7 @@ export function createDefinition(
     if (offset < blockStart || offset > blockEnd) continue;
 
     const attrs = parseScriptOpenTagAttributes(openTag);
-    if (
-      !attrs.has("data-bascik-build") &&
-      !attrs.has("data-bascik-build-once") &&
-      !attrs.has("data-bascik-server") &&
-      !attrs.has("data-bascik-routes")
-    ) {
+    if (!hasModuleResolvingDirective(attrs)) {
       return undefined;
     }
 
@@ -1828,7 +1835,7 @@ export function createDefinition(
             start: document.positionAt(valueStart),
             end: document.positionAt(valueEnd),
           },
-          targetUri: `file://${resolved}`,
+          targetUri: pathToFileURL(resolved).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },
@@ -1859,7 +1866,7 @@ export function createDefinition(
             start: document.positionAt(openTagEnd + start),
             end: document.positionAt(openTagEnd + end),
           },
-          targetUri: `file://${resolved}`,
+          targetUri: pathToFileURL(resolved).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },
@@ -1894,7 +1901,7 @@ export function createDefinition(
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
           },
-          targetUri: `file://${componentPath}`,
+          targetUri: pathToFileURL(componentPath).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },
