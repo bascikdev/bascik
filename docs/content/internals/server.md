@@ -325,7 +325,7 @@ Under `bascik --server`, binding to an occupied port (`EADDRINUSE`) is a fatal e
 
 ### Path traversal protection
 
-Static asset requests are normalized and validated to ensure the resolved path remains strictly within the `dist/` directory. Requests attempting path traversal via `/../` receive an immediate `400 Bad Request` response before file I/O occurs.
+Static asset requests are normalized and validated to ensure the resolved path remains strictly within the `dist/` directory. Requests attempting path traversal via `/../` receive an immediate `400 Bad Request` response before file I/O occurs. A lookup whose path names no file answers `404`: the file does not exist (`ENOENT`), a component of the path is a regular file (`ENOTDIR`, as in `/robots.txt/x.png`), or a name is over the filesystem limit (`ENAMETOOLONG`). Other filesystem errors (`EACCES`, `EIO`) are server faults and answer `500`.
 
 ### Content-Hash ETags and Caching Layer
 

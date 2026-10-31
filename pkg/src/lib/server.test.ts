@@ -1901,6 +1901,35 @@ describe("startHttp2Server – onError: stream already has headers sent", () => 
     expect(stream.respond).toHaveBeenCalledTimes(1);
   });
 
+  // F072: a path component that is a regular file (ENOTDIR) or a name over
+  // the filesystem limit (ENAMETOOLONG) means the request names no file.
+  it.each(["ENOTDIR", "ENAMETOOLONG"])(
+    "responds 404 when stat throws %s (the path names no file)",
+    async (code) => {
+      const handler = getStreamHandler()!;
+      mockStat.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/robots.txt/x.png", "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(stream.end).toHaveBeenCalledWith("Not Found");
+    },
+  );
+
+  it.each(["EACCES", "EIO", "EMFILE"])(
+    "still responds 500 when stat throws %s (a server fault)",
+    async (code) => {
+      const handler = getStreamHandler()!;
+      mockStat.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/style.css", "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 500 }),
+      );
+    },
+  );
+
   it("responds 500 when stat throws a non-ENOENT error", async () => {
     const handler = getStreamHandler()!;
     mockStat.mockRejectedValueOnce(

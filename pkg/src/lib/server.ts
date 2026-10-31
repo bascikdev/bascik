@@ -223,6 +223,18 @@ export interface BascikResponse {
   lingerClose?(): void;
 }
 
+/**
+ * A filesystem error that means the request path names no file: it does not
+ * exist (ENOENT), a component of it is a regular file (ENOTDIR, as in
+ * `/robots.txt/x.png`), or a name is over the filesystem limit
+ * (ENAMETOOLONG). The client asked for something that is not there, so it is
+ * a 404, not a server fault. EACCES, EIO and the rest stay 500.
+ */
+export const isNoSuchFileError = (err: unknown): boolean => {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ENAMETOOLONG";
+};
+
 export const isNetworkResetError = (err: unknown): boolean => {
   const code = (err as NodeJS.ErrnoException)?.code;
   return (
@@ -258,7 +270,7 @@ export const onError = (
 
   try {
     if (!res.headersSent) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (isNoSuchFileError(error)) {
         res.respond(404, { ...secHeaders });
         res.end();
         return 404;
@@ -723,8 +735,7 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
-          responseStatus =
-            (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+          responseStatus = isNoSuchFileError(err) ? 404 : 500;
           res.respond(responseStatus, { ...secHeaders });
           res.end(
             responseStatus === 404 ? "Not Found" : "Internal Server Error",
