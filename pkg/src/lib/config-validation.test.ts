@@ -24,8 +24,8 @@ import {
   collectExecCwdWarnings,
   formatConfigErrors,
   normalizeBasePath,
-  isSameOrInsideOnDisk,
 } from "./config-validation.ts";
+import { isSameOrInsideOnDisk } from "./path-containment.ts";
 import { initBascikConfig } from "./config.ts";
 import { defineConfig } from "./defineConfig.ts";
 

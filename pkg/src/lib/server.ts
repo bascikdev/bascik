@@ -3,6 +3,7 @@ import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
 import { basename, extname, resolve, sep } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
@@ -705,7 +706,7 @@ export const createRequestHandler = () => {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);
-        if (!fullPath.startsWith(distDir + sep)) {
+        if (!isSameOrInside(fullPath, distDir) || fullPath === distDir) {
           responseStatus = 400;
           res.respond(400, { ...secHeaders });
           res.end("Bad Request");

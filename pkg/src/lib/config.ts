@@ -1,4 +1,5 @@
-import { basename, resolve, sep, relative } from "node:path";
+import { basename, resolve, relative } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import { existsSync, realpathSync } from "node:fs";
 import { config, modeOverrides } from "./userConfig.ts";
 import { findConfigFile } from "./config-file-names.ts";
@@ -362,13 +363,13 @@ export const normalizeComponentRoots = (
           value: [entries[i], entries[j]],
           message: `"${entries[i]}" and "${entries[j]}" are the same directory (${display(i)}). List each root once.`,
         });
-      } else if (b.startsWith(a + sep)) {
+      } else if (isSameOrInside(b, a)) {
         errors.push({
           key: "directory.components",
           value: entries[j],
           message: `"${display(j)}" is inside "${display(i)}"; the parent already includes it. Remove the nested entry.`,
         });
-      } else if (a.startsWith(b + sep)) {
+      } else if (isSameOrInside(a, b)) {
         errors.push({
           key: "directory.components",
           value: entries[i],

@@ -51,6 +51,7 @@ import {
 } from "node:module";
 import { realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Query parameter appended in development so each generation is a new ESM identity. */
@@ -236,9 +237,6 @@ export type ResolveHookNext = Parameters<ResolveHookSync>[2];
 
 const NODE_MODULES_SEGMENT = `${sep}node_modules${sep}`;
 
-const isUnder = (path: string, root: string): boolean =>
-  path === root || path.startsWith(root + sep);
-
 /**
  * Build the resolve hook for a graph. Exported separately from installation so
  * the URL rules can be unit tested without touching Node's loader.
@@ -263,7 +261,7 @@ export const createResolveHook = (
       return undefined;
     }
     if (path.includes(NODE_MODULES_SEGMENT)) return undefined;
-    if (!roots.some((root) => isUnder(path, root))) return undefined;
+    if (!roots.some((root) => isSameOrInside(path, root))) return undefined;
     return key;
   };
 

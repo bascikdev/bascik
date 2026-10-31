@@ -16,14 +16,8 @@
  * so every problem reports together, and dedupes errors shared by layers.
  */
 
-import {
-  existsSync,
-  statSync,
-  lstatSync,
-  accessSync,
-  constants,
-} from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import { existsSync, statSync, accessSync, constants } from "node:fs";
+import { relative, resolve } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
 import { hostnameExpectation, isPlausibleHostname } from "./server-address.ts";
@@ -33,6 +27,11 @@ import {
   isSourceListDirective,
 } from "./content-security-policy-rules.ts";
 import { sourceWatchRoot } from "./watch-root.ts";
+import {
+  entryIdentity,
+  isSameOrInside,
+  isSameOrInsideOnDisk,
+} from "./path-containment.ts";
 
 export interface ConfigValidationError {
   /** Dotted key path, e.g. "http.port" or "pipeline.exec[0].script". */
@@ -92,47 +91,6 @@ const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
 
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === "object" && !Array.isArray(val);
-
-/** True when `child` is `parent` or a path inside it (both absolute, resolved). */
-export const isSameOrInside = (child: string, parent: string): boolean =>
-  child === parent ||
-  child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
-
-/**
- * The device and inode of the entry at `path`, without following a final
- * symlink (a recursive rm removes the link, not its target), or undefined
- * when nothing is there or the file system reports no inode (0).
- */
-export const entryIdentity = (path: string): string | undefined => {
-  try {
-    const stats = lstatSync(path, { bigint: true });
-    return stats.ino === 0n ? undefined : `${stats.dev}:${stats.ino}`;
-  } catch {
-    return undefined;
-  }
-};
-
-/**
- * isSameOrInside, also true when `parent` exists and `child` or one of its
- * ancestors is that same folder on disk under another spelling. On a
- * case-insensitive file system (the macOS and Windows default) "SRC" is the
- * src folder, and a string comparison misses it; so does any other alias
- * that names the same entry (a bind mount, an 8.3 short name).
- */
-export const isSameOrInsideOnDisk = (
-  child: string,
-  parent: string,
-  identify: ((path: string) => string | undefined) | undefined = entryIdentity,
-): boolean => {
-  if (isSameOrInside(child, parent)) return true;
-  if (!identify) return false;
-  const parentIdentity = identify(parent);
-  if (parentIdentity === undefined) return false;
-  for (let path = child; ; path = dirname(path)) {
-    if (identify(path) === parentIdentity) return true;
-    if (dirname(path) === path) return false;
-  }
-};
 
 /**
  * The built-in source and output folders. config.ts builds its defaults from
