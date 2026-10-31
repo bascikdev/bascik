@@ -297,7 +297,7 @@ VS Code by default offers word-based completions derived from surrounding text i
 
 The extension discovers Bascik configs recursively inside every VS Code workspace folder. Each config directory is treated as an independent project with its own component roots, import root, component usage index, navigation, hover details, and diagnostics.
 
-When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults.
+When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults, as long as its `package.json` lists `@bascik/bascik` in `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies`. A folder with neither is not a Bascik project, such as a React or Vue app that has its own `src/components` and `src/api`: it gets no Bascik diagnostics, and the **Bascik** output panel says why, once. Adding a config or the dependency turns the checks on at your next edit, with no reload.
 
 Component discovery follows `directory.components` in the owning project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 

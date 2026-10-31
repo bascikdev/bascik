@@ -137,7 +137,7 @@ Server and stream scripts receive additional contract and interpolation-sink che
 
 The extension reads `directory.components` and `scripts.importRoot` from the project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It discovers configs recursively, assigns each file to its closest enclosing Bascik project, and keeps nested projects and separate workspace folders isolated.
 
-Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Config, component, and HTML changes refresh automatically without restarting VS Code.
+Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Such a folder counts as a Bascik project when its `package.json` lists `@bascik/bascik`; a folder with neither a config nor that dependency (a React or Vue app, say) gets no Bascik diagnostics, and the **Bascik** output panel says why. Config, component, and HTML changes refresh automatically without restarting VS Code.
 
 ## Get Started
 

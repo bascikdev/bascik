@@ -37,6 +37,15 @@ import { createReferences } from "./references.js";
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
 
+/** The package whose presence in a package.json makes a folder without a config a zero-config Bascik project. */
+const BASCIK_PACKAGE = "@bascik/bascik";
+const DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+];
+
 /** Quiet period before open documents are checked again after a change elsewhere in the project. */
 const REVALIDATION_DELAY_MS = 50;
 
@@ -95,6 +104,13 @@ export class BascikLanguageServer {
    * the file comes back.
    */
   private readonly deletedBuffers = new Map<string, number>();
+  /** What each project root's package.json said about @bascik/bascik, keyed by its path, until the file changes. */
+  private readonly packageJsonChecks = new Map<
+    string,
+    { mtimeMs: number; size: number; dependsOnBascik: boolean }
+  >();
+  /** Project roots already named in the output panel as not Bascik projects, so the note is written once. */
+  private readonly reportedNonBascikRoots = new Set<string>();
 
   constructor(private readonly connection: Connection) {
     this.documents.listen(this.connection);
@@ -523,6 +539,71 @@ export class BascikLanguageServer {
     return roots.find((r) => isPathInside(fsPath, r));
   }
 
+  /**
+   * Does Bascik check this project? A folder with a `bascik.config.*` does. A workspace folder without one (the
+   * fallback in `findProjectRoot`) is a zero-config Bascik project only when its package.json lists
+   * `@bascik/bascik`. Otherwise it is some other project, and the output panel says so once. Navigation, hover
+   * and completion still work there; only diagnostics are withheld.
+   */
+  private isBascikProject(projectRoot: string): boolean {
+    if (
+      CONFIG_FILE_CANDIDATES.some((candidate) =>
+        fs.existsSync(path.join(projectRoot, candidate)),
+      )
+    ) {
+      return true;
+    }
+    const isBascik = this.packageJsonDependsOnBascik(projectRoot);
+    if (isBascik) {
+      this.reportedNonBascikRoots.delete(projectRoot);
+    } else if (!this.reportedNonBascikRoots.has(projectRoot)) {
+      this.reportedNonBascikRoots.add(projectRoot);
+      this.connection.console.info(
+        `${projectRoot} is not a Bascik project: it has no ${CONFIG_FILE_CANDIDATES.join(", ")} and its package.json does not list ${BASCIK_PACKAGE}, so it gets no Bascik diagnostics. Add either one to check it.`,
+      );
+    }
+    return isBascik;
+  }
+
+  /** Reads `<projectRoot>/package.json` again only when its size or modification time changed. */
+  private packageJsonDependsOnBascik(projectRoot: string): boolean {
+    const file = path.join(projectRoot, "package.json");
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (!stat) {
+      this.packageJsonChecks.delete(file);
+      return false;
+    }
+    const cached = this.packageJsonChecks.get(file);
+    if (cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.dependsOnBascik;
+    }
+    let dependsOnBascik = false;
+    try {
+      const manifest: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      dependsOnBascik = DEPENDENCY_FIELDS.some((field) => {
+        const dependencies =
+          typeof manifest === "object" && manifest !== null
+            ? (manifest as Record<string, unknown>)[field]
+            : undefined;
+        return (
+          typeof dependencies === "object" &&
+          dependencies !== null &&
+          Object.hasOwn(dependencies, BASCIK_PACKAGE)
+        );
+      });
+    } catch (error) {
+      this.connection.console.info(
+        `${file} could not be read (${error instanceof Error ? error.message : String(error)}), so it does not make ${projectRoot} a Bascik project.`,
+      );
+    }
+    this.packageJsonChecks.set(file, {
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      dependsOnBascik,
+    });
+    return dependsOnBascik;
+  }
+
   private async validateDocument(document: TextDocument): Promise<void> {
     // Only files on disk have a project. Other schemes (git, output, untitled) must not get diagnostics.
     if (!document.uri.startsWith("file:")) return;
@@ -530,6 +611,16 @@ export class BascikLanguageServer {
     const fsPath = uriToFsPath(document.uri);
     // A file outside every workspace folder belongs to no project, so there is nothing to check it against.
     if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root))) {
+      this.connection.sendDiagnostics({
+        uri: document.uri,
+        version,
+        diagnostics: [],
+      });
+      return;
+    }
+    // A React or Vue app has its own src/components and src/api; Bascik's rules do not apply there.
+    const projectRoot = this.findProjectRoot(fsPath);
+    if (projectRoot && !this.isBascikProject(projectRoot)) {
       this.connection.sendDiagnostics({
         uri: document.uri,
         version,

@@ -334,6 +334,142 @@ describe("BascikLanguageServer", () => {
     });
   });
 
+  // A workspace folder with no bascik.config is a zero-config Bascik project only when its package.json lists
+  // @bascik/bascik. Any other folder (a React or Vue app with its own src/components) gets no Bascik diagnostics.
+  describe("folders that are not Bascik projects", () => {
+    const ATTRIBUTE_CSS = '[data-state="open"] {\n  color: red;\n}\n';
+    const DEFAULT_EXPORT_ROUTE =
+      "export default function handler() {\n  return 1;\n}\n";
+
+    beforeEach(async () => {
+      await fs.rm(path.join(root, "bascik.config.ts"));
+    });
+
+    const infoMessages = () =>
+      fake.connection.console.info.mock.calls.map(([message]) =>
+        String(message),
+      );
+
+    it("publishes no Bascik diagnostics in a folder without a config or an @bascik/bascik dependency", async () => {
+      await write(
+        "package.json",
+        JSON.stringify({ dependencies: { react: "19.0.0" } }),
+      );
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+      open(css, ATTRIBUTE_CSS, "css");
+      open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+      await settle();
+      expect(latest(css)).toEqual([]);
+      expect(latest(route)).toEqual([]);
+    });
+
+    it("publishes no Bascik diagnostics in a folder with no package.json either", async () => {
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      open(css, ATTRIBUTE_CSS, "css");
+      await settle();
+      expect(latest(css)).toEqual([]);
+    });
+
+    it("says once in the output panel why a folder gets no diagnostics", async () => {
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+      open(css, ATTRIBUTE_CSS, "css");
+      open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+      await settle();
+      const notes = infoMessages().filter((message) =>
+        message.includes("not a Bascik project"),
+      );
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toContain(root);
+      expect(notes[0]).toContain("bascik.config");
+      expect(notes[0]).toContain("@bascik/bascik");
+    });
+
+    it.each(["dependencies", "devDependencies"])(
+      "checks a zero-config project whose package.json lists @bascik/bascik in %s",
+      async (field) => {
+        await write(
+          "package.json",
+          JSON.stringify({ [field]: { "@bascik/bascik": "^1.0.0" } }),
+        );
+        await initialize();
+        const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+        const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+        open(css, ATTRIBUTE_CSS, "css");
+        open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+        await settle();
+        expect(codes(css)).toContain("css-attribute-selector");
+        expect(codes(route)).toContain("missing-method-handler");
+      },
+    );
+
+    it("treats a package.json that is not valid JSON as no dependency, and says where it failed", async () => {
+      await write("package.json", '{ "devDependencies": { "@bascik/bascik": ');
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      open(css, ATTRIBUTE_CSS, "css");
+      await settle();
+      expect(latest(css)).toEqual([]);
+      expect(
+        infoMessages().some(
+          (message) =>
+            message.includes(path.join(root, "package.json")) &&
+            message.includes("could not be read"),
+        ),
+      ).toBe(true);
+    });
+
+    it("starts checking once the dependency is added, on the next edit", async () => {
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      open(css, ATTRIBUTE_CSS, "css", 1);
+      await settle();
+      expect(latest(css)).toEqual([]);
+
+      await write(
+        "package.json",
+        JSON.stringify({ devDependencies: { "@bascik/bascik": "^1.0.0" } }),
+      );
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(css), version: 2 },
+        contentChanges: [{ text: ATTRIBUTE_CSS }],
+      });
+      await settle();
+      expect(codes(css)).toContain("css-attribute-selector");
+    });
+
+    it("starts checking when a bascik.config is added", async () => {
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      open(css, ATTRIBUTE_CSS, "css");
+      await settle();
+      expect(latest(css)).toEqual([]);
+
+      await write("bascik.config.ts", "export default {};\n");
+      await fake.handlers.get("watchedFiles")!({
+        changes: [
+          {
+            uri: uri(path.join(root, "bascik.config.ts")),
+            type: FileChangeType.Created,
+          },
+        ],
+      });
+      await settle();
+      expect(codes(css)).toContain("css-attribute-selector");
+    });
+
+    it("keeps navigation for a folder that is not a Bascik project", async () => {
+      await initialize();
+      const component = await write("src/components/my-card.html", COMPONENT);
+      const snapshot = await server.getSnapshotForFile(component);
+      expect(snapshot?.componentMap.has("my-card")).toBe(true);
+    });
+  });
+
   describe("prop usage from other files", () => {
     it("checks a component again when an open page starts supplying its prop", async () => {
       await initialize();

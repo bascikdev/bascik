@@ -2446,6 +2446,55 @@ suite("Extension Integration Suite", () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
+    // The "plain" folder has no bascik.config and no package.json listing @bascik/bascik: a React or Vue app with its
+    // own src/components and src/api must not get Bascik's scoping or API route rules.
+    test("reports nothing in a workspace folder that is not a Bascik project", async () => {
+      const plain = getWorkspaceFolder("plain");
+      const plainSource = vscode.Uri.file(path.join(plain.uri.fsPath, "src"));
+      const files: [string, string][] = [
+        ["src/components/menu-button.css", "[data-state] { color: red; }"],
+        [
+          "src/components/menu-button.ts",
+          'document.querySelector("[data-target]");',
+        ],
+        ["src/api/users.ts", "export default function handler() {}"],
+      ];
+      try {
+        const documents: vscode.TextDocument[] = [];
+        for (const [relative, content] of files) {
+          const uri = vscode.Uri.file(path.join(plain.uri.fsPath, relative));
+          await vscode.workspace.fs.writeFile(uri, Buffer.from(content));
+          documents.push(await vscode.workspace.openTextDocument(uri));
+        }
+        // The same CSS in the Bascik folder is flagged, so the server has answered by the time it is.
+        const control = await openWorkspaceDocument({
+          language: "css",
+          directory: "src/components",
+          content: "[data-state] { color: red; }",
+        });
+        await waitForDiagnostic(
+          control.uri,
+          (d) =>
+            d.message.includes("Standalone attribute selectors are not scoped"),
+          "Expected the Bascik folder's CSS to be flagged",
+        );
+        for (const document of documents) {
+          const diagnostics = vscode.languages
+            .getDiagnostics(document.uri)
+            .filter((d) => d.source === "bascik");
+          assert.deepStrictEqual(
+            diagnostics.map((d) => d.message),
+            [],
+            `${path.basename(document.uri.fsPath)} is not in a Bascik project`,
+          );
+        }
+      } finally {
+        try {
+          await vscode.workspace.fs.delete(plainSource, { recursive: true });
+        } catch {}
+      }
+    });
+
     test("reports compatibility warning in a component companion JS file", async () => {
       const doc = await openWorkspaceDocument({
         language: "javascript",
