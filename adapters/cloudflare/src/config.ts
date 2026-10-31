@@ -16,6 +16,7 @@ import { parse as parseTomlRaw, TomlError } from "smol-toml";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
+  type CompatSettings,
 } from "./compat.js";
 
 /**
@@ -493,6 +494,13 @@ export function generateWranglerConfig(input: GenerateWranglerConfigInput): {
     warnings.push(
       `${at("main")} is ignored: the adapter generates the Worker entry (${GENERATED_WORKER_MAIN}) from your pages and API routes. Remove the key.`,
     );
+  const checkDate = (value: unknown, key: string) => {
+    if (value !== undefined && !isCompatibilityDate(value))
+      warnings.push(
+        `${at(key)} must be a date like "${compatibilityDate}", but is ${JSON.stringify(value)}: Wrangler will reject it, and the build checks node:* imports against ${compatibilityDate} instead.`,
+      );
+  };
+  checkDate(compatibility_date, "compatibility_date");
 
   let schema: unknown;
   if (typeof authoredSchema === "string") schema = rebase(authoredSchema);
@@ -511,6 +519,7 @@ export function generateWranglerConfig(input: GenerateWranglerConfigInput): {
           warnings.push(
             `${at(`${prefix}main`)} is ignored: every environment runs the generated ${GENERATED_WORKER_MAIN}. Remove the key.`,
           );
+        checkDate(envRest.compatibility_date, `${prefix}compatibility_date`);
         const out = rebaseSection(envRest);
         if ("compatibility_flags" in out)
           out.compatibility_flags = unionFlags(out.compatibility_flags);
@@ -532,3 +541,46 @@ export function generateWranglerConfig(input: GenerateWranglerConfigInput): {
   };
   return { config, warnings };
 }
+
+/** A compatibility date as Wrangler takes it: `YYYY-MM-DD`. */
+const isCompatibilityDate = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+/**
+ * The compatibility settings each deployment of a generated config runs
+ * under: the top level, then every `env.<name>` section (its own date and
+ * flags, or the top level's, which Wrangler gives a section without them).
+ * A malformed date (reported by generateWranglerConfig) counts as `fallback`.
+ */
+export const deploymentCompatSettings = (
+  config: Json,
+  filename: string | undefined,
+  fallback: CompatSettings,
+): CompatSettings[] => {
+  const flagsOf = (value: unknown): string[] | undefined =>
+    Array.isArray(value)
+      ? value.filter((f): f is string => typeof f === "string")
+      : undefined;
+  const top: CompatSettings = {
+    compatibilityDate: isCompatibilityDate(config.compatibility_date)
+      ? config.compatibility_date
+      : fallback.compatibilityDate,
+    compatibilityFlags:
+      flagsOf(config.compatibility_flags) ?? fallback.compatibilityFlags,
+    ...(filename ? { source: filename } : {}),
+  };
+  const settings = [top];
+  if (isObject(config.env))
+    for (const [envName, section] of Object.entries(config.env)) {
+      if (!isObject(section)) continue;
+      settings.push({
+        compatibilityDate: isCompatibilityDate(section.compatibility_date)
+          ? section.compatibility_date
+          : top.compatibilityDate,
+        compatibilityFlags:
+          flagsOf(section.compatibility_flags) ?? top.compatibilityFlags,
+        source: `${filename ?? "wrangler.jsonc"} env.${envName}`,
+      });
+    }
+  return settings;
+};

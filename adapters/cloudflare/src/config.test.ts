@@ -7,6 +7,7 @@ import {
   parseToml,
   discoverWranglerConfig,
   resolveWorkerName,
+  deploymentCompatSettings,
   generateWranglerConfig,
   WRANGLER_CONFIG_FILES,
 } from "./config.ts";
@@ -1049,6 +1050,65 @@ describe("generateWranglerConfig: the authored config carried into the generated
     expect(config.build).toBeNull();
     expect(config.d1_databases).toBe("x");
     expect((config.assets as { directory: string }).directory).toBe("./public");
+  });
+
+  it("misuse: a compatibility_date that is not YYYY-MM-DD is kept for Wrangler to reject, with a warning naming the key", () => {
+    const { config, warnings } = generate({
+      compatibility_date: 20241001,
+      env: { staging: { compatibility_date: "2024-1-1" } },
+    });
+    expect(config.compatibility_date).toBe(20241001);
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "compatibility_date" must be a date like "2026-08-01", but is 20241001/,
+      ),
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "env\.staging\.compatibility_date" must be a date like "2026-08-01", but is "2024-1-1"/,
+      ),
+    ]);
+  });
+
+  it("deploymentCompatSettings: the top level, then each env section with its own date and flags or the top level's", () => {
+    const pinned = {
+      compatibilityDate: "2026-08-01",
+      compatibilityFlags: ["nodejs_compat"],
+    };
+    const { config } = generate({
+      compatibility_date: "2026-09-01",
+      compatibility_flags: ["enable_nodejs_os_module"],
+      env: {
+        staging: {},
+        legacy: { compatibility_date: "2025-01-01", compatibility_flags: [] },
+        broken: { compatibility_date: "soon" },
+        odd: "not a section",
+      },
+    });
+    expect(deploymentCompatSettings(config, "wrangler.jsonc", pinned)).toEqual([
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc",
+      },
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc env.staging",
+      },
+      {
+        compatibilityDate: "2025-01-01",
+        compatibilityFlags: ["nodejs_compat"],
+        source: "wrangler.jsonc env.legacy",
+      },
+      {
+        compatibilityDate: "2026-09-01",
+        compatibilityFlags: ["enable_nodejs_os_module", "nodejs_compat"],
+        source: "wrangler.jsonc env.broken",
+      },
+    ]);
+    // No authored config: the generated top level, with no file to name.
+    expect(
+      deploymentCompatSettings(generate(undefined).config, undefined, pinned),
+    ).toEqual([pinned]);
   });
 
   it("reports TOML-authored files by their own filename", () => {

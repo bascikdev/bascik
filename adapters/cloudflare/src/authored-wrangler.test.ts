@@ -41,7 +41,10 @@ afterEach(async () => {
 
 const buildSite = async (options: SiteOptions = {}) => {
   const variant = options.variant ?? "workers";
-  const root = await mkdtemp(join(tmpdir(), "bascik-cf-authored-"));
+  // The real path: esbuild reports importers by it (macOS tmpdir is a link).
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "bascik-cf-authored-")),
+  );
   roots.push(root);
   const distDir = join(root, "dist");
   const outDir = join(distDir, ".bascik", `cloudflare-${variant}`);
@@ -288,5 +291,122 @@ describe("the static 404 page at its own URLs under an authored html_handling", 
     const res = await harness.fetch("/404/", { redirect: "manual" });
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("<p>lost</p>");
+  }, 60_000);
+});
+
+describe("node:* imports against the compatibility date the Worker deploys with", () => {
+  const route = (imports: string[]) => ({
+    "src/api/node.ts": {
+      path: "/api/node",
+      source: `${imports.map((m, i) => `import * as m${i} from "${m}";`).join("\n")}\nexport const GET = () => new Response(String([${imports.map((_, i) => `Object.keys(m${i}).length`).join(", ")}].every((n) => n > 0)));`,
+    },
+  });
+
+  it.each([
+    ["2025-08-15", ["node:http", "node:https"]],
+    ["2025-09-15", ["node:fs", "node:fs/promises", "node:os"]],
+    ["2026-03-17", ["node:perf_hooks"]],
+  ])(
+    "at %s, %j build and load in workerd",
+    async (date, imports) => {
+      const site = await buildSite({
+        apiRoutes: route(imports),
+        wrangler: JSON.stringify({ compatibility_date: date }),
+      });
+      const harness = await serve(site);
+      const res = await harness.fetch("/api/node");
+      expect(await res.text()).toBe("true");
+      expect(res.status).toBe(200);
+    },
+    60_000,
+  );
+
+  it("misuse: an authored older compatibility_date fails the build for a module it does not provide, naming the date, the file and the route", async () => {
+    await expect(
+      buildSite({
+        apiRoutes: route(["node:fs/promises"]),
+        wrangler: `{\n  // copied from an older project\n  "compatibility_date": "2024-10-01",\n}`,
+      }),
+    ).rejects.toThrow(
+      /"node:fs\/promises" \(imported by src\/api\/node\.ts\).*compatibility date 2024-10-01 \(wrangler\.jsonc\)[\s\S]*Reached from: API route \/api\/node[\s\S]*needs compatibility_date "2025-09-15" or later/,
+    );
+  }, 60_000);
+
+  it("misuse: an env section's older date fails the build too, naming the section", async () => {
+    await expect(
+      buildSite({
+        apiRoutes: route(["node:os"]),
+        wrangler: JSON.stringify({
+          env: { legacy: { compatibility_date: "2025-01-01" } },
+        }),
+      }),
+    ).rejects.toThrow(
+      /"node:os".*compatibility date 2025-01-01 \(wrangler\.jsonc env\.legacy\)/,
+    );
+  }, 60_000);
+
+  it("the module's own enable flag in the authored config is honored", async () => {
+    const site = await buildSite({
+      apiRoutes: route(["node:os"]),
+      wrangler: JSON.stringify({
+        compatibility_date: "2025-01-01",
+        compatibility_flags: ["enable_nodejs_os_module"],
+      }),
+    });
+    const harness = await serve(site);
+    expect(await (await harness.fetch("/api/node")).text()).toBe("true");
+  }, 60_000);
+
+  it("misuse: node:http2 and v8 (digits in the name) get the adapter's located message, not esbuild's platform hint", async () => {
+    for (const specifier of ["node:http2", "v8"]) {
+      const error = await buildSite({ apiRoutes: route([specifier]) }).then(
+        () => undefined,
+        (err: Error) => err,
+      );
+      expect(error?.message, specifier).toMatch(
+        new RegExp(
+          `"${specifier}" \\(imported by src/api/node\\.ts\\) is not available[\\s\\S]*Reached from: API route /api/node`,
+        ),
+      );
+      expect(error?.message, specifier).not.toContain("platform");
+    }
+  }, 60_000);
+
+  it("the Pages variant ignores the Wrangler config and uses the pinned date", async () => {
+    const site = await buildSite({
+      variant: "pages",
+      apiRoutes: route(["node:fs"]),
+      wrangler: JSON.stringify({ compatibility_date: "2024-10-01" }),
+    });
+    expect(site.result.notes).toContain("compatibility date: 2026-08-01");
+  }, 60_000);
+});
+
+describe("build notes report the settings the Worker deploys with", () => {
+  it("an authored compatibility date and flags, not the pinned ones", async () => {
+    const site = await buildSite({
+      wrangler: JSON.stringify({
+        compatibility_date: "2026-09-01",
+        compatibility_flags: ["enable_nodejs_os_module"],
+      }),
+    });
+    expect(site.result.notes).toContain("compatibility date: 2026-09-01");
+    expect(site.result.notes).toContain(
+      "compatibility flags: enable_nodejs_os_module, nodejs_compat",
+    );
+  }, 60_000);
+
+  it("misuse: the unsupported-import message names the authored date too", async () => {
+    await expect(
+      buildSite({
+        apiRoutes: {
+          "src/api/run.ts": {
+            path: "/api/run",
+            source: `import { execFile } from "node:child_process";\nexport const GET = () => new Response(typeof execFile);`,
+          },
+        },
+        wrangler: JSON.stringify({ compatibility_date: "2026-09-01" }),
+      }),
+    ).rejects.toThrow(/for compatibility date 2026-09-01 \(wrangler\.jsonc\)/);
   }, 60_000);
 });

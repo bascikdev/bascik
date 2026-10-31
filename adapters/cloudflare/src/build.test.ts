@@ -135,6 +135,73 @@ describe("node builtin policy for the pinned Cloudflare target", () => {
     expect(WORKERS_SUPPORTED_NODE_BUILTINS.has("buffer")).toBe(true);
   });
 
+  it("gates the modules workerd provides only from a compatibility date on, or with their own flag", () => {
+    const at = (compatibilityDate: string, ...flags: string[]) => ({
+      compatibilityDate,
+      compatibilityFlags: ["nodejs_compat", ...flags],
+    });
+    // The dates @cloudflare/unenv-preset and workerd use (authored-wrangler
+    // runs each one in workerd).
+    for (const [specifier, since, enable] of [
+      ["node:http", "2025-08-15", "enable_nodejs_http_modules"],
+      ["https", "2025-08-15", "enable_nodejs_http_modules"],
+      ["node:fs", "2025-09-15", "enable_nodejs_fs_module"],
+      ["node:fs/promises", "2025-09-15", "enable_nodejs_fs_module"],
+      ["node:os", "2025-09-15", "enable_nodejs_os_module"],
+      ["node:perf_hooks", "2026-03-17", "enable_nodejs_perf_hooks_module"],
+    ] as const) {
+      const before = new Date(Date.parse(since) - 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      expect(classifyNodeBuiltin(specifier, at(since)), specifier).toBe(
+        "provided",
+      );
+      expect(classifyNodeBuiltin(specifier, at(before)), specifier).toBe(
+        "unsupported",
+      );
+      expect(
+        classifyNodeBuiltin(specifier, at("2024-10-01", enable)),
+        specifier,
+      ).toBe("provided");
+      expect(
+        classifyNodeBuiltin(
+          specifier,
+          at("2026-08-01", enable.replace(/^enable_/, "disable_")),
+        ),
+        specifier,
+      ).toBe("unsupported");
+    }
+    // Modules without a date gate are provided at any date.
+    expect(classifyNodeBuiltin("node:crypto", at("2024-10-01"))).toBe(
+      "provided",
+    );
+    // Without settings: the pinned date, where every listed module is provided.
+    expect(classifyNodeBuiltin("node:fs")).toBe("provided");
+  });
+
+  it("misuse: an unsupported import names the deployment's own date and what the module needs", () => {
+    const message = formatUnsupportedImport({
+      specifier: "node:fs/promises",
+      importer: "/proj/src/api/files.ts",
+      projectRoot: "/proj",
+      owners: ["API route /api/files"],
+      compat: {
+        compatibilityDate: "2024-10-01",
+        compatibilityFlags: ["nodejs_compat"],
+        source: "wrangler.jsonc",
+      },
+    });
+    expect(message).toContain(
+      "for compatibility date 2024-10-01 (wrangler.jsonc)",
+    );
+    expect(message).toContain(
+      '"node:fs/promises" needs compatibility_date "2025-09-15" or later, or the enable_nodejs_fs_module flag',
+    );
+    // The list names what that date provides, not the pinned date's list.
+    expect(message).not.toMatch(/Supported node:\* modules are: [^\n]*\bfs\b/);
+    expect(message).toMatch(/Supported node:\* modules are: [^\n]*\bcrypto\b/);
+  });
+
   it("formats an unsupported import as an authored import-chain diagnostic", () => {
     const message = formatUnsupportedImport({
       specifier: "node:child_process",

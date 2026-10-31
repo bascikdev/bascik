@@ -21,8 +21,10 @@ import {
   PAGES_ROUTES_LIMIT,
   classifyNodeBuiltin,
   formatUnsupportedImport,
+  type CompatSettings,
 } from "./compat.js";
 import {
+  deploymentCompatSettings,
   discoverWranglerConfig,
   generateWranglerConfig,
   resolveWorkerName,
@@ -347,6 +349,48 @@ export const build = async (
   lines.push(`};`);
   lines.push(`export default createCloudflareWorker(graph);`);
 
+  const invocationRoutes = buildInvocationRoutes({
+    base: graph.base,
+    dynamicPagePaths: Object.keys(graph.pages),
+    hasApiRoutes: graph.apiRoutes.length > 0,
+    hasStaticNotFoundPage,
+  });
+
+  // The Workers variant's config is generated before bundling: node:*
+  // imports are checked against the compatibility date and flags it deploys
+  // with (the authored ones when set), not only the adapter's pinned date.
+  // Pages takes them from the Pages project's settings, which the adapter
+  // cannot read: the pinned ones are what the docs tell you to set there.
+  const pinned: CompatSettings = {
+    compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+    compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+  };
+  let wrangler: Record<string, unknown> | undefined;
+  let deploymentCompat: CompatSettings[] = [pinned];
+  if (variant === "workers") {
+    const { workerName, discoveredConfig } =
+      workerConfig ?? (await resolveWorkerName(projectRoot));
+    // The authored config is carried over whole: the adapter owns only the
+    // keys it must (config.ts, generateWranglerConfig).
+    const generated = generateWranglerConfig({
+      authored: discoveredConfig,
+      projectRoot,
+      outDir,
+      workerName,
+      runWorkerFirst: workerFirst ? true : invocationRoutes.include,
+      schemaPath: wranglerSchemaPath(projectRoot),
+      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+    });
+    wrangler = generated.config;
+    for (const warning of generated.warnings) context.log(warning);
+    deploymentCompat = deploymentCompatSettings(
+      wrangler,
+      discoveredConfig?.filename,
+      pinned,
+    );
+  }
+
   const stagingDir = join(outDir, ".staging");
   await mkdir(stagingDir, { recursive: true });
   const entryPath = join(stagingDir, "worker-entry.mjs");
@@ -438,12 +482,20 @@ export const build = async (
                 addOwner(resolved, owner);
               return undefined;
             });
+            // Digits too: `node:http2` and `v8` are builtins, and esbuild's
+            // own error for them would suggest `platform: "node"`.
             buildInstance.onResolve(
-              { filter: /^(node:)?[a-z_/]+$/ },
+              { filter: /^(node:)?[a-z0-9_/]+$/ },
               (args) => {
-                const kind = classifyNodeBuiltin(args.path);
-                if (kind === "not-builtin") return undefined;
-                if (kind === "provided")
+                if (classifyNodeBuiltin(args.path) === "not-builtin")
+                  return undefined;
+                // Every deployment of the config (the top level and each
+                // env.<name>) must provide it.
+                const missingIn = deploymentCompat.find(
+                  (compat) =>
+                    classifyNodeBuiltin(args.path, compat) !== "provided",
+                );
+                if (!missingIn)
                   return {
                     path: args.path.startsWith("node:")
                       ? args.path
@@ -457,6 +509,7 @@ export const build = async (
                     importer: args.importer,
                     projectRoot,
                     owners: ownerList,
+                    compat: missingIn,
                   }),
                 );
                 return { path: args.path, external: true };
@@ -539,13 +592,6 @@ export const build = async (
       context.log(warning);
   }
 
-  const invocationRoutes = buildInvocationRoutes({
-    base: graph.base,
-    dynamicPagePaths: Object.keys(graph.pages),
-    hasApiRoutes: graph.apiRoutes.length > 0,
-    hasStaticNotFoundPage,
-  });
-
   let workerPath: string;
   if (variant === "pages") {
     workerPath = join(publicDir, "_worker.js");
@@ -566,23 +612,6 @@ export const build = async (
   } else {
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
-
-    const { workerName, discoveredConfig } =
-      workerConfig ?? (await resolveWorkerName(projectRoot));
-
-    // The authored config is carried over whole: the adapter owns only the
-    // keys it must (config.ts, generateWranglerConfig).
-    const { config: wrangler, warnings } = generateWranglerConfig({
-      authored: discoveredConfig,
-      projectRoot,
-      outDir,
-      workerName,
-      runWorkerFirst: workerFirst ? true : invocationRoutes.include,
-      schemaPath: wranglerSchemaPath(projectRoot),
-      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
-    });
-    for (const warning of warnings) context.log(warning);
     await writeFile(
       join(outDir, "wrangler.jsonc"),
       `${JSON.stringify(wrangler, null, 2)}\n`,
@@ -591,9 +620,12 @@ export const build = async (
   }
 
   const bundleBytes = Buffer.byteLength(workerCode, "utf8");
+  // What the Worker deploys with: the generated config's top level for
+  // Workers (tools such as e2e/fixture/serve.ts read these notes), the
+  // pinned settings Pages projects are told to use.
   const notes = [
-    `compatibility date: ${CLOUDFLARE_COMPATIBILITY_DATE}`,
-    `compatibility flags: ${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")}`,
+    `compatibility date: ${deploymentCompat[0].compatibilityDate}`,
+    `compatibility flags: ${deploymentCompat[0].compatibilityFlags.join(", ")}`,
     workerFirst
       ? "invocation routes: every request (run_worker_first: true); the Worker sends the static files' headers"
       : `invocation routes: ${invocationRoutes.include.length} rules`,

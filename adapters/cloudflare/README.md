@@ -46,7 +46,7 @@ npx wrangler deploy
 
 ## Compatibility Date
 
-The adapter pins a supported Cloudflare compatibility date and `nodejs_compat` compatibility flag to ensure local workerd testing parity.
+The adapter pins a supported Cloudflare compatibility date and `nodejs_compat` compatibility flag to ensure local workerd testing parity. An authored `compatibility_date` in your Wrangler config is kept; request-time `node:*` imports are then checked against it (and each `env.<name>` date), since `node:http`, `node:fs`, `node:os` and `node:perf_hooks` exist only from a date on, and the build notes print the date and flags the Worker deploys with.
 
 ## Your Wrangler Config
 
