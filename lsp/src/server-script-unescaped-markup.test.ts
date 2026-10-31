@@ -933,3 +933,99 @@ describe("server-script-unescaped-markup: holes where a tag or attribute name go
     expect(d.template?.fixable).toBe(true);
   });
 });
+
+describe("a JSON script whose < is escaped as \\u003c (review 2026-10-31)", () => {
+  // JSON.stringify(...).replace(/</g, "\\u003c") can never close the
+  // <script>, so it is the safe JSON-LD pattern, not a sink.
+  const LD = (expr: string) =>
+    `const data = {};\nexport const s = \`<script type="application/ld+json">\${${expr}}</script>\`;\n`;
+  const sinks = (body: string, directive: AnalyzeOptions["directive"]) =>
+    analyze(body, { directive })
+      .map((d) => d.code)
+      .filter((code) => code !== "server-script-missing-default-export");
+
+  it.each(["module", "build", "server"] as const)(
+    "is not reported in a %s script, with replace or replaceAll, Prettier-wrapped or bound to a name",
+    (directive) => {
+      expect(
+        sinks(LD('JSON.stringify(data).replace(/</g, "\\\\u003c")'), directive),
+      ).toEqual([]);
+      expect(
+        sinks(
+          LD("JSON.stringify(data, null, 2).replaceAll('<', '\\\\u003C')"),
+          directive,
+        ),
+      ).toEqual([]);
+      const wrapped = `export function jsonLd(data: Record<string, unknown>): string {
+  const json = JSON.stringify({
+    "@context": "https://schema.org",
+    ...data,
+  }).replace(/</g, "\\\\u003c");
+  return \`<script type="application/ld+json">
+\${json}
+</script>\`;
+}
+`;
+      expect(sinks(wrapped, directive)).toEqual([]);
+      expect(
+        sinks(
+          LD(
+            'JSON.stringify(data).replace(/</g, "\\\\u003c").replace(/>/g, "\\\\u003e")',
+          ),
+          directive,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("still warns without the < escape, with another escape, or outside a JSON script", () => {
+    expect(sinks(LD("JSON.stringify(data)"), "module")).toEqual([
+      "server-script-sink-inline-script",
+    ]);
+    expect(
+      sinks(LD('JSON.stringify(data).replace(/>/g, "\\\\u003e")'), "module"),
+    ).toEqual(["server-script-sink-inline-script"]);
+    expect(
+      sinks(
+        'export const s = `<script>var d = ${JSON.stringify(data).replace(/</g, "\\\\u003c")};</script>`;',
+        "module",
+      ),
+    ).toEqual(["server-script-sink-inline-script"]);
+    // A name bound to a different value somewhere is not trusted.
+    const rebound = `let json = JSON.stringify(data).replace(/</g, "\\\\u003c");\njson = raw;\nexport const s = \`<script type="application/ld+json">\${json}</script>\`;\n`;
+    expect(sinks(rebound, "module")).toEqual([
+      "server-script-sink-inline-script",
+    ]);
+  });
+});
+
+describe("what counts as markup in build-time code (review 2026-10-31)", () => {
+  // Placeholders in CLI and prose text, and TypeScript generics in code
+  // generation, have a <word> that is no element.
+  const module = (body: string) =>
+    analyze(body, { directive: "module" }).map((d) => d.code);
+
+  it.each([
+    "export const u = (n) => `Usage: tool <command> [options] ${n}`;",
+    "export const u = (n) => `Replace <your-domain> with ${n}`;",
+    "export const d = (t) => `const x: Array<string> = ${t};`;",
+    "export const d = (t) => `type Froth = Map<string, number> & ${t};`;",
+    "export const d = (t) => `function f<T>(x: T): T { return ${t}; }`;",
+  ])("not markup: %s", (body) => {
+    expect(module(body)).toEqual([]);
+  });
+
+  it.each([
+    "export const c = (t) => `<p>${t}</p>`;",
+    'export const c = (t) => `<product-card title="${t}"></product-card>`;',
+    "export const c = (t) => `<frother-badge>${t}</frother-badge>`;",
+    "export const c = (t) => `<svg><text>${t}</text></svg>`;",
+    "export const c = (t) => `<custom-thing hidden>${t}`;",
+  ])("markup: %s", (body) => {
+    expect(module(body)).toEqual([RULE]);
+  });
+
+  it("request-time scripts keep the looser test: any tag counts", () => {
+    expect(covered(handler("`<frother-note>${q}`"))).toEqual(["${q}"]);
+  });
+});

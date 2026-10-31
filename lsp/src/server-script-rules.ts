@@ -13,7 +13,9 @@ import {
   htmlTagNames,
   isExempt,
   isMessageArgument,
+  isEscapedJson,
   looksLikeMarkup,
+  markupInCode,
   scanTemplateHtml,
   type ExemptContext,
   type HoleContext,
@@ -351,7 +353,13 @@ export function analyzeServerScriptSource(
   for (const literal of findTemplateLiterals(body)) {
     const isHtml = literal.tag !== null && ctx.htmlTags.includes(literal.tag);
     // SQL, URLs and plain text: `WHERE id = ${id}` is not an attribute.
-    const markupLike = isHtml || looksLikeMarkup(literal.parts);
+    // Build-time code also holds CLI text and generated TypeScript, so it
+    // needs an element name, an end tag or an attribute.
+    const markupLike =
+      isHtml ||
+      (requestTime
+        ? looksLikeMarkup(literal.parts)
+        : markupInCode(literal.parts));
     // String.raw and common-tags style tags join their values as they are.
     const plainTag = literal.tag !== null && PLAIN_STRING_TAGS.has(literal.tag);
     const markup =
@@ -433,6 +441,16 @@ export function analyzeServerScriptSource(
           });
         continue;
       }
+
+      // JSON.stringify(...).replace(/</g, "\\u003c") in a JSON script can
+      // never close it: the safe JSON-LD pattern.
+      if (
+        sink === "server-script-sink-inline-script" &&
+        context.kind === "raw" &&
+        context.jsonScript &&
+        isEscapedJson(hole.expr, ctx)
+      )
+        continue;
 
       if (context.kind === "name") {
         // A tag or attribute name: html throws here, so wrapping cannot

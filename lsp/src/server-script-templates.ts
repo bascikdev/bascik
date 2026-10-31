@@ -548,6 +548,72 @@ function isArithmeticExempt(
 export const looksLikeMarkup = (parts: readonly string[]): boolean =>
   parts.some((part) => /<\/?[a-zA-Z][\w:-]*(?=[\s/>]|$)/.test(part));
 
+/** HTML, SVG and MathML element names, for markupInCode. */
+const ELEMENT_NAMES = new Set(
+  (
+    "a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark menu meta meter nav noscript object ol optgroup option output p param picture pre progress q rp rt ruby s samp script search section select slot small source span strong style sub summary sup table tbody td template textarea tfoot th thead time title tr track u ul var video wbr " +
+    "svg g path rect circle ellipse line polyline polygon text tspan textpath defs use symbol lineargradient radialgradient stop clippath mask pattern filter image foreignobject marker desc animate animatemotion animatetransform set view switch " +
+    "math mi mn mo ms mtext mrow mfrac msqrt mroot msup msub msubsup mtable mtr mtd"
+  ).split(" "),
+);
+
+/**
+ * Static text that looks like markup in build-time code, which also holds
+ * CLI text (`tool <command>`), prose placeholders (`Replace <your-domain>`)
+ * and generated TypeScript (`Array<string>`): an end tag, a start tag whose
+ * name is an HTML, SVG or MathML element, or any start tag with an
+ * attribute (`<product-card title=...>`). One pass per part.
+ */
+export const markupInCode = (parts: readonly string[]): boolean =>
+  parts.some((part) => {
+    for (const m of part.matchAll(
+      /<(\/?)([a-zA-Z][\w:-]*)(?=[\s/>]|$)(\s+[a-zA-Z_:@][-\w:.@]*(?=\s*[=/>]|\s))?/g,
+    ))
+      if (m[1] === "/" || ELEMENT_NAMES.has(m[2].toLowerCase()) || m[3])
+        return true;
+    return false;
+  });
+
+/** `<` written as \u003c in a replacement: `.replace(/</g, "\\u003c")`. */
+const LT_TO_U003C =
+  /^\s*(?:\/<\/[a-z]*|(["'`])<\1)\s*,\s*(["'`])\\\\u003c\2\s*$/i;
+
+/**
+ * Whether a hole is JSON.stringify(...) followed by .replace()/.replaceAll()
+ * calls, one of which writes `<` as \u003c (or a name bound only to such
+ * values). In a <script type="application/ld+json"> that value can never
+ * close the script, so it is not a sink.
+ */
+export function isEscapedJson(
+  expr: string,
+  ctx: ExemptContext,
+  seen: Set<string> = new Set(),
+): boolean {
+  const e = stripParens(expr.trim());
+  if (/^[\w$]+$/.test(e)) {
+    const bound = ctx.bindings.get(e);
+    if (!bound || seen.has(e)) return false;
+    seen.add(e);
+    return bound.every((value) => isEscapedJson(value, ctx, seen));
+  }
+  const head = /^JSON\.stringify\s*\(/.exec(e);
+  if (!head) return false;
+  let i = matchingClose(e, head[0].length - 1);
+  if (i === -1) return false;
+  i++;
+  let escaped = false;
+  while (i < e.length) {
+    const call = /^\s*\??\.\s*replace(?:All)?\s*\(/.exec(e.slice(i));
+    if (!call) return false;
+    const open = i + call[0].length - 1;
+    const close = matchingClose(e, open);
+    if (close === -1) return false;
+    if (LT_TO_U003C.test(e.slice(open + 1, close))) escaped = true;
+    i = close + 1;
+  }
+  return escaped;
+}
+
 /** Whether a literal is the direct argument of console.*(), new *Error() or throw. */
 export const isMessageArgument = (source: string, start: number): boolean => {
   const before = source.slice(Math.max(0, start - 80), start);
