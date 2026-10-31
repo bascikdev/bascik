@@ -334,8 +334,8 @@ describe("BascikLanguageServer", () => {
     });
   });
 
-  // A workspace folder with no bascik.config is a zero-config Bascik project only when its package.json lists
-  // @bascik/bascik. Any other folder (a React or Vue app with its own src/components) gets no Bascik diagnostics.
+  // A workspace folder with no bascik.config is a Bascik project only when its package.json lists @bascik/bascik
+  // or @bascik/language-server, or its root has a language server config (bascik.ext.json and so on). Any other folder (a React or Vue app with its own src/components) gets no Bascik diagnostics.
   describe("folders that are not Bascik projects", () => {
     const ATTRIBUTE_CSS = '[data-state="open"] {\n  color: red;\n}\n';
     const DEFAULT_EXPORT_ROUTE =
@@ -406,6 +406,55 @@ describe("BascikLanguageServer", () => {
         expect(codes(route)).toContain("missing-method-handler");
       },
     );
+
+    // The linter on its own (a shared component library, or an editor other than VS Code) installs only
+    // @bascik/language-server; the editor must report what `--check` reports in that folder.
+    it.each(["dependencies", "devDependencies"])(
+      "checks a linter-only project whose package.json lists @bascik/language-server in %s",
+      async (field) => {
+        await write(
+          "package.json",
+          JSON.stringify({ [field]: { "@bascik/language-server": "^1.0.0" } }),
+        );
+        await initialize();
+        const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+        open(css, ATTRIBUTE_CSS, "css");
+        await settle();
+        expect(codes(css)).toContain("css-attribute-selector");
+      },
+    );
+
+    it.each([
+      "bascik.ext.json",
+      ".bascikrc.json",
+      "bascik.ext.ts",
+      "bascik.ext.js",
+    ])(
+      "checks a project with no package.json whose root has a %s",
+      async (file) => {
+        await write(
+          file,
+          file.endsWith(".json") ? "{}\n" : "export default {};\n",
+        );
+        await initialize();
+        const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+        open(css, ATTRIBUTE_CSS, "css");
+        await settle();
+        expect(codes(css)).toContain("css-attribute-selector");
+      },
+    );
+
+    it("names every marker in the output-panel note", async () => {
+      await initialize();
+      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+      open(css, ATTRIBUTE_CSS, "css");
+      await settle();
+      const note = infoMessages().find((message) =>
+        message.includes("not a Bascik project"),
+      );
+      expect(note).toContain("@bascik/language-server");
+      expect(note).toContain("bascik.ext.json");
+    });
 
     it("treats a package.json that is not valid JSON as no dependency, and says where it failed", async () => {
       await write("package.json", '{ "devDependencies": { "@bascik/bascik": ');

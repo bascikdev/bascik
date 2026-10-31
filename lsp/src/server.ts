@@ -33,12 +33,16 @@ import {
   createCodeActions,
 } from "./analyzer.js";
 import { createReferences } from "./references.js";
+import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
 
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
 
-/** The package whose presence in a package.json makes a folder without a config a zero-config Bascik project. */
-const BASCIK_PACKAGE = "@bascik/bascik";
+/**
+ * The packages whose presence in a package.json makes a folder without a config a Bascik project: Bascik itself
+ * (a zero-config site), or the language server on its own (a linter-only component library).
+ */
+const BASCIK_PACKAGES = ["@bascik/bascik", "@bascik/language-server"];
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",
@@ -541,16 +545,19 @@ export class BascikLanguageServer {
 
   /**
    * Does Bascik check this project? A folder with a `bascik.config.*` does. A workspace folder without one (the
-   * fallback in `findProjectRoot`) is a zero-config Bascik project only when its package.json lists
-   * `@bascik/bascik`. Otherwise it is some other project, and the output panel says so once. Navigation, hover
-   * and completion still work there; only diagnostics are withheld.
+   * fallback in `findProjectRoot`) is a Bascik project only when its root has a language server config
+   * (`bascik.ext.json` and the rest of {@link EXTENSION_CONFIG_FILES}, which a global install of the linter
+   * relies on) or its package.json lists one of {@link BASCIK_PACKAGES}. Otherwise it is some other project, and
+   * the output panel says so once. Navigation, hover and completion still work there; only diagnostics are
+   * withheld.
    */
   private isBascikProject(projectRoot: string): boolean {
     if (
-      CONFIG_FILE_CANDIDATES.some((candidate) =>
+      [...CONFIG_FILE_CANDIDATES, ...EXTENSION_CONFIG_FILES].some((candidate) =>
         fs.existsSync(path.join(projectRoot, candidate)),
       )
     ) {
+      this.reportedNonBascikRoots.delete(projectRoot);
       return true;
     }
     const isBascik = this.packageJsonDependsOnBascik(projectRoot);
@@ -559,7 +566,7 @@ export class BascikLanguageServer {
     } else if (!this.reportedNonBascikRoots.has(projectRoot)) {
       this.reportedNonBascikRoots.add(projectRoot);
       this.connection.console.info(
-        `${projectRoot} is not a Bascik project: it has no ${CONFIG_FILE_CANDIDATES.join(", ")} and its package.json does not list ${BASCIK_PACKAGE}, so it gets no Bascik diagnostics. Add either one to check it.`,
+        `${projectRoot} is not a Bascik project: it has no ${CONFIG_FILE_CANDIDATES.join(", ")} or ${EXTENSION_CONFIG_FILES.join(", ")}, and its package.json does not list ${BASCIK_PACKAGES.join(" or ")}, so it gets no Bascik diagnostics. Add any one of them to check it.`,
       );
     }
     return isBascik;
@@ -588,7 +595,7 @@ export class BascikLanguageServer {
         return (
           typeof dependencies === "object" &&
           dependencies !== null &&
-          Object.hasOwn(dependencies, BASCIK_PACKAGE)
+          BASCIK_PACKAGES.some((name) => Object.hasOwn(dependencies, name))
         );
       });
     } catch (error) {
