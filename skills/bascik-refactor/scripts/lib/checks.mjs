@@ -8,8 +8,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { openPage, routeUrl, settle } from "./capture.mjs";
-import { loadMatrix } from "./matrix.mjs";
+import { gateLine, gateRecord, loadMatrix, selectCases } from "./matrix.mjs";
 import { loadPlaywright } from "./project-deps.mjs";
+import {
+  DEFAULT_PROD_CACHE,
+  openProdCache,
+  PROD_CACHE_OPTIONS,
+  prodCacheFlags,
+  prodCacheRecord,
+  prodCacheSummary,
+} from "./prod-cache.mjs";
 
 export const DEFAULT_MATRIX = "docs/migration/breakpoints.json";
 export const DEFAULT_OUT = "artifacts/checks";
@@ -307,9 +315,20 @@ export function pixels(flag, value, fallback, unit = "CSS pixels") {
   return n;
 }
 
+/** The --cases values, split on commas: the case ids or widths a run is limited to (see selectCases). */
+export function caseIdsFrom(values) {
+  return (values ?? []).flatMap((v) =>
+    String(v)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
 /**
- * Parses the flags every check shares (--prod, --target, --route, --matrix, --out, --json, --help) plus `extra`
- * parseArgs options. `need` lists the flags that must be present.
+ * Parses the flags every check shares (--prod, --target, --route, --matrix, --cases, --out, --json, --help, and the
+ * production cache flags --refresh-prod, --no-prod-cache and --prod-cache) plus `extra` parseArgs options. `need`
+ * lists the flags that must be present.
  */
 export function parseArgsFor(
   argv,
@@ -322,9 +341,11 @@ export function parseArgsFor(
       target: { type: "string" },
       route: { type: "string", multiple: true },
       matrix: { type: "string" },
+      cases: { type: "string", multiple: true },
       out: { type: "string" },
       mask: { type: "string", multiple: true },
       "settle-ms": { type: "string" },
+      ...PROD_CACHE_OPTIONS,
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       ...extra,
@@ -340,9 +361,19 @@ export function parseArgsFor(
   for (const selector of values.mask ?? []) validateMask(selector);
   for (const route of values.route ?? []) validateRoute(route);
   validateRouteSet(values.route);
-  const { "settle-ms": settle, ...rest } = values;
+  const cache = prodCacheFlags(values);
+  const {
+    "settle-ms": settle,
+    cases,
+    "refresh-prod": _refresh,
+    "no-prod-cache": _off,
+    "prod-cache": _dir,
+    ...rest
+  } = values;
   return {
     ...rest,
+    ...cache,
+    caseIds: caseIdsFrom(cases),
     settleMs: pixels("--settle-ms", settle, DEFAULT_SETTLE_MS, "milliseconds"),
     route: values.route ?? [],
     mask: values.mask ?? [],
@@ -364,25 +395,69 @@ export function formatFinding(f) {
 }
 
 /**
- * The CLI of one check: parse, load the matrix before any browser starts, run, print, write
- * <out>/<check>.json and exit 1 on any finding.
+ * The matrix of a run: the cases of the matrix file, limited by --cases, and the gate record report.json keeps
+ * (gateRecord). Loaded before any browser starts, so a missing file or an unknown case id fails fast.
+ */
+export function runMatrix(args) {
+  const all = loadMatrix(args.matrix);
+  const cases = selectCases(all, args.caseIds);
+  return {
+    cases,
+    gate: gateRecord({
+      file: args.matrix,
+      cases: all,
+      selected: cases,
+      defaultMatrix: DEFAULT_MATRIX,
+    }),
+  };
+}
+
+/** The options every check CLI shares with run-checks.mjs, printed after its own --help. */
+export const SHARED_HELP = `Every check also takes:
+  --cases <id>        Run only these matrix cases: an id such as 360x812 or 1408x900-dark, or a width such as 360 for
+                      every case of it (repeatable or comma separated). The run is then PARTIAL: an iteration result,
+                      never the gate (the full matrix with every check, through run-checks.mjs)
+  --prod-cache <dir>  Where production's measurements are kept between runs (default ${DEFAULT_PROD_CACHE}); the
+                      next run reads production from there unless anything that changes what it measures changed
+  --refresh-prod      Measure production again and overwrite the cache (after production changes, and at the start
+                      of every check stage and review round)
+  --no-prod-cache     Neither read nor write the cache`;
+
+/** The lines a run prints after its results: the production cache numbers and, for a partial run, PARTIAL. */
+export function runFooter(prodCache, gate) {
+  return [
+    ...(prodCache ? [prodCacheSummary(prodCache.stats)] : []),
+    ...(gateLine(gate) ? [gateLine(gate)] : []),
+  ];
+}
+
+/**
+ * The CLI of one check: parse, load the matrix (and --cases) before any browser starts, open the production cache,
+ * run, print, write <out>/<check>.json and exit 1 on any finding.
  */
 export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) {
-    console.log(help);
+    console.log(`${help}\n\n${SHARED_HELP}`);
     return;
   }
-  const cases = loadMatrix(args.matrix);
+  const { cases, gate } = runMatrix(args);
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
   let report;
+  let prodCache = null;
   try {
+    prodCache = await openProdCache(browser, {
+      dir: args.prodCache,
+      refresh: args.refreshProd,
+    });
     report = await runCheck(browser, {
       ...args,
       routes: args.route,
       cases,
+      prodCache,
     });
+    report = { ...report, gate, production: prodCacheRecord(prodCache) };
   } finally {
     await browser.close();
   }
@@ -395,5 +470,6 @@ export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
     for (const f of report.findings) console.log(`      ${formatFinding(f)}`);
   }
   for (const line of summary?.(report, args) ?? []) console.log(line);
+  for (const line of runFooter(prodCache, gate)) console.log(line);
   if (!report.ok) process.exitCode = 1;
 }

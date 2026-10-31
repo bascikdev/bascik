@@ -22,6 +22,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 import { decodeCharacterReferences } from "./lib/character-references.mjs";
 
 export const CHECK = "repeated-sections";
@@ -514,12 +515,10 @@ export async function runCheck(browser, options) {
   const target = {};
   for (const c of cases)
     for (const route of routes) {
-      prod[`${c.width} ${route}`] = await sections(
-        browser,
-        options.prod,
-        route,
-        c,
+      prod[`${c.width} ${route}`] = await cachedProd(
         options,
+        { check: CHECK, route, case: c },
+        () => sections(browser, options.prod, route, c, options),
       );
       target[`${c.width} ${route}`] = await sections(
         browser,

@@ -20,6 +20,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "text-style-diff";
 
@@ -277,7 +278,9 @@ export async function runCheck(browser, options) {
           settleOf(options),
         );
       const [prod, target] = await Promise.all([
-        capture(options.prod),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          capture(options.prod),
+        ),
         capture(options.target),
       ]);
       for (const f of diffTextStyles(prod, target))

@@ -21,6 +21,13 @@ replace each `{{NN}}` with a two-digit number, and add rows as the queue grows.
 | {{NN}} | 9. Optimization, audits | Images, fonts, CSP, llms.txt                    | lighthouse-gate passes for every URL, mobile and desktop      |        |
 | {{NN}} | 10. Handoff             | Docs, runbook, open items                       | build, check and all tests green on a clean checkout          |        |
 
+## Iteration runs and gate runs
+
+Inside a prompt, iterate with `run-checks.mjs --cases <ids> --only <checks>`: a few cases, the checks the last fix can
+affect, and production read from the production cache. Those runs print `PARTIAL` and never fill the Acceptance
+column. Every Acceptance cell that names a parity check means the gate run: the full `breakpoints.json` matrix, every
+check, with `--refresh-prod` on the first run of each check stage and review round.
+
 ## The representative slice gate
 
 Do not start phase 7 until a few representative pages (the home page, one content page, one page with a form, one

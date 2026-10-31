@@ -24,6 +24,7 @@ import {
   settleOf,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "presence-by-route";
 
@@ -509,7 +510,18 @@ export async function runCheck(browser, options) {
   const inventories = [];
   for (const c of casesOf(options)) {
     const [prod, target] = await Promise.all([
-      inventorySide(browser, options.prod, routes, c, dismiss, masks, settleMs),
+      // Keyed by every route in order: the dismissed and new-tab states walk them in one browser context.
+      cachedProd(options, { check: CHECK, routes, case: c }, () =>
+        inventorySide(
+          browser,
+          options.prod,
+          routes,
+          c,
+          dismiss,
+          masks,
+          settleMs,
+        ),
+      ),
       inventorySide(
         browser,
         options.target,

@@ -11,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -547,6 +548,17 @@ describe("review-page", () => {
         cases: [{ width: 375, height: 800, screenshots: { prod, target } }],
       }),
     );
+    // A gate run: the full matrix the sign-off is checked against.
+    const matrix = join(dir, "breakpoints.json");
+    const matrixText = JSON.stringify({ cases: [{ width: 375, height: 800 }] });
+    writeFileSync(matrix, matrixText);
+    const gate = {
+      matrix,
+      sha256: createHash("sha256").update(matrixText).digest("hex"),
+      cases: ["375x800"],
+      total: 1,
+      partial: false,
+    };
     const report = (ok: boolean) =>
       writeFileSync(
         join(checks, "index", "report.json"),
@@ -556,10 +568,11 @@ describe("review-page", () => {
           findings: ok
             ? []
             : [{ check: "spacing-diff", kind: "gap", message: "gap" }],
+          gate,
         }),
       );
     report(true);
-    const options = { compare, checks };
+    const options = { compare, checks, matrix };
     const reviewed = reviewFingerprint("/", options);
     writeSignOff({
       dir: review,

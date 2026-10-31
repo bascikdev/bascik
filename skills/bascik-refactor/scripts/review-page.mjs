@@ -11,7 +11,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { routeSlug, validateRoute, validateRouteSet } from "./lib/checks.mjs";
+import {
+  DEFAULT_MATRIX,
+  routeSlug,
+  validateRoute,
+  validateRouteSet,
+} from "./lib/checks.mjs";
 import { reportDirName } from "./compare-route.mjs";
 import { LEDGER_NOTE } from "./production-defects.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
@@ -36,6 +41,11 @@ Verify: exits 1 unless every route has a valid sign-off with verdict "pass" for 
 run-checks report passes, naming each missing or failing file. A fix after the review changes the target's
 screenshots, so the route needs a new review.
 
+Only a gate run counts: --sign (with verdict pass) and --verify refuse a run-checks report that is partial (a --cases
+subset or another --matrix file), one whose matrix hash differs from --matrix (docs/migration/breakpoints.json now),
+and, with --max-prod-age, one that used cached production measurements older than that. There is no age limit by
+default: run-checks --refresh-prod at the start of every review round is the rule.
+
 Options:
   --route <path>       Route (repeatable; one with --sign)
   --compare <dir>      compare-route.mjs output (default artifacts/compare)
@@ -46,6 +56,9 @@ Options:
   --verdict <v>        With --sign: pass or issues
   --notes <text>       With --sign: what differs (required for issues)
   --date <yyyy-mm-dd>  With --sign: the review date (default today)
+  --matrix <file>      The gate matrix the report must have run in full (default docs/migration/breakpoints.json)
+  --max-prod-age <age> With --sign and --verify: refuse a report that used cached production measurements older than
+                       this, such as 7d, 12h or 30m (default no limit)
   --help               Show this message`;
 
 /** The seven issue types a human caught after the automated loop passed, in order. */
@@ -92,7 +105,8 @@ function findingItem(f) {
 /**
  * The review page for one route. data: { route, cases: [{ width, height, prod, target }] (screenshot files),
  * states: [{ anchor, width, prod: { crop }, target: { crop } }], findings, productionDefects, base } where base is the
- * folder the page is written to. Everything is escaped; nothing loads from the network.
+ * folder the page is written to; notGate lists why the run-checks report is not a gate run (gateProblems). Everything
+ * is escaped; nothing loads from the network.
  */
 export function renderReviewPage({
   route,
@@ -103,6 +117,7 @@ export function renderReviewPage({
   base = ".",
   reviewed,
   checksOk,
+  notGate = [],
 }) {
   const slug = routeSlug(route);
   const byWidth = (w) => findings.filter((f) => f.width === w);
@@ -193,7 +208,8 @@ ${caseHtml}
 ${stateHtml}
 <section data-testid="review-sign-off">
   <h2>Sign off</h2>
-  ${checksOk === false ? `<p class="warning" data-testid="review-checks-failing">run-checks.mjs still reports findings for this route. A pass sign-off does not pass the gate until they are fixed and the route is reviewed again.</p>` : ""}
+  ${notGate.length ? `<p class="warning" data-testid="review-checks-partial">This run-checks report is not a gate run, so it cannot be signed as a pass: ${esc(notGate.join(" "))}</p>` : ""}
+  ${checksOk === false && !notGate.length ? `<p class="warning" data-testid="review-checks-failing">run-checks.mjs still reports findings for this route. A pass sign-off does not pass the gate until they are fixed and the route is reviewed again.</p>` : ""}
   <p>The form downloads <code>${esc(slug)}.json</code>. Save it as <code>${esc(file)}</code>, or run <code>node "$REFACTOR/review-page.mjs" --sign --route "${esc(route)}" --reviewer "Your name" --verdict pass</code>.</p>
   <form id="sign-off">
     <label>Reviewer <input data-testid="review-reviewer" name="reviewer" required /></label>
@@ -346,10 +362,67 @@ export function reviewFingerprint(route, { compare, checks }) {
   return hash.digest("hex").slice(0, 32);
 }
 
+/** A duration such as 7d, 12h or 30m, in milliseconds, or an error naming the flag. */
+export function parseAge(flag, value) {
+  const m = /^(\d+(?:\.\d+)?)\s*([dhm])$/.exec(String(value ?? "").trim());
+  if (!m || Number(m[1]) <= 0)
+    throw new Error(
+      `${flag} takes an age such as 7d, 12h or 30m (got "${value}")`,
+    );
+  return Number(m[1]) * { d: 86_400_000, h: 3_600_000, m: 60_000 }[m[2]];
+}
+
+/**
+ * Why a run-checks report is not a gate, or []: it records no matrix, it is partial (a --cases subset or another
+ * matrix file), its matrix differs from `matrix` (the gate matrix as it is now), or, with `maxProdAge` (ms), it used
+ * cached production measurements older than that.
+ */
+export function gateProblems(
+  report,
+  file,
+  { matrix = DEFAULT_MATRIX, maxProdAge, now = Date.now() } = {},
+) {
+  const gate = report?.gate;
+  if (!gate)
+    return [
+      `${file}: records no matrix (run-checks wrote it before reports recorded one); run run-checks.mjs on the full matrix again`,
+    ];
+  const problems = [];
+  if (gate.partial)
+    problems.push(
+      `${file}: a partial run (${gate.cases?.length ?? "?"} of ${gate.total ?? "?"} cases)${gate.matrix ? ` of ${gate.matrix}` : ""} is an iteration result, not a gate; run run-checks.mjs on the full matrix (${matrix}) with every check`,
+    );
+  else {
+    let sha;
+    try {
+      sha = createHash("sha256").update(readFileSync(matrix)).digest("hex");
+    } catch (error) {
+      problems.push(
+        `${file}: cannot read the gate matrix ${matrix} (${error.message})`,
+      );
+    }
+    if (sha && sha !== gate.sha256)
+      problems.push(
+        `${file}: ran another matrix than ${matrix} (${matrix} changed since this run, or the run used a copy); run run-checks.mjs on it again`,
+      );
+  }
+  const oldest = report.production?.oldestCachedAt;
+  if (
+    maxProdAge !== undefined &&
+    oldest &&
+    now - Date.parse(oldest) > maxProdAge
+  )
+    problems.push(
+      `${file}: used cached production measurements from ${oldest}, older than --max-prod-age; run run-checks.mjs with --refresh-prod`,
+    );
+  return problems;
+}
+
 /**
  * The PASS gate: every route needs a valid sign-off for that route with verdict pass. With `options` ({ compare,
- * checks }, the report folders) it also needs the route's run-checks report to pass, and the sign-off to name the run
- * the reports hold now (reviewFingerprint), so a review of older pixels does not pass a changed target.
+ * checks }, the report folders) it also needs the route's run-checks report to pass and to be a gate run (gateProblems,
+ * with options.matrix and options.maxProdAge), and the sign-off to name the run the reports hold now
+ * (reviewFingerprint), so a review of older pixels does not pass a changed target.
  */
 export function verifySignOffs(dir, routes, options) {
   const problems = [];
@@ -364,6 +437,14 @@ export function verifySignOffs(dir, routes, options) {
       else if (!checked.ok)
         problems.push(
           `${join(options.checks, routeSlug(route), "report.json")}: run-checks reports ${checked.findings?.length ?? 0} finding(s) for ${route}; fix them, run it again and review the route again`,
+        );
+      else
+        problems.push(
+          ...gateProblems(
+            checked,
+            join(options.checks, routeSlug(route), "report.json"),
+            options,
+          ),
         );
     }
     if (!existsSync(file)) {
@@ -435,6 +516,8 @@ export function parseCliArgs(argv) {
       verdict: { type: "string" },
       notes: { type: "string" },
       date: { type: "string" },
+      matrix: { type: "string" },
+      "max-prod-age": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -459,6 +542,11 @@ export function parseCliArgs(argv) {
     verdict: values.verdict,
     notes: values.notes ?? "",
     date: values.date,
+    matrix: values.matrix ?? DEFAULT_MATRIX,
+    maxProdAge:
+      values["max-prod-age"] === undefined
+        ? undefined
+        : parseAge("--max-prod-age", values["max-prod-age"]),
   };
 }
 
@@ -471,6 +559,8 @@ function build(args) {
       process.stderr.write(
         `review-page: ${checksFile} not found; the page shows no findings until run-checks.mjs runs for ${route}\n`,
       );
+    const notGate = checks ? gateProblems(checks, checksFile, args) : [];
+    for (const p of notGate) process.stderr.write(`review-page: ${p}\n`);
     const base = resolve(args.out);
     mkdirSync(base, { recursive: true });
     const html = renderReviewPage({
@@ -487,6 +577,7 @@ function build(args) {
       base,
       reviewed: reviewFingerprint(route, args),
       checksOk: checks ? checks.ok : false,
+      notGate,
     });
     const file = join(args.out, `${routeSlug(route)}.html`);
     writeFileSync(file, html);
@@ -498,6 +589,18 @@ function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
   if (args.mode === "sign") {
+    const checksFile = join(
+      args.checks,
+      routeSlug(args.route[0]),
+      "report.json",
+    );
+    const checks = checksReport(args.checks, args.route[0]);
+    const refused =
+      args.verdict === "pass" && checks
+        ? gateProblems(checks, checksFile, args)
+        : [];
+    if (refused.length)
+      throw new Error(`cannot sign a pass: ${refused.join("; ")}`);
     const file = writeSignOff({
       dir: args.dir,
       route: args.route[0],
@@ -513,6 +616,8 @@ function main() {
     const { ok, problems } = verifySignOffs(args.dir, args.route, {
       compare: args.compare,
       checks: args.checks,
+      matrix: args.matrix,
+      maxProdAge: args.maxProdAge,
     });
     for (const p of problems) console.log(`FAIL  ${p}`);
     if (ok)

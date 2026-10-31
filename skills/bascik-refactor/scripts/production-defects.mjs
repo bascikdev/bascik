@@ -26,6 +26,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "production-defects";
 
@@ -564,7 +565,9 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prodSnap, targetSnap] = await Promise.all([
-        measure(browser, options.prod, route, c, masks, settleOf(options)),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          measure(browser, options.prod, route, c, masks, settleOf(options)),
+        ),
         options.target
           ? measure(browser, options.target, route, c, masks, settleOf(options))
           : null,

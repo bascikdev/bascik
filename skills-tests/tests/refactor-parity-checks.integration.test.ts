@@ -19,6 +19,8 @@
  *                          dismissal that does not persist
  *  14. production-defects  production's own squished image and misaligned icon row, copied by the target
  *  10. run-checks          one command runs them all per route and exits nonzero on any finding
+ *  15. production cache    production measured once, read back on the next run (a request counter proves it), and
+ *                          --cases runs a subset that the report marks partial
  *   9. review-page         the side-by-side page a human signs off on
  *
  * Every check module exports CHECK (its name) and runCheck(browser, options), which resolves to
@@ -528,6 +530,9 @@ describe("10. run-checks: one command per route and matrix case", () => {
         join(work, side),
         "--settle-ms",
         "0",
+        // Shared by both runs: the clean run reads production from what the defect run measured.
+        "--prod-cache",
+        join(work, "prod-cache"),
       ],
       { cwd: packageDir, encoding: "utf8", timeout: 300_000 },
     );
@@ -575,6 +580,166 @@ describe("10. run-checks: one command per route and matrix case", () => {
           "text-style-diff",
         ].sort(),
       );
+    }
+  }, 300_000);
+});
+
+describe("15. the production cache and --cases", () => {
+  let work: string;
+
+  beforeAll(() => {
+    work = mkdtempSync(join(tmpdir(), "bascik-parity-cache-"));
+    writeFileSync(
+      join(work, "breakpoints.json"),
+      JSON.stringify({ cases: CASES }, null, 2),
+    );
+  });
+  afterAll(() => rmSync(work, { recursive: true, force: true }));
+
+  const runChecks = (extra: string[]) =>
+    spawnSync(
+      process.execPath,
+      [
+        join(SCRIPTS, "run-checks.mjs"),
+        "--prod",
+        server.site("site", "prod"),
+        "--target",
+        server.site("site", "clean"),
+        "--route",
+        "/",
+        "--matrix",
+        join(work, "breakpoints.json"),
+        "--only",
+        "spacing-diff,text-style-diff",
+        "--out",
+        join(work, "out"),
+        "--settle-ms",
+        "0",
+        "--prod-cache",
+        join(work, "prod-cache"),
+        ...extra,
+      ],
+      { cwd: packageDir, encoding: "utf8", timeout: 300_000 },
+    );
+  /** The production requests one run makes, and its result. */
+  const counted = async (extra: string[]) => {
+    const before = await server.requests("/site/prod/");
+    const targetBefore = await server.requests("/site/clean/");
+    const result = runChecks(extra);
+    return {
+      result,
+      text: `${result.stdout}\n${result.stderr}`,
+      prod: (await server.requests("/site/prod/")) - before,
+      target: (await server.requests("/site/clean/")) - targetBefore,
+    };
+  };
+
+  it("measures production once, then reads it from the cache until --refresh-prod or a changed mask", async () => {
+    const first = await counted(["--cases", "400"]);
+    expect(first.result.status, first.text).toBe(0);
+    expect(first.prod).toBeGreaterThan(0);
+    expect(first.text).toContain(
+      "production: 0 measurements from cache, 2 captured",
+    );
+    expect(first.text).toContain(
+      "PARTIAL (1 of 2 cases): iteration result, not a gate",
+    );
+    const report = JSON.parse(
+      readFileSync(join(work, "out", "index", "report.json"), "utf8"),
+    );
+    expect(report.gate).toMatchObject({
+      cases: ["400x800"],
+      total: 2,
+      partial: true,
+    });
+    expect(report.production).toMatchObject({ fromCache: 0, captured: 2 });
+
+    const second = await counted(["--cases", "400"]);
+    expect(second.result.status, second.text).toBe(0);
+    expect(second.prod, "the second run must not load production").toBe(0);
+    expect(second.target).toBeGreaterThan(0);
+    expect(second.text).toMatch(
+      /production: 2 measurements from cache \(oldest \d{4}-\d{2}-\d{2}T[^)]+\), 0 captured; pass --refresh-prod after production changes/,
+    );
+
+    const refreshed = await counted(["--cases", "400", "--refresh-prod"]);
+    expect(refreshed.result.status, refreshed.text).toBe(0);
+    expect(refreshed.prod).toBeGreaterThan(0);
+
+    const masked = await counted(["--cases", "400", "--mask", ".nothing"]);
+    expect(masked.result.status, masked.text).toBe(0);
+    expect(masked.prod, "a new mask is a cache miss").toBeGreaterThan(0);
+
+    // Misuse: --no-prod-cache next to --prod-cache is a contradiction, refused before production is loaded.
+    const both = await counted(["--cases", "400", "--no-prod-cache"]);
+    expect(both.result.status).toBe(1);
+    expect(both.result.stderr).toMatch(/--prod-cache.*--no-prod-cache/);
+    expect(both.prod).toBe(0);
+  }, 300_000);
+
+  it("every case of another matrix file is still partial; misuse: an unknown case id fails before any browser starts", async () => {
+    const full = await counted([]);
+    expect(full.result.status, full.text).toBe(0);
+    // Only docs/migration/breakpoints.json, run in full, is the gate.
+    expect(full.text).toMatch(
+      /PARTIAL \(2 of 2 cases from .*breakpoints\.json\): iteration result, not a gate/,
+    );
+    // 400 px came from the cache above; 1024 px is new.
+    expect(full.text).toMatch(/production: 2 measurements from cache/);
+    const report = JSON.parse(
+      readFileSync(join(work, "out", "index", "report.json"), "utf8"),
+    );
+    expect(report.gate).toMatchObject({
+      cases: ["400x800", "1024x800"],
+      total: 2,
+    });
+    // Another matrix file than docs/migration/breakpoints.json is never the gate.
+    expect(report.gate.partial).toBe(true);
+
+    const wrong = await counted(["--cases", "375x812"]);
+    expect(wrong.result.status).toBe(1);
+    expect(wrong.result.stderr).toContain("400x800, 1024x800");
+    expect(wrong.prod).toBe(0);
+  }, 300_000);
+
+  it("state-capture and overlap-diff read production's open states and crops back from the cache with the same result", async () => {
+    const { openProdCache } = (await import(
+      join(SCRIPTS, "lib", "prod-cache.mjs")
+    )) as {
+      openProdCache: (
+        browser: unknown,
+        options: Record<string, unknown>,
+      ) => Promise<{ stats: { fromCache: number; captured: number } }>;
+    };
+    for (const name of ["state-capture", "overlap-diff"]) {
+      const dirFor = join(work, "api-cache");
+      const runCached = async () => {
+        const prodCache = await openProdCache(browser, {
+          dir: dirFor,
+          quiet: true,
+        });
+        const before = await server.requests(`/${name}/prod/`);
+        const r = await run(name, "defect", { prodCache });
+        return {
+          r,
+          stats: prodCache.stats,
+          prod: (await server.requests(`/${name}/prod/`)) - before,
+        };
+      };
+      const first = await runCached();
+      expect(first.prod, name).toBeGreaterThan(0);
+      const second = await runCached();
+      expect(second.prod, `${name}: production loaded again`).toBe(0);
+      expect(second.stats.fromCache, name).toBeGreaterThan(0);
+      const strip = (r: Result) =>
+        r.findings.map((f) => `${f.kind} ${f.message}`).sort();
+      expect(strip(second.r), name).toEqual(strip(first.r));
+      expect(first.r.findings.length, show(first.r)).toBeGreaterThan(0);
+      for (const s of (second.r.states ?? []) as Array<{
+        prod: { crop?: string };
+      }>)
+        if (s.prod.crop)
+          expect(existsSync(s.prod.crop), s.prod.crop).toBe(true);
     }
   }, 300_000);
 });

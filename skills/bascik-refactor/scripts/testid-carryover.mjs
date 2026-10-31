@@ -22,6 +22,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "testid-carryover";
 
@@ -325,7 +326,11 @@ export async function runCheck(browser, options) {
           masksOf(options),
           settleOf(options),
         );
-      const prod = await hooks(options.prod);
+      const prod = await cachedProd(
+        options,
+        { check: CHECK, route, case: c },
+        () => hooks(options.prod),
+      );
       const target = await hooks(options.target);
       for (const h of prod) prodRendered.add(`${h.attr}=${h.value}`);
       targetRendered.push(...target);

@@ -23,6 +23,7 @@ import {
 } from "./lib/checks.mjs";
 import { loadSharp } from "./lib/project-deps.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "overlap-diff";
 export const DEFAULT_TOLERANCE = 1;
@@ -465,7 +466,9 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prod, target] = await Promise.all([
-        capture(browser, options.prod, route, c, sharp, masks, settle),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          capture(browser, options.prod, route, c, sharp, masks, settle),
+        ),
         capture(browser, options.target, route, c, sharp, masks, settle),
       ]);
       const strip = (pairs) => pairs.map(({ png, ...rest }) => rest);

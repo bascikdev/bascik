@@ -9,20 +9,29 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { loadMatrix } from "./lib/matrix.mjs";
 import { loadPlaywright } from "./lib/project-deps.mjs";
 import {
+  caseIdsFrom,
   DEFAULT_MATRIX,
   DEFAULT_OUT,
   DEFAULT_SETTLE_MS,
   formatFinding,
   pixels,
   routeSlug,
+  runFooter,
+  runMatrix,
   skipControlsFrom,
   validateMask,
   validateRoute,
   validateRouteSet,
 } from "./lib/checks.mjs";
+import {
+  DEFAULT_PROD_CACHE,
+  openProdCache,
+  PROD_CACHE_OPTIONS,
+  prodCacheFlags,
+  prodCacheRecord,
+} from "./lib/prod-cache.mjs";
 import * as productionDefects from "./production-defects.mjs";
 import * as interactionCrawl from "./interaction-crawl.mjs";
 import * as stateCapture from "./state-capture.mjs";
@@ -66,9 +75,18 @@ own: the route still needs a visual review and a human sign-off.
 Runtime: every page waits until ${DEFAULT_SETTLE_MS / 1000} s after it started loading (--settle-ms, so a modal or banner on a timer is
 on both sides) and then until it has been quiet for 0.75 s, and the interaction crawl and state capture reload the
 page once per interactive element on each side, so expect about two minutes per route per matrix case on a typical
-marketing page (state-capture and interaction-crawl take most of it). Run every check anyway: a check skipped to save
-time is a check that passes nothing. A check that crashes on a navigation timeout (a loaded host, a slow network) is
-run once more, and the report notes the retry; a second crash is a finding.
+marketing page (state-capture and interaction-crawl take most of it). A check that crashes on a navigation timeout (a
+loaded host, a slow network) is run once more, and the report notes the retry; a second crash is a finding.
+
+Production is measured once and kept in --prod-cache (default ${DEFAULT_PROD_CACHE}): the next run reads production's side
+from there and loads only the target, as long as nothing that changes what production measures changed (the case,
+the masks, skip-controls, dismiss selectors, settle time, the browser and the skill's scripts are all in the key).
+Pass --refresh-prod at the start of every check stage and review round, and whenever production changed.
+
+Iteration loop: while fixing a route, run a few cases (--cases 360x812,768,1280x900: ids from the matrix, or a bare
+width for every case of it) and only the checks your fix can affect (--only). Such a run prints PARTIAL and its
+report says partial: true, and review-page.mjs refuses to sign or verify it. The gate: the full
+docs/migration/breakpoints.json matrix and every check. "Done" is decided only there.
 
 Options:
   --prod <url>                Live production origin
@@ -76,7 +94,10 @@ Options:
   --route <path>              Route to check (repeatable, required; pass every route that shares components)
   --legacy-src <dir>          The legacy repository, for testid-carryover (required unless it is skipped)
   --target-src <dir>          The Bascik project, holding src/pages and src/components (default .)
-  --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json)
+  --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json; another file makes the run
+                              partial)
+  --cases <id>                Run only these matrix cases: an id such as 360x812 or 1408x900-dark, or a width such as 360
+                              for every case of it (repeatable or comma separated; makes the run partial)
   --spacing-tolerance <px>    spacing-diff tolerance (default 2)
   --overlap-tolerance <px>    overlap-diff tolerance (default 1)
   --mask <selector>           A documented dynamic region every check leaves out, such as an autoplay carousel, an
@@ -92,6 +113,9 @@ Options:
   --only <check>              Run only these checks (repeatable or comma separated)
   --skip <check>              Skip these checks (repeatable or comma separated)
   --out <dir>                 Report folder (default artifacts/checks)
+  --prod-cache <dir>          Production cache folder (default ${DEFAULT_PROD_CACHE})
+  --refresh-prod              Measure production again and overwrite the cache
+  --no-prod-cache             Neither read nor write the cache
   --help                      Show this message`;
 
 function checkList(flag, values) {
@@ -117,6 +141,8 @@ export function parseCliArgs(argv) {
       target: { type: "string" },
       route: { type: "string", multiple: true },
       matrix: { type: "string" },
+      cases: { type: "string", multiple: true },
+      ...PROD_CACHE_OPTIONS,
       "target-src": { type: "string" },
       "legacy-src": { type: "string" },
       "spacing-tolerance": { type: "string" },
@@ -140,6 +166,7 @@ export function parseCliArgs(argv) {
   for (const route of values.route) validateRoute(route);
   validateRouteSet(values.route);
   for (const selector of values.mask ?? []) validateMask(selector);
+  const cache = prodCacheFlags(values);
   const only = checkList("--only", values.only);
   const skip = checkList("--skip", values.skip);
   const run = (
@@ -155,6 +182,8 @@ export function parseCliArgs(argv) {
     target: values.target,
     route: values.route,
     matrix: values.matrix ?? DEFAULT_MATRIX,
+    caseIds: caseIdsFrom(values.cases),
+    ...cache,
     targetSrc: values["target-src"] ?? ".",
     legacySrc: values["legacy-src"],
     spacingTolerance: pixels(
@@ -191,9 +220,15 @@ const onRoute = (f, route) =>
 /**
  * One route's report from the check results ([{ check, ok, findings, ... } or { check, error }]). It passes only when
  * every expected check ran and none has a finding. A crashed or missing check is an "error" finding. A parity finding
- * on an element production-defects found wrong at that route and width moves to `corrected`.
+ * on an element production-defects found wrong at that route and width moves to `corrected`. `gate` (gateRecord: the
+ * matrix, its hash, the cases run, partial) and `production` (prodCacheRecord) are recorded as they are: review-page.mjs
+ * refuses a partial report or one of another matrix.
  */
-export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
+export function buildRouteReport(
+  route,
+  results,
+  { expected = CHECKS, gate, production } = {},
+) {
   const raw = [];
   const checks = {};
   const byName = new Map(results.map((r) => [r.check, r]));
@@ -238,6 +273,8 @@ export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
     states: results
       .flatMap((r) => r.states ?? [])
       .filter((s) => s.route === undefined || s.route === route),
+    ...(gate ? { gate } : {}),
+    ...(production ? { production } : {}),
   };
 }
 
@@ -324,11 +361,16 @@ export async function runOne(name, browser, options, modules = MODULES) {
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
-  const cases = loadMatrix(args.matrix);
+  const { cases, gate } = runMatrix(args);
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
   const results = [];
+  let prodCache = null;
   try {
+    prodCache = await openProdCache(browser, {
+      dir: args.prodCache,
+      refresh: args.refreshProd,
+    });
     const base = {
       prod: args.prod,
       target: args.target,
@@ -341,6 +383,7 @@ async function main() {
       skipControls: args.skipControls,
       settleMs: args.settleMs,
       dismiss: args.dismiss,
+      prodCache,
     };
     for (const name of args.only) {
       const options = { ...base };
@@ -360,8 +403,13 @@ async function main() {
     await browser.close();
   }
   let allOk = true;
+  const production = prodCacheRecord(prodCache);
   for (const route of args.route) {
-    const report = buildRouteReport(route, results, { expected: args.only });
+    const report = buildRouteReport(route, results, {
+      expected: args.only,
+      gate,
+      production,
+    });
     const dir = join(args.out, routeSlug(route));
     mkdirSync(dir, { recursive: true });
     const file = join(dir, "report.json");
@@ -375,6 +423,7 @@ async function main() {
       );
     allOk &&= report.ok;
   }
+  for (const line of runFooter(prodCache, gate)) console.log(line);
   if (!allOk) process.exitCode = 1;
 }
 

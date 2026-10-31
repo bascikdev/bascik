@@ -20,6 +20,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "spacing-diff";
 export const DEFAULT_TOLERANCE = 2;
@@ -403,7 +404,9 @@ export async function runCheck(browser, options) {
           settleOf(options),
         );
       const [prod, target] = await Promise.all([
-        measure(options.prod),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          measure(options.prod),
+        ),
         measure(options.target),
       ]);
       for (const f of diffSpacing(prod, target, { tolerance }))

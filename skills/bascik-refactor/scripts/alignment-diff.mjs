@@ -19,6 +19,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "alignment-diff";
 export const DEFAULT_TOLERANCE = 2;
@@ -224,7 +225,9 @@ export async function runCheck(browser, options) {
           settleOf(options),
         );
       const [p, t] = await Promise.all([
-        measure(options.prod),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          measure(options.prod),
+        ),
         measure(options.target),
       ]);
       prod.push({ width: c.width, height: c.height, nodes: p });

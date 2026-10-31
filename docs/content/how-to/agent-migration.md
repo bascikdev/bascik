@@ -426,7 +426,7 @@ node "$REFACTOR/run-checks.mjs" \
   --mask '[data-testid="review-carousel"]'
 ```
 
-Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width; skipping a check to save time skips what it would catch.
+Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width on the first run; skipping a check to save time skips what it would catch.
 
 The review page reads the `compare-route.mjs` and `run-checks.mjs` reports, so run both first. The sign-off records which screenshots and findings it covers:
 
@@ -437,7 +437,26 @@ node "$REFACTOR/review-page.mjs" --sign --route / --reviewer "Your name" --verdi
 node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
 ```
 
-`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off.
+`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off. `--sign` and `--verify` also refuse a partial report, and a report whose matrix differs from `docs/migration/breakpoints.json` as it is now. With `--max-prod-age 7d` (or `12h`, `30m`), they refuse a report that used cached production measurements older than that; there is no limit by default.
+
+### Iteration Runs and the Gate
+
+A full run over a 25-case matrix takes 20 to 50 minutes per route, too slow to repeat after every fix. Two things make the loop fast without lowering the bar for done.
+
+Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, and the `--mask`, `--skip-control` and `--dismiss` selectors. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
+
+While a route is being built, run a few cases and the checks the last fix can affect:
+
+```sh
+node "$REFACTOR/run-checks.mjs" \
+  --prod "$PROD_URL" --target "$TARGET_URL" --route /pricing \
+  --legacy-src ../legacy --target-src . \
+  --cases 360x812,768,1280x900 --only spacing-diff,alignment-diff
+```
+
+A case id is `<width>x<height>`, with a suffix for each variant (`1408x900-dark`, `390x844-mobile-touch`), and a bare width selects every case of that width. An id the matrix does not have fails and lists the valid ones. Pick one phone, one tablet and one desktop case, plus the cases on both sides of every breakpoint the route's own CSS or JS reacts to.
+
+Such a run prints `PARTIAL (3 of 25 cases): iteration result, not a gate`, and its report records `partial: true`, as does a run of any matrix file other than `docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check. Run it once at the end of each route, and in every check and review round: "done" is decided only there.
 
 ### Why a Human Signs Off Every Route
 

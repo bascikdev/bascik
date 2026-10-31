@@ -15,6 +15,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -268,6 +269,80 @@ describe("writeSignOff and verifySignOffs", () => {
   });
 });
 
+describe("verifySignOffs: only a full-matrix run-checks report is a gate", () => {
+  const MATRIX = JSON.stringify({
+    cases: [
+      { width: 360, height: 812 },
+      { width: 1280, height: 900 },
+    ],
+  });
+  const sha = createHash("sha256").update(MATRIX).digest("hex");
+  const gate = (over: Record<string, unknown> = {}) => ({
+    matrix: "docs/migration/breakpoints.json",
+    sha256: sha,
+    cases: ["360x812", "1280x900"],
+    total: 2,
+    partial: false,
+    ...over,
+  });
+  const setup = (report: Record<string, unknown>) => {
+    write("docs/migration/breakpoints.json", MATRIX);
+    write(
+      "artifacts/checks/about/report.json",
+      JSON.stringify({ route: "/about", ok: true, findings: [], ...report }),
+    );
+    writeSignOff({
+      dir: join(dir, "review"),
+      ...signOff({ route: "/about" }),
+    });
+  };
+  const verify = (extra: Record<string, unknown> = {}) =>
+    verifySignOffs(join(dir, "review"), ["/about"], {
+      checks: join(dir, "artifacts/checks"),
+      matrix: join(dir, "docs/migration/breakpoints.json"),
+      ...extra,
+    });
+
+  it("accepts a passing report of the full matrix in docs/migration/breakpoints.json", () => {
+    setup({ gate: gate() });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+  });
+
+  it("refuses a partial report (a --cases subset or an iteration matrix)", () => {
+    setup({ gate: gate({ partial: true, cases: ["360x812"] }) });
+    const result = verify();
+    expect(result.ok).toBe(false);
+    expect(result.problems.join("\n")).toMatch(
+      /partial run \(1 of 2 cases\)[\s\S]*full matrix/,
+    );
+  });
+
+  it("refuses a report whose matrix hash differs from docs/migration/breakpoints.json", () => {
+    setup({ gate: gate({ sha256: "0".repeat(64) }) });
+    expect(verify().problems.join("\n")).toMatch(
+      /breakpoints\.json changed since this run|another matrix/,
+    );
+  });
+
+  it("refuses a report that records no matrix (written before run-checks recorded one)", () => {
+    setup({});
+    expect(verify().problems.join("\n")).toMatch(/records no matrix/);
+  });
+
+  it("with maxProdAge, refuses a report built from cached production measurements older than that", () => {
+    const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    setup({
+      gate: gate(),
+      production: { fromCache: 10, captured: 0, oldestCachedAt: old },
+    });
+    expect(verify().ok).toBe(true);
+    const result = verify({ maxProdAge: 2 * 86_400_000 });
+    expect(result.ok).toBe(false);
+    expect(result.problems.join("\n")).toMatch(/--refresh-prod/);
+    expect(verify({ maxProdAge: 4 * 86_400_000 }).ok).toBe(true);
+  });
+});
+
 describe("parseCliArgs", () => {
   it("has three modes: build pages, sign, verify", () => {
     expect(parseCliArgs(["--route", "/"])).toMatchObject({
@@ -296,6 +371,23 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["--verify", "--route", "/"])).toMatchObject({
       mode: "verify",
     });
+  });
+
+  it("--max-prod-age takes days, hours or minutes, and rejects anything else", () => {
+    expect(
+      parseCliArgs(["--verify", "--route", "/"]).maxProdAge,
+    ).toBeUndefined();
+    expect(
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "7d"])
+        .maxProdAge,
+    ).toBe(7 * 86_400_000);
+    expect(
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "12h"])
+        .maxProdAge,
+    ).toBe(12 * 3_600_000);
+    expect(() =>
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "soon"]),
+    ).toThrow(/--max-prod-age/);
   });
 
   it("refuses --sign and --verify together, and --sign for several routes", () => {
@@ -344,9 +436,22 @@ describe("the CLI", () => {
         ],
       }),
     );
+    const matrix = JSON.stringify({ cases: [{ width: 400, height: 800 }] });
+    write("docs/migration/breakpoints.json", matrix);
     write(
       "artifacts/checks/about/report.json",
-      JSON.stringify({ route: "/about", ok: true, findings: [] }),
+      JSON.stringify({
+        route: "/about",
+        ok: true,
+        findings: [],
+        gate: {
+          matrix: "docs/migration/breakpoints.json",
+          sha256: createHash("sha256").update(matrix).digest("hex"),
+          cases: ["400x800"],
+          total: 1,
+          partial: false,
+        },
+      }),
     );
     const missing = node(["--verify", "--route", "/about", "--dir", "review"]);
     expect(missing.status).toBe(1);
@@ -367,6 +472,55 @@ describe("the CLI", () => {
     expect(
       node(["--verify", "--route", "/about", "--dir", "review"]).status,
     ).toBe(0);
+  });
+
+  it("misuse: --sign refuses a partial run-checks report", () => {
+    write("artifacts/compare/about/target-400x800.png", PNG);
+    write(
+      "artifacts/compare/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        cases: [
+          {
+            width: 400,
+            height: 800,
+            screenshots: {
+              prod: "artifacts/compare/about/target-400x800.png",
+              target: "artifacts/compare/about/target-400x800.png",
+            },
+          },
+        ],
+      }),
+    );
+    write(
+      "artifacts/checks/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        ok: true,
+        findings: [],
+        gate: {
+          matrix: "docs/migration/breakpoints.iter-about.json",
+          sha256: "0".repeat(64),
+          cases: ["400x800"],
+          total: 1,
+          partial: true,
+        },
+      }),
+    );
+    const signed = node([
+      "--sign",
+      "--route",
+      "/about",
+      "--reviewer",
+      "Sam Rivera",
+      "--verdict",
+      "pass",
+      "--dir",
+      "review",
+    ]);
+    expect(signed.status).toBe(1);
+    expect(signed.stderr).toMatch(/partial/);
+    expect(existsSync(join(dir, "review/about.json"))).toBe(false);
   });
 
   it("builds artifacts/review/<slug>.html from the compare and checks reports", () => {

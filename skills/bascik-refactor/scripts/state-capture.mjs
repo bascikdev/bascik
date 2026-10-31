@@ -7,7 +7,7 @@
 //
 // Why: main-nav dropdowns shipped with the wrong style and without their icons, because no check ever looked at a
 // menu in its open state.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inPage } from "./lib/dom.mjs";
 import {
@@ -35,6 +35,7 @@ import {
 } from "./interaction-crawl.mjs";
 import { loadSharp } from "./lib/project-deps.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "state-capture";
 
@@ -730,124 +731,172 @@ async function openState(
   return captured;
 }
 
-/** Compares the open states of every disclosure on one route and case. */
-async function compareCase(browser, options, route, c, dir, states, extra) {
-  const { sharp, masks, skip } = extra;
-  const settleMs = settleOf(options);
-  const findings = [];
-  await withPage(
+/** The label of a disclosure in findings and on the review page. */
+const stateLabel = (item) =>
+  `${item.anchor.tag}:${item.anchor.name || item.anchor.text}${item.anchor.mode === "hover" ? " (hover)" : ""}`;
+
+/**
+ * Production's side of one route and case: every disclosure discovered there that opens a panel, in order, each with
+ * its captured open state. The crop PNG is carried in the result as a buffer (`cropPng`), so the production cache can
+ * keep it; `stem(n)` names the crop file of the n-th open state.
+ */
+async function captureProduction(browser, options, route, c, stem, extra) {
+  const { sharp, masks, skip, settleMs } = extra;
+  return withPage(
     browser,
     options.prod,
     route,
     c,
-    async (prodPage) =>
-      withPage(
-        browser,
-        options.target,
+    async (page) => {
+      const items = await discover(page, masks, skip);
+      const volatile = await observeVolatile(
+        page,
+        options.prod,
         route,
-        c,
-        async (targetPage) => {
-          const [prodItems, targetItems] = await Promise.all([
-            discover(prodPage, masks, skip),
-            discover(targetPage, masks, skip),
-          ]);
-          const [prodVolatile, targetVolatile] = await Promise.all([
-            observeVolatile(prodPage, options.prod, route, masks, settleMs),
-            observeVolatile(targetPage, options.target, route, masks, settleMs),
-          ]);
-          const used = new Set();
-          let n = 0;
-          for (const item of prodItems) {
-            const label = `${item.anchor.tag}:${item.anchor.name || item.anchor.text}${item.anchor.mode === "hover" ? " (hover)" : ""}`;
-            const stem = join(dir, `${routeSlug(route)}-${c.width}-${n}`);
-            const prod = await openState(
-              prodPage,
-              options.prod,
-              route,
-              item,
-              `${stem}-prod.png`,
-              { masks, volatile: prodVolatile, settleMs, sharp },
-            );
-            if (!prod) continue;
-            n++;
-            const i = matchAnchor(
-              item.anchor,
-              targetItems.map((t) => t.anchor),
-              used,
-            );
-            const at = { anchor: label, route, width: c.width };
-            if (i < 0) {
-              findings.push(
-                finding(
-                  CHECK,
-                  "missing-state",
-                  `${label} opens a panel in production; the target has no matching element to open`,
-                  at,
-                ),
-              );
-              continue;
-            }
-            used.add(i);
-            const target = await openState(
-              targetPage,
-              options.target,
-              route,
-              targetItems[i],
-              `${stem}-target.png`,
-              { masks, volatile: targetVolatile, settleMs, sharp },
-            );
-            if (!target) {
-              findings.push(
-                finding(
-                  CHECK,
-                  "missing-state",
-                  `${label} opens a panel in production; on the target it opens nothing`,
-                  at,
-                ),
-              );
-              continue;
-            }
-            states.push({
-              anchor: label,
-              route,
-              width: c.width,
-              height: c.height,
-              prod: { crop: prod.crop, box: prod.box },
-              target: { crop: target.crop, box: target.box },
-            });
-            const own = [
-              ...diffStateStyles(label, prod.styles, target.styles),
-              ...diffPosition(label, prod.position, target.position),
-              ...diffIcons(label, prod.icons, target.icons),
-              ...diffStateStyles(
-                label,
-                prod.triggerStyles,
-                target.triggerStyles,
-                { kind: "trigger-style", what: "the trigger's " },
-              ),
-              ...diffItemStates(label, prod.itemStates, target.itemStates),
-              ...diffDim(label, prod.dim, target.dim),
-            ];
-            // The crop catches what no property list names (an icon's stroke width, a divider, a badge). Two crops of
-            // another size already differ in width or height above.
-            if (prod.crop && target.crop) {
-              const count = await cropDiff(sharp, prod.crop, target.crop);
-              if (count)
-                own.push(
-                  finding(
-                    CHECK,
-                    "pixels",
-                    `${label} open: ${count} pixel(s) of the ${Math.round(prod.box.width)}x${Math.round(prod.box.height)} panel differ from production (see the two crops on the review page)`,
-                    { anchor: label, count },
-                  ),
-                );
-            }
-            for (const f of own) findings.push({ ...f, route, width: c.width });
-          }
-        },
         masks,
         settleMs,
-      ),
+      );
+      const opened = [];
+      for (const item of items) {
+        const file = `${stem(opened.length)}-prod.png`;
+        const state = await openState(page, options.prod, route, item, file, {
+          masks,
+          volatile,
+          settleMs,
+          sharp,
+        });
+        if (!state) continue;
+        const { crop, ...rest } = state;
+        opened.push({
+          item,
+          state: { ...rest, cropPng: crop ? readFileSync(crop) : null },
+        });
+      }
+      return opened;
+    },
+    masks,
+    settleMs,
+  );
+}
+
+/**
+ * Compares the open states of every disclosure on one route and case. Production's open states are captured first
+ * (from the production cache when it holds them: discover, the volatile texts and every open state with its crop), and
+ * the target is then opened state by state, matched to production's disclosures.
+ */
+async function compareCase(browser, options, route, c, dir, states, extra) {
+  const { sharp, masks, skip } = extra;
+  const settleMs = settleOf(options);
+  const findings = [];
+  const stem = (n) => join(dir, `${routeSlug(route)}-${c.width}-${n}`);
+  const production = cachedProd(options, { check: CHECK, route, case: c }, () =>
+    captureProduction(browser, options, route, c, stem, {
+      sharp,
+      masks,
+      skip,
+      settleMs,
+    }),
+  );
+  // Awaited inside the target's page below; a crash must not surface first as an unhandled rejection.
+  production.catch(() => {});
+  await withPage(
+    browser,
+    options.target,
+    route,
+    c,
+    async (targetPage) => {
+      const targetItems = await discover(targetPage, masks, skip);
+      const targetVolatile = await observeVolatile(
+        targetPage,
+        options.target,
+        route,
+        masks,
+        settleMs,
+      );
+      const opened = await production;
+      const used = new Set();
+      for (const [n, { item, state }] of opened.entries()) {
+        const { cropPng, ...rest } = state;
+        // A cached crop is written back where this run's review page looks for it.
+        const prod = { ...rest, crop: undefined };
+        if (cropPng) {
+          prod.crop = `${stem(n)}-prod.png`;
+          writeFileSync(prod.crop, cropPng);
+        }
+        const label = stateLabel(item);
+        const i = matchAnchor(
+          item.anchor,
+          targetItems.map((t) => t.anchor),
+          used,
+        );
+        const at = { anchor: label, route, width: c.width };
+        if (i < 0) {
+          findings.push(
+            finding(
+              CHECK,
+              "missing-state",
+              `${label} opens a panel in production; the target has no matching element to open`,
+              at,
+            ),
+          );
+          continue;
+        }
+        used.add(i);
+        const target = await openState(
+          targetPage,
+          options.target,
+          route,
+          targetItems[i],
+          `${stem(n)}-target.png`,
+          { masks, volatile: targetVolatile, settleMs, sharp },
+        );
+        if (!target) {
+          findings.push(
+            finding(
+              CHECK,
+              "missing-state",
+              `${label} opens a panel in production; on the target it opens nothing`,
+              at,
+            ),
+          );
+          continue;
+        }
+        states.push({
+          anchor: label,
+          route,
+          width: c.width,
+          height: c.height,
+          prod: { crop: prod.crop, box: prod.box },
+          target: { crop: target.crop, box: target.box },
+        });
+        const own = [
+          ...diffStateStyles(label, prod.styles, target.styles),
+          ...diffPosition(label, prod.position, target.position),
+          ...diffIcons(label, prod.icons, target.icons),
+          ...diffStateStyles(label, prod.triggerStyles, target.triggerStyles, {
+            kind: "trigger-style",
+            what: "the trigger's ",
+          }),
+          ...diffItemStates(label, prod.itemStates, target.itemStates),
+          ...diffDim(label, prod.dim, target.dim),
+        ];
+        // The crop catches what no property list names (an icon's stroke width, a divider, a badge). Two crops of
+        // another size already differ in width or height above.
+        if (prod.crop && target.crop) {
+          const count = await cropDiff(sharp, prod.crop, target.crop);
+          if (count)
+            own.push(
+              finding(
+                CHECK,
+                "pixels",
+                `${label} open: ${count} pixel(s) of the ${Math.round(prod.box.width)}x${Math.round(prod.box.height)} panel differ from production (see the two crops on the review page)`,
+                { anchor: label, count },
+              ),
+            );
+        }
+        for (const f of own) findings.push({ ...f, route, width: c.width });
+      }
+    },
     masks,
     settleMs,
   );

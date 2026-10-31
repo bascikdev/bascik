@@ -55,13 +55,20 @@ background, rebuild after each change, and stop it before you hand off.
 
 1. Inspect: read the inventories, the production subtree and the legacy owner before editing.
 2. Make the smallest change that moves one check from fail to pass.
-3. Run a focused check (the section's measurement, screenshot or interaction test).
+3. Run a focused check (the section's measurement, screenshot or interaction test). This is the iteration loop:
+   `run-checks.mjs --cases <ids> --only <checks>` on a few cases (one phone, one tablet, one desktop, plus the
+   breakpoint edges the change touches). Production's side comes from the production cache (`artifacts/prod-cache`),
+   so only the target is loaded. Such a run prints `PARTIAL` and decides nothing.
 4. Format the changed files.
 5. Run the gate commands:
 
    ```sh
    {{GATE_COMMANDS}}
    ```
+
+   The gate is `run-checks.mjs` on the full {{MATRIX_FILE}} matrix with every check, no `--cases`, `--only` or
+   `--matrix`. "Done" is decided only there. Pass `--refresh-prod` on the first run of every check stage and review
+   round, and whenever production changed; `review-page.mjs` refuses to sign or verify a partial report.
 
 6. Hand off.
 

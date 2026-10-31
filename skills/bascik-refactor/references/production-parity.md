@@ -125,7 +125,8 @@ closed booleans for interactions, and agents read "no flags" as PASS. The issue 
 
 `scripts/run-checks.mjs` runs one check per type, plus test hooks, presence and production defects, on every route at
 every matrix case, and exits 1 on any finding; a check that crashed is a finding. It writes
-`artifacts/checks/<route>/report.json`. Each check is also its own script with `--help`.
+`artifacts/checks/<route>/report.json`, which records the matrix file, its sha256, the cases run and whether the run
+was partial (see "The iteration loop and the gate" below). Each check is also its own script with `--help`.
 
 | Script                   | Compares                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Tolerance                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -152,8 +153,42 @@ and `run-checks.mjs` take it), log it in the ledger, and keep it as narrow as th
 hero around it, because a masked region is left out of every screenshot while what is drawn over it (the headline, an
 open menu) is still compared. Never mask a modal or banner on a timer; raise `--settle-ms` past its timer instead,
 since masking it removes the layer presence-by-route checks. Expect about two minutes per route per matrix case
-(state-capture and interaction-crawl take most of it, since both reload the page per interactive element); run every
-check anyway. A check that crashes on a navigation timeout is run once more and the report notes the retry.
+(state-capture and interaction-crawl take most of it, since both reload the page per interactive element). A check
+that crashes on a navigation timeout is run once more and the report notes the retry.
+
+### The iteration loop and the gate
+
+A full run of a 25-case matrix takes 20 to 50 minutes per route. Two things keep the loop fast without lowering the
+bar for done:
+
+- **The production cache.** Every check stores what it measured on production in `artifacts/prod-cache/<check>/`
+  (`--prod-cache <dir>` moves it, `--no-prod-cache` turns it off), and the next run loads only the target. The key
+  holds everything that changes what production measures: the check, the skill's scripts (an updated skill misses
+  every entry), the browser version, the production origin, the route (presence-by-route: every route, in order),
+  the full matrix case (width, height and every variant), `--settle-ms`, and the sorted `--mask`, `--skip-control`
+  and `--dismiss` selectors. A changed mask or skip-control is a miss, never a stale hit. state-capture caches
+  production's whole side of a case: the disclosures it found, what the page changes on its own, and every open state
+  with its crop. A corrupt entry is measured again; a cache folder that cannot be written prints a warning and the run
+  goes on uncached. The run prints `production: N measurements from cache (oldest <date>), M captured`, and
+  `report.json` records the same under `production`.
+- **Fewer cases and checks.** `--cases 360x812,768,1280x900` (on `run-checks.mjs` and every check) runs only those
+  cases: an id is `<width>x<height>` with a suffix per variant (`1408x900-dark`, `390x844-mobile-touch`,
+  `1280x900-motion`), and a bare width selects every case of it. An id the matrix does not have fails and lists the
+  valid ones. `--only` reruns just the checks a fix can affect.
+
+While building a route or the shell, iterate on one phone, one tablet and one desktop case plus the B - 1, B and
+B + 1 cases of every breakpoint the route's own CSS or JS reacts to, with `--only` for what the last fix touched.
+Such a run prints `PARTIAL (n of m cases): iteration result, not a gate`, and its report records `gate.partial: true`
+(also for a full run of any matrix file other than `docs/migration/breakpoints.json`). The gate is the full
+`docs/migration/breakpoints.json` matrix with every check: run it once at the end of each route stage, at the check
+stage, and in every review and repair round. "Done" is decided only there. `review-page.mjs` refuses to sign a pass
+or verify a partial report, a report whose matrix hash differs from `docs/migration/breakpoints.json` now, and a
+report that records no matrix.
+
+Refresh production with `--refresh-prod` (measure again and overwrite) at the start of every check stage and every
+review round, and whenever production changed (a deploy, new content, a changed banner). `review-page.mjs
+--max-prod-age 7d` (also `12h`, `30m`) refuses a report that used cached production measurements older than that;
+there is no limit by default, because refreshing at the start of each round is the rule.
 
 The interaction crawl and state capture are not read-only toward production. They never follow a plain navigation
 link or press a submit button, but they click every other control (a `<button type="button">`, a `role="button"`, an
@@ -198,8 +233,8 @@ No route passes on findings alone. After `run-checks.mjs` passes:
 reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --sign`. `reviewed` is a hash of the
    target's screenshots and the findings the page showed.
 4. `review-page.mjs --verify --route <path>` is the last item of the driver's PASS gate. It fails when the route's
-   run-checks report fails, and when the target's screenshots or findings changed after the sign-off: a fix after the
-   review needs a new review.
+   run-checks report fails or is not a gate run (partial, another matrix, or no matrix recorded), and when the
+   target's screenshots or findings changed after the sign-off: a fix after the review needs a new review.
 
 ## Interaction parity floor
 

@@ -29,6 +29,7 @@ import {
 } from "./lib/checks.mjs";
 import { routeUrl, settle } from "./lib/capture.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "interaction-crawl";
 
@@ -1033,7 +1034,17 @@ export async function runCheck(browser, options) {
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prod, target] = await Promise.all([
-        crawl(browser, options.prod, route, c, masks, settleOf(options), skip),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          crawl(
+            browser,
+            options.prod,
+            route,
+            c,
+            masks,
+            settleOf(options),
+            skip,
+          ),
+        ),
         crawl(
           browser,
           options.target,
