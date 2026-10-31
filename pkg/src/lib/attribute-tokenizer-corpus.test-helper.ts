@@ -34,6 +34,12 @@ export const ATTRIBUTE_CORPUS: readonly AttributeCase[] = [
   { name: "apostrophe in an unquoted value", attrs: ` title=it's b=2` },
   { name: "double quote in an unquoted value", attrs: ` a=x"y b=2` },
   { name: "= in an unquoted value", attrs: ` a=x=y` },
+  {
+    name: "double quote then = in an unquoted value",
+    attrs: ` data-x=a"b="`,
+  },
+  { name: "unquoted value that starts after =", attrs: ` href=a=b` },
+  { name: "apostrophe then = in an unquoted value", attrs: ` x=a'b=c` },
   { name: "backtick unquoted value", attrs: " a=`x`" },
   { name: "< in an unquoted value", attrs: ` a=<b` },
   { name: "backslash before the closing quote", attrs: ` a="c:\\" b="d"` },

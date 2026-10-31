@@ -131,6 +131,46 @@ describe("fixed inputs", () => {
     expect(root.children[0].body).toBe(`const p = "<p>";`);
   });
 
+  it("markup.mjs keeps an element whose unquoted value holds a quote and then = (PR 115 review)", () => {
+    // `a"b="` is one unquoted value: the quote after its `=` opens nothing.
+    const root = parseMarkup(
+      `<p data-x=a"b="><h1>Title</h1></p>\n<p class='z'>Steam</p>`,
+    ) as MarkupNode;
+    expect(
+      root.children.map((node) => [node.tag, node.attrs["data-x"] ?? null]),
+    ).toEqual([
+      ["p", 'a"b="'],
+      ["p", null],
+    ]);
+    expect(root.children[0].children.map((node) => node.tag)).toEqual(["h1"]);
+  });
+
+  it("markup.mjs ends a raw-text open tag at its > when an unquoted value holds a quote and then =", () => {
+    const root = parseMarkup(
+      `<script data-x=a"b=">const p = "<p>";</script><p>after</p>`,
+    ) as MarkupNode & { children: Array<MarkupNode & { body?: string }> };
+    expect(root.children.map((node) => node.tag)).toEqual(["script", "p"]);
+    expect(root.children[0].attrs["data-x"]).toBe('a"b="');
+    expect(root.children[0].body).toBe(`const p = "<p>";`);
+  });
+
+  it("markup.mjs reads an unquoted value with = in it whole, and an = with no value", () => {
+    const root = parseMarkup(
+      `<a href=a=b x=a'b=c>Milk frother</a><a y= >Steam</a>`,
+    ) as MarkupNode;
+    expect(root.children.map((node) => node.attrs)).toEqual([
+      { href: "a=b", x: "a'b=c" },
+      { y: "" },
+    ]);
+  });
+
+  it("markup.mjs reads a tag of unquoted values full of = and quotes that never closes in linear time", () => {
+    const html = `<p${" a=b\"c='d=e".repeat(20_000)}`;
+    const started = performance.now();
+    expect(() => parseMarkup(html)).not.toThrow();
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
   it("markup.mjs reads a tag that never closes in linear time, without throwing", () => {
     const html = `<p${' a="x" b=y c'.repeat(20_000)}`;
     const started = performance.now();

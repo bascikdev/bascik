@@ -305,6 +305,23 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
     );
   });
 
+  it("leaves an unquoted class value holding = or a quote as written (PR 115 review)", () => {
+    // The browser reads `a=b` and `a"b` whole, and no declared class equals
+    // such a token, so the attribute is left exactly as written.
+    for (const markup of [
+      "<p class=a=b>x</p>",
+      '<p class=a"b>x</p>',
+      "<p class=card=b>x</p>",
+    ]) {
+      const component = prefixElementAttribute(
+        makeComponent(markup, ".card { color: blue; } .a { color: red; }"),
+        "class",
+        "test1234",
+      );
+      expect(component.fileContent, markup).toBe(markup);
+    }
+  });
+
   it("scopes the for attribute to match a scoped input id", () => {
     const component = makeComponent(
       '<label for="email">Email</label><input id="email">',

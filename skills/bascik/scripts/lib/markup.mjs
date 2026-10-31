@@ -33,8 +33,10 @@ const IMPLIED_END = {
 
 // A tag's attribute text up to its `>`, read as the HTML tokenizer reads it: a quote opens a quoted value only right
 // after `=` (and whitespace), so `title=it's` is an unquoted value with an apostrophe in it, not the start of a string
-// that swallows the next tags. Each character has one reading, so the scan is linear.
-const ATTRIBUTE_TEXT = String.raw`(?:[^>=]|=\s*(?:"[^"]*"|'[^']*'|(?=[^\s"'])))*`;
+// that swallows the next tags. An unquoted value is read whole, to whitespace or `>`, so an `=` inside it
+// (`data-x=a"b="`) opens no new value. Each character has one reading (an unquoted value cannot stop short, since
+// the character after it must be whitespace or `>`), so the scan is linear.
+const ATTRIBUTE_TEXT = String.raw`(?:[^>=]|=\s*(?:"[^"]*"|'[^']*'|[^\s"'>][^\s>]*(?![^\s>])|(?=>)))*`;
 const RAW_TEXT = new RegExp(
   String.raw`(<(script|style|textarea|title)\b${ATTRIBUTE_TEXT}>)([\s\S]*?)(<\/\2\s*>)`,
   "gi",

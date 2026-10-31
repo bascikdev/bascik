@@ -350,7 +350,8 @@ const HTML_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
  * opens a value only right after `=` (and optional whitespace), the value
  * ends at the next matching quote, and backslashes are plain characters.
  * A quote anywhere else (inside an attribute name or an unquoted value) is
- * an ordinary character.
+ * an ordinary character. An unquoted value runs to whitespace or `>`, so an
+ * `=` inside it (`data-x=a"b="`) opens no new value.
  */
 export const quotedAttributeValueRanges = (
   openTag: string,
@@ -359,7 +360,13 @@ export const quotedAttributeValueRanges = (
   let afterEquals = false;
   for (let j = 0; j < openTag.length; j++) {
     const char = openTag[j];
-    if (afterEquals && (char === '"' || char === "'")) {
+    if (!afterEquals) {
+      if (char === "=") afterEquals = true;
+      continue;
+    }
+    if (HTML_WHITESPACE.has(char)) continue;
+    afterEquals = false;
+    if (char === '"' || char === "'") {
       const end = openTag.indexOf(char, j + 1);
       if (end === -1) {
         ranges.push({ start: j, end: openTag.length });
@@ -367,11 +374,14 @@ export const quotedAttributeValueRanges = (
       }
       ranges.push({ start: j, end });
       j = end;
-      afterEquals = false;
-    } else if (char === "=") {
-      afterEquals = true;
-    } else if (!HTML_WHITESPACE.has(char)) {
-      afterEquals = false;
+    } else if (char !== ">") {
+      // An unquoted value: skip to its last character.
+      while (
+        j + 1 < openTag.length &&
+        openTag[j + 1] !== ">" &&
+        !HTML_WHITESPACE.has(openTag[j + 1])
+      )
+        j++;
     }
   }
   return ranges;
@@ -396,7 +406,7 @@ export const injectClassIntoTag = (
   let replaced = false;
   let finalStr = "";
   const attrRegexG =
-    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
+    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*?))(?=\s|\/>|>|$)/gi;
   let match;
 
   while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
@@ -405,15 +415,28 @@ export const injectClassIntoTag = (
       (r) => matchStart > r.start && matchStart < r.end,
     );
     if (!isInside) {
-      const classQuote = match[2] !== undefined ? "'" : '"';
       const rawUnquoted = match[3];
+      // An unquoted value is read up to whitespace or `>`, as browsers do,
+      // so it can hold `=` and quotes (`class=a"b`): quote it with the
+      // quote it does not hold, or encode `"` when it holds both.
+      const classQuote =
+        match[2] !== undefined ||
+        (rawUnquoted?.includes('"') && !rawUnquoted.includes("'"))
+          ? "'"
+          : '"';
       const trailingSlash =
         rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
       const unquotedClean =
         rawUnquoted !== undefined && rawUnquoted.endsWith("/")
           ? rawUnquoted.slice(0, -1)
           : rawUnquoted;
-      const classVal = match[1] ?? match[2] ?? unquotedClean ?? "";
+      const classVal =
+        match[1] ??
+        match[2] ??
+        (classQuote === '"'
+          ? unquotedClean?.replaceAll('"', "&quot;")
+          : unquotedClean) ??
+        "";
       finalStr =
         openTag.substring(0, matchStart) +
         ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}${trailingSlash}` +
