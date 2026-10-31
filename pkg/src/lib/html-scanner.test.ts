@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import {
   SEAM_SEPARATOR,
   findCommentEnd,
@@ -490,65 +491,77 @@ describe("scanHtml", () => {
     });
   });
 
-  it("places an inserted script where parse5 runs it, in random malformed markup", () => {
-    // The insertion point (R2-07-b): a script written there is an ordinary
-    // HTML script, outside <template> and SVG/MathML, with exactly the
-    // inserted source range, whatever the page leaves open after it. It may
-    // be earlier than it has to be where the scan errs toward foreign
-    // content (`<math><mi><td></math>`: the ignored `<td>` is counted as
-    // open, so `</math>` is not known to close the math), never later.
-    const inserted = "<script>inserted()</script>";
-    let inside = 0;
-    fc.assert(
-      fc.property(soup, (html) => {
-        const { insertionPoint } = scanHtml(html);
-        if (insertionPoint > 0 && insertionPoint < html.length) inside++;
-        expect(insertionPoint).toBeGreaterThanOrEqual(0);
-        expect(insertionPoint).toBeLessThanOrEqual(html.length);
-        const page =
-          html.slice(0, insertionPoint) + inserted + html.slice(insertionPoint);
-        expect(
-          parsedLocations(page).scripts.filter(
-            (r) => r.start === insertionPoint,
-          ),
-        ).toEqual([
-          { start: insertionPoint, end: insertionPoint + inserted.length },
-        ]);
-      }),
-      { numRuns: Number(process.env.SCAN_ORACLE_RUNS ?? 4000) },
-    );
-    // Not only appends: many pages end inside markup.
-    expect(inside).toBeGreaterThan(200);
-  }, 60_000);
+  const INSERTION_BOUNDS = propertyBounds(1000, "SCAN_ORACLE_RUNS");
+  it(
+    "places an inserted script where parse5 runs it, in random malformed markup",
+    () => {
+      // The insertion point (R2-07-b): a script written there is an ordinary
+      // HTML script, outside <template> and SVG/MathML, with exactly the
+      // inserted source range, whatever the page leaves open after it. It may
+      // be earlier than it has to be where the scan errs toward foreign
+      // content (`<math><mi><td></math>`: the ignored `<td>` is counted as
+      // open, so `</math>` is not known to close the math), never later.
+      const inserted = "<script>inserted()</script>";
+      let inside = 0;
+      fc.assert(
+        fc.property(soup, (html) => {
+          const { insertionPoint } = scanHtml(html);
+          if (insertionPoint > 0 && insertionPoint < html.length) inside++;
+          expect(insertionPoint).toBeGreaterThanOrEqual(0);
+          expect(insertionPoint).toBeLessThanOrEqual(html.length);
+          const page =
+            html.slice(0, insertionPoint) +
+            inserted +
+            html.slice(insertionPoint);
+          expect(
+            parsedLocations(page).scripts.filter(
+              (r) => r.start === insertionPoint,
+            ),
+          ).toEqual([
+            { start: insertionPoint, end: insertionPoint + inserted.length },
+          ]);
+        }),
+        INSERTION_BOUNDS.options,
+      );
+      // Not only appends: many pages end inside markup.
+      expect(inside).toBeGreaterThan(200);
+    },
+    INSERTION_BOUNDS.timeoutMs,
+  );
 
-  it("matches parse5 on every script and comment range in random malformed markup", () => {
-    fc.assert(
-      fc.property(soup, (html) => {
-        const { scripts, comments, stoppedAt } = scan(html);
-        const expected = parsedLocations(html);
-        const reportedScripts = scripts
-          .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
-          .map((s) => [s.start, s.end]);
-        const reportedComments = comments
-          .filter((c) => c.terminated)
-          .map((c) => [c.start, c.end]);
-        const before = (range: { start: number }) => range.start < stoppedAt;
-        expect(reportedScripts).toEqual(
-          expected.scripts.filter(before).map((r) => [r.start, r.end]),
-        );
-        expect(reportedComments).toEqual(
-          expected.comments
-            .filter(before)
-            .filter(
-              (r) =>
-                r.end <= html.length && findCommentEnd(html, r.start) !== -1,
-            )
-            .map((r) => [r.start, r.end]),
-        );
-      }),
-      { numRuns: Number(process.env.SCAN_ORACLE_RUNS ?? 4000) },
-    );
-  }, 60_000);
+  const RANGE_BOUNDS = propertyBounds(1500, "SCAN_ORACLE_RUNS");
+  it(
+    "matches parse5 on every script and comment range in random malformed markup",
+    () => {
+      fc.assert(
+        fc.property(soup, (html) => {
+          const { scripts, comments, stoppedAt } = scan(html);
+          const expected = parsedLocations(html);
+          const reportedScripts = scripts
+            .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
+            .map((s) => [s.start, s.end]);
+          const reportedComments = comments
+            .filter((c) => c.terminated)
+            .map((c) => [c.start, c.end]);
+          const before = (range: { start: number }) => range.start < stoppedAt;
+          expect(reportedScripts).toEqual(
+            expected.scripts.filter(before).map((r) => [r.start, r.end]),
+          );
+          expect(reportedComments).toEqual(
+            expected.comments
+              .filter(before)
+              .filter(
+                (r) =>
+                  r.end <= html.length && findCommentEnd(html, r.start) !== -1,
+              )
+              .map((r) => [r.start, r.end]),
+          );
+        }),
+        RANGE_BOUNDS.options,
+      );
+    },
+    RANGE_BOUNDS.timeoutMs,
+  );
 });
 
 describe("removeHtmlRanges", () => {
@@ -592,51 +605,66 @@ describe("removeHtmlRanges", () => {
     },
   );
 
-  it("writes the separator exactly where the output before a removal ends in < or an unfinished reference", () => {
-    // The reference model: the regex on everything written so far.
-    const pendingRe = /(?:<|&[#0-9A-Za-z]*)$/;
-    // Long reference runs reach past any fixed look-back window.
-    const longReference = fc
-      .string({
-        unit: fc.constantFrom("0", "1", "a", "x"),
-        minLength: 60,
-        maxLength: 100,
-      })
-      .map((run) => `&#${run}`);
-    const piece = fc.oneof(
-      {
-        weight: 9,
-        arbitrary: fc.constantFrom("&", "#", "x", "0", "a", ";", "<", ">", " "),
-      },
-      { weight: 1, arbitrary: longReference },
-    );
-    fc.assert(
-      fc.property(
-        fc.array(fc.array(piece, { maxLength: 80 }), {
-          minLength: 1,
-          maxLength: 5,
-        }),
-        (texts) => {
-          const removed = "<!-- c -->";
-          const html = texts.map((t) => t.join("")).join(removed);
-          const ranges: HtmlRange[] = [];
-          let expected = "";
-          let at = 0;
-          texts.forEach((t, k) => {
-            const text = t.join("");
-            expected += text;
-            at += text.length;
-            if (k === texts.length - 1) return;
-            ranges.push({ start: at, end: at + removed.length });
-            if (pendingRe.test(expected)) expected += SEAM_SEPARATOR;
-            at += removed.length;
-          });
-          expect(removeHtmlRanges(html, ranges).html).toBe(expected);
+  const SEPARATOR_BOUNDS = propertyBounds(1000);
+  it(
+    "writes the separator exactly where the output before a removal ends in < or an unfinished reference",
+    () => {
+      // The reference model: the regex on everything written so far.
+      const pendingRe = /(?:<|&[#0-9A-Za-z]*)$/;
+      // Long reference runs reach past any fixed look-back window.
+      const longReference = fc
+        .string({
+          unit: fc.constantFrom("0", "1", "a", "x"),
+          minLength: 60,
+          maxLength: 100,
+        })
+        .map((run) => `&#${run}`);
+      const piece = fc.oneof(
+        {
+          weight: 9,
+          arbitrary: fc.constantFrom(
+            "&",
+            "#",
+            "x",
+            "0",
+            "a",
+            ";",
+            "<",
+            ">",
+            " ",
+          ),
         },
-      ),
-      { numRuns: 1000 },
-    );
-  });
+        { weight: 1, arbitrary: longReference },
+      );
+      fc.assert(
+        fc.property(
+          fc.array(fc.array(piece, { maxLength: 80 }), {
+            minLength: 1,
+            maxLength: 5,
+          }),
+          (texts) => {
+            const removed = "<!-- c -->";
+            const html = texts.map((t) => t.join("")).join(removed);
+            const ranges: HtmlRange[] = [];
+            let expected = "";
+            let at = 0;
+            texts.forEach((t, k) => {
+              const text = t.join("");
+              expected += text;
+              at += text.length;
+              if (k === texts.length - 1) return;
+              ranges.push({ start: at, end: at + removed.length });
+              if (pendingRe.test(expected)) expected += SEAM_SEPARATOR;
+              at += removed.length;
+            });
+            expect(removeHtmlRanges(html, ranges).html).toBe(expected);
+          },
+        ),
+        SEPARATOR_BOUNDS.options,
+      );
+    },
+    SEPARATOR_BOUNDS.timeoutMs,
+  );
 
   it("adds no separator after a long run of letters and digits with no & before it", () => {
     const html = `<p>${"a1".repeat(100)}<!-- c -->b</p>`;

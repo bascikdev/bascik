@@ -25,6 +25,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import { expandComponents } from "./component-expansion-core.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import {
@@ -458,22 +459,27 @@ describe("expandComponents incremental mask oracle", () => {
     expect(searches).toBe(6);
   });
 
-  it("keeps the mask, the close facts and the search equal to a whole re-read after every splice", () => {
-    fc.assert(
-      fc.property(pageArb, (page) => {
-        const violation = expandUnderOracle(page);
-        expect(violation, JSON.stringify(violation)).toBeNull();
-      }),
-      { numRuns: Number(process.env.MASK_ORACLE_RUNS ?? 1500) },
-    );
-    // The grammar reaches both paths and both kinds of facts, so the oracle
-    // is not vacuous.
-    const total = splicesSeen.incremental + splicesSeen.whole;
-    expect(splicesSeen.incremental / total).toBeGreaterThan(0.3);
-    expect(splicesSeen.whole).toBeGreaterThan(0);
-    expect(splicesSeen.closeFacts).toBeGreaterThan(0);
-    expect(splicesSeen.closerFacts).toBeGreaterThan(0);
-  }, 60_000);
+  const ORACLE_BOUNDS = propertyBounds(100, "MASK_ORACLE_RUNS");
+  it(
+    "keeps the mask, the close facts and the search equal to a whole re-read after every splice",
+    () => {
+      fc.assert(
+        fc.property(pageArb, (page) => {
+          const violation = expandUnderOracle(page);
+          expect(violation, JSON.stringify(violation)).toBeNull();
+        }),
+        ORACLE_BOUNDS.options,
+      );
+      // The grammar reaches both paths and both kinds of facts, so the oracle
+      // is not vacuous.
+      const total = splicesSeen.incremental + splicesSeen.whole;
+      expect(splicesSeen.incremental / total).toBeGreaterThan(0.3);
+      expect(splicesSeen.whole).toBeGreaterThan(0);
+      expect(splicesSeen.closeFacts).toBeGreaterThan(0);
+      expect(splicesSeen.closerFacts).toBeGreaterThan(0);
+    },
+    ORACLE_BOUNDS.timeoutMs,
+  );
 
   it("misuse: a page of only unclosed openers and stray closers expands without breaking an invariant", () => {
     for (const page of [

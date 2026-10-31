@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -86,45 +87,54 @@ describe("createIdMarkerTest agrees with the id marker regex", () => {
     );
   });
 
-  it("on generated markup", () => {
-    const piece = fc.constantFrom(
-      " ",
-      "\t",
-      " ",
-      " ",
-      "id",
-      "ID",
-      "Id",
-      "=",
-      '"',
-      "'",
-      "/",
-      ">",
-      "<",
-      "`",
-      "__",
-      "_",
-      "panel-0",
-      "PANEL-0",
-      "bascik__card__i1__panel-0",
-      "b1A2b3C4d5E6",
-      "x",
-      "ı",
-      "K",
-    );
-    fc.assert(
-      fc.property(
-        fc.array(piece, { maxLength: 14 }).map((parts) => parts.join("")),
-        fc.constantFrom(undefined, "bascik__card__i1__panel-0", "b1A2b3C4d5E6"),
-        (html, scoped) => {
-          expect(scannerAnswers(html, "panel-0", scoped)).toEqual(
-            regexAnswers(html, "panel-0", scoped),
-          );
-        },
-      ),
-      { numRuns: 3000 },
-    );
-  });
+  const MARKUP_BOUNDS = propertyBounds(3000);
+  it(
+    "on generated markup",
+    () => {
+      const piece = fc.constantFrom(
+        " ",
+        "\t",
+        " ",
+        " ",
+        "id",
+        "ID",
+        "Id",
+        "=",
+        '"',
+        "'",
+        "/",
+        ">",
+        "<",
+        "`",
+        "__",
+        "_",
+        "panel-0",
+        "PANEL-0",
+        "bascik__card__i1__panel-0",
+        "b1A2b3C4d5E6",
+        "x",
+        "ı",
+        "K",
+      );
+      fc.assert(
+        fc.property(
+          fc.array(piece, { maxLength: 14 }).map((parts) => parts.join("")),
+          fc.constantFrom(
+            undefined,
+            "bascik__card__i1__panel-0",
+            "b1A2b3C4d5E6",
+          ),
+          (html, scoped) => {
+            expect(scannerAnswers(html, "panel-0", scoped)).toEqual(
+              regexAnswers(html, "panel-0", scoped),
+            );
+          },
+        ),
+        MARKUP_BOUNDS.options,
+      );
+    },
+    MARKUP_BOUNDS.timeoutMs,
+  );
 
   it("declines names the scanner does not cover, so the regex stays in charge", () => {
     // Characters with a role in the marker, and non-ASCII names (the `i`

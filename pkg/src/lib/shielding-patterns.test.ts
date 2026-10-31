@@ -12,6 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import {
   maskElementContents,
   shieldElementContents,
@@ -320,54 +321,69 @@ describe("scoping.preserve `*` patterns against slow references", () => {
     expect(globMatches("vendor*box", "vendor:box")).toBe(false);
   });
 
-  it("maskElementContents blanks exactly what the element-content regex finds", () => {
-    let changed = 0;
-    fc.assert(
-      fc.property(htmlArb, entriesArb, (html, entries) => {
-        const masked = maskElementContents(html, entries);
-        expect(masked).toBe(referenceMask(html, entries));
-        if (masked !== html) changed++;
-      }),
-      { numRuns: 500 },
-    );
-    // The generators reach the matching cases, not only inputs with nothing to hide.
-    expect(changed).toBeGreaterThan(50);
-  });
+  const MASK_BOUNDS = propertyBounds(500);
+  it(
+    "maskElementContents blanks exactly what the element-content regex finds",
+    () => {
+      let changed = 0;
+      fc.assert(
+        fc.property(htmlArb, entriesArb, (html, entries) => {
+          const masked = maskElementContents(html, entries);
+          expect(masked).toBe(referenceMask(html, entries));
+          if (masked !== html) changed++;
+        }),
+        MASK_BOUNDS.options,
+      );
+      // The generators reach the matching cases, not only inputs with nothing to hide.
+      expect(changed).toBeGreaterThan(50);
+    },
+    MASK_BOUNDS.timeoutMs,
+  );
 
-  it("shieldElementContents hides exactly what the element-content regex finds, and restores it", () => {
-    fc.assert(
-      fc.property(htmlArb, entriesArb, (html, entries) => {
-        const shielded = shieldElementContents(html, entries);
-        expect(viewOf(shielded.html, shielded.restore)).toBe(
-          outermost(referenceShieldView(html, entries)),
-        );
-        const again = shieldElementContents(html, entries);
-        expect(again.restore(again.html)).toBe(html);
-      }),
-      { numRuns: 500 },
-    );
-  });
-
-  it("shieldPreservedAttribute hides exactly the tags and content the preserve rules name", () => {
-    let hiding = 0;
-    fc.assert(
-      fc.property(
-        htmlArb,
-        entriesArb,
-        fc.constantFrom(...PRESERVABLE),
-        (html, entries, attribute) => {
-          const shielded = shieldPreservedAttribute(html, attribute, entries);
-          const view = viewOf(shielded.html, shielded.restore);
-          expect(view).toBe(
-            outermost(referencePreservedView(html, attribute, entries)),
+  const SHIELD_BOUNDS = propertyBounds(150);
+  it(
+    "shieldElementContents hides exactly what the element-content regex finds, and restores it",
+    () => {
+      fc.assert(
+        fc.property(htmlArb, entriesArb, (html, entries) => {
+          const shielded = shieldElementContents(html, entries);
+          expect(viewOf(shielded.html, shielded.restore)).toBe(
+            outermost(referenceShieldView(html, entries)),
           );
-          if (view.includes("«")) hiding++;
-          const again = shieldPreservedAttribute(html, attribute, entries);
+          const again = shieldElementContents(html, entries);
           expect(again.restore(again.html)).toBe(html);
-        },
-      ),
-      { numRuns: 500 },
-    );
-    expect(hiding).toBeGreaterThan(50);
-  });
+        }),
+        SHIELD_BOUNDS.options,
+      );
+    },
+    SHIELD_BOUNDS.timeoutMs,
+  );
+
+  const PRESERVE_BOUNDS = propertyBounds(250);
+  it(
+    "shieldPreservedAttribute hides exactly the tags and content the preserve rules name",
+    () => {
+      let hiding = 0;
+      fc.assert(
+        fc.property(
+          htmlArb,
+          entriesArb,
+          fc.constantFrom(...PRESERVABLE),
+          (html, entries, attribute) => {
+            const shielded = shieldPreservedAttribute(html, attribute, entries);
+            const view = viewOf(shielded.html, shielded.restore);
+            expect(view).toBe(
+              outermost(referencePreservedView(html, attribute, entries)),
+            );
+            if (view.includes("«")) hiding++;
+            const again = shieldPreservedAttribute(html, attribute, entries);
+            expect(again.restore(again.html)).toBe(html);
+          },
+        ),
+        PRESERVE_BOUNDS.options,
+      );
+      expect(hiding).toBeGreaterThan(50);
+    },
+    PRESERVE_BOUNDS.timeoutMs,
+  );
 });

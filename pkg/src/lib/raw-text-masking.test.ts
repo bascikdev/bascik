@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import { parse, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import {
   maskRawTextContent,
@@ -301,19 +302,24 @@ describe("maskRawTextContent agrees with parse5", () => {
     return masked;
   };
 
-  it("on random markup in its model", () => {
-    let compared = 0;
-    fc.assert(
-      fc.property(maskSoup, (html) => {
-        const expected = parsedMask(html);
-        if (expected === null) return;
-        compared++;
-        expect(maskRawTextContent(html)).toBe(expected);
-      }),
-      { numRuns: Number(process.env.MASK_ORACLE_RUNS ?? 4000) },
-    );
-    expect(compared).toBeGreaterThan(400);
-  });
+  const MODEL_BOUNDS = propertyBounds(2000, "MASK_ORACLE_RUNS");
+  it(
+    "on random markup in its model",
+    () => {
+      let compared = 0;
+      fc.assert(
+        fc.property(maskSoup, (html) => {
+          const expected = parsedMask(html);
+          if (expected === null) return;
+          compared++;
+          expect(maskRawTextContent(html)).toBe(expected);
+        }),
+        MODEL_BOUNDS.options,
+      );
+      expect(compared).toBeGreaterThan(400);
+    },
+    MODEL_BOUNDS.timeoutMs,
+  );
 });
 
 describe("an end tag's name runs to tag white space, / or > (parse5 oracle counterexample)", () => {

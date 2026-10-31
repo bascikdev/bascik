@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import {
   createAttributeValueScanner,
   getFirstComponent,
@@ -277,42 +278,49 @@ describe("scanWholeAttributes reads values the way the browser does", () => {
     expect(await scan(tag)).toEqual(expected);
   });
 
-  it("agrees with parse5 on the attributes of arbitrary tags", async () => {
-    const { parseFragment } = await import("parse5");
-    const { scanWholeAttributes } =
-      await import("./component-attribute-scan.ts");
-    // ASCII whitespace only: the scanner splits on everything JavaScript's
-    // \s matches (see above), wider than HTML. No `&`, so values need no
-    // character reference decoding.
-    const alphabet = [..."ab=/>\"'`< \t\n"];
-    fc.assert(
-      fc.property(
-        fc.array(fc.constantFrom(...alphabet), { maxLength: 30 }),
-        (chars) => {
-          const tag = `<x ${chars.join("")}>`;
-          const element = parseFragment(tag).childNodes[0];
-          // An unclosed quote runs to the end, where the tag is dropped.
-          if (!element || !("attrs" in element)) return;
-          const seen = new Set<string>();
-          const scanned: { name: string; value: string }[] = [];
-          for (const a of scanWholeAttributes(tag)) {
-            const name = a.name.toLowerCase();
-            if (seen.has(name)) continue;
-            seen.add(name);
-            scanned.push({
-              name,
-              value:
-                a.valueStart === -1 ? "" : tag.slice(a.valueStart, a.valueEnd),
-            });
-          }
-          expect(scanned).toEqual(
-            element.attrs.map((a) => ({ name: a.name, value: a.value })),
-          );
-        },
-      ),
-      { numRuns: 2000 },
-    );
-  });
+  const PARSE5_BOUNDS = propertyBounds(2000);
+  it(
+    "agrees with parse5 on the attributes of arbitrary tags",
+    async () => {
+      const { parseFragment } = await import("parse5");
+      const { scanWholeAttributes } =
+        await import("./component-attribute-scan.ts");
+      // ASCII whitespace only: the scanner splits on everything JavaScript's
+      // \s matches (see above), wider than HTML. No `&`, so values need no
+      // character reference decoding.
+      const alphabet = [..."ab=/>\"'`< \t\n"];
+      fc.assert(
+        fc.property(
+          fc.array(fc.constantFrom(...alphabet), { maxLength: 30 }),
+          (chars) => {
+            const tag = `<x ${chars.join("")}>`;
+            const element = parseFragment(tag).childNodes[0];
+            // An unclosed quote runs to the end, where the tag is dropped.
+            if (!element || !("attrs" in element)) return;
+            const seen = new Set<string>();
+            const scanned: { name: string; value: string }[] = [];
+            for (const a of scanWholeAttributes(tag)) {
+              const name = a.name.toLowerCase();
+              if (seen.has(name)) continue;
+              seen.add(name);
+              scanned.push({
+                name,
+                value:
+                  a.valueStart === -1
+                    ? ""
+                    : tag.slice(a.valueStart, a.valueEnd),
+              });
+            }
+            expect(scanned).toEqual(
+              element.attrs.map((a) => ({ name: a.name, value: a.value })),
+            );
+          },
+        ),
+        PARSE5_BOUNDS.options,
+      );
+    },
+    PARSE5_BOUNDS.timeoutMs,
+  );
 });
 
 describe("scanWholeAttributes separators", () => {
@@ -466,21 +474,26 @@ describe("readStartTag", () => {
     expect(readStartTag(html).end).toBe(-1);
   });
 
-  it("agrees with a second scan of the start tag on any input", async () => {
-    const { readStartTag, scanWholeAttributes } =
-      await import("./component-attribute-scan.ts");
-    fc.assert(
-      fc.property(
-        fc.stringMatching(/^<[a-z][a-z-]{0,6}[ a-z=/"'<>`-]{0,40}$/),
-        fc.string({ maxLength: 10 }),
-        (tag, rest) => {
-          const html = tag + rest;
-          const { attributes, end } = readStartTag(html);
-          if (end === -1) return;
-          expect(attributes).toEqual(scanWholeAttributes(html.slice(0, end)));
-        },
-      ),
-      { numRuns: 2000 },
-    );
-  });
+  const START_TAG_BOUNDS = propertyBounds(2000);
+  it(
+    "agrees with a second scan of the start tag on any input",
+    async () => {
+      const { readStartTag, scanWholeAttributes } =
+        await import("./component-attribute-scan.ts");
+      fc.assert(
+        fc.property(
+          fc.stringMatching(/^<[a-z][a-z-]{0,6}[ a-z=/"'<>`-]{0,40}$/),
+          fc.string({ maxLength: 10 }),
+          (tag, rest) => {
+            const html = tag + rest;
+            const { attributes, end } = readStartTag(html);
+            if (end === -1) return;
+            expect(attributes).toEqual(scanWholeAttributes(html.slice(0, end)));
+          },
+        ),
+        START_TAG_BOUNDS.options,
+      );
+    },
+    START_TAG_BOUNDS.timeoutMs,
+  );
 });
