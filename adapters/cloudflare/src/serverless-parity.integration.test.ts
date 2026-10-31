@@ -743,6 +743,45 @@ const instancesOf = (
     ),
   ].map((m) => ({ id: m[1], className: m[2], index: m.index ?? -1 }));
 
+/**
+ * The outer HTML of every element carrying `data-testid="<testid>"` (quoted
+ * or, under minify.html, unquoted), up to its first closing tag of the same
+ * name: the scoping fixtures nest no element of their root's own name.
+ */
+const rootsOf = (html: string, testid: string): string[] =>
+  [
+    ...html.matchAll(
+      new RegExp(
+        `<(div|section)\\b[^>]*\\bdata-testid="?${testid}"?[\\s>][\\s\\S]*?</\\1>`,
+        "g",
+      ),
+    ),
+  ].map((m) => m[0]);
+
+/** The text of every `<style>` block of `html`, in document order. */
+const styleTexts = (html: string): string[] =>
+  [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+
+/**
+ * `text` with every instance-dependent name numbered by first appearance:
+ * the instance id inside readable names (a build id is 8 hex, a request id
+ * `r` + 7 hex), or every 12-character hash under minify.identifiers. Two
+ * renders of the same markup for different instances then compare equal.
+ */
+const numberInstanceNames = (text: string): string => {
+  const seen = new Map<string, number>();
+  const number = (token: string): string => {
+    if (!seen.has(token)) seen.set(token, seen.size);
+    return `#${seen.get(token)}`;
+  };
+  return text
+    .replace(
+      /__(r[0-9a-f]{7}|[0-9a-f]{8})__/g,
+      (_m, id: string) => `__${number(id)}__`,
+    )
+    .replace(/\bb[0-9a-zA-Z]{11}\b/g, (hash) => number(hash));
+};
+
 const PRODUCT_NAMES = [
   "Pour-over kettle",
   "Ceramic dripper",
@@ -876,6 +915,52 @@ for (const config of [
         expect(Number(head.headers.get("content-length")), host).toBe(
           Buffer.byteLength(body, "utf8"),
         );
+      }
+    });
+
+    it("components-scoping.html: escaped classes and @layer render identically on both hosts and exactly as the build scopes the same tags (prompt 158)", async () => {
+      const { node: n, cf } = await both("/components-scoping");
+      expect(n.status).toBe(200);
+      expect(cf.status).toBe(200);
+      expect(cf.body).toBe(n.body);
+      expect(markup(cf.body)).not.toContain("<edge-");
+      const built = (await both("/components-scoping-static")).cf.body;
+      expect(markup(built)).not.toContain("<edge-");
+
+      // Shared classes: every instance is the build's bytes.
+      for (const testid of ["edge-escaped", "edge-layer"]) {
+        const requested = rootsOf(cf.body, testid);
+        expect(requested, testid).toHaveLength(4);
+        expect(requested, testid).toEqual(rootsOf(built, testid));
+      }
+      // Per-instance classes (url(#id)): the same bytes once each instance's
+      // id-dependent names are numbered by first appearance.
+      const glow = rootsOf(cf.body, "edge-glow");
+      expect(glow).toHaveLength(4);
+      expect(new Set(glow).size).toBe(4);
+      expect(glow.map(numberInstanceNames)).toEqual(
+        rootsOf(built, "edge-glow").map(numberInstanceNames),
+      );
+      // The stylesheets: one block per response for each shared component,
+      // one per instance otherwise; together the build's page stylesheet.
+      const requestCss = styleTexts(cf.body);
+      expect(requestCss).toHaveLength(2 + 4);
+      expect(numberInstanceNames(requestCss.join(""))).toBe(
+        numberInstanceNames(styleTexts(built).join("")),
+      );
+      if (!config.identifiers) {
+        expect(requestCss[0]).toContain(
+          ".bascik__edge-escaped__md\\:flex .bascik__edge-escaped__el__p",
+        );
+        // The space ending the hex escape stays apart from the combinator.
+        expect(requestCss[0]).toContain(
+          ".bascik__edge-escaped__esc\\1  .bascik__edge-escaped__el__b",
+        );
+        expect(requestCss[1]).toContain(
+          "@layer bascik__edge-layer__layer__base.bascik__edge-layer__layer__theme,",
+        );
+        for (const block of requestCss.slice(2))
+          expect(block).toMatch(/bascik__edge-glow__r[0-9a-f]{7}__glow/);
       }
     });
 

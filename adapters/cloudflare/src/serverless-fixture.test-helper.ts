@@ -775,6 +775,38 @@ export default async function () { return '<yield-card></yield-card><p data-test
     options.signal.addEventListener("abort", () => resolve(new Response("yielded-late")), { once: true });
   });`,
   );
+
+  // Scoping-template parity (prompt 158 R2-02): escaped and non-ASCII class
+  // selectors, an escape before a descendant element, dotted @layer names,
+  // and one component whose classes are scoped per instance (url(#id)).
+  // The same tags are written into a static page (scoped at build time, four
+  // times, so the build reuses its template) and returned by a server script
+  // (rendered from the manifest per request).
+  const scopingEdges: Record<string, string> = {
+    "edge-escaped": `<div class="md:flex a:b café" data-testid="edge-escaped"><p>x</p><span class="w-1/2">y</span><b class="esc\u0001">z</b></div>
+<style>.md\\:flex p { display: flex; } .a\\:b { color: rgb(25, 26, 27); } .café span { margin: 0; } .w-1\\/2 { width: 50%; } .esc\\1  b { font-weight: 700; }</style>`,
+    "edge-layer": `<section class="a b" data-testid="edge-layer"><p>x</p></section>
+<style>@layer base.theme, base.reset; @layer base.theme { .a p { color: rgb(28, 29, 30); } } @layer base.reset { .b { margin: 0; } }</style>`,
+    "edge-glow": `<div class="md:flex glow" data-testid="edge-glow"><svg><filter id="glow"></filter></svg><p>x</p></div>
+<style>.glow { filter: url(#glow); } .md\\:flex p { color: rgb(31, 32, 33); } @layer base.theme { .glow p { margin: 0; } }</style>`,
+  };
+  for (const [name, html] of Object.entries(scopingEdges))
+    await write(root, `src/components/${name}/${name}.html`, html);
+  const scopingTags = Object.keys(scopingEdges)
+    .map((name) => `<${name}></${name}>`.repeat(4))
+    .join("");
+  await page(
+    "src/pages/components-scoping-static.html",
+    "Scoping static",
+    `<main data-testid="slot">${scopingTags}</main>`,
+  );
+  await page(
+    "src/pages/components-scoping.html",
+    "Scoping",
+    `<main data-testid="slot"><script data-bascik-server>
+export default function () { return ${JSON.stringify(scopingTags)}; }
+</script></main>`,
+  );
 };
 
 /** A component whose server script imports a builtin Workers does not provide. */
