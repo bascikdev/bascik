@@ -176,6 +176,37 @@ One plan.
     expect(testIdAdvisory(root)).toEqual([]);
   });
 
+  it("skips a head component whose root is another component that renders only head tags", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<meta name="color-scheme" content="light dark" />\n<script>document.documentElement.dataset.ready = "1";</script>\n`,
+    );
+    write(
+      "src/components/site-head/site-head.html",
+      `<meta charset="utf-8" />\n<theme-init />\n<link rel="stylesheet" href="/css/styles.css" />\n`,
+    );
+    write(
+      "src/components/fancy-head/fancy-head.html",
+      `<site-head />\n<link rel="icon" href="/favicon.svg" />\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root)).toEqual([]);
+  });
+
+  it("misuse: still asks for a test id on a root that is a component with body markup", () => {
+    write(
+      "src/components/plain-card/plain-card.html",
+      `<article class="card" data-testid="plain-card"><slot-x /></article>\n`,
+    );
+    write("src/components/promo-card/promo-card.html", `<plain-card />\n`);
+    write("src/components/ghost-tag/ghost-tag.html", `<not-a-component />\n`);
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<not-a-component> root of <ghost-tag> has no data-testid; add data-testid="ghost-tag"',
+      '<plain-card> root of <promo-card> has no data-testid; add data-testid="promo-card"',
+    ]);
+  });
+
   it("reads the component and page folders from the project config", () => {
     write(
       "site/parts/promo-box/promo-box.html",
