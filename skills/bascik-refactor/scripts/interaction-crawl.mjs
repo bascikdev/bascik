@@ -38,8 +38,9 @@ URL, aria-expanded, open and hidden changes, form values (a quantity stepper), c
 dialog, a menu, a disclosure) is opened again and the controls inside it are crawled too, one level deep (a dialog's
 Close). What the page changes on its own with no activation (a carousel, a ticker, a late banner, a modal on a timer)
 is not counted as any control's effect. Then it finds the same element on the target by test id, role and accessible
-name, in-page href or text, does the same, and reports missing elements and missing or different effects. Exits 1 on
-any finding.
+name, in-page href or text, does the same, and reports missing elements and missing or different effects. An element
+whose selector finds nothing after the fresh load (an id that changes per load) is found again by the same anchors; a
+target element that still cannot be activated is reported as unmeasured, never passed. Exits 1 on any finding.
 
 Options:
   --prod <url>      Live production origin
@@ -611,8 +612,36 @@ async function press(locator, mode) {
 }
 
 /**
+ * In the page: the selector of the one rendered element whose anchor is `arg.anchor` (the same test id; else the same
+ * role and accessible name; else the same in-page href; else the same text, always on the same tag), or null when no
+ * element or more than one matches (repeated cards whose ids change per load cannot be told apart).
+ */
+function relocate(arg) {
+  const want = arg.anchor;
+  const els = [...document.querySelectorAll("*")].filter(
+    (el) =>
+      tagOf(el) === want.tag && isRendered(el) && !isMasked(el, arg.masks),
+  );
+  const anchors = els.map((el) => anchorOf(el, want.mode));
+  const tries = [
+    (c) => want.testId && c.testId === want.testId,
+    (c) =>
+      norm(want.name) && c.role === want.role && c.name === norm(want.name),
+    (c) => want.href && c.href === want.href,
+    (c) => norm(want.text) && c.text === norm(want.text),
+  ];
+  for (const test of tries) {
+    const hits = els.filter((_, i) => test(anchors[i]));
+    if (hits.length === 1) return selectorOf(hits[0]);
+    if (hits.length > 1) return null;
+  }
+  return null;
+}
+
+/**
  * Activates `item` (a click, or a hover for anchor.mode "hover") from a fresh load of the route and returns its
- * effect, or null when the element is gone after the reload (it rendered late or at random). An item found inside an
+ * effect. When its selector finds nothing after the reload, the element is found again by its anchor (relocate); the
+ * effect is null when that fails too (it rendered late, or is one of several look-alikes whose ids change per load). An item found inside an
  * opened layer carries the controls that open it in `via`; they are activated first, without being measured. The
  * element is scrolled into view before the state is recorded, so the scroll a click causes is measured from where the
  * visitor clicks it (a "Back to top" link in the footer), and content that fades in as it scrolls into view is not
@@ -632,8 +661,21 @@ export async function activate(page, origin, route, item, options = {}) {
     await press(opener, step.anchor?.mode ?? "click");
     await inPage(page, afterActivation, { masks }).catch(() => {});
   }
-  const locator = page.locator(selector).first();
-  if ((await locator.count()) === 0) return null;
+  let target = selector;
+  if ((await page.locator(target).count()) === 0) {
+    // The selector changed between loads (an id a script randomizes per load): find the element by its anchor.
+    const again =
+      typeof item === "string"
+        ? null
+        : await inPage(
+            page,
+            `function (arg) { ${anchorOf}\nreturn (${relocate})(arg); }`,
+            { anchor: item.anchor, masks },
+          ).catch(() => null);
+    if (!again) return null;
+    target = again;
+  }
+  const locator = page.locator(target).first();
   // An element production showed on a timer (a cookie banner's button, a timed modal's Close) is clicked once it shows,
   // on both sides, not before.
   await locator
@@ -643,7 +685,7 @@ export async function activate(page, origin, route, item, options = {}) {
   await inPage(page, afterActivation, { masks }).catch(() => {});
   const arg = {
     shown: SHOWN_SELECTOR,
-    trigger: selector,
+    trigger: target,
     base,
     masks,
     skip: volatile.shown ?? [],
@@ -756,8 +798,9 @@ function effectText(e) {
 
 /**
  * Compares production's recorded effects with the target's: [{ anchor, effect }] on each side. Returns findings of
- * kind missing-element (no matching target element), missing-effect (production does something the target does not)
- * and different-effect (both act, differently, or the target acts where production does not).
+ * kind missing-element (no matching target element), unmeasured (the target element was matched but could not be
+ * activated after a fresh load, effect null), missing-effect (production does something the target does not) and
+ * different-effect (both act, differently, or the target acts where production does not).
  */
 export function diffEffects(prod, target) {
   const findings = [];
@@ -781,7 +824,20 @@ export function diffEffects(prod, target) {
     used.add(i);
     const a = p.effect;
     const b = target[i].effect;
-    if (!a || !b) continue;
+    // Production unmeasured (its element was gone after the reload): nothing recorded to hold the target to. The target
+    // unmeasured while production did something is not a pass: its effect was never seen.
+    if (!a) continue;
+    if (!b) {
+      findings.push(
+        finding(
+          CHECK,
+          "unmeasured",
+          `${who} is on the target, but after a fresh load the crawl found it neither by its selector nor by its test id, role and name, href or text, so its effect was never measured${effectText(a)}; give it a stable id or data-testid`,
+          fields,
+        ),
+      );
+      continue;
+    }
     const add = (kind, message) =>
       findings.push(finding(CHECK, kind, `${who}: ${message}`, fields));
     if (scrolls(a) && !scrolls(b))

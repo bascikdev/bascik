@@ -230,3 +230,69 @@ describe("what a page changes by itself, with the timing forced", () => {
     }
   }, 60_000);
 });
+
+/**
+ * A menu button (and, with `twins`, a second look-alike) whose id a script randomizes on every load, so the selector
+ * recorded at discovery finds nothing after activate()'s reload.
+ */
+const randomIds = (twins: boolean) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>Menu · Milk frother</title></head>
+<body>
+<header>
+  <button type="button" aria-expanded="false" data-role="menu">Menu</button>
+  ${twins ? '<button type="button" aria-expanded="false" data-role="menu">Menu</button>' : ""}
+</header>
+<script>
+for (const button of document.querySelectorAll("[data-role=menu]")) {
+  button.id = "menu-" + Math.random().toString(16).slice(2, 6);
+  button.addEventListener("click", () => button.setAttribute("aria-expanded", "true"));
+}
+</script>
+</body></html>`;
+
+describe("an element whose selector changes between loads", () => {
+  const menu = {
+    selector: "#menu-3f9a",
+    anchor: {
+      mode: "click",
+      tag: "BUTTON",
+      role: "button",
+      name: "Menu",
+      text: "Menu",
+      href: null,
+      testId: null,
+    },
+  };
+  const effectOnMenu = async (twins: boolean) => {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      await tab.route(
+        "http://crawl.test/**",
+        (route: { fulfill: (o: object) => Promise<void> }) =>
+          route.fulfill({ contentType: "text/html", body: randomIds(twins) }),
+      );
+      return await activate(tab, "http://crawl.test/", "/", menu, {
+        masks: [],
+        volatile: {},
+        settleMs: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  };
+
+  it("is found again by its role and name, so its effect is still measured", async () => {
+    const effect = await effectOnMenu(false);
+    expect(effect?.changed.join("\n")).toContain(
+      "aria-expanded: false -> true",
+    );
+  }, 60_000);
+
+  it("is left unmeasured, not guessed, when look-alikes share its anchor", async () => {
+    // Two "Menu" buttons with fresh ids: picking either could measure the wrong one. diffEffects reports it.
+    expect(await effectOnMenu(true)).toBeNull();
+  }, 60_000);
+});

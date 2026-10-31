@@ -210,6 +210,33 @@ describe("diffEffects", () => {
     expect(findings[0].message).toContain("Book a demo");
   });
 
+  it("a target element found at discovery but not measured after the reload is unmeasured, never a silent pass", () => {
+    // Its selector changed between loads (an id a script randomizes per load), so activate() gave the target null.
+    const findings = diffEffects(
+      [
+        item(
+          { name: "Menu", text: "Menu" },
+          effect({ changed: ["aria-expanded: false -> true"] }),
+        ),
+      ],
+      [{ anchor: anchor({ name: "Menu", text: "Menu" }), effect: null }],
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].kind).toBe("unmeasured");
+    expect(findings[0].message).toContain('BUTTON "Menu"');
+    expect(findings[0].message).toContain("aria-expanded");
+  });
+
+  it("a production element that could not be measured is not blamed on the target", () => {
+    // Production is the reference the refactor cannot change; with nothing recorded there is nothing to compare.
+    expect(
+      diffEffects(
+        [{ anchor: anchor(), effect: null }],
+        [item({}, effect({ shown: ["DIALOG:See features"] }))],
+      ),
+    ).toEqual([]);
+  });
+
   it("an effect the target adds where production has none is reported", () => {
     const findings = diffEffects(
       [item({}, effect())],
