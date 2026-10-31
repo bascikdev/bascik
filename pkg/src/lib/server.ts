@@ -1246,7 +1246,8 @@ export const startServerInstance = async (
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
   // Strict like --port: a malformed value is ignored (config.ts warns about
-  // BASCIK_SERVER_PORT), never partly parsed, so `8080abc` is not port 8080.
+  // BASCIK_SERVER_PORT and PORT), never partly parsed, so `8080abc` is not
+  // port 8080.
   const envPortStr = process.env.BASCIK_SERVER_PORT || process.env.PORT;
   const envPort = parsePort(envPortStr);
   const rawStartPort =

@@ -21,7 +21,7 @@
  */
 
 import { LOG_LEVELS, QUIET_LOG_LEVEL } from "./log-level.ts";
-import { HOSTNAME_EXPECTATION, isPlausibleHostname } from "./server-address.ts";
+import { hostnameExpectation, isPlausibleHostname } from "./server-address.ts";
 
 export type CliAction =
   | "init"
@@ -323,11 +323,11 @@ const parseCliArgs = (
         break;
       }
       case "--host":
-        // The same rule as http.hostname: a URL or a host:port/path would
+        // The same rule as http.hostname: a URL, a path or a host:port would
         // otherwise reach server.listen as a raw getaddrinfo error.
         if (!isPlausibleHostname(value)) {
           valueErrors.push(
-            `Error: --host ${HOSTNAME_EXPECTATION} (received ${JSON.stringify(value)}). Pass the port with --port.`,
+            `Error: --host ${hostnameExpectation(value, "--port")} (received ${JSON.stringify(value)}).`,
           );
           return;
         }

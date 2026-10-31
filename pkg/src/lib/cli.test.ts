@@ -329,14 +329,38 @@ describe("cli helper tests", () => {
       },
     );
 
-    it.each(["localhost", "0.0.0.0", "::1", "example.com", "my-box.local"])(
-      "accepts --host %s",
+    // The F100 scenario itself: a host:port reached server.listen as
+    // getaddrinfo ENOTFOUND localhost:3000.
+    it.each(["localhost:3000", "0.0.0.0:8080", "localhost:"])(
+      "rejects --host %s and says to pass the port with --port",
       (value) => {
-        const decision = resolveCliAction(["--server", "--host", value]);
-        expect(decision.action).toBe("server");
-        expect(decision.flags.host).toBe(value);
+        for (const args of [
+          ["--server", "--host", value],
+          ["--server", `--host=${value}`],
+        ]) {
+          const decision = resolveCliAction(args);
+          expect(decision.action).toBe("error");
+          expect(decision.errorMessage).toContain("--host");
+          expect(decision.errorMessage).toContain(JSON.stringify(value));
+          expect(decision.errorMessage).toContain("without a port");
+          expect(decision.errorMessage).toContain("--port");
+        }
       },
     );
+
+    it.each([
+      "localhost",
+      "0.0.0.0",
+      "::1",
+      "::",
+      "fe80::1",
+      "example.com",
+      "my-box.local",
+    ])("accepts --host %s", (value) => {
+      const decision = resolveCliAction(["--server", "--host", value]);
+      expect(decision.action).toBe("server");
+      expect(decision.flags.host).toBe(value);
+    });
 
     it("rejects an unknown --log-level", () => {
       const decision = resolveCliAction(["--build", "--log-level", "bogus"]);

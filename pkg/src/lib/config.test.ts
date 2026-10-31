@@ -735,6 +735,15 @@ describe("readServerHostEnv", () => {
       expect(message).toContain("not a URL or path");
     },
   );
+
+  it.each(["localhost:3000", "0.0.0.0:8080"])(
+    "throws for the host:port %s, pointing at BASCIK_SERVER_PORT",
+    (value) => {
+      expect(() => readServerHostEnv(value)).toThrow(
+        `BASCIK_SERVER_HOST "${value}": expected a hostname without a port, like "localhost"; set the port with BASCIK_SERVER_PORT`,
+      );
+    },
+  );
 });
 
 // F104: BASCIK_SERVER_PORT gets the --port rule; a malformed value is
@@ -770,6 +779,21 @@ describe("readServerPortEnv", () => {
       expect(String(warn.mock.calls[0][0])).toContain(
         `BASCIK_SERVER_PORT "${value}"`,
       );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("names PORT in the warning when it reads PORT", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv("8080abc", "PORT")).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        'ignoring PORT "8080abc"',
+      );
+      expect(readServerPortEnv("3000", "PORT")).toBe(3000);
+      expect(warn).toHaveBeenCalledTimes(1);
     } finally {
       warn.mockRestore();
     }

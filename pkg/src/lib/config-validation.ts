@@ -20,7 +20,7 @@ import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
-import { HOSTNAME_EXPECTATION, isPlausibleHostname } from "./server-address.ts";
+import { hostnameExpectation, isPlausibleHostname } from "./server-address.ts";
 import {
   CSP_DIRECTIVES,
   CSP_KEYWORDS,
@@ -557,7 +557,11 @@ export const validateConfigShape = (
     if (http.hostname !== undefined) {
       const hostname = http.hostname;
       if (!isPlausibleHostname(hostname)) {
-        push("http.hostname", hostname, HOSTNAME_EXPECTATION);
+        push(
+          "http.hostname",
+          hostname,
+          hostnameExpectation(hostname, "http.port"),
+        );
       }
     }
     if (http.tls !== undefined && !isPlainObject(http.tls)) {

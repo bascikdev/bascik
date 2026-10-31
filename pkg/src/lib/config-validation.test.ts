@@ -125,6 +125,17 @@ describe("http.hostname", () => {
     ).toHaveLength(1);
   });
 
+  it.each(["localhost:3000", "0.0.0.0:8080"])(
+    "rejects the host:port %s, pointing at http.port",
+    (hostname) => {
+      const errors = validateConfigShape({ http: { hostname } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.hostname");
+      expect(errors[0].message).toContain("without a port");
+      expect(errors[0].message).toContain("http.port");
+    },
+  );
+
   it("accepts plain hostnames", () => {
     expect(
       validateConfigShape({ http: { hostname: "localhost" } }),
@@ -135,6 +146,10 @@ describe("http.hostname", () => {
     expect(validateConfigShape({ http: { hostname: "0.0.0.0" } })).toHaveLength(
       0,
     );
+    // IPv6 addresses have two colons or more; they are not a host:port.
+    for (const hostname of ["::1", "::", "fe80::1"]) {
+      expect(validateConfigShape({ http: { hostname } }), hostname).toEqual([]);
+    }
   });
 });
 

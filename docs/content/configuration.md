@@ -94,7 +94,7 @@ The flags that override specific config keys:
 | `--log-level <level>` | `BASCIK_LOG_LEVEL`      | `logging.level` |
 | `--quiet`, `-q`       | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
 
-Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0` or a `host:port/path` is an error naming the flag or variable.
+Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. When `BASCIK_SERVER_PORT` is unset, the server reads `PORT`, the variable many hosting platforms set, by the same rule. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0`, a path, or a host with a port such as `localhost:3000` is an error naming the flag or variable. Pass the port on its own, with `--port`, `BASCIK_SERVER_PORT` or `http.port`.
 
 One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 

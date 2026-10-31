@@ -15,12 +15,40 @@ const PLAUSIBLE_HOSTNAME = /^[a-zA-Z0-9._:-]+$/;
 export const HOSTNAME_EXPECTATION =
   'expected a hostname like "localhost" or "example.com", not a URL or path';
 
-/** True for a bare hostname or IP address; false for a URL, path or blank. */
+/**
+ * A host with a port: one colon, then digits or nothing (`localhost:3000`,
+ * `0.0.0.0:8080`, `localhost:`). An IPv6 address has two colons or more.
+ */
+const HOST_WITH_PORT = /^[^:]+:\d*$/;
+
+/** True for a host written with a port, such as `localhost:3000`. */
+export const hasPortSuffix = (value: unknown): boolean =>
+  typeof value === "string" && HOST_WITH_PORT.test(value);
+
+/**
+ * What a hostname must look like, for the value received: a host:port gets
+ * a message naming the setting that takes the port (`--port`,
+ * `BASCIK_SERVER_PORT` or `http.port`), anything else HOSTNAME_EXPECTATION.
+ */
+export const hostnameExpectation = (
+  value: unknown,
+  portSetting: string,
+): string =>
+  hasPortSuffix(value)
+    ? `expected a hostname without a port, like "localhost"; set the port with ${portSetting}`
+    : HOSTNAME_EXPECTATION;
+
+/**
+ * True for a bare hostname or IP address; false for a URL, path, blank, or
+ * a host with a port (`localhost:3000` would reach server.listen as a raw
+ * getaddrinfo ENOTFOUND).
+ */
 export const isPlausibleHostname = (value: unknown): value is string =>
   typeof value === "string" &&
   value.length > 0 &&
   !value.includes("://") &&
-  PLAUSIBLE_HOSTNAME.test(value);
+  PLAUSIBLE_HOSTNAME.test(value) &&
+  !hasPortSuffix(value);
 
 /**
  * A port written as text: whole digits (surrounding whitespace allowed) from

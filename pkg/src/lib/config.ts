@@ -7,7 +7,7 @@ import { resolveCliAction } from "./cli.ts";
 import { LOG_LEVELS, shouldLog, type LogLevel } from "./log-level.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
-  HOSTNAME_EXPECTATION,
+  hostnameExpectation,
   isPlausibleHostname,
   parsePort,
 } from "./server-address.ts";
@@ -641,18 +641,21 @@ export const initBascikConfig = (
 };
 
 /**
- * `BASCIK_SERVER_PORT`, by the `--port` rule: whole digits from 1 to 65535.
- * A malformed value is ignored with a warning, never fatal and never partly
- * parsed (`8080abc` is not port 8080), so the configured port applies.
+ * `BASCIK_SERVER_PORT` (or `PORT`, which the server reads when
+ * `BASCIK_SERVER_PORT` is unset), by the `--port` rule: whole digits from 1
+ * to 65535. A malformed value is ignored with a warning naming the
+ * variable, never fatal and never partly parsed (`8080abc` is not port
+ * 8080), so the configured port applies.
  */
 export const readServerPortEnv = (
   raw: string | undefined,
+  variable: "BASCIK_SERVER_PORT" | "PORT" = "BASCIK_SERVER_PORT",
 ): number | undefined => {
   if (!raw?.trim()) return undefined;
   const port = parsePort(raw);
   if (port !== undefined) return port;
   console.warn(
-    `${colorErr.tag("warn", "[bascik] warning:")} ignoring BASCIK_SERVER_PORT ${JSON.stringify(raw)}: expected an integer between 1 and 65535.`,
+    `${colorErr.tag("warn", "[bascik] warning:")} ignoring ${variable} ${JSON.stringify(raw)}: expected an integer between 1 and 65535.`,
   );
   return undefined;
 };
@@ -669,7 +672,7 @@ export const readServerHostEnv = (
   if (!value) return undefined;
   if (!isPlausibleHostname(value))
     throw new Error(
-      `[bascik] error: invalid BASCIK_SERVER_HOST ${JSON.stringify(raw)}: ${HOSTNAME_EXPECTATION}.`,
+      `[bascik] error: invalid BASCIK_SERVER_HOST ${JSON.stringify(raw)}: ${hostnameExpectation(value, "BASCIK_SERVER_PORT")}.`,
     );
   return value;
 };
@@ -688,6 +691,11 @@ if (
   );
 }
 const envPort = readServerPortEnv(process.env.BASCIK_SERVER_PORT);
+// server.ts falls back to PORT (as hosting platforms set it) only when
+// BASCIK_SERVER_PORT is unset; warn about a malformed one here, once, since
+// the server ignores it. The value itself is still read at listen time.
+if (!process.env.BASCIK_SERVER_PORT)
+  readServerPortEnv(process.env.PORT, "PORT");
 const envHost = readServerHostEnv(process.env.BASCIK_SERVER_HOST);
 // Configuration errors name the file that was loaded (bascik.config.mjs, a
 // --config path), not a bascik.config.ts that may not exist.
