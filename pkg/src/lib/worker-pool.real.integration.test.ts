@@ -69,6 +69,25 @@ const BROKEN_TOP = `
 throw new Error("broken module");
 `;
 
+// Answers each task with a value the parent cannot deserialize, a "fake"
+// transferable naming a module that does not exist (needs
+// --expose-internals in the worker), then answers the next task normally.
+const UNREADABLE_RESULT = `
+import { parentPort } from "node:worker_threads";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { markTransferMode, kClone, kDeserialize } = require("internal/worker/js_transferable");
+class Unreadable {
+  constructor() { markTransferMode(this, true, false); }
+  [kClone]() { return { data: {}, deserializeInfo: "internal/bascik-does-not-exist:Unreadable" }; }
+  [kDeserialize]() {}
+}
+parentPort.on("message", (task) => {
+  if (task === "unreadable") parentPort.postMessage({ ok: true, result: new Unreadable() });
+  else parentPort.postMessage({ ok: true, result: task });
+});
+`;
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("WorkerPool real-worker lifecycle settlement", () => {
@@ -120,6 +139,36 @@ describe("WorkerPool real-worker lifecycle settlement", () => {
       await sleep(1200);
       const late = pool.run("after-idle");
       await expect(late).resolves.toEqual("after-idle");
+    } finally {
+      await pool.terminate();
+    }
+  }, 15_000);
+
+  it("rejects a task whose result fails to deserialize (messageerror) instead of leaving it pending", async () => {
+    const script = await fixture("messageerror", UNREADABLE_RESULT);
+    // The pool passes this thread's execArgv to its workers.
+    process.execArgv.push("--expose-internals");
+    let pool: WorkerPool<unknown, unknown>;
+    try {
+      pool = new WorkerPool<unknown, unknown>(script, 1, {});
+    } finally {
+      process.execArgv.pop();
+    }
+    try {
+      const lost = pool.run("unreadable");
+      const settled = await Promise.race([
+        lost.then(
+          () => "resolved",
+          (error: Error) => error.message,
+        ),
+        sleep(5000).then(() => "still pending"),
+      ]);
+      expect(settled).toMatch(
+        /result could not be received.*internal\/bascik-does-not-exist/,
+      );
+      // The same worker keeps serving.
+      await expect(pool.run("after")).resolves.toBe("after");
+      expect(pool.size).toBe(1);
     } finally {
       await pool.terminate();
     }

@@ -352,6 +352,22 @@ describe("processAllPages – worker failures in dev", () => {
     ]);
   });
 
+  it("names the page whose worker result could not be received", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    await failingPool(
+      () =>
+        new Error(
+          "Worker result could not be received (it did not survive the thread boundary): boom",
+        ),
+    )();
+    await processAllPages({ useWorkers: true });
+    const printed = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(printed).toContain(PAGE_PATH);
+    expect(printed).toContain(
+      "worker transpile: Worker result could not be received",
+    );
+  });
+
   it("keeps the worker transpile stage for a worker that crashed", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
     await failingPool(() => new Error("Worker exited with code 1"))();
