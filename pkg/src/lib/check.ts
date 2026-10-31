@@ -756,23 +756,29 @@ export const checkProject = async (
     }
   }
 
+  // A rejected directory.pages is already reported above; the check then
+  // runs on the default folder, which is not the user's to fix.
+  const pagesRejected = configErrors.some(
+    (error) => error.key === "directory.pages",
+  );
   let pageList: string[] = [];
   try {
     pageList = (await listPages()) ?? [];
   } catch (error) {
-    items.push({
-      category: "pages-directory",
-      severity: "error",
-      message: `could not read pages directory "${BascikConfig.directory?.pages ?? "src/pages"}": ${error instanceof Error ? error.message : String(error)}`,
-      locations: [{ filePath: configSource }],
-    });
+    if (!pagesRejected)
+      items.push({
+        category: "pages-directory",
+        severity: "error",
+        message: `could not read pages directory "${BascikConfig.directory?.pages ?? "src/pages"}": ${error instanceof Error ? error.message : String(error)}`,
+        locations: [{ filePath: configSource }],
+      });
   }
 
   const pagesDir = resolve(
     process.cwd(),
     BascikConfig.directory?.pages ?? "src/pages",
   );
-  if (existsSync(pagesDir) && pageList.length === 0) {
+  if (!pagesRejected && existsSync(pagesDir) && pageList.length === 0) {
     items.push({
       category: "pages-directory",
       severity: "error",

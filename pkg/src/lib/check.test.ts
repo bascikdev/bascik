@@ -1196,6 +1196,30 @@ describe("checkProject", () => {
       }
     });
 
+    // F096: a rejected directory.pages is reported once, as the config error;
+    // the default folder the check falls back to is not reported as well.
+    it("reports a missing directory.pages once, as a config error, not again as an unreadable default folder", async () => {
+      Object.assign(userConfigMock, { directory: { pages: "site-pages" } });
+      listPagesMock.mockRejectedValue(
+        Object.assign(new Error("ENOENT: no such file or directory"), {
+          code: "ENOENT",
+        }),
+      );
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const configItem = findings.items.find(
+        (i) =>
+          i.category === "config-validation" &&
+          i.message.startsWith("directory.pages:"),
+      );
+      expect(configItem?.severity).toBe("error");
+      expect(configItem?.message).toContain('"site-pages"');
+      expect(
+        findings.items.filter((i) => i.category === "pages-directory"),
+      ).toEqual([]);
+    });
+
     it("reports directory.pages as an error when it exists but has no html pages", async () => {
       await mkdir(join(workDir, "src/pages"), { recursive: true });
       listPagesMock.mockResolvedValue([]);

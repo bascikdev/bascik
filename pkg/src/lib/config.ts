@@ -377,6 +377,30 @@ export const normalizeComponentRoots = (
   return canonical;
 };
 
+/**
+ * A copy of one config layer without the settings validation rejected. An
+ * error key such as `pipeline.exec[0].phase` or `http.cacheControl[".css"]`
+ * drops the whole setting it belongs to (`pipeline.exec`,
+ * `http.cacheControl`), so a half-valid list never reaches the merge.
+ */
+const withoutRejectedKeys = (
+  layer: UserConfig | undefined,
+  errors: ConfigValidationError[],
+): UserConfig => {
+  if (!isPlainObject(layer)) return {};
+  const copy = deepClone(layer) as Record<string, unknown>;
+  for (const error of errors) {
+    const setting = error.key.split("[")[0];
+    const path = setting.split(".");
+    let parent: unknown = copy;
+    for (const segment of path.slice(0, -1)) {
+      parent = isPlainObject(parent) ? parent[segment] : undefined;
+    }
+    if (isPlainObject(parent)) delete parent[path[path.length - 1]];
+  }
+  return copy as UserConfig;
+};
+
 const normalizeExec = (
   exec: ExecEntry[] | undefined,
 ): ExecEntry[] | undefined => {
@@ -440,8 +464,25 @@ export const initBascikConfig = (
   );
   if (validationErrors.length > 0) {
     if (flags.allowInvalidConfig === true) {
-      effectiveUserConfig = {};
-      effectiveModeOverrides = {};
+      // `bascik --check` reports these errors itself and checks the rest of
+      // the project with what is left: drop only the rejected settings, so
+      // a valid directory block keeps pointing the check at the right folders.
+      effectiveUserConfig = withoutRejectedKeys(
+        safeUserConfig,
+        validationErrors,
+      );
+      effectiveModeOverrides = isPlainObject(modeOverrides)
+        ? "dev" in modeOverrides ||
+          "build" in modeOverrides ||
+          "server" in modeOverrides
+          ? Object.fromEntries(
+              Object.entries(modeOverrides).map(([mode, layer]) => [
+                mode,
+                withoutRejectedKeys(layer as UserConfig, validationErrors),
+              ]),
+            )
+          : withoutRejectedKeys(modeOverrides as UserConfig, validationErrors)
+        : {};
     } else {
       throw new Error(formatConfigErrors(validationErrors, flags.configFile));
     }

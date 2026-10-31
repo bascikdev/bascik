@@ -456,6 +456,8 @@ Key severity mapping details for configuration validation:
 - `pipeline.watchPaths[]` missing path: Warning
 - `assets.inlineStyles[]` missing path: Warning
 
+The rest of the check runs with the configuration minus the rejected settings: a mistyped `http.port` leaves `directory.pages` and every other valid setting in place, so pages and components are checked in the folders you configured. A rejected `directory.pages` is reported once, as a configuration error.
+
 Success exits with code `0` when no errors are found.
 
 ### Failing CI on warnings with `--strict`

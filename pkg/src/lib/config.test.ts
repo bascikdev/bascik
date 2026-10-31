@@ -642,3 +642,71 @@ describe("exec config normalization and merging", () => {
     ]);
   });
 });
+
+// F096: `bascik --check` keeps going past configuration errors so it can
+// report them with everything else. It used to drop the whole config to do
+// so, and then checked the default folders instead of the configured ones.
+describe("allowInvalidConfig (bascik --check)", () => {
+  const check = (userConfig: unknown, modeOverrides: unknown = {}) =>
+    initBascikConfig(
+      userConfig as never,
+      modeOverrides as never,
+      { allowInvalidConfig: true },
+      { fs: allowAllFs, env: {} },
+    ).BascikConfig;
+
+  it("keeps the valid settings and drops only the invalid key", () => {
+    const cfg = check({
+      directory: { pages: "pages" },
+      http: { port: 70000, hostname: "example.com" },
+    });
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.http.port).toBeUndefined();
+    expect(cfg.http.hostname).toBe("example.com");
+  });
+
+  it("drops an invalid key from the mode export and keeps the rest of it", () => {
+    const cfg = check(
+      { directory: { pages: "pages" } },
+      { dev: { logging: { copies: false, requests: "no" } } },
+    );
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.logging.copies).toBe(false);
+    expect(cfg.logging.requests).toBe(true);
+  });
+
+  it("drops a bad array entry's whole setting, not the section", () => {
+    const cfg = check({
+      directory: { pages: "pages" },
+      pipeline: {
+        workers: 2,
+        exec: [{ script: "scripts/a.ts", phase: "later" }],
+      },
+    });
+    expect(cfg.pipeline.workers).toBe(2);
+    expect(cfg.pipeline.exec).toBeUndefined();
+  });
+
+  it("falls back to the default output directory when directory.out is rejected", () => {
+    const cfg = check({ directory: { pages: "pages", out: "pages" } });
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.directory.out).toBe(resolve(process.cwd(), "dist"));
+  });
+
+  it("does not mutate the user's config object", () => {
+    const userConfig = { directory: { pages: "pages" }, http: { port: 0 } };
+    check(userConfig);
+    expect(userConfig.http.port).toBe(0);
+  });
+
+  it("still throws outside check mode", () => {
+    expect(() =>
+      initBascikConfig(
+        { http: { port: 70000 } },
+        {},
+        {},
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toThrow(/http\.port/);
+  });
+});
