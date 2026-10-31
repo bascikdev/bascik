@@ -55,6 +55,8 @@ const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A queued mockResolvedValueOnce that a test did not consume must not leak into the next one.
+  mockReadFile.mockReset();
   invalidateComponentListCache();
   BascikConfig.minify.html = false;
   // Default: executeBuildScripts is a pass-through (no build scripts in HTML)
@@ -440,6 +442,10 @@ describe("listComponents – companion scripts", () => {
 
       expect(content).toContain(`${directive} src="./card-data.ts"`);
       expect(content).not.toContain("export default");
+      // The module is the directive's to load in Node.js, not a browser companion to read.
+      expect(mockReadFile).not.toHaveBeenCalledWith(
+        "src/components/data-card/card-data.ts",
+      );
     },
   );
 

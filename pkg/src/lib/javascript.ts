@@ -82,7 +82,9 @@ import { COMPANION_SCRIPT_RE } from "./companion-scripts.ts";
 import { scanHtml } from "./html-scanner.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
+  getHtmlAttributeValue,
   isBuildScriptOpenTag,
+  isDirectiveScriptOpenTag,
   isRequestScriptOpenTag,
 } from "./html-patterns.ts";
 import {
@@ -1164,9 +1166,53 @@ export interface ComponentScriptsResult {
   scriptMap: Map<string, ComponentScriptInfo>;
 }
 
+export interface ComponentScriptsOptions {
+  /**
+   * The component's HTML. A file that only directive scripts reference by `src=` is a
+   * Node.js module, not a browser companion, so it is skipped; a file a browser
+   * `<script src>` references is always claimed.
+   */
+  html?: string;
+  /**
+   * Every component HTML file. In flat layout a script whose name belongs to another
+   * component (`card-header.ts` beside `card-header.html`) is left to that component
+   * unless this one references it.
+   */
+  componentFileNames?: readonly string[];
+}
+
+/** Basenames of the `src=` values of `html`'s browser and directive scripts. */
+const scriptSrcBasenames = (
+  html: string,
+): { browser: Set<string>; directive: Set<string> } => {
+  const browser = new Set<string>();
+  const directive = new Set<string>();
+  if (!html.includes("<script")) return { browser, directive };
+  for (const match of scanElementContents(
+    html,
+    "script",
+    SCRIPT_ELEMENT_SCAN,
+  )) {
+    const openTag = html.slice(match.start, match.contentStart);
+    const src = getHtmlAttributeValue(openTag, "src")?.trim();
+    if (!src) continue;
+    const name = basename(src.replace(/[?#].*$/, ""));
+    (isDirectiveScriptOpenTag(openTag) ? directive : browser).add(name);
+  }
+  return { browser, directive };
+};
+
+/** Whether `nameWithoutExt` is `componentName`'s own name or one of its extras. */
+const isNamedFor = (nameWithoutExt: string, componentName: string): boolean =>
+  nameWithoutExt === componentName ||
+  nameWithoutExt.startsWith(`${componentName}.`) ||
+  nameWithoutExt.startsWith(`${componentName}-`) ||
+  nameWithoutExt.startsWith(`${componentName}_`);
+
 export const getComponentScripts = async (
   htmlFileName: string,
   scriptFileNames: string[],
+  options: ComponentScriptsOptions = {},
 ): Promise<ComponentScriptsResult> => {
   const scriptMap = new Map<string, ComponentScriptInfo>();
   if (
@@ -1187,23 +1233,35 @@ export const getComponentScripts = async (
     htmlDir !== compDir &&
     htmlDir.startsWith(`${compDir}/`);
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
+  const referenced =
+    options.html === undefined ? undefined : scriptSrcBasenames(options.html);
+  // Longer component names this one's prefix rule would otherwise reach into.
+  const siblingNames = (options.componentFileNames ?? [])
+    .map((fileName) => basename(fileName, ".html").toLowerCase())
+    .filter(
+      (name) =>
+        name !== componentBaseName && isNamedFor(name, componentBaseName),
+    );
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
     const scriptDir = dirname(scriptPath).replace(/\\/g, "/");
+    const scriptBaseName = basename(scriptPath);
+    // A directive script's `src=` module runs in Node.js: never browser code.
+    if (
+      referenced &&
+      referenced.directive.has(scriptBaseName) &&
+      !referenced.browser.has(scriptBaseName)
+    )
+      return false;
     if (isSubfolder) {
       return scriptDir === htmlDir || scriptDir.startsWith(htmlDir + "/");
-    } else {
-      const scriptBaseName = basename(scriptPath);
-      const nameWithoutExt = scriptBaseName
-        .replace(COMPANION_SCRIPT_RE, "")
-        .toLowerCase();
-      return (
-        nameWithoutExt === componentBaseName ||
-        nameWithoutExt.startsWith(`${componentBaseName}.`) ||
-        nameWithoutExt.startsWith(`${componentBaseName}-`) ||
-        nameWithoutExt.startsWith(`${componentBaseName}_`)
-      );
     }
+    const nameWithoutExt = scriptBaseName
+      .replace(COMPANION_SCRIPT_RE, "")
+      .toLowerCase();
+    if (!isNamedFor(nameWithoutExt, componentBaseName)) return false;
+    if (referenced?.browser.has(scriptBaseName)) return true;
+    return !siblingNames.some((sibling) => isNamedFor(nameWithoutExt, sibling));
   });
 
   matchingScriptFiles.sort((a, b) => {
