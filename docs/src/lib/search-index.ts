@@ -26,6 +26,9 @@ import { marked } from "marked";
 import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
 import { NAV, HOME_SITELINKS, type NavSection } from "./nav.ts";
 import { readRouteMarkdown, routeContentCandidates } from "./content-path.ts";
+import { pageDescription, pageTitle } from "./meta-tags.ts";
+
+export { metaDescription } from "./meta-tags.ts";
 import type {
   CompactSearchIndex,
   SearchEntry,
@@ -85,49 +88,19 @@ export function stripMd(text: string): string {
     .trim();
 }
 
-function decodeAttr(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
 /**
  * The Home entry reads its title and description from pages/index.html so the
  * search result can never drift from what the page declares. It is surfaced
  * only for brand queries (see isNavigationalQuery in search-logic.ts).
  */
-/** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
-function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(
-    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
-    "i",
-  ).exec(tag);
-  return match ? (match[1] ?? match[2]) : undefined;
-}
-
-/** The content of `<meta name="description">`, wherever `name` and `content` sit in the tag. */
-export function metaDescription(html: string): string | undefined {
-  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
-    if (attributeValue(tag, "name")?.toLowerCase() === "description")
-      return attributeValue(tag, "content");
-  }
-  return undefined;
-}
-
 async function homeEntry(): Promise<SearchEntry> {
   const homePage = join(docsDir, "src/pages/index.html");
   let title = "Bascik";
   let text = "";
   try {
     const html = await readFile(homePage, "utf8");
-    const t = /<title>([^<]*)<\/title>/i.exec(html);
-    if (t) title = decodeAttr(t[1]).trim();
-    const description = metaDescription(html);
-    if (description !== undefined)
-      text = decodeAttr(description).trim().replace(/\s+/g, " ");
+    title = pageTitle(html) || title;
+    text = pageDescription(html);
   } catch (error) {
     // The Home result still works without them, but a search snippet that silently disappears is a bug to see.
     console.warn(
