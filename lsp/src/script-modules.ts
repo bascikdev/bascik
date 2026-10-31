@@ -78,6 +78,18 @@ function scriptTags(text: string): ScriptTag[] {
   return out;
 }
 
+/**
+ * A script's import specifiers, or none when the script cannot be read (a
+ * template nested thousands deep overflows the scanner's stack).
+ */
+function specifiersOf(text: string): string[] {
+  try {
+    return findModuleSpecifiers(text).map((s) => s.value);
+  } catch {
+    return [];
+  }
+}
+
 /** Forward slashes, so Windows and POSIX paths compare the same. */
 export const normalizeModulePath = (fsPath: string): string =>
   path.resolve(fsPath).replace(/\\/g, "/");
@@ -208,7 +220,7 @@ export function findScriptModules(sources: ScriptModuleSources): ScriptModules {
     queue.push([file, reach]);
   };
   const addImports = (text: string, fromDir: string, reach: Reach): void => {
-    for (const { value } of findModuleSpecifiers(text))
+    for (const value of specifiersOf(text))
       add(resolveSpecifier(value, fromDir, importRoot), reach);
   };
 
@@ -284,17 +296,12 @@ function importSignature(fsPath: string, text: string): string | undefined {
       .map(
         ({ attrs, body }) =>
           `${DIRECTIVE_RE.exec(attrs)?.[1]?.toLowerCase() ?? ""}|${
-            SRC_RE.exec(attrs)?.[0] ??
-            findModuleSpecifiers(body)
-              .map((s) => s.value)
-              .join("\u0000")
+            SRC_RE.exec(attrs)?.[0] ?? specifiersOf(body).join("\u0000")
           }`,
       )
       .join("\n");
   if (SCRIPT_EXTENSIONS.includes(path.extname(lower)))
-    return findModuleSpecifiers(text)
-      .map((s) => s.value)
-      .join("\u0000");
+    return specifiersOf(text).join("\u0000");
   return undefined;
 }
 

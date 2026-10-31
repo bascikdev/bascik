@@ -651,6 +651,34 @@ export function completionReplacementRange(
   };
 }
 
+/**
+ * createDiagnostics, or one analysis-failed warning when it throws (a
+ * template or bracket nested thousands deep overflows the recursive
+ * scanners), so one file cannot stop `bascik --check` or end the language
+ * server.
+ */
+export function createDiagnosticsSafely(
+  ...args: Parameters<typeof createDiagnostics>
+): Diagnostic[] {
+  try {
+    return createDiagnostics(...args);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return [
+      {
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 0 },
+        },
+        message: `Bascik could not analyze this file (${reason}), so it shows no other Bascik diagnostics for it. A template literal or bracket nested thousands deep is the usual cause.`,
+        severity: DiagnosticSeverity.Warning,
+        source: "bascik",
+        code: "analysis-failed",
+      },
+    ];
+  }
+}
+
 export function createDiagnostics(
   document: TextDocumentLike,
   fsPath: string,

@@ -17,7 +17,7 @@ import {
   isInsideComponentRoots,
   type ProjectSnapshot,
 } from "./project.js";
-import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
+import { createDiagnosticsSafely, applyAutoFixes } from "./analyzer.js";
 import {
   ScriptModules,
   findScriptModules,
@@ -271,7 +271,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
       }
     }
 
-    for (const diagnostic of createDiagnostics(
+    for (const diagnostic of createDiagnosticsSafely(
       document,
       filePath,
       snapshot,

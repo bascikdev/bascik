@@ -577,6 +577,70 @@ describe("BascikLanguageServer", () => {
       expect(codes(component)).not.toContain("attr-prop-unsupplied");
     });
 
+    it("checks an open helper again when an unsaved page starts or stops importing it", async () => {
+      await initialize();
+      const HELPER = "export const card = (n: string) => `<p>${n}</p>`;\n";
+      const helper = await write("src/lib/card.ts", HELPER);
+      const page = await write("src/pages/index.html", "<p>no usage</p>\n");
+      open(helper, HELPER, "typescript");
+      open(page, "<p>no usage</p>\n");
+      await settle();
+      expect(codes(helper)).toEqual([]);
+
+      const importing =
+        '<script data-bascik-build>import { card } from "@/lib/card.ts"; export default () => card("x");</script>\n';
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(page), version: 2 },
+        contentChanges: [{ text: importing }],
+      });
+      await settle();
+      expect(codes(helper)).toEqual(["server-script-unescaped-markup"]);
+
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(page), version: 3 },
+        contentChanges: [{ text: "<p>no usage</p>\n" }],
+      });
+      await settle();
+      expect(codes(helper)).toEqual([]);
+    });
+
+    it("checks an open module again when another open module starts importing it", async () => {
+      await initialize();
+      await write(
+        "src/pages/index.html",
+        '<script data-bascik-build>import { a } from "@/lib/a.ts"; export default () => a;</script>\n',
+      );
+      const ESC =
+        'export function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }\n';
+      const a = await write("src/lib/a.ts", "export const a = 1;\n");
+      const b = await write("src/lib/b.ts", ESC);
+      open(a, "export const a = 1;\n", "typescript");
+      open(b, ESC, "typescript");
+      await settle();
+      expect(codes(b)).toEqual([]);
+
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(a), version: 2 },
+        contentChanges: [{ text: 'import "./b.ts";\nexport const a = 1;\n' }],
+      });
+      await settle();
+      expect(codes(b)).toEqual(["hand-written-html-escaper"]);
+    });
+
+    it("publishes analysis-failed for a module too deeply nested to analyze, and keeps running", async () => {
+      await initialize();
+      await write(
+        "src/pages/index.html",
+        '<script data-bascik-build>import { t } from "@/lib/deep.ts"; export default () => t;</script>\n',
+      );
+      const depth = 30_000;
+      const DEEP = `export const t = \`${"${`".repeat(depth)}x${"`}".repeat(depth)}\`;\n`;
+      const deep = await write("src/lib/deep.ts", DEEP);
+      open(deep, DEEP, "typescript");
+      await settle();
+      expect(codes(deep)).toEqual(["analysis-failed"]);
+    });
+
     it("reads a saved page from disk without rebuilding the project", async () => {
       await initialize();
       const component = await write("src/components/my-card.html", COMPONENT);

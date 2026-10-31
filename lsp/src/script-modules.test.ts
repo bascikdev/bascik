@@ -715,3 +715,36 @@ describe("review 2026-10-31: the editor reuses the module set while imports stay
     expect([...fourth].map(rel).sort()).toEqual(["src/lib/b.ts"]);
   });
 });
+
+describe("review 2026-10-31: a file too deep to analyze does not stop the check", () => {
+  // Templates nested thousands deep overflow the recursive scanners. That
+  // ended `bascik --check` with no other output, and would end the
+  // language server.
+  const deep = (depth: number) =>
+    `export const t = \`${"${`".repeat(depth)}Milk frother${"`}".repeat(depth)}\`;\n`;
+
+  it("bascik --check reports the file as not analyzed and still reports the other files", async () => {
+    write(
+      "src/pages/index.html",
+      PAGE(`<script data-bascik-build>
+      import { t } from "@/lib/deep.ts";
+      import { escapeHtml } from "@/lib/escape.ts";
+      export default () => escapeHtml(t);
+    </script>`),
+    );
+    write("src/lib/deep.ts", deep(30_000));
+    write("src/lib/escape.ts", ESCAPE_HTML);
+    const result = await checkFiles({
+      cwd: root,
+      targets: [{ path: "src/pages", extensions: ["html"] }],
+      projectPath: root,
+    });
+    const got = result.diagnostics.map(
+      (d) => `${d.filePath.replace(/\\/g, "/")} ${d.code} ${d.severity}`,
+    );
+    expect(got).toContain(
+      "src/lib/escape.ts hand-written-html-escaper warning",
+    );
+    expect(got).toContain("src/lib/deep.ts analysis-failed warning");
+  });
+});
