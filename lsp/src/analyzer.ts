@@ -193,7 +193,7 @@ export const SCRIPT_DIRECTIVES = [
     name: "data-bascik-stream",
     detail: "Bascik server-side streaming script",
     documentation:
-      "Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.",
+      "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available.",
   },
 ];
 
@@ -217,14 +217,19 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Lookahead for the end of a tag name, as in the compiler: HTML whitespace, `/` or `>`. */
+const TAG_NAME_END = "(?=[\\t\\n\\f\\r />])";
+
 export function findMatchingClose(
   html: string,
   tagName: string,
   contentStart: number,
 ): number {
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const openRe = new RegExp(`<${tn}[\\s>]`, "gi");
-  const closeRe = new RegExp(`<\\/${tn}>`, "gi");
+  // Tag names end at HTML whitespace, `/` or `>`, and an end tag may carry whitespace or junk before
+  // its `>`, the shapes the compiler accepts (component-tags.ts, component-slots.ts).
+  const openRe = new RegExp(`<${tn}${TAG_NAME_END}`, "gi");
+  const closeRe = new RegExp(`<\\/${tn}(?:[\\t\\n\\f\\r /][^>]*)?>`, "gi");
   let depth = 1;
   let pos = contentStart;
   while (pos < html.length) {
@@ -287,7 +292,14 @@ const isTagNameChar = (code: number): boolean =>
  */
 function* scanTags(
   source: string,
-): Generator<{ name: string; closing: boolean; text: string }> {
+  from = 0,
+): Generator<{
+  name: string;
+  closing: boolean;
+  text: string;
+  start: number;
+  end: number;
+}> {
   const length = source.length;
   // 0 = not scanned yet, -1 = no closing `>`, otherwise the index after `>`.
   const tagEndFrom = new Int32Array(length + 1);
@@ -320,7 +332,7 @@ function* scanTags(
     return end;
   };
 
-  let cursor = 0;
+  let cursor = from;
   while (cursor < length) {
     const open = source.indexOf("<", cursor);
     if (open < 0) return;
@@ -342,6 +354,8 @@ function* scanTags(
       name: source.slice(nameStart, nameEnd),
       closing,
       text: source.slice(open, end),
+      start: open,
+      end,
     };
     cursor = end;
   }
@@ -351,17 +365,69 @@ export function findNearestParentComponent(
   source: string,
   componentMap: Map<string, string>,
 ): string | undefined {
-  const stack: string[] = [];
-  for (const tag of scanTags(source)) {
+  return findNearestParentComponents(source, [source.length], componentMap)[0];
+}
+
+/**
+ * For each offset (ascending), the component that `findNearestParentComponent(source.slice(0, offset))`
+ * finds, from one scan of `source`. Rescanning the prefix for every offset was quadratic in the number of
+ * offsets (one per `data-bascik-slot` tag).
+ *
+ * The open-element stack carries, per entry, the nearest component at or below it, so each answer is
+ * read in constant time. A tag that starts before an offset but ends after it is not a tag in that prefix
+ * (its `>` is cut off), so for that offset the prefix scan is continued from just after its `<`, exactly
+ * as the prefix scan would, on a copy of the stack.
+ */
+export function findNearestParentComponents(
+  source: string,
+  offsets: readonly number[],
+  componentMap: Map<string, string>,
+): (string | undefined)[] {
+  const apply = (
+    stack: string[],
+    nearest: (string | undefined)[],
+    tag: { name: string; closing: boolean; text: string },
+  ): void => {
     const name = tag.name.toLowerCase();
     if (tag.closing) {
       const matchingIndex = stack.lastIndexOf(name);
-      if (matchingIndex >= 0) stack.splice(matchingIndex);
+      if (matchingIndex >= 0) {
+        stack.length = matchingIndex;
+        nearest.length = matchingIndex;
+      }
     } else if (!/\/\s*>$/.test(tag.text)) {
       stack.push(name);
+      nearest.push(componentMap.has(name) ? name : nearest.at(-1));
+    }
+  };
+  const stack: string[] = [];
+  const nearest: (string | undefined)[] = [];
+  const tags = scanTags(source);
+  let pending = tags.next();
+  const results: (string | undefined)[] = [];
+  for (const offset of offsets) {
+    while (!pending.done && pending.value.end <= offset) {
+      apply(stack, nearest, pending.value);
+      pending = tags.next();
+    }
+    if (!pending.done && pending.value.start < offset) {
+      // The offset sits inside what the full scan reads as one tag (an unclosed quote can make it long),
+      // so the tags before it are read from the source cut at the offset. Each such offset rescans from
+      // that tag's start: quadratic only when many slot tags hide inside one long run-on tag, which
+      // markup does not do, so the cost is accepted rather than memoized.
+      const prefixStack = stack.slice();
+      const prefixNearest = nearest.slice();
+      for (const tag of scanTags(
+        source.slice(0, offset),
+        pending.value.start + 1,
+      ))
+        apply(prefixStack, prefixNearest, tag);
+      results.push(prefixNearest.at(-1));
+    } else {
+      results.push(nearest.at(-1));
     }
   }
-  return stack.reverse().find((name) => componentMap.has(name));
+  return results;
 }
 
 export function parseScriptOpenTagAttributes(
@@ -429,6 +495,24 @@ export function leadingSlashSpecifierMessage(specifier: string): string {
   );
 }
 
+/**
+ * The script directives that run in Node and resolve `./`, `../` and `@/` specifiers against the
+ * file and `scripts.importRoot`. Leading-slash diagnostics and Go to Definition share this list.
+ */
+const MODULE_RESOLVING_DIRECTIVES = [
+  "data-bascik-build",
+  "data-bascik-build-once",
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-stream",
+] as const;
+
+function hasModuleResolvingDirective(
+  attrs: Map<string, string | true>,
+): boolean {
+  return MODULE_RESOLVING_DIRECTIVES.some((name) => attrs.has(name));
+}
+
 export function collectLeadingSlashDiagnostics(
   document: TextDocumentLike,
   openTag: string,
@@ -436,13 +520,7 @@ export function collectLeadingSlashDiagnostics(
   blockStart: number,
   attrs: Map<string, string | true>,
 ): Diagnostic[] {
-  if (
-    !attrs.has("data-bascik-build") &&
-    !attrs.has("data-bascik-build-once") &&
-    !attrs.has("data-bascik-server") &&
-    !attrs.has("data-bascik-routes") &&
-    !attrs.has("data-bascik-stream")
-  ) {
+  if (!hasModuleResolvingDirective(attrs)) {
     return [];
   }
   const out: Diagnostic[] = [];
@@ -606,10 +684,18 @@ export function createDiagnostics(
         severity = DiagnosticSeverity.Information;
       }
       diagnostics.push({
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: Math.min(text.length, 10) },
-        },
+        range: diag.range
+          ? {
+              start: {
+                line: diag.range.startLine,
+                character: diag.range.startChar,
+              },
+              end: { line: diag.range.endLine, character: diag.range.endChar },
+            }
+          : {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: Math.min(text.length, 10) },
+            },
         message: diag.message,
         severity,
         source: "bascik",
@@ -618,11 +704,10 @@ export function createDiagnostics(
     }
   }
 
-  if (languageId === "html" && fsPath.startsWith("/")) {
-    if (
-      snapshot &&
-      isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots)
-    ) {
+  // isComponentDocument needs the file inside a resolved (absolute) component root, so an unsaved
+  // buffer never matches; no POSIX-only `startsWith("/")` gate, which skipped every Windows path.
+  if (languageId === "html") {
+    if (isComponentDocument) {
       const fileName = path.basename(normalizedDocumentPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, "").toLowerCase();
       if (
@@ -683,7 +768,9 @@ export function createDiagnostics(
       normalized === "text/javascript" ||
       normalized === "application/javascript" ||
       normalized === "text/ecmascript" ||
-      normalized === "application/ecmascript"
+      normalized === "application/ecmascript" ||
+      // Bascik transpiles inline TypeScript and scopes it like JavaScript (components.ts isJs).
+      normalized === "text/typescript"
     );
   };
 
@@ -890,9 +977,12 @@ export function createDiagnostics(
         const suppliedInOpen = openDocumentTexts.some(({ text }) =>
           htmlSuppliesComponentProp(text, componentName, propName),
         );
-        const suppliedInDisk = Array.from(
-          snapshot.htmlUsageByFile.values(),
-        ).some((usageHtml) =>
+        // Pages and HTML under src, plus every component file: a component root outside src (shared
+        // components in a monorepo) is not in htmlUsageByFile, as Find All References also allows for.
+        const suppliedInDisk = [
+          ...snapshot.htmlUsageByFile.values(),
+          ...(snapshot.componentSourceByFile?.values() ?? []),
+        ].some((usageHtml) =>
           htmlSuppliesComponentProp(usageHtml, componentName, propName),
         );
         if (suppliedInOpen || suppliedInDisk) continue;
@@ -1204,6 +1294,11 @@ export function createDiagnostics(
     const slotTagRe =
       /<([A-Za-z][\w-]*)(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?\/?>/gi;
     let slotMatch: RegExpExecArray | null;
+    const slotTags: {
+      matchStart: number;
+      baseOffset: number;
+      slotAttr: { name: string; value?: string; index: number };
+    }[] = [];
     while ((slotMatch = slotTagRe.exec(maskedText)) !== null) {
       const openTag = slotMatch[0];
       const matchStart = slotMatch.index;
@@ -1227,14 +1322,18 @@ export function createDiagnostics(
           break;
         }
       }
-      if (!slotAttr) continue;
-
-      const tagOffset = slotMatch.index;
+      if (slotAttr) slotTags.push({ matchStart, baseOffset, slotAttr });
+    }
+    // One scan finds every slot tag's parent; a prefix rescan per tag was quadratic.
+    const slotParents = findNearestParentComponents(
+      maskedText,
+      slotTags.map(({ matchStart }) => matchStart),
+      componentMap,
+    );
+    for (const [slotIndex, slotTag] of slotTags.entries()) {
+      const { matchStart, baseOffset, slotAttr } = slotTag;
       const slotName = slotAttr.value;
-      const parentName = findNearestParentComponent(
-        maskedText.slice(0, tagOffset),
-        componentMap,
-      );
+      const parentName = slotParents[slotIndex];
 
       const isInsideComponentDefinition = isComponentDocument;
       if (!parentName && !isInsideComponentDefinition) {
@@ -1283,7 +1382,7 @@ export function createDiagnostics(
         name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       );
       const componentTagRe = new RegExp(
-        `<(${escapedNames.join("|")})\\b`,
+        `<(${escapedNames.join("|")})${TAG_NAME_END}`,
         "gi",
       );
       let compMatch: RegExpExecArray | null;
@@ -1338,7 +1437,10 @@ export function createDiagnostics(
 
             if (compMeta.props.length > 0) {
               const insideOpenTag = openTagText
-                .replace(new RegExp(`^<${escapeRegExp(tagName)}\\b`, "i"), "")
+                .replace(
+                  new RegExp(`^<${escapeRegExp(tagName)}${TAG_NAME_END}`, "i"),
+                  "",
+                )
                 .replace(/\/?>$/, "");
               const baseAttrOffset = openTagText.indexOf(insideOpenTag);
               const bareAttrRe =
@@ -1353,7 +1455,7 @@ export function createDiagnostics(
                 );
                 if (!declaredProp) continue;
                 const alreadySupplied = new RegExp(
-                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}\\b`,
+                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}(?![\\w-])`,
                   "i",
                 ).test(openTagText);
                 if (alreadySupplied) continue;
@@ -1641,7 +1743,7 @@ export function createCompletions(
       label: "bascik-stream",
       detail: "Bascik server-side streaming script block",
       documentation:
-        "Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.",
+        "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available.",
       insertText: `<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
     },
   ];
@@ -1792,12 +1894,7 @@ export function createDefinition(
     if (offset < blockStart || offset > blockEnd) continue;
 
     const attrs = parseScriptOpenTagAttributes(openTag);
-    if (
-      !attrs.has("data-bascik-build") &&
-      !attrs.has("data-bascik-build-once") &&
-      !attrs.has("data-bascik-server") &&
-      !attrs.has("data-bascik-routes")
-    ) {
+    if (!hasModuleResolvingDirective(attrs)) {
       return undefined;
     }
 
@@ -1828,7 +1925,7 @@ export function createDefinition(
             start: document.positionAt(valueStart),
             end: document.positionAt(valueEnd),
           },
-          targetUri: `file://${resolved}`,
+          targetUri: pathToFileURL(resolved).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },
@@ -1859,7 +1956,7 @@ export function createDefinition(
             start: document.positionAt(openTagEnd + start),
             end: document.positionAt(openTagEnd + end),
           },
-          targetUri: `file://${resolved}`,
+          targetUri: pathToFileURL(resolved).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },
@@ -1894,7 +1991,7 @@ export function createDefinition(
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
           },
-          targetUri: `file://${componentPath}`,
+          targetUri: pathToFileURL(componentPath).toString(),
           targetRange: {
             start: { line: 0, character: 0 },
             end: { line: 0, character: 0 },

@@ -87,9 +87,11 @@ To configure extension diagnostics for your project without coupling them to you
 }
 ```
 
+A `bascik.ext.ts` is read without running it, so it holds literal values only (`export default { ... }` or `const config = { ... }; export default config;`). A config file that cannot be read is ignored, and the **Bascik** output panel names its file, line, and the reason.
+
 ## Optional Component Descriptions
 
-Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-text`, and `data-bascik-html`, and infers named or default slots from `data-bascik-slot`.
+Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*` and `data-bascik-attr-*`, and infers named or default slots from `data-bascik-slot`.
 
 Add a leading metadata header to enrich that inferred contract:
 

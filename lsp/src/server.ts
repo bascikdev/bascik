@@ -257,6 +257,21 @@ export class BascikLanguageServer {
   }
 
   /**
+   * A buffer the editor keeps open for a file deleted on disk (VS Code keeps the model of a file it showed
+   * in Peek or References), unedited since. It is not a source of usages for references or diagnostics.
+   */
+  private isOrphanedBuffer(document: TextDocument): boolean {
+    return this.deletedBuffers.get(document.uri) === document.version;
+  }
+
+  /** Open documents that still stand for a file or unsaved work, so their usages count. */
+  private liveOpenDocuments(): TextDocument[] {
+    return this.documents
+      .all()
+      .filter((document) => !this.isOrphanedBuffer(document));
+  }
+
+  /**
    * The text of every HTML file in a project that can use a component: pages and other HTML under `src` and
    * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
    * A buffer left open for a deleted file is not a source.
@@ -270,7 +285,7 @@ export class BascikLanguageServer {
         continue;
       const fsPath = uriToFsPath(document.uri);
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
-      if (this.deletedBuffers.get(document.uri) === document.version) continue;
+      if (this.isOrphanedBuffer(document)) continue;
       if (this.findProjectRoot(fsPath) !== snapshot.projectRoot) continue;
       if (isExcludedProjectPath(fsPath, snapshot.projectRoot)) continue;
       if (
@@ -328,10 +343,19 @@ export class BascikLanguageServer {
         )
       : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
-    this.watcherRegistration = await this.connection.client.register(
-      DidChangeWatchedFilesNotification.type,
-      { watchers },
-    );
+    // Called with `void`, so a rejection here (an editor refusing the registration, or a connection
+    // closing mid-request) would be unhandled and end the process. Without watchers the server still
+    // works; it only misses changes made outside open documents.
+    try {
+      this.watcherRegistration = await this.connection.client.register(
+        DidChangeWatchedFilesNotification.type,
+        { watchers },
+      );
+    } catch (error) {
+      this.connection.console.error(
+        `Bascik could not ask the editor to watch config and HTML files, so changes made outside open documents are not picked up until a reload: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /** Forgets every project snapshot, so the next request rebuilds them from disk. */
@@ -516,7 +540,7 @@ export class BascikLanguageServer {
     const snapshot = await this.getSnapshotForFile(fsPath);
     // The document was edited or closed while the project was read; a newer check follows or the file is gone.
     if (this.documents.get(document.uri)?.version !== version) return;
-    const openDocs = this.documents.all().map((d) => ({
+    const openDocs = this.liveOpenDocuments().map((d) => ({
       fsPath: uriToFsPath(d.uri),
       text: d.getText(),
     }));

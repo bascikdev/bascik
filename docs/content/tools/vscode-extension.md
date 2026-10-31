@@ -71,7 +71,7 @@ The card shows the source path, the inferred props, named and default slots, and
 
 ### Describe a Component with an `@bascik` Comment
 
-Bascik infers the contract from component markup. Props come from `data-bascik-prop-*` declarations and from prop names referenced by `data-bascik-attr-*`, `data-bascik-text`, or `data-bascik-html`. Named and default slots come from `data-bascik-slot` declarations. To add human-readable descriptions, put an optional leading `@bascik` comment at the top of the component:
+Bascik infers the contract from component markup. Props come from `data-bascik-prop-*` declarations and from prop names referenced by `data-bascik-attr-*`. Named and default slots come from `data-bascik-slot` declarations. To add human-readable descriptions, put an optional leading `@bascik` comment at the top of the component:
 
 ```html
 <!-- @bascik
@@ -81,7 +81,7 @@ Displays a person's identity and available actions.
 @slot default - The primary profile content.
 -->
 <article data-bascik-attr-aria-label="role">
-  <p data-bascik-text="role"></p>
+  <p data-bascik-prop-role></p>
   <div data-bascik-slot></div>
   <footer data-bascik-slot="actions"></footer>
 </article>
@@ -280,6 +280,8 @@ Configure extension behavior per project without modifying application config (`
   }
 }
 ```
+
+A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. When a config file cannot be read (invalid JSON, a computed value, no default export), the language server ignores it and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
 
 ### Filter Generic Editor Word Suggestions
 

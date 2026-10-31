@@ -413,6 +413,25 @@ describe("rules moved from bascik --check keep their edge cases", () => {
       ).toBe(true);
     });
 
+    it("checks inline TypeScript component scripts like JavaScript ones, as the compiler does", () => {
+      for (const type of ["text/typescript", "TEXT/TypeScript"]) {
+        const text = `<div class="a"></div><script type="${type}">const el = document.querySelector("div")!; el.id = "x";</script>`;
+        expect(
+          diagnosticsFor(component, "html", text)
+            .filter((d) => /^js-/.test(String(d.code)))
+            .map((d) => d.code),
+        ).toEqual(["js-id-setter"]);
+      }
+      // A script type the browser does not run (a data block) is not code, so it stays unchecked.
+      const dataBlock =
+        '<div class="a"></div><script type="application/json">{"id": "x", "el.id = 1": true}</script>';
+      expect(
+        diagnosticsFor(component, "html", dataBlock).filter((d) =>
+          /^js-/.test(String(d.code)),
+        ),
+      ).toEqual([]);
+    });
+
     it("checks inline style blocks whatever their end tag spelling, and skips <style-guide>", () => {
       const text =
         '<style-guide>[data-a] text</style-guide><div class="x"></div>' +
@@ -592,5 +611,128 @@ describe("every diagnostic can be named", () => {
       '<a data-bascik-attr-href="href">x</a>',
     ).filter((d) => d.code === "attr-prop-unsupplied");
     expect(found.severity).toBe(3);
+  });
+});
+
+describe("component-name-not-hyphenated", () => {
+  // Windows paths start with a drive letter. resolveComponentRoots stores roots with forward
+  // slashes, and the editor and --check pass the file's native path.
+  const windowsProject = snapshot({
+    projectRoot: "C:/site",
+    componentRoots: ["C:/site/src/components"],
+    importRoot: "C:/site/src",
+    apiRoot: "C:/site/src/api",
+  });
+
+  it("warns for an unhyphenated component on a Windows path", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).toContain("component-name-not-hyphenated");
+  });
+
+  it("stays quiet for a hyphenated component and for a page, on either path style", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\demo-card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor(
+        "C:\\site\\src\\pages\\card.html",
+        "html",
+        "<p>hi</p>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor("/site/src/pages/card.html", "html", "<p>hi</p>"),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+
+  it("does not fire for a document with no file path, such as an unsaved buffer", () => {
+    expect(
+      codesFor("Untitled-1", "html", "<p>hi</p>", windowsProject),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+});
+
+describe("attr-prop-unsupplied", () => {
+  const ITEM = '<a data-bascik-attr-href="href">x</a>';
+  // A component root outside src, as a monorepo's shared components are (directory.components: ["components"]).
+  const sharedProject = (listSource: string) =>
+    snapshot({
+      componentRoots: ["/site/components"],
+      componentMap: new Map([
+        ["card-item", "/site/components/card-item.html"],
+        ["card-list", "/site/components/card-list.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/components/card-item.html", ITEM],
+        ["/site/components/card-list.html", listSource],
+      ]),
+    });
+
+  it("counts a usage in a sibling component under a root outside src", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-href="/x"></card-item>'),
+      ),
+    ).not.toContain("attr-prop-unsupplied");
+  });
+
+  it("still hints when that sibling misspells the prop", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-hrf="/x"></card-item>'),
+      ),
+    ).toContain("attr-prop-unsupplied");
+  });
+});
+
+describe("api-unguarded-json in the editor", () => {
+  const route = [
+    "export const POST = async (request: Request) => {",
+    "  const body = await request.json();",
+    '  return new Response("ok");',
+    "};",
+  ].join("\n");
+
+  it("marks the call itself, so the hint sits where the fix goes", () => {
+    const [hint] = createDiagnostics(
+      TextDocument.create("file:///site/src/api/x.ts", "typescript", 1, route),
+      "/site/src/api/x.ts",
+      snapshot(),
+    ).filter((d) => d.code === "api-unguarded-json");
+    expect(hint.range).toEqual({
+      start: { line: 1, character: 21 },
+      end: { line: 1, character: 33 },
+    });
+  });
+
+  it("is silenced by bascik-ignore on the line above the call", () => {
+    const ignored = route.replace(
+      "  const body",
+      "  // bascik-ignore api-unguarded-json\n  const body",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", ignored)).not.toContain(
+      "api-unguarded-json",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", route)).toContain(
+      "api-unguarded-json",
+    );
   });
 });
