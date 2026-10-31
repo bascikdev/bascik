@@ -10,7 +10,7 @@ npm create bascik@rc
 # or: npm create bascik@rc my-project -- --template cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/

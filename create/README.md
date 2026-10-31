@@ -19,6 +19,8 @@ Pass a project name as an argument or run without arguments to be prompted:
 npm create bascik@rc
 ```
 
+The name is a new folder under the current one, such as `my-site` or `sites/my-site`; `.`, `..`, absolute paths and spaces are refused. A folder that already has one of the starter's files, such as `package.json` or `src/pages/index.html`, is refused before anything is written. To add Bascik to an existing project, see [Manual Setup](https://bascik.dev/getting-started#manual-setup).
+
 ## What it scaffolds
 
 `create-bascik` creates a complete, ready-to-run starter site:

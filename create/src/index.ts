@@ -13,6 +13,7 @@ import { USAGE, parseCliOptions, type CliOptions } from "./cli.js";
 import { runNpm } from "./npm.js";
 import {
   BASCIK_VERSION,
+  ScaffoldTargetError,
   scaffold,
   validateProjectName,
   type Template,
@@ -75,7 +76,19 @@ if (templateArg) {
 }
 
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
-const { notes } = await scaffold(projectName, process.cwd(), { template });
+let notes: string[];
+try {
+  ({ notes } = await scaffold(projectName, process.cwd(), { template }));
+} catch (err) {
+  rl.close();
+  // A refused target says what is in the way; anything else is a filesystem error worth naming.
+  const message =
+    err instanceof ScaffoldTargetError
+      ? err.message
+      : `could not create ${projectName}: ${(err as Error).message}`;
+  console.error(`\nError: ${message}\n`);
+  process.exit(1);
+}
 console.log(`✓ Scaffolded ${projectName}/\n`);
 for (const note of notes) console.log(`  ${note}`);
 

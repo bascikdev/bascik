@@ -26,7 +26,7 @@ Edit a page or a component and save. The browser updates on its own, with no man
 npm create bascik@rc my-site
 ```
 
-Pass a different name to use it as both the directory name and the site title.
+Pass a different name to use it as both the directory name and the site title. The name is a new folder under the current one, such as `my-site` or `sites/my-site`: `.`, `..`, an absolute path and spaces are refused. If the folder already has a file the starter would replace, such as `package.json` or `src/pages/index.html`, nothing is written; to add Bascik to an existing project, see [Manual Setup](#manual-setup).
 
 If you omit `-y`, the CLI steps through the setup prompts interactively.
 

@@ -34,6 +34,7 @@ import {
   contactPage,
   edgePage,
   MANUAL_SETUP_URL,
+  ScaffoldTargetError,
   indexPage,
   notFoundPage,
   packageNameOf,
@@ -46,8 +47,15 @@ import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+const enoent = (): never => {
+  throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+};
+
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn(async () => undefined),
+  // The project folder does not exist yet unless a test says otherwise.
+  stat: vi.fn(async () => enoent()),
+  lstat: vi.fn(async () => enoent()),
   // A new project folder has no files yet, so every read finds nothing.
   readFile: vi.fn(async () => {
     throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -55,9 +63,11 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
+const mockStat = stat as ReturnType<typeof vi.fn>;
+const mockLstat = lstat as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
@@ -1287,6 +1297,106 @@ describe("scaffold", () => {
   it("uses cwd as default targetDir", async () => {
     await scaffold("app");
     expect(allWrittenPaths().every((p) => p.includes("app"))).toBe(true);
+  });
+
+  describe("an existing target folder", () => {
+    /** Make `paths` (relative to /tmp/my-app, "" for the folder itself) exist; a trailing "/" makes a folder. */
+    const existing = (paths: string[]) => {
+      const lookup = async (path: unknown) => {
+        const rel = String(path)
+          .replace(/\\/g, "/")
+          .replace(/^\/tmp\/my-app\/?/, "");
+        if (rel === "" && !paths.includes(""))
+          return { isDirectory: () => true };
+        if (paths.includes(`${rel}/`)) return { isDirectory: () => true };
+        if (paths.includes(rel)) return { isDirectory: () => false };
+        return enoent();
+      };
+      mockStat.mockImplementation(lookup);
+      mockLstat.mockImplementation(lookup);
+    };
+
+    beforeEach(() => {
+      mockStat.mockImplementation(async () => enoent());
+      mockLstat.mockImplementation(async () => enoent());
+    });
+
+    it("misuse: refuses a folder that already has a package.json and pages, and writes nothing", async () => {
+      existing(["package.json", "src/pages/index.html"]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already has package.json, src/pages/index.html, which the starter would replace. Nothing was written.',
+      );
+      expect(mockMkdir).not.toHaveBeenCalled();
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("misuse: the refusal is a ScaffoldTargetError that points at the manual setup", async () => {
+      existing([".gitignore"]);
+      const err = await scaffold("my-app", "/tmp").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ScaffoldTargetError);
+      expect((err as Error).message).toContain(MANUAL_SETUP_URL);
+    });
+
+    it("misuse: lists five files and counts the rest", async () => {
+      existing([
+        "package.json",
+        "vite.config.js",
+        ".gitignore",
+        "e2e/playwright.config.ts",
+        "e2e/app.spec.ts",
+        "src/pages/index.html",
+        "src/pages/about.html",
+      ]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        /already has (?:[^,]+, ){4}[^,]+ and 2 more, which/,
+      );
+    });
+
+    it("misuse: refuses a file where one of the starter's folders goes", async () => {
+      existing(["src/pages/css"]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already has src/pages/css,',
+      );
+    });
+
+    it("misuse: refuses a project name that is an existing file", async () => {
+      existing([""]);
+      mockStat.mockImplementation(async (path: unknown) =>
+        String(path).replace(/\\/g, "/") === "/tmp/my-app"
+          ? { isDirectory: () => false }
+          : enoent(),
+      );
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already exists and is not a folder.',
+      );
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("misuse: refuses the cloudflare starter's own files, which the default starter does not write", async () => {
+      existing(["src/api/hello.ts"]);
+      await expect(scaffold("my-app", "/tmp")).resolves.toBeDefined();
+      vi.clearAllMocks();
+      await expect(
+        scaffold("my-app", "/tmp", { template: "cloudflare" }),
+      ).rejects.toThrow('"my-app" already has src/api/hello.ts,');
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("scaffolds into a folder that has only the files it merges into and its own empty folders", async () => {
+      existing([
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".vscode/",
+        ".vscode/settings.json",
+        "README.md",
+        ".git/",
+        "src/",
+        "src/pages/",
+      ]);
+      await scaffold("my-app", "/tmp");
+      expect(writtenTo("/tmp/my-app/package.json")).toBeDefined();
+      expect(mockWriteFile.mock.calls.length).toBe(31);
+    });
   });
 
   it("names the package and brands the pages after the last segment of a nested name", async () => {

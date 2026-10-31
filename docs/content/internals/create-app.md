@@ -13,6 +13,8 @@ The package's source files have distinct responsibilities:
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
 
+`validateProjectName` refuses `.`, `..`, an absolute path, spaces and empty or hidden path segments, so the project is always a new folder under the current one; its last segment names the site, and lowercased, the package. Before writing anything, `scaffold` checks the target: a file where the project folder goes, or a folder that already has one of the starter's own files (or a file where one of its folders goes), throws a `ScaffoldTargetError` naming them, which the CLI prints in one line and exits 1. AGENTS.md, CLAUDE.md and `.vscode/` are not in the way, since those are merged. Any other filesystem error is printed as `Error: could not create <name>: <reason>`.
+
 ## What the CLI generates
 
 Running `npx create-bascik <name>` writes this structure:

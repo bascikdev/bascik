@@ -23,10 +23,20 @@
  *    answers are used in order, and questions after the input ends take their defaults.
  * 4. A skills install that fails never fails the scaffold: exit 0 and the command to run later.
  * 5. A typo'd flag is refused before anything is written, naming the flag it meant.
+ * 6. A project name that would leave the current folder, or a target that already holds the
+ *    starter's files or is a file, is refused in one line, exit 1, with nothing written.
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -81,9 +91,15 @@ afterAll(async () => {
 /** Run create-bascik in a fresh folder with `input` piped to stdin (then closed). */
 async function create(
   args: string[],
-  options: { input?: string; env?: NodeJS.ProcessEnv } = {},
+  options: {
+    input?: string;
+    env?: NodeJS.ProcessEnv;
+    /** Called with the fresh folder before create-bascik runs in it. */
+    setup?: (parent: string) => void;
+  } = {},
 ): Promise<{ status: number | null; output: string; parent: string }> {
   const parent = await mkdtemp(join(work, "run-"));
+  options.setup?.(parent);
   const env: NodeJS.ProcessEnv = { ...process.env, ...options.env };
   // npm sets these when it runs create-bascik; a leftover one would change the flags.
   delete env.npm_config_yes;
@@ -226,6 +242,64 @@ describe("npm create bascik and the agent skills", () => {
       expect(output).not.toContain("Creating Bascik project");
       expect(readdirSync(parent)).toEqual([]);
       expect(existsSync(join(parent, "..", "package.json"))).toBe(false);
+    },
+  );
+
+  it("misuse: an existing project's package.json and pages are kept, and nothing is written", async () => {
+    const packageJson = '{ "name": "my-site", "version": "9.9.9" }\n';
+    const page = "<h1>Mine</h1>\n";
+    const { status, output, parent } = await create(
+      ["my-site", "-y", "--no-skills", ...QUIET],
+      {
+        setup: (dir) => {
+          mkdirSync(join(dir, "my-site", "src", "pages"), { recursive: true });
+          writeFileSync(join(dir, "my-site", "package.json"), packageJson);
+          writeFileSync(join(dir, "my-site", "src/pages/index.html"), page);
+        },
+      },
+    );
+    expect(status, output).toBe(1);
+    expect(output).toContain(
+      'Error: "my-site" already has package.json, src/pages/index.html, which the starter would replace. Nothing was written.',
+    );
+    expect(output).toContain("https://bascik.dev/getting-started#manual-setup");
+    expect(output).not.toContain("Scaffolded");
+    const site = join(parent, "my-site");
+    expect(readFileSync(join(site, "package.json"), "utf8")).toBe(packageJson);
+    expect(readFileSync(join(site, "src/pages/index.html"), "utf8")).toBe(page);
+    expect(readdirSync(site).sort()).toEqual(["package.json", "src"]);
+  });
+
+  it("misuse: a project name that is an existing file is refused without a stack trace", async () => {
+    const { status, output, parent } = await create(
+      ["notes.txt", "-y", "--no-skills", ...QUIET],
+      { setup: (dir) => writeFileSync(join(dir, "notes.txt"), "mine\n") },
+    );
+    expect(status, output).toBe(1);
+    expect(output).toContain(
+      'Error: "notes.txt" already exists and is not a folder.',
+    );
+    expect(output).not.toMatch(/\n\s+at /);
+    expect(readFileSync(join(parent, "notes.txt"), "utf8")).toBe("mine\n");
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "misuse: a folder it cannot write to is reported in one line, not a stack trace",
+    async () => {
+      const { status, output } = await create(
+        ["locked/my-site", "-y", "--no-skills", ...QUIET],
+        {
+          setup: (dir) => {
+            mkdirSync(join(dir, "locked"));
+            chmodSync(join(dir, "locked"), 0o500);
+          },
+        },
+      );
+      expect(status, output).toBe(1);
+      expect(output).toMatch(
+        /Error: could not create locked\/my-site: EACCES: permission denied/,
+      );
+      expect(output).not.toMatch(/\n\s+at /);
     },
   );
 
