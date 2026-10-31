@@ -267,9 +267,12 @@ describe("server-script-unescaped-markup: false-positive traps", () => {
     expect(covered(body)).toEqual([]);
   });
 
-  it("build and routes scripts are out of scope", () => {
-    for (const directive of ["build", "routes"] as const)
-      expect(covered(handler("`<p>${q}</p>`"), { directive })).toEqual([]);
+  it("build and routes scripts and Node modules are in scope (Collin 2026-10-31: every agent-built site hand-built markup in build scripts)", () => {
+    for (const directive of ["build", "routes", "module"] as const)
+      expect(
+        covered(handler("`<p>${q}</p>`"), { directive }),
+        directive,
+      ).toEqual(["${q}"]);
   });
 
   it("a script with src= is out of scope", () => {
@@ -649,5 +652,205 @@ describe("no quick fix where html would throw", () => {
     const diags = unescaped(handler(ret));
     expect(diags.length).toBeGreaterThan(0);
     for (const d of diags) expect(d.template?.fixable).toBe(true);
+  });
+});
+
+describe("server-script-unescaped-markup: build-time code (build, routes, module)", () => {
+  const build = (
+    body: string,
+    directive: "build" | "routes" | "module" = "build",
+  ) => analyze(body, { directive });
+  const codes = (body: string, directive?: "build" | "routes" | "module") =>
+    build(body, directive).map((d) => d.code);
+
+  it("a Prettier-wrapped build script returning plain template markup: one warning per hole, with the fix", () => {
+    const body = `export default async function () {
+  const posts = await loadPosts();
+  return posts
+    .map(
+      (post) => \`
+        <article>
+          <h2>\${post.title}</h2>
+          <p>\${post.summary}</p>
+        </article>
+      \`,
+    )
+    .join("");
+}
+`;
+    const diags = build(body).filter((d) => d.code === RULE);
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual([
+      "${post.title}",
+      "${post.summary}",
+    ]);
+    expect(diags.every((d) => d.template?.fixable)).toBe(true);
+  });
+
+  it("a module exporting a helper that returns markup", () => {
+    const body = `export const card = (name: string): string =>\n  \`<li class="card">\${name}</li>\`;\n`;
+    expect(covered(body, { directive: "module" })).toEqual(["${name}"]);
+  });
+
+  it("a module needs no default export, and gets no server import rule", () => {
+    const body = `import { readFile } from "@bascik/bascik/build-helpers";\nexport const x = 1;\n`;
+    expect(codes(body, "module")).toEqual([]);
+    expect(codes(body, "build")).not.toContain("server-script-bascik-import");
+  });
+
+  it("html-tagged templates keep their errors at build time: html throws there too and fails the build", () => {
+    const body = `${IMPORT}export default () => html\`<button onclick="\${go}">Froth</button>\`;`;
+    expect(codes(body)).toContain("server-script-sink-event-handler");
+    expect(
+      build(body).find((d) => d.code === "server-script-sink-event-handler")
+        ?.severity,
+    ).toBe("error");
+  });
+
+  it("esc() inside html and a joined html array are still reported", () => {
+    const body = `${IMPORT}export default (items) => html\`<p>\${esc(name)}</p><ul>\${items.map((i) => html\`<li>\${i}</li>\`).join("")}</ul>\`;`;
+    expect(codes(body, "module")).toEqual(
+      expect.arrayContaining(["html-escaped-twice", "html-joined-string"]),
+    );
+  });
+
+  it("an unquoted attribute or a <script> body still warns, unless the value is exempt", () => {
+    expect(
+      codes("export default () => `<p class=${cls}>Milk frother</p>`;"),
+    ).toEqual(["server-script-sink-unquoted-attribute"]);
+    expect(
+      codes(
+        'export default () => `<script type="application/ld+json">${JSON.stringify(data)}</script>`;',
+      ),
+    ).toEqual(["server-script-sink-inline-script"]);
+    expect(
+      codes('export default () => `<p class=${"wide"}>Milk frother</p>`;'),
+    ).toEqual([]);
+  });
+
+  it("an event handler or style value from data is the site's own at build time: no warning and no fix", () => {
+    const body =
+      'export default () => `<p style="--fill: ${pct}%" onclick="pick(${id})">${name}</p>`;';
+    const diags = build(body);
+    expect(diags.map((d) => d.code)).toEqual([RULE]);
+    expect(diags[0].template?.fixable).toBe(false);
+    // The same template in a server script warns on both sinks.
+    expect(analyze(body).map((d) => d.code)).toEqual(
+      expect.arrayContaining([
+        "server-script-sink-style",
+        "server-script-sink-event-handler",
+      ]),
+    );
+  });
+
+  it("no URL-attribute warning for a checked-looking value, and no request-value hint, at build time", () => {
+    expect(codes('export default () => `<a href="${HOME}">Home</a>`;')).toEqual(
+      [],
+    );
+    expect(
+      codes(
+        'export default (request) => `<p>${request.headers.get("x")}</p>`;',
+        "build",
+      ),
+    ).toEqual([RULE]);
+  });
+
+  it("SQL, URLs and messages in build code are not markup", () => {
+    expect(
+      codes(
+        "export default async () => { const rows = await db.query(`SELECT * FROM posts WHERE id = ${id}`); console.log(`<p>${rows.length}</p>`); throw new Error(`<b>${id}</b>`); };",
+      ),
+    ).toEqual([]);
+  });
+
+  it("other tagged templates are skipped; String.raw is checked with no fix", () => {
+    expect(codes("export default () => css`<p>${x}</p>`;")).toEqual([]);
+    const raw = build("export default () => String.raw`<p>${x}</p>`;").filter(
+      (d) => d.code === RULE,
+    );
+    expect(raw).toHaveLength(1);
+    expect(raw[0].template?.fixable).toBe(false);
+  });
+
+  it("an escaped backtick and a regex replacement token in the template text do not end or confuse it", () => {
+    const body =
+      "export default () => `<p>Use \\`$1\\` and $& here: ${name}</p>`;";
+    expect(covered(body, { directive: "build" })).toEqual(["${name}"]);
+  });
+
+  it("a nested template inside a hole is checked on its own", () => {
+    const body =
+      'export default (rows) => `<ul>${rows.map((r) => `<li>${r.name}</li>`).join("")}</ul>`;';
+    const diags = build(body).filter((d) => d.code === RULE);
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual([
+      '${rows.map((r) => `<li>${r.name}</li>`).join("")}',
+      "${r.name}",
+    ]);
+    // Wrapping the outer one would escape the joined string: no fix there.
+    expect(diags[0].template?.fixable).toBe(false);
+    expect(diags[1].template?.fixable).toBe(true);
+  });
+
+  it("a src= build script's inline body is out of scope (its file is checked as a module)", () => {
+    expect(
+      covered(handler("`<p>${q}</p>`"), {
+        directive: "build",
+        hasSrcAttribute: true,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("hand-written-html-escaper in scripts", () => {
+  const ESCAPER = `function escapeHtml(s) {\n  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");\n}\n`;
+
+  it.each(["server", "stream", "build", "routes", "module"] as const)(
+    "is a warning on the name in a %s script, with the delegate range",
+    (directive) => {
+      const body = `${ESCAPER}export default () => "";\n`;
+      const diags = analyze(body, { directive }).filter(
+        (d) => d.code === "hand-written-html-escaper",
+      );
+      expect(diags).toHaveLength(1);
+      expect(diags[0].severity).toBe("warning");
+      expect(body.slice(diags[0].start, diags[0].end)).toBe("escapeHtml");
+      expect(diags[0].message).toBe(
+        "escapeHtml() is a hand-written HTML escaper: it turns & and < into entities. Build markup with html`...` from @bascik/bascik/html, which escapes each value for where it lands, or call esc() from the same module for a plain string. If it escapes XML on purpose, say so in a comment above it.",
+      );
+      expect(diags[0].escaper?.param).toBe("s");
+    },
+  );
+
+  it("a lookup map gets its own message and no delegate range", () => {
+    const body = `const ENTITIES = { "&": "&amp;", "<": "&lt;" };\nexport const esc2 = (s) => s.replace(/[&<]/g, (c) => ENTITIES[c]);\n`;
+    const [d] = analyze(body, { directive: "module" }).filter(
+      (x) => x.code === "hand-written-html-escaper",
+    );
+    expect(d.message.startsWith("ENTITIES maps & and < to HTML entities")).toBe(
+      true,
+    );
+    expect(d.escaper).toBeUndefined();
+  });
+
+  it("is not reported for a src= script's inline body", () => {
+    expect(
+      analyze(ESCAPER, { directive: "build", hasSrcAttribute: true }).map(
+        (d) => d.code,
+      ),
+    ).not.toContain("hand-written-html-escaper");
+  });
+});
+
+describe("server-script-unescaped-markup: an XML escaper that says so is trusted in its own file", () => {
+  it("calls of a commented XML escaper are exempt; an uncommented one gets the escaper message", () => {
+    const fn = `function escapeXml(s) {\n  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n}\n`;
+    const use =
+      "export const item = (t) => `<item><title>${escapeXml(t)}</title></item>`;\n";
+    const commented = `// RSS is XML, so the feed keeps its own escaper.\n${fn}${use}`;
+    expect(analyze(commented, { directive: "module" })).toEqual([]);
+    const codes = analyze(fn + use, { directive: "module" }).map((d) => d.code);
+    expect(codes.sort()).toEqual([
+      "hand-written-html-escaper",
+      "server-script-unescaped-markup",
+    ]);
   });
 });

@@ -100,11 +100,15 @@ describe("diagnostics in a page", () => {
     expect(found[0].source).toBe("bascik");
   });
 
-  it("is not reported in a build script", () => {
-    const { diags } = open(
+  it("is reported in a build script too, with the quick fix", () => {
+    const { doc, diags } = open(
       PAGE(SEARCH).replace("data-bascik-server", "data-bascik-build"),
     );
-    expect(markupDiags(diags)).toEqual([]);
+    const found = markupDiags(diags);
+    expect(found).toHaveLength(1);
+    expect(doc.getText(found[0].range)).toBe("${q}");
+    const actions = createCodeActions(doc, found[0].range, diags, snapshot());
+    expect(actions.map((a) => a.title)).toContain("Wrap template in html`...`");
   });
 });
 

@@ -266,20 +266,16 @@ describe("Server Script Diagnostics", () => {
       }
     });
 
-    it("does not apply server-specific import or sink rules to build or routes", () => {
+    it("does not apply the server import rule to build or routes, but does report unescaped markup", () => {
       const body = `import { escapeHtml } from '@bascik/bascik';
 export default async () => \`<a href="\${request.query}"></a>\`;`;
-      const diagsBuild = analyzeServerScriptSource(body, {
-        hasSrcAttribute: false,
-        directive: "build",
-      });
-      expect(diagsBuild.length).toBe(0);
-
-      const diagsRoutes = analyzeServerScriptSource(body, {
-        hasSrcAttribute: false,
-        directive: "routes",
-      });
-      expect(diagsRoutes.length).toBe(0);
+      for (const directive of ["build", "routes"] as const) {
+        const codes = analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive,
+        }).map((d) => d.code);
+        expect(codes, directive).toEqual(["server-script-unescaped-markup"]);
+      }
     });
   });
 

@@ -1,5 +1,9 @@
 import { findModuleSpecifiers } from "./module-specifiers.js";
 import {
+  HAND_WRITTEN_ESCAPER_RULE,
+  findHandWrittenEscapers,
+} from "./hand-written-escaper.js";
+import {
   HTML_MODULE,
   callOf,
   findBindings,
@@ -26,11 +30,23 @@ export interface ServerScriptDiagnostic {
    * (no hole sits where html would throw).
    */
   template?: { start: number; fixable: boolean };
+  /**
+   * hand-written-html-escaper only, when the escaper is one `return` (or an
+   * arrow's expression) with one plain parameter: the body to replace with
+   * a call to esc(), and that parameter.
+   */
+  escaper?: { start: number; end: number; param: string; block: boolean };
 }
 
 export interface AnalyzeOptions {
   hasSrcAttribute: boolean;
-  directive: "server" | "stream" | "build" | "routes";
+  /**
+   * The script's directive, or "module" for a .ts or .js file that runs in
+   * Node: a directive script's src= file, a module one imports, or an API
+   * route. server and stream run per request; the rest run at build time
+   * (or are imported by code that does).
+   */
+  directive: "server" | "stream" | "build" | "routes" | "module";
   /** A project's own escapers, trusted like esc() (bascik.ext.json diagnostics.escapeFunctions). */
   escapeFunctions?: readonly string[];
   /** Added to body line numbers so messages name the file line (the body's first line is line 1 + lineOffset). */
@@ -236,7 +252,11 @@ export function analyzeServerScriptSource(
   const diagnostics: ServerScriptDiagnostic[] = [];
 
   // Rule 2: server-script-missing-default-export
-  if (body.trim().length > 0 && !opts.hasSrcAttribute) {
+  if (
+    body.trim().length > 0 &&
+    !opts.hasSrcAttribute &&
+    opts.directive !== "module"
+  ) {
     if (!hasDefaultExport(body)) {
       const match = /\S+/.exec(body);
       const start = match ? match.index : 0;
@@ -261,14 +281,17 @@ export function analyzeServerScriptSource(
     }
   }
 
-  // Server-specific rules (import and sinks) only apply to server and stream scripts
-  if (opts.directive !== "server" && opts.directive !== "stream") {
-    return diagnostics;
-  }
+  // Request-time scripts get every rule. Build-time code (build and routes
+  // scripts, and the modules scripts import) gets the markup rules too:
+  // their output is a page, and a title with & or < breaks it whoever wrote
+  // the value. See the sink notes in the template loop.
+  const requestTime =
+    opts.directive === "server" || opts.directive === "stream";
 
   // server-script-bascik-import
   // An ESM import whose specifier is exactly @bascik/bascik or starts with @bascik/bascik/
-  const moduleSpecifiers = findModuleSpecifiers(body);
+  // Build scripts may import build tooling, so this is for server and stream only.
+  const moduleSpecifiers = requestTime ? findModuleSpecifiers(body) : [];
   for (const { start, end, value } of moduleSpecifiers) {
     if (value === HTML_MODULE) continue;
     if (value === "@bascik/bascik" || value.startsWith("@bascik/bascik/")) {
@@ -283,12 +306,30 @@ export function analyzeServerScriptSource(
     }
   }
 
+  // Escapers a comment says are for XML: trusted in this script's holes.
+  const xmlEscapers: string[] = [];
+  if (!opts.hasSrcAttribute)
+    for (const escaper of findHandWrittenEscapers(body, xmlEscapers)) {
+      const subject =
+        escaper.kind === "map"
+          ? `${escaper.name} maps & and < to HTML entities, the core of a hand-written HTML escaper.`
+          : `${escaper.name}() is a hand-written HTML escaper: it turns & and < into entities.`;
+      diagnostics.push({
+        code: HAND_WRITTEN_ESCAPER_RULE,
+        message: `${subject} Build markup with html\`...\` from @bascik/bascik/html, which escapes each value for where it lands, or call esc() from the same module for a plain string. If it escapes XML on purpose, say so in a comment above it.`,
+        severity: "warning",
+        start: escaper.start,
+        end: escaper.end,
+        ...(escaper.delegate ? { escaper: escaper.delegate } : {}),
+      });
+    }
+
   // Part C: sink rules and server-script-unescaped-markup, per template hole.
   const imports = findHtmlImports(body);
   const ctx: ExemptContext = {
     imports,
     htmlTags: htmlTagNames(imports),
-    escapeFunctions: opts.escapeFunctions ?? [],
+    escapeFunctions: [...(opts.escapeFunctions ?? []), ...xmlEscapers],
     bindings: findBindings(body),
   };
   const lineStarts = [0];
@@ -385,6 +426,34 @@ export function analyzeServerScriptSource(
         continue;
       }
 
+      if (
+        sink !== null &&
+        sink !== "server-script-sink-url-attribute" &&
+        !requestTime
+      ) {
+        // Build time: html would throw here, so no fix, and no
+        // unescaped-markup report either (wrapping would not help). An
+        // unquoted value or a <script> body breaks on a space or a
+        // </script> in the value, whoever wrote it, so those warn unless the
+        // value is exempt. An event handler or style value is the site's
+        // own at build time (a CSS custom property from data is common), so
+        // those are request-time warnings only.
+        fixable = false;
+        if (
+          markup &&
+          (sink === "server-script-sink-unquoted-attribute" ||
+            sink === "server-script-sink-inline-script") &&
+          !isExempt(hole.expr, ctx)
+        )
+          diagnostics.push({
+            code: sink,
+            message: SINK_MESSAGES[sink],
+            severity: "warning",
+            ...at,
+          });
+        continue;
+      }
+
       if (sink !== null && sink !== "server-script-sink-url-attribute") {
         fixable = false;
         diagnostics.push({
@@ -415,6 +484,10 @@ export function analyzeServerScriptSource(
         });
         continue;
       }
+
+      // A checked value in a URL attribute and request values in text are
+      // request-time concerns: build-time values are the site's own.
+      if (!requestTime) continue;
 
       if (sink === "server-script-sink-url-attribute") {
         const callee = callOf(hole.expr);

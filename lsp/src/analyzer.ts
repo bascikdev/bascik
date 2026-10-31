@@ -32,7 +32,12 @@ import {
   unknownDirectiveValueMessage,
 } from "./directive-rules.js";
 import { findModuleSpecifiers } from "./module-specifiers.js";
-import { analyzeServerScriptSource } from "./server-script-rules.js";
+import {
+  analyzeServerScriptSource,
+  type ServerScriptDiagnostic,
+} from "./server-script-rules.js";
+import { HAND_WRITTEN_ESCAPER_RULE } from "./hand-written-escaper.js";
+import { normalizeModulePath, scriptModulesOf } from "./script-modules.js";
 import { parseImportSpecifier } from "./server-script-templates.js";
 import {
   analyzeComponentSource,
@@ -647,6 +652,8 @@ export function createDiagnostics(
   fsPath: string,
   snapshot: ProjectSnapshot | undefined,
   openDocumentTexts: { fsPath: string; text: string }[] = [],
+  /** The files that run in Node (see script-modules.ts); found from the snapshot when left out. */
+  scriptModules?: ReadonlySet<string>,
 ): Diagnostic[] {
   const { languageId } = document;
 
@@ -723,6 +730,78 @@ export function createDiagnostics(
       });
     }
   }
+
+  /** Located diagnostics for a script body at `bodyStart`, with the data its quick fixes need. */
+  const pushScriptDiagnostics = (
+    found: ServerScriptDiagnostic[],
+    bodyStart: number,
+    bodyLength: number,
+  ): void => {
+    const bodyEnd = bodyStart + bodyLength;
+    for (const sd of found) {
+      let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+      if (sd.severity === "warning") severity = DiagnosticSeverity.Warning;
+      else if (sd.severity === "info")
+        severity = DiagnosticSeverity.Information;
+      let data: WrapHtmlData | EscaperFixData | undefined;
+      if (sd.template)
+        data = {
+          templateStart: bodyStart + sd.template.start,
+          fixable: sd.template.fixable,
+          bodyStart,
+          bodyEnd,
+        };
+      else if (sd.code === HAND_WRITTEN_ESCAPER_RULE)
+        data = {
+          bodyStart,
+          bodyEnd,
+          ...(sd.escaper
+            ? {
+                delegate: {
+                  ...sd.escaper,
+                  start: bodyStart + sd.escaper.start,
+                  end: bodyStart + sd.escaper.end,
+                },
+              }
+            : {}),
+        };
+      diagnostics.push({
+        range: {
+          start: document.positionAt(bodyStart + sd.start),
+          end: document.positionAt(bodyStart + sd.end),
+        },
+        message: sd.message,
+        severity,
+        source: "bascik",
+        code: sd.code,
+        ...(data ? { data } : {}),
+      });
+    }
+  };
+
+  // A .ts or .js file that runs in Node (a directive script's src= file, a
+  // module a script imports, an API route) gets the markup and escaper rules
+  // that inline directive scripts get. See script-modules.ts.
+  const isScriptModuleDocument =
+    (languageId === "typescript" || languageId === "javascript") &&
+    (isApiRouteDocument ||
+      (snapshot !== undefined &&
+        (scriptModules ?? scriptModulesOf(snapshot, openDocumentTexts)).has(
+          normalizeModulePath(fsPath),
+        )));
+  if (
+    isScriptModuleDocument &&
+    earlyExtConfig.diagnostics?.serverScriptRules !== false
+  )
+    pushScriptDiagnostics(
+      analyzeServerScriptSource(text, {
+        hasSrcAttribute: false,
+        directive: "module",
+        escapeFunctions: earlyExtConfig.diagnostics?.escapeFunctions ?? [],
+      }),
+      0,
+      text.length,
+    );
 
   // isComponentDocument needs the file inside a resolved (absolute) component root, so an unsaved
   // buffer never matches; no POSIX-only `startsWith("/")` gate, which skipped every Windows path.
@@ -1144,33 +1223,7 @@ export function createDiagnostics(
                 lineOffset: document.positionAt(scriptBodyOffset).line,
               });
 
-        for (const sd of serverDiags) {
-          const start = document.positionAt(scriptBodyOffset + sd.start);
-          const end = document.positionAt(scriptBodyOffset + sd.end);
-          let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-          if (sd.severity === "warning") {
-            severity = DiagnosticSeverity.Warning;
-          } else if (sd.severity === "info") {
-            severity = DiagnosticSeverity.Information;
-          }
-          diagnostics.push({
-            range: { start, end },
-            message: sd.message,
-            severity,
-            source: "bascik",
-            code: sd.code,
-            ...(sd.template
-              ? {
-                  data: {
-                    templateStart: scriptBodyOffset + sd.template.start,
-                    fixable: sd.template.fixable,
-                    bodyStart: scriptBodyOffset,
-                    bodyEnd: scriptBodyOffset + scriptBody.length,
-                  } satisfies WrapHtmlData,
-                }
-              : {}),
-          });
-        }
+        pushScriptDiagnostics(serverDiags, scriptBodyOffset, scriptBody.length);
       }
 
       diagnostics.push(
@@ -1564,7 +1617,8 @@ export function createDiagnostics(
     }
   } else if (languageId === "css") {
     addCompatibilityDiagnostics(text, "css", 0);
-  } else {
+  } else if (!isScriptModuleDocument) {
+    // A module that runs in Node is never scoped for the browser.
     addCompatibilityDiagnostics(text, "js", 0);
   }
 
@@ -2175,10 +2229,47 @@ export function buildWrapHtmlEdits(
   if (diag.code !== "server-script-unescaped-markup") return undefined;
   const data = diag.data as WrapHtmlData | undefined;
   if (!data || !data.fixable) return undefined;
+  const plan = planHtmlImport(
+    document,
+    data.bodyStart,
+    data.bodyEnd,
+    "html",
+    "safeHtml",
+    true,
+  );
+  if (!plan) return undefined;
+  const backtick = document.positionAt(data.templateStart);
+  return {
+    title: "Wrap template in html`...`",
+    edits: [
+      ...plan.edits,
+      { range: { start: backtick, end: backtick }, newText: plan.local },
+    ],
+  };
+}
+
+/**
+ * The local name to use for `exportName` from @bascik/bascik/html in the
+ * script between `bodyStart` and `bodyEnd`, and the edits that import it:
+ * after the script's last import, or merged into an existing import from
+ * the module. When the name is already used in the script's code (a
+ * variable, a parameter, another import), it imports `exportName as alias`
+ * instead, so the edit never uses a binding that means something else;
+ * when the alias is taken too, there is no plan. With `onlyAsTagOrCall`, an
+ * existing import of the name counts only when the name is never shadowed.
+ */
+function planHtmlImport(
+  document: TextDocumentLike,
+  bodyStart: number,
+  bodyEnd: number,
+  exportName: string,
+  alias: string,
+  onlyAsTagOrCall: boolean,
+): { local: string; edits: TextEdit[] } | undefined {
   const text = document.getText();
-  const body = text.slice(data.bodyStart, data.bodyEnd);
+  const body = text.slice(bodyStart, bodyEnd);
   const at = (offset: number): Position =>
-    document.positionAt(data.bodyStart + offset);
+    document.positionAt(bodyStart + offset);
   const edits: TextEdit[] = [];
 
   const existing =
@@ -2202,8 +2293,7 @@ export function buildWrapHtmlEdits(
   const onlyTagOrCall = (name: string): boolean =>
     !new RegExp(`(?<!\\bfunction\\s*)${word(name)}(?!\\s*[\`(])`).test(code) &&
     !new RegExp(`\\bfunction\\s*${word(name)}`).test(code);
-  const ALIAS = "safeHtml";
-  let tag: string | undefined;
+  let local: string | undefined;
   let specifier: string | undefined;
   const entries = existing
     ? existing[1]
@@ -2214,16 +2304,16 @@ export function buildWrapHtmlEdits(
   // Names that are not identifiers (a half-typed `html as h(`) bind nothing.
   const bound = entries
     .map(parseImportSpecifier)
-    .filter((parts) => parts?.[0] === "html")
+    .filter((parts) => parts?.[0] === exportName)
     .map((parts) => parts![1]);
-  tag = bound.find(onlyTagOrCall);
-  if (tag === undefined) {
-    if (!bound.includes("html") && !uses("html")) {
-      tag = "html";
-      specifier = "html";
-    } else if (!bound.includes(ALIAS) && !uses(ALIAS)) {
-      tag = ALIAS;
-      specifier = `html as ${ALIAS}`;
+  local = bound.find((name) => !onlyAsTagOrCall || onlyTagOrCall(name));
+  if (local === undefined) {
+    if (!bound.includes(exportName) && !uses(exportName)) {
+      local = exportName;
+      specifier = exportName;
+    } else if (!bound.includes(alias) && !uses(alias)) {
+      local = alias;
+      specifier = `${exportName} as ${alias}`;
     } else return undefined;
   }
 
@@ -2257,9 +2347,95 @@ export function buildWrapHtmlEdits(
       });
     }
   }
-  const backtick = document.positionAt(data.templateStart);
-  edits.push({ range: { start: backtick, end: backtick }, newText: tag });
-  return { title: "Wrap template in html`...`", edits };
+  return { local, edits };
+}
+
+/** Where the hand-written-html-escaper fixes apply (offsets in the document). */
+interface EscaperFixData {
+  bodyStart: number;
+  bodyEnd: number;
+  /** The escaper's body (braces included) or arrow expression, and its parameter. */
+  delegate?: { start: number; end: number; param: string; block: boolean };
+}
+
+/**
+ * The code actions for hand-written-html-escaper. A one-return escaper with
+ * one plain parameter gets "Make NAME() call esc()": its body becomes a call
+ * to esc() from @bascik/bascik/html (imported, aliased when the name esc is
+ * taken, as it is when the escaper itself is called esc). The callers keep
+ * working: esc() escapes the same characters and quotes as well. Rewriting
+ * the callers to html`...` is not automatic, since a template's value then
+ * changes from a string to an html value. Every other escaper (a lookup
+ * object, a longer body) gets "Import html from @bascik/bascik/html" when
+ * the script does not import it yet, as a start on rewriting by hand.
+ */
+export function buildEscaperActions(
+  document: TextDocumentLike,
+  diag: Diagnostic,
+): { title: string; edits: TextEdit[]; preferred: boolean }[] {
+  if (diag.code !== HAND_WRITTEN_ESCAPER_RULE) return [];
+  const data = diag.data as EscaperFixData | undefined;
+  if (!data) return [];
+  const name = document.getText(diag.range);
+  if (data.delegate) {
+    const plan = planHtmlImport(
+      document,
+      data.bodyStart,
+      data.bodyEnd,
+      "esc",
+      "escapeValue",
+      true,
+    );
+    if (plan) {
+      const { start, end, param, block } = data.delegate;
+      const startPos = document.positionAt(start);
+      const lineStart = document.offsetAt({
+        line: startPos.line,
+        character: 0,
+      });
+      const indent =
+        /^[ \t]*/.exec(document.getText().slice(lineStart, start))?.[0] ?? "";
+      const call = `${plan.local}(${param})`;
+      return [
+        {
+          title: `Make ${name}() call esc() from @bascik/bascik/html`,
+          preferred: true,
+          edits: [
+            ...plan.edits,
+            {
+              range: { start: startPos, end: document.positionAt(end) },
+              newText: block
+                ? `{\n${indent}  return ${call};\n${indent}}`
+                : call,
+            },
+          ],
+        },
+      ];
+    }
+  }
+  const body = document.getText().slice(data.bodyStart, data.bodyEnd);
+  if (
+    /\bimport\s*\{[^}]*\bhtml\b[^}]*\}\s*from\s*["']@bascik\/bascik\/html["']/.test(
+      body,
+    )
+  )
+    return [];
+  const plan = planHtmlImport(
+    document,
+    data.bodyStart,
+    data.bodyEnd,
+    "html",
+    "safeHtml",
+    true,
+  );
+  if (!plan || plan.edits.length === 0) return [];
+  return [
+    {
+      title: "Import html from @bascik/bascik/html to build markup safely",
+      preferred: false,
+      edits: plan.edits,
+    },
+  ];
 }
 
 export function createCodeActions(
@@ -2281,6 +2457,18 @@ export function createCodeActions(
     if (!rangesOverlap(diag.range, range)) continue;
     // Editor only: wrapping changes the value from a string to SafeHtml, so
     // `bascik --check --fix` (applyAutoFixes) never applies it.
+    const escaperActions = buildEscaperActions(document, diag);
+    if (escaperActions.length > 0) {
+      for (const action of escaperActions)
+        actions.push({
+          title: action.title,
+          kind: CodeActionKind.QuickFix,
+          diagnostics: [diag],
+          isPreferred: action.preferred,
+          edit: { changes: { [document.uri]: action.edits } },
+        });
+      continue;
+    }
     const wrap = buildWrapHtmlEdits(document, diag);
     if (wrap) {
       if (actions.some((a) => a.title === wrap.title && sameEdits(a, wrap)))
