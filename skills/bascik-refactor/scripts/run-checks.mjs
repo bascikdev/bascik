@@ -18,6 +18,7 @@ import {
   formatFinding,
   pixels,
   routeSlug,
+  skipControlsFrom,
   validateMask,
   validateRoute,
 } from "./lib/checks.mjs";
@@ -80,6 +81,9 @@ Options:
   --mask <selector>           A documented dynamic region every check leaves out, such as an autoplay carousel, an
                               autoplay video, a rotating ticker or a relative clock (repeatable; log each one in the
                               decisions ledger). Never mask a modal or banner on a timer: --settle-ms waits for it
+  --skip-control <selector>   A control whose handler has side effects on the live site (add to cart, subscribe,
+                              vote, start a chat) that interaction-crawl and state-capture must never activate
+                              (repeatable). Both checks click every other button on production, again per case
   --settle-ms <ms>            Least time after navigation before a page is measured (default ${DEFAULT_SETTLE_MS}); raise it for
                               a layer on a longer timer, 0 for a site with none
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
@@ -117,6 +121,7 @@ export function parseCliArgs(argv) {
       "spacing-tolerance": { type: "string" },
       "overlap-tolerance": { type: "string" },
       mask: { type: "string", multiple: true },
+      "skip-control": { type: "string", multiple: true },
       "settle-ms": { type: "string" },
       dismiss: { type: "string", multiple: true },
       ledger: { type: "string" },
@@ -166,6 +171,7 @@ export function parseCliArgs(argv) {
       1,
     ),
     mask: values.mask ?? [],
+    skipControls: skipControlsFrom(values["skip-control"]),
     settleMs: pixels(
       "--settle-ms",
       values["settle-ms"],
@@ -335,6 +341,7 @@ async function main() {
       targetSrc: args.targetSrc,
       legacySrc: args.legacySrc,
       masks: args.mask,
+      skipControls: args.skipControls,
       settleMs: args.settleMs,
       dismiss: args.dismiss,
     };

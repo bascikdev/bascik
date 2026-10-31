@@ -155,6 +155,14 @@ since masking it removes the layer presence-by-route checks. Expect about two mi
 (state-capture and interaction-crawl take most of it, since both reload the page per interactive element); run every
 check anyway. A check that crashes on a navigation timeout is run once more and the report notes the retry.
 
+The interaction crawl and state capture are not read-only toward production. They never follow a plain navigation
+link or press a submit button, but they click every other control (a `<button type="button">`, a `role="button"`, an
+element with a click listener) from a fresh load, once per matrix case and again per layer it opens. A handler that
+posts to the live site (add to cart, subscribe through JavaScript, vote or like, start a chat, analytics events) runs
+each time. Before the first run, list the site's side-effecting controls and pass each with `--skip-control
+<selector>` (both checks and `run-checks.mjs` take it); those controls are not activated on either side, so compare
+them by hand and note it in the ledger.
+
 ### Production defects
 
 Production is the truth for geometry, not for bugs. `production-defects.mjs` runs on production before a route is

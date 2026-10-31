@@ -64,7 +64,7 @@ describe("CHECK and INTERACTIVE_SELECTOR", () => {
       expect(INTERACTIVE_SELECTOR, part).toContain(part);
   });
 
-  it("never activates plain navigation links or submit buttons: the crawl is read-only", () => {
+  it("never activates plain navigation links or submit buttons (other controls are clicked: see --skip-control)", () => {
     expect(INTERACTIVE_SELECTOR).not.toMatch(/(^|,\s*)a(\[href\])?\s*(,|$)/);
   });
 });
@@ -338,6 +338,33 @@ describe("parseCliArgs", () => {
     ]);
     expect(args.matrix).toBe("docs/migration/breakpoints.json");
     expect(args.out).toBe("artifacts/checks");
+    expect(args.skipControls).toEqual([]);
+  });
+
+  it("--skip-control lists side-effecting controls the crawl must not activate, and rejects a broken selector", () => {
+    const base = [
+      "--prod",
+      "https://example.com",
+      "--target",
+      "http://localhost:8080",
+      "--route",
+      "/",
+    ];
+    expect(
+      parseCliArgs([
+        ...base,
+        "--skip-control",
+        "[data-add-to-cart]",
+        "--skip-control",
+        "#subscribe",
+      ]).skipControls,
+    ).toEqual(["[data-add-to-cart]", "#subscribe"]);
+    expect(() =>
+      parseCliArgs([...base, "--skip-control", "[data-add-to-cart"]),
+    ).toThrow(/--skip-control \[data-add-to-cart: not a CSS selector/);
+    expect(() => parseCliArgs([...base, "--skip-control", " "])).toThrow(
+      /--skip-control needs a CSS selector/,
+    );
   });
 });
 
@@ -384,5 +411,45 @@ describe("activatable (the in-page source, run with stub page helpers)", () => {
 
   it("hovers any link, since a hover never leaves the page", () => {
     expect(inPage(linkTo("/about"), "hover", [])).toBe(true);
+  });
+});
+
+describe("activatable: controls the operator lists with --skip-control", () => {
+  // isMasked stands in for el.closest(selector) over a list: here an element "matches" the selectors in its `in` list.
+  const here = new URL("https://example.com/product");
+  const check = new Function(
+    "location",
+    "isRendered",
+    "isMasked",
+    "tagOf",
+    `${activatable}\nreturn activatable;`,
+  )(
+    here,
+    () => true,
+    (el: { in: string[] }, list: string[] | undefined) =>
+      (list ?? []).some((s) => el.in.includes(s)),
+    (el: { tagName: string }) => el.tagName,
+  ) as (el: unknown, mode: string, masks: string[], skip?: string[]) => boolean;
+  const button = (...selectors: string[]) => ({
+    tagName: "BUTTON",
+    form: null,
+    in: selectors,
+    getAttribute: (name: string) => (name === "type" ? "button" : null),
+    closest: () => null,
+  });
+
+  it("a JS-handled button is activated unless it is listed: the crawl clicks it on live production", () => {
+    expect(check(button("[data-add-to-cart]"), "click", [])).toBe(true);
+    expect(
+      check(button("[data-add-to-cart]"), "click", [], ["[data-add-to-cart]"]),
+    ).toBe(false);
+  });
+
+  it("a listed control is neither clicked nor hovered, and other controls still are", () => {
+    const skip = ['[data-testid="chat-start"]'];
+    expect(check(button('[data-testid="chat-start"]'), "hover", [], skip)).toBe(
+      false,
+    );
+    expect(check(button("[data-testid=menu]"), "click", [], skip)).toBe(true);
   });
 });

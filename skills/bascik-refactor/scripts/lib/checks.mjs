@@ -67,13 +67,16 @@ export function validateRoute(route) {
 
 /**
  * Rejects a --mask value that cannot be a CSS selector (empty, or brackets, parentheses or quotes that do not close),
- * because the page would ignore it and the region it was meant to hide would be compared after all.
+ * because the page would ignore it and the region it was meant to hide would be compared after all. `flag` names the
+ * option in the message (--skip-control takes selectors too).
  */
-export function validateMask(selector) {
+export function validateMask(selector, flag = "--mask") {
   const value = String(selector ?? "").trim();
   if (!value)
     throw new Error(
-      "--mask needs a CSS selector for a documented dynamic region, such as '[data-testid=\"carousel\"]'",
+      flag === "--mask"
+        ? "--mask needs a CSS selector for a documented dynamic region, such as '[data-testid=\"carousel\"]'"
+        : `${flag} needs a CSS selector for a control with side effects, such as '[data-testid="add-to-cart"]'`,
     );
   const stack = [];
   let quote = null;
@@ -88,13 +91,13 @@ export function validateMask(selector) {
       const open = stack.pop();
       if ((ch === "]" && open !== "[") || (ch === ")" && open !== "("))
         throw new Error(
-          `--mask ${value}: not a CSS selector ("${ch}" closes nothing)`,
+          `${flag} ${value}: not a CSS selector ("${ch}" closes nothing)`,
         );
     }
   }
   if (quote || stack.length)
     throw new Error(
-      `--mask ${value}: not a CSS selector (${quote ? `the ${quote} quote` : `"${stack.at(-1)}"`} is never closed)`,
+      `${flag} ${value}: not a CSS selector (${quote ? `the ${quote} quote` : `"${stack.at(-1)}"`} is never closed)`,
     );
 }
 
@@ -113,6 +116,29 @@ export function casesOf(options) {
   if (Array.isArray(options.cases) && options.cases.length)
     return options.cases;
   return loadMatrix(options.matrix ?? DEFAULT_MATRIX);
+}
+
+/**
+ * The --skip-control option for the checks that activate controls (interaction-crawl, state-capture): the parseArgs
+ * option, and the validated list of its values.
+ */
+export const SKIP_CONTROL_OPTION = Object.freeze({
+  "skip-control": { type: "string", multiple: true },
+});
+export function skipControlsFrom(list) {
+  for (const selector of list ?? []) validateMask(selector, "--skip-control");
+  return list ?? [];
+}
+
+/**
+ * The controls a runCheck call must never activate, from `skipControls` (API and run-checks) or `skip-control`
+ * (a check's own CLI): a button whose handler posts to the live site (add to cart, subscribe, vote, start a chat).
+ */
+export function skipControlsOf(options) {
+  return [
+    ...(options?.skipControls ?? []),
+    ...(options?.["skip-control"] ?? []),
+  ];
 }
 
 /** The masks a runCheck call takes, from `masks` (API) or `mask` (CLI). */

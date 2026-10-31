@@ -16,6 +16,7 @@ import { loadPlaywright } from "../../skills/bascik-refactor/scripts/lib/project
 import {
   activate,
   diffEffects,
+  discover,
   observeVolatile,
 } from "../../skills/bascik-refactor/scripts/interaction-crawl.mjs";
 import { packageDir } from "./refactor-parity-fixtures.ts";
@@ -294,5 +295,67 @@ describe("an element whose selector changes between loads", () => {
   it("is left unmeasured, not guessed, when look-alikes share its anchor", async () => {
     // Two "Menu" buttons with fresh ids: picking either could measure the wrong one. diffEffects reports it.
     expect(await effectOnMenu(true)).toBeNull();
+  }, 60_000);
+});
+
+/** A product page whose Add to cart button posts to the live site's cart API through fetch, next to a harmless menu. */
+const CART = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>Milk frother</title></head>
+<body>
+<header><button type="button" aria-expanded="false" data-testid="site-menu">Menu</button></header>
+<main>
+  <h1>Milk frother</h1>
+  <button type="button" data-testid="add-to-cart">Add to cart</button>
+  <div class="vote" style="cursor: pointer" data-testid="vote">Like</div>
+</main>
+<script>
+document.querySelector("[data-testid=site-menu]").addEventListener("click", (e) =>
+  e.currentTarget.setAttribute("aria-expanded", "true"),
+);
+document.querySelector("[data-testid=add-to-cart]").addEventListener("click", () =>
+  fetch("/api/cart", { method: "POST" }),
+);
+document.querySelector("[data-testid=vote]").addEventListener("click", () =>
+  fetch("/api/vote", { method: "POST" }),
+);
+</script>
+</body></html>`;
+
+describe("controls with side effects on the live site", () => {
+  const discovered = async (skip: string[]) => {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      await tab.route(
+        "http://crawl.test/**",
+        (route: { fulfill: (o: object) => Promise<void> }) =>
+          route.fulfill({ contentType: "text/html", body: CART }),
+      );
+      await tab.goto("http://crawl.test/");
+      const items = await discover(tab, [], skip);
+      return items.map(
+        (i: { anchor: { testId: string | null } }) => i.anchor.testId,
+      );
+    } finally {
+      await context.close();
+    }
+  };
+
+  it("a JS-handled button that posts is crawled like any other: the crawl is not read-only", async () => {
+    const ids = await discovered([]);
+    expect(ids).toContain("add-to-cart");
+    expect(ids).toContain("vote");
+  }, 60_000);
+
+  it("--skip-control keeps the crawl off the controls it names, button or listener-only element", async () => {
+    const ids = await discovered([
+      '[data-testid="add-to-cart"]',
+      '[data-testid="vote"]',
+    ]);
+    expect(ids).not.toContain("add-to-cart");
+    expect(ids).not.toContain("vote");
+    expect(ids).toContain("site-menu");
   }, 60_000);
 });
