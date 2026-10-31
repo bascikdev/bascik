@@ -427,6 +427,29 @@ export function escapeHtml(value: string): string {
     );
   });
 
+  it('an unnamed default export gets "Make the default export call esc()"', async () => {
+    const { doc, actionsFor } = await setup(
+      'export default (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n',
+    );
+    const [action] = actionsFor(ESCAPER);
+    expect(action.title).toBe(
+      "Make the default export call esc() from @bascik/bascik/html",
+    );
+    expect(applyEdits(doc, action.edit!.changes![doc.uri])).toBe(
+      'import { esc } from "@bascik/bascik/html";\nexport default (s: string) => esc(s);\n',
+    );
+  });
+
+  it("an escaper that also turns newlines into <br> gets no esc() fix, only the html import", async () => {
+    const { actionsFor } = await setup(
+      'export function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\\n/g, "<br>"); }\n',
+    );
+    const titles = actionsFor(ESCAPER).map((a) => a.title);
+    expect(titles).toEqual([
+      "Import html from @bascik/bascik/html to build markup safely",
+    ]);
+  });
+
   it("an escaper named esc imports esc as escapeValue; an arrow keeps its expression form", async () => {
     const { doc, actionsFor } = await setup(
       'export const esc = (s: string): string =>\n  s.replaceAll("&", "&amp;").replaceAll("<", "&lt;");\n',

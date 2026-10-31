@@ -2412,7 +2412,10 @@ export function buildEscaperActions(
       const call = `${plan.local}(${param})`;
       return [
         {
-          title: `Make ${name}() call esc() from @bascik/bascik/html`,
+          title:
+            name === "default"
+              ? "Make the default export call esc() from @bascik/bascik/html"
+              : `Make ${name}() call esc() from @bascik/bascik/html`,
           preferred: true,
           edits: [
             ...plan.edits,

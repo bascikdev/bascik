@@ -820,6 +820,17 @@ describe("hand-written-html-escaper in scripts", () => {
     },
   );
 
+  it("an unnamed default export is named as the default export", () => {
+    const body =
+      'export default function (s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }\n';
+    const [d] = analyze(body, { directive: "module" });
+    expect(d.code).toBe("hand-written-html-escaper");
+    expect(
+      d.message.startsWith("The default export is a hand-written HTML escaper"),
+    ).toBe(true);
+    expect(body.slice(d.start, d.end)).toBe("default");
+  });
+
   it("a lookup map gets its own message and no delegate range", () => {
     const body = `const ENTITIES = { "&": "&amp;", "<": "&lt;" };\nexport const esc2 = (s) => s.replace(/[&<]/g, (c) => ENTITIES[c]);\n`;
     const [d] = analyze(body, { directive: "module" }).filter(

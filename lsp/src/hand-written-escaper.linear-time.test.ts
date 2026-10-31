@@ -140,3 +140,26 @@ describe("findScriptModules: unclosed script tags (review 2026-10-31)", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 });
+
+describe("hand-written-html-escaper: nested named escapers (review 2026-10-31)", () => {
+  it(
+    "N named escapers nested inside each other (CPU growth under 8x for 4x the depth)",
+    () => {
+      // Each one once re-read the whole body of the ones inside it.
+      const nested = (n: number) => {
+        const open = Array.from(
+          { length: n },
+          (_, k) =>
+            `(function g${k}(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;") + `,
+        ).join("");
+        return `export const x = ${open}s${"; })(s)".repeat(n)};\n`;
+      };
+      const large = nested(8_000);
+      expect(findHandWrittenEscapers(large).length).toBeGreaterThan(0);
+      expect(
+        growth(findHandWrittenEscapers, nested(2_000), large),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});

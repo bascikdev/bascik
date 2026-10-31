@@ -327,7 +327,9 @@ export function analyzeServerScriptSource(
       const subject =
         escaper.kind === "map"
           ? `${escaper.name} maps & and < to HTML entities, the core of a hand-written HTML escaper.`
-          : `${escaper.name}() is a hand-written HTML escaper: it turns & and < into entities.`;
+          : escaper.defaultExport
+            ? "The default export is a hand-written HTML escaper: it turns & and < into entities."
+            : `${escaper.name}() is a hand-written HTML escaper: it turns & and < into entities.`;
       diagnostics.push({
         code: HAND_WRITTEN_ESCAPER_RULE,
         message: `${subject} Build markup with html\`...\` from @bascik/bascik/html, which escapes each value for where it lands, or call esc() from the same module for a plain string. If it escapes XML on purpose, say so in a comment above it.`,

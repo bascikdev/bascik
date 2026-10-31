@@ -236,14 +236,6 @@ describe("hand-written-html-escaper: not escapers", () => {
     ).toEqual([]);
   });
 
-  it("an anonymous default export is not named, so it is not reported", () => {
-    expect(
-      names(
-        `export default function (s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`,
-      ),
-    ).toEqual([]);
-  });
-
   it("broken code (an unclosed function) does not throw", () => {
     expect(() =>
       findHandWrittenEscapers(
@@ -252,5 +244,174 @@ describe("hand-written-html-escaper: not escapers", () => {
     ).not.toThrow();
     expect(() => findHandWrittenEscapers("")).not.toThrow();
     expect(() => findHandWrittenEscapers("}}}) => {{ ")).not.toThrow();
+  });
+});
+
+describe("review 2026-10-31: which comments make an escaper an XML one", () => {
+  // Only a comment on its own line(s) right above the escaper's declaration,
+  // or inside it, counts. A comment elsewhere in the statement or file that
+  // mentions XML or SVG must not silence the rule.
+  const ESC = `escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`;
+
+  it("a trailing comment on the line above, after another statement, does not count", () => {
+    expect(
+      names(
+        `export const feedUrl = "/feed.xml"; // link to the RSS feed\nexport function ${ESC}\n`,
+      ),
+    ).toEqual(["escapeHtml"]);
+  });
+
+  it("a comment after the escaper inside the same outer function does not count", () => {
+    const source = `export default function () {
+  function ${ESC}
+  // Also renders the SVG logo below.
+  const name = "Milk frother";
+  return \`<p>\${escapeHtml(name)}</p>\`;
+}
+`;
+    expect(names(source)).toEqual(["escapeHtml"]);
+  });
+
+  it("a comment on another member of a class or object does not count", () => {
+    expect(
+      names(
+        `export class Sprite {\n  /** Renders the svg sprite. */\n  sprite() { return 1; }\n  ${ESC}\n}\n`,
+      ),
+    ).toEqual(["escapeHtml"]);
+    expect(
+      names(
+        `export class Util {\n  // render svg icons\n  icon() { return 1; }\n  ${ESC}\n}\n`,
+      ),
+    ).toEqual(["escapeHtml"]);
+    expect(
+      names(
+        `export default {\n  // svg helpers\n  icon: () => 1,\n  ${ESC},\n};\n`,
+      ),
+    ).toEqual(["escapeHtml"]);
+  });
+
+  it("a comment block right above the declaration counts, through export, const and a JSDoc block, and a member's own comment counts", () => {
+    expect(
+      names(
+        `// Feed helpers.\n// RSS is XML, so the feed keeps this escaper.\nexport function ${ESC}\n`,
+      ),
+    ).toEqual([]);
+    expect(
+      names(
+        `/**\n * Escapes sitemap text.\n */\nexport const escapeXml = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n`,
+      ),
+    ).toEqual([]);
+    expect(
+      names(`export class Feed {\n  // RSS item text\n  ${ESC}\n}\n`),
+    ).toEqual([]);
+  });
+
+  it("the XML escaper's name is still handed to the markup rule", () => {
+    const xml: string[] = [];
+    findHandWrittenEscapers(
+      `// RSS is XML.\nfunction escapeXml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }\n`,
+      xml,
+    );
+    expect(xml).toEqual(["escapeXml"]);
+  });
+});
+
+describe("review 2026-10-31: the esc() fix only where it keeps behavior", () => {
+  const delegate = (source: string) =>
+    findHandWrittenEscapers(source)[0]?.delegate;
+
+  it("a chain that also turns newlines into <br>, trims, or reads a property gets no fix", () => {
+    expect(
+      delegate(
+        'function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\\n/g, "<br>"); }',
+      ),
+    ).toBeUndefined();
+    expect(
+      delegate(
+        'const escapeHtml = (s: string) => s.trim().replaceAll("&", "&amp;").replaceAll("<", "&lt;");',
+      ),
+    ).toBeUndefined();
+    expect(
+      delegate(
+        'function escapeHtml(s) { return String(s.title).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }',
+      ),
+    ).toBeUndefined();
+    expect(
+      delegate(
+        'function escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").toUpperCase(); }',
+      ),
+    ).toBeUndefined();
+    expect(
+      delegate(
+        'function escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "!"; }',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('the parameter, String(param), (param ?? "") and (param || "") with entity replacements keep the fix', () => {
+    for (const receiver of [
+      "s",
+      "String(s)",
+      '(s ?? "")',
+      "(s || '')",
+      'String(s ?? "")',
+    ])
+      expect(
+        delegate(
+          `function escapeHtml(s) { return ${receiver}.replace(/&/g, "&amp;").replace(/</g, "&lt;").replaceAll('"', "&quot;"); }`,
+        )?.param,
+        receiver,
+      ).toBe("s");
+  });
+});
+
+describe("review 2026-10-31: more escaper shapes", () => {
+  it("split/join chains, a Map table, an IIFE-wrapped map and numeric entities are escapers", () => {
+    expect(
+      names(
+        'export const escapeHtml = (s: string) => s.split("&").join("&amp;").split("<").join("&lt;");',
+      ),
+    ).toEqual(["escapeHtml"]);
+    expect(
+      found('const ENTITIES = new Map([["&", "&amp;"], ["<", "&lt;"]]);'),
+    ).toMatchObject([{ name: "ENTITIES", kind: "map" }]);
+    expect(
+      found('const ENTITIES = (() => ({ "&": "&amp;", "<": "&lt;" }))();'),
+    ).toMatchObject([{ name: "ENTITIES", kind: "map" }]);
+    expect(
+      names(
+        'function escapeHtml(s) { return s.replace(/&/g, "&#38;").replace(/</g, "&#60;"); }\nfunction e2(s) { return s.replace(/&/g, "&#x26;").replace(/</g, "&#x3C;"); }',
+      ),
+    ).toEqual(["escapeHtml", "e2"]);
+  });
+
+  it("an unnamed default export function or arrow is reported as the default export", () => {
+    for (const source of [
+      'export default function (s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }',
+      'export default (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");',
+    ]) {
+      const [e] = findHandWrittenEscapers(source);
+      expect(e?.defaultExport, source).toBe(true);
+      expect(e?.delegate?.param, source).toBe("s");
+    }
+  });
+
+  it("entity constants held for display are not an escaper", () => {
+    expect(
+      names(
+        'export function pager(page) { const prev = "&lt;"; const amp = "&amp;"; return [prev, amp, page].join(" "); }',
+      ),
+    ).toEqual([]);
+    expect(
+      names('export const isEntity = (s) => s === "&amp;" || s === "&lt;";'),
+    ).toEqual([]);
+  });
+
+  it("a character loop that appends entities is an escaper", () => {
+    expect(
+      names(
+        'export function escapeHtml(s) { let out = ""; for (const c of s) { if (c === "&") out += "&amp;"; else if (c === "<") out += "&lt;"; else out += c; } return out; }',
+      ),
+    ).toEqual(["escapeHtml"]);
   });
 });
