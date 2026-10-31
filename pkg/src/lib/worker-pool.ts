@@ -4,7 +4,8 @@ import { Worker } from "node:worker_threads";
  * A task the worker itself reported as failed (`{ ok: false, error }`). A
  * worker may add `detail`, plain data describing the failure that the caller
  * knows how to read; the pool passes it through untouched. A worker crash or
- * exit rejects with a plain Error instead.
+ * exit, or a result that could not be deserialized (`messageerror`), rejects
+ * with a plain Error instead.
  */
 export class WorkerTaskError extends Error {
   readonly detail: unknown;
@@ -160,6 +161,9 @@ export class WorkerPool<Task, Result> {
       }
       this.#onMessage(slot, message);
     });
+    worker.on("messageerror", (error: Error) =>
+      this.#onMessageError(slot, error),
+    );
     worker.on("error", (error: Error) => this.#onError(slot, error));
     worker.on("exit", (code: number) => {
       // A worker that exited will never signal; nothing should wait for it.
@@ -201,6 +205,32 @@ export class WorkerPool<Task, Result> {
       else job.reject(new WorkerTaskError(message.error, message.detail));
     }
     // A worker left over after `shrink` lowered the capacity while it was busy.
+    if (this.#slots.length > this.#capacity) {
+      this.#trim(slot);
+      return;
+    }
+    this.#addIdle(slot);
+    this.#dispatchFrom(slot);
+  }
+
+  /**
+   * A message from the worker that could not be deserialized here: its
+   * task's result, lost at the thread boundary. The port is FIFO, so it was
+   * the pending task's reply; the task fails (the caller names the page),
+   * and the worker, which finished the task and is still running, takes the
+   * next one. Without this the task would never settle.
+   */
+  #onMessageError(slot: Slot<Task, Result>, error: Error): void {
+    if (this.#terminated || !this.#isLive(slot) || !slot.pending) return;
+    const job = slot.pending;
+    slot.pending = null;
+    slot.completedAny = true;
+    this.#consecutiveStartupFailures = 0;
+    job.reject(
+      new Error(
+        `Worker result could not be received (it did not survive the thread boundary): ${error?.message ?? String(error)}`,
+      ),
+    );
     if (this.#slots.length > this.#capacity) {
       this.#trim(slot);
       return;

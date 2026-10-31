@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { SpecifierEdit } from "./module-specifiers.ts";
 
@@ -24,6 +26,56 @@ export const KEEP_INTERNAL_FRAMES_ENV = "BASCIK_KEEP_INTERNAL_FRAMES";
 const isBascikFrame = (line: string): boolean =>
   process.env[KEEP_INTERNAL_FRAMES_ENV] !== "1" &&
   BASCIK_MODULE_FRAME_RE.test(line);
+
+const WINDOWS_PATH_RE = /^[A-Za-z]:[\\/]/;
+
+/** `path`'s file URL as V8 writes it, for a Windows path on any host. */
+const fileUrlOf = (path: string): string | undefined => {
+  try {
+    return pathToFileURL(
+      path,
+      WINDOWS_PATH_RE.test(path) ? { windows: true } : undefined,
+    ).href;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Every name a stack frame can give the module at `path`: the path (either
+ * separator) and its file URL, for the path as given and for its real path.
+ * Node's module loader resolves symlinks, so a module under a symlinked
+ * folder (a `node_modules` linked in from elsewhere) is named by where it
+ * really is; an eval's origin names that URL even when the module has a
+ * `//# sourceURL`.
+ */
+const moduleNamesOf = (path: string): string[] => {
+  const paths = [path];
+  if (isAbsolute(path) || WINDOWS_PATH_RE.test(path)) {
+    try {
+      const real = realpathSync(path);
+      if (real !== path) paths.push(real);
+    } catch {}
+  }
+  const names: string[] = [];
+  for (const each of paths) {
+    const forward = each.replace(/\\/g, "/");
+    const url = fileUrlOf(each);
+    if (url) names.push(url);
+    names.push(
+      `file:///${forward.replace(/^\/+/, "")}`,
+      `file://${forward}`,
+      each,
+      forward,
+    );
+  }
+  return [...new Set(names)];
+};
+
+/** A reference that names a file on disk, not a URL or a data: module. */
+const isFilePath = (reference: string): boolean =>
+  !/^[a-z][a-z\d+.-]*:(?![\\/])/i.test(reference) &&
+  (isAbsolute(reference) || WINDOWS_PATH_RE.test(reference));
 
 /** The column in the source for `column` on `line` of a module whose specifiers were rewritten by `edits`. */
 const sourceColumnFor = (
@@ -56,8 +108,17 @@ export const remapRewrittenColumns = (
   edits: readonly SpecifierEdit[],
 ): string => {
   if (!rawTrace || edits.length === 0) return rawTrace;
-  const references = moduleReferences
-    .filter(Boolean)
+  const references = [
+    ...new Set(
+      moduleReferences
+        .filter(Boolean)
+        .flatMap((reference) =>
+          isFilePath(reference) ? moduleNamesOf(reference) : [reference],
+        ),
+    ),
+  ]
+    // Longest first, so a path never wins over the URL that contains it.
+    .sort((left, right) => right.length - left.length)
     .map(escapeRegExp)
     .join("|");
   if (!references) return rawTrace;
@@ -93,23 +154,9 @@ export const cleanStackTrace = (
 ): string => {
   if (!rawTrace) return rawTrace;
 
-  // Match file:// URLs, POSIX paths, Windows backslash paths, and forward-slash Windows paths.
-  const normalizedTmpPath = tmpPath.replace(/\\/g, "/");
-  let fileUri = `file://${normalizedTmpPath}`;
-  try {
-    fileUri = pathToFileURL(tmpPath).href;
-  } catch {}
-  const tripleSlashFileUri = `file:///${normalizedTmpPath.replace(/^\/+/, "")}`;
-  const posixFileUri = `file://${normalizedTmpPath}`;
-  const candidates = [
-    ...new Set([
-      fileUri,
-      tripleSlashFileUri,
-      posixFileUri,
-      tmpPath,
-      normalizedTmpPath,
-    ]),
-  ].map(escapeRegExp);
+  // Match file:// URLs, POSIX paths, Windows backslash paths, and forward-slash Windows paths,
+  // for the path as given and for its real path.
+  const candidates = moduleNamesOf(tmpPath).map(escapeRegExp);
 
   // In development the registry imports each generation under
   // `?bascik-gen=N`, and V8 reports that full URL in stack frames. The query

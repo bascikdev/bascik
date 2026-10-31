@@ -179,6 +179,39 @@ describe("WorkerPool", () => {
       await pool.terminate();
     });
 
+    it("rejects the task whose result could not be received (messageerror) and keeps the worker serving", async () => {
+      const pool = makePool(1);
+      const lost = pool.run("src/pages/lost.html");
+      const queued = pool.run("src/pages/next.html");
+      workers[0].emit(
+        "messageerror",
+        new TypeError("Missing internal module 'internal/nope'"),
+      );
+      await expect(lost).rejects.toThrow(
+        /result could not be received.*Missing internal module 'internal\/nope'/,
+      );
+      // Not a failure the worker reported: there is no detail to read.
+      await expect(lost).rejects.not.toBeInstanceOf(WorkerTaskError);
+      // The worker itself is fine: it was not retired, and it takes the next task.
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+      expect(workers[0].postMessage).toHaveBeenLastCalledWith(
+        "src/pages/next.html",
+      );
+      completeWith(workers[0], "next-done");
+      await expect(queued).resolves.toBe("next-done");
+      await pool.terminate();
+    });
+
+    it("ignores a messageerror from an idle worker instead of failing a later task", async () => {
+      const pool = makePool(1);
+      workers[0].emit("messageerror", new Error("stray"));
+      const task = pool.run("src/pages/a.html");
+      completeWith(workers[0], "a-done");
+      await expect(task).resolves.toBe("a-done");
+      await pool.terminate();
+    });
+
     it("dispatches queued tasks to replacement worker when a worker crashes", async () => {
       const pool = makePool(1);
       const running = pool.run("task-1");

@@ -78,6 +78,7 @@ import {
   listComponents,
 } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
+import { resetModuleCheckerForBuild } from "./typescript.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { scriptDirectiveFinder } from "./html-patterns.ts";
 
@@ -615,6 +616,8 @@ export const processPageBatch = async (
   /** Receives every page's build-script counts, for the boot summary line. */
   scriptStats?: BuildScriptStats,
 ): Promise<string[]> => {
+  // A shared syntax checker that stopped in an earlier build gets a fresh start.
+  resetModuleCheckerForBuild();
   const pageErrors = [...initialPageErrors];
   if (pageInputs.length === 0) {
     reportPageErrors(pageErrors);
@@ -1043,6 +1046,7 @@ registerExitStopper(() =>
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));
+  resetModuleCheckerForBuild();
   invalidateComponentListCache();
   const useWorkers =
     options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
