@@ -98,7 +98,12 @@ targets. Obsolete outputs are deleted **only after** those commits succeed.
 - Corrupt or schema-incompatible `ownership.json` (or a missing one) is treated
   as **no reliable ownership**: the targeted build degrades to the safe additive
   merge, logs a warning, and writes a fresh inventory so future builds are
-  correct. This is the explicit safe first-targeted-build behavior.
+  correct. This is the explicit safe first-targeted-build behavior. The
+  manifest and CSP keep every prior entry, and the sidecar keeps every prior
+  page script no rebuilt page claims, under the synthetic `retained-scripts`
+  owner, so an untouched page's placeholder still resolves in this build and
+  in the next targeted one. A rebuilt page that claims one of those scripts
+  takes it back; a full build drops the owner.
 - Full removal of a source page is only pruned when that page is rebuilt. A page
   deleted without being in a later targeted build is retained until a full build
   because a targeted build cannot know whether a source was deleted versus merely

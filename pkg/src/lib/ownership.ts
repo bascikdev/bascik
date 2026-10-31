@@ -428,6 +428,7 @@ import {
 } from "./csp-hashes.ts";
 import { emitPrecompressedSidecars } from "./precompress.ts";
 import {
+  isComponentScriptId,
   serverSidecarRegistry,
   sidecarHasPageEntries,
   type ServerScriptEntry,
@@ -460,6 +461,56 @@ const sidecarPath = (): string =>
  * reconciled and re-added only when a manifest is written again.
  */
 export const COMPONENTS_OWNER = "components";
+
+/**
+ * The synthetic owner of page server scripts a degraded targeted build
+ * (no usable ownership.json) carried over from the prior sidecar without
+ * knowing which page wrote them. Their pages were not rebuilt and still carry
+ * the placeholders, so the scripts must stay, and must keep an owner so the
+ * next targeted build retains them too. A full build owns every page again
+ * and drops this owner.
+ */
+export const RETAINED_SCRIPTS_OWNER = "retained-scripts";
+
+/**
+ * Degraded targeted build: the prior sidecar's page scripts that no rebuilt
+ * owner claims, under `RETAINED_SCRIPTS_OWNER`, so the reconciled sidecar
+ * keeps them the way the manifest and CSP reconcilers keep prior entries.
+ */
+const retainUnownedPageScripts = (
+  inv: OwnershipInventory,
+  prior: ServerScriptsSidecar | null,
+): void => {
+  if (!prior?.scripts) return;
+  const owned = new Set(Object.values(inv.owners).flatMap((o) => o.scripts));
+  const retained = Object.keys(prior.scripts)
+    .filter((id) => !owned.has(id) && !isComponentScriptId(id))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (retained.length === 0) return;
+  inv.owners[RETAINED_SCRIPTS_OWNER] = {
+    source: RETAINED_SCRIPTS_OWNER,
+    relSource: RETAINED_SCRIPTS_OWNER,
+    outputs: [],
+    scripts: retained,
+  };
+};
+
+/**
+ * A script a rebuilt page claims again is that page's, not a retained one:
+ * drop it from `RETAINED_SCRIPTS_OWNER`, and the owner once it is empty.
+ */
+const pruneRetainedScripts = (inv: OwnershipInventory): void => {
+  const retained = inv.owners[RETAINED_SCRIPTS_OWNER];
+  if (!retained) return;
+  const claimed = new Set(
+    Object.values(inv.owners)
+      .filter((o) => o.source !== RETAINED_SCRIPTS_OWNER)
+      .flatMap((o) => o.scripts),
+  );
+  const scripts = retained.scripts.filter((id) => !claimed.has(id));
+  if (scripts.length === 0) delete inv.owners[RETAINED_SCRIPTS_OWNER];
+  else inv.owners[RETAINED_SCRIPTS_OWNER] = { ...retained, scripts };
+};
 
 async function readJsonIfPresent<T>(path: string): Promise<T | null> {
   try {
@@ -663,7 +714,8 @@ export const finalizeOwnedArtifacts = async (
     if (result.degradedToAdditive) {
       console.warn(
         "[bascik] warning: no compatible ownership inventory found; this targeted build " +
-          "merged additively and could not prune outputs removed outside this process. " +
+          "merged additively (the untouched pages keep their outputs and server scripts) " +
+          "and could not prune outputs removed outside this process. " +
           "A fresh ownership inventory was written; run a full build to reconcile the whole site.",
       );
     }
@@ -673,6 +725,7 @@ export const finalizeOwnedArtifacts = async (
   // The components owner is never an untouched owner to retain: it is
   // rebuilt below from the reconciled page sidecar, or it goes away.
   delete inv.owners[COMPONENTS_OWNER];
+  pruneRetainedScripts(inv);
   validateInventory(inv);
 
   // Prompt 140: with `http.precompress`, emit verified `.br`/`.gz` sidecars
@@ -694,6 +747,7 @@ export const finalizeOwnedArtifacts = async (
   const priorCsp = await readJsonIfPresent<CspHashesManifest>(cspPath());
   const priorSidecar =
     await readJsonIfPresent<ServerScriptsSidecar>(sidecarPath());
+  if (result.degradedToAdditive) retainUnownedPageScripts(inv, priorSidecar);
 
   // ── Stage EVERY artifact and validate it BEFORE any rename ──────────────
   const commits: Array<() => Promise<void>> = [];
