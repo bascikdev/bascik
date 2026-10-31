@@ -85,7 +85,7 @@ In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on th
 
 ### `server-script-unescaped-markup`
 
-In a `data-bascik-server` or `data-bascik-stream` script, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:
+In a `data-bascik-server` or `data-bascik-stream` script, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole. The rule reads only those two script kinds, not build, build-once or routes scripts or the `.ts` helpers they import, although `html` is the way to build markup in all of them; the `bascik` agent skill's `audit-components.mjs` reports a hand-written HTML escaper anywhere in the project.
 
 ```text
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.

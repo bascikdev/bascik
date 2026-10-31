@@ -38,6 +38,8 @@ Output in the compiled HTML (`dist/index.html`):
 
 > **A few rules to know:** Top-level `import` and `await` are supported at module scope. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Return an HTML string (or an `html` value, or a promise resolving to either) from the default export. Build scripts run during both dev and production builds. Component tags in the returned markup are resolved normally, so your build script can emit `<my-card>` and it will be transpiled. Standard console methods (`console.log()`, `console.warn()`, `console.error()`) write to the terminal for debugging and logging only; they never generate markup.
 
+> **Build markup with `html`.** A build script, or a helper it imports, that puts a value into markup builds it with [`html`](/html-helpers) from `@bascik/bascik/html`, the same tag server and stream scripts use: `` return html`<h2>${title}</h2>` ``. It escapes each value for where it lands and turns `javascript:` URLs into `about:invalid`, so the project needs no escaper of its own. Insert Markdown or CMS HTML you trust or sanitized with `raw()`, and write JSON-LD with `json()`.
+
 ### Handler Contract & Console Logging
 
 A build script defines its output through a callable default export:
@@ -173,19 +175,22 @@ The dev server does not watch files outside `src/` on its own. Add the folder to
 
 ### Generating Navigation from JSON
 
-Read a JSON data file and render HTML markup from it:
+Read a JSON data file and render HTML markup from it. Build the markup with [`html`](/html-helpers), as in any script: it escapes each label and URL for where it lands, and an array of `html` values needs no `.join("")`:
 
 ```html
 <!-- src/pages/index.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
+  import { html } from "@bascik/bascik/html";
 
   export default async function () {
     const items = JSON.parse(await readFile("./content/nav.json", "utf8"));
-    const links = items
-      .map((item) => `<li><a href="${item.href}">${item.label}</a></li>`)
-      .join("\n");
-    return `<ul>\n${links}\n</ul>`;
+    const links = items.map(
+      (item) => html`<li><a href="${item.href}">${item.label}</a></li>`,
+    );
+    return html`<ul>
+      ${links}
+    </ul>`;
   }
 </script>
 ```
@@ -197,13 +202,13 @@ Node.js includes a global `fetch`. Use it to pull remote data at build time so t
 ```html
 <!-- src/pages/products.html -->
 <script data-bascik-build>
-  const escape = (s) =>
-    String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  import { html } from "@bascik/bascik/html";
 
   export default async function () {
     const res = await fetch("https://api.example.com/posts/latest");
     const { title, excerpt } = await res.json();
-    return `<h2>${escape(title)}</h2><p>${escape(excerpt)}</p>`;
+    return html`<h2>${title}</h2>
+      <p>${excerpt}</p>`;
   }
 </script>
 ```
@@ -212,7 +217,7 @@ A network response is invisible to the [output cache](#invalidation-limits-cache
 
 ### Passing Data to Client Scripts (JSON Hydration)
 
-A build script must return a string (not a raw object). When client JavaScript needs structured build-time data for interactivity, search, or filtering, return a `<script type="application/json">` block.
+A build script returns a string or an `html` value (not a plain object). When client JavaScript needs structured build-time data for interactivity, search, or filtering, return a `<script type="application/json">` block.
 
 This gives the same client hydration capability as `getStaticProps` in Next.js (which serialized props into a `<script id="__NEXT_DATA__">` tag), but without a framework runtime. You control the exact tag, ID, and schema:
 
@@ -220,14 +225,17 @@ This gives the same client hydration capability as `getStaticProps` in Next.js (
 <!-- src/pages/products.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
+  import { html, json } from "@bascik/bascik/html";
 
   export default async function () {
-    const raw = await readFile("./content/products.json", "utf8");
-    const catalog = JSON.parse(raw);
-
-    // Escape < to prevent closing script tags in JSON strings from breaking out
-    const safeJson = JSON.stringify(catalog).replaceAll("<", () => "\\u003c");
-    return `<script type="application/json" id="catalog-data">${safeJson}<\/script>`;
+    const catalog = JSON.parse(
+      await readFile("./content/products.json", "utf8"),
+    );
+    // json() writes <, > and & as JSON escapes, so no string in the data can end the script early.
+    const data = json(catalog);
+    return html`<script type="application/json" id="catalog-data">
+      ${data}
+    <\/script>`;
   }
 </script>
 
@@ -241,7 +249,7 @@ This gives the same client hydration capability as `getStaticProps` in Next.js (
 </script>
 ```
 
-> **Safety and Scoping.** Always escape `<` as `\u003c` in the serialized JSON to prevent strings containing `</script>` from breaking out of the tag. When this pattern lives inside a component, write `document.getElementById('catalog-data')` with the source ID as usual. Bascik automatically rewrites both the element ID and the selector at build time to the same scoped identifier.
+> **Safety and Scoping.** Serialize the data with `json(value)` from `@bascik/bascik/html`, never a bare `JSON.stringify`: it writes `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026`, so a string containing `</script>` cannot break out of the tag, and `html` refuses anything else in that spot. When this pattern lives inside a component, write `document.getElementById('catalog-data')` with the source ID as usual. Bascik automatically rewrites both the element ID and the selector at build time to the same scoped identifier.
 
 ### Printing HTML You Did Not Write
 
@@ -250,7 +258,7 @@ Build script output is transpiled again, so it can contain component tags and cl
 - An ordinary `<script>`, an `onerror` handler, or a `javascript:` link runs in every visitor's browser.
 - A component tag such as `<site-header>` expands into your component.
 
-Pass such HTML through an allowlist sanitizer (for example `sanitize-html`) before printing it, and escape plain text.
+Pass such HTML through an allowlist sanitizer (for example `sanitize-html`), insert the result with `raw()`, and build everything around it with [`html`](/html-helpers), which escapes plain text.
 
 Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-build-once>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
 
@@ -350,9 +358,11 @@ When a build script runs inside a dynamic route template (for example, `src/page
 
 ```html
 <script data-bascik-build>
+  import { html } from "@bascik/bascik/html";
+
   export default function () {
     const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
-    return `<h1>${data?.title || params?.slug}</h1>`;
+    return html`<h1>${data?.title || params?.slug}</h1>`;
   }
 </script>
 ```
@@ -428,17 +438,21 @@ When build scripts read local files or fetch remote data, wrap operations in `tr
 ```ts
 // src/lib/md-renderer.ts
 import { readFile } from "node:fs/promises";
+import { html, raw, type SafeHtml } from "@bascik/bascik/html";
 import { marked } from "marked";
 
-export async function renderMd(filePath: string): Promise<string> {
+export async function renderMd(filePath: string): Promise<SafeHtml> {
   try {
     const md = await readFile(filePath, "utf8");
-    return marked(md);
+    // Your own Markdown is trusted, so raw() inserts the rendered HTML as it is.
+    return raw(marked.parse(md, { async: false }) as string);
   } catch (err) {
     console.warn(
       `[md-renderer] Could not read ${filePath}: ${(err as Error).message}`,
     );
-    return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
+    return html`<div class="callout">
+      <p><strong>File not found:</strong> <code>${filePath}</code></p>
+    </div>`;
   }
 }
 ```

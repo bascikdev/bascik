@@ -357,11 +357,11 @@ src/router/index.js          src/pages/
   <body>
     <main>
       <script data-bascik-build>
-        import { esc } from "@bascik/bascik/html";
+        import { html } from "@bascik/bascik/html";
 
         export default function () {
           const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
-          return `<h1>${esc(route.data.title)}</h1>`;
+          return html`<h1>${route.data.title}</h1>`;
         }
       </script>
     </main>

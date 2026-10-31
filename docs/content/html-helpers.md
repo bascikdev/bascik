@@ -1,6 +1,6 @@
 # HTML Helpers
 
-`@bascik/bascik/html` is a small module of plain functions for building HTML safely in server, stream and build scripts. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/security) for why it exists and how it fits with the rest of a site's protection.
+`@bascik/bascik/html` is a small module of plain functions for building HTML safely. It is the way to build markup in every script and helper: build, build-once, routes, server and stream scripts, API routes, and the `.ts` helpers in `src/lib/` or beside a component that they import. A project needs no escaper of its own: build the markup with `html`, insert HTML you trust or sanitized with `raw()`, write JSON-LD and other JSON scripts with `json()`, and use `esc()` or `safeUrl()` where a string is built without `html`. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/security) for why it exists and how it fits with the rest of a site's protection.
 
 ## Import
 
@@ -123,6 +123,16 @@ esc(value); // "&lt;b&gt;"
 ```
 
 Returns `value` as an entity-escaped string for text or a quoted attribute, for code that builds strings without `html`. `null`, `undefined` and `false` give `""`. Inside `html` it escapes twice, so the page shows `&amp;lt;`; the linter reports that as `html-escaped-twice`.
+
+`esc` is also the escaper for XML a script writes as a string, such as an Atom feed or a sitemap from an exec script. `html` reads HTML rules (URL attributes, `<title>`, `<script>`), so it does not fit XML, but `esc` escapes `&`, `<`, `>`, `"` and `'`, which is what XML text and quoted attribute values need:
+
+```ts
+// scripts/feed.ts
+import { esc } from "@bascik/bascik/html";
+
+const entry = (post: { title: string; url: string }) =>
+  `<entry><title>${esc(post.title)}</title><link href="${esc(post.url)}" /></entry>`;
+```
 
 ## safeUrl
 

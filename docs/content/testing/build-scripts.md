@@ -26,23 +26,31 @@ Build helpers that transform local data files, parse Markdown, or generate navig
 ### 1. Pure Helper Module (`src/lib/nav-generator.ts`)
 
 ```ts
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
 export interface NavItem {
   href: string;
   label: string;
 }
 
-export function generateNavList(items: NavItem[], activeHref?: string): string {
-  if (!items.length) return "";
+export function generateNavList(
+  items: NavItem[],
+  activeHref?: string,
+): SafeHtml {
+  if (!items.length) return html``;
 
-  const links = items
-    .map((item) => {
-      const isCurrent = item.href === activeHref;
-      const currentAttr = isCurrent ? ' aria-current="page"' : "";
-      return `  <li><a href="${item.href}"${currentAttr}>${item.label}</a></li>`;
-    })
-    .join("\n");
+  const links = items.map(({ href, label }) => {
+    // A hole cannot add an attribute, so the current link is its own template.
+    const link =
+      href === activeHref
+        ? html`<a href="${href}" aria-current="page">${label}</a>`
+        : html`<a href="${href}">${label}</a>`;
+    return html`<li>${link}</li>`;
+  });
 
-  return `<ul class="site-nav">\n${links}\n</ul>`;
+  return html`<ul class="site-nav">
+    ${links}
+  </ul>`;
 }
 ```
 
@@ -77,7 +85,8 @@ describe("generateNavList", () => {
   ];
 
   it("generates an accessible navigation list with active page indicators", () => {
-    const html = generateNavList(sampleNav, "/docs");
+    // An html value is an object: String() gives the markup.
+    const html = String(generateNavList(sampleNav, "/docs"));
 
     expect(html).toContain('<ul class="site-nav">');
     expect(html).toContain(
@@ -86,8 +95,16 @@ describe("generateNavList", () => {
     expect(html).toContain('<li><a href="/">Home</a></li>');
   });
 
-  it("returns empty string when no navigation items are provided", () => {
-    expect(generateNavList([])).toBe("");
+  it("returns empty markup when no navigation items are provided", () => {
+    expect(String(generateNavList([]))).toBe("");
+  });
+
+  it("escapes labels and blocks a javascript: link from the data", () => {
+    const html = String(
+      generateNavList([{ href: "javascript:alert(1)", label: "<b>Hi</b>" }]),
+    );
+    expect(html).toContain('href="about:invalid"');
+    expect(html).toContain("&lt;b&gt;Hi&lt;/b&gt;");
   });
 });
 ```

@@ -67,17 +67,16 @@ npm install gray-matter
 <!-- src/pages/about.html -->
 <script data-bascik-build>
   import { readFile } from "node:fs/promises";
+  import { html } from "@bascik/bascik/html";
   import matter from "gray-matter";
 
   export default async function () {
-    const raw = await readFile("./content/post.md", "utf8");
-    const { data, content } = matter(raw);
-    return `
-      <article>
-        <h1>${data.title}</h1>
-        <p class="date">${data.date}</p>
-      </article>
-    `;
+    const source = await readFile("./content/post.md", "utf8");
+    const { data } = matter(source);
+    return html`<article>
+      <h1>${data.title}</h1>
+      <p class="date">${data.date}</p>
+    </article>`;
   }
 </script>
 ```

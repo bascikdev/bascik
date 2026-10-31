@@ -93,19 +93,14 @@ Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stach
 
 ## A dependency-free interpolation helper
 
-`html` covers templates written in a script. For a template kept as a plain string, such as one read from a file or a CMS field, this small helper fills `${path}` placeholders without installing anything. It resolves dotted paths against a plain object, escapes HTML by default, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing. It does not check URLs, so do not put a placeholder at the start of an `href` or `src`.
+`html` covers templates written in a script. For a template kept as a plain string, such as one read from a file or a CMS field, this small helper fills `${path}` placeholders without installing anything. It resolves dotted paths against a plain object, escapes each value with `esc()` from the same module, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing. It does not check URLs, so do not put a placeholder at the start of an `href` or `src`.
 
 <!-- demo:helper-module -->
 
 ```ts
 // src/lib/interpolate.ts
-export const escape = (value: unknown): string =>
-  String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+// esc() from @bascik/bascik/html escapes & < > " and ', so the helper needs no escaper of its own.
+import { esc } from "@bascik/bascik/html";
 
 export const interpolate = (
   template: string,
@@ -120,7 +115,7 @@ export const interpolate = (
           obj == null ? undefined : (obj as Record<string, unknown>)[key],
         data,
       );
-    return value == null ? "" : escape(value);
+    return value == null ? "" : esc(value);
   });
 ```
 

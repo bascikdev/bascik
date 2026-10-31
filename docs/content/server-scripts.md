@@ -137,7 +137,7 @@ Escape once, at output. Do not store escaped strings.
 
 The helpers are plain functions you import; nothing is injected into scope. Besides `html`, `@bascik/bascik/html` exports `raw` (trusted HTML), `esc` (an escaped string), `safeUrl` (a checked URL) and `json` (JSON for a JSON `<script>`). Your script still sees only `request`, `context`, `signal`, and what it imports.
 
-> **Without html.** Code that builds markup as plain strings must escape each text or quoted-attribute value itself, with `esc(value)` from the same module or a five-character escaper such as `String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])`, and check each URL with `safeUrl(value)`. An escaper does nothing for a `javascript:` URL, an event handler, a `<script>` body or an unquoted attribute, which is why `html` reads where each value lands.
+> **Without html.** Code that builds markup as plain strings must escape each text or quoted-attribute value with `esc(value)` from the same module and check each URL with `safeUrl(value)`. Do not write an escaper of your own. `esc` does nothing for a `javascript:` URL, an event handler, a `<script>` body or an unquoted attribute, which is why `html` reads where each value lands and is the way to build markup in every script and helper.
 
 ## Timeouts and Cancellation (`AbortSignal`)
 
