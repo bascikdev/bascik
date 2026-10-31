@@ -217,7 +217,7 @@ See [Passing Data to Client Scripts](/build-scripts#passing-data-to-client-scrip
 
 ### Escaping and Shared Helpers
 
-Move the code that turns data into markup into `src/lib/*.ts` helpers that return `html` values, and import them with the `@/` alias from any page. Two rules differ from Next.js:
+Move the code that turns data into markup into `.ts` helpers that return `html` values. A helper or data module that one component or page uses sits beside it, in that component's folder or next to the page, and is imported with `./`; only a helper several components or pages share goes in `src/lib/`, imported with the `@/` alias. See [Component Best Practices](/component-best-practices). Two rules differ from Next.js:
 
 - **`@/` works only in the script tag.** Bascik resolves `@/lib/x.ts` inside `<script data-bascik-build>`. A helper file is run by Node as-is, so tsconfig `paths` do not apply there: a helper that imports another helper uses a relative path with its extension (`./site.ts`), and a type-only import must be `import type`.
 - **Build markup with `html`.** JSX escapes text for you; a plain template string does not. The `html` tagged template from `@bascik/bascik/html` escapes every interpolated value for where it lands, text or attribute, and blocks `javascript:` URLs. A helper that returns it declares `SafeHtml`. See [HTML Helpers](/html-helpers).

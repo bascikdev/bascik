@@ -41,10 +41,10 @@ npm run e2e
 
 ### 1. Unit Testing Pure Logic
 
-Isolate core business logic, calculations, and data formatting in pure TypeScript modules (`src/lib/` or `src/utils/`). Testing pure functions directly eliminates test runner overhead and provides instant feedback during development.
+Isolate core business logic, calculations, and data formatting in pure TypeScript modules, kept beside the one component or page that uses them (with their tests), or in `src/lib/` when several share them. Testing pure functions directly eliminates test runner overhead and provides instant feedback during development.
 
 ```ts
-// src/utils/pricing.test.ts
+// src/components/price-table/pricing.test.ts
 import { describe, it, expect } from "vitest";
 import { calculateTax } from "./pricing.ts";
 
@@ -92,7 +92,7 @@ describe("Card component", () => {
 
 ### 3. Build-Time Scripts (`data-bascik-build`)
 
-Build scripts run in Node.js during compilation to generate static HTML before pages are saved to `dist/`. Keep `<script data-bascik-build>` tags thin by importing pure helper functions from `src/lib/`.
+Build scripts run in Node.js during compilation to generate static HTML before pages are saved to `dist/`. Keep `<script data-bascik-build>` tags thin by importing pure helper functions, from the component's or page's own folder (`./nav.ts`) or from `src/lib/` when several share them.
 
 This allows testing Markdown parsers, navigation generators, and build helpers that read page context (`BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL`) by mocking environment variables in Vitest:
 
