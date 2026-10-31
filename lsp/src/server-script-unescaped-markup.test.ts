@@ -989,6 +989,13 @@ describe("a JSON script whose < is escaped as \\u003c (review 2026-10-31)", () =
     },
   );
 
+  it("an escaped newline in the template source before the value counts as whitespace (docs/src/lib/article-schema.ts)", () => {
+    const body =
+      'export const s = (schema: object) => `<script type="application/ld+json">\\n${JSON.stringify(schema, null, 2).replace(/</g, "\\\\u003c")}\\n</script>`;\n';
+    expect(body).toContain('ld+json">\\n${');
+    expect(sinks(body, "module")).toEqual([]);
+  });
+
   it("still warns without the < escape, with another escape, or outside a JSON script", () => {
     expect(sinks(LD("JSON.stringify(data)"), "module")).toEqual([
       "server-script-sink-inline-script",

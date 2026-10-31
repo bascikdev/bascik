@@ -847,6 +847,9 @@ export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
             tag = rawTag;
             isEnd = true;
             i += 1 + rawTag.length;
+          } else if (c === "\\" && /[ntrf]/.test(text[i + 1] ?? "")) {
+            // `\n` in the template source is a newline in the value.
+            i++;
           } else if (!isTagSpace(c)) rawBlank = false;
           break;
       }
