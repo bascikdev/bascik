@@ -194,13 +194,15 @@ JavaScript and TypeScript files under `src/api/` receive route-specific checks:
 - A route file with no recognized HTTP method export reports an error.
 - A `request.json()` or `req.json()` call outside an apparent `try` block receives an information diagnostic, because malformed JSON can otherwise produce an unhandled error.
 
-The extension also ships snippets for scaffolding route handlers in TypeScript and JavaScript:
+The extension also ships snippets for scaffolding route handlers in TypeScript and JavaScript. In a `.ts` file the handler's arguments are typed; in a `.js` file the same snippets insert them without annotations.
 
-| Prefix        | Inserts                                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bascik-api`  | A route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments |
-| `bascik-get`  | A typed `GET` handler                                                                                                                                     |
-| `bascik-post` | A typed `POST` handler with JSON request body parsing                                                                                                     |
+| Prefix        | Inserts                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik-api`  | A route handler with an HTTP method picker and `request: Request` and `context: { params: Record<string, string \| string[]>; remoteIp: string }` arguments in TypeScript |
+| `bascik-get`  | A `GET` handler                                                                                                                                                           |
+| `bascik-post` | A `POST` handler that parses the JSON request body in a `try` block and answers `400` when it is malformed                                                                |
+
+`params` holds a `string[]` for a [catch-all](/api-routes#catch-all-routes) `[...name]` segment and a `string` for a `[param]` segment, so narrow the value before you use it as either.
 
 ## Several Scripts in One File
 
@@ -222,7 +224,7 @@ A project gets this setting in one of three ways. None of them touches your user
 
 - **`npm create bascik`** writes it to the new project's `.vscode/settings.json`, so it works for teammates before they install the extension.
 - **`bascik init`** adds it to `.vscode/settings.json` in the current folder, and keeps any settings that file already has.
-- **The extension's prompt, or pasting it yourself.** When the extension starts in a workspace that holds a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it shows one message that explains the false error, with two buttons. **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder and keeps what that file already has. **Don't ask again** stops the message for that workspace. The message shows at most once per window. Or paste the JSON above into `.vscode/settings.json` at the project root; if the file already has settings, add the `"html.validate.scripts": false` line inside its braces.
+- **The extension's prompt, or pasting it yourself.** When the extension starts in a workspace that holds a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it shows one message (unless VS Code's built-in **HTML Language Features** extension is disabled: then nothing checks inline scripts, the error cannot appear, and the extension asks nothing) that explains the false error, with two buttons. **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder and keeps what that file already has. **Don't ask again** stops the message for that workspace. The message shows at most once per window. Or paste the JSON above into `.vscode/settings.json` at the project root; if the file already has settings, add the `"html.validate.scripts": false` line inside its braces.
 
 The extension never changes the setting without your click, and it never asks when the value is already set either way. A project that wants VS Code's check can set it to `true`.
 
@@ -297,7 +299,7 @@ VS Code by default offers word-based completions derived from surrounding text i
 
 The extension discovers Bascik configs recursively inside every VS Code workspace folder. Each config directory is treated as an independent project with its own component roots, import root, component usage index, navigation, hover details, and diagnostics.
 
-When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults.
+When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults, as long as its root has a language server config (`bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`) or its `package.json` lists `@bascik/bascik` or `@bascik/language-server` in `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies`. A folder with none of these is not a Bascik project, such as a React or Vue app that has its own `src/components` and `src/api`: it gets no Bascik diagnostics, and the **Bascik** output panel says why, once. Adding a `bascik.config.*` turns the checks on right away; adding a language server config or the dependency turns them on at your next edit. Neither needs a reload.
 
 Component discovery follows `directory.components` in the owning project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 

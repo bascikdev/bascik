@@ -5,6 +5,7 @@ import {
   CONFIG_FILE_NAMES,
   CONFIG_GLOB,
   decideFolder,
+  HTML_LANGUAGE_FEATURES,
   HTML_VALIDATE_SCRIPTS,
   promptMessage,
   type SettingInspection,
@@ -29,6 +30,21 @@ describe("decideFolder", () => {
     expect(decideFolder(true, { defaultValue: true })).toBe("ask");
     expect(decideFolder(true, {})).toBe("ask");
     expect(decideFolder(true, undefined)).toBe("ask");
+  });
+
+  // With the built-in "HTML Language Features" extension disabled, nothing checks inline scripts, the false error
+  // cannot appear, and "html.validate.scripts" is not even a registered setting, so writing it would only add an
+  // unknown setting to the folder's settings.json.
+  it("does not ask when VS Code's HTML language features are not running", () => {
+    expect(decideFolder(true, { defaultValue: true }, false)).toBe(
+      "no-html-check",
+    );
+    expect(decideFolder(true, {}, false)).toBe("no-html-check");
+    expect(decideFolder(true, undefined, false)).toBe("no-html-check");
+  });
+
+  it("still reports a folder without a Bascik config as not Bascik when the HTML features are off", () => {
+    expect(decideFolder(false, undefined, false)).toBe("not-bascik");
   });
 
   it("never asks in a folder without a Bascik config", () => {
@@ -108,5 +124,11 @@ describe("package.json", () => {
     expect(JSON.stringify(manifest.contributes)).not.toContain(
       HTML_VALIDATE_SCRIPTS,
     );
+  });
+});
+
+describe("HTML_LANGUAGE_FEATURES", () => {
+  it("is the built-in extension that contributes html.validate.scripts", () => {
+    expect(HTML_LANGUAGE_FEATURES).toBe("vscode.html-language-features");
   });
 });

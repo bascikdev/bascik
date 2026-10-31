@@ -27,7 +27,7 @@
         "scopeName": "bascik.html.injection",
         "path": "./syntaxes/bascik-html.tmLanguage.json",
         "injectTo": [
-          "text.html.basic"
+          "text.html"
         ]
       }
     ],
@@ -38,7 +38,7 @@
       },
       {
         "language": "javascript",
-        "path": "./snippets/api-routes.json"
+        "path": "./snippets/api-routes-javascript.json"
       }
     ]
   },

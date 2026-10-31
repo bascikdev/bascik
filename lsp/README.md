@@ -52,6 +52,8 @@ bascik-language-server --stdio
 
 The server reads `directory.components` and `scripts.importRoot` from each project's Bascik config, looking for `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`, the same order the CLI uses. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file.
 
+A workspace folder without a Bascik config is still a Bascik project, with the defaults `src/components` and `src`, when its root has a language server config (`bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`) or its `package.json` lists `@bascik/bascik` or `@bascik/language-server` in any dependency field. A linter-only component library, or a global install with no `package.json` entry, opts in with a `bascik.ext.json`. Any other folder, such as a React or Vue app with its own `src/components`, gets no diagnostics; navigation, hover, and completion still work there, and the server logs why once. A new `bascik.config.*` turns the checks on right away; a new language server config or dependency turns them on at the next edit.
+
 ## Editor Configurations
 
 ### Neovim (`nvim-lspconfig`)
@@ -67,7 +69,7 @@ if not configs.bascik then
     default_config = {
       cmd = { 'npx', '@bascik/language-server', '--stdio' },
       filetypes = { 'html' },
-      root_dir = lspconfig.util.root_pattern('bascik.config.js', 'bascik.config.mjs', 'bascik.config.ts', '.git'),
+      root_dir = lspconfig.util.root_pattern('bascik.config.js', 'bascik.config.mjs', 'bascik.config.ts', 'bascik.ext.json', '.git'),
       settings = {},
     },
   }

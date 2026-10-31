@@ -179,6 +179,8 @@ The CLI checker exits with code `0` when clean (or only warnings) and code `1` w
 
 ## Editor Setup
 
+In every editor, the language server checks only folders that are Bascik projects: a folder with a `bascik.config.*`, a language server config at its root (`bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`), or a `package.json` that lists `@bascik/bascik` or `@bascik/language-server` in any dependency field. A shared component library that uses the linter on its own, or a global install with no `package.json` entry, opts in with a `bascik.ext.json`. Any other folder, such as a React or Vue app with its own `src/components`, gets no diagnostics, while navigation, hover, and completion still work, and the server logs why once (in VS Code, to the **Bascik** output panel). `--check` does not apply this rule: it checks the files you name in any folder.
+
 ### VS Code
 
 Install the official **Bascik** extension from the VS Code Marketplace:
@@ -213,7 +215,7 @@ if not configs.bascik then
     default_config = {
       cmd = { 'npx', '@bascik/language-server', '--stdio' },
       filetypes = { 'html' },
-      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', '.git'),
+      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', 'bascik.ext.json', '.git'),
       settings = {},
     },
   }
