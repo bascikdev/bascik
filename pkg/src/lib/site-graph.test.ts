@@ -822,6 +822,40 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
     );
   });
 
+  it("misuse: the components warning names the absolute private folder, with forward slashes, for an output outside the project (F091)", async () => {
+    await withDist(
+      {
+        "dynamic.html": placeholderPage,
+        ".bascik/server-scripts.json": sidecar({
+          "job-inline": pageEntry,
+          [SRV_JOB_ID]: componentEntry,
+        }),
+        ".bascik/components.json": manifest({
+          "srv-card": srvCard(SRV_JOB_ID),
+        }),
+      },
+      async (testDir, distDir) => {
+        // The project is a sibling of the output folder, so the manifest
+        // is outside the project root and only an absolute path finds it.
+        const projectRoot = join(testDir, "site");
+        await mkdir(join(projectRoot, "src/api"), { recursive: true });
+        const log = vi.fn();
+        await emitServerlessArtifacts(
+          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
+          { version: "1.0.0", projectRoot, distDir, log },
+        );
+        const about = log.mock.calls
+          .map((call) => call.join(" "))
+          .filter((line) => /does not declare components/.test(line));
+        expect(about).toHaveLength(1);
+        const absolute = `${privateDirFor(distDir).replace(/\\/g, "/")}/components.json`;
+        expect(about[0]).toContain(`(${absolute} lists <srv-card>)`);
+        expect(about[0]).not.toContain("\\");
+        expect(about[0]).not.toMatch(/\(\.\.\//);
+      },
+    );
+  });
+
   it("stages component inline sources like page jobs and stays silent for an adapter that declares components: true", async () => {
     await withDist(
       {
