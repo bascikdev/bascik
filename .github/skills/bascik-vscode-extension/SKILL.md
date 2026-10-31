@@ -61,12 +61,14 @@ Scoping rules (`css-*`, `js-*`) apply to component files only. Pages, API routes
 ## 4. Development and testing
 
 ```sh
-yarn ext:compile       # build.mjs: tsc, then bundle dist/extension.js and dist/server.js
+yarn ext:compile       # regenerate compatibility rules, then build.mjs: tsc, bundle dist/extension.js and dist/server.js
 yarn ext:typecheck
 yarn ext:unit          # includes server-bundle.test.ts, which builds and starts the real server bundle
 yarn ext:e2e           # compiles, then runs the integration suite in a real VS Code
 yarn lsp:unit          # the analysis itself
 ```
+
+Yarn 4 does not run npm's implicit `pre<name>`/`post<name>` scripts, so the extension's `package.json` has none: `compile` runs the rules generator itself (`src/package-scripts.test.ts` enforces this).
 
 - Diagnostics are published by a server process after a document opens, not before the call returns. Integration tests that expect a diagnostic use `waitForDiagnostic()`; a test that expects none opens the file with `openWorkspaceDocument()`, which waits for the server.
 - Definition results can be a `Location` or a `LocationLink`. Use `firstLocationPath()` or `locationUri()`.

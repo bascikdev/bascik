@@ -95,7 +95,15 @@ bascik init -y           # install the agent skills without asking
 bascik init --no-skills  # skip the agent skills
 ```
 
-`bascik init` creates `src/pages/index.html` and `src/components/`, adds `dist/` to `.gitignore`, adds the `dev` and `build` scripts to `package.json`, sets up VS Code, writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), and asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version. It adds to files you already have and never replaces them.
+`bascik init` adds what Bascik needs to the folder it runs in. It adds to files you already have and never replaces them:
+
+- creates `src/pages/index.html` and `src/components/`
+- adds `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0-rc.10`) and is skipped when `dependencies` or `devDependencies` already lists it
+- sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
+- asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
+
+A `package.json` that sets `"type": "commonjs"` stops `init` before it writes anything, because Bascik config files use ESM syntax.
 
 ## CLI reference
 
@@ -168,6 +176,8 @@ bascik add @acme/ui --dry-run
 bascik add @acme/ui --force
 ```
 
+The package is looked up the way Node resolves a dependency: `node_modules/<package>` in the project folder, then in each parent folder, so a package a workspace hoisted to the repository root is found from a site in `packages/site`. The package's `exports` map does not need to list `package.json`.
+
 ### The `bascik-lock.json` lockfile
 
 `bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `.bascik/dist/`, `bascik-lock.json` is committed project state that tracks:
@@ -180,6 +190,8 @@ When re-running `bascik add`:
 
 - Unmodified files are updated cleanly to newer package versions.
 - If a copied file was customized locally, `bascik add` detects the content hash mismatch and refuses to overwrite it without `--force`.
+
+If `bascik-lock.json` exists but is not valid JSON (for example, after a merge left conflict markers in it), `bascik add` stops before copying anything and names the file. It does not replace the file, because that would drop the records of every other package. Fix the file or delete it to start over.
 
 ## Environment files and the site URL
 

@@ -161,7 +161,7 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 git add pkg/package.json CHANGELOG.md
 git commit -m "chore: release v1.2.0"
 git tag v1.2.0
-git push origin main --tags
+git push origin main v1.2.0
 ```
 
 ### `create-bascik`
@@ -171,18 +171,21 @@ git push origin main --tags
 git add create/package.json
 git commit -m "chore: release create-bascik v1.0.3"
 git tag create-v1.0.3
-git push origin main --tags
+git push origin main create-v1.0.3
 ```
 
 ### `@bascik/adapter-cloudflare` and `@bascik/language-server`
 
 ```sh
-# Bump version in adapters/cloudflare/package.json, then:
-git tag adapter-cloudflare-v1.0.0
 # Bump version in lsp/package.json, then:
 git tag lsp-v0.1.0
-git push origin main --tags
+git push origin main lsp-v0.1.0
+# After @bascik/bascik is on npm, bump version in adapters/cloudflare/package.json, then:
+git tag adapter-cloudflare-v1.0.0
+git push origin main adapter-cloudflare-v1.0.0
 ```
+
+Push each tag by name, never with `git push --tags`, which pushes every local tag (stale ones from a dry run included) and can start a publish job out of the order in `RELEASING.md`.
 
 ### Release candidates
 
