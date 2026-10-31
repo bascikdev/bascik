@@ -156,7 +156,7 @@ export interface ScriptModuleSources {
   /**
    * Folders outside the project whose files belong to it too: the
    * configured component roots (`directory.components` may name
-   * `../shared/components`) and the API root.
+   * `../shared/components`), the API root and `scripts.importRoot`.
    */
   extraRoots?: Iterable<string>;
   /** Text of a module that is open in the editor, used in place of the disk. */
@@ -338,15 +338,32 @@ const sameSignatures = (
 
 const cache = new WeakMap<
   ProjectSnapshot,
-  { signatures: Map<string, string>; modules: ScriptModules }
+  {
+    signatures: Map<string, string>;
+    modules: ScriptModules;
+    generation: number;
+  }
 >();
+
+/** Bumped when a module changes on disk, which no snapshot or open buffer shows. */
+let generation = 0;
+
+/**
+ * Forgets every cached module set. The language server calls it when a
+ * .ts or .js file changes on disk (a checkout, a formatter, an agent's
+ * edit), since a closed module's imports decide which files run in Node.
+ */
+export function invalidateScriptModules(): void {
+  generation++;
+}
 
 /**
  * The Node modules of a project snapshot: its pages' and components' HTML
  * (open HTML buffers in place of the disk) and its API routes. Cached per
  * snapshot, and reused while the open buffers' scripts and imports stay the
  * same, so typing in a module or in a page's markup does not walk the
- * project again; an edit that adds, removes or changes an import does.
+ * project again; an edit that adds, removes or changes an import does, and
+ * so does invalidateScriptModules().
  */
 export function scriptModulesOf(
   snapshot: ProjectSnapshot,
@@ -354,7 +371,11 @@ export function scriptModulesOf(
 ): ScriptModules {
   const signatures = signaturesOf(openDocumentTexts);
   const cached = cache.get(snapshot);
-  if (cached && sameSignatures(cached.signatures, signatures))
+  if (
+    cached &&
+    cached.generation === generation &&
+    sameSignatures(cached.signatures, signatures)
+  )
     return cached.modules;
   const open = new Map(
     openDocumentTexts.map((d) => [normalizeModulePath(d.fsPath), d.text]),
@@ -373,12 +394,16 @@ export function scriptModulesOf(
     extraRoots: snapshotRoots(snapshot),
     readText: (file) => open.get(normalizeModulePath(file)),
   });
-  cache.set(snapshot, { signatures, modules });
+  cache.set(snapshot, { signatures, modules, generation });
   return modules;
 }
 
-/** A snapshot's component roots and API root, which may lie outside the project. */
+/**
+ * A snapshot's component roots, API root and `scripts.importRoot`, which
+ * may lie outside the project (a monorepo's shared folder).
+ */
 export const snapshotRoots = (snapshot: ProjectSnapshot): string[] => [
   ...snapshot.componentRoots,
   ...(snapshot.apiRoot ? [snapshot.apiRoot] : []),
+  snapshot.importRoot,
 ];

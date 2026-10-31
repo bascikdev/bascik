@@ -34,8 +34,13 @@ import {
 } from "./analyzer.js";
 import { createReferences } from "./references.js";
 import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
+import {
+  invalidateScriptModules,
+  normalizeModulePath,
+  scriptModulesOf,
+  snapshotRoots,
+} from "./script-modules.js";
 
-/** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 /** Languages whose files can run in Node and so get the markup rules. */
 const SCRIPT_LANGUAGES: ReadonlySet<string> = new Set([
   "javascript",
@@ -45,7 +50,18 @@ const HTML_AND_SCRIPT_LANGUAGES: ReadonlySet<string> = new Set([
   "html",
   ...SCRIPT_LANGUAGES,
 ]);
-const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
+/**
+ * Files whose changes can alter a diagnostic: project config, the HTML that
+ * defines or uses components, and script modules, whose imports decide
+ * which files run in Node (script-modules.ts).
+ */
+const WATCHED_FILE_PATTERNS = [
+  "**/bascik.config.{ts,js,mjs}",
+  "**/*.html",
+  "**/*.{ts,mts,js,mjs}",
+];
+/** A script module's extension, as WATCHED_FILE_PATTERNS watches it. */
+const SCRIPT_MODULE_FILE = /\.(?:ts|mts|js|mjs)$/i;
 
 /**
  * The packages whose presence in a package.json makes a folder without a config a Bascik project: Bascik itself
@@ -402,6 +418,7 @@ export class BascikLanguageServer {
     changes: WatchedFileChange[],
   ): Promise<void> {
     let everything = false;
+    let scriptChanged = false;
     const affectedRoots = new Set<string>();
 
     for (const change of changes) {
@@ -418,6 +435,13 @@ export class BascikLanguageServer {
         // A config file appearing or disappearing also changes which project the files below it belong to.
         this.invalidateProject(path.dirname(path.resolve(fsPath)));
         everything = true;
+        continue;
+      }
+      if (SCRIPT_MODULE_FILE.test(fsPath)) {
+        // A closed module's imports changed, or it appeared or went away:
+        // which files run in Node may differ. Open modules are checked again.
+        invalidateScriptModules();
+        scriptChanged = true;
         continue;
       }
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
@@ -458,6 +482,9 @@ export class BascikLanguageServer {
       for (const projectRoot of affectedRoots) {
         this.scheduleRevalidation(projectRoot, undefined);
       }
+      // A module may belong to a project other than the one above it on
+      // disk (a shared importRoot), so every open module is checked again.
+      if (scriptChanged) this.scheduleRevalidation(undefined, SCRIPT_LANGUAGES);
     }
   }
 
@@ -650,7 +677,7 @@ export class BascikLanguageServer {
     const diagnostics = createDiagnosticsSafely(
       document,
       fsPath,
-      snapshot,
+      this.scriptOwnerSnapshot(document, fsPath, snapshot, openDocs),
       openDocs,
     );
 
@@ -659,6 +686,31 @@ export class BascikLanguageServer {
       version,
       diagnostics,
     });
+  }
+
+  /**
+   * The snapshot to check a document with. A .ts or .js file that its own
+   * project does not run in Node, but another built project does (a helper
+   * under a `scripts.importRoot` or component root outside that project,
+   * such as a monorepo's shared folder), is checked with that project.
+   */
+  private scriptOwnerSnapshot(
+    document: TextDocument,
+    fsPath: string,
+    snapshot: ProjectSnapshot | undefined,
+    openDocs: { fsPath: string; text: string }[],
+  ): ProjectSnapshot | undefined {
+    if (!SCRIPT_LANGUAGES.has(document.languageId)) return snapshot;
+    const key = normalizeModulePath(fsPath);
+    if (snapshot && scriptModulesOf(snapshot, openDocs).has(key))
+      return snapshot;
+    for (const other of this.projectSnapshots.values()) {
+      if (other === snapshot) continue;
+      if (!snapshotRoots(other).some((root) => isPathInside(fsPath, root)))
+        continue;
+      if (scriptModulesOf(other, openDocs).has(key)) return other;
+    }
+    return snapshot;
   }
 
   /**

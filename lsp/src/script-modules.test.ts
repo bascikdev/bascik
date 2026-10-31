@@ -642,6 +642,36 @@ export const links = () => ["Milk frother"].map((n) => \`<a href="/">\${n}</a>\`
     ]);
   });
 
+  it("a helper under scripts.importRoot outside the project is checked, by bascik --check and in the editor (review round 2)", async () => {
+    const site = path.join(root, "site");
+    write(
+      "site/bascik.config.ts",
+      'export default { scripts: { importRoot: "../shared" } };\n',
+    );
+    write(
+      "site/src/pages/index.html",
+      PAGE(
+        '<script data-bascik-build>\n      import { productCard } from "@/lib/cards.ts";\n      export default () => productCard({ name: "Milk frother" });\n    </script>',
+      ),
+    );
+    const cards = write(
+      "shared/lib/cards.ts",
+      'export function productCard(p: { name: string }): string {\n  return `<article class="card"><h2>${p.name}</h2></article>`;\n}\n',
+    );
+    const result = await checkFiles({
+      cwd: site,
+      targets: [{ path: "src/pages", extensions: ["html"] }],
+      projectPath: site,
+    });
+    expect(codesIn(result.diagnostics, "shared/lib/cards.ts")).toEqual([
+      MARKUP,
+    ]);
+    const snapshot = await buildSnapshot(site);
+    expect(scriptModulesOf(snapshot).has(normalizeModulePath(cards))).toBe(
+      true,
+    );
+  });
+
   it("a module both a browser companion and a build script import keeps its browser scoping diagnostics, and gets the markup rules", async () => {
     write(
       "src/components/milk-card/milk-card.html",
