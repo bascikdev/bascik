@@ -26,6 +26,61 @@ describe("meta-tags", () => {
     ).toBe('Say "froth".');
   });
 
+  it("reads a description whose quoted value holds a `>` (PR 115 review)", () => {
+    // A `>` inside a quoted value does not end the tag; reading to the first
+    // `>` cut the description, so Open Graph, Twitter and TechArticle got
+    // an empty or truncated one.
+    expect(
+      metaDescription(`<meta name="description" content="A > B, then C." />`),
+    ).toBe("A > B, then C.");
+    expect(
+      metaDescription(`<meta content='Froth > foam.' name='description'>`),
+    ).toBe("Froth > foam.");
+    expect(
+      pageDescription(
+        `<meta data-note="x>y" name="description" content="Steam -> froth" />`,
+      ),
+    ).toBe("Steam -> froth");
+    // An earlier tag with a `>` in a value is skipped whole, not reread.
+    expect(
+      metaDescription(
+        `<meta name="theme" content="a > name='description'"><meta name="description" content="Real.">`,
+      ),
+    ).toBe("Real.");
+  });
+
+  it("misuse: never reads `name` or `content` out of another attribute's value", () => {
+    expect(
+      metaDescription(
+        `<meta data-x=" name='description' content='forged'" name="keywords" content="k"><meta name="description" content="Real.">`,
+      ),
+    ).toBe("Real.");
+    expect(
+      metaDescription(
+        `<meta name="description" data-x=" content='forged'" content="Real.">`,
+      ),
+    ).toBe("Real.");
+    // An unquoted value is read as the browser reads it.
+    expect(metaDescription(`<meta name=description content=Frother>`)).toBe(
+      "Frother",
+    );
+    // An unclosed quote never ends the tag early: no description is read.
+    expect(
+      metaDescription(`<meta name="description" content="Never closed >`),
+    ).toBeUndefined();
+  });
+
+  it("reads a title holding a `<` or a `>`, which a title may hold as text", () => {
+    expect(pageTitle("<title>Steam < froth > foam</title>")).toBe(
+      "Steam < froth > foam",
+    );
+    expect(pageTitle(`<title data-x="a>b">Frother</title >`)).toBe("Frother");
+    expect(pageTitle("<TITLE>Frother</TITLE>")).toBe("Frother");
+    // An end tag may carry attributes; `</titles>` is not one.
+    expect(pageTitle("<title>Frother</title x>")).toBe("Frother");
+    expect(pageTitle("<title>a</titles>b</title>")).toBe("a</titles>b");
+  });
+
   it("returns empty text for a page with no title or description, or a wrong name", () => {
     const html = `<head><meta name="meta-description" content="wrong name" /></head>`;
     expect(pageDescription(html)).toBe("");

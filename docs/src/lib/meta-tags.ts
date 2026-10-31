@@ -8,18 +8,30 @@
 
 import { decodeHtmlText } from "./html-entities.ts";
 
-/** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
+/**
+ * One attribute after whitespace in an opening tag: name, then a double-quoted, single-quoted or
+ * unquoted value. Read left to right, so text inside one attribute's quoted value
+ * (`data-x=" content='y'"`) is never taken for another attribute (pkg's ATTR_PAIR_REGEX in
+ * html-patterns.ts is the model).
+ */
+const ATTRIBUTE =
+  /(?:^|\s)([^\s"'=<>`/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+
+/** An opening tag that reads past a `>` inside a quoted value (`content="A > B"`). */
+const META_TAG = /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+
+/** The value of `name` in one tag's attributes, in any quote style and in any attribute order. */
 function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(
-    `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
-    "i",
-  ).exec(tag);
-  return match ? (match[1] ?? match[2]) : undefined;
+  for (const match of tag.matchAll(ATTRIBUTE)) {
+    if (match[1].toLowerCase() === name)
+      return match[2] ?? match[3] ?? match[4];
+  }
+  return undefined;
 }
 
 /** The raw content of `<meta name="description">` (entities not decoded), wherever `name` and `content` sit. */
 export function metaDescription(html: string): string | undefined {
-  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
+  for (const [tag] of html.matchAll(META_TAG)) {
     if (attributeValue(tag, "name")?.toLowerCase() === "description")
       return attributeValue(tag, "content");
   }
@@ -33,8 +45,14 @@ export function pageDescription(html: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** The page's <title> as text: decoded and trimmed. Empty when it has none. */
+/**
+ * The page's <title> as text: decoded and trimmed. Empty when it has none. A title's text runs to
+ * `</title>` and may hold `<` and `>` (it is RCDATA), and its opening tag may hold `>` in a quoted value.
+ */
 export function pageTitle(html: string): string {
-  const match = /<title\b[^>]*>([^<]*)<\/title>/i.exec(html);
+  const match =
+    /<title\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/title\b[^>]*>/i.exec(
+      html,
+    );
   return match ? decodeHtmlText(match[1]).trim() : "";
 }
