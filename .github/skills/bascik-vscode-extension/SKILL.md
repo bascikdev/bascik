@@ -29,7 +29,8 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 
 - `dist/extension.js` is `src/extension.ts` with `vscode-languageclient` bundled in. `vscode` stays external.
 - `dist/server.js` is the language server from `../../lsp/src` (entry: `startLanguageServer()` in `lsp/src/start.ts`) with `vscode-languageserver` bundled in. It does not need `lsp/dist` to be built first.
-- `build.mjs` deletes `dist/` and `out/` first, so a file removed from `src/` cannot ship. tsc writes to `out/` (the real-editor suite runs `out/test/`), so `dist/` holds only the two bundles, and `.vscodeignore` ships only those two from it (`src/packaging.test.ts` checks both).
+- `build.mjs` deletes `dist/` and `out/` first, so a file removed from `src/` cannot ship. tsc writes to `out/` (the real-editor suite runs `out/test/`), so `dist/` holds only the two bundles and their notices, and `.vscodeignore` ships only those three from it (`src/packaging.test.ts` checks both).
+- Bundling inlines third-party code, so `build.mjs` also writes `dist/THIRD-PARTY-NOTICES.txt`: the license text of every package in either bundle's esbuild metafile. A bundled package with no license file fails the build with its name.
 
 ---
 

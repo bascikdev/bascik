@@ -7,11 +7,12 @@ coverage/**
 node_modules/**
 src/**
 test-fixtures/**
-# tsc output (type-checked sources and the tests). Only the two esbuild bundles ship.
+# tsc output (type-checked sources and the tests). Only the two esbuild bundles and their notices ship.
 out/**
 dist/**
 !dist/extension.js
 !dist/server.js
+!dist/THIRD-PARTY-NOTICES.txt
 test-coverage.json
 tsconfig.json
 vite.config.mjs

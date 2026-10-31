@@ -71,11 +71,12 @@ describe("extension packaging", () => {
     }
   });
 
-  it("ships the manifest, the grammar, the snippets, and the license", () => {
+  it("ships the manifest, the grammar, the snippets, the license, and the bundled packages' notices", () => {
     for (const file of [
       "package.json",
       "README.md",
       "LICENSE",
+      "dist/THIRD-PARTY-NOTICES.txt",
       "icon.png",
       "syntaxes/bascik-html.tmLanguage.json",
       "snippets/api-routes.json",
