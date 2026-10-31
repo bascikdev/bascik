@@ -13,7 +13,7 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
   {
     "id": "css-id-attribute-selector",
     "kind": "css",
-    "pattern": "(?<![\"'])\\[\\s*id\\s*(?:[~|^$*]?=(?:\"[^\"]*\"|'[^']*'|[^\\][{};\"'])*)?\\]",
+    "pattern": "(?<![\"'])(?<!selector\\(\\s*)\\[\\s*id\\s*(?:[~|^$*]?=(?:\"[^\"]*\"|'[^']*'|[^\\][{};\"'])*)?\\]",
     "flags": "gmi",
     "message": "[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.",
     "suggestion": "Use a CSS #id selector or class selector instead.",

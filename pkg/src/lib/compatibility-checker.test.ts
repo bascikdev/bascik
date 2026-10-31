@@ -35,6 +35,9 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         ".card[data-id='hero'] { color: blue; }",
         "/* [id] { color: red; } */",
         '.card::before { content: "[id]"; }',
+        // The compiler keeps an @supports selector() test, so lint does too.
+        "@supports selector([id]) { .a { color: red; } }",
+        "@supports not SELECTOR( [id] ) { .a { color: red; } }",
       ],
     },
     "css-reserved-class-prefix": {
