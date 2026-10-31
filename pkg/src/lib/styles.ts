@@ -215,6 +215,11 @@ export const convertCssElementSelectorsToClasses = (
   // matching the start of another scoped class name (e.g. `bascik__comp__bar`)
   // or a prefix of a hyphenated custom element such as `code-block`.
   //
+  // An escape in a scoped name is one unit: a hex escape takes up to six
+  // digits and the one whitespace that ends it (`.a\1 b` is the class
+  // `a<U+0001>b`, never `.a\1` and an element `b`), written so each step has
+  // exactly one way to match.
+  //
   // Note: this pass only applies after Pass 1 has scoped the class selector.
   // Every argument and attribute scan stops at `{`, `}` or `;`: a missing `)`
   // or `]` (a typo) would otherwise rescan the rest of the stylesheet from
@@ -223,7 +228,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^){};]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+      /((?:\.(?:bascik__(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^){};]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
       (_match, prefix: string, elementName: string) =>
         `${prefix}${toClass(elementName)}`,
     );
