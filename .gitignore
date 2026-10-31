@@ -89,6 +89,7 @@ test-results
 hint-report/
 .lighthouseci
 .lighthouseci-light
+.lighthouseci-desktop
 docs/lighthouse/lighthouserc.all.json
 docs/lighthouse/lighthouserc.all-light.json
 docs/.wrangler

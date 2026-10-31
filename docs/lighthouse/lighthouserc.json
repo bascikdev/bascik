@@ -28,7 +28,7 @@
                 "minScore": 0.95
               }
             ],
-            "dom-size-insight": [
+            "dom-size": [
               "error",
               {
                 "maxNumericValue": 4000
@@ -52,7 +52,12 @@
               {
                 "minScore": 1.0
               }
-            ],
+            ]
+          }
+        },
+        {
+          "matchingUrlPattern": "^(?!https?://[^/]+/search/?(?:[?#]|$))",
+          "assertions": {
             "categories:seo": [
               "error",
               {

@@ -97,8 +97,10 @@ yarn docs:lighthouse:all
 The gate (`lighthouserc.json` for mobile, `lighthouserc.desktop.json` for desktop) fails on:
 
 - **Performance:** a score under 0.95
-- **Accessibility, Best Practices, SEO:** a score under 1.0 (mobile)
-- **Budgets:** more than 4,000 DOM elements, more than 50 KB of script, a layout shift above 0.01 on /libraries, and a mobile LCP above 2 seconds on /sitemap
+- **Accessibility, Best Practices, SEO:** a score under 1.0 (mobile). `/search` is left out of the SEO score: the page is `noindex` on purpose, which fails the crawlability audit and costs it a third of the category. An `assertMatrix` entry whose pattern skips `/search` holds the SEO assertion, so every other route keeps it and `/search` keeps the other categories.
+- **Budgets:** more than 4,000 DOM elements (the `dom-size` audit), more than 50 KB of script, a layout shift above 0.01 on /libraries, and a mobile LCP above 2 seconds on /sitemap
+
+`lhci` runs its own bundled Lighthouse (12.6 with `@lhci/cli` 0.15), not the repo's `lighthouse` 13 package, so an assertion must name an audit that version reports. Its `dom-size-insight` has no numeric value, so a budget on it reads NaN on every URL; the classic `dom-size` audit carries the count. `lighthouse/lighthouserc.test.ts` resolves lhci's Lighthouse and fails when an assertion names an audit it lacks or puts a numeric budget on one without a numeric value.
 
 Layout forced by a script before first paint (`forced-reflow-insight`) is a warning. So is `lcp-discovery-insight` on desktop: it asks for `fetchpriority="high"` on the opening demo recording, which the docs leave off because on a phone that recording is not the largest paint and the hint makes its download compete with the text that is. The sweep over every route (`yarn docs:lighthouse:all`) warns on a performance score under 0.95 instead of failing, since it takes one run per page.
 
