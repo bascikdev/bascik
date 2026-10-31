@@ -154,6 +154,13 @@ describe("extractScriptTags", () => {
     }
   });
 
+  it("keeps a removed comment from joining digits onto a long numeric character reference", () => {
+    const zeros = "0".repeat(70);
+    expect(expectSameParse(`<p>&#${zeros}<!-- c -->60;</p>`)).toBe(
+      `<p>&#${zeros}<!---->60;</p>`,
+    );
+  });
+
   it("keeps the text around a removed comment from forming a different character reference", () => {
     expect(expectSameParse("<p>&am<!-- c -->p;</p>")).toBe(
       "<p>&am<!---->p;</p>",
