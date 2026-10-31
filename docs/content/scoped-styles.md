@@ -313,7 +313,7 @@ References to IDs inside a preserved subtree remain literal. Use [Preserve Scopi
 
 ## CSS Custom Properties
 
-`--var-name` declarations in a component's CSS are automatically scoped. All `var(--var-name)` references within the same file are updated to match, so custom properties stay isolated to their component. The same names are renamed inside `style` attributes in the component's template, so a per-element override such as `<li style="--i: 2">` still reaches the scoped `var(--i)`. A `style` attribute on the component tag where a page uses it is not renamed: it belongs to the page, so a property the component declares cannot be overridden from there.
+`--var-name` declarations in a component's CSS are automatically scoped. All `var(--var-name)` references within the same file are updated to match, so custom properties stay isolated to their component. The same names are renamed inside `style` attributes in the component's template, so a per-element override such as `<li style="--i: 2">` still reaches the scoped `var(--i)`. A `style` attribute on the component tag where a page uses it is not renamed: it belongs to the page, so a property the component declares cannot be overridden from there. The same holds inside a template: a `style` on a custom element tag, such as a child component's tag, is passed through as written, so `<child-btn style="--accent: blue">` sets the global `--accent` even when the parent declares an `--accent` of its own, and a child that reads `var(--accent)` without declaring it receives `blue`.
 
 The lab declares `--signal-color` and uses it for the animated indicator. Its Output CSS shows both the scoped declaration and rewritten `var()` reference.
 

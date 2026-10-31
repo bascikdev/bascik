@@ -2850,4 +2850,19 @@ describe("prefixElementAttribute – custom properties in style attributes", () 
     );
     expect(result.fileContent).toBe(source);
   });
+
+  it("passes a style on a nested component tag through as written", () => {
+    // The child component reads the global name, as it does from a page.
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="card" style="--accent: green"><child-btn style="--accent: blue"></child-btn><x-y\nstyle="color: var(--accent)"></x-y></div>',
+        ".card { --accent: red; border-color: var(--accent) }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("card")}" style="${css("accent")}: green"><child-btn style="--accent: blue"></child-btn><x-y\nstyle="color: var(--accent)"></x-y></div>`,
+    );
+  });
 });

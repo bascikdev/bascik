@@ -389,7 +389,12 @@ const replaceBalancedCall = (
 const replaceSafeAttr = (
   html: string,
   attrName: string,
-  replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
+  replacer: (
+    fullMatch: string,
+    prefix: string,
+    quotedVal: string,
+    tag: string,
+  ) => string,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attrRegex = new RegExp(
@@ -432,7 +437,7 @@ const replaceSafeAttr = (
         if (!isInside) {
           finalStr +=
             tagMatch.substring(lastIdx, matchStart) +
-            replacer(match[0], match[1], match[2]);
+            replacer(match[0], match[1], match[2], tagMatch);
           lastIdx = matchStart + match[0].length;
         }
       }
@@ -658,7 +663,10 @@ export const prefixElementAttribute = (
       replaceSafeAttr(
         styleShield.html,
         "style",
-        (_fullMatch, prefix, quotedVal) => {
+        (fullMatch, prefix, quotedVal, tag) => {
+          // A custom element tag, such as a nested component, takes the
+          // value as written: it reads the global name, as it does on a page.
+          if (/^<[a-zA-Z0-9]*-/.test(tag)) return fullMatch;
           const quote = quotedVal[0] === '"' || quotedVal[0] === "'" ? 1 : 0;
           const value = quotedVal.slice(quote, quotedVal.length - quote);
           return `${prefix}${quotedVal.slice(0, quote)}${scopeCustomPropertiesInStyleValue(
