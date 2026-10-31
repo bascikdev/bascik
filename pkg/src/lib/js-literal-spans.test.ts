@@ -65,6 +65,29 @@ describe("findJsLiteralSpans", () => {
     ]);
   });
 
+  it("continues a string over a backslash line continuation, CRLF included", () => {
+    // A Windows checkout writes `\` + CRLF; the string goes on past the line break.
+    expect(literals("a = 'x\\\r\ny'; b = 'k'")).toEqual(["'x\\\r\ny'", "'k'"]);
+    expect(literals("a = 'x\\\ny'; b = 'k'")).toEqual(["'x\\\ny'", "'k'"]);
+    expect(literals("a = 'x\\\u2028y'; b = 'k'")).toEqual([
+      "'x\\\u2028y'",
+      "'k'",
+    ]);
+  });
+
+  it("reads `/` after an if, while, for or with header as a regex", () => {
+    expect(
+      literals(`if (ok) /"/.test(s); el.innerHTML = '<p class="x">'`),
+    ).toEqual([`'<p class="x">'`]);
+    expect(literals("while (f(a)) /'/.exec(s); b = 'k'")).toEqual(["'k'"]);
+    expect(literals("for (;;) /'/.test(s); b = 'k'")).toEqual(["'k'"]);
+    expect(literals("with (o) /'/.test(s); b = 'k'")).toEqual(["'k'"]);
+    // A call or a property named like a keyword still divides.
+    expect(literals("x = f(a) / 2 + 'q' / 3")).toEqual(["'q'"]);
+    expect(literals("x = o.if(a) / 2 + 'q' / 3")).toEqual(["'q'"]);
+    expect(literals("x = (if_(a)) / 2 + 'q' / 3")).toEqual(["'q'"]);
+  });
+
   it("returns ordered, non-overlapping, in-range spans for any input", () => {
     fc.assert(
       fc.property(fc.string(), (js) => {
