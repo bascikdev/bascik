@@ -866,6 +866,21 @@ export const createRequestHandler = () => {
           new URL(req.path, "http://localhost").searchParams.get("boot") ===
           "1";
 
+        // Refuse over the connection cap before committing the 200: once the
+        // event-stream headers are sent the response can no longer become a
+        // 503, and an accepted-but-unregistered stream would hang open with
+        // no events and no heartbeat.
+        const sseManager = getSseManager();
+        if (sseManager.isAtCapacity) {
+          responseStatus = 503;
+          res.respond(503, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          res.end("Too Many SSE Connections");
+          return;
+        }
+
         responseStatus = 200;
         res.respond(200, {
           "content-type": "text/event-stream",
@@ -886,9 +901,7 @@ export const createRequestHandler = () => {
               openPagePath = getHttpPath(relativeRefererPath);
           }
         } catch {}
-        if (openPagePath) mem.trackOpenPage(openPagePath);
 
-        const sseManager = getSseManager();
         const storedPage = openPagePath
           ? mem.getPageExact(openPagePath)
           : undefined;
@@ -900,8 +913,14 @@ export const createRequestHandler = () => {
             : null,
         );
         if (!client) {
+          // The manager was destroyed (shutdown) or filled between the check
+          // above and here; it has ended the committed stream. Nothing was
+          // tracked yet, so there is nothing to balance.
           return;
         }
+        // Tracked only once the client is registered, so every trackOpenPage
+        // is paired with the untrackOpenPage in the close handler below.
+        if (openPagePath) mem.trackOpenPage(openPagePath);
 
         // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
         const strip = (p: string) => p.replace(/\/$/, "") || "/";
