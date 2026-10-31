@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // One verification loop for a Bascik project: bascik --check (which includes the language server's per-file checks
 // when it is installed), the linter on component folders outside the project, and optionally a build.
+import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { isAbsolute, relative, sep } from "node:path";
+import { isAbsolute, relative, sep, win32 } from "node:path";
 import {
   componentRoots,
   docsBaseUrl,
@@ -68,24 +69,37 @@ function report(title, result) {
 }
 
 /**
- * How to run `npx <args>`. On Windows npx is a .cmd file, which only cmd.exe can start, and `shell: true` joins the
- * arguments with spaces and no quoting, so a project path with a space split into several arguments. Instead each
- * argument is quoted explicitly (trailing backslashes doubled so they do not escape the closing quote) and passed
- * to cmd.exe as one verbatim command; /s strips the outer pair of quotes. Exported for tests.
+ * How to run `npx <args>`. On Windows npx is a .cmd file, and a .cmd file only starts through cmd.exe, which
+ * re-parses the command line: it expands %VAR% even inside quotes, so a project path holding a % changed the
+ * command. Instead Node runs npm's own npx-cli.js with an argument array and no shell in between: the copy next to
+ * the npm that started this script (npm_execpath), else the one npm installs next to node.exe. With neither, the
+ * result is `{ skipped }` saying what to do. Exported for tests.
  */
 export function npxInvocation(
   args,
   platform = process.platform,
   env = process.env,
+  execPath = process.execPath,
+  exists = existsSync,
 ) {
   if (platform !== "win32") return { command: "npx", args };
-  const quoted = ["npx", ...args]
-    .map((arg) => `"${arg.replace(/\\+$/, (slashes) => slashes + slashes)}"`)
-    .join(" ");
+  const fromNpm =
+    env.npm_execpath &&
+    /^np[mx]-cli\.js$/i.test(win32.basename(env.npm_execpath))
+      ? [win32.join(win32.dirname(env.npm_execpath), "npx-cli.js")]
+      : [];
+  const nodeDir = win32.dirname(execPath);
+  const bundled = win32.join(
+    nodeDir,
+    "node_modules",
+    "npm",
+    "bin",
+    "npx-cli.js",
+  );
+  const cli = [...fromNpm, bundled].find((candidate) => exists(candidate));
+  if (cli) return { command: execPath, args: [cli, ...args] };
   return {
-    command: env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", `"${quoted}"`],
-    windowsVerbatimArguments: true,
+    skipped: `npm's npx-cli.js is not in ${nodeDir}\\node_modules\\npm\\bin; npm install -D @bascik/language-server and rerun without --npx`,
   };
 }
 
@@ -171,10 +185,9 @@ async function main() {
       statuses.push(
         report(
           `npx ${label(target).replace("bascik-language-server", "@bascik/language-server")}`,
-          await run(npx.command, npx.args, {
-            ...options,
-            windowsVerbatimArguments: npx.windowsVerbatimArguments,
-          }),
+          npx.skipped
+            ? { skipped: npx.skipped }
+            : await run(npx.command, npx.args, options),
         ),
       );
     }
