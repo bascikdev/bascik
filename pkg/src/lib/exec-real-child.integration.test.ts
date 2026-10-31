@@ -1,10 +1,18 @@
 // Exec entries run as real child processes: where a relative script resolves,
 // what a missing working directory reports, and what a timeout leaves behind.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import {
   getActiveExecChildrenCount,
   runScript,
@@ -32,7 +40,10 @@ const waitFor = async (check: () => boolean, ms = 5000): Promise<void> => {
 /**
  * A wrapper script that starts a long-lived grandchild (as a script running
  * `tailwindcss --watch` would) and writes its pid. With `ignoreTerm` the
- * wrapper also ignores SIGTERM, so only the SIGKILL escalation ends it.
+ * wrapper also ignores SIGTERM, so only the SIGKILL escalation ends it. With
+ * `grandchildIgnoresTerm` the grandchild ignores SIGTERM too and writes
+ * `grandchild.term` when it gets one, so a test can tell that only SIGKILL
+ * ended it.
  */
 const writeWrapper = async (
   ignoreTerm: boolean,
@@ -41,14 +52,10 @@ const writeWrapper = async (
   await mkdir(join(project, "scripts"), { recursive: true });
   const script = join(
     "scripts",
-    grandchildIgnoresTerm
-      ? "stubborn-grandchild.mjs"
-      : ignoreTerm
-        ? "stubborn.mjs"
-        : "wrapper.mjs",
+    `${ignoreTerm ? "stubborn" : "wrapper"}${grandchildIgnoresTerm ? "-stubborn-grandchild" : ""}.mjs`,
   );
   const grandchildCode = grandchildIgnoresTerm
-    ? "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"
+    ? "process.on('SIGTERM', () => require('fs').writeFileSync('grandchild.term', '1')); setInterval(() => {}, 1000)"
     : "setInterval(() => {}, 1000)";
   await writeFile(
     join(project, script),
@@ -63,16 +70,28 @@ setInterval(() => {}, 1000);
   return script;
 };
 
+/**
+ * The grandchild's pid once the wrapper has written all of it, checked to be
+ * a running process: a test that only waits for the pid to die would pass if
+ * the grandchild never started (and pid 0 would name this process group).
+ */
 const grandchildPid = async (): Promise<number> => {
+  let pid = 0;
   await waitFor(() => {
     try {
-      return realpathSync(join(project, "grandchild.pid")) !== "";
+      pid = Number(readFileSync(join(project, "grandchild.pid"), "utf8"));
     } catch {
       return false;
     }
+    return Number.isInteger(pid) && pid > 0;
   });
-  return Number(await readFile(join(project, "grandchild.pid"), "utf8"));
+  expect(isAlive(pid)).toBe(true);
+  return pid;
 };
+
+/** True once the grandchild has received (and ignored) a SIGTERM. */
+const grandchildGotTerm = (): boolean =>
+  existsSync(join(project, "grandchild.term"));
 
 let project: string;
 
@@ -159,6 +178,8 @@ describe.skipIf(process.platform === "win32")(
 
       await expect(run).rejects.toThrow("timed out after 1500ms");
       await waitFor(() => !isAlive(pid));
+      // It got SIGTERM and kept running, so only the SIGKILL ended it.
+      expect(grandchildGotTerm()).toBe(true);
     });
 
     it("stops a running parallel script and its children before any exit", async () => {
@@ -174,6 +195,75 @@ describe.skipIf(process.platform === "win32")(
       await stopping;
       await waitFor(() => getActiveExecChildrenCount() === 0);
       await waitFor(() => !isAlive(pid));
+    });
+  },
+);
+
+describe.skipIf(process.platform === "win32")(
+  "exec timeout with a ps that has no start times (BusyBox)",
+  () => {
+    let originalPath: string | undefined;
+
+    beforeEach(async () => {
+      // A `ps` like BusyBox's: `-A` and `lstart` are rejected, and
+      // `ps -o pid,ppid` prints a header and every process.
+      const realPs = spawnSync("sh", ["-c", "command -v ps"], {
+        encoding: "utf8",
+      }).stdout.trim();
+      const bin = join(project, "fake-bin");
+      await mkdir(bin);
+      await writeFile(
+        join(bin, "ps"),
+        `#!/bin/sh
+case "$*" in *-A*|*lstart*) echo "ps: unrecognized option" >&2; exit 1;; esac
+echo "  PID  PPID"
+exec "${realPs}" -A -o pid= -o ppid=
+`,
+      );
+      await chmod(join(bin, "ps"), 0o755);
+      originalPath = process.env.PATH;
+      process.env.PATH = `${bin}:${originalPath ?? ""}`;
+    });
+
+    afterEach(() => {
+      process.env.PATH = originalPath;
+    });
+
+    it("SIGKILLs a started process whose parent, the script, is still running", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const script = await writeWrapper(true, true);
+      const run = runScript({ script, timeout: 1500 });
+      const pid = await grandchildPid();
+
+      await expect(run).rejects.toThrow("timed out after 1500ms");
+      await waitFor(() => !isAlive(pid));
+      expect(grandchildGotTerm()).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("warns instead of SIGKILLing a started process it cannot confirm", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // The wrapper dies on SIGTERM, so the grandchild is re-parented: without
+      // a start time it cannot be told from a program that reused its pid.
+      const script = await writeWrapper(false, true);
+      const run = runScript({ script, timeout: 1500 });
+      const pid = await grandchildPid();
+      try {
+        await expect(run).rejects.toThrow("timed out after 1500ms");
+        await waitFor(() => warn.mock.calls.length > 0);
+        expect(String(warn.mock.calls[0][0])).toContain(
+          `exec "${script}": ps on this system reports no process start times`,
+        );
+        expect(String(warn.mock.calls[0][0])).toContain(`pid ${pid}`);
+        expect(grandchildGotTerm()).toBe(true);
+        expect(isAlive(pid)).toBe(true);
+      } finally {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
     });
   },
 );
