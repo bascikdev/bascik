@@ -509,6 +509,80 @@ describe("startHttp2Server – rate limiting", () => {
     }
   });
 
+  // R3-01: a full identity table evicts the least recently seen client
+  // instead of answering 429 to every newcomer, and says so once per window.
+  it("rateLimit.maxTrackedIps: a full table admits newcomers and warns once", async () => {
+    const { BascikConfig, shouldLog } = await import("./config.ts");
+    const { getActiveRateLimiter } = await import("./server.ts");
+    const previous = (BascikConfig as any).http.rateLimit;
+    (BascikConfig as any).http.rateLimit = { max: 1, maxTrackedIps: 2 };
+    resetActiveRateLimiter();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mockMem.getPage.mockReturnValue(makePage());
+      const handler = getStreamHandler()!;
+      const statuses: unknown[] = [];
+      for (const ip of ["10.1.0.1", "10.1.0.2", "10.1.0.3", "10.1.0.4"]) {
+        const s = {
+          ...makeStream(),
+          session: { socket: { remoteAddress: ip } },
+        };
+        await handler(s, makeHeaders("/about", "GET"));
+        statuses.push(s.respond.mock.calls[0]?.[0]?.[":status"]);
+      }
+      expect(statuses).toEqual([200, 200, 200, 200]);
+      expect(getActiveRateLimiter().trackedCount).toBe(2);
+      const pressureLines = warn.mock.calls.filter((call) =>
+        String(call[0]).includes("rate limiter table full"),
+      );
+      expect(pressureLines).toEqual([
+        [
+          "[bascik] rate limiter table full: 2 identities, evicting the least recently seen; raise http.rateLimit.maxTrackedIps or rate limit at the CDN",
+        ],
+      ]);
+      expect(shouldLog).toHaveBeenCalledWith("info", "warn");
+    } finally {
+      warn.mockRestore();
+      (BascikConfig as any).http.rateLimit = previous;
+      resetActiveRateLimiter();
+    }
+  });
+
+  it("rateLimit pressure line respects logging.level", async () => {
+    const { BascikConfig, shouldLog } = await import("./config.ts");
+    const previous = (BascikConfig as any).http.rateLimit;
+    (BascikConfig as any).http.rateLimit = { maxTrackedIps: 1 };
+    resetActiveRateLimiter();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(shouldLog).mockImplementation(
+      (_level, event) => event !== "warn",
+    );
+    try {
+      mockMem.getPage.mockReturnValue(makePage());
+      const handler = getStreamHandler()!;
+      for (const ip of ["10.2.0.1", "10.2.0.2", "10.2.0.3"]) {
+        const s = {
+          ...makeStream(),
+          session: { socket: { remoteAddress: ip } },
+        };
+        await handler(s, makeHeaders("/about", "GET"));
+        expect(s.respond).toHaveBeenCalledWith(
+          expect.objectContaining({ ":status": 200 }),
+        );
+      }
+      expect(
+        warn.mock.calls.some((call) =>
+          String(call[0]).includes("rate limiter table full"),
+        ),
+      ).toBe(false);
+    } finally {
+      vi.mocked(shouldLog).mockImplementation(() => true);
+      warn.mockRestore();
+      (BascikConfig as any).http.rateLimit = previous;
+      resetActiveRateLimiter();
+    }
+  });
+
   it("does not throttle requests when rateLimit is disabled", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.rateLimit = false;

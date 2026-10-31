@@ -155,7 +155,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     port: null,
     hostname: null,
     tls: { enabled: null, keyFile: null, certFile: null },
-    rateLimit: { window: null, max: null },
+    rateLimit: { window: null, max: null, maxTrackedIps: null },
     trustProxy: null,
     cacheControl: null,
     compression: null,
@@ -644,7 +644,7 @@ export const validateConfigShape = (
         push(
           "http.rateLimit",
           rateLimit,
-          "expected true, false, or an object { window?, max? }",
+          "expected true, false, or an object { window?, max?, maxTrackedIps? }",
         );
       } else if (isPlainObject(rateLimit)) {
         if (rateLimit.window !== undefined) {
@@ -669,6 +669,20 @@ export const validateConfigShape = (
             maxVal <= 0
           ) {
             push("http.rateLimit.max", maxVal, "expected a positive integer");
+          }
+        }
+        if (rateLimit.maxTrackedIps !== undefined) {
+          const tracked = rateLimit.maxTrackedIps;
+          if (
+            typeof tracked !== "number" ||
+            !Number.isInteger(tracked) ||
+            tracked <= 0
+          ) {
+            push(
+              "http.rateLimit.maxTrackedIps",
+              tracked,
+              "expected a positive integer",
+            );
           }
         }
       }

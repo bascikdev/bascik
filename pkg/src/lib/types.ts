@@ -399,13 +399,27 @@ export interface HttpTimeoutsOptions {
   drain?: number;
 }
 
+/** `http.rateLimit` as an object: the sliding window and the table cap. */
+export interface RateLimitOptions {
+  /** Sliding window in milliseconds. Default `10000`. */
+  window?: number;
+  /** Requests allowed per client in one window. Default `500`. */
+  max?: number;
+  /**
+   * Clients tracked at once. A full table evicts the least recently seen
+   * client (its count starts over) and logs a warning once per window; it
+   * never refuses a request because the table is full. Default `10000`.
+   */
+  maxTrackedIps?: number;
+}
+
 export interface HttpOptions {
   httpCache: boolean;
   /** TCP port to listen on. Defaults to `8080` for HTTP, or `8443` when TLS is enabled. */
   port?: number;
   hostname: string;
   tls: HttpTlsOptions;
-  rateLimit: boolean | { window?: number; max?: number };
+  rateLimit: boolean | RateLimitOptions;
   trustProxy: boolean;
   cacheControl: string | Record<string, string>;
   compression: boolean;
@@ -496,7 +510,7 @@ export type UserConfig = {
     port?: number;
     hostname?: string;
     tls?: Partial<HttpTlsOptions>;
-    rateLimit?: boolean | { window?: number; max?: number };
+    rateLimit?: boolean | RateLimitOptions;
     trustProxy?: boolean;
     /**
      * `Cache-Control` for static files under `bascik --server`: one value for
