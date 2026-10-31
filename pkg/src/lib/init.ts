@@ -11,6 +11,9 @@
  *    TLS key and certificate the server generates (newline style kept)
  *  - .vscode/settings.json   — "html.validate.scripts": false (merged, never replaced)
  *  - .vscode/extensions.json — recommends the Bascik extension (merged, never replaced)
+ *  - .hintrc, .hintrc.dist.json — webhint's charset, viewport, title and alt
+ *    checks scoped to what Bascik builds, for the pages and components
+ *    folders bascik.config names (merged, never replaced)
  *  - AGENTS.md               — the project brief for coding assistants (merged, never replaced)
  *  - CLAUDE.md               — imports AGENTS.md for Claude Code (merged, never replaced)
  *  - .agents/skills/, .claude/skills/ — the Bascik agent skills, after a Y/n
@@ -27,6 +30,8 @@
 
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { findConfigFile } from "./config-file-names.ts";
 import {
   SKILLS_QUESTION,
   agentFilesReportLines,
@@ -42,10 +47,14 @@ import {
 } from "./agent-setup.ts";
 import { readVersion } from "./version.ts";
 import {
+  DEFAULT_SOURCE_DIRECTORIES,
   HTML_VALIDATE_SCRIPTS,
   BASCIK_EXTENSION_ID,
+  hintReportLines,
   vscodeReportLines,
+  writeHintFiles,
   writeVscodeFiles,
+  type SourceDirectories,
   type VscodeFileStatus,
 } from "./vscode-settings.ts";
 
@@ -99,6 +108,11 @@ export interface InitOptions {
   install?: typeof installSkills;
   /** The Bascik version whose skills to install. Defaults to this package's. */
   version?: string;
+  /**
+   * Loads the project's bascik.config default export, or undefined when
+   * there is none. Defaults to importing the file; replaced in tests.
+   */
+  readConfig?: (cwd: string) => Promise<unknown>;
 }
 
 export async function initProject(options: InitOptions = {}): Promise<void> {
@@ -140,6 +154,7 @@ export async function initProject(options: InitOptions = {}): Promise<void> {
   const scripts = await writePackageJson(pkgPath, pkgPlan);
   const commands = bascikCommands(scripts);
   await setUpVscode(cwd);
+  await setUpWebhint(cwd, options.readConfig ?? importConfig);
   await setUpAgentFiles(cwd, commands);
   await setUpSkills(cwd, options, version);
   printDone(commands);
@@ -373,6 +388,74 @@ async function setUpVscode(cwd: string): Promise<void> {
     }
   }
   for (const line of problems) console.log(`  ${line}`);
+}
+
+/** The default export of the project's bascik.config, or undefined when there is none. */
+export async function importConfig(cwd: string): Promise<unknown> {
+  const { path } = findConfigFile([], cwd);
+  if (path === undefined) return undefined;
+  const module = (await import(pathToFileURL(path).href)) as {
+    default?: unknown;
+  };
+  return module.default;
+}
+
+/** The pages and components folders a loaded config names, over the defaults. */
+export function sourceDirectoriesOf(config: unknown): SourceDirectories {
+  const directory =
+    typeof config === "object" && config !== null
+      ? (config as { directory?: unknown }).directory
+      : undefined;
+  const { pages, components } =
+    typeof directory === "object" && directory !== null
+      ? (directory as { pages?: unknown; components?: unknown })
+      : {};
+  const list = typeof components === "string" ? [components] : components;
+  return {
+    pages: typeof pages === "string" ? pages : DEFAULT_SOURCE_DIRECTORIES.pages,
+    components:
+      Array.isArray(list) && list.every((dir) => typeof dir === "string")
+        ? list
+        : DEFAULT_SOURCE_DIRECTORIES.components,
+  };
+}
+
+/**
+ * Write or merge .hintrc and .hintrc.dist.json. Bascik composes a page's
+ * <head> at build time, so webhint in the editor reports a missing charset,
+ * viewport and title on source pages that the built pages have.
+ */
+async function setUpWebhint(
+  cwd: string,
+  readConfig: (cwd: string) => Promise<unknown>,
+): Promise<void> {
+  let dirs = DEFAULT_SOURCE_DIRECTORIES;
+  try {
+    dirs = sourceDirectoriesOf(await readConfig(cwd));
+  } catch {
+    console.log(
+      "  note: could not load bascik.config, so .hintrc assumes src/pages and src/components. " +
+        "Edit its ignoredUrls pattern if your folders differ.",
+    );
+  }
+  const report = await writeHintFiles(cwd, dirs);
+  const files: Array<[string, string]> = [
+    [report.file, report.config],
+    [".hintrc.dist.json", report.dist],
+  ];
+  for (const [file, status] of files) {
+    if (status === "created") console.log(`  created: ${file}`);
+    else if (status === "updated") {
+      console.log(
+        `  updated: ${file} (added the Bascik source-file exceptions)`,
+      );
+    } else if (status === "unchanged") {
+      console.log(`  skipped: ${file} (already set)`);
+    }
+  }
+  if (report.config !== "updated") {
+    for (const line of hintReportLines(report)) console.log(`  ${line}`);
+  }
 }
 
 /** Only the statuses that need the user to act, for vscodeReportLines. */
