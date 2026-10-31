@@ -274,6 +274,94 @@ export {
   PAGE_PATH,
 };
 
+// F053 / F054: a page that fails inside a worker in dev. The worker sends
+// the failure as data (`WorkerTaskError.detail`); the main thread rebuilds
+// the located error for the overlay and records the missing helpers in its
+// own store, the one the watchers read.
+describe("processAllPages – worker failures in dev", () => {
+  const failingPool =
+    (reject: (job: { pagePath: string }) => Error) => async () => {
+      const { WorkerPool } = await import("./worker-pool.ts");
+      (
+        WorkerPool as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementationOnce(function (this: any) {
+        this.run = vi.fn(async (job: { pagePath: string }) => {
+          throw reject(job);
+        });
+        this.terminate = vi.fn(async () => {});
+        this.size = arguments[1];
+        this.shrink = vi.fn(async () => {});
+        this.grow = vi.fn();
+        this.configure = vi.fn();
+      });
+    };
+  const workerTaskError = (message: string, detail: unknown) =>
+    Object.assign(new Error(message), { name: "WorkerTaskError", detail });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.mocked(console.error).mockRestore();
+  });
+
+  it("names the component build script's file and line in the overlay, with the serial stage", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    const message =
+      '[bascik] build script error in "components/site-footer.html" at (line 7, column 3):\nboom';
+    await failingPool(() =>
+      workerTaskError(message, {
+        message,
+        location: {
+          sourceFile: "components/site-footer.html",
+          line: 7,
+          column: 3,
+        },
+      }),
+    )();
+    await processAllPages({ useWorkers: true });
+    const { eventEmitter } = await import("./events.ts");
+    expect(eventEmitter.emit).toHaveBeenCalledWith("build-error", {
+      message: `transpile page: ${message}`,
+      file: "components/site-footer.html",
+      line: 7,
+      column: 3,
+    });
+    const printed = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(printed).toContain("transpile page:");
+    expect(printed).not.toContain("worker transpile");
+  });
+
+  it("records the helpers the failed compile could not import on the main thread", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    await failingPool(() =>
+      workerTaskError("Cannot find module './lib/prices.ts'", {
+        message: "Cannot find module './lib/prices.ts'",
+        failedDependencies: ["src/pages/lib/prices.ts"],
+      }),
+    )();
+    await processAllPages({ useWorkers: true });
+    expect(mem.recordFailedDependencies).toHaveBeenCalledWith(PAGE_PATH, [
+      "src/pages/lib/prices.ts",
+    ]);
+  });
+
+  it("keeps the worker transpile stage for a worker that crashed", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([PAGE_PATH]);
+    await failingPool(() => new Error("Worker exited with code 1"))();
+    await processAllPages({ useWorkers: true });
+    const printed = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(printed).toContain("worker transpile: Worker exited with code 1");
+    expect(mem.recordFailedDependencies).not.toHaveBeenCalled();
+  });
+});
+
 describe("processAllPages – build mode sitemap", () => {
   beforeEach(async () => {
     vi.clearAllMocks();

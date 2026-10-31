@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { threadId } from "node:worker_threads";
 import { getTag, listComponents, maskRawTextContent } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -498,7 +499,7 @@ export const transpilePage = async (
   }
 
   if (!BascikConfig.isBuild) {
-    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion())}`;
+    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion(threadId))}`;
   }
 
   // Minify the body AFTER component resolution so that <pre> blocks from resolved

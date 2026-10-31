@@ -32,11 +32,16 @@ The pool is started before the component list is loaded, so a worker gets its co
 
 // Response (PageWorkerMessage)
 | { ok: true; result: PageWorkerResult | null }
-| { ok: false; error: string }
+| { ok: false; error: string; detail?: PageWorkerFailure }
 
 // PageWorkerResult = TranspilePageResult minus distHtml, plus:
 { distHtmlBytes: Uint8Array }
+
+// PageWorkerFailure (page-worker-errors.ts), plain data
+{ message, stage?, location?: { sourceFile, line, column }, failedDependencies? }
 ```
+
+A structured clone keeps neither an error's class nor its own fields, so a page that fails in a worker sends what the main thread needs as data in `detail`. The pool rejects with a `WorkerTaskError` carrying it, and `processing.ts` rebuilds the error the serial path would have seen (`fromPageWorkerFailure`: a `BuildScriptError` inside the `PageProcessingError` stage), so the dev overlay names the build script's file and line, and records `failedDependencies` (the helpers the compile could not import, read from the worker's own `mem`) in the main thread's `mem`, which the watchers read. A worker crash or exit still rejects with a plain `Error` and keeps the `worker transpile` stage. Anything a worker records only in its own module state (its `mem`, counters, caches) is lost to the main thread unless it travels in a message.
 
 ### Zero-copy page output (transfer list, not structured clone)
 

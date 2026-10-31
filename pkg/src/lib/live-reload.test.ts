@@ -327,6 +327,44 @@ describe("page versions", () => {
   });
 });
 
+// F055: each page worker has its own counter and every dev rebuild starts a
+// fresh pool, so a changed page was re-stamped with the version it had. A
+// version now carries the compiling thread, whose id is never reused.
+describe("live-reload page versions across threads", () => {
+  /** A fresh module instance: a thread that has compiled nothing yet. */
+  const freshThread = async () => {
+    vi.resetModules();
+    return (await import("./live-reload.ts")).nextLiveReloadVersion;
+  };
+
+  it("never repeats a version between the main thread and workers of different pools", async () => {
+    const main = await freshThread();
+    const bootWorker = await freshThread();
+    const rebuildWorker = await freshThread();
+    const versions = [
+      main(0),
+      main(0),
+      bootWorker(1),
+      bootWorker(1),
+      rebuildWorker(2),
+      rebuildWorker(2),
+    ];
+    expect(new Set(versions).size).toBe(versions.length);
+    // The main thread keeps the plain sequence.
+    expect(versions.slice(0, 2)).toEqual(["1", "2"]);
+  });
+
+  it("stays digits the stored-page reader reads back whole", async () => {
+    const next = await freshThread();
+    const version = next(2_000_000);
+    expect(version).toMatch(/^\d+$/);
+    expect(Number.isSafeInteger(Number(version))).toBe(true);
+    expect(
+      liveReloadVersionOf(`<body>${getLiveReloadScript("/r", version)}</body>`),
+    ).toBe(version);
+  });
+});
+
 describe("stripLiveReloadScript", () => {
   it("removes only the injected script and never crosses into neighboring scripts", () => {
     const html =

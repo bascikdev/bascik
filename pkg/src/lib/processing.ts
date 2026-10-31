@@ -95,6 +95,10 @@ import { mem } from "./mem.ts";
 import { ownershipTracker } from "./ownership.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
 import {
+  failedDependenciesOf,
+  fromPageWorkerFailure,
+} from "./page-worker-errors.ts";
+import {
   executeRoutesScript,
   isDynamicPagePath,
   resolveRoutePath,
@@ -1235,8 +1239,25 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         }
         return result;
       } catch (error) {
+        // A failure the worker described (F053, F054): rebuild the error the
+        // serial path would have seen, so the overlay names the build
+        // script's file and line and the stage reads the same, and record
+        // the helpers it could not import in THIS thread's store, the one
+        // the watchers read. A worker crash keeps the "worker transpile"
+        // stage.
+        // `WorkerTaskError.detail` (worker-pool.ts), read by shape.
+        const detail =
+          typeof error === "object" && error !== null && "detail" in error
+            ? (error as { detail: unknown }).detail
+            : undefined;
+        const restored = fromPageWorkerFailure(job.pagePath, detail);
+        const failedDependencies = failedDependenciesOf(detail);
+        if (!BascikConfig.isBuild && failedDependencies.length > 0)
+          mem.recordFailedDependencies(job.pagePath, failedDependencies);
         pageErrors.push(
-          normalizePageError(job.pagePath, error, "worker transpile"),
+          restored
+            ? normalizePageError(job.pagePath, restored)
+            : normalizePageError(job.pagePath, error, "worker transpile"),
         );
         return null;
       }
