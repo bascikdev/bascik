@@ -188,6 +188,25 @@ describe("index.ts CLI runner functions", () => {
     expect(verRes).toEqual({ action: "version", exitCode: 0 });
   });
 
+  it("runCli warns about a leading Node option it ignores, naming NODE_OPTIONS", async () => {
+    const { runCli } = await import("./index.ts");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const res = await runCli(["--max-old-space-size=4096", "--help"], {
+        exitOnFinish: false,
+      });
+      expect(res.action).toBe("help");
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain("--max-old-space-size=4096");
+      expect(message).toContain('NODE_OPTIONS="--max-old-space-size=4096"');
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+    }
+  });
+
   it("runCli handles unknown flags with error", async () => {
     const { runCli } = await import("./index.ts");
     const errRes = await runCli(["--unknown-flag"], { exitOnFinish: false });

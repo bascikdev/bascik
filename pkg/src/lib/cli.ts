@@ -74,6 +74,12 @@ export interface CliDecision {
   unknownFlags?: string[];
   /** Human-readable error line(s), when action is "error". */
   errorMessage?: string;
+  /**
+   * Node options written before the first bascik flag (`bascik
+   * --max-old-space-size=4096 --build`). Node never sees them there, so they
+   * do nothing; the CLI warns once and points at NODE_OPTIONS.
+   */
+  ignoredNodeFlags?: string[];
   flags: CliFlags;
 }
 
@@ -243,6 +249,12 @@ export const filterNodeArgs = (args: string[]): string[] => {
   return result;
 };
 
+/** A flag Node itself accepts (the NODE_OPTIONS set), named without its value. */
+const isNodeOption = (arg: string): boolean =>
+  process.allowedNodeEnvironmentFlags.has(
+    arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg,
+  );
+
 const isRecognizedToken = (arg: string): boolean => {
   if (KNOWN_SUBCOMMANDS.has(arg)) return true;
   if (
@@ -264,6 +276,17 @@ const isRecognizedToken = (arg: string): boolean => {
 };
 
 export const resolveCliAction = (args: string[]): CliDecision => {
+  const ignoredNodeFlags: string[] = [];
+  const decision = parseCliArgs(args, ignoredNodeFlags);
+  return ignoredNodeFlags.length > 0 && decision.action !== "error"
+    ? { ...decision, ignoredNodeFlags }
+    : decision;
+};
+
+const parseCliArgs = (
+  args: string[],
+  ignoredNodeFlags: string[],
+): CliDecision => {
   const filtered = filterNodeArgs(args);
 
   const flags: CliFlags = { envFiles: [] };
@@ -353,11 +376,13 @@ export const resolveCliAction = (args: string[]): CliDecision => {
         }
       } else if (BOOLEAN_FLAGS.has(name)) {
         valueErrors.push(`Error: ${name} does not take a value.`);
-      } else if (seenKnownToken || !hasKnownToken) {
+      } else if (seenKnownToken || !hasKnownToken || !isNodeOption(name)) {
         unknownFlags.push(arg);
+      } else {
+        // A Node option before the first bascik token: dropped, and warned
+        // about by the caller.
+        ignoredNodeFlags.push(arg);
       }
-      // Otherwise an unrecognized `--name=value` before the first bascik
-      // token: Node's, drop.
       continue;
     }
 
@@ -389,12 +414,15 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     }
 
     if (arg.startsWith("-")) {
-      // Unrecognized leading flags are treated as Node runtime flags (profiler
-      // and wrapper resilience) and dropped rather than hard-failing. Once a
-      // bascik token has been seen (or none exists at all), an unknown flag is
-      // a user error.
-      if (seenKnownToken || !hasKnownToken) {
+      // A Node option before the first bascik token (profiler and wrapper
+      // resilience) is dropped rather than hard-failing, and the caller
+      // warns that it did nothing. Any other unknown flag is a user error
+      // wherever it appears: a leading typo such as `--quite` must not be
+      // taken for a Node option.
+      if (seenKnownToken || !hasKnownToken || !isNodeOption(arg)) {
         unknownFlags.push(arg);
+      } else {
+        ignoredNodeFlags.push(arg);
       }
       continue;
     }

@@ -141,7 +141,9 @@ bascik --build --port=4321
 Rules the parser enforces:
 
 - `--build` and `--server` cannot be combined. Run the build first, then serve the output.
-- Unknown flags are rejected, as are positional arguments other than `init` and `add`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server.
+- Unknown flags are rejected, as are positional arguments other than `init` and `add`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server. Position does not matter: `bascik --quite --check` is refused with `Did you mean "--quiet"?` too.
+- A Node option written before the first Bascik flag, such as `bascik --max-old-space-size=4096 --build`, does nothing, because Node reads its own options before the script name. Bascik runs the command and prints a warning that names the option and says to pass it with `NODE_OPTIONS="--max-old-space-size=4096" bascik --build`.
+- `--host` takes a hostname like `localhost` or `0.0.0.0`, by the same rule as `http.hostname`; a URL such as `http://0.0.0.0` is an error.
 - A flag that takes a value requires one (`--config` with no path is an error); a flag that takes none rejects one (`--build=yes` is an error).
 - Repeating a boolean flag is a no-op. For value flags the last occurrence wins; `--env-file` appends.
 - A flag always beats the matching environment variable, which beats the config file. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.

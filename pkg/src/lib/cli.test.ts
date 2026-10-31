@@ -267,6 +267,29 @@ describe("cli helper tests", () => {
       ).toBe("server");
     });
 
+    it("reports a leading Node option it ignores, so the caller can warn", () => {
+      expect(
+        resolveCliAction(["--max-old-space-size=4096", "--build"])
+          .ignoredNodeFlags,
+      ).toEqual(["--max-old-space-size=4096"]);
+      expect(resolveCliAction(["--build"]).ignoredNodeFlags).toBeUndefined();
+    });
+
+    // F101: a typo placed before the first bascik flag used to be dropped as
+    // if it were a Node flag, so `bascik --quite --check` ran at full
+    // verbosity without a word.
+    it.each([
+      [["--quite", "--check"], "--quiet"],
+      [["--quite=1", "--build"], undefined],
+      [["--dry", "--build"], undefined],
+      [["-x", "--server"], undefined],
+    ])("rejects the leading typo in %j", (args, hint) => {
+      const decision = resolveCliAction(args as string[]);
+      expect(decision.action).toBe("error");
+      expect(decision.unknownFlags).toEqual([(args as string[])[0]]);
+      if (hint) expect(decision.errorMessage).toContain(`"${hint}"`);
+    });
+
     it("still rejects unknown flags once a bascik flag is present", () => {
       const decision = resolveCliAction(["--build", "--bogus"]);
       expect(decision.action).toBe("error");
