@@ -503,6 +503,69 @@ describe("degraded targeted build keeps untouched pages' server scripts", () => 
   });
 });
 
+// F034: a finalize that fails after staging must not leave its staged
+// `.<name>.<pid>.tmp` files in the private folder: a targeted build does not
+// clear that folder, so each failed run would add more.
+describe("finalize removes its staged temp files when it fails", () => {
+  let tempDir = "";
+  const privateDir = () => privateDirFor(tempDir);
+  const tempFiles = async () =>
+    (await (await import("node:fs/promises")).readdir(privateDir())).filter(
+      (name) => name.endsWith(".tmp"),
+    );
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-staged-"));
+    await mkdir(privateDir(), { recursive: true });
+    ownershipTracker.clear();
+    manifestCollector.clear();
+    cspHashCollector.clear();
+    serverSidecarRegistry.clear();
+    (BascikConfig as any).directory.out = tempDir;
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).generate.manifest = true;
+    (BascikConfig as any).generate.cspHashes = true;
+    (BascikConfig as any).only = ["a.html"];
+    listComponentsMock.mockReset();
+    listComponentsMock.mockResolvedValue({});
+    const source = resolve(tempDir, "src/pages/a.html");
+    ownershipTracker.recordOutput(source, "pages/a.html", "a.html", "/a");
+    ownershipTracker.recordScript(source, "pages/a.html", "scriptA");
+    serverSidecarRegistry.recordScript("scriptA", "a-source");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDir(), { recursive: true, force: true });
+  });
+
+  it("when the component manifest fails after the manifest was staged", async () => {
+    listComponentsMock.mockRejectedValue(
+      new Error('build script error in "src/components/broken-card.html"'),
+    );
+    await expect(
+      finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true }),
+    ).rejects.toThrow(/broken-card/);
+    expect(await tempFiles()).toEqual([]);
+    // Nothing was committed either: the prior (absent) set is untouched.
+    await expect(access(join(privateDir(), "manifest.json"))).rejects.toThrow();
+  });
+
+  it("when a rename fails partway through the commit", async () => {
+    // A non-empty folder where the manifest goes makes its rename fail after
+    // the ownership file was renamed and before the CSP and sidecar were.
+    await mkdir(join(privateDir(), "manifest.json", "blocker"), {
+      recursive: true,
+    });
+    await expect(
+      finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true }),
+    ).rejects.toThrow();
+    expect(await tempFiles()).toEqual([]);
+  });
+});
+
 /**
  * Prompt 157: `.bascik/dist/components.json` joins the artifact transaction.
  * It exists iff the RECONCILED sidecar has page-owned server or stream

@@ -95,6 +95,11 @@ targets. Obsolete outputs are deleted **only after** those commits succeed.
 - A rename failure surfaces and aborts **before** deleting any obsolete output,
   so a failed targeted update never deletes a file the committed metadata still
   references.
+- Either failure, or any other step that throws once staging has begun (a
+  component build script failing while the component manifest is built),
+  removes every temp sibling still on disk before the error surfaces. A
+  targeted build never clears the private folder, so leftover
+  `.<name>.<pid>.tmp` files would otherwise pile up, one per failed run.
 - Corrupt or schema-incompatible `ownership.json` (or a missing one) is treated
   as **no reliable ownership**: the targeted build degrades to the safe additive
   merge, logs a warning, and writes a fresh inventory so future builds are
