@@ -458,3 +458,40 @@ describe("rewriteIdReferencesInHtml – attribute-like text inside another value
     expect(rewriteIdReferencesInHtml(tag, resolve)).toBe(tag);
   });
 });
+
+describe("rewriteIdReferencesInHtml – SVG href references", () => {
+  const resolve = (id: string) => (id === "curve" ? "S" : null);
+
+  it.each([
+    "textPath",
+    "mpath",
+    "feImage",
+    "pattern",
+    "linearGradient",
+    "radialGradient",
+    "filter",
+    "animate",
+    "animateMotion",
+    "animateTransform",
+    "set",
+  ])("rewrites href and xlink:href on <%s>", (tagName) => {
+    expect(
+      rewriteIdReferencesInHtml(
+        `<${tagName} href="#curve"></${tagName}><${tagName} xlink:href="#curve"/>`,
+        resolve,
+      ),
+    ).toBe(`<${tagName} href="#S"></${tagName}><${tagName} xlink:href="#S"/>`);
+  });
+
+  it("rewrites xlink:href on an SVG <a>", () => {
+    expect(
+      rewriteIdReferencesInHtml('<a xlink:href="#curve">x</a>', resolve),
+    ).toBe('<a xlink:href="#S">x</a>');
+  });
+
+  it("leaves undeclared, external and non-fragment references alone", () => {
+    const html =
+      '<textPath href="#other"></textPath><feImage href="pic.png#curve"/><pattern href="https://x.test/#curve"></pattern><link href="#curve">';
+    expect(rewriteIdReferencesInHtml(html, resolve)).toBe(html);
+  });
+});
