@@ -361,6 +361,26 @@ describe("politeBrowser", () => {
     expect(politeBrowser(browser, { prod: PROD })).toBe(browser);
   });
 
+  it("a relaunched browser takes over the policy of the one it replaces: the pacing and the counts carry on", async () => {
+    const inner = () => ({
+      async newContext() {
+        return { async route() {} };
+      },
+    });
+    const first = politeBrowser(inner(), { prod: PROD, minIntervalMs: 1000 });
+    first.politeStats.blocked = 2;
+    const second = politeBrowser(
+      inner(),
+      { prod: PROD, minIntervalMs: 1000 },
+      first,
+    );
+    expect(second.politeStats).toBe(first.politeStats);
+    expect(second.politeStats.blocked).toBe(2);
+    // Misuse: a previous browser that was never wrapped hands over nothing.
+    const fresh = politeBrowser(inner(), { prod: PROD }, inner());
+    expect(fresh.politeStats).toEqual({ blocked: 0, refused: 0, paced: 0 });
+  });
+
   it("blocks service workers in every context and page, even when the caller asks for them", async () => {
     const seen: unknown[] = [];
     const context = { async route() {} };

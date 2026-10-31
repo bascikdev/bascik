@@ -232,7 +232,8 @@ hero around it, because a masked region is left out of every screenshot while wh
 open menu) is still compared. Never mask a modal or banner on a timer; raise `--settle-ms` past its timer instead,
 since masking it removes the layer presence-by-route checks. Expect about two minutes per route per matrix case
 (state-capture and interaction-crawl take most of it, since both reload the page per interactive element). A check
-that crashes on a navigation timeout is run once more and the report notes the retry.
+that crashes on a navigation timeout is run once more and the report notes the retry. A browser that closed mid-run
+(killed, out of memory) is relaunched before that retry and for every later check, and the retry note says so.
 
 ### The iteration loop and the gate
 

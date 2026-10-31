@@ -13,8 +13,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHECKS,
+  browserHolder,
   buildRouteReport,
   parseCliArgs,
+  runOne,
 } from "../../skills/bascik-refactor/scripts/run-checks.mjs";
 import {
   caseId,
@@ -559,6 +561,179 @@ describe("buildRouteReport", () => {
 
   it("an empty run never passes", () => {
     expect(buildRouteReport("/", []).ok).toBe(false);
+  });
+});
+
+// A Chromium that went away mid-run (killed, out of memory) used to be retried as it was, so the retry and every later
+// check crashed in 0.0 s on "Target page, context or browser has been closed". The holder relaunches it instead.
+class FakeBrowser {
+  connected = true;
+  constructor(readonly id: number) {}
+  isConnected() {
+    return this.connected;
+  }
+  async close() {
+    this.connected = false;
+  }
+}
+const CLOSED =
+  "browser.newContext: Target page, context or browser has been closed";
+
+function fakeSession(failLaunch = false) {
+  let launched = 0;
+  const holder = browserHolder(new FakeBrowser(++launched), async () => {
+    if (failLaunch)
+      throw new Error("browserType.launch: Executable doesn't exist");
+    return new FakeBrowser(++launched);
+  });
+  return holder;
+}
+
+describe("runOne when the browser dies", () => {
+  it("relaunches a browser that closed during a check, passes on the retry, and hands the next check a connected browser", async () => {
+    const holder = fakeSession();
+    const seen: { check: string; id: number; connected: boolean }[] = [];
+    let crashed = false;
+    const modules = [
+      {
+        CHECK: "repeated-sections",
+        async runCheck(browser: FakeBrowser) {
+          seen.push({
+            check: "repeated-sections",
+            id: browser.id,
+            connected: browser.isConnected(),
+          });
+          if (!crashed) {
+            crashed = true;
+            await browser.close();
+            throw new Error(CLOSED);
+          }
+          return { check: "repeated-sections", ok: true, findings: [] };
+        },
+      },
+      {
+        CHECK: "text-style-diff",
+        async runCheck(browser: FakeBrowser) {
+          seen.push({
+            check: "text-style-diff",
+            id: browser.id,
+            connected: browser.isConnected(),
+          });
+          return { check: "text-style-diff", ok: true, findings: [] };
+        },
+      },
+    ];
+    const first = await runOne("repeated-sections", holder, {}, modules);
+    expect(first.error).toBeUndefined();
+    expect(first.retried).toMatch(/browser had closed and was relaunched/);
+    expect(first.retried).toMatch(/has been closed/);
+    const second = await runOne("text-style-diff", holder, {}, modules);
+    expect(second).toEqual({
+      check: "text-style-diff",
+      ok: true,
+      findings: [],
+    });
+    expect(seen).toEqual([
+      { check: "repeated-sections", id: 1, connected: true },
+      { check: "repeated-sections", id: 2, connected: true },
+      { check: "text-style-diff", id: 2, connected: true },
+    ]);
+    expect(holder.relaunches).toBe(1);
+  });
+
+  it("a crash that closes the browser twice is one finding; the check after it still runs on a fresh browser", async () => {
+    const holder = fakeSession();
+    const modules = [
+      {
+        CHECK: "state-capture",
+        async runCheck(browser: FakeBrowser) {
+          await browser.close();
+          throw new Error(CLOSED);
+        },
+      },
+      {
+        CHECK: "spacing-diff",
+        async runCheck(browser: FakeBrowser) {
+          return {
+            check: "spacing-diff",
+            ok: browser.isConnected(),
+            findings: [],
+          };
+        },
+      },
+    ];
+    const first = await runOne("state-capture", holder, {}, modules);
+    expect(first.error).toMatch(/^state-capture crashed: .*has been closed/);
+    expect(first.retried).toMatch(/relaunched/);
+    const second = await runOne("spacing-diff", holder, {}, modules);
+    expect(second).toEqual({ check: "spacing-diff", ok: true, findings: [] });
+    expect(holder.relaunches).toBe(2);
+  });
+
+  it("a non-transient crash that took the browser with it is retried on a relaunched browser too", async () => {
+    const holder = fakeSession();
+    let calls = 0;
+    const modules = [
+      {
+        CHECK: "overlap-diff",
+        async runCheck(browser: FakeBrowser) {
+          if (calls++ === 0) {
+            await browser.close();
+            throw new Error(
+              "Protocol error (Page.captureScreenshot): Browser crashed",
+            );
+          }
+          return { check: "overlap-diff", ok: true, findings: [] };
+        },
+      },
+    ];
+    const r = await runOne("overlap-diff", holder, {}, modules);
+    expect(r.error).toBeUndefined();
+    expect(r.retried).toMatch(/relaunched/);
+  });
+
+  it("a check that crashes for its own reasons on a live browser is not retried and the browser is kept", async () => {
+    const holder = fakeSession();
+    const before = holder.browser;
+    const modules = [
+      {
+        CHECK: "alignment-diff",
+        async runCheck() {
+          throw new Error("Cannot read properties of undefined (reading 'x')");
+        },
+      },
+    ];
+    const r = await runOne("alignment-diff", holder, {}, modules);
+    expect(r).toEqual({
+      check: "alignment-diff",
+      error:
+        "alignment-diff crashed: Cannot read properties of undefined (reading 'x')",
+    });
+    expect(holder.browser).toBe(before);
+    expect(holder.relaunches).toBe(0);
+  });
+
+  it("unhappy path: a relaunch that fails is that check's finding, not an uncaught crash of the run", async () => {
+    const holder = fakeSession(true);
+    const modules = [
+      {
+        CHECK: "testid-coverage",
+        async runCheck(browser: FakeBrowser) {
+          await browser.close();
+          throw new Error(CLOSED);
+        },
+      },
+    ];
+    const r = await runOne("testid-coverage", holder, {}, modules);
+    expect(r.error).toMatch(
+      /^testid-coverage crashed: .*relaunch.*Executable doesn't exist/,
+    );
+  });
+
+  it("misuse: a bare browser in place of a holder is refused with a message naming browserHolder", async () => {
+    await expect(
+      runOne("spacing-diff", new FakeBrowser(1) as never, {}, []),
+    ).rejects.toThrow(/browserHolder/);
   });
 });
 

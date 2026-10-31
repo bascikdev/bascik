@@ -547,14 +547,19 @@ export function runFooter(prodCache, gate, browser, polite) {
 
 /**
  * Launches the browser of a run, wrapped so every context follows the production read-only rule (politeBrowser):
- * `args` are parsed flags holding prod, target and polite.
+ * `args` are parsed flags holding prod, target and polite. A relaunch passes the browser it replaces as `previous`, so
+ * the production pacing and the run footer's counts carry on.
  */
-export async function launchPolite(chromium, args) {
-  return politeBrowser(await chromium.launch(), {
-    prod: args.prod,
-    target: args.target,
-    ...(args.polite ?? {}),
-  });
+export async function launchPolite(chromium, args, previous) {
+  return politeBrowser(
+    await chromium.launch(),
+    {
+      prod: args.prod,
+      target: args.target,
+      ...(args.polite ?? {}),
+    },
+    previous,
+  );
 }
 
 /**

@@ -249,13 +249,16 @@ function noServiceWorkers(options) {
  * rule (see installPolitePolicy): `prod` is the production origin, `target` the Bascik origin or undefined, `block` the patterns
  * (DEFAULT_BLOCK by default) and `minIntervalMs` the least time between two production page loads, across every
  * context of this browser. The wrapper counts what it did in `.politeStats`; wrapping it again returns it unchanged.
+ * `previous`, a polite browser this one replaces (a relaunch after a crash), hands over its policy: the pacing and the
+ * counts carry on instead of starting again.
  */
 export function politeBrowser(
   browser,
   { prod, target, block = DEFAULT_BLOCK, minIntervalMs = 0 } = {},
+  previous,
 ) {
   if (browser?.[POLITE]) return browser;
-  const policy = {
+  const policy = previous?.[POLITE] ?? {
     prod,
     target,
     matches: blockMatcher(block),

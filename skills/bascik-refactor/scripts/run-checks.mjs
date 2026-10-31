@@ -79,7 +79,8 @@ Runtime: every page waits until ${DEFAULT_SETTLE_MS / 1000} s after it started l
 on both sides) and then until it has been quiet for 0.75 s, and the interaction crawl and state capture reload the
 page once per interactive element on each side, so expect about two minutes per route per matrix case on a typical
 marketing page (state-capture and interaction-crawl take most of it). A check that crashes on a navigation timeout (a
-loaded host, a slow network) is run once more, and the report notes the retry; a second crash is a finding.
+loaded host, a slow network) is run once more, and the report notes the retry; a second crash is a finding. A browser
+that closed mid-run (killed, out of memory) is relaunched before the retry and for every later check.
 
 Production is measured once and kept in --prod-cache (default ${DEFAULT_PROD_CACHE}): the next run reads production's side
 from there and loads only the target, as long as nothing that changes what production measures changed (the case,
@@ -393,20 +394,62 @@ export function isTransient(error) {
 }
 
 /**
- * Runs one check module over all routes and cases at once (repeated-sections and presence-by-route compare routes with
- * each other), turning a crash into an error result. A transient crash (isTransient: a navigation timeout on a loaded
- * host) is retried once; the result then says so in `retried`, and a second crash is the error.
+ * The browser of a run, replaced when it dies. Chromium can go away mid-run (killed, out of memory); every later call
+ * on the old object then fails at once with "Target page, context or browser has been closed". `ensure()` relaunches
+ * it through `relaunch(previous)` when it is no longer connected and says whether it did; `relaunches` counts them.
  */
-export async function runOne(name, browser, options, modules = MODULES) {
+export function browserHolder(browser, relaunch) {
+  return {
+    browser,
+    relaunches: 0,
+    async ensure() {
+      if (this.browser.isConnected?.() !== false) return false;
+      try {
+        await this.browser.close();
+      } catch {
+        // Already gone.
+      }
+      try {
+        this.browser = await relaunch(this.browser);
+      } catch (error) {
+        throw new Error(
+          `the browser had closed and could not be relaunched: ${String(error?.message ?? error).split("\n")[0]}`,
+        );
+      }
+      this.relaunches++;
+      return true;
+    },
+  };
+}
+
+/**
+ * Runs one check module over all routes and cases at once (repeated-sections and presence-by-route compare routes with
+ * each other), turning a crash into an error result. `holder` is a browserHolder: a browser that closed (an earlier
+ * check or this one took it down) is relaunched before the check runs and before its retry. A transient crash
+ * (isTransient: a navigation timeout on a loaded host), or any crash that left the browser closed, is retried once;
+ * the result then says so in `retried` (naming the relaunch when there was one), and a second crash is the error.
+ */
+export async function runOne(name, holder, options, modules = MODULES) {
+  if (typeof holder?.ensure !== "function")
+    throw new TypeError(
+      "runOne takes a browserHolder(browser, relaunch), not a bare browser, so it can relaunch a browser that died",
+    );
   const mod = modules.find((m) => m.CHECK === name);
   let retried;
   for (let attempt = 1; ; attempt++) {
     try {
-      const r = await mod.runCheck(browser, options);
+      const relaunched = await holder.ensure();
+      if (relaunched && retried)
+        retried = retried.replace(
+          " and was run again:",
+          " and was run again (the browser had closed and was relaunched):",
+        );
+      const r = await mod.runCheck(holder.browser, options);
       return retried ? { ...r, retried } : r;
     } catch (error) {
-      const first = error.message.split("\n")[0];
-      if (attempt === 1 && isTransient(error)) {
+      const first = String(error?.message ?? error).split("\n")[0];
+      const died = holder.browser.isConnected?.() === false;
+      if (attempt === 1 && (isTransient(error) || died)) {
         retried = `${name} crashed once and was run again: ${first}`;
         continue;
       }
@@ -424,11 +467,17 @@ async function main() {
   if (args.help) return console.log(HELP);
   const { cases, gate } = runChecksMatrix(args);
   const { chromium } = await loadPlaywright();
-  const browser = await launchPolite(chromium, args);
+  const holder = browserHolder(
+    await launchPolite(chromium, args),
+    (previous) => {
+      console.log("        the browser closed; relaunching it");
+      return launchPolite(chromium, args, previous);
+    },
+  );
   const results = [];
   let prodCache = null;
   try {
-    prodCache = await openProdCache(browser, {
+    prodCache = await openProdCache(holder.browser, {
       dir: args.prodCache,
       refresh: args.refreshProd,
     });
@@ -457,7 +506,7 @@ async function main() {
         options.accepted = args.accepted;
       }
       const started = Date.now();
-      const r = await runOne(name, browser, options);
+      const r = await runOne(name, holder, options);
       results.push(r);
       const n = r.error ? "crashed" : `${r.findings.length} finding(s)`;
       console.log(
@@ -465,7 +514,11 @@ async function main() {
       );
     }
   } finally {
-    await browser.close();
+    try {
+      await holder.browser.close();
+    } catch {
+      // A browser that died at the end has nothing left to close.
+    }
   }
   let allOk = true;
   const production = prodCacheRecord(prodCache);
@@ -498,7 +551,11 @@ async function main() {
       );
     allOk &&= report.ok;
   }
-  for (const line of runFooter(prodCache, gate, browser, args.polite))
+  if (holder.relaunches)
+    console.log(
+      `the browser closed and was relaunched ${holder.relaunches} time(s) during this run (see the retried notes)`,
+    );
+  for (const line of runFooter(prodCache, gate, holder.browser, args.polite))
     console.log(line);
   if (!allOk) process.exitCode = 1;
 }
