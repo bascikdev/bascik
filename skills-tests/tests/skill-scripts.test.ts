@@ -20,6 +20,7 @@ import {
   selectFiles,
 } from "../../skills/bascik/scripts/add-example.mjs";
 import { auditConfig } from "../../skills/bascik-config/scripts/audit-config.mjs";
+import { analyzeTemplate } from "../../skills/bascik/scripts/lib/components.mjs";
 import {
   auditPages,
   inspectPage,
@@ -283,6 +284,61 @@ describe("add-example", () => {
       );
       expect(written("src/pages/index.html")).toBe(true);
     });
+  });
+});
+
+describe("list-components", () => {
+  it("names each script directive, telling data-bascik-build-once from data-bascik-build", () => {
+    const directives = (html: string) => analyzeTemplate(html).directives;
+    expect(directives("<script data-bascik-build-once>x</script>")).toEqual([
+      "build-once",
+    ]);
+    expect(directives("<script data-bascik-build>x</script>")).toEqual([
+      "build",
+    ]);
+    expect(
+      directives(
+        '<script type="text/typescript" data-bascik-build-once="">a</script>\n<script data-bascik-routes>b</script>\n<script data-bascik-server src="s.ts"></script>\n<script data-bascik-stream>c</script>',
+      ).sort(),
+    ).toEqual(["build-once", "routes", "server", "stream"]);
+  });
+
+  it("misuse: a typo'd or made-up directive is not reported as a real one", () => {
+    const directives = (html: string) => analyzeTemplate(html).directives;
+    expect(directives("<script data-bascik-build-onc>x</script>")).toEqual([]);
+    expect(directives("<script data-bascik-builder>x</script>")).toEqual([]);
+    expect(directives("<script data-bascik-dev>x</script>")).toEqual([]);
+  });
+
+  it("the CLI prints the build-once directive by its own name", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-list-components-"));
+    try {
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ dependencies: { "@bascik/bascik": "*" } }),
+      );
+      mkdirSync(join(root, "src/components/site-footer"), { recursive: true });
+      writeFileSync(
+        join(root, "src/components/site-footer/site-footer.html"),
+        '<footer data-testid="site-footer"><script data-bascik-build-once>export default () => "x";</script></footer>\n',
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik/scripts/list-components.mjs",
+              import.meta.url,
+            ),
+          ),
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("  scripts: data-bascik-build-once\n");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
