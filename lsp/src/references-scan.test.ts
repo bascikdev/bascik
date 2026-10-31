@@ -131,6 +131,14 @@ describe("findComponentUsages, the compiler's own reading of component tags", ()
         [27, "x-a"],
       ],
     ],
+    // `</p"='x>` is one end tag (its name, quotes and `=` included, runs to
+    // the `>`), as the browser and the compiler read it: the `'` opens no
+    // attribute value that would hide the usage after it.
+    [
+      "a usage after an end tag whose name holds quotes and =",
+      `<p>a</p"='x><my-card>in</my-card>'`,
+      [[12, "my-card"]],
+    ],
     [
       "text after an attribute quote that never closes",
       '<div data-x="foo><my-card></my-card>',

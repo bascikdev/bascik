@@ -13,7 +13,8 @@ import type { ComponentList } from "./types.ts";
 // non-letter).
 const referenceAfterLess = (html: string, at: number): string => {
   const rest = html.slice(at, at + 4);
-  if (/^<\/?[a-zA-Z]/.test(rest)) return "name";
+  if (/^<[a-zA-Z]/.test(rest)) return "name";
+  if (/^<\/[a-zA-Z]/.test(rest)) return "end-tag-open";
   if (rest.startsWith("<!--")) return "text";
   if (/^<[!?]/.test(rest) || /^<\/[^]/.test(rest)) return "bogus";
   return "text";
@@ -42,6 +43,9 @@ const referenceState = (html: string, index: number): string => {
       else if (char === ">") state = "text";
     } else if (state === "bogus") {
       if (char === ">") state = "text";
+    } else if (state === "end-tag-open") {
+      // The `/` of `</`: the end tag's own, not the end of its name.
+      state = "name";
     } else if (state === "name") {
       // A tag name runs to tag white space, `/` or `>`; `=` and quotes are in it.
       if (char === ">") state = "text";
@@ -168,6 +172,24 @@ describe("component search with a shared attribute scan", () => {
     > & { startIndex?: number };
     expect(found.name).toBe("my-card");
     expect(found.startIndex).toBe(html.indexOf('<my-card a="1">'));
+  });
+
+  it("finds a component after an end tag whose name holds quotes and =, as the browser does", () => {
+    // `</p"='x>` is one end tag (its name runs to the `>`); the `'` after
+    // `=` opens no value there, so it cannot hide the tag after it.
+    for (const before of [`</p"='x>`, `</p='x>`, `</div="x>`]) {
+      const html = `<p>a${before}<my-card>in</my-card>'"`;
+      const found = getFirstComponent(html, componentList) as {
+        name?: string;
+        startIndex?: number;
+      };
+      expect(found.name, before).toBe("my-card");
+      expect(found.startIndex, before).toBe(html.indexOf("<my-card>"));
+      const scanner = createAttributeValueScanner(html);
+      expect(scanner.isInsideTag(html.indexOf("<my-card>")), before).toBe(
+        false,
+      );
+    }
   });
 
   it("pairs the close tag after a quoted close tag inside the content", () => {
