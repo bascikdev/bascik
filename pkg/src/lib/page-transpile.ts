@@ -539,9 +539,25 @@ export const transpilePage = async (
     resume();
   }
 
+  // A page may leave out <head>: the HTML parser implies one right before
+  // <body>. Component and inline styles still need a place, so a head is
+  // written there, where the browser would have put it. A head-less page
+  // with nothing to put in it is left as written.
+  const impliedHead =
+    headTag.contentStart === undefined &&
+    bodyTag.startIndex !== undefined &&
+    transpiledHead.trim() !== ""
+      ? {
+          tag: {
+            contentStart: bodyTag.startIndex,
+            closeIndex: bodyTag.startIndex,
+          },
+          content: `<head>${transpiledHead}</head>`,
+        }
+      : undefined;
   const replacements = [
     { tag: bodyTag, content: transpiledHtmlBody },
-    { tag: headTag, content: transpiledHead },
+    impliedHead ?? { tag: headTag, content: transpiledHead },
   ]
     .filter(
       (

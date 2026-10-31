@@ -817,6 +817,54 @@ describe("transpilePage – inline component <style> extraction & deduplication"
     expect(headContent).toContain(".bascik__comp-inline__card");
   });
 
+  // F051: a page may omit <head> (the parser implies it). Its component CSS
+  // used to be dropped with no warning while the scoped classes shipped.
+  it.each([
+    [
+      "with <html>",
+      "<!doctype html><html><body><comp-inline></comp-inline></body></html>",
+    ],
+    [
+      "with no <html> either",
+      '<!doctype html><body class="page"><comp-inline></comp-inline></body>',
+    ],
+    [
+      "with Prettier-wrapped tags",
+      '<!doctype html>\n<html lang="en">\n  <body\n    class="page"\n  >\n    <comp-inline></comp-inline>\n  </body>\n</html>\n',
+    ],
+  ])(
+    "adds a <head> for component CSS when the page has none (%s)",
+    async (_label, pageHtml) => {
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
+      const componentList = {
+        "comp-inline": {
+          fileName: "components/comp-inline.html",
+          fileContent:
+            '<style>.card { color: red; }</style><div class="card">Hello</div>',
+        },
+      };
+      const result = await transpilePage(PAGE_PATH, componentList);
+      const html = result!.distHtml;
+      const head = html.match(/<head>([\s\S]*?)<\/head>/i);
+      expect(head).not.toBeNull();
+      expect(head![1]).toContain(".bascik__comp-inline__card");
+      // Directly before <body>, where the parser puts the implied head.
+      expect(html.indexOf("</head>")).toBeLessThan(html.search(/<body/i));
+      expect(html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)![1]).toContain(
+        "bascik__comp-inline__card",
+      );
+    },
+  );
+
+  it("leaves a head-less page without CSS as written", async () => {
+    const pageHtml =
+      "<!doctype html><html><body><p>Milk frother</p></body></html>";
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result!.distHtml).not.toContain("<head");
+    expect(result!.distHtml).toContain("<p>Milk frother</p>");
+  });
+
   it("deduplicates component CSS in <head> when a component with inline <style> is used multiple times", async () => {
     const pageHtml =
       "<!DOCTYPE html><html><head></head><body><comp-multi></comp-multi><comp-multi></comp-multi></body></html>";
