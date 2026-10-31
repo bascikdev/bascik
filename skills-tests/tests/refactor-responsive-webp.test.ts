@@ -33,6 +33,7 @@ const fakeSharp = (size: { width: number; height: number }) => {
     const op: { width?: number; quality?: number } = {};
     const chain = {
       metadata: async () => ({ ...size, format: "png" }),
+      rotate: () => chain,
       resize: (o: { width: number }) => {
         op.width = o.width;
         return chain;
@@ -252,6 +253,39 @@ describe("generateResponsive", () => {
       expect(meta.format).toBe("webp");
       expect(meta.width).toBe(1600);
       expect(existsSync(join(out, "manifest.json"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("EXIF orientation (a phone photo)", () => {
+  it("writes the photo upright and sizes it from its oriented dimensions", async () => {
+    // Stored 40x20 with EXIF orientation 6 (rotate 90 degrees): the photo is 20x40, portrait. sharp drops the tag
+    // when it encodes, so a variant that is not rotated first displays sideways.
+    const dir = mkdtempSync(join(tmpdir(), "migrate-webp-exif-"));
+    try {
+      const src = join(dir, "team.jpg");
+      await sharp({
+        create: { width: 40, height: 20, channels: 3, background: "#336699" },
+      })
+        .jpeg()
+        .withMetadata({ orientation: 6 })
+        .toFile(src);
+      const out = join(dir, "out");
+      const manifest = await generateResponsive({
+        src: [src],
+        out,
+        widths: [10, 30],
+        urlPrefix: "/img/",
+        sharp,
+      });
+      expect(manifest.sources["team.jpg"]).toEqual({ width: 20, height: 40 });
+      expect(
+        manifest.images["team.jpg"].map((i: { width: number }) => i.width),
+      ).toEqual([10, 20]);
+      const meta = await sharp(join(out, "team-10.webp")).metadata();
+      expect([meta.width, meta.height]).toEqual([10, 20]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
