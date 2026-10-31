@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,8 +102,22 @@ describe("release-on-main", () => {
 
   describe("against a real repository", () => {
     let dir = "";
+    // Drop the GIT_* variables a hook or wrapper may set, so git in the scratch
+    // repository can never reach (and move origin/main in) the outer one.
+    const inherited = { ...process.env };
+    for (const name of [
+      "GIT_DIR",
+      "GIT_WORK_TREE",
+      "GIT_INDEX_FILE",
+      "GIT_COMMON_DIR",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_NAMESPACE",
+      "GIT_CEILING_DIRECTORIES",
+    ])
+      delete inherited[name];
     const env = {
-      ...process.env,
+      ...inherited,
       GIT_AUTHOR_NAME: "Release Test",
       GIT_AUTHOR_EMAIL: "release-test@example.com",
       GIT_COMMITTER_NAME: "Release Test",
@@ -120,8 +134,8 @@ describe("release-on-main", () => {
       if (result.status !== 0) throw new Error(result.stderr);
       return result.stdout.trim();
     };
-    const run = (tag: string, sha: string) =>
-      spawnSync(process.execPath, [script, tag, sha], {
+    const run = (tag: string, sha: string, path = script) =>
+      spawnSync(process.execPath, [path, tag, sha], {
         cwd: dir,
         env,
         encoding: "utf8",
@@ -154,6 +168,37 @@ describe("release-on-main", () => {
       expect(failed.stderr).toContain(
         `::error::Tag v1.0.1 points at commit ${offMain}, which is not on main`,
       );
+    });
+
+    it("misuse: still checks the tag when it is run through a symlinked path", () => {
+      git("update-ref", "refs/remotes/origin/main", onMain);
+      // A self-hosted runner or a checkout under a symlinked directory (such as
+      // /tmp on macOS) invokes the script by a path that is not its real one.
+      const linkRoot = mkdtempSync(join(tmpdir(), "bascik-release-link-"));
+      try {
+        const linked = join(linkRoot, "scripts");
+        symlinkSync(
+          join(repoDir, ".github/scripts"),
+          linked,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        const viaLink = join(linked, "release-on-main.mjs");
+        const failed = run("v1.0.1", offMain, viaLink);
+        expect(failed.stderr).toContain(
+          `::error::Tag v1.0.1 points at commit ${offMain}, which is not on main`,
+        );
+        expect(failed.status).toBe(1);
+        const passed = run("v1.0.0", onMain, viaLink);
+        expect(passed.stdout).toMatch(/which is on main/);
+        expect(passed.status).toBe(0);
+        const typo = run("v1.0.0", "bad", viaLink);
+        expect(typo.stderr).toMatch(
+          /::error::.*"bad" is not a full commit SHA/,
+        );
+        expect(typo.status).toBe(1);
+      } finally {
+        rmSync(linkRoot, { recursive: true, force: true });
+      }
     });
 
     it("dereferences an annotated tag object to the commit it tags", () => {

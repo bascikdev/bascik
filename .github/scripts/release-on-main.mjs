@@ -12,9 +12,12 @@
 // exits 1.
 //
 // It runs before setup-node, on the runner's preinstalled Node, so it uses no
-// API newer than Node 20 (no import.meta.main).
+// API newer than Node 20 (no import.meta.main). To tell whether it is the
+// script being run, it compares the real path of argv[1] with its own URL:
+// import.meta.url is the real path, so comparing the path as typed would fail
+// open (check nothing and exit 0) when the checkout is under a symlink.
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const MAIN = "refs/remotes/origin/main";
@@ -61,11 +64,21 @@ export function releaseOnMain(tag, sha, git) {
   );
 }
 
-const invokedPath = process.argv[1];
-if (
-  invokedPath &&
-  pathToFileURL(resolve(invokedPath)).href === import.meta.url
-) {
+/**
+ * Whether `invokedPath` (argv[1]) is this file, following symlinks.
+ * @param {string | undefined} invokedPath
+ */
+function isEntryPoint(invokedPath) {
+  if (!invokedPath) return false;
+  try {
+    return pathToFileURL(realpathSync(invokedPath)).href === import.meta.url;
+  } catch {
+    // An importer's argv[1] need not exist; the entry point always does.
+    return false;
+  }
+}
+
+if (isEntryPoint(process.argv[1])) {
   const [tag, sha] = process.argv.slice(2);
   /** @type {(args: string[]) => GitResult} */
   const git = (args) => {
