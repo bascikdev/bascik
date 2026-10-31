@@ -516,6 +516,71 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
       expect(responseDiags(body)).toEqual([]);
     });
 
+    // The prefix before the Response (parentheses, `await`, whitespace) is
+    // skipped by a loop, not a regex star (CodeQL alert 207): these pin that
+    // the loop accepts what the regex accepted, and only that.
+    it.each([
+      [
+        "tabs after return",
+        'export default () => {\n  return\t\t\tnew Response("x");\n};',
+        "new Response",
+      ],
+      [
+        "line breaks inside parentheses",
+        'export default () => {\n  return (\n\n    new Response("x")\n  );\n};',
+        "new Response",
+      ],
+      [
+        "nested parentheses",
+        "export default () => {\n  return (((Response.json({}))));\n};",
+        "Response.json",
+      ],
+      [
+        "await and parentheses with tabs between",
+        'export default async () => {\n  return (\tawait\t(\tawait Response\t.\tredirect\t("/")));\n};',
+        "Response\t.\tredirect",
+      ],
+      [
+        "an awaited arrow body",
+        'export default async () => (await\n  new Response("x"));',
+        "new Response",
+      ],
+      [
+        "a Response right after an opening parenthesis",
+        "export default () => {\n  return(Response.error());\n};",
+        "Response.error",
+      ],
+    ])("warns through a prefix of %s", (_name, body, marked) => {
+      expect(
+        responseDiags(body).map((d) => body.slice(d.start, d.end)),
+      ).toEqual([marked]);
+    });
+
+    it.each([
+      [
+        "an identifier that starts with await",
+        "export default async () => {\n  return awaitResponse.json({});\n};",
+      ],
+      [
+        "an identifier that ends with await",
+        "export default async () => {\n  return (myawait Response.json({}));\n};",
+      ],
+      [
+        "a word glued to new",
+        'export default () => {\n  return\t\tnewResponse("x");\n};',
+      ],
+      [
+        "a long run of tabs before a value that is not a Response",
+        `export default () => {\n  return (${"\t".repeat(1_000)}"<p>Hi</p>");\n};`,
+      ],
+      [
+        "a Response.json that is not called",
+        "export default () => {\n  return (await Response.json);\n};",
+      ],
+    ])("misuse: stays quiet for a prefix with %s", (_name, body) => {
+      expect(responseDiags(body)).toEqual([]);
+    });
+
     it("stays quiet for a script with src, whose body is not the script", () => {
       expect(
         analyzeServerScriptSource('export default () => new Response("x");', {
