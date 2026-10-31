@@ -1627,7 +1627,15 @@ test.describe("Dev Server Cold Start & Boot Loading Screen", () => {
     test.setTimeout(150_000);
     const entryPath = join(pkgDir, "bin/bascik.js");
     const cacheDir = join(e2eDir, "node_modules/.cache/bascik");
-    await rm(cacheDir, { recursive: true, force: true });
+    // The other lanes of `yarn pkg:e2e:all` share this cache for their build
+    // and routes temp modules, so a file can appear mid-removal; retry
+    // instead of failing with "ENOTEMPTY: directory not empty, rmdir".
+    await rm(cacheDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
 
     const gateDir = await mkdtemp(join(tmpdir(), "bascik-boot-gate-"));
     const gateFile = join(gateDir, "release");
