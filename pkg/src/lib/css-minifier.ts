@@ -21,6 +21,9 @@ export const minifyCss = (css: string): string => {
     removeCommentsFromCss(css),
   );
   const minified = shielded
+    // CSS Syntax preprocessing: CRLF, a lone CR and FF are each one newline,
+    // so a CRLF after a hex escape is the escape's one whitespace, not two.
+    .replace(/\r\n?|\f/g, () => "\n")
     .replace(/\n/g, " ")
     // A hex escape consumes the one whitespace after it (`.\31  p` is the
     // class `1` and a descendant `p`), so a run after one keeps two spaces:

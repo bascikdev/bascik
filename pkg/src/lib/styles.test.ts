@@ -32,6 +32,8 @@ import {
   resolveCssImports,
   resolveCssImportsSync,
   hoistCssImports,
+  declaredCssClassNames,
+  scopeCssClassSelectors,
 } from "./styles.ts";
 import { prefixElementAttribute } from "./javascript.ts";
 import { BascikConfig } from "./config.ts";
@@ -3033,6 +3035,37 @@ describe("scopeInlineStyleTags – escaped class selectors", () => {
     );
     expect(html).toBe(
       "<style>.bascik__card__md\\:flex{display:flex}.bascik__card__w-1\\/2{width:50%}.bascik__card__10{color:red}</style>",
+    );
+  });
+});
+
+describe("CRLF or a lone CR after a CSS hex escape (PR 115 review)", () => {
+  // CSS Syntax preprocessing turns CRLF and a lone CR into one LF, and a hex
+  // escape consumes that one newline: `.a\31\r\np` is the class `a1p`,
+  // exactly as `.a\31\np` is, never the class `a1` and a descendant `p`.
+  it("reads the declared class name across CRLF, CR and LF alike", () => {
+    for (const newline of ["\n", "\r\n", "\r", "\f"]) {
+      const label = JSON.stringify(newline);
+      expect(declaredCssClassNames(`.a\\31${newline}p { }`), label).toEqual([
+        "a1p",
+      ]);
+      // A second whitespace after the escape's own is a combinator.
+      expect(declaredCssClassNames(`.a\\31${newline} p { }`), label).toEqual([
+        "a1",
+      ]);
+    }
+    expect(declaredCssClassNames(".a\\31\r\n\r\np { }")).toEqual(["a1"]);
+  });
+
+  it("scopes the whole class, so it matches the markup's class token", () => {
+    expect(scopeCssClassSelectors(".a\\31\r\np { color: red }", "k")).toBe(
+      ".bascik__k__a1p { color: red }",
+    );
+    expect(scopeCssClassSelectors(".a\\31\rp { color: red }", "k")).toBe(
+      ".bascik__k__a1p { color: red }",
+    );
+    expect(scopeCssClassSelectors(".a\\31\r\n p { color: red }", "k")).toBe(
+      ".bascik__k__a1 p { color: red }",
     );
   });
 });

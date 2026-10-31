@@ -2748,6 +2748,61 @@ describe("prefixElementAttribute – escaped class selectors", () => {
       `<p class="${scopeClass("a\u0001b")} ${elementClass("p")}">x</p><div class="${scopeClass("c\u0001")}"><p class="${elementClass("p")}">y</p></div>`,
     );
   });
+
+  it("reads a CRLF or a lone CR that ends a hex escape as one newline, as CSS preprocessing does", () => {
+    // `.a\31\r\np` is the class `a1p` (the escape consumes the one newline
+    // CRLF becomes); reading CR and LF as two whitespaces scoped the class
+    // `a1` and styled every descendant `p` instead (PR 115 review).
+    for (const newline of ["\r\n", "\r"]) {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<p class="a1p">x</p><div class="c1"><p>y</p></div>',
+          `.a\\31${newline}p { color: red } .c\\31${newline} p { margin: 0 }`,
+        ),
+        "class",
+        "test1234",
+      );
+      expect(result.fileContent, JSON.stringify(newline)).toBe(
+        `<p class="${scopeClass("a1p")} ${elementClass("p")}">x</p><div class="${scopeClass("c1")}"><p class="${elementClass("p")}">y</p></div>`,
+      );
+      expect(result.cssFileContent, JSON.stringify(newline)).toBe(
+        `.${scopeClass("a1p")} { color: red } .${scopeClass("c1")} .${elementClass("p")} { margin: 0 }`,
+      );
+    }
+  });
+
+  it("Pass 4 reads an escaped scoped name ended by CRLF as one name, the same as one ended by a space", () => {
+    // `.c\1\r\np` is the class `c<U+0001>p`: class scoping writes it back
+    // as `c\1 p`, and Pass 4 must read that space as the escape's own, so no
+    // `p` element is converted after it (and Pass 1 never sees a line start).
+    const spaced = prefixElementAttribute(
+      makeComponent('<p class="c\u0001p">x</p>', ".c\\1 p { margin: 0 }"),
+      "class",
+      "test1234",
+    );
+    for (const newline of ["\r\n", "\r", "\n"]) {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<p class="c\u0001p">x</p>',
+          `.c\\1${newline}p { margin: 0 }`,
+        ),
+        "class",
+        "test1234",
+      );
+      expect(result.cssFileContent, JSON.stringify(newline)).toBe(
+        spaced.cssFileContent,
+      );
+      expect(result.fileContent, JSON.stringify(newline)).toBe(
+        spaced.fileContent,
+      );
+    }
+    expect(spaced.cssFileContent).toBe(
+      `.${scopeClass("c\\1 p")} { margin: 0 }`,
+    );
+    expect(spaced.fileContent).toBe(
+      `<p class="${scopeClass("c\u0001p")}">x</p>`,
+    );
+  });
 });
 
 describe("prefixElementAttribute – generated element and id classes never equal an authored class", () => {
