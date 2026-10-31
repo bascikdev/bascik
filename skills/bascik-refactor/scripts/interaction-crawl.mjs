@@ -4,8 +4,9 @@
 // Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. NOT read-only toward
 // production: plain navigation links and submit buttons are never activated, but every other control (a
 // <button type="button">, a [role=button], an element with a click listener) is clicked from a fresh load, once per
-// matrix case and again per opened layer. A handler that posts to the live site (add to cart, subscribe, vote, start
-// a chat) runs each time: list those controls with --skip-control before running.
+// matrix case and again per opened layer. Writes other than GET or HEAD to production are refused, but a handler that
+// changes something with a GET (a vote link, an add-to-cart URL) or opens a WebSocket (start a chat) reaches the live
+// site each time: list those controls with --skip-control before running.
 //
 // Why: a hero button that scrolls to a section did nothing on the target, and a hand-written interactions.json only
 // compared open and closed states for the steps someone remembered to write down.
@@ -66,9 +67,11 @@ the result as docs/migration/interactions.json.
 
 Side effects: the crawl is not read-only toward production. Plain navigation links and submit buttons are never
 activated, but every other control is clicked (or hovered) from a fresh load, once per matrix case and once more per
-layer it opens, and state-capture does it again. A handler that posts to the live site (add to cart, subscribe through
-JavaScript, vote, like, start a chat, analytics events) runs every time. Review the site's controls first and pass each
-side-effecting one with --skip-control; compare those by hand.
+layer it opens, and state-capture does it again. A handler's POST, PUT, PATCH or DELETE to production is refused and
+the analytics hosts are blocked (see below), but a handler that changes something with a GET (a vote, like or
+unsubscribe link, an add-to-cart URL), opens a WebSocket (start a chat) or calls a tracker not on the block list
+reaches the live site every time, and a control whose write was refused may show an error state only production
+has. Review the site's controls first and pass each side-effecting one with --skip-control; compare those by hand.
 
 Options:
   --prod <url>      Live production origin

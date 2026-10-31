@@ -43,8 +43,9 @@ background, rebuild after each change, and stop it before you hand off.
 ## Safety
 
 - Browse production read-only. Never submit a real form, place an order, create an account or send synthetic
-  analytics events. The skill's scripts block the common analytics hosts and refuse every request other than GET or
-  HEAD outside the target; add the site's own trackers with `--block <host or URL part>` and pass
+  analytics events. The skill's scripts block service workers and the common analytics hosts and refuse every
+  request other than GET or HEAD outside the target; a GET with a side effect and WebSocket traffic still get
+  through, so pass those controls with `--skip-control`. Add the site's own trackers with `--block <host or URL part>` and pass
   `--min-interval-ms 1000` to every script that loads production (see "Capture settings" in production-parity.md).
   Any browser driver of your own must do the same.
 - The interaction crawl and state capture click every control on production that is not a navigation link or a

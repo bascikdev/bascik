@@ -102,6 +102,12 @@ Production stays read-only, and every script that loads it (every check, `run-ch
   decisions ledger. The target blocks the same requests, so a tag that adds markup is missing from both sides.
 - A request other than GET or HEAD (a form post, a beacon, an API write, its CORS preflight) is refused unless it
   goes to the target's own origin. With no `--target`, every one is refused.
+- Service workers are blocked on both sides, so a Workbox or next-pwa worker cannot answer a reload from its cache
+  or send requests of its own past these rules.
+- Two kinds of side effect still get through: a GET that changes something (a vote or unsubscribe link, a view
+  counter, a tracker on a host not on the list) and WebSocket traffic (a live chat widget, a presence indicator),
+  which the browser's request routing does not see. Block such a host or URL part with `--block`, and keep the
+  controls that start them out of the crawl with `--skip-control`.
 - `--min-interval-ms <n>` holds production page loads at least that far apart (default 0). Pass 1000 or more for a
   site you do not run, or one behind a rate limit.
 
@@ -249,11 +255,14 @@ know has not changed since, and log that in the decisions ledger.
 
 The interaction crawl and state capture are not read-only toward production. They never follow a plain navigation
 link or press a submit button, but they click every other control (a `<button type="button">`, a `role="button"`, an
-element with a click listener) from a fresh load, once per matrix case and again per layer it opens. A handler that
-posts to the live site (add to cart, subscribe through JavaScript, vote or like, start a chat, analytics events) runs
-each time. Before the first run, list the site's side-effecting controls and pass each with `--skip-control
-<selector>` (both checks and `run-checks.mjs` take it); those controls are not activated on either side, so compare
-them by hand and note it in the ledger.
+element with a click listener) from a fresh load, once per matrix case and again per layer it opens. The capture
+settings above refuse a handler's POST, PUT, PATCH or DELETE to production and block the analytics hosts, but a
+handler that changes something with a GET (a vote, like or unsubscribe link, an add-to-cart URL), opens a WebSocket
+(start a chat) or calls a tracker not on the block list still reaches the live site each time. Before the first
+run, list the site's side-effecting controls and pass each with `--skip-control <selector>` (both checks and
+`run-checks.mjs` take it); those controls are not activated on either side, so compare them by hand and note it in
+the ledger. A control whose write is refused may also show an error state on production that the target does not;
+skip it the same way.
 
 ### Production defects
 

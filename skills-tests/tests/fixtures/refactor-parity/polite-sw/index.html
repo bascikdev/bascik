@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+  </head>
+  <body>
+    <main>
+      <h1>Milk frother</h1>
+      <p>Works offline.</p>
+    </main>
+    <script>
+      // A site with a service worker, like a Workbox or next-pwa build. The first load registers sw.js; once it
+      // controls the page (after a reload, as the crawl and state capture do), the page asks for ./probe, which the
+      // worker answers itself after sending an analytics hit and a POST beacon of its own.
+      const done = (key, value) => (document.body.dataset[key] = value);
+      if (navigator.serviceWorker?.controller) {
+        fetch("./probe")
+          .then((response) => response.text())
+          .then((text) => done("probe", text))
+          .catch(() => done("probe", "failed"));
+      } else if (!navigator.serviceWorker) {
+        done("sw", "unavailable");
+      } else {
+        Promise.race([
+          navigator.serviceWorker
+            .register("./sw.js")
+            .then(() => navigator.serviceWorker.ready)
+            .then(() => "ready"),
+          new Promise((resolve) =>
+            setTimeout(() => resolve("unavailable"), 3000),
+          ),
+        ])
+          .catch(() => "unavailable")
+          .then((state) => done("sw", state));
+      }
+    </script>
+  </body>
+</html>

@@ -207,7 +207,8 @@ export function skipControlsFrom(list) {
 
 /**
  * The controls a runCheck call must never activate, from `skipControls` (API and run-checks) or `skip-control`
- * (a check's own CLI): a button whose handler posts to the live site (add to cart, subscribe, vote, start a chat).
+ * (a check's own CLI): a button whose handler changes something on the live site (add to cart, subscribe, vote, start a
+ * chat), through a GET or a WebSocket the polite policy lets through, or a write it refuses.
  */
 export function skipControlsOf(options) {
   return [
@@ -488,8 +489,8 @@ export const SHARED_HELP = `Every check also takes:
   --refresh-prod      Measure production again and overwrite the cache (after production changes, and at the start
                       of every check stage and review round)
   --no-prod-cache     Neither read nor write the cache
-Every page load, on both sides, skips the analytics and tracking hosts and sends no request other than GET or HEAD
-outside the target, so production stays read-only:
+Every page load, on both sides, runs without service workers, skips the analytics and tracking hosts and sends no
+request other than GET or HEAD outside the target (a GET with a side effect and WebSocket traffic still get through):
 ${POLITE_HELP}`;
 
 /**

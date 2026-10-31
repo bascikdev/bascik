@@ -361,6 +361,32 @@ describe("politeBrowser", () => {
     expect(politeBrowser(browser, { prod: PROD })).toBe(browser);
   });
 
+  it("blocks service workers in every context and page, even when the caller asks for them", async () => {
+    const seen: unknown[] = [];
+    const context = { async route() {} };
+    const inner = {
+      async newContext(options: unknown) {
+        seen.push(options);
+        return context;
+      },
+      async newPage(options: unknown) {
+        seen.push(options);
+        return { context: () => context };
+      },
+    };
+    const browser = politeBrowser(inner, { prod: PROD });
+    await browser.newContext({ viewport: { width: 800, height: 600 } });
+    await browser.newContext({ serviceWorkers: "allow" });
+    await browser.newContext();
+    await browser.newPage();
+    expect(seen).toEqual([
+      { viewport: { width: 800, height: 600 }, serviceWorkers: "block" },
+      { serviceWorkers: "block" },
+      { serviceWorkers: "block" },
+      { serviceWorkers: "block" },
+    ]);
+  });
+
   it("reports what it did in the run footer, and nothing when it did nothing", () => {
     expect(politeSummary({ blocked: 0, refused: 0, paced: 0 })).toBeUndefined();
     expect(politeSummary({ blocked: 3, refused: 1, paced: 2 }, 1000)).toBe(

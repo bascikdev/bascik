@@ -122,8 +122,8 @@ Options:
   --prod-cache <dir>          Production cache folder (default ${DEFAULT_PROD_CACHE})
   --refresh-prod              Measure production again and overwrite the cache
   --no-prod-cache             Neither read nor write the cache
-Every page load, on both sides, skips the analytics and tracking hosts and sends no request other than GET or HEAD
-outside the target (production stays read-only):
+Every page load, on both sides, runs without service workers, skips the analytics and tracking hosts and sends no
+request other than GET or HEAD outside the target (a GET with a side effect and WebSocket traffic still get through):
 ${POLITE_HELP}
   --help                      Show this message`;
 

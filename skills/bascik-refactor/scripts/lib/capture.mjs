@@ -208,8 +208,17 @@ export function politeFlags(values, { prod, target } = {}) {
 const POLITE = Symbol("bascik-refactor.polite");
 
 /**
- * Wraps a Playwright browser so every context it opens follows the production read-only rule (see
- * installPolitePolicy): `prod` is the production origin, `target` the Bascik origin or undefined, `block` the patterns
+ * Context options with service workers blocked, whatever the caller asked for. A worker answers the requests of the
+ * page it controls itself, so they never reach context.route: on a reload (the crawl, state capture) a Workbox or
+ * next-pwa worker could serve production from its cache, unpaced and unlike a first visit. Blocked on both sides alike.
+ */
+function noServiceWorkers(options) {
+  return { ...(options ?? {}), serviceWorkers: "block" };
+}
+
+/**
+ * Wraps a Playwright browser so every context it opens blocks service workers and follows the production read-only
+ * rule (see installPolitePolicy): `prod` is the production origin, `target` the Bascik origin or undefined, `block` the patterns
  * (DEFAULT_BLOCK by default) and `minIntervalMs` the least time between two production page loads, across every
  * context of this browser. The wrapper counts what it did in `.politeStats`; wrapping it again returns it unchanged.
  */
@@ -231,14 +240,14 @@ export function politeBrowser(
       if (key === POLITE) return policy;
       if (key === "politeStats") return policy.stats;
       if (key === "newContext")
-        return async (...args) => {
-          const context = await target_.newContext(...args);
+        return async (options) => {
+          const context = await target_.newContext(noServiceWorkers(options));
           await installPolitePolicy(context, policy);
           return context;
         };
       if (key === "newPage")
-        return async (...args) => {
-          const page = await target_.newPage(...args);
+        return async (options) => {
+          const page = await target_.newPage(noServiceWorkers(options));
           await installPolitePolicy(page.context(), policy);
           return page;
         };
