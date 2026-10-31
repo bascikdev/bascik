@@ -896,6 +896,62 @@ describe("parity checks and review gates", () => {
     expect(template("one-route.md")).toMatch(/presence-by-route/);
   });
 
+  it("the production-only inventory claims cache reuse only for the checks it runs, with the same route set", async () => {
+    // The inventory scripts warm the production cache for their own checks only. An agent that reads "the first
+    // parity run loads only the target" plans route time on a speedup the other checks never give it, and a
+    // presence-by-route key holds the whole ordered route list, so a per-route run misses an all-routes inventory.
+    const { CHECKS } = await import(
+      path.join(SKILL_DIR, "scripts/run-checks.mjs")
+    );
+    const inventoried = [
+      "production-defects",
+      "interaction-crawl",
+      "state-capture",
+      "presence-by-route",
+    ];
+    const notInventoried = (CHECKS as string[]).filter(
+      (c) => !inventoried.includes(c),
+    );
+    expect(notInventoried.length).toBeGreaterThan(0);
+    const md = readDocs(MD);
+    const howTo = md.slice(
+      md.indexOf("### Inventory Production Before Any Page Exists"),
+      md.indexOf("### Production Baselines"),
+    );
+    const pack = template("prompt-pack-index.md");
+    const packSection = pack.slice(
+      pack.indexOf("## Phase 1 runs on production alone"),
+      pack.indexOf("## Iteration runs and gate runs"),
+    );
+    for (const [name, text] of [
+      ["agent-migration.md inventory", howTo],
+      ["prompt-pack-index.md phase 1", packSection],
+    ]) {
+      const flat = text.replace(/\s+/g, " ");
+      expect(flat, name).not.toMatch(
+        /first (comparison|parity run)[^.]*loads only the target/i,
+      );
+      for (const check of notInventoried)
+        expect(
+          flat,
+          `${name} names ${check} as still loading production`,
+        ).toContain(check);
+      expect(flat, name).toMatch(/still load(s)? production/i);
+      expect(flat, `${name}: presence-by-route route set`).toMatch(
+        /presence-by-route[^.]*same (`--route` values|routes)/i,
+      );
+    }
+    // The cache key paragraph: --dismiss is in presence-by-route's key only.
+    const keyParagraph = md
+      .split("\n")
+      .find((l) => l.startsWith("Production is measured once."));
+    expect(keyParagraph).toBeDefined();
+    expect(keyParagraph).not.toMatch(
+      /`--mask`, `--skip-control` and `--dismiss` selectors/,
+    );
+    expect(keyParagraph).toMatch(/presence-by-route[^.]*`--dismiss`/);
+  });
+
   it("the how-to runs every check with one command", () => {
     const md = readDocs(MD);
     expect(md).toMatch(/node "\$REFACTOR\/run-checks\.mjs"/);

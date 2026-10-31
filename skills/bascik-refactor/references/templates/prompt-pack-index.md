@@ -36,8 +36,12 @@ load the live site twice at once):
   crop, indexed in `artifacts/baselines/index.json`. A baseline id is `<route>@<caseId>` (`/pricing@360x812`,
   `/@1408x900-dark`); an open state adds `#<label>`. One-route prompts name theirs in `{{BASELINE_IDS}}`.
 
-Each writes through the production cache, so the first parity run of a route loads only the target, as long as it
-passes the same `--mask`, `--skip-control` and `--settle-ms`.
+Each writes through the production cache under its own check's key, and only those checks reuse it. The first
+`run-checks.mjs` of a route reads production-defects, interaction-crawl and state-capture from the cache when it passes
+the same `--mask`, `--skip-control` and `--settle-ms`, and presence-by-route only when it also passes the same
+`--route` values in the same order (an inventory of every route does not match a one-route run). repeated-sections,
+text-style-diff, spacing-diff, alignment-diff, overlap-diff, testid-carryover and testid-coverage still load production
+on that first run. Plan the first run of each route with that in mind.
 
 ## Iteration runs and gate runs
 

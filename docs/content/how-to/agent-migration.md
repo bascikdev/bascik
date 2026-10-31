@@ -174,7 +174,7 @@ for (const r of routes) console.log(process.env.TARGET_URL + r.path);' > docs/mi
 
 ### Inventory Production Before Any Page Exists
 
-There is no target yet, so the inventory scripts run on production alone: leave out `--target`. Never point `--target` at production instead; the scripts refuse it, because it would load the live site twice at once. Each one writes production's side to `artifacts/checks/` and exits 0, and stores it in the production cache, so the first comparison of a route later loads only the target.
+There is no target yet, so the inventory scripts run on production alone: leave out `--target`. Never point `--target` at production instead; the scripts refuse it, because it would load the live site twice at once. Each one writes production's side to `artifacts/checks/` and exits 0, and stores it in the production cache under its own check's key. Only those checks reuse it: the first `run-checks.mjs` of a route reads production-defects, interaction-crawl and state-capture from the cache when it passes the same `--mask`, `--skip-control` and `--settle-ms`, and presence-by-route only when it also passes the same `--route` values in the same order (its key holds the whole route list, so an inventory of every route does not match a `--route /contact` run). The other checks (repeated-sections, text-style-diff, spacing-diff, alignment-diff, overlap-diff, testid-carryover and testid-coverage) still load production on that first run, and from the cache after it.
 
 ```sh
 node "$REFACTOR/interaction-crawl.mjs" --prod "$PROD_URL" --route / --route /pricing --discover
@@ -466,7 +466,7 @@ node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
 
 A full run over a 25-case matrix takes 20 to 50 minutes per route, too slow to repeat after every fix. Two things make the loop fast without lowering the bar for done.
 
-Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, and the `--mask`, `--skip-control` and `--dismiss` selectors. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
+Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, and the `--mask` and `--skip-control` selectors; presence-by-route also keys on every route in order and on its `--dismiss` selectors, which no other check uses. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
 
 While a route is being built, run a few cases and the checks the last fix can affect:
 
