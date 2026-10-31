@@ -619,29 +619,64 @@ function isArithmeticExempt(
 export const looksLikeMarkup = (parts: readonly string[]): boolean =>
   parts.some((part) => /<\/?[a-zA-Z][\w:-]*(?=[\s/>]|$)/.test(part));
 
-/** HTML, SVG and MathML element names, for markupInCode. */
-const ELEMENT_NAMES = new Set(
-  (
-    "a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark menu meta meter nav noscript object ol optgroup option output p param picture pre progress q rp rt ruby s samp script search section select slot small source span strong style sub summary sup table tbody td template textarea tfoot th thead time title tr track u ul var video wbr " +
-    "svg g path rect circle ellipse line polyline polygon text tspan textpath defs use symbol lineargradient radialgradient stop clippath mask pattern filter image foreignobject marker desc animate animatemotion animatetransform set view switch " +
-    "math mi mn mo ms mtext mrow mfrac msqrt mroot msup msub msubsup mtable mtr mtd"
-  ).split(" "),
+/**
+ * Elements whose bare start tag (`<li>`, no attribute) counts as markup in
+ * build-time code: names that are not also CLI placeholders, TypeScript
+ * type names or words a message names elements by (`<path>`, `<output>`,
+ * `<title>`, `<img>`, `<script>`, `<template>` all are).
+ */
+const BARE_MARKUP_ELEMENTS = new Set(
+  "article aside blockquote br dd div dl dt em figcaption h1 h2 h3 h4 h5 h6 hr li nav ol p span strong tbody td tfoot th thead tr ul wbr".split(
+    " ",
+  ),
 );
 
 /**
+ * A tag in build-time text: group 1 is `/` for an end tag, group 2 the
+ * name, group 3 the first attribute when it is written as one (`name="`,
+ * `name='`, `name=value`, `name=` before a hole, or a lone `name>`), and
+ * group 4 the `>` of a bare start tag. Names start with a lower-case
+ * letter, as HTML, SVG and custom element names do in practice, so
+ * `Array<Path>` is no tag.
+ */
+const CODE_TAG =
+  /<(\/?)([a-z][\w:-]*)(?:(\s+[a-zA-Z_:@][-\w:.@]*(?:=(?:["']|[^\s"'=<>`]|$)|\s*\/?>))|\s*\/?(>))?/g;
+
+/** After a hole inside a start tag: the rest of the name, then `=` or an attribute. */
+const HOLE_THEN_ATTRIBUTE =
+  /^[-\w:.@]*(?:=|\s+[a-zA-Z_:@][-\w:.@]*(?:=|\s*\/?>))/;
+
+/**
  * Static text that looks like markup in build-time code, which also holds
- * CLI text (`tool <command>`), prose placeholders (`Replace <your-domain>`)
- * and generated TypeScript (`Array<string>`): an end tag, a start tag whose
- * name is an HTML, SVG or MathML element, or any start tag with an
- * attribute (`<product-card title=...>`). One pass per part.
+ * CLI text (`tool <command> --out <output>`), prose that names elements
+ * (`<img> needs alt text`), Markdown code spans (`` `<nav>` ``), SQL
+ * (`a<b AND id = 1`) and generated TypeScript (`Array<Path>`). It needs an
+ * end tag (`</li>`), a start tag with an attribute
+ * (`<product-card title="...">`, `<details open>`), or a bare start tag of
+ * an element in BARE_MARKUP_ELEMENTS (`<li>`), or a tag a hole continues
+ * with an attribute or an end tag's `>` after the hole (`<h${level} id=`,
+ * `<meta ${attr}="...">`, `</h${level}>`). A tag right after a
+ * backtick is in a Markdown code span and does not count. One pass per part.
  */
 export const markupInCode = (parts: readonly string[]): boolean =>
-  parts.some((part) => {
-    for (const m of part.matchAll(
-      /<(\/?)([a-zA-Z][\w:-]*)(?=[\s/>]|$)(\s+[a-zA-Z_:@][-\w:.@]*(?=\s*[=/>]|\s))?/g,
-    ))
-      if (m[1] === "/" || ELEMENT_NAMES.has(m[2].toLowerCase()) || m[3])
+  parts.some((part, p) => {
+    for (const m of part.matchAll(CODE_TAG)) {
+      if (m.index > 0 && part[m.index - 1] === "`") continue;
+      if (m[3] !== undefined && m[1] !== "/") return true;
+      if (m[4] !== undefined) {
+        if (m[1] === "/" || BARE_MARKUP_ELEMENTS.has(m[2])) return true;
+        continue;
+      }
+      // A tag that a hole continues, with an attribute or an end tag's `>`
+      // after the hole: `<h${level} id="`, `<meta ${attr}="`, `</h${level}>`.
+      // A bare `<h${n}>` is how a message names a heading level.
+      if (
+        p < parts.length - 1 &&
+        /^\s*$/.test(part.slice(m.index + m[0].length)) &&
+        (m[1] === "/" ? /^\s*>/ : HOLE_THEN_ATTRIBUTE).test(parts[p + 1])
+      )
         return true;
+    }
     return false;
   });
 

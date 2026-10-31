@@ -1113,3 +1113,56 @@ describe("a regex literal in a template hole (review round 2)", () => {
     ]);
   });
 });
+
+describe("plain text and generated code in build-time code are not markup (review round 2)", () => {
+  const module = (body: string) =>
+    analyze(body, { directive: "module" }).map((d) => d.code);
+
+  it.each([
+    // CLI usage text: placeholders named like elements.
+    "export const u = (bin) => `Usage: ${bin} build <path> --out <output>`;",
+    "export const u = (bin) => `Usage: ${bin} <template> [--yes]`;",
+    "export const u = (bin) => `Usage: ${bin} --out <output> <source>`;",
+    "export const u = (bin) => `${bin} add <name> --title <title>`;",
+    "export const u = (bin) => `${bin} --pattern <pattern> --filter <filter> <label> <code> <data> <time> <text> <image>`;",
+    "export const u = (bin) => `${bin} --route <path>`;",
+    // Generated TypeScript: generics are case-sensitive names.
+    "export const d = (name) => `export const ${name}: ReadonlyArray<Path> = [];`;",
+    "export const d = (name) => `const ${name}: Array<Image> = [];`;",
+    "export const d = (name) => `let ${name}: Promise<void>;`;",
+    // Messages that name elements in prose.
+    "export const m = (file, line) => `${file}:${line}: <img> in a <template> needs alt text`;",
+    "export const m = (n) => `Found ${n} <img> tags without alt`;",
+    "export const m = (n) => `Add ${n} to separate Bascik <script> blocks`;",
+    // A message that names a heading level from a value.
+    "export const m = (n, where) => `Goes from <h${n}> (${where}) to <h${n + 2}>, skipping <h${n + 1}>.`;",
+    // SQL with a < comparison.
+    "export const q = (id) => `SELECT * FROM t WHERE a<b AND id = ${id}`;",
+  ])("not markup: %s", (body) => {
+    expect(module(body)).toEqual([]);
+  });
+
+  it("Markdown that names elements in code spans is not markup, and gets no sink rule", () => {
+    const body =
+      'export function llmsTxt(product: string): string {\n  return `# ${product}\n\n- Pages use components such as \\`<site-header>\\` and a \\`<nav>\\` landmark.\n- Browser code lives in \\`<script src="froth.ts">\\` files, and links are \\`<a href>\\`.\n`;\n}\n';
+    expect(module(body)).toEqual([]);
+  });
+
+  it.each([
+    "export const c = (t) => `<li>${t}`;",
+    "export const c = (t) => `<p>${t}<br>${t}`;",
+    "export const c = (t) => `<td>${t}</td>`;",
+    "export const c = (t) => `<kbd>Ctrl</kbd> and ${t}`;",
+    'export const c = (t) => `<a href="/froth">${t}`;',
+    "export const c = (t) => `<details open>${t}`;",
+    'export const c = (t) => `<linearGradient id="g">${t}</linearGradient>`;',
+  ])("still markup: %s", (body) => {
+    expect([...new Set(module(body))]).toEqual([RULE]);
+  });
+
+  it("an unquoted attribute in real markup still warns", () => {
+    expect(
+      module("export const c = (t) => `<td colspan=${t}>x</td>`;"),
+    ).toEqual(["server-script-sink-unquoted-attribute"]);
+  });
+});
