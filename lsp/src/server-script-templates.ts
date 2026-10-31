@@ -65,7 +65,55 @@ const tagBefore = (source: string, backtick: number): string | null => {
   return word;
 };
 
-/** Every template literal in `source`, outer literals before the ones nested in their holes. */
+/** Keywords after which a `/` starts a regex literal rather than a division. */
+export const REGEX_AFTER_KEYWORD = new Set([
+  "return",
+  "typeof",
+  "case",
+  "do",
+  "else",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "instanceof",
+  "yield",
+  "await",
+]);
+
+/** Punctuation after which an operand, so a regex, follows. */
+export const OPERAND_FOLLOWS = new Set("(,=:[!&|?{};+-*%<>~^/");
+
+/** The offset just past the regex literal that starts at `start` (its flags included). */
+export function skipRegexLiteral(source: string, start: number): number {
+  let i = start + 1;
+  let inClass = false;
+  while (i < source.length && source[i] !== "\n") {
+    if (source[i] === "\\") i += 2;
+    else if (inClass) {
+      if (source[i] === "]") inClass = false;
+      i++;
+    } else if (source[i] === "[") {
+      inClass = true;
+      i++;
+    } else if (source[i] === "/") {
+      i++;
+      while (i < source.length && /[a-z]/i.test(source[i])) i++;
+      return i;
+    } else i++;
+  }
+  return i;
+}
+
+/**
+ * Every template literal in `source`, outer literals before the ones nested
+ * in their holes. A `/` where an operand goes starts a regex literal, which
+ * is skipped whole, so a quote, brace or backtick inside `/"/g` opens
+ * nothing. Whether an operand goes there is read from the token before it,
+ * kept as the scan goes, so the pass stays linear.
+ */
 export function findTemplateLiterals(source: string): TemplateLiteral[] {
   const literals: TemplateLiteral[] = [];
 
@@ -84,23 +132,46 @@ export function findTemplateLiterals(source: string): TemplateLiteral[] {
   /** Scan code from `i`; with `inHole`, stop at the `}` that closes the hole. */
   const scanCode = (i: number, inHole: boolean): number => {
     let depth = 0;
+    // Whether a `/` here starts a regex: true where an operand goes.
+    let regexOk = true;
+    // The last non-space character, to tell `x.return` from `return`.
+    let before = "";
     while (i < source.length) {
       const c = source[i];
-      if (c === "'" || c === '"') i = skipString(i);
-      else if (c === "/" && source[i + 1] === "/") {
+      if (c === "'" || c === '"') {
+        i = skipString(i);
+        regexOk = false;
+        before = c;
+      } else if (c === "/" && source[i + 1] === "/") {
         while (i < source.length && source[i] !== "\n") i++;
       } else if (c === "/" && source[i + 1] === "*") {
         const close = source.indexOf("*/", i + 2);
         i = close === -1 ? source.length : close + 2;
-      } else if (c === "`") i = scanTemplate(i);
-      else if (c === "{") {
-        depth++;
+      } else if (c === "/" && regexOk) {
+        i = skipRegexLiteral(source, i);
+        regexOk = false;
+        before = "/";
+      } else if (c === "`") {
+        i = scanTemplate(i);
+        regexOk = false;
+        before = c;
+      } else if (/[\w$]/.test(c)) {
+        const wordStart = i;
+        while (i < source.length && /[\w$]/.test(source[i])) i++;
+        regexOk =
+          before !== "." && REGEX_AFTER_KEYWORD.has(source.slice(wordStart, i));
+        before = "w";
+      } else if (/\s/.test(c)) i++;
+      else {
+        if (c === "{") depth++;
+        else if (c === "}") {
+          if (depth === 0 && inHole) return i;
+          if (depth > 0) depth--;
+        }
+        regexOk = OPERAND_FOLLOWS.has(c);
+        before = c;
         i++;
-      } else if (c === "}") {
-        if (depth === 0 && inHole) return i;
-        if (depth > 0) depth--;
-        i++;
-      } else i++;
+      }
     }
     return i;
   };

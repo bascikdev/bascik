@@ -1047,3 +1047,69 @@ describe("what counts as markup in build-time code (review 2026-10-31)", () => {
     expect(covered(handler("`<frother-note>${q}`"))).toEqual(["${q}"]);
   });
 });
+
+describe("a regex literal in a template hole (review round 2)", () => {
+  const build = (body: string) =>
+    analyze(body, { directive: "build" }).filter((d) => d.code === RULE);
+
+  it("a quote inside a regex does not open a string that runs past the hole", () => {
+    const body =
+      'export default () => {\n  const name = load();\n  return `<p title="${name.replace(/"/g, "&quot;")}">${name}</p>`;\n};\n';
+    const diags = build(body);
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual([
+      '${name.replace(/"/g, "&quot;")}',
+      "${name}",
+    ]);
+    expect(diags.every((d) => !d.message.includes("ends inside a tag"))).toBe(
+      true,
+    );
+  });
+
+  it("a brace inside a regex does not count as a block", () => {
+    const body =
+      'export default (s, t) => `<h2>${s.replace(/\\$\\{/g, "")}</h2><i>${t}</i>`;\n';
+    expect(build(body).map((d) => body.slice(d.start, d.end))).toEqual([
+      '${s.replace(/\\$\\{/g, "")}',
+      "${t}",
+    ]);
+  });
+
+  it("a backtick inside a regex before a markup template hides nothing", () => {
+    const body =
+      'export default (name) => {\n  const label = name.replace(/`/g, "\'");\n  return `<b>${label}</b>`;\n};\n';
+    expect(build(body).map((d) => body.slice(d.start, d.end))).toEqual([
+      "${label}",
+    ]);
+    const server = analyze(
+      'export default (request) => {\n  const label = request.url.replace(/`/g, "\'");\n  return `<b>${label}</b>`;\n};\n',
+    ).filter((d) => d.code === RULE);
+    expect(server).toHaveLength(1);
+  });
+
+  it("a regex after return, and a regex holding < or a backtick in a class", () => {
+    const body =
+      'export default (s) => {\n  if (/[`<]/.test(s)) return /<"/.test(s) ? `<p>${s}</p>` : "";\n  return `<i>${s}</i>`;\n};\n';
+    expect(build(body).map((d) => body.slice(d.start, d.end))).toEqual([
+      "${s}",
+      "${s}",
+    ]);
+  });
+
+  it("division is not a regex: a / after a name, a number or a closing paren", () => {
+    const body =
+      "export default (a, b, q) => {\n  const half = a / 2 / (b) / b;\n  const t = `<p>${q}</p>`;\n  return t + `<i>${q}</i>`;\n};\n";
+    expect(build(body).map((d) => body.slice(d.start, d.end))).toEqual([
+      "${q}",
+      "${q}",
+    ]);
+  });
+
+  it("a regex replacement token in a hole stays inside the hole", () => {
+    const body =
+      'export default (s) => `<p>${s.replace(/(\\w+)/g, "$1 $& $`")}</p><b>${s}</b>`;\n';
+    expect(build(body).map((d) => body.slice(d.start, d.end))).toEqual([
+      '${s.replace(/(\\w+)/g, "$1 $& $`")}',
+      "${s}",
+    ]);
+  });
+});

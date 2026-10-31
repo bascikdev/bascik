@@ -17,6 +17,8 @@ import {
   looksLikeMarkup,
   markupInCode,
   scanTemplateHtml,
+  REGEX_AFTER_KEYWORD,
+  skipRegexLiteral,
   type ExemptContext,
   type HoleContext,
 } from "./server-script-templates.js";
@@ -87,23 +89,6 @@ const HTML_THROWS: Record<string, string> = {
     'html`...` throws here: an unquoted attribute value ends at a space. Quote it: attr="${...}".',
 };
 
-// Keywords after which a `/` starts a regex literal rather than a division.
-const REGEX_AFTER_KEYWORD = new Set([
-  "return",
-  "typeof",
-  "case",
-  "do",
-  "else",
-  "in",
-  "of",
-  "new",
-  "delete",
-  "void",
-  "throw",
-  "instanceof",
-  "yield",
-  "await",
-]);
 const LONGEST_KEYWORD = 10; // "instanceof"
 
 // Characters after which an operand, so a regex, follows.
@@ -162,26 +147,6 @@ function regexCanStart(cleaned: readonly string[]): boolean {
     cleaned[beforeKeyword - 1] !== "." ||
     isSpreadBefore(cleaned, beforeKeyword)
   );
-}
-
-function skipRegexLiteral(source: string, start: number): number {
-  let i = start + 1;
-  let inClass = false;
-  while (i < source.length && source[i] !== "\n") {
-    if (source[i] === "\\") i += 2;
-    else if (inClass) {
-      if (source[i] === "]") inClass = false;
-      i++;
-    } else if (source[i] === "[") {
-      inClass = true;
-      i++;
-    } else if (source[i] === "/") {
-      i++;
-      while (i < source.length && /[a-z]/i.test(source[i])) i++;
-      return i;
-    } else i++;
-  }
-  return i;
 }
 
 function hasDefaultExport(source: string): boolean {
