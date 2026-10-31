@@ -7,6 +7,11 @@ name: CI
 # job to have succeeded. Tags never run CI (release.yml handles them): a push filter with only `branches` skips
 # tag pushes.
 #
+# Production deploys come only from pull requests merged into main. Because a push to main runs no tests, each deploy
+# job on main first asks GitHub for the pull requests of github.sha and fails, deploying nothing, unless one of them
+# was merged into main (.github/scripts/merged-pull-request.mjs). A commit pushed straight to main therefore never
+# deploys; the manual emergency deploy in DEPLOYMENT.md is the documented bypass.
+#
 # pull_request is here only so pull requests from forks get tested. A pull request from a branch of this repo is
 # already tested by that branch's push run, whose checks are on the same head commit and so show on the pull
 # request; the stage 1 jobs skip on such a pull_request event, and every later job needs them, so the rest of that
@@ -946,6 +951,7 @@ jobs:
       !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
+      pull-requests: read
     needs:
       [
         e2e-pkg-static,
@@ -993,6 +999,20 @@ jobs:
       # docs:build sets BASCIK_SITE_URL=https://bascik.dev itself.
       - name: Build package and docs
         run: yarn pkg:build && yarn docs:build
+
+      # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. Runs after the build,
+      # which gives GitHub time to link a fresh merge commit to its pull request. Emergency path: DEPLOYMENT.md.
+      - name: Check the commit came from a merged pull request
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PULLS: ${{ runner.temp }}/pulls.json
+        run: |
+          gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+          node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
       # finished testing first has already deployed, or will, and this one must not replace it.
@@ -1059,6 +1079,7 @@ jobs:
       !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
+      pull-requests: read
     needs:
       [
         e2e-pkg-static,
@@ -1100,6 +1121,20 @@ jobs:
       # adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare (config from the fixture's wrangler.jsonc).
       - name: Build package, adapter, and demo
         run: yarn adapter:cf:demo:build
+
+      # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. Runs after the build,
+      # which gives GitHub time to link a fresh merge commit to its pull request. Emergency path: DEPLOYMENT.md.
+      - name: Check the commit came from a merged pull request
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PULLS: ${{ runner.temp }}/pulls.json
+        run: |
+          gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+          node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
       # finished testing first has already deployed, or will, and this one must not replace it.

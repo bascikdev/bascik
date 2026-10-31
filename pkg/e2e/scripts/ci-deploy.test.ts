@@ -8,7 +8,9 @@
  * Cloudflare token reaching only the stage 5 Wrangler steps.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -26,6 +28,7 @@ import {
   newestCommit,
   tipOf,
 } from "../../../.github/scripts/newest-commit.mjs";
+import { mergedPullRequest } from "../../../.github/scripts/merged-pull-request.mjs";
 import {
   BOT_LOGIN,
   MARKER,
@@ -175,6 +178,74 @@ describe("newest-commit", () => {
     expect(() =>
       newestCommit(lsRemote, "refs/heads/main", Y.slice(0, 12)),
     ).toThrow(/full commit SHA/);
+  });
+});
+
+describe("merged-pull-request", () => {
+  const SHA = "3".repeat(40);
+  const pull = (number: number, merged: boolean, base = "main") => ({
+    number,
+    state: merged ? "closed" : "open",
+    merged_at: merged ? "2026-10-31T12:00:00Z" : null,
+    base: { ref: base },
+  });
+
+  it("finds the pull request merged into main that the commit came from", () => {
+    expect(mergedPullRequest([pull(7, false), pull(12, true)], SHA)).toBe(12);
+    expect(mergedPullRequest([pull(12, true)], SHA.toUpperCase())).toBe(12);
+  });
+
+  it("refuses a commit no merged pull request put on main, naming the commit and the emergency path", () => {
+    for (const pulls of [
+      [],
+      [pull(7, false)],
+      [pull(8, true, "pre-release-20261030")],
+    ])
+      expect(() => mergedPullRequest(pulls, SHA)).toThrow(
+        /333333333333 did not come from a pull request merged into main.*DEPLOYMENT\.md, "Manual Deploy in an Emergency"/s,
+      );
+    expect(() => mergedPullRequest([pull(7, false)], SHA)).toThrow(
+      /#7 \(open\)/,
+    );
+    expect(() =>
+      mergedPullRequest([pull(8, true, "pre-release-20261030")], SHA),
+    ).toThrow(/#8 \(merged into pre-release-20261030\)/);
+  });
+
+  it("misuse: rejects an API error body or a bad SHA instead of reading it as no pull request", () => {
+    expect(() =>
+      mergedPullRequest({ message: "Bad credentials", status: "401" }, SHA),
+    ).toThrow(/did not return a list of pull requests.*Bad credentials/);
+    expect(() => mergedPullRequest([pull(12, true)], "")).toThrow(
+      /full commit SHA/,
+    );
+    expect(() => mergedPullRequest([pull(12, true)], SHA.slice(0, 7))).toThrow(
+      /full commit SHA/,
+    );
+  });
+
+  it("reads the gh api output from a file and fails the step with an ::error:: line", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-merged-pr-"));
+    try {
+      const script = join(repoDir, ".github/scripts/merged-pull-request.mjs");
+      const file = join(dir, "pulls.json");
+      const run = () =>
+        spawnSync(process.execPath, [script, SHA, file], { encoding: "utf8" });
+      writeFileSync(file, JSON.stringify([pull(12, true)]));
+      const merged = run();
+      expect(merged.status).toBe(0);
+      expect(merged.stdout).toMatch(/pull request #12/);
+      writeFileSync(file, JSON.stringify([pull(7, false)]));
+      const direct = run();
+      expect(direct.status).toBe(1);
+      expect(direct.stderr).toMatch(/^::error::.*333333333333/m);
+      writeFileSync(file, "");
+      const empty = run();
+      expect(empty.status).toBe(1);
+      expect(empty.stderr).toMatch(/::error::.*not JSON/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -1153,6 +1224,43 @@ describe("CI stages and the deploy stage", () => {
       expect(body, id).toMatch(/>> "\$GITHUB_STEP_SUMMARY"/);
     }
     expect(jobs.get("deploy-docs")!.body.join("\n")).toMatch(/fetch-depth: 0/);
+  });
+
+  it("deploys main only from a commit a merged pull request put there, checked before any Wrangler step", () => {
+    const NAME = "Check the commit came from a merged pull request";
+    const main = simulate(jobs, runContext("push", "refs/heads/main"));
+    const branch = simulate(jobs, runContext("push", "refs/heads/feature/x"));
+    for (const id of ["deploy-docs", "deploy-demo"]) {
+      const job = jobs.get(id)!;
+      const at = job.steps.findIndex((step) => step.name === NAME);
+      expect(at, id).toBeGreaterThan(0);
+      const step = job.steps[at];
+      expect(step.if, id).toBe("github.ref == 'refs/heads/main'");
+      expect(step.text, id).toContain("GH_TOKEN: ${{ github.token }}");
+      expect(step.text, id).toContain("REPO: ${{ github.repository }}");
+      expect(step.text, id).toContain("SHA: ${{ github.sha }}");
+      expect(step.text, id).toMatch(
+        /gh api "repos\/\$REPO\/commits\/\$SHA\/pulls" > "\$PULLS"/,
+      );
+      expect(step.text, id).toMatch(
+        /node \.github\/scripts\/merged-pull-request\.mjs "\$SHA" "\$PULLS"/,
+      );
+      // Before the newest-commit check and every upload, deploy and smoke step.
+      const newest = job.steps.findIndex((s) =>
+        s.text.includes("newest-commit.mjs"),
+      );
+      expect(at, id).toBeLessThan(newest);
+      for (const [index, other] of job.steps.entries())
+        if (WRANGLER_STEPS.includes(other.name))
+          expect(at, `${id}: ${other.name}`).toBeLessThan(index);
+      // The only permission it adds is reading pull requests.
+      expect(job.body.join("\n"), id).toMatch(
+        /^ {4}permissions:\n {6}contents: read\n {6}pull-requests: read\n {4}\S/m,
+      );
+      expect(main.steps.get(id), id).toContain(NAME);
+      // Branch Previews are not gated on a pull request.
+      expect(branch.steps.get(id), id).not.toContain(NAME);
+    }
   });
 
   it("names github.sha, the commit the push run built, in the Preview comment", () => {
