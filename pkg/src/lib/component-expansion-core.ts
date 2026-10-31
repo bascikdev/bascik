@@ -37,7 +37,10 @@ import {
   replaceNamedSlots,
 } from "./component-slots.ts";
 import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
-import { __componentScanStatsForTests } from "./component-scan-stats.ts";
+import {
+  __componentScanStatsForTests,
+  __expansionProbeForTests,
+} from "./component-scan-stats.ts";
 import { getFirstComponent, replaceTag } from "./component-tags.ts";
 import type { ComponentSearchState } from "./component-attribute-scan.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
@@ -434,6 +437,21 @@ export const expandComponents = (
     maskFrom = splicedMask ? splicedMask.checkpoint : null;
     maskFromEnd = splicedMask?.endCheckpoint ?? null;
     if (!splicedMask) maskFacts = {};
+    probeSplice(splicedMask?.masked != null && offsets !== undefined);
+  };
+  /** Report the loop's state to the test-only invariant oracle, when set. */
+  const probeSplice = (incremental: boolean): void => {
+    const { afterSplice } = __expansionProbeForTests;
+    if (!afterSplice) return;
+    const facts = closeFacts;
+    afterSplice({
+      html: transpiledHtmlBody,
+      masked,
+      searchFrom,
+      incremental,
+      lastCloseAt: facts && ((tagName) => facts.at(tagName)),
+      closerFacts: maskFacts.last && { ...maskFacts.last },
+    });
   };
   let lastTag = "(unknown)";
   while (true) {
@@ -460,6 +478,12 @@ export const expandComponents = (
       searchFrom,
       searchState,
     );
+    __expansionProbeForTests.afterSearch?.({
+      html: transpiledHtmlBody,
+      masked,
+      searchFrom,
+      found: partial,
+    });
     if (!partial.name) {
       return {
         transpiledHtmlBody: flatten(
@@ -513,7 +537,10 @@ export const expandComponents = (
 
     let currentStage: ExpansionStage = "";
     // Prop and binding diagnostics name the component file they are about.
+    // It also keeps the search's offsets, which a copy `scope` returns may not.
     const usage = component;
+    // The page the search read, so a failure knows the offsets still hold.
+    const searchedBody = transpiledHtmlBody;
     const propWarn = (message: string): void =>
       warn(`<${usage.name}> (${usage.fileName || "unknown file"}): ${message}`);
     try {
@@ -733,7 +760,23 @@ export const expandComponents = (
       // The limit tripwire throws before the `try`, so nothing here can be a
       // ComponentExpansionLimitError unless a host callback made one.
       opts.onError(component, currentStage, error, transpiledHtmlBody);
-      if (component.content) {
+      const { startIndex, endIndex } = usage as {
+        startIndex?: number;
+        endIndex?: number;
+      };
+      if (
+        transpiledHtmlBody === searchedBody &&
+        typeof startIndex === "number" &&
+        typeof endIndex === "number"
+      ) {
+        // Strip the usage that failed where the search found it, like an
+        // empty template. A search by name from the start of the page would
+        // strip the first usage of that name instead, which may lie inside a
+        // usage `scope` declined (left as written), and the search would
+        // then decline that usage again, minting it a second id.
+        spliceInstance(usage, "");
+        substitutions++;
+      } else if (component.content) {
         transpiledHtmlBody = replaceTag(
           transpiledHtmlBody,
           component.name,
@@ -751,6 +794,7 @@ export const expandComponents = (
         maskFacts = {};
         closeFacts = undefined;
         searchState.attributeCheckpoint = undefined;
+        probeSplice(false);
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)
