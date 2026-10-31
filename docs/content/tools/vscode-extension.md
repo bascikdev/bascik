@@ -71,7 +71,7 @@ The card shows the source path, the inferred props, named and default slots, and
 
 ### Describe a Component with an `@bascik` Comment
 
-Bascik infers the contract from component markup. Props come from `data-bascik-prop-*` declarations and from prop names referenced by `data-bascik-attr-*`, `data-bascik-text`, or `data-bascik-html`. Named and default slots come from `data-bascik-slot` declarations. To add human-readable descriptions, put an optional leading `@bascik` comment at the top of the component:
+Bascik infers the contract from component markup. Props come from `data-bascik-prop-*` declarations and from prop names referenced by `data-bascik-attr-*`. Named and default slots come from `data-bascik-slot` declarations. To add human-readable descriptions, put an optional leading `@bascik` comment at the top of the component:
 
 ```html
 <!-- @bascik
@@ -81,7 +81,7 @@ Displays a person's identity and available actions.
 @slot default - The primary profile content.
 -->
 <article data-bascik-attr-aria-label="role">
-  <p data-bascik-text="role"></p>
+  <p data-bascik-prop-role></p>
   <div data-bascik-slot></div>
   <footer data-bascik-slot="actions"></footer>
 </article>

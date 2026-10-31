@@ -91,7 +91,7 @@ A `bascik.ext.ts` is read without running it, so it holds literal values only (`
 
 ## Optional Component Descriptions
 
-Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-text`, and `data-bascik-html`, and infers named or default slots from `data-bascik-slot`.
+Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*` and `data-bascik-attr-*`, and infers named or default slots from `data-bascik-slot`.
 
 Add a leading metadata header to enrich that inferred contract:
 
