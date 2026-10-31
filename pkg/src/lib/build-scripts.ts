@@ -71,6 +71,7 @@ import {
 import {
   isScriptCacheEnabledForPath,
   pruneScriptCache,
+  pruneStaleTempModules,
 } from "./script-cache.ts";
 import {
   computePackageIdentity,
@@ -750,7 +751,10 @@ export const executeBuildScripts = async (
     mkdir(tempDir, { recursive: true }),
     mkdir(cacheDir, { recursive: true }),
   ]);
-  await pruneScriptCache(cacheDir);
+  await Promise.all([
+    pruneScriptCache(cacheDir),
+    pruneStaleTempModules(tempDir),
+  ]);
 
   const defaultSourceFile = options?.sourceFile ?? filePath ?? "";
   const pageFile = options?.once ? "" : (options?.pageFile ?? filePath ?? "");

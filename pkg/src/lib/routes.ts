@@ -23,6 +23,7 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
+import { pruneStaleTempModules } from "./script-cache.ts";
 import {
   ATTR,
   ROUTES_FLAG,
@@ -463,6 +464,8 @@ export const executeRoutesScript = async (
 
   const tempDir = join(process.cwd(), "node_modules", ".cache", "bascik");
   await mkdir(tempDir, { recursive: true });
+  // A process killed while a routes or build script ran left its module.
+  await pruneStaleTempModules(tempDir);
   const tmpPath = join(
     tempDir,
     `routes-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
