@@ -13,6 +13,7 @@ import {
 } from "./clock.ts";
 import { getExecErrorAction, stopAfterExecFailure } from "./exec-policy.ts";
 import type { ExecEntry, ExecPhase } from "./types.ts";
+import { GLOB_META } from "./watch-root.ts";
 
 export interface ExecOptions {
   clock?: FrameworkClock;
@@ -393,9 +394,6 @@ export const startExecDev = (options?: ExecDevOptions): Promise<void> => {
   // second exec watcher here would race it and compile the same edit twice.
   return Promise.resolve();
 };
-
-/** Glob metacharacters recognized by `path.matchesGlob` (minimatch syntax). */
-const GLOB_META = /[?*[\]{}()!+@]/;
 
 /** Resolve a path or glob against cwd and normalize separators to `/`. */
 const toAbsolutePosix = (p: string): string =>

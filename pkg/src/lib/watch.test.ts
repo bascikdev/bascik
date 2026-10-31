@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolve } from "node:path";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
@@ -1187,6 +1188,35 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
       ["/extra/watch/path/deleted.ts"],
     ]);
     expect(processAllPages).not.toHaveBeenCalled();
+  });
+});
+
+describe("watchFiles – root-level glob watch paths (F080, F187)", () => {
+  beforeEach(async () => {
+    (BascikConfig as any).pipeline = { watchPaths: ["**/*.json"] };
+    await watchFiles();
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).pipeline = { watchPaths: [] };
+  });
+
+  it("ignores node_modules, .git, the output and the private folder under a project-root glob", () => {
+    expect(mockWatch.mock.calls[3][0]).toEqual(["."]);
+    const ignored = mockWatch.mock.calls[3][1].ignored as (
+      path: string,
+    ) => boolean;
+    expect(typeof ignored).toBe("function");
+    // directory.out is "dist" in this suite's config.
+    for (const path of [
+      "node_modules/pkg/package.json",
+      ".git/config",
+      "dist/data/x.json",
+      ".bascik/dist/server-scripts.json",
+    ])
+      expect(ignored(resolve(path)), path).toBe(true);
+    expect(ignored(resolve("src/data/x.json"))).toBe(false);
+    expect(ignored(resolve("package.json"))).toBe(false);
   });
 });
 

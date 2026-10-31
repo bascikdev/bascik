@@ -30,7 +30,8 @@ import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { getImportRoot } from "./import-root.ts";
 import { watchSourceCycles } from "./watch-source.ts";
-import { sourceWatchRoot } from "./watch-root.ts";
+import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
+import { privateDirFor } from "./private-dir.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import { coalesceRuns } from "./coalesced-run.ts";
 
@@ -353,10 +354,18 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           onWatchError(err);
         }
       };
+      const watchPathRoots = [...new Set(watchPaths.map(sourceWatchRoot))];
+      const outRoot = resolve(process.cwd(), BascikConfig.directory.out);
       w(
         chokidar
-          .watch([...new Set(watchPaths.map(sourceWatchRoot))], {
+          .watch(watchPathRoots, {
             ...watchOptions,
+            // Output writes are never source edits, and a root-level glob
+            // must not walk node_modules or .git (watch-root.ts).
+            ignored: createSourceWatchIgnore(watchPathRoots, [
+              outRoot,
+              privateDirFor(outRoot),
+            ]),
             ignoreInitial: true,
             persistent: true,
           })

@@ -22,7 +22,7 @@ import {
   deleteDistDir,
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
-import { sourceWatchRoot } from "./watch-root.ts";
+import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
@@ -217,24 +217,21 @@ export const watchSourceCycles = async (
   };
   eventEmitter.once("boot-done", onBoot);
   const chokidar = await loadChokidar();
-  const watcher = chokidar.watch(
-    [
-      ...new Set([
-        pagesRoot,
-        ...componentRoots,
-        ...watchPaths.map(sourceWatchRoot),
-        ...execPatterns.map(sourceWatchRoot),
-      ]),
-    ],
-    {
-      ignoreInitial: true,
-      followSymlinks: true,
-      atomic: true,
-      awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
-      ignored: (path) =>
-        inside(resolve(path), outRoot) || inside(resolve(path), privateRoot),
-    },
-  );
+  const watchRoots = [
+    ...new Set([
+      pagesRoot,
+      ...componentRoots,
+      ...watchPaths.map(sourceWatchRoot),
+      ...execPatterns.map(sourceWatchRoot),
+    ]),
+  ];
+  const watcher = chokidar.watch(watchRoots, {
+    ignoreInitial: true,
+    followSymlinks: true,
+    atomic: true,
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
+    ignored: createSourceWatchIgnore(watchRoots, [outRoot, privateRoot]),
+  });
   watcher.on("all", (kind, changed) => {
     if (!["add", "change", "unlink", "unlinkDir", "addDir"].includes(kind))
       return;
