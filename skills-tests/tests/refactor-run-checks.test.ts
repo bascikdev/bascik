@@ -99,6 +99,25 @@ describe("parseCliArgs", () => {
     ).toThrow(/--skip-control/);
   });
 
+  it("--reject and --accepted pass reviewed production-defects false positives through, and a malformed id is refused", () => {
+    expect(
+      parseCliArgs([
+        ...base,
+        "--reject",
+        "PD-1a2b3c",
+        "--accepted",
+        "docs/migration/accepted.json",
+      ]),
+    ).toMatchObject({
+      reject: ["PD-1a2b3c"],
+      accepted: "docs/migration/accepted.json",
+    });
+    expect(parseCliArgs(base).reject).toEqual([]);
+    expect(() => parseCliArgs([...base, "--reject", "PD-1a2b"])).toThrow(
+      /--reject PD-1a2b/,
+    );
+  });
+
   it("--only and --skip take check names and reject a typo, listing the valid ones", () => {
     expect(parseCliArgs([...base, "--only", "spacing-diff"]).only).toEqual([
       "spacing-diff",

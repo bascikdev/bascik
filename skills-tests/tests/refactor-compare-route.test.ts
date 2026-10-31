@@ -560,6 +560,33 @@ describe("accepted differences (decisions ledger rows the comparison may pass)",
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("an entry may reject reviewed production-defects ids instead, and compare-route applies nothing for it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compare-accepted-"));
+    try {
+      const rejecting = [
+        { id: "D-07", defect: ["PD-1a2b3c"], reason: "a logotype, not text" },
+      ];
+      const good = join(dir, "accepted.json");
+      writeFileSync(good, JSON.stringify(rejecting));
+      expect(loadAccepted(good)).toEqual(rejecting);
+      expect(acceptedFor(rejecting, "/", { width: 375, height: 812 })).toEqual({
+        ids: [],
+        masks: [],
+        maxRatio: undefined,
+      });
+      // A typo'd id, or a string where a list belongs, is refused with the entry named.
+      for (const defect of [["PD-1a2b"], ["D-07"], "PD-1a2b3c", []]) {
+        const bad = join(dir, "bad-defect.json");
+        writeFileSync(bad, JSON.stringify([{ id: "D-08", defect }]));
+        expect(() => loadAccepted(bad), JSON.stringify(defect)).toThrow(
+          /\[0\] D-08.*defect/,
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("routeUrl", () => {

@@ -70,7 +70,8 @@ docs/migration/decisions.md and narrows itself by route and width:
   [{ "id": "D-01", "route": "/", "mask": ["footer"] },
    { "id": "D-02", "maxWidth": 767, "maxRatio": 0.02 }]
 "mask" paints those elements over on both sides; "maxRatio" replaces --max-ratio for matching cases. The report
-lists the ids applied to each case. Never raise --max-ratio globally to make a difference pass.`;
+lists the ids applied to each case. An entry with "defect": ["PD-xxxxxx"] rejects reviewed production-defects false
+positives instead; production-defects.mjs and run-checks.mjs read it, and compare-route applies nothing for it. Never raise --max-ratio globally to make a difference pass.`;
 
 export const ACTIONS = Object.freeze([
   "click",
@@ -439,12 +440,18 @@ const ACCEPTED_KEYS = new Set([
   "maxWidth",
   "mask",
   "maxRatio",
+  "defect",
   "reason",
 ]);
 
+/** A production-defects ledger id, as its rows and --reject name it. */
+export const DEFECT_ID = /^PD-[0-9a-f]{6}$/;
+
 /**
- * Reads accepted.json: an array of { id, route?, minWidth?, maxWidth?, mask?: [selector], maxRatio?, reason? }, each
- * tied to a row of the decisions ledger by id. Errors name the file and the entry index.
+ * Reads accepted.json: an array of { id, route?, minWidth?, maxWidth?, mask?: [selector], maxRatio?, defect?: [PD-id],
+ * reason? }, each tied to a row of the decisions ledger by id. `defect` lists production-defects ids a reviewer
+ * rejected as false positives (production-defects.mjs reads it; compare-route applies nothing for it). Errors name the
+ * file and the entry index.
  */
 export function loadAccepted(file) {
   let data;
@@ -483,9 +490,22 @@ export function loadAccepted(file) {
       throw new Error(
         `${at} ${entry.id}: maxRatio must be a number from 0 to 1 (got ${JSON.stringify(entry.maxRatio)})`,
       );
-    if (!entry.mask?.length && entry.maxRatio === undefined)
+    if (
+      entry.defect !== undefined &&
+      (!Array.isArray(entry.defect) ||
+        !entry.defect.length ||
+        entry.defect.some((d) => typeof d !== "string" || !DEFECT_ID.test(d)))
+    )
       throw new Error(
-        `${at} ${entry.id}: accepts nothing; give it a mask or a maxRatio`,
+        `${at} ${entry.id}: defect must be a list of production-defects ids such as ["PD-1a2b3c"] (got ${JSON.stringify(entry.defect)})`,
+      );
+    if (
+      !entry.mask?.length &&
+      entry.maxRatio === undefined &&
+      !entry.defect?.length
+    )
+      throw new Error(
+        `${at} ${entry.id}: accepts nothing; give it a mask, a maxRatio or a defect list`,
       );
   });
   return data;
@@ -498,7 +518,12 @@ const inRange = (entry, route, c) =>
 
 /** The accepted entries for one route and case: their ids, the selectors to mask, and the largest budget they set. */
 export function acceptedFor(accepted, route, c) {
-  const hits = accepted.filter((entry) => inRange(entry, route, c));
+  // An entry that only rejects production defects changes no pixels.
+  const hits = accepted.filter(
+    (entry) =>
+      inRange(entry, route, c) &&
+      (entry.mask?.length || entry.maxRatio !== undefined),
+  );
   const ratios = hits
     .map((entry) => entry.maxRatio)
     .filter((r) => r !== undefined);

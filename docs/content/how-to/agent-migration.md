@@ -451,7 +451,7 @@ node "$REFACTOR/run-checks.mjs" \
   --mask '[data-testid="review-carousel"]'
 ```
 
-Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width on the first run; skipping a check to save time skips what it would catch.
+Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `production-defects.mjs` measures each page with its animations finished, and leaves out what a visitor never sees as broken: glyphs a few pixels past a tight `line-height` with overflow visible, visually hidden `sr-only` text, the turned-away face of a flip card, an icon above its heading at every width, and overflow that comes only from a `--mask` region. `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width on the first run; skipping a check to save time skips what it would catch.
 
 The review page reads the `compare-route.mjs` and `run-checks.mjs` reports, so run both first. The sign-off records which screenshots and findings it covers:
 
@@ -607,6 +607,18 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 ```
 
 `compare-route.mjs --accepted` masks those elements (or applies a `maxRatio` budget) only for matching routes and widths, and lists the ids it applied in the report. Never raise `--max-ratio` for the whole run to make one difference pass.
+
+`production-defects.mjs` writes one `PD-` row per element and kind, with its routes and width range. When a reviewer finds a row is not a defect, such as a logotype whose glyphs pass a tight `line-height` with nothing cut off, reject it rather than change the design: add a ledger row saying why and an entry that lists the `PD-` id, which `production-defects.mjs` and `run-checks.mjs` read (by default from `docs/migration/accepted.json`, or `--accepted`). A rejected defect is neither a fix target nor a `copied-defect`; `--reject PD-1a2b3c` does the same for one run.
+
+```json
+[
+  {
+    "id": "D-07",
+    "defect": ["PD-1a2b3c"],
+    "reason": "a logotype, nothing is cut off"
+  }
+]
+```
 
 ## The Score Playbook to 5 x 100
 

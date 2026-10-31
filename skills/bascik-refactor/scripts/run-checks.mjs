@@ -6,7 +6,7 @@
 //
 // Why: agents treated "no flags" from the scripts they happened to run as PASS. One command with every check leaves
 // nothing to forget, and a check that crashed is a finding, never a pass.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { loadPlaywright } from "./lib/project-deps.mjs";
@@ -116,6 +116,10 @@ Options:
                               a layer on a longer timer, 0 for a site with none
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
   --ledger <file>             Append production defects to this decisions ledger
+  --reject <id>               A production-defects ledger row a reviewer found is not a defect, such as PD-1a2b3c
+                              (repeatable): neither a fix target nor a copied-defect
+  --accepted <file>           accepted.json whose "defect" lists are rejected too (default
+                              docs/migration/accepted.json when it exists)
   --only <check>              Run only these checks (repeatable or comma separated; makes the run partial)
   --skip <check>              Skip these checks (repeatable or comma separated; makes the run partial)
   --out <dir>                 Report folder (default artifacts/checks)
@@ -162,6 +166,8 @@ export function parseCliArgs(argv) {
       "settle-ms": { type: "string" },
       dismiss: { type: "string", multiple: true },
       ledger: { type: "string" },
+      reject: { type: "string", multiple: true },
+      accepted: { type: "string" },
       only: { type: "string", multiple: true },
       skip: { type: "string", multiple: true },
       "no-legacy-repo": { type: "boolean", default: false },
@@ -226,6 +232,12 @@ export function parseCliArgs(argv) {
     ),
     dismiss: values.dismiss ?? [],
     ledger: values.ledger,
+    reject: productionDefects.rejectIdsFrom(values.reject),
+    accepted:
+      values.accepted ??
+      (existsSync(productionDefects.DEFAULT_ACCEPTED)
+        ? productionDefects.DEFAULT_ACCEPTED
+        : undefined),
     out: values.out ?? DEFAULT_OUT,
     only: run,
     waived,
@@ -428,8 +440,11 @@ async function main() {
       const options = { ...base };
       if (name === "spacing-diff") options.tolerance = args.spacingTolerance;
       if (name === "overlap-diff") options.tolerance = args.overlapTolerance;
-      if (name === "production-defects" && args.ledger)
-        options.ledger = args.ledger;
+      if (name === "production-defects") {
+        if (args.ledger) options.ledger = args.ledger;
+        options.reject = args.reject;
+        options.accepted = args.accepted;
+      }
       const started = Date.now();
       const r = await runOne(name, browser, options);
       results.push(r);

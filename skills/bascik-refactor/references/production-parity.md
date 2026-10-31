@@ -47,7 +47,9 @@ Record these before writing any page. Every later prompt reads them.
   `[{ "name", "loads", "origins", "cookies", "pages" }]`.
 - `decisions.md`: the differences-and-decisions ledger (template: `templates/decisions-ledger.md`).
 - `accepted.json`: one entry per ledger row that changes pixels, `[{ "id", "route", "minWidth", "maxWidth", "mask",
-"maxRatio" }]`, passed to `compare-route.mjs --accepted`. The scripts never read `decisions.md` itself.
+"maxRatio" }]`, passed to `compare-route.mjs --accepted`, and one per reviewed production-defects false positive,
+  `{ "id", "defect": ["PD-xxxxxx"], "reason" }`, read by `production-defects.mjs` and `run-checks.mjs`. The scripts never
+  read `decisions.md` itself.
 
 ### Production alone, before any target page exists
 
@@ -289,11 +291,31 @@ skip it the same way.
 
 Production is the truth for geometry, not for bugs. `production-defects.mjs` runs on production before a route is
 written, at every matrix case. Each defect (a squished image, an icon misaligned with its heading, text overflow,
-horizontal scroll) is appended to `docs/migration/decisions.md` as "production defect: fix in target" with its route,
-width and selector. The parity checks then compare the target with the corrected expectation for that element at that
-case: their findings there move to `corrected` in the report instead of failing, and the review page lists the
-defects apart from the findings, so the reviewer sees every intentional difference. A target that copies a defect
-fails with `copied-defect`.
+horizontal scroll) is appended to `docs/migration/decisions.md` as "production defect: fix in target": one row per
+element and kind, with every route it shows on, its width range (`320-414, 1280 px wide`) and its selectors. The
+parity checks then compare the target with the corrected expectation for that element at each of those cases: their
+findings there move to `corrected` in the report instead of failing, and the review page lists the defects apart
+from the findings, so the reviewer sees every intentional difference. A target that copies a defect fails with
+`copied-defect`.
+
+What it leaves out, because nothing is wrong for a visitor:
+
+- Glyphs a few pixels past a tight `line-height` (a logotype at 0.9, a display font at 30px/36px) while overflow is
+  visible. Text taller than its box by half a line or more, wider than its box, or cut off by `overflow: hidden` is
+  still reported.
+- Visually hidden text: an `sr-only` label clipped to 1 px, or `clip-path: inset(50%)`.
+- The face of a flip card turned away (`backface-visibility: hidden` with a transform that faces it backward).
+- Motion: running animations are finished, and infinite ones canceled, before the page is measured, so a word rising
+  into place on a loop is measured settled. Overflow that comes only from a `--mask` region (a script-driven ticker)
+  is not blamed on its unmasked parent.
+- An icon above its heading at every width of a route: that is the design. `icon-wrapped` is reported only at the
+  widths where the icon drops away from a heading it sits beside at other widths.
+
+When a reviewer finds a row is still not a defect, reject it by its id instead of changing the design to satisfy the
+check: pass `--reject PD-xxxxxx` to `production-defects.mjs` and `run-checks.mjs`, or add an `accepted.json` entry
+`{ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "a logotype, nothing is cut off" }` with a ledger row of the same
+id. A rejected defect is neither a fix target nor a `copied-defect`, on every route and width. A rejected id that
+matches no defect is printed as a warning (a typo, or production no longer has it).
 
 ### Presence by route
 

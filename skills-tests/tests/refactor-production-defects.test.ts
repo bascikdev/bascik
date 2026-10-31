@@ -17,10 +17,14 @@ import {
   LEDGER_NOTE,
   appendLedger,
   applyCorrections,
+  detectAcross,
   detectDefects,
   diffDefects,
+  ledgerId,
   ledgerRows,
   parseCliArgs,
+  rejectDefects,
+  rejectedFrom,
 } from "../../skills/bascik-refactor/scripts/production-defects.mjs";
 import { renderReviewPage } from "../../skills/bascik-refactor/scripts/review-page.mjs";
 
@@ -411,5 +415,277 @@ describe("parseCliArgs", () => {
     expect(() =>
       parseCliArgs(["--prod", "https://example.com", "--route", "/"]),
     ).not.toThrow();
+  });
+
+  it("takes reviewed false positives with --reject PD-xxxxxx and an accepted.json file with --accepted", () => {
+    expect(
+      parseCliArgs([
+        ...base,
+        "--route",
+        "/",
+        "--reject",
+        "PD-1a2b3c",
+        "--reject",
+        "PD-00ff00",
+        "--accepted",
+        "docs/migration/accepted.json",
+      ]),
+    ).toMatchObject({
+      reject: ["PD-1a2b3c", "PD-00ff00"],
+      accepted: "docs/migration/accepted.json",
+    });
+    expect(parseCliArgs([...base, "--route", "/"]).reject).toEqual([]);
+  });
+
+  it("refuses a --reject that is not a production-defects ledger id, naming it", () => {
+    for (const id of ["PD-1a2b", "D-07", "pd-1a2b3c", "PD-1A2B3G"])
+      expect(
+        () => parseCliArgs([...base, "--route", "/", "--reject", id]),
+        id,
+      ).toThrow(new RegExp(`--reject ${id}.*PD-`));
+  });
+});
+
+/** A text box as the browser half measures it: one line of 36 px by default, nothing overflowing. */
+const textBox = (over: Record<string, unknown> = {}) => ({
+  key: "H2:Silky milk in thirty seconds",
+  selector: "main h2",
+  path: "0.0",
+  rect: rect(24, 200, 288, 36),
+  scrollWidth: 288,
+  clientWidth: 288,
+  scrollHeight: 36,
+  clientHeight: 36,
+  lineHeight: 36,
+  overflow: "visible",
+  ...over,
+});
+
+describe("detectDefects: what is not a defect (false positives found in real trials)", () => {
+  it("glyphs a few px past a tight line-height with overflow visible are not text-overflow: a logotype and a display heading", () => {
+    // A two-line wordmark at line-height 0.9: content 113x36, box 113x33.
+    const wordmark = textBox({
+      key: "SPAN:MILKFROTHER",
+      scrollWidth: 113,
+      clientWidth: 113,
+      scrollHeight: 36,
+      clientHeight: 33,
+      lineHeight: 16.2,
+    });
+    // A display font at 30px/36px: content 288x38, box 288x36.
+    const heading = textBox({ scrollHeight: 38 });
+    expect(detectDefects(snapshot({ texts: [wordmark] }))).toEqual([]);
+    expect(detectDefects(snapshot({ texts: [heading] }))).toEqual([]);
+  });
+
+  it("text that wraps to a line its box has no room for is still text-overflow, and a clipped box is text-clipped however small the excess", () => {
+    // A button label that wraps at 768 px inside a 20 px tall box.
+    const wrapped = textBox({
+      key: "BUTTON:Book a demo",
+      scrollHeight: 40,
+      clientHeight: 20,
+      lineHeight: 20,
+    });
+    expect(kinds(detectDefects(snapshot({ texts: [wrapped] })))).toEqual([
+      "text-overflow",
+    ]);
+    // The same 2 px ink overflow under overflow hidden cuts the glyphs off.
+    const clipped = textBox({ scrollHeight: 38, overflow: "hidden" });
+    expect(kinds(detectDefects(snapshot({ texts: [clipped] })))).toEqual([
+      "text-clipped",
+    ]);
+    // Wider than its column is overflow whatever the line height.
+    const wide = textBox({ scrollWidth: 340 });
+    expect(kinds(detectDefects(snapshot({ texts: [wide] })))).toEqual([
+      "text-overflow",
+    ]);
+  });
+
+  it("a snapshot measured before line heights were recorded keeps the 1 px tolerance", () => {
+    const old = textBox({ scrollHeight: 38, lineHeight: undefined });
+    expect(kinds(detectDefects(snapshot({ texts: [old] })))).toEqual([
+      "text-overflow",
+    ]);
+  });
+
+  it("a visually hidden label (sr-only: clipped to 1x1) is neither clipped text nor an overlap", () => {
+    const srOnly = textBox({
+      key: "SPAN:Toggle theme",
+      path: "0.1",
+      rect: rect(24, 200, 1, 1),
+      scrollWidth: 92,
+      clientWidth: 1,
+      scrollHeight: 20,
+      clientHeight: 1,
+      overflow: "hidden",
+      visuallyHidden: true,
+    });
+    const neighbor = textBox({ path: "0.2" });
+    expect(detectDefects(snapshot({ texts: [srOnly, neighbor] }))).toEqual([]);
+  });
+
+  it("the face of a flip card turned away (backface-visibility hidden) does not overlap the face shown", () => {
+    const front = textBox({ key: "P:Froths in 30 s", path: "0.0.0" });
+    const back = textBox({
+      key: "P:Wash the jug by hand",
+      path: "0.0.1",
+      facingAway: true,
+    });
+    expect(detectDefects(snapshot({ texts: [front, back] }))).toEqual([]);
+    // Both faces shown is a real overlap.
+    expect(
+      kinds(
+        detectDefects(
+          snapshot({ texts: [front, { ...back, facingAway: false }] }),
+        ),
+      ),
+    ).toEqual(["text-overlap"]);
+  });
+});
+
+describe("detectAcross: defects that need every case of a route", () => {
+  const row = (wrapped: boolean) =>
+    iconRow(
+      rect(24, 100, 24, 24),
+      wrapped ? rect(24, 132, 316, 28) : rect(60, 98, 316, 28),
+    );
+  const at = (width: number, wrapped: boolean, route = "/") =>
+    snapshot({ route, width, iconRows: [row(wrapped)] });
+
+  it("an icon above its heading at every width is the design, not icon-wrapped", () => {
+    expect(
+      detectAcross([at(320, true), at(768, true), at(1280, true)]),
+    ).toEqual([]);
+  });
+
+  it("an icon that drops to its own line at some widths only is icon-wrapped at those widths", () => {
+    const defects = detectAcross([
+      at(320, true),
+      at(768, false),
+      at(1280, false),
+    ]);
+    expect(
+      defects.map((d: { kind: string; width: number }) => [d.kind, d.width]),
+    ).toEqual([["icon-wrapped", 320]]);
+  });
+
+  it("decides per route, and one case alone cannot tell a design from a defect", () => {
+    expect(detectAcross([at(320, true)])).toEqual([]);
+    const defects = detectAcross([
+      at(320, true, "/"),
+      at(768, true, "/"),
+      at(320, true, "/shop"),
+      at(768, false, "/shop"),
+    ]);
+    expect(
+      defects.map((d: { route: string; width: number }) => [d.route, d.width]),
+    ).toEqual([["/shop", 320]]);
+  });
+
+  it("keeps every other defect of every case", () => {
+    const defects = detectAcross([
+      snapshot({ width: 320, page: { scrollWidth: 356, clientWidth: 320 } }),
+      snapshot({ width: 768 }),
+    ]);
+    expect(kinds(defects)).toEqual(["horizontal-scroll"]);
+  });
+});
+
+describe("ledger rows collapse the same defect across widths and routes", () => {
+  const overflow = (route: string, width: number, selector = "header h2") => ({
+    check: CHECK,
+    kind: "text-overflow",
+    route,
+    width,
+    key: "H2:Silky milk in thirty seconds",
+    selector,
+    message: `H2:Silky milk in thirty seconds at ${width} px overflows its box`,
+  });
+
+  it("writes one row per element and kind, with the width range and every route", () => {
+    const defects = [
+      overflow("/", 320),
+      overflow("/", 375),
+      overflow("/", 414),
+      overflow("/shop", 320, "footer h2"),
+    ];
+    const rows = ledgerRows(defects, { widths: [320, 375, 414, 768, 1280] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatch(/\|\s*\/, \/shop\s*\|/);
+    expect(rows[0]).toContain("320-414 px wide");
+    expect(rows[0]).toContain(ledgerId(defects[0]));
+  });
+
+  it("names separate ranges when the defect skips a measured width", () => {
+    const rows = ledgerRows(
+      [overflow("/", 320), overflow("/", 375), overflow("/", 1280)],
+      { widths: [320, 375, 768, 1280] },
+    );
+    expect(rows[0]).toContain("320-375, 1280 px wide");
+  });
+
+  it("the row id does not depend on the route or width, so one --reject covers the element everywhere", () => {
+    expect(ledgerId(overflow("/", 320))).toBe(
+      ledgerId(overflow("/shop", 1280)),
+    );
+    expect(ledgerId(overflow("/", 320))).toMatch(/^PD-[0-9a-f]{6}$/);
+    expect(ledgerId(overflow("/", 320))).not.toBe(
+      ledgerId({ ...overflow("/", 320), kind: "text-clipped" }),
+    );
+  });
+
+  it("appending the collapsed rows twice still adds each once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-defects-"));
+    try {
+      const file = join(dir, "decisions.md");
+      const defects = [overflow("/", 320), overflow("/", 375)];
+      expect(appendLedger(file, defects)).toBe(1);
+      expect(appendLedger(file, [...defects, overflow("/", 414)])).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("rejecting a reviewed false positive", () => {
+  const logo = {
+    check: CHECK,
+    kind: "text-overflow",
+    route: "/",
+    width: 400,
+    key: "SPAN:MILKFROTHER",
+    selector: "header a > span",
+    message: "SPAN:MILKFROTHER at 400 px overflows its box",
+  };
+  const id = ledgerId(logo);
+
+  it("rejectDefects drops the rejected ids and names any id that matched nothing", () => {
+    const other = { ...logo, kind: "text-clipped" };
+    const { kept, rejected, unused } = rejectDefects(
+      [logo, { ...logo, route: "/shop" }, other],
+      [id, "PD-000000"],
+    );
+    expect(kept).toEqual([other]);
+    expect(rejected).toHaveLength(2);
+    expect(unused).toEqual(["PD-000000"]);
+  });
+
+  it("a target that keeps a rejected defect is not a copied-defect, and one only the target has is not a target-defect", () => {
+    expect(diffDefects([logo], [logo], { rejected: [id] })).toEqual([]);
+    expect(diffDefects([], [logo], { rejected: [id] })).toEqual([]);
+    expect(
+      diffDefects([logo], [logo]).map((f: { kind: string }) => f.kind),
+    ).toEqual(["copied-defect"]);
+  });
+
+  it("reads the ids from accepted.json entries that carry a defect list, and ignores the other entries", () => {
+    expect(
+      rejectedFrom([
+        { id: "D-01", mask: ["footer"] },
+        { id: "D-07", defect: [id] },
+        { id: "D-08", defect: ["PD-00ff00"] },
+      ]),
+    ).toEqual([id, "PD-00ff00"]);
+    expect(rejectedFrom([])).toEqual([]);
   });
 });
