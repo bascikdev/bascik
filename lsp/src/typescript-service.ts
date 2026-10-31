@@ -1,0 +1,627 @@
+/**
+ * TypeScript errors for the `type="text/typescript"` script blocks of Bascik HTML files, from TypeScript's own
+ * LanguageService.
+ *
+ * Each block becomes a virtual `.ts` file next to its HTML file (`page.html.bascik-0.ts`), so a relative import
+ * resolves from the page's folder and `@/` resolves against `scripts.importRoot` through `paths`. Client blocks and
+ * server-side blocks are checked by two LanguageServices with different libraries: the browser's (DOM, no Node
+ * types) and Node's (Node types when `@types/node` is installed, no DOM). The project's `tsconfig.json`, when it
+ * has one, is the base; Bascik's settings go on top.
+ *
+ * Edits are incremental: an HTML edit replaces only the virtual files of blocks whose text changed, and an edit in
+ * an imported file (an unsaved editor buffer, or a change on disk) bumps that file's version.
+ *
+ * This module is the engine; `typescript-engine.ts` runs it beside the language server, and `check.ts` runs it for
+ * `bascik --check`.
+ */
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import * as path from "node:path";
+import type * as TS from "typescript-6";
+import {
+  extractTypeScriptBlocks,
+  SCRIPT_TYPE_CHECK,
+  type Insertion,
+  type TypeScriptBlock,
+  type TypeScriptProgramKind,
+  toSourceOffset,
+  virtualBlockText,
+  type VirtualBlockText,
+} from "./typescript-blocks.js";
+import {
+  type LoadedTypeScript,
+  resolveTypeScript,
+  type TypeScriptModule,
+  type TypeScriptResolution,
+} from "./typescript-loader.js";
+
+/** One TypeScript error or warning, located by offsets in the HTML file's text. */
+export interface TypeScriptDiagnostic {
+  start: number;
+  end: number;
+  message: string;
+  /** TypeScript's error number, such as 2322. */
+  code: number;
+  category: "error" | "warning";
+}
+
+/** What a diagnostics request returns. */
+export type TypeScriptDiagnosticsResult =
+  | { status: "ok"; diagnostics: TypeScriptDiagnostic[] }
+  /** No usable TypeScript for the project; `message` says why, once per project. */
+  | { status: "unavailable"; message: string }
+  /** A newer edit made the request stale before it finished. */
+  | { status: "cancelled" }
+  /** TypeScript threw (a bug, or a broken install); `message` is for the log. */
+  | { status: "failed"; message: string };
+
+/** The source tag on every published TypeScript diagnostic, so they read apart from Bascik's own. */
+export const TYPESCRIPT_DIAGNOSTIC_SOURCE = "ts (bascik)";
+
+/** TypeScript's lowest `target` that allows top-level `await`, which Bascik's server-side scripts may use. */
+const MINIMUM_TARGET = 9; // ts.ScriptTarget.ES2022
+
+interface VirtualFile extends VirtualBlockText {
+  fileName: string;
+  htmlPath: string;
+  program: TypeScriptProgramKind;
+  version: number;
+}
+
+interface Page {
+  text: string;
+  fileNames: string[];
+}
+
+export interface TypeScriptProjectOptions {
+  ts: TypeScriptModule;
+  projectRoot: string;
+  /** `scripts.importRoot`, resolved: where `@/` points. */
+  importRoot: string;
+  /** The unsaved text of a file open in an editor, or `undefined` to read it from disk. */
+  readOpenFile?: (fsPath: string) => string | undefined;
+  /** Polled by TypeScript while it checks; `true` stops the check with `OperationCanceledException`. */
+  isCancellationRequested?: () => boolean;
+  /** Shares parsed files (the large library files above all) with other projects using the same TypeScript. */
+  registry?: TS.DocumentRegistry;
+}
+
+/** Library file names a program's `lib` holds for a browser, and the ones that only make sense there. */
+const BROWSER_LIBS = ["lib.dom.d.ts", "lib.dom.iterable.d.ts"];
+const BROWSER_ONLY_LIB = /^lib\.(dom|webworker|scripthost)\b/i;
+
+/** Whether `@types/node` can be found from the project, so server-side blocks get Node's globals and modules. */
+function hasNodeTypes(projectRoot: string): boolean {
+  try {
+    createRequire(path.join(projectRoot, "package.json")).resolve(
+      "@types/node/package.json",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The compiler options for one program: the project's `tsconfig.json` (when it has one), then Bascik's settings,
+ * then the libraries and global types that program's scripts run with.
+ */
+export function compilerOptionsFor(
+  ts: TypeScriptModule,
+  projectRoot: string,
+  importRoot: string,
+  program: TypeScriptProgramKind,
+): TS.CompilerOptions {
+  let base: TS.CompilerOptions = {};
+  const configPath = path.join(projectRoot, "tsconfig.json");
+  if (fs.existsSync(configPath)) {
+    const read = ts.readConfigFile(configPath, ts.sys.readFile);
+    // A tsconfig that does not parse is the editor's to report; the blocks are still checked with the defaults.
+    if (read.config !== undefined) {
+      base = ts.parseJsonConfigFileContent(
+        read.config,
+        ts.sys,
+        projectRoot,
+        undefined,
+        configPath,
+      ).options;
+    }
+  }
+  const target =
+    base.target === undefined || base.target < MINIMUM_TARGET
+      ? (MINIMUM_TARGET as TS.ScriptTarget)
+      : base.target;
+  // The target's default library, without the browser parts the `.full` variant adds.
+  const defaultLib = ts
+    .getDefaultLibFileName({ target })
+    .replace(/\.full\.d\.ts$/, ".d.ts")
+    .replace(/^lib\.d\.ts$/, "lib.es5.d.ts");
+  const languageLibs = (base.lib ?? [defaultLib]).filter(
+    (lib) => !BROWSER_ONLY_LIB.test(lib),
+  );
+  const projectTypes = base.types?.filter(
+    (name) => name !== "node" && name !== "@types/node",
+  );
+  const options: TS.CompilerOptions = {
+    strict: true,
+    allowJs: true,
+    ...base,
+    target,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    moduleDetection: ts.ModuleDetectionKind.Force,
+    allowImportingTsExtensions: true,
+    noEmit: true,
+    // Only the blocks' own errors are reported, so errors inside declaration files are not worth the time.
+    skipLibCheck: true,
+    // Emit settings that conflict with noEmit, or make no sense for script blocks.
+    composite: false,
+    declaration: false,
+    declarationMap: false,
+    emitDeclarationOnly: false,
+    incremental: false,
+    sourceMap: false,
+    paths: {
+      ...base.paths,
+      // Bascik resolves `@/` against `scripts.importRoot`; the project's own `@/*` cannot point elsewhere.
+      "@/*": [`${importRoot.split(path.sep).join("/")}/*`],
+    },
+  };
+  if (program === "client") {
+    options.lib = [...new Set([...languageLibs, ...BROWSER_LIBS])];
+    // Explicit, so `@types/node` (picked up automatically otherwise) never gives browser code `process`.
+    options.types = projectTypes ?? [];
+  } else {
+    options.lib = languageLibs;
+    const types = [...(projectTypes ?? [])];
+    if (hasNodeTypes(projectRoot)) types.push("node");
+    options.types = types;
+  }
+  return options;
+}
+
+/** Where Bascik passes a directive script's default export to its typed check function. */
+function defaultExportInsertions(
+  ts: TypeScriptModule,
+  content: string,
+): Insertion[] {
+  const source = ts.createSourceFile(
+    "block.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  const opening = `${SCRIPT_TYPE_CHECK}(`;
+  for (const statement of source.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      return [
+        { at: statement.expression.getStart(source), text: opening },
+        { at: statement.expression.end, text: ")" },
+      ];
+    }
+    if (ts.isFunctionDeclaration(statement) && statement.body) {
+      const modifiers = statement.modifiers ?? [];
+      const defaultKeyword = modifiers.find(
+        (modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword,
+      );
+      if (
+        defaultKeyword &&
+        modifiers.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+        )
+      ) {
+        // `export default async function f() {}` becomes `export default __bascikScript( async function f() {})`.
+        return [
+          { at: defaultKeyword.end, text: ` ${opening}` },
+          { at: statement.end, text: ")" },
+        ];
+      }
+    }
+  }
+  return [];
+}
+
+/**
+ * The TypeScript blocks of one project: two LanguageServices (client and server), the virtual files of every
+ * HTML file it was given, and the versions that tell TypeScript what changed.
+ */
+export class TypeScriptProject {
+  readonly projectRoot: string;
+  readonly importRoot: string;
+  private readonly ts: TypeScriptModule;
+  private readonly readOpenFile: (fsPath: string) => string | undefined;
+  private readonly files = new Map<string, VirtualFile>();
+  private readonly pages = new Map<string, Page>();
+  /** Versions of real files reported changed (an editor buffer or a file on disk). */
+  private readonly fileVersions = new Map<string, number>();
+  private readonly services: Record<TypeScriptProgramKind, TS.LanguageService>;
+  private projectVersion = 0;
+  private nextFileVersion = 1;
+  /**
+   * Whether directive scripts get their types from `@bascik/bascik`. It turns false the first time the typed
+   * footer fails to resolve (no `@bascik/bascik`, or one from before the types), until the project is made again.
+   */
+  private scriptTypes = true;
+
+  constructor(options: TypeScriptProjectOptions) {
+    // TypeScript keys files by absolute path; a relative root would make every relative import miss.
+    this.projectRoot = path.resolve(options.projectRoot);
+    this.importRoot = path.resolve(this.projectRoot, options.importRoot);
+    this.ts = options.ts;
+    this.readOpenFile = options.readOpenFile ?? (() => undefined);
+    const registry =
+      options.registry ??
+      this.ts.createDocumentRegistry(
+        this.ts.sys.useCaseSensitiveFileNames,
+        this.projectRoot,
+      );
+    const cancellationToken: TS.CancellationToken = {
+      isCancellationRequested: options.isCancellationRequested ?? (() => false),
+      throwIfCancellationRequested: () => {
+        if (options.isCancellationRequested?.())
+          throw new this.ts.OperationCanceledException();
+      },
+    };
+    const createService = (program: TypeScriptProgramKind) =>
+      this.ts.createLanguageService(
+        this.host(
+          program,
+          compilerOptionsFor(
+            this.ts,
+            this.projectRoot,
+            this.importRoot,
+            program,
+          ),
+          cancellationToken,
+        ),
+        registry,
+      );
+    this.services = {
+      client: createService("client"),
+      server: createService("server"),
+    };
+  }
+
+  private host(
+    program: TypeScriptProgramKind,
+    options: TS.CompilerOptions,
+    cancellationToken: TS.CancellationToken,
+  ): TS.LanguageServiceHost {
+    const ts = this.ts;
+    return {
+      getProjectVersion: () => String(this.projectVersion),
+      getCompilationSettings: () => options,
+      getScriptFileNames: () =>
+        [...this.files.values()]
+          .filter((file) => file.program === program)
+          .map((file) => file.fileName),
+      getScriptVersion: (fileName) =>
+        String(
+          this.files.get(fileName)?.version ??
+            this.fileVersions.get(fileName) ??
+            0,
+        ),
+      getScriptSnapshot: (fileName) => {
+        const text = this.readFile(fileName);
+        return text === undefined
+          ? undefined
+          : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => this.projectRoot,
+      getDefaultLibFileName: (compilerOptions) =>
+        ts.getDefaultLibFilePath(compilerOptions),
+      fileExists: (fileName) =>
+        this.files.has(fileName) ||
+        this.readOpenFile(fileName) !== undefined ||
+        ts.sys.fileExists(fileName),
+      readFile: (fileName) => this.readFile(fileName),
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+      realpath: ts.sys.realpath,
+      useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
+      getCancellationToken: () => cancellationToken,
+    };
+  }
+
+  private readFile(fileName: string): string | undefined {
+    const virtual = this.files.get(fileName);
+    if (virtual) return virtual.text;
+    return this.readOpenFile(fileName) ?? this.ts.sys.readFile(fileName);
+  }
+
+  /**
+   * Records an HTML file's text. Only blocks whose virtual text changed get a new version, so TypeScript reuses
+   * what it knows about the rest.
+   */
+  updatePage(htmlPath: string, text: string): void {
+    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    const previous = this.pages.get(htmlPath);
+    if (previous?.text === text) return;
+    const blocks = extractTypeScriptBlocks(text);
+    const fileNames = blocks.map(
+      (block) => `${htmlPath}.bascik-${block.index}.ts`,
+    );
+    let changed = false;
+    blocks.forEach((block, index) => {
+      const fileName = fileNames[index];
+      const virtual = this.virtualFile(block);
+      const existing = this.files.get(fileName);
+      if (
+        existing &&
+        existing.text === virtual.text &&
+        existing.program === block.program
+      ) {
+        // Same text; only the offsets moved (an edit above the block).
+        existing.segments = virtual.segments;
+        existing.footerStart = virtual.footerStart;
+        return;
+      }
+      changed = true;
+      this.files.set(fileName, {
+        ...virtual,
+        fileName,
+        htmlPath,
+        program: block.program,
+        version: this.nextFileVersion++,
+      });
+    });
+    for (const fileName of previous?.fileNames.slice(fileNames.length) ?? []) {
+      this.files.delete(fileName);
+      changed = true;
+    }
+    this.pages.set(htmlPath, { text, fileNames });
+    if (changed) this.projectVersion++;
+  }
+
+  private virtualFile(block: TypeScriptBlock): VirtualBlockText {
+    const insertions =
+      block.directive === undefined
+        ? []
+        : defaultExportInsertions(this.ts, block.content);
+    return virtualBlockText(block, insertions, this.scriptTypes);
+  }
+
+  /** Rewrites every directive block with the untyped footer, after the typed one failed to resolve. */
+  private dropScriptTypes(): void {
+    this.scriptTypes = false;
+    const pages = [...this.pages];
+    this.pages.clear();
+    for (const [htmlPath, page] of pages) this.updatePage(htmlPath, page.text);
+  }
+
+  /** Forgets an HTML file, so its blocks are no longer part of either program. */
+  removePage(htmlPath: string): void {
+    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    const page = this.pages.get(htmlPath);
+    if (!page) return;
+    for (const fileName of page.fileNames) this.files.delete(fileName);
+    this.pages.delete(htmlPath);
+    this.projectVersion++;
+  }
+
+  /** A file the blocks may import changed in an editor buffer or on disk. */
+  fileChanged(fsPath: string): void {
+    this.fileVersions.set(path.resolve(fsPath), this.nextFileVersion++);
+    this.projectVersion++;
+  }
+
+  /** The TypeScript errors and warnings of an HTML file's blocks, located in its text. */
+  diagnostics(htmlPath: string, text: string): TypeScriptDiagnostic[] {
+    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    this.updatePage(htmlPath, text);
+    const result: TypeScriptDiagnostic[] = [];
+    for (const fileName of this.pages.get(htmlPath)?.fileNames ?? []) {
+      const file = this.files.get(fileName)!;
+      const service = this.services[file.program];
+      const syntactic = service.getSyntacticDiagnostics(fileName);
+      const semantic = service.getSemanticDiagnostics(fileName);
+      // A type error in Bascik's footer means @bascik/bascik's script types are not there: check without them.
+      // Not while the block has a syntax error, which can swallow the footer (an unclosed brace or comment).
+      if (
+        this.scriptTypes &&
+        file.program === "server" &&
+        syntactic.length === 0 &&
+        semantic.some(
+          (diagnostic) => (diagnostic.start ?? 0) >= file.footerStart,
+        )
+      ) {
+        this.dropScriptTypes();
+        return this.diagnostics(htmlPath, text);
+      }
+      const syntacticSet = new Set<TS.Diagnostic>(syntactic);
+      for (const diagnostic of [...syntactic, ...semantic]) {
+        if (diagnostic.start === undefined) continue;
+        if (
+          diagnostic.category !== this.ts.DiagnosticCategory.Error &&
+          diagnostic.category !== this.ts.DiagnosticCategory.Warning
+        )
+          continue;
+        // A syntax error found in the footer is the author's (an unclosed brace runs past the block's end): it is
+        // reported at the end of the block. A type error there is Bascik's, not theirs to fix.
+        const inFooter = diagnostic.start >= file.footerStart;
+        if (inFooter && !syntacticSet.has(diagnostic)) continue;
+        const start = Math.min(diagnostic.start, file.footerStart);
+        const end = Math.min(
+          diagnostic.start + (diagnostic.length ?? 0),
+          file.footerStart,
+        );
+        result.push({
+          start: toSourceOffset(file, start),
+          end: toSourceOffset(file, Math.max(start, end)),
+          message: this.ts.flattenDiagnosticMessageText(
+            diagnostic.messageText,
+            "\n",
+          ),
+          code: diagnostic.code,
+          category:
+            diagnostic.category === this.ts.DiagnosticCategory.Error
+              ? "error"
+              : "warning",
+        });
+      }
+    }
+    return result;
+  }
+
+  dispose(): void {
+    this.services.client.dispose();
+    this.services.server.dispose();
+  }
+}
+
+export interface TypeScriptProjectsOptions {
+  /** The TypeScript the client asked for (a package folder); see `typescript-loader.ts`. */
+  clientPath?: string;
+  /** Where to resolve an installed peer `typescript` from after the project. */
+  fallbackFrom?: string;
+  /** Whether the request that is running is stale. */
+  isCancellationRequested?: () => boolean;
+  /** Overrides how TypeScript is found (tests). */
+  resolve?: (projectRoot: string) => TypeScriptResolution;
+}
+
+/**
+ * Every project's TypeScript blocks, keyed by project root: the synchronous engine behind the language server's
+ * worker and `bascik --check`. TypeScript is looked up once per project, on the first request.
+ */
+export class TypeScriptProjects {
+  private readonly projects = new Map<string, TypeScriptProject>();
+  private readonly resolutions = new Map<string, TypeScriptResolution>();
+  /** Unsaved editor buffers of files the blocks may import. */
+  private readonly openFiles = new Map<string, string>();
+  /** One per TypeScript copy, shared by its projects. */
+  private readonly registries = new Map<
+    TypeScriptModule,
+    TS.DocumentRegistry
+  >();
+
+  constructor(private readonly options: TypeScriptProjectsOptions = {}) {}
+
+  private resolution(projectRoot: string): TypeScriptResolution {
+    let resolution = this.resolutions.get(projectRoot);
+    if (!resolution) {
+      resolution =
+        this.options.resolve?.(projectRoot) ??
+        resolveTypeScript({
+          clientPath: this.options.clientPath,
+          projectRoot,
+          fallbackFrom: this.options.fallbackFrom,
+        });
+      this.resolutions.set(projectRoot, resolution);
+    }
+    return resolution;
+  }
+
+  /** The project for a root and import root, made again when the import root changed. */
+  private project(
+    projectRoot: string,
+    importRoot: string,
+  ): TypeScriptProject | string {
+    const resolution = this.resolution(projectRoot);
+    if (!resolution.ok) return resolution.message;
+    let project = this.projects.get(projectRoot);
+    if (
+      project &&
+      project.importRoot !== path.resolve(projectRoot, importRoot)
+    ) {
+      project.dispose();
+      project = undefined;
+    }
+    if (!project) {
+      project = new TypeScriptProject({
+        ts: resolution.ts,
+        projectRoot,
+        importRoot,
+        readOpenFile: (fsPath) => this.openFiles.get(fsPath),
+        isCancellationRequested: this.options.isCancellationRequested,
+        registry: this.registryFor(resolution.ts),
+      });
+      this.projects.set(projectRoot, project);
+    }
+    return project;
+  }
+
+  private registryFor(ts: TypeScriptModule): TS.DocumentRegistry {
+    let registry = this.registries.get(ts);
+    if (!registry) {
+      registry = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames);
+      this.registries.set(ts, registry);
+    }
+    return registry;
+  }
+
+  /** The TypeScript the project uses, or why it has none. */
+  describe(projectRoot: string): TypeScriptResolution {
+    return this.resolution(path.resolve(projectRoot));
+  }
+
+  diagnostics(request: {
+    projectRoot: string;
+    importRoot: string;
+    htmlPath: string;
+    text: string;
+  }): TypeScriptDiagnosticsResult {
+    const projectRoot = path.resolve(request.projectRoot);
+    const project = this.project(projectRoot, request.importRoot);
+    if (typeof project === "string")
+      return { status: "unavailable", message: project };
+    try {
+      return {
+        status: "ok",
+        diagnostics: project.diagnostics(
+          path.resolve(projectRoot, request.htmlPath),
+          request.text,
+        ),
+      };
+    } catch (error) {
+      const { ts } = this.resolution(projectRoot) as LoadedTypeScript;
+      if (error instanceof ts.OperationCanceledException)
+        return { status: "cancelled" };
+      throw error;
+    }
+  }
+
+  /** Records (or, with `undefined`, drops) the unsaved text of an editor buffer. */
+  setOpenFile(fsPath: string, text: string | undefined): void {
+    fsPath = path.resolve(fsPath);
+    if (text === undefined) this.openFiles.delete(fsPath);
+    else this.openFiles.set(fsPath, text);
+    this.fileChanged(fsPath);
+  }
+
+  /**
+   * A file changed. A `tsconfig.json` remakes its project (with the new options); anything else gets a new
+   * version in every project, which is cheap: TypeScript re-reads it only where a program holds it.
+   */
+  fileChanged(fsPath: string): void {
+    fsPath = path.resolve(fsPath);
+    if (path.basename(fsPath) === "tsconfig.json") {
+      this.forgetProject(path.dirname(fsPath));
+      return;
+    }
+    if (path.basename(fsPath) === "package.json") {
+      // A newly installed (or removed) typescript or @types/node.
+      this.forgetProject(path.dirname(fsPath));
+      this.resolutions.delete(path.dirname(fsPath));
+      return;
+    }
+    for (const project of this.projects.values()) project.fileChanged(fsPath);
+  }
+
+  closePage(projectRoot: string, htmlPath: string): void {
+    this.projects.get(path.resolve(projectRoot))?.removePage(htmlPath);
+  }
+
+  forgetProject(projectRoot: string): void {
+    projectRoot = path.resolve(projectRoot);
+    this.projects.get(projectRoot)?.dispose();
+    this.projects.delete(projectRoot);
+  }
+
+  dispose(): void {
+    for (const project of this.projects.values()) project.dispose();
+    this.projects.clear();
+  }
+}

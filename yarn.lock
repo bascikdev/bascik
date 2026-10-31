@@ -169,6 +169,7 @@ __metadata:
     parse5: "npm:^8.0.1"
     postcss: "npm:^8.5.28"
     typescript: "npm:^7.0.2"
+    typescript-6: "npm:typescript@^6.0.3"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"
     web-features: "npm:^3.40.1"
@@ -195,10 +196,16 @@ __metadata:
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.0.3"
     typescript: "npm:^7.0.2"
+    typescript-6: "npm:typescript@^6.0.3"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"
     vscode-languageserver: "npm:^10.1.2"
     vscode-languageserver-textdocument: "npm:^1.0.15"
+  peerDependencies:
+    typescript: ">=5.0 <7"
+  peerDependenciesMeta:
+    typescript:
+      optional: true
   bin:
     bascik-language-server: ./dist/bin.js
   languageName: unknown
@@ -2893,6 +2900,7 @@ __metadata:
     mocha: "npm:^12.0.3"
     tm-grammars: "npm:1.32.22"
     typescript: "npm:^7.0.2"
+    typescript-6: "npm:typescript@^6.0.3"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"
     vscode-languageclient: "npm:^10.1.2"
@@ -10989,6 +10997,16 @@ __metadata:
   version: 0.0.6
   resolution: "typedarray@npm:0.0.6"
   checksum: 10c0/6005cb31df50eef8b1f3c780eb71a17925f3038a100d82f9406ac2ad1de5eb59f8e6decbdc145b3a1f8e5836e17b0c0002fb698b9fe2516b8f9f9ff602d36412
+  languageName: node
+  linkType: hard
+
+"typescript-6@npm:typescript@^6.0.3":
+  version: 6.0.3
+  resolution: "typescript@npm:6.0.3"
+  bin:
+    tsc: bin/tsc
+    tsserver: bin/tsserver
+  checksum: 10c0/4a25ff5045b984370f48f196b3a0120779b1b343d40b9a68d114ea5e5fff099809b2bb777576991a63a5cd59cf7bffd96ff6fe10afcefbcb8bd6fb96ad4b6606
   languageName: node
   linkType: hard
 
