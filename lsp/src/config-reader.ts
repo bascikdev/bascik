@@ -51,7 +51,11 @@ const STRING_ESCAPES: Record<string, string> = {
   f: "\f",
   v: "\v",
   "0": "\0",
+  // A backslash before a line break continues the string on the next line.
   "\n": "",
+  "\r": "",
+  "\u2028": "",
+  "\u2029": "",
 };
 /** The hex digits of a `\x`, `\u` or `\u{...}` escape, read from just after the letter. */
 const CODE_ESCAPE_DIGITS = {
@@ -78,7 +82,62 @@ function readCodeEscape(source: string, at: number): [string, number] {
   return [String.fromCodePoint(codePoint), digits.lastIndex];
 }
 const NUMBER_RE =
-  /0[xX][0-9a-fA-F_]+|(?:[0-9][0-9_]*)?\.?[0-9][0-9_]*(?:[eE][+-]?[0-9]+)?/y;
+  /0[xX][0-9a-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|(?:[0-9][0-9_]*(?:\.[0-9_]*)?|\.[0-9][0-9_]*)(?:[eE][+-]?[0-9_]+)?/y;
+
+/** Words after which a `/` starts a regex literal rather than a division. */
+const REGEX_AFTER_WORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+
+/**
+ * Whether a `/` after `previous` starts a regex literal: at the start, after an operator or `(`, `,`,
+ * `=`, `:` and the like, or after a keyword such as `return`. After a value, `)`, `]` or `}` it divides.
+ */
+function regexCanStartAfter(previous: Token | undefined): boolean {
+  if (!previous) return true;
+  if (previous.kind === "string" || previous.kind === "number") return false;
+  if (previous.kind === "ident") return REGEX_AFTER_WORDS.has(previous.value);
+  // A template literal or a regex literal is a value; a lone `/` is the division operator.
+  if (previous.value.length > 1) return false;
+  return (
+    previous.value !== ")" && previous.value !== "]" && previous.value !== "}"
+  );
+}
+
+/**
+ * Index after the regex literal (flags included) whose `/` is at `start`, or the negated index of the line
+ * break (or end of file) it reached without closing.
+ */
+function regexLiteralEnd(source: string, start: number): number {
+  let inClass = false;
+  for (let i = start + 1; i < source.length; i++) {
+    const c = source[i];
+    if (c === "\\") i++;
+    else if (c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029")
+      return -i;
+    else if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (c === "/" && !inClass) {
+      let end = i + 1;
+      while (end < source.length && /[\w$]/.test(source[end])) end++;
+      return end;
+    }
+  }
+  return -source.length;
+}
 
 /**
  * Splits JavaScript or TypeScript source into the tokens a config literal is made of, skipping comments.
@@ -87,6 +146,8 @@ const NUMBER_RE =
  */
 function tokenize(source: string, json = false): Token[] {
   const tokens: Token[] = [];
+  // Where the last `/` that could not be a regex stopped looking, so a line of slashes is scanned once.
+  let noRegexBefore = 0;
   let i = 0;
   while (i < source.length) {
     const c = source[i];
@@ -101,6 +162,23 @@ function tokenize(source: string, json = false): Token[] {
       const end = source.indexOf("*/", i + 2);
       if (end < 0) throw new LiteralError("Unclosed /* comment.", i);
       i = end + 2;
+    } else if (
+      !json &&
+      c === "/" &&
+      i >= noRegexBefore &&
+      regexCanStartAfter(tokens[tokens.length - 1])
+    ) {
+      // A regex literal: its quotes and slashes are not strings or comments. One that does not close on
+      // its line is a division after all.
+      const end = regexLiteralEnd(source, i);
+      if (end > 0) {
+        tokens.push({ kind: "other", value: source.slice(i, end), start: i });
+        i = end;
+      } else {
+        noRegexBefore = -end;
+        tokens.push({ kind: "other", value: "/", start: i });
+        i++;
+      }
     } else if (c === '"' || c === "'" || c === "`") {
       const start = i;
       if (json && c !== '"')
@@ -116,6 +194,11 @@ function tokenize(source: string, json = false): Token[] {
         if (ch === c) break;
         if (ch === "\\") {
           const next = source[i] ?? "";
+          if (next === "\r" && source[i + 1] === "\n") {
+            // A CRLF line continuation, as a Windows editor saves one.
+            i += 2;
+            continue;
+          }
           if (next === "x" || next === "u") {
             const [decoded, after] = readCodeEscape(source, i);
             value += decoded;
@@ -337,11 +420,24 @@ function jsonErrorLine(raw: string, message: string): number {
 export function parseExtensionConfigFile(
   fullPath: string,
   raw: string,
+  readError?: string,
 ): ExtensionConfigResult {
+  if (readError !== undefined) {
+    return {
+      config: {},
+      file: fullPath,
+      problem: {
+        file: fullPath,
+        line: 1,
+        message: `The file could not be read: ${readError}`,
+      },
+    };
+  }
   let value: unknown;
   try {
+    // JSON.parse rejects the byte order mark some Windows editors write first.
     value = fullPath.endsWith(".json")
-      ? JSON.parse(raw)
+      ? JSON.parse(raw.replace(/^\uFEFF/, ""))
       : parseExtensionConfigSource(raw);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -370,15 +466,27 @@ export function parseExtensionConfigFile(
   return { config: value as BascikExtensionConfig, file: fullPath };
 }
 
+/**
+ * The first config file present in {@link EXTENSION_CONFIG_FILES} order. A file that is there but cannot be
+ * read (a folder by that name, no permission) is still the config, with `readError` saying why, so it is
+ * reported instead of silently replaced by the next name.
+ */
 export function readConfigFile(
   projectRoot: string,
-): { fullPath: string; raw: string } | undefined {
+): { fullPath: string; raw: string; readError?: string } | undefined {
   for (const filename of EXTENSION_CONFIG_FILES) {
     const fullPath = path.join(projectRoot, filename);
     try {
       return { fullPath, raw: fs.readFileSync(fullPath, "utf8") };
-    } catch {
-      // Not present (or unreadable): try the next name.
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Not present: try the next name.
+      if (code === "ENOENT" || code === "ENOTDIR") continue;
+      return {
+        fullPath,
+        raw: "",
+        readError: error instanceof Error ? error.message : String(error),
+      };
     }
   }
   return undefined;
@@ -394,7 +502,7 @@ export function readExtensionConfig(
 ): ExtensionConfigResult {
   const found = readConfigFile(projectRoot);
   return found
-    ? parseExtensionConfigFile(found.fullPath, found.raw)
+    ? parseExtensionConfigFile(found.fullPath, found.raw, found.readError)
     : { config: {} };
 }
 

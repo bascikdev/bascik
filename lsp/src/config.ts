@@ -25,7 +25,7 @@ export interface BascikExtensionConfig {
 /** Last text read per config path, so an unchanged file is parsed and reported once. */
 const configCache = new Map<
   string,
-  { raw: string; result: ExtensionConfigResult }
+  { raw: string; readError?: string; result: ExtensionConfigResult }
 >();
 
 /**
@@ -39,9 +39,22 @@ export function loadExtensionConfig(
   const found = readConfigFile(projectRoot);
   if (!found) return {};
   const cached = configCache.get(found.fullPath);
-  if (cached && cached.raw === found.raw) return cached.result.config;
-  const result = parseExtensionConfigFile(found.fullPath, found.raw);
-  configCache.set(found.fullPath, { raw: found.raw, result });
+  if (
+    cached &&
+    cached.raw === found.raw &&
+    cached.readError === found.readError
+  )
+    return cached.result.config;
+  const result = parseExtensionConfigFile(
+    found.fullPath,
+    found.raw,
+    found.readError,
+  );
+  configCache.set(found.fullPath, {
+    raw: found.raw,
+    readError: found.readError,
+    result,
+  });
   if (result.problem) {
     console.error(formatExtensionConfigProblem(result.problem));
   }
