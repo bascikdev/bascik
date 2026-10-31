@@ -382,6 +382,24 @@ describe("node:* imports against the compatibility date the Worker deploys with"
   }, 60_000);
 });
 
+describe("the Pages variant's compatibility settings live in the Pages project", () => {
+  it("the build notes say what to set there, since wrangler pages deploy cannot", async () => {
+    const site = await buildSite({ variant: "pages" });
+    expect(site.result.notes).toContainEqual(
+      expect.stringMatching(
+        /^Pages project settings: compatibility date 2026-08-01 or later and the nodejs_compat flag, for Production and Preview/,
+      ),
+    );
+  }, 60_000);
+
+  it("the Workers variant writes them into wrangler.jsonc and has no such note", async () => {
+    const site = await buildSite();
+    expect(
+      (site.result.notes ?? []).filter((n) => n.startsWith("Pages project")),
+    ).toEqual([]);
+  }, 60_000);
+});
+
 describe("build notes report the settings the Worker deploys with", () => {
   it("an authored compatibility date and flags, not the pinned ones", async () => {
     const site = await buildSite({

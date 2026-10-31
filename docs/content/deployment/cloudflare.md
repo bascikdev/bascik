@@ -480,6 +480,8 @@ npx wrangler pages dev dist/.bascik/cloudflare-pages/public --compatibility-date
 npx wrangler pages deploy dist/.bascik/cloudflare-pages/public --project-name <your-project>
 ```
 
+Pages reads the compatibility date and flags from the Pages project, not from the upload, and `wrangler pages deploy` has no option for them. Before the first deploy, set the project's compatibility date to `2026-08-01` or later and add the `nodejs_compat` compatibility flag, for both the Production and Preview environments, in the project's settings in the Cloudflare dashboard. Without the flag the upload succeeds and static pages work, but every request routed to the Worker (pages with request-time scripts, API routes, the 404 page's URLs) fails, for example with `No such module "node:crypto"` in the Functions log for a site with request-time components. The build notes repeat this.
+
 The runtime request handling is identical between both variants; only the packaging and routing files differ.
 
 ## Moving a static site from Pages to Workers

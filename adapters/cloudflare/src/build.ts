@@ -659,6 +659,15 @@ export const build = async (
       ? "invocation routes: every request (run_worker_first: true); the Worker sends the static files' headers"
       : `invocation routes: ${invocationRoutes.include.length} rules`,
   ];
+  // Pages reads the compatibility date and flags from the project, not the
+  // upload, and `wrangler pages deploy` has no option for them: without
+  // nodejs_compat, every page routed to the Worker fails at request time.
+  if (variant === "pages")
+    notes.push(
+      `Pages project settings: compatibility date ${CLOUDFLARE_COMPATIBILITY_DATE} or later and the ` +
+        `${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")} flag, for Production and Preview. wrangler pages deploy ` +
+        `does not set them: set them in the Pages project's settings in the Cloudflare dashboard before the first deploy.`,
+    );
   // The manifest is part of the bundle; its share of bundleBytes is shown so
   // a growing component library is visible against the Worker size limit.
   if (components && manifestLiteral !== undefined) {
