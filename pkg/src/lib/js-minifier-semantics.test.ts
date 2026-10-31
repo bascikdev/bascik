@@ -114,6 +114,18 @@ describe("minifyJs – statement starting with a string or regex literal (F036)"
   });
 });
 
+describe("minifyJs – regex after else", () => {
+  it("keeps the regex body, quotes and spaces included", () => {
+    expectSameProgram(
+      [
+        'const s = "a x \'b"',
+        "if (!s) log.push(0)",
+        "else / x '/.test(s) && log.push(1)",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("minifyJs – lines starting with ( or [ continue the expression (F037)", () => {
   it.each([
     'const getEl = () => (f) => (log.push("called"), 1)\nconst el = getEl("x")\n(async () => { log.push("iife") })\nlog.push(el)',

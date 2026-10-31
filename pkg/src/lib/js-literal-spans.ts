@@ -6,7 +6,11 @@
  * `` html`<div id="panel">` ``), but script code around them is not markup: `count<max && ok`
  * is a comparison, not a `<max>` tag. Callers use these spans to scan only the literals.
  */
-import { findTemplateLiteralEnd } from "./js-minifier.ts";
+import {
+  canStartRegexAfter,
+  findTemplateLiteralEnd,
+  REGEX_PRECEDING_KEYWORDS,
+} from "./js-minifier.ts";
 
 export interface JsLiteralSpan {
   /** Offset of the opening quote or backtick. */
@@ -14,25 +18,6 @@ export interface JsLiteralSpan {
   /** Offset just past the closing quote or backtick (or the end of an unterminated literal). */
   end: number;
 }
-
-/** Keywords after which a `/` starts a regex literal rather than a division. */
-const REGEX_PRECEDING_KEYWORDS = new Set([
-  "return",
-  "case",
-  "throw",
-  "yield",
-  "await",
-  "delete",
-  "typeof",
-  "void",
-  "default",
-  "in",
-  "of",
-  "instanceof",
-  "new",
-  "do",
-  "else",
-]);
 
 const isIdentifierChar = (code: number): boolean =>
   (code >= 97 && code <= 122) ||
@@ -43,7 +28,7 @@ const isIdentifierChar = (code: number): boolean =>
   code > 127;
 
 const isLineBreak = (c: string): boolean =>
-  c === "\n" || c === "\r" || c === " " || c === " ";
+  c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029";
 
 /** End of the quoted string at `start`; an unterminated string stops at its line break. */
 const quotedStringEnd = (js: string, start: number): number => {
@@ -86,8 +71,11 @@ const regexLiteralEnd = (js: string, start: number): number => {
  * The string (`'...'`, `"..."`) and template (`` `...` ``, `${}` parts included) literals of
  * `js`, in source order. Comments and regex literals are skipped so quotes inside them do not
  * open a literal. A `/` is a regex where an expression may start (after an operator, `(`,
- * `,`, a keyword such as `return`, or at the start), and a division after a value, `)`, `]`,
- * `}` or a postfix update, the same rule the built-in minifier uses.
+ * `,`, a keyword such as `return` or `else`, or at the start), and a division after a value,
+ * `)`, `]`, `}` or a postfix update. That is the rule the built-in minifier applies inside a
+ * template's `${}` expressions. Its statement-level scan differs after `}` (a block can end
+ * there, so it tries a regex that closes on the same line) and after an `if`/`while`/`for`
+ * header's `)`; this scan reads a division in both places.
  */
 export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
   const spans: JsLiteralSpan[] = [];
@@ -97,7 +85,7 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
   while (i < js.length) {
     const c = js[i];
     const code = js.charCodeAt(i);
-    if (code <= 32 || c === " " || c === "﻿" || isLineBreak(c)) {
+    if (code <= 32 || c === "\u00a0" || c === "\ufeff" || isLineBreak(c)) {
       i++;
       continue;
     }
@@ -127,11 +115,7 @@ export const findJsLiteralSpans = (js: string): JsLiteralSpan[] => {
         i = close === -1 ? js.length : close + 2;
         continue;
       }
-      const regexAllowed =
-        lastToken === "" ||
-        REGEX_PRECEDING_KEYWORDS.has(lastToken) ||
-        !["value", ")", "]", "}", "++", "--"].includes(lastToken);
-      if (regexAllowed) {
+      if (canStartRegexAfter(lastToken)) {
         i = regexLiteralEnd(js, i);
         lastToken = "value";
         continue;

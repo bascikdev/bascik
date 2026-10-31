@@ -96,11 +96,13 @@ type Segment = {
   literal: boolean;
   text: string;
   controlHeaderCloses?: Set<number>; // `)` closing an if/while/for/with header
-  postfixUpdateEnds?: Set<number>;
+  postfixUpdateEnds?: Set<number>; // end of each postfix `++`/`--`
+  arrowBodyCloses?: Set<number>; // `}` closing an arrow function body (`=> {...}`)
+  asiBefore?: boolean; // literal only: a line break before it ends the statement
 };
 ```
 
-Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments.
+Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified.
 
 ### Regex Disambiguation
 
@@ -122,10 +124,15 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "instanceof",
   "new",
   "do",
+  "else",
 ]);
 ```
 
-When `/` follows an operator or expression keyword, it is parsed as a regular expression literal and preserved intact.
+When `/` follows an operator or one of these keywords, it is parsed as a regular expression literal and preserved intact. A `/` after a value, `]`, a quote, a `)` that does not close an `if`/`while`/`for`/`with` header, or a postfix `++`/`--` (`count++ / 2`) is division. After `}` the scanner tries a regex, because a block can end there, and keeps it only when it closes on the same line. `js-literal-spans.ts`, which finds the string literals that attribute scoping reads, imports this keyword set but reads a `/` after `}` or any `)` as division.
+
+### Line Breaks (ASI)
+
+Collapsing a line break must keep the statement boundary that JavaScript's automatic semicolon insertion puts there, so the minified script runs the same program as the unminified one. The scanner records what it needs for this on each segment (`controlHeaderCloses`, `postfixUpdateEnds`, `arrowBodyCloses`, `asiBefore`). The rules are listed in the "Semicolon-free scripts in `minify.js`" row of the [compatibility page](/compatibility).
 
 ## Identifier Hashing (`names.ts`)
 

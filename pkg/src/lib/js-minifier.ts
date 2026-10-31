@@ -44,8 +44,11 @@ export const __scanStatsForTests = {
   },
 };
 
-/** Keywords expecting an expression where a following `/` starts a regex literal */
-const REGEX_PRECEDING_KEYWORDS = new Set([
+/**
+ * Keywords expecting an expression (or, for `do`/`else`, a statement) where a following `/`
+ * starts a regex literal. Shared with `js-literal-spans.ts`.
+ */
+export const REGEX_PRECEDING_KEYWORDS: ReadonlySet<string> = new Set([
   "return",
   "case",
   "throw",
@@ -60,6 +63,7 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "instanceof",
   "new",
   "do",
+  "else",
 ]);
 
 /**
@@ -198,7 +202,13 @@ const skipRegexLiteral = (js: string, start: number): number => {
   return i;
 };
 
-const canStartRegexAfter = (token: string): boolean =>
+/**
+ * Whether a `/` after `token` starts a regex inside a `${}` expression: at the start, after a
+ * regex keyword, or after an operator or opening punctuator. After a value, `)`, `]`, `}` or
+ * `++`/`--` it is a division. `token` is "" (start), "value", a keyword from
+ * `REGEX_PRECEDING_KEYWORDS`, or a punctuator. Shared with `js-literal-spans.ts`.
+ */
+export const canStartRegexAfter = (token: string): boolean =>
   !token ||
   REGEX_PRECEDING_KEYWORDS.has(token) ||
   !["value", ")", "]", "}", "++", "--"].includes(token);
@@ -635,6 +645,13 @@ const normalizeCodeSegment = (text: string): string => {
  */
 export const minifyJs = (js: string): string => {
   if (!js) return "";
+  if (js.startsWith("#!")) {
+    // A hashbang comment runs to the end of its line, so the line break after it must stay.
+    const lineEnd = js.search(/[\n\r\u2028\u2029]/);
+    if (lineEnd === -1) return js;
+    const bodyStart = lineEnd + (js.startsWith("\r\n", lineEnd) ? 2 : 1);
+    return js.slice(0, bodyStart) + minifyJs(js.slice(bodyStart));
+  }
 
   const segments = scanSegments(js);
 

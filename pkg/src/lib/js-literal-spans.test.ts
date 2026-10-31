@@ -31,6 +31,32 @@ describe("findJsLiteralSpans", () => {
     expect(literals("a = 'open\nb = 'closed'")).toEqual(["'open", "'closed'"]);
   });
 
+  it("ends an unterminated string at U+2028 and U+2029 too", () => {
+    expect(literals("a = 'open\u2028b = 'closed'")).toEqual([
+      "'open",
+      "'closed'",
+    ]);
+    expect(literals("a = 'open\u2029b = 'closed'")).toEqual([
+      "'open",
+      "'closed'",
+    ]);
+  });
+
+  it("skips a byte order mark and no-break spaces as whitespace", () => {
+    expect(literals("\ufeff/'/.test(s);\u00a0x = 'k'")).toEqual(["'k'"]);
+  });
+
+  it("reads `/` after a regex keyword, `else` included, as a regex", () => {
+    expect(literals("if (a) b(); else /'/.test(s); c = 'k'")).toEqual(["'k'"]);
+  });
+
+  it("reads `/` after `}` as division, unlike the minifier's statement scan", () => {
+    // The minifier tries a regex after `}` (a block can end there) and keeps it only when it
+    // closes on the same line; this scan, like the minifier's `${}` scan, reads a division.
+    expect(literals("x = {} / 2 + 'q' / 3")).toEqual(["'q'"]);
+    expect(literals("function f() {}\n/ a '/.test(s)")).toEqual(["'/.test(s)"]);
+  });
+
   it("handles escapes", () => {
     expect(literals(`a = 'it\\'s'; b = "q\\"" + \`t\\\`\``)).toEqual([
       "'it\\'s'",
