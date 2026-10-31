@@ -273,6 +273,7 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
+hint-report/
 *.pem
 .env
 .env.*

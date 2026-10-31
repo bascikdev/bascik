@@ -633,6 +633,10 @@ describe("GITIGNORE", () => {
     expect(CLOUDFLARE_GITIGNORE.split("\n")).toContain(".env");
   });
 
+  it("ignores hint-report/, which a webhint run with the editor .hintrc writes", () => {
+    expect(GITIGNORE.split("\n")).toContain("hint-report/");
+  });
+
   it("does not ignore .wrangler/ in the default template", () => {
     expect(GITIGNORE).not.toContain(".wrangler/");
   });
@@ -1236,7 +1240,7 @@ describe("scaffold", () => {
     expect(writtenTo(".gitignore")).toBeDefined();
     // Scopes webhint's charset, viewport and title checks to what Bascik builds.
     expect(writtenTo(".hintrc")).toBe(hintrcJson(DEFAULT_SOURCE_DIRECTORIES));
-    expect(writtenTo(".hintrc.dist.json")).toBe(hintDistJson(".hintrc"));
+    expect(writtenTo(".hintrc.dist.json")).toBe(hintDistJson());
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
     const extensionsJson = writtenTo(".vscode/extensions.json");
     expect(extensionsJson).toBeDefined();
