@@ -243,6 +243,9 @@ export const normalizeApiRouteDefinition = (
 
 /** Decode one raw path segment exactly once; `null` on malformed percent-encoding. */
 const decodeSegmentOnce = (segment: string): string | null => {
+  // Without a `%` there is nothing to decode (decodeURIComponent returns it
+  // unchanged), and most request segments have none.
+  if (!segment.includes("%")) return segment;
   try {
     return decodeURIComponent(segment);
   } catch {
