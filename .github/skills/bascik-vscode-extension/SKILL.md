@@ -20,7 +20,7 @@ extensions/vscode-bascik/
 │   ├── client-options.ts       # Document selector and the server bundle path (no vscode import, so it is unit-testable)
 │   ├── server-bundle.test.ts   # Vitest: starts the bundled server and talks to it over the protocol
 │   └── test/extension.test.ts  # VS Code integration suite (Mocha, runs in a real editor)
-├── build.mjs                   # tsc (tests, typecheck), then esbuild bundles dist/extension.js and dist/server.js
+├── build.mjs                   # tsc (typecheck, tests into out/), then esbuild bundles dist/extension.js and dist/server.js
 ├── syntaxes/, snippets/        # TextMate injection grammar and API route snippets
 └── package.json                # Manifest with contribution points
 ```
@@ -29,7 +29,7 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 
 - `dist/extension.js` is `src/extension.ts` with `vscode-languageclient` bundled in. `vscode` stays external.
 - `dist/server.js` is the language server from `../../lsp/src` (entry: `startLanguageServer()` in `lsp/src/start.ts`) with `vscode-languageserver` bundled in. It does not need `lsp/dist` to be built first.
-- `build.mjs` deletes `dist/` first, so a file removed from `src/` cannot ship.
+- `build.mjs` deletes `dist/` and `out/` first, so a file removed from `src/` cannot ship. tsc writes to `out/` (the real-editor suite runs `out/test/`), so `dist/` holds only the two bundles, and `.vscodeignore` ships only those two from it (`src/packaging.test.ts` checks both).
 
 ---
 

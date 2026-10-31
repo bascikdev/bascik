@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Builds the extension into dist/: type-checks and emits the tests with tsc, then bundles the two files that
-// ship. The extension (`dist/extension.js`) is the language client. The server (`dist/server.js`) is the
-// language server from ../../lsp, bundled with its dependencies, because a VSIX ships no node_modules.
+// Builds the extension: type-checks the sources and emits the tests into out/ with tsc, then bundles the two
+// files that ship into dist/. The extension (`dist/extension.js`) is the language client. The server
+// (`dist/server.js`) is the language server from ../../lsp, bundled with its dependencies, because a VSIX ships
+// no node_modules. dist/ holds nothing else, and .vscodeignore ships only those two files from it.
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -65,9 +66,10 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  // Start clean so a file deleted from src/ does not linger in dist/ and ship.
-  rmSync(join(root, "dist"), { recursive: true, force: true });
+  // Start clean so a file deleted from src/ does not linger in dist/ and ship, or in out/ and run as a test.
+  for (const folder of ["dist", "out"]) {
+    rmSync(join(root, folder), { recursive: true, force: true });
+  }
   typeCheckAndEmit();
-  // Written after tsc, which also emits dist/extension.js, so the bundle is the file that remains.
   await Promise.all([bundleExtension(), bundleServer()]);
 }
