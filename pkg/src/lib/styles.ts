@@ -8,7 +8,8 @@ import { readStartTagAttributes } from "./html-scanner.ts";
 import {
   createMarkerWalk,
   createOpenTagScanner,
-  findWhitespaceMarkerAnchors,
+  findMarkerAnchors,
+  isRegexWhitespace,
   openTagsOf,
   replaceScannedElements,
   replaceSpans,
@@ -852,12 +853,14 @@ export const convertCssIdSelectorsToClasses = (
  */
 const replaceIdTags = (
   html: string,
-  idMarker: string,
+  isMarkerAt: (html: string, at: number) => boolean,
   replace: (openTag: string) => string,
 ): string => {
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const marker = new RegExp(idMarker, "iy");
-  const anchors = findWhitespaceMarkerAnchors(html, /id/gi, marker);
+  // Each `id` preceded by the whitespace the marker starts with, where the
+  // marker matches from that whitespace (`findWhitespaceMarkerAnchors`).
+  const anchors = findMarkerAnchors(html, /id/gi, (index) =>
+    index > 0 && isMarkerAt(html, index - 1) ? index - 1 : -1,
+  );
   if (anchors.length === 0) return html;
   const markerAt = createMarkerWalk(html, anchors, "first");
   // `[a-zA-Z0-9-]+`: the chain takes any name characters after the first.
@@ -881,6 +884,133 @@ const replaceIdTags = (
   return replaceSpans(html, matching(), replace);
 };
 
+/**
+ * The marker for an `id` attribute naming `idName`: unscoped (`id="panel"`),
+ * scoped by any prefix ending in `__`, or exactly `scopedId` (its minified
+ * form), in any quoting. Used with the `i` flag.
+ */
+export const idMarkerPattern = (idName: string, scopedId?: string): string => {
+  const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedScoped = scopedId
+    ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    : "";
+  const idGroup = escapedScoped
+    ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
+    : `(?:[^"]*__)?${escaped}`;
+  const idGroupSingle = escapedScoped
+    ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
+    : `(?:[^']*__)?${escaped}`;
+  const idGroupUnquoted = escapedScoped
+    ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
+    : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
+  return `\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))`;
+};
+
+/**
+ * A name the id marker scanner covers: printable ASCII, none of the
+ * characters with a role in the marker (whitespace, quotes, `=`, `<`, `>`,
+ * backtick, `/`). The `i` flag folds ASCII letters only onto ASCII letters.
+ */
+const isPlainMarkerName = (name: string): boolean =>
+  /^[\x21-\x7e]+$/.test(name) && !/["'=<>`/]/.test(name);
+
+/** ASCII letters upper-cased: the `i` flag's folding (without `u`) for ASCII. */
+const foldAscii = (code: number): number =>
+  code >= 0x61 && code <= 0x7a ? code - 32 : code;
+
+/** `[\s"'=<>\`]`: what ends the marker's unquoted value run. */
+const isUnquotedMarkerEnd = (code: number): boolean =>
+  code === 34 ||
+  code === 39 ||
+  code === 61 ||
+  code === 60 ||
+  code === 62 ||
+  code === 96 ||
+  isRegexWhitespace(code);
+
+/**
+ * `new RegExp(idMarkerPattern(idName, scopedId), "iy")` tested at `at`
+ * (`lastIndex = at`), without a regex, or undefined when a name is not plain
+ * (`isPlainMarkerName`) and the caller keeps the regex. The scoped id names
+ * the instance, so the regex was compiled once per component instance: most
+ * of a build's id scoping time.
+ *
+ * After `\sid\s*=\s*`, a quote opens a value that runs to the next same quote;
+ * otherwise the value is a run of characters other than `[\s"'=<>\`]`, and the
+ * name must end at the run's end before whitespace or `>`, or one character
+ * earlier at a `/` before that `>` (`/>`). The value matches when it is the
+ * name, the scoped id, or ends in `__` and the name (ASCII case-insensitively).
+ */
+export const createIdMarkerTest = (
+  idName: string,
+  scopedId?: string,
+): ((html: string, at: number) => boolean) | undefined => {
+  const scoped = scopedId || undefined;
+  if (
+    !isPlainMarkerName(idName) ||
+    (scoped !== undefined && !isPlainMarkerName(scoped))
+  )
+    return undefined;
+  const nameAt = (html: string, start: number, name: string): boolean => {
+    for (let k = 0; k < name.length; k++)
+      if (
+        foldAscii(html.charCodeAt(start + k)) !== foldAscii(name.charCodeAt(k))
+      )
+        return false;
+    return true;
+  };
+  const valueMatches = (html: string, start: number, end: number): boolean => {
+    const length = end - start;
+    if (length === idName.length && nameAt(html, start, idName)) return true;
+    if (
+      scoped !== undefined &&
+      length === scoped.length &&
+      nameAt(html, start, scoped)
+    )
+      return true;
+    const nameStart = end - idName.length;
+    return (
+      length >= idName.length + 2 &&
+      html.charCodeAt(nameStart - 1) === 95 &&
+      html.charCodeAt(nameStart - 2) === 95 &&
+      nameAt(html, nameStart, idName)
+    );
+  };
+  return (html, at) => {
+    if (!isRegexWhitespace(html.charCodeAt(at))) return false;
+    if (
+      foldAscii(html.charCodeAt(at + 1)) !== 0x49 ||
+      foldAscii(html.charCodeAt(at + 2)) !== 0x44
+    )
+      return false;
+    let index = at + 3;
+    while (isRegexWhitespace(html.charCodeAt(index))) index++;
+    if (html.charCodeAt(index) !== 61) return false;
+    index++;
+    while (isRegexWhitespace(html.charCodeAt(index))) index++;
+    const code = html.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      const close = html.indexOf(code === 34 ? '"' : "'", index + 1);
+      return close !== -1 && valueMatches(html, index + 1, close);
+    }
+    let end = index;
+    while (end < html.length && !isUnquotedMarkerEnd(html.charCodeAt(end)))
+      end++;
+    const next = html.charCodeAt(end);
+    if (
+      (next === 62 || isRegexWhitespace(next)) &&
+      valueMatches(html, index, end)
+    )
+      return true;
+    return (
+      next === 62 &&
+      end - 1 > index &&
+      html.charCodeAt(end - 1) === 47 &&
+      valueMatches(html, index, end - 1)
+    );
+  };
+};
+
 export const addIdClassesInHtml = (
   html: string,
   idsConverted: { idName: string; className: string }[],
@@ -893,20 +1023,7 @@ export const addIdClassesInHtml = (
     const scopedId = scopedIdNames?.[idName];
     if (!result.includes(idName) && (!scopedId || !result.includes(scopedId)))
       return;
-    const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const escapedScoped = scopedId
-      ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      : "";
-    const idGroup = escapedScoped
-      ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
-      : `(?:[^"]*__)?${escaped}`;
-    const idGroupSingle = escapedScoped
-      ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
-      : `(?:[^']*__)?${escaped}`;
-    const idGroupUnquoted = escapedScoped
-      ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
-      : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
-    const idMarker = `\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))`;
+    const idMarker = idMarkerPattern(idName, scopedId);
     if (/["'>\s]/.test(idName + (scopedId ?? ""))) {
       // Not a CSS id (those are `[a-zA-Z][\w-]*`): keep the regex.
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -919,7 +1036,17 @@ export const addIdClassesInHtml = (
       );
       return;
     }
-    result = replaceIdTags(result, idMarker, (openTag) =>
+    const isMarkerAt =
+      createIdMarkerTest(idName, scopedId) ??
+      (() => {
+        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        const marker = new RegExp(idMarker, "iy");
+        return (markup: string, at: number): boolean => {
+          marker.lastIndex = at;
+          return marker.test(markup);
+        };
+      })();
+    result = replaceIdTags(result, isMarkerAt, (openTag) =>
       injectClassIntoTag(openTag, className),
     );
   });
