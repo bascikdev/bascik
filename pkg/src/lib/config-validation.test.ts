@@ -1277,6 +1277,25 @@ describe("referenced files (fs half)", () => {
     expect(errors[0].message).toContain("file does not exist");
   });
 
+  it("rejects a bare string exec entry and shows the object form to write instead", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: ["scripts/generate-sitemap.ts", 42] },
+    });
+    expect(errors).toEqual([
+      {
+        key: "pipeline.exec[0]",
+        value: "scripts/generate-sitemap.ts",
+        message:
+          'expected an object with a script key, such as { script: "scripts/generate-sitemap.ts" }',
+      },
+      {
+        key: "pipeline.exec[1]",
+        value: 42,
+        message: "expected an object with a script key",
+      },
+    ]);
+  });
+
   it("rejects an exec cwd that is not a directory, and checks the script from the project root", () => {
     // The script exists at the project root; the typo'd cwd does not exist.
     const fs = {

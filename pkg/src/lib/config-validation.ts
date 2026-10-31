@@ -909,10 +909,13 @@ export const validateConfigShape = (
       } else {
         exec.forEach((entry, index) => {
           if (!isPlainObject(entry)) {
+            // A bare path is the most likely mistake: show the form to write.
             push(
               `pipeline.exec[${index}]`,
               entry,
-              "expected an object with a script key",
+              typeof entry === "string" && entry.length > 0
+                ? `expected an object with a script key, such as { script: ${JSON.stringify(entry)} }`
+                : "expected an object with a script key",
             );
             return;
           }

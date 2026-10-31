@@ -117,10 +117,9 @@ export const execShutdownHandler = async (
 registerShutdownHandler(() => execShutdownHandler());
 
 export const runScript = (
-  entry: ExecEntry | string,
+  entry: ExecEntry,
   options?: ExecOptions,
 ): Promise<number> => {
-  if (typeof entry === "string") return spawnScript(entry, options);
   const previous = entryExecutions.get(entry);
   const execution = previous
     ? previous.catch(() => undefined).then(() => spawnScript(entry, options))
@@ -134,12 +133,12 @@ export const runScript = (
 };
 
 const spawnScript = (
-  entry: ExecEntry | string,
+  entry: ExecEntry,
   options?: ExecOptions,
 ): Promise<number> => {
   const clock = options?.clock ?? nativeClock;
-  const scriptPath = typeof entry === "string" ? entry : entry.script;
-  const entryObj = typeof entry === "string" ? { script: entry } : entry;
+  const scriptPath = entry.script;
+  const entryObj = entry;
 
   const start = performance.now();
   logInfo(`${colorOut.dim("(started)")} exec: ${scriptPath}`);

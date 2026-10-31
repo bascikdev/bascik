@@ -23,17 +23,7 @@ export default defineConfig({
 });
 ```
 
-You can also pass strings as shorthand for `{ script: '...' }` with default settings:
-
-```ts
-// Shorthand syntax
-pipeline: {
-  exec: [
-    'scripts/generate-sitemap.ts',
-    'scripts/generate-search-index.ts',
-  ],
-}
-```
+Every entry is an object with at least a `script` key. A bare string such as `exec: ['scripts/generate-sitemap.ts']` is rejected at startup with `pipeline.exec[0]: expected an object with a script key`; write `{ script: 'scripts/generate-sitemap.ts' }` instead.
 
 ## Lifecycle Execution Phases
 
