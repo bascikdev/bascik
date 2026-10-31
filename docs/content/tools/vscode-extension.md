@@ -200,7 +200,7 @@ The extension also ships snippets for scaffolding route handlers in TypeScript a
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bascik-api`  | A route handler with an HTTP method picker and `request: Request` and `context: { params: Record<string, string \| string[]>; remoteIp: string }` arguments in TypeScript |
 | `bascik-get`  | A `GET` handler                                                                                                                                                           |
-| `bascik-post` | A `POST` handler with JSON request body parsing                                                                                                                           |
+| `bascik-post` | A `POST` handler that parses the JSON request body in a `try` block and answers `400` when it is malformed                                                                |
 
 `params` holds a `string[]` for a [catch-all](/api-routes#catch-all-routes) `[...name]` segment and a `string` for a `[param]` segment, so narrow the value before you use it as either.
 

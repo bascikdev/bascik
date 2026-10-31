@@ -32,11 +32,16 @@
       "  ${1:request}: Request,",
       "  ${2:context}: { params: Record<string, string | string[]>; remoteIp: string }",
       "): Promise<Response> => {",
-      "  const ${3:data} = await ${1:request}.json();",
+      "  let ${3:data}: unknown;",
+      "  try {",
+      "    ${3:data} = await ${1:request}.json();",
+      "  } catch {",
+      "    return Response.json({ error: \"Invalid JSON\" }, { status: 400 });",
+      "  }",
       "  $0",
       "  return Response.json({ ok: true });",
       "};"
     ],
-    "description": "Bascik POST API route handler with JSON body extraction"
+    "description": "Bascik POST API route handler that reads a JSON body and answers 400 when it is malformed"
   }
 }
