@@ -106,7 +106,7 @@ return html`<ul>
 
 Keep `html` at every level. Joining fragments with `+` or `.join("")` makes a plain string, and a plain string in an outer `html` is escaped. A shared helper in `src/lib/` can return `html` values, and fragments from two copies of the module (a monorepo duplicate, a Worker bundle) nest too: the brand is a registered symbol. Data from JSON, a query string, headers or `structuredClone` can never carry it, so a visitor cannot forge an `html` value. `raw()` is the only intended way to make one from a string.
 
-A script that returns an array of fragments without wrapping it prints commas between them, because an array becomes a string with `String(array)`. Return `` html`${items}` `` instead.
+A server or stream script can also return the array itself: its items are joined the same way, with no separator, so ``return items.map((item) => html`<li>${item.name}</li>`)`` works without an outer `html`. A plain template literal around an array still prints commas, because JavaScript turns the array into a string with `String(array)`; see [Return Values](/server-scripts#return-values).
 
 ## raw
 

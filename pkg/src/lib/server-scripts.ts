@@ -53,6 +53,11 @@ import {
 import { getImportRoot } from "./import-root.ts";
 import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
 import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
+import {
+  serverScriptOutput,
+  serverScriptOutputErrorMessage,
+  type ServerScriptOutputError,
+} from "./server-script-output.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
 import { prepareRenderer, wrapRunner } from "./request-render.ts";
 import type { ComponentManifest } from "./component-manifest-file.ts";
@@ -444,6 +449,47 @@ const compiledServerTypeScript = (
   return compiled;
 };
 
+/** Scripts whose refused return production already warned about, by where they start. */
+const warnedRefusedReturns = new Set<string>();
+
+/**
+ * A script returned something that is not markup (F060). In development it
+ * is a server-script failure like a throw: under `onServerScriptError:
+ * "error"` a located ServerScriptError (the 500 page, or the stream error
+ * log after commit), under `"warn"` a warning per request, under `"ignore"`
+ * nothing. In production it never fails the page: the slot is empty and,
+ * unless the policy is `"ignore"`, a warning is logged once per script, as
+ * the Cloudflare Worker does.
+ */
+const refusedReturn = (
+  error: ServerScriptOutputError,
+  job: ScriptJob,
+  request: Request,
+  containingFile: string | undefined,
+  startsAt: string,
+): string => {
+  const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
+  const line = job.sourceLine ?? job.startLine;
+  const owner = containingFile
+    ? `${job.mode} script in ${relative(process.cwd(), containingFile).replace(/\\/g, "/")}${line ? `:${line}` : ""}`
+    : `${job.mode} script`;
+  const production = Boolean(BascikConfig.isProdServer || BascikConfig.isBuild);
+  if (!production) {
+    const message = serverScriptOutputErrorMessage(error, request.url, owner);
+    if (behavior === "error") throw new ServerScriptError(message);
+    if (behavior === "warn") console.warn(message);
+    return "";
+  }
+  if (behavior === "ignore" || warnedRefusedReturns.has(startsAt)) return "";
+  warnedRefusedReturns.add(startsAt);
+  console.warn(
+    serverScriptOutputErrorMessage(error, request.url, owner, {
+      production: true,
+    }),
+  );
+  return "";
+};
+
 /**
  * Load and invoke one script job. Returns its output string, or `""` under
  * `onServerScriptError: warn | ignore`. Throws under `"error"`. The caller
@@ -585,7 +631,7 @@ export const runServerScriptJob = async (
         job.sourceColumn ?? 1,
       );
 
-  const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
+  let result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
     specifier,
     [request, context],
     {
@@ -598,19 +644,38 @@ export const runServerScriptJob = async (
     },
   );
 
+  // An array is joined with no separator, the way `html` inserts one; an
+  // object, a Response, an unawaited Promise in an array, a function or a
+  // symbol is refused instead of printing "[object ...]" (F060). A throw from
+  // the author's own toString is the script failing: it follows the policy
+  // below like any other throw.
+  let printed: ReturnType<typeof serverScriptOutput> | undefined;
   if (result.ok) {
-    const val = result.value;
-    const strVal =
-      typeof val === "string"
-        ? val
-        : val !== undefined && val !== null
-          ? String(val)
-          : "";
+    try {
+      printed = serverScriptOutput(result.value);
+    } catch (thrown) {
+      result = {
+        ok: false,
+        error: thrown instanceof Error ? thrown : new Error(String(thrown)),
+      };
+    }
+  }
+
+  if (printed) {
+    if (printed.error) {
+      return refusedReturn(
+        printed.error,
+        job,
+        request,
+        containingFile,
+        `${originalSourcePath}:${lineOffset}:${columnOffset + 1}`,
+      );
+    }
     // scripts.stripAnsi off: terminal color codes reach the page as printed.
     const output =
       BascikConfig.scripts?.stripAnsi === false
-        ? strVal
-        : stripAnsiEscapeCodes(strVal);
+        ? printed.text
+        : stripAnsiEscapeCodes(printed.text);
     // A component's server or stream script prints markup that is spliced
     // in after scoping, so its class and element names are applied here the
     // way a build script's output receives them (prompt 157), whether the

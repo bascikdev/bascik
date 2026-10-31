@@ -587,6 +587,73 @@ export default async function () { return "<chain-card></chain-card>"; }
 export default function () { return "<chain-card></chain-card>"; }
 </script>`,
   );
+  // Return values (prompt 158 R3-04, F060): an array is joined with no
+  // separator on both hosts; an object, a Response, an async .map and a
+  // component script's object return are an empty slot in production, with
+  // one located warning per script.
+  await page(
+    "src/pages/returns-array.html",
+    "Returns array",
+    `<ul data-testid="list"><script data-bascik-server>
+export default function () {
+  return [["<li>Milk frother</li>", null], ["<li>Kettle</li>", ["<product-card></product-card>"]]];
+}
+</script></ul>`,
+  );
+  await page(
+    "src/pages/returns-array-stream.html",
+    "Returns array stream",
+    `<ul data-testid="list"><script data-bascik-stream>
+export default async function () {
+  return ["<li>Milk frother</li>", undefined, ["<li>Kettle</li>"]];
+}
+</script></ul>`,
+  );
+  await page(
+    "src/pages/returns-object.html",
+    "Returns object",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return { name: "Milk frother" }; }
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-response.html",
+    "Returns response",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return new Response("<p>api habit</p>"); }
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-error.html",
+    "Returns error",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () {
+  try { throw new TypeError("db SECRET_DETAIL"); } catch (e) { return e; }
+}
+</script></section>`,
+  );
+  await page(
+    "src/pages/returns-async-map.html",
+    "Returns async map",
+    `<section data-testid="slot"><script data-bascik-stream>
+export default function () { return ["a", "b"].map(async (n) => "<li>" + n + "</li>"); }
+</script></section>`,
+  );
+  await write(
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    "src/components/object-card/object-card.html",
+    `<div class="object-card" data-testid="object-card"><script data-bascik-server>
+export default function () { return { name: "nested" }; }
+</script></div>
+<style>.object-card { color: rgb(30, 31, 32); }</style>`,
+  );
+  await page(
+    "src/pages/returns-component.html",
+    "Returns component",
+    `<section data-testid="slot"><script data-bascik-server>
+export default function () { return "<object-card></object-card>"; }
+</script></section>`,
+  );
   await page(
     "src/pages/components-boom.html",
     "Boom",

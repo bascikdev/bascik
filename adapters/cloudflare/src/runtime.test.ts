@@ -512,6 +512,112 @@ describe("createCloudflareWorker: dynamic pages", () => {
     );
   });
 
+  describe("return values (prompt 158 R3-04, F060), as on Node", () => {
+    it("an array is joined with no separator, nested arrays flattened and null holes empty", async () => {
+      const brand = Object.freeze({
+        [Symbol.for("bascik.html")]: "<li>html</li>",
+      });
+      const res = await worker(
+        graphOf({
+          pages: {
+            "/list": page("/list", () => [
+              ["<li>Milk frother</li>", null],
+              brand,
+              undefined,
+              ["<li>Kettle</li>"],
+            ]),
+          },
+        }),
+      ).fetch(get("/list"), {}, ctx());
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(
+        "<main><li>Milk frother</li><li>html</li><li>Kettle</li></main>",
+      );
+    });
+
+    for (const policy of ["error", "warn"] as const) {
+      it(`misuse: under "${policy}" an object, a Response or an async .map is an empty slot, never a 500 or [object ...], logged once per script with its owner`, async () => {
+        for (const [handler, received] of [
+          [
+            () => ({ name: "Milk frother" }),
+            "returned an object ([object Object])",
+          ],
+          [() => new Response("<p>x</p>"), "returned a Response"],
+          [
+            () => ["a"].map(async (x) => x),
+            "returned an array holding a Promise at [0]",
+          ],
+        ] as const) {
+          const logged: string[] = [];
+          const scripted = page("/account", handler);
+          scripted.jobs.server_script_a!.owner =
+            "server script in src/pages/account.html:4";
+          const w = worker(
+            graphOf({
+              onServerScriptError: policy,
+              pages: { "/account": scripted },
+            }),
+            logged,
+          );
+          for (let i = 0; i < 3; i++) {
+            const res = await w.fetch(get(`/account?i=${i}`), {}, ctx());
+            expect(res.status).toBe(200);
+            const body = await res.text();
+            expect(body).toBe("<main></main>");
+          }
+          expect(logged).toHaveLength(1);
+          expect(logged[0]).toMatch(
+            /^\[bascik\] server script error at "\/account":\n/,
+          );
+          expect(logged[0]).toContain(
+            `The server script in src/pages/account.html:4 ${received}`,
+          );
+          expect(logged[0]).toContain("The slot is empty");
+        }
+      });
+    }
+
+    it('misuse: a returned object whose own toString throws fails like a throw from the script: logged and empty under "warn", the 500 page under "error"', async () => {
+      const handler = () => ({
+        toString() {
+          throw new Error("toString SECRET_DETAIL");
+        },
+      });
+      const logged: string[] = [];
+      const warned = await worker(
+        graphOf({
+          onServerScriptError: "warn",
+          pages: { "/account": page("/account", handler) },
+        }),
+        logged,
+      ).fetch(get("/account"), {}, ctx());
+      expect(warned.status).toBe(200);
+      expect(await warned.text()).toBe("<main></main>");
+      expect(logged.join("\n")).toMatch(
+        /server script error at "\/account"[\s\S]*toString SECRET_DETAIL/,
+      );
+      const failed = await worker(
+        graphOf({ pages: { "/account": page("/account", handler) } }),
+      ).fetch(get("/account"), {}, ctx());
+      expect(failed.status).toBe(500);
+      expect(await failed.text()).not.toContain("SECRET_DETAIL");
+    });
+
+    it('misuse: under "ignore" a refused return is an empty slot and logs nothing', async () => {
+      const logged: string[] = [];
+      const res = await worker(
+        graphOf({
+          onServerScriptError: "ignore",
+          pages: { "/account": page("/account", () => Symbol("x")) },
+        }),
+        logged,
+      ).fetch(get("/account"), {}, ctx());
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("<main></main>");
+      expect(logged).toEqual([]);
+    });
+  });
+
   describe("streamed pages", () => {
     const streamed = (serverHandler: unknown): GraphPage => ({
       path: "/live",
@@ -552,6 +658,26 @@ describe("createCloudflareWorker: dynamic pages", () => {
         String("<p>early|late</p>".length),
       );
       expect(await res.text()).toBe("");
+    });
+
+    it("misuse: a stream script that returns a function is an empty slot after commit, logged once", async () => {
+      const logged: string[] = [];
+      const live = streamed(() => "early");
+      live.jobs.stream_script_b = job(
+        "stream_script_b",
+        () => () => "never called",
+        "stream",
+      );
+      const w = worker(graphOf({ pages: { "/live": live } }), logged);
+      for (let i = 0; i < 2; i++) {
+        const waits = ctx();
+        const res = await w.fetch(get("/live"), {}, waits);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("<p>early|</p>");
+        await Promise.all(waits.waited);
+      }
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain("The stream script returned a function");
     });
 
     it("misuse: a server script failing before the stream commits is the generic 500 page and a log line", async () => {

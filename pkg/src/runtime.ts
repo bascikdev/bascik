@@ -7,7 +7,8 @@
  * it is built on (prompt 157: component-expansion-core, scoping-instantiate),
  * plus what a host needs to run component scripts as Node does: the output
  * scope a component script's markup receives, the scoped-name hash from the
- * host's own sha256, and the ANSI stripping every script's output gets.
+ * host's own sha256, the ANSI stripping every script's output gets, and the
+ * rule for what a script's return value prints (prompt 158 R3-04).
  */
 
 export * from "./lib/request-execution.ts";
@@ -19,4 +20,5 @@ export * from "./lib/scoping-instantiate.ts";
 export * from "./lib/output-scope.ts";
 export * from "./lib/name-hash.ts";
 export * from "./lib/ansi-escapes.ts";
+export * from "./lib/server-script-output.ts";
 export * from "./lib/content-security-policy.ts";

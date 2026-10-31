@@ -59,6 +59,8 @@ import {
   matchApiRoute,
   pageLookupCandidates,
   stripAnsiEscapeCodes,
+  serverScriptOutput,
+  serverScriptOutputErrorMessage,
   contentSecurityPolicyHeader,
   DEFAULT_RESPONSE_SECURITY,
   type ApiRouteDefinition,
@@ -268,9 +270,12 @@ const missingJob = (id: string): Error =>
     `[bascik] server script job "${id}" is missing from the deployment graph.`,
   );
 
+/** Jobs whose refused return value was already logged in this isolate. */
+const warnedRefused = new WeakSet<GraphScriptJob>();
+
 /**
  * Run one graph job under `timeoutMs`. Output handling mirrors
- * `runServerScriptJob`: a string or stringifiable value is the fragment,
+ * `runServerScriptJob`: what `serverScriptOutput` prints is the fragment,
  * stripped of ANSI escapes, and a job carrying an output scope (a
  * component's script, prompt 157) gets the component's element classes
  * applied; a failing job with an owner is located by it; failure under
@@ -306,22 +311,51 @@ const runGraphJob = async (
     // Node's message, so a log reads the same on both hosts.
     { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
+  // The rule Node applies (F060): an array is joined with no separator; an
+  // object, a Response, an unawaited Promise in an array, a function or a
+  // symbol is refused. A Worker is production, so a refused return never
+  // fails the page: the slot is empty and, unless the policy is "ignore",
+  // the warning is logged once per script for the isolate's life. A throw
+  // from the author's own toString is the script failing, as on Node.
+  let printed: ReturnType<typeof serverScriptOutput> | undefined;
+  let failure: Error | undefined;
   if (result.ok) {
-    const value = result.value;
-    const output =
-      typeof value === "string"
-        ? value
-        : value !== undefined && value !== null
-          ? String(value)
-          : "";
+    try {
+      printed = serverScriptOutput(result.value);
+    } catch (thrown) {
+      failure = thrown instanceof Error ? thrown : new Error(String(thrown));
+    }
+  }
+  if (printed) {
+    if (printed.error) {
+      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+        warnedRefused.add(job);
+        log(
+          serverScriptOutputErrorMessage(
+            printed.error,
+            request.url,
+            // A page job carries no owner in the graph (only component jobs
+            // do); the route in the message names its page.
+            job.owner ?? `${job.mode} script`,
+            { production: true },
+          ),
+        );
+      }
+      return "";
+    }
     // scripts.stripAnsi off: the codes reach the page as printed.
     return scopeJobOutput(
       job,
-      graph.stripAnsi === false ? output : stripAnsiEscapeCodes(output),
+      graph.stripAnsi === false
+        ? printed.text
+        : stripAnsiEscapeCodes(printed.text),
     );
   }
-  if (result.aborted && !result.timedOut) return "";
-  const error = result.error ?? new Error("Server script failed");
+  if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
+  const error =
+    failure ??
+    (!result.ok ? result.error : undefined) ??
+    new Error("Server script failed");
   // Node maps the stack to the authored file; here it names only the bundle,
   // so a component job (a timeout, a throw or a missing default export deep
   // inside a rendered tag) is placed by the owner the build recorded.
