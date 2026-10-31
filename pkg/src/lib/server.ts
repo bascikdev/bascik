@@ -3,7 +3,7 @@ import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
 import { basename, extname, resolve, sep } from "node:path";
-import { isSameOrInside } from "./path-containment.ts";
+import { folderPrefix, isSameOrInside } from "./path-containment.ts";
 import { isNoSuchFileError } from "./fs-errors.ts";
 import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
@@ -485,6 +485,7 @@ const serveStreamedAsset = async (
 
 export const createRequestHandler = () => {
   const distDir = resolve(BascikConfig.directory.out);
+  const distDirPrefix = folderPrefix(distDir);
 
   return async (req: BascikRequest, res: BascikResponse) => {
     const start = performance.now();
@@ -707,7 +708,15 @@ export const createRequestHandler = () => {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);
-        if (!isSameOrInside(fullPath, distDir) || fullPath === distDir) {
+        // isSameOrInside decides; the startsWith on the resolved path repeats
+        // the same answer (path-containment.test.ts pins the agreement) in
+        // the shape CodeQL's js/path-injection query models as a barrier for
+        // the stat and reads below.
+        if (
+          !isSameOrInside(fullPath, distDir) ||
+          fullPath === distDir ||
+          !fullPath.startsWith(distDirPrefix)
+        ) {
           responseStatus = 400;
           res.respond(400, { ...secHeaders });
           res.end("Bad Request");
@@ -720,11 +729,7 @@ export const createRequestHandler = () => {
         // (on Windows `resolve` also splits on `\`).
         if (
           isPrivatePathname(
-            "/" +
-              fullPath
-                .slice(distDir.length + 1)
-                .split(sep)
-                .join("/"),
+            "/" + fullPath.slice(distDirPrefix.length).split(sep).join("/"),
             "/",
             BascikConfig.security?.hideDotfiles !== false,
           )
