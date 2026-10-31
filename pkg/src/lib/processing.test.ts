@@ -235,6 +235,20 @@ vi.mock("node:os", async (importOriginal) => {
   };
 });
 
+// The real module, with the per-build reset of the shared syntax checker observed.
+const { resetModuleCheckerForBuild } = vi.hoisted(() => ({
+  resetModuleCheckerForBuild: vi.fn(),
+}));
+vi.mock("./typescript.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./typescript.ts")>();
+  return {
+    ...actual,
+    resetModuleCheckerForBuild: resetModuleCheckerForBuild.mockImplementation(
+      actual.resetModuleCheckerForBuild,
+    ),
+  };
+});
+
 import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { mem } from "./mem.ts";
@@ -2494,6 +2508,18 @@ describe("processAllPages – side effects", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages();
     expect(result).toEqual(["pages/index.html"]);
+  });
+
+  it("gives a shared syntax checker that stopped in the last build a fresh start (full and incremental builds)", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/index.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    await processAllPages();
+    expect(resetModuleCheckerForBuild).toHaveBeenCalled();
+    resetModuleCheckerForBuild.mockClear();
+    await processPageBatch(["src/pages/index.html"], {});
+    expect(resetModuleCheckerForBuild).toHaveBeenCalled();
   });
 
   it("does not call storePage when listPages returns an empty array", async () => {
