@@ -3077,3 +3077,37 @@ describe("prefixKeyframes – animation after a nested block", () => {
     );
   });
 });
+
+describe("scopeContainerNames – several names in one declaration", () => {
+  const s = (name: string) => `bascik__card__container__${name}`;
+
+  it("scopes every name of container-name and its @container queries", () => {
+    const css =
+      ".card { container-name: a b } @container b (min-width: 1px) { .inner {} } @container a (width > 1px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toBe(
+      `.card { container-name: ${s("a")} ${s("b")} } @container ${s("b")} (min-width: 1px) { .inner {} } @container ${s("a")} (width > 1px) { .x {} }`,
+    );
+  });
+
+  it("scopes every name of the container shorthand", () => {
+    expect(
+      scopeContainerNames(".w { container: side main / inline-size; }", "card"),
+    ).toBe(`.w { container: ${s("side")} ${s("main")} / inline-size; }`);
+  });
+
+  it("scopes each name of an @container query list", () => {
+    const css =
+      ".a { container-name: side } .b { container-name: main } @container side (width > 1px), main (width > 2px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toContain(
+      `@container ${s("side")} (width > 1px), ${s("main")} (width > 2px) {`,
+    );
+  });
+
+  it("leaves keywords, features and var() alone", () => {
+    const css =
+      ".a { container-name: none; } .b { container-name: inherit } .c { container-name: var(--n) side !important } @container side not (width > 1px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toBe(
+      `.a { container-name: none; } .b { container-name: inherit } .c { container-name: var(--n) ${s("side")} !important } @container ${s("side")} not (width > 1px) { .x {} }`,
+    );
+  });
+});

@@ -1555,6 +1555,25 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
  *   container-name: sidebar            →  container-name: bascik__comp__container__sidebar
  *   @container sidebar (min-width: …)  →  @container bascik__comp__container__sidebar (…)
  */
+// CSS-wide keywords and `none` are never container names.
+const NOT_CONTAINER_NAMES = new Set([
+  "none",
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+  "default",
+]);
+
+// A `container-name:` value, or the name part of a `container:` shorthand
+// (before its `/ <type>`), up to `;`, `}`, `/` or `!important`.
+const CONTAINER_DECLARATION =
+  /((?<![\w-])container(?:-name)?\s*:\s*)([^;{}/!]*)/g;
+// One whole identifier in that value; `var(...)` and other functions are not
+// names.
+const CONTAINER_VALUE_NAME = /(?<![\w(-])-?[a-zA-Z_][\w-]*(?![\w(-])/g;
+
 export const scopeContainerNames = (
   css: string,
   componentName: string,
@@ -1562,13 +1581,11 @@ export const scopeContainerNames = (
   if (!css.includes("container")) return css;
   const containerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  shielded.replace(
-    /(?<![\w-])container(?:-name)?\s*:\s*([\w-]+)/g,
-    (_: string, name: string) => {
-      if (name !== "none") containerNames.add(name);
-      return "";
-    },
-  );
+  for (const [, , value] of shielded.matchAll(CONTAINER_DECLARATION)) {
+    for (const [name] of value.matchAll(CONTAINER_VALUE_NAME))
+      if (!NOT_CONTAINER_NAMES.has(name.toLowerCase()))
+        containerNames.add(name);
+  }
   if (containerNames.size === 0) return css;
   // One pass per pattern over whole names: rewriting one name at a time let a
   // later name match inside an earlier generated name or a longer name.
@@ -1579,17 +1596,36 @@ export const scopeContainerNames = (
       minifyAttributeName(`bascik__${componentName}__container__${name}`),
     );
   });
+  const scopeName = (name: string): string => scopedNames.get(name) ?? name;
   const replaced = shielded
     .replace(
-      /(?<=@container\s+)([\w-]+)(?=\s*[({])/gm,
-      (name: string) => scopedNames.get(name) ?? name,
+      /(@container\b)([^{;]*)/gi,
+      (_match, keyword: string, prelude: string) => {
+        // Names sit outside parentheses: `@container a (…), b style(…)`.
+        let depth = 0;
+        let scopedPrelude = "";
+        let copiedTo = 0;
+        for (const token of prelude.matchAll(/[()]|-?[a-zA-Z_][\w-]*/g)) {
+          if (token[0] === "(") depth++;
+          else if (token[0] === ")") depth = Math.max(0, depth - 1);
+          else if (
+            depth === 0 &&
+            prelude[token.index + token[0].length] !== "("
+          ) {
+            const scoped = scopedNames.get(token[0]);
+            if (scoped !== undefined) {
+              scopedPrelude += prelude.slice(copiedTo, token.index) + scoped;
+              copiedTo = token.index + token[0].length;
+            }
+          }
+        }
+        return `${keyword}${scopedPrelude}${prelude.slice(copiedTo)}`;
+      },
     )
     .replace(
-      /((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm,
-      (match: string, prefix: string, name: string) => {
-        const scoped = scopedNames.get(name);
-        return scoped === undefined ? match : `${prefix}${scoped}`;
-      },
+      CONTAINER_DECLARATION,
+      (_match, prefix: string, value: string) =>
+        `${prefix}${value.replace(CONTAINER_VALUE_NAME, scopeName)}`,
     );
   return restore(replaced);
 };
