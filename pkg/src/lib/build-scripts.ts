@@ -4,9 +4,10 @@
  * Build-time Script Execution
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * `<script data-bascik-build>` blocks are executed at transpile time as
- * Node.js ESM modules.  Whatever the script writes to stdout is injected into
- * the page in place of the script tag.
+ * `<script data-bascik-build>` (and `data-bascik-build-once`) blocks run at
+ * transpile time as Node.js ESM modules. The module's default export is
+ * called with no arguments, and the string it returns (or an `html` value,
+ * or a promise of either) replaces the script tag in the page.
  *
  * This lets you pull in external data — markdown files, JSON, API responses —
  * at build time and inline the generated HTML directly into the page.
@@ -17,25 +18,30 @@
  * <script data-bascik-build>
  * import { readFile } from 'node:fs/promises';
  * import { marked }   from 'marked';
- * const md = await readFile('./content/posts/intro.md', 'utf8');
- * console.log(marked(md));
+ * export default async function () {
+ *   return marked(await readFile('./content/posts/intro.md', 'utf8'));
+ * }
  * </script>
  * ```
  *
  * Rules
  * ──────────────────────────────────────────────────────────────────────────────
- * - The script is written to a temporary `.mjs` file and executed with the
- *   same Node.js binary that is running Bascik.
+ * - Each uncached script is written to its own temporary module and run in
+ *   its own child process with the Node.js binary running Bascik
+ *   (`handler-runner.ts`); the result comes back through a private result
+ *   file, never through stdout.
  * - Top-level `import` statements and top-level `await` are supported.
  * - The script's working directory is the project root (`process.cwd()`).
- * - Use `console.log()` or `process.stdout.write()` to output the HTML to
- *   inject.  Anything written to stderr is forwarded to Bascik's own stderr.
- * - The script tag (including its attributes and closing tag) is completely
- *   replaced by the stdout output.  If the script produces no output, the tag
- *   is replaced with an empty string.
- * - On execution error, Bascik logs a warning and removes the script tag from
- *   the output rather than aborting the build.
- * - Scripts run during both `bascik` (dev) and `bascik --build` (production).
+ * - A module without a callable default export, or a default export that
+ *   returns anything but a string or `html` value, is a script error.
+ * - `console.log()` / `console.error()` output is diagnostic only: it is
+ *   captured and printed to Bascik's stdout / stderr when the child exits,
+ *   and never becomes markup.
+ * - A failing script follows `scripts.onBuildScriptError`: `'error'` (the
+ *   default) fails the page with a located error, `'warn'` logs it and
+ *   leaves an empty slot.
+ * - Scripts run during both `bascik` (dev) and `bascik --build` (production),
+ *   and their output is cached by content (`computeScriptCacheKey`).
  */
 
 import { createHash } from "node:crypto";
