@@ -71,4 +71,39 @@ describe("Server Script Diagnostics: linear time", () => {
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
+
+  // CodeQL alert 207 (js/polynomial-redos): a regex star over parentheses,
+  // `await` and whitespace before the Response. A loop skips that prefix now.
+  it.each([
+    ["tabs after return", (n: number) => `{\n  return ${"\t".repeat(n)}x;\n}`],
+    [
+      "tabs after return (",
+      (n: number) => `{\n  return (${"\t".repeat(n)}x);\n}`,
+    ],
+    [
+      "tabs after await",
+      (n: number) => `{\n  return await${"\t".repeat(n)}x;\n}`,
+    ],
+    ["tabs in an arrow body", (n: number) => `(${"\t".repeat(n)}x)`],
+  ])(
+    "misuse: a returned value after a huge run of %s is checked in linear time",
+    (_name, bodyOf) => {
+      const handlerOf = (n: number): string =>
+        `export default async (request) => ${bodyOf(n)};`;
+      const small = handlerOf(40_000);
+      const large = handlerOf(160_000);
+      expect(
+        analyze(large).filter(
+          (d) => d.code === "server-script-returns-response",
+        ),
+      ).toEqual([]);
+      expect(
+        growthOf(
+          () => analyze(small),
+          () => analyze(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });

@@ -602,12 +602,34 @@ const BLOCK_KEYWORDS = new Set([
 ]);
 
 /**
- * A returned Response, from just after `return` (or at an arrow's expression
- * body): any parentheses and `await` before it, then `new Response(` or
- * `Response.json(` / `.redirect(` / `.error(`. Group 1 is what gets marked.
+ * A returned Response, matched where `skipResponsePrefix` stops: `new
+ * Response(` or `Response.json(` / `.redirect(` / `.error(`. Group 1 is what
+ * gets marked. The prefix is skipped by a loop rather than a leading
+ * `(?:\(|\bawait\b|\s)*`, which CodeQL reports as a polynomial regex (alert
+ * 207).
  */
 const RESPONSE_VALUE =
-  /(?:\(|\bawait\b|\s)*(new\s+Response|Response\s*\.\s*(?:json|redirect|error))\s*\(/y;
+  /(new\s+Response|Response\s*\.\s*(?:json|redirect|error))\s*\(/y;
+
+const isRegexWordChar = (char: string | undefined): boolean =>
+  char !== undefined && /\w/.test(char);
+
+/**
+ * Past the parentheses, whole-word `await`s and whitespace at `i`: what may
+ * come between `return` (or an arrow) and the Response it returns.
+ */
+function skipResponsePrefix(code: string, i: number): number {
+  for (;;) {
+    if (code[i] === "(" || (i < code.length && isSpace(code[i]))) i++;
+    else if (
+      code.startsWith("await", i) &&
+      !isRegexWordChar(code[i - 1]) &&
+      !isRegexWordChar(code[i + 5])
+    )
+      i += 5;
+    else return i;
+  }
+}
 
 type FunctionBody = { block: number } | { expression: number };
 
@@ -738,11 +760,10 @@ export function findReturnedResponses(
   if (fn === undefined) return [];
   const found: { start: number; end: number }[] = [];
   const responseAt = (at: number): void => {
-    RESPONSE_VALUE.lastIndex = at;
+    RESPONSE_VALUE.lastIndex = skipResponsePrefix(code, at);
     const m = RESPONSE_VALUE.exec(code);
     if (m === null) return;
-    const start = m.index + m[0].lastIndexOf(m[1]);
-    found.push({ start, end: start + m[1].length });
+    found.push({ start: m.index, end: m.index + m[1].length });
   };
   if ("expression" in fn) {
     responseAt(fn.expression);
