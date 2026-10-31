@@ -707,14 +707,19 @@ export const minifyJs = (js: string): string => {
     //     pattern `\b(if|while|for|switch)\s*\([^)]*\)\s*$` must use that
     //     final `)` as its `\)`, and `[^)]*` cannot cross the previous `)`,
     //     so the whole match lies after the second-to-last `)`. That region
-    //     is located lazily with one backward `lastIndexOf` and only when the
-    //     line actually ends with `)`. Regions for successive `)`-terminated
-    //     lines are disjoint, so total work stays linear.
+    //     is kept as it is appended (`afterLastParen`, `afterPrevParen`) and
+    //     read only when the line actually ends with `)`. Regions for
+    //     successive `)`-terminated lines are disjoint, so total work stays
+    //     linear. (A `lastIndexOf` on processedText looked cheap, but V8
+    //     flattens a string built by `+=` on each read: quadratic.)
     const TAIL_WINDOW = 12;
     const lines = text.split("\n");
     let processedText = "";
     let ptLast = "";
     let ptTail = "";
+    // processedText after its last `)`, and after its second-to-last `)`.
+    let afterLastParen = "";
+    let afterPrevParen = "";
     // Offset in `text` of the last character of the most recently appended line.
     let lineOffset = 0;
     let prevLineEnd = -1;
@@ -723,6 +728,16 @@ export const minifyJs = (js: string): string => {
 
     const appendProcessed = (s: string): void => {
       processedText += s;
+      const last = s.lastIndexOf(")");
+      if (last === -1) {
+        afterLastParen += s;
+        afterPrevParen += s;
+      } else {
+        const previous = s.lastIndexOf(")", last - 1);
+        afterPrevParen =
+          previous === -1 ? afterLastParen + s : s.slice(previous + 1);
+        afterLastParen = s.slice(last + 1);
+      }
       ptLast = s[s.length - 1];
       ptTail =
         s.length >= TAIL_WINDOW
@@ -760,11 +775,9 @@ export const minifyJs = (js: string): string => {
           // `if (a === "x")` then a body on the next line: the scanner saw this `)` close the header.
           endsWithOpenControl = true;
         } else if (lastChar === ")") {
-          const prevParen = processedText.lastIndexOf(
-            ")",
-            processedText.length - 2,
-          );
-          const region = processedText.slice(prevParen + 1);
+          // processedText ends with this `)`, so the region after the
+          // `)` before it is everything after the second-to-last `)`.
+          const region = afterPrevParen;
           __scanStatsForTests.charsExamined += region.length;
           endsWithOpenControl = /\b(if|while|for|switch)\s*\([^)]*\)\s*$/.test(
             region,
