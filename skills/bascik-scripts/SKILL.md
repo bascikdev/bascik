@@ -26,14 +26,14 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 
 ## Rules for every Node-side script
 
-1. **Export a default function that returns an HTML string.** `console.log()` output goes to the terminal only; it never becomes markup.
+1. **Export a default function that returns an HTML string or an `html` value.** `console.log()` output goes to the terminal only; it never becomes markup.
 2. **One directive per tag.** Combining `data-bascik-build`, `data-bascik-build-once`, `-routes`, `-server`, or `-stream` is a hard error.
 3. **Imports:** top-level `import` and `await` work. Use `@/` for shared helpers: `import { renderMd } from '@/lib/md.ts'` resolves against `scripts.importRoot` (default `src`) from any depth. `./` and `../` resolve against the file containing the script. Bare npm packages work.
 4. **Never import with a bare leading `/`.** `import x from '/lib/x.ts'` and `src="/lib/x.ts"` are hard errors. Use `@/lib/x.ts` or `./lib/x.ts`. A `data-bascik-*` tag with `src=` has an empty body: a tag with both is rejected, and a `src=` file that cannot be read is the reported error.
 5. **Helpers import helpers with relative paths.** `@/` is rewritten only inside script tags; a `.ts` helper that imports another helper uses `./other.ts` (with the extension) and `import type` for type-only imports. tsconfig `paths` do not apply.
 6. **Data paths are relative to the project root.** `readFile('./content/post.md')` resolves from `process.cwd()`, not from the page.
 7. **Watch helpers.** Add `src/lib/` and data folders such as `content/` to `pipeline.watchPaths` so edits rebuild dependent pages in dev.
-8. **Build server and stream output with `html` from `@bascik/bascik/html`.** Plain template strings do not escape. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts may return `html` values too. An `html` value is an object, not a string: `String(output)` in tests, `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /security`, `/html-helpers`.
+8. **Build all markup with `html` from `@bascik/bascik/html`.** This covers every build, build-once, routes, server and stream script, API route, and every `.ts` helper that returns markup (`src/lib/` or a component's companion). Plain template strings do not escape, and a hand-written escaper (`escapeHtml`, a `.replace(/&/g, "&amp;")` chain, an entity map) misses URLs and script contexts: never write one, and replace one you find with `html`. A feed or sitemap is XML, not HTML: build it as a string and escape each value with `esc()`. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts return `html` values like server scripts do. An `html` value is an object, not a string: `String(output)` in tests, `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /security`, `/html-helpers`.
 9. **TypeScript by default.** Helpers (`src/lib/*.ts`), API routes (`src/api/*.ts`), `pipeline.exec` scripts (`scripts/*.ts`), and `bascik.config.ts` are TypeScript; Node strips their types, so there is no build step. Keep to erasable syntax (no `enum`, namespaces with code, or parameter properties), or pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS`. A `data-bascik-*` script is TypeScript when its `src=` names a `.ts` file (`<script data-bascik-build src="./nav.ts">`) or its tag is marked `type="text/typescript"`; Bascik strips its types before it runs, on Node and in the Cloudflare Worker, and errors keep the source's lines; a syntax error or `enum` fails `bascik --build` (and the page in dev) with file:line:column, never only at request time. An unmarked block is JavaScript, so mark it. Keep each block to a few lines that import typed helpers. Helpers import each other with the `.ts` extension. Use JavaScript only when the person asks for it; when refactoring TypeScript, keep the types. Browser TypeScript and esbuild: the `bascik` skill, and `read-doc.mjs /scoped-javascript`, `/configuration`, `/how-to/bundling-npm-packages`.
 10. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
 
@@ -42,12 +42,18 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 ```ts
 // src/lib/markdown.ts
 import { readFile } from "node:fs/promises";
+import { html, raw, type SafeHtml } from "@bascik/bascik/html";
 import { marked } from "marked";
 
-export async function renderMarkdown(path: string): Promise<string> {
+/** Your own Markdown is trusted, so raw() inserts the rendered HTML as it is. */
+export async function renderMarkdown(path: string): Promise<SafeHtml> {
   const md = await readFile(path, "utf8");
-  return marked.parse(md, { async: false }) as string;
+  return raw(marked.parse(md, { async: false }) as string);
 }
+
+/** A card from data: html escapes each value for where it lands. */
+export const postCard = (post: { slug: string; title: string }): SafeHtml =>
+  html`<a href="/blog/${post.slug}/">${post.title}</a>`;
 ```
 
 ```html
@@ -160,7 +166,7 @@ There is no content API. A collection is a folder such as `content/posts/`, one 
 3. **Exclude every page that lists the folder from the cache** (`scripts.cache.exclude`), because the cache cannot see `readdir`; otherwise new posts do not appear. Add `content/` and `src/lib/` to `pipeline.watchPaths`.
 4. **Dates stay `YYYY-MM-DD` strings** in route data, formatted with `timeZone: 'UTC'`.
 5. **Drafts** are skipped when `process.env.BASCIK_BUILD === '1'`.
-6. **Escape front matter values; sanitize Markdown from a CMS or users.** Your own repository's Markdown is trusted.
+6. **Print front matter values with `html`; sanitize Markdown from a CMS or users before `raw()`.** Your own repository's Markdown is trusted, so `raw(post.html)` inserts it. The starter's `posts.ts` and blog pages show the pattern.
 7. **Style rendered Markdown from a global stylesheet** (`.prose h2`). In a component, element selectors never match generated or slotted HTML.
 8. **Feeds and other files are `post` exec scripts** that write to `BASCIK_OUT_DIR` and need `BASCIK_SITE_URL` for absolute URLs.
 

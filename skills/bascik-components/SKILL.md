@@ -30,7 +30,7 @@ Code should look like tag names, not big blocks of HTML. A page that reads `<sit
 
 **Write each fact once:**
 
-1. **Facts live in one place.** An address, opening hours, a phone number, or a plan's price typed into the header, the footer, and a contact section will drift apart. Put it in one component (`<site-address />`, used in each spot) or one data file (`src/lib/site.ts`) that build scripts read.
+1. **Facts live in one place.** An address, opening hours, a phone number, or a plan's price typed into the header, the footer, and a contact section will drift apart. Put it in one component (`<site-address />`, used in each spot) or one data file (`src/lib/site.ts`) that build scripts read and print with `html` from `@bascik/bascik/html`, never with an escaper of their own.
 2. **A value every page passes the same way is not a prop.** If each page writes `<site-header data-bascik-prop-brand="Hearth & Crumb" />`, write "Hearth & Crumb" into `site-header.html` and drop the prop. Props are for what changes between uses.
 3. **A repeated heading group is a component.** When several sections open with the same eyebrow, heading, and intro, make `<section-head data-bascik-prop-label="FAQ" data-bascik-prop-title="..." data-bascik-prop-text="..." />` and give it a slot for extras such as a link.
 
