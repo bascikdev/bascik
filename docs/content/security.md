@@ -377,7 +377,7 @@ Two things to settle before you turn a policy on:
 
 ## The linter
 
-The language server, the VS Code extension and `bascik --check` warn with `server-script-unescaped-markup` when a script interpolates a value into a markup template without `html`. That covers server, stream, build and routes scripts, and the `.ts` and `.js` modules they import, since a build script's helper writes your pages too:
+The language server, the VS Code extension and `bascik --check` warn with `server-script-unescaped-markup` when a script interpolates a value into a markup template without `html`. That covers server, stream, build and routes scripts, API routes, and the `.ts` and `.js` modules they import, since a build script's helper writes your pages too. API routes and the modules that server scripts, stream scripts and API routes import get every sink rule (an `onclick`, a `style` or an unchecked URL holding a request value); build scripts and their helpers get the ones that break markup whoever wrote the value:
 
 ```text
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.

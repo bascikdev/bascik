@@ -519,11 +519,17 @@ Each `origins` entry is a scheme, a host and an optional port, with no path. The
 
 The linter found a template literal with tags in a directive script (server, stream, build or routes) or in a module one imports, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
 
+When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
+
+A hole where a tag or attribute name goes (`<h${level}>`) cannot be wrapped in `html`, which throws there: in build scripts and their helpers it is not reported, and in request-time code the message asks you to choose between fixed names in code. Other holes in such a template are told to use `esc()`.
+
 ### `hand-written-html-escaper`: NAME() is a hand-written HTML escaper
 
-The linter found a function that turns `&` and `<` into entities with a `.replace()` chain, a lookup object or a `switch`. Build the markup with `html` from `@bascik/bascik/html`, or call `esc()` for a plain string; for a one-return escaper, the editor's quick fix makes it call `esc()`. An escaper that is for XML on purpose, such as an RSS feed's, needs a comment above it that says so. See the [Linter](/tools/linter#hand-written-html-escaper).
+The linter found a function that turns `&` and `<` into entities with a `.replace()` or `.split().join()` chain, a lookup object or `Map`, or a `switch`. Build the markup with `html` from `@bascik/bascik/html`, or call `esc()` for a plain string; for a one-return escaper, the editor's quick fix makes it call `esc()`. An escaper that is for XML on purpose, such as an RSS feed's, needs a comment on its own lines right above it, or inside it, that says so. See the [Linter](/tools/linter#hand-written-html-escaper).
 
-When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
+### `analysis-failed`: Bascik could not analyze this file
+
+The language server stopped reading the file, usually because a template literal or a bracket is nested thousands deep, which overflows its scanners. The file gets this one warning and no other Bascik diagnostics; every other file is still checked. Flatten the nesting (build the inner parts in a loop or with `.map()`), and the file's diagnostics come back.
 
 ### `html-escaped-twice`: esc() inside html`...` escapes twice
 
