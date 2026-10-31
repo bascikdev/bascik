@@ -2090,6 +2090,71 @@ describe("extractInheritableAttributes – quote-aware scanning", () => {
   });
 });
 
+describe("extractInheritableAttributes – attribute names as the HTML tokenizer reads them (F027)", () => {
+  it("keeps names with @ and . whole, with their values", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card @click="open()" x-on:click.prevent="go()" :class="{a:b}" hx-on::after-request="done()" class="x"></my-card>',
+      ),
+    ).toEqual({
+      "@click": "open()",
+      "x-on:click.prevent": "go()",
+      ":class": "{a:b}",
+      "hx-on::after-request": "done()",
+      class: "x",
+    });
+  });
+
+  it("keeps other names outside [\\w:-] (#ref, v-bind.sync, [prop]) and valueless ones", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-card #ref v-bind:title.sync=t @keyup.enter='send()' [hidden]=\"no\" disabled></my-card>",
+      ),
+    ).toEqual({
+      "#ref": "",
+      "v-bind:title.sync": "t",
+      "@keyup.enter": "send()",
+      "[hidden]": "no",
+      disabled: "",
+    });
+  });
+
+  it("reads an unquoted value up to whitespace, slashes included, and drops the self-closing slash", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-card data-href=/about/team title=x/></my-card>",
+      ),
+    ).toEqual({ "data-href": "/about/team", title: "x" });
+    expect(extractInheritableAttributes("<my-card title=x />")).toEqual({
+      title: "x",
+    });
+  });
+
+  it("still excludes data-bascik-* attributes, in any case, and spaced or prefixed names", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card DATA-BASCIK-PROP-T="a" data-bascik-slot @data-bascik-x="y" class="c"></my-card>',
+      ),
+    ).toEqual({ "@data-bascik-x": "y", class: "c" });
+  });
+
+  it("drops a name holding a quote or <, the tail of a malformed value", () => {
+    expect(
+      extractInheritableAttributes(
+        `<my-card title="say "hi"" c<d class="c"></my-card>`,
+      ),
+    ).toEqual({ title: "say ", class: "c" });
+  });
+
+  it("does not read attribute-like text inside a quoted value as an attribute", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card title="a @click=bad() b" class="c"></my-card>',
+      ),
+    ).toEqual({ title: "a @click=bad() b", class: "c" });
+  });
+});
+
 describe("injectProps – quote-aware scanning", () => {
   it("matches the marker element when a previous attribute value contains >", () => {
     const template = '<p title="a > b" data-bascik-prop-title></p>';

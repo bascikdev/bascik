@@ -18,19 +18,11 @@ import {
 } from "./element-content-scan.ts";
 
 /**
- * One attribute after whitespace: name and optional value. The lookbehind
- * starts a match only at the first character of a whitespace run (a match
- * never ends in whitespace, so the run before the next one is never cut),
- * which finds the same matches as `\s+...` but scans a run that holds no
- * attribute once instead of once per position: quadratic on a long run of
- * spaces in visitor slot content or a usage tag.
- */
-const ATTRIBUTE_RE =
-  /(?<!\s)\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
-
-/**
  * Extract attributes from a component usage tag that should be inherited by
  * the component's root element.  All data-bascik-* attributes are excluded.
+ * Names are read as the HTML tokenizer reads them (`scanWholeAttributes`): a
+ * name runs to whitespace, `/`, `=` or `>`, so `@click`, `x-on:click.prevent`
+ * and `#ref` are whole names, as they are on the root.
  *
  * e.g. '<my-nav class="sticky" aria-label="nav" data-bascik-prop-x="y">'
  *      → { class: "sticky", "aria-label": "nav" }
@@ -40,29 +32,38 @@ export const extractInheritableAttributes = (
 ): Record<string, string> => {
   if (!componentContent) return {};
   const attrs: Record<string, string> = {};
-  // Grab just the opening tag text (up to the first > or />).
-  // The attribute scan is quote-aware so a `>` inside a quoted attribute value
+  // Grab just the opening tag text (up to the first > outside quotes).
+  // The scan is quote-aware so a `>` inside a quoted attribute value
   // (e.g. title="a > b") does not end the opening tag early.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagMatch = componentContent.match(
-    new RegExp(`^<[\\w-]+(${ATTR_VALUE})(?:\\s*\\/?>)`),
-  );
-  if (!openTagMatch || !openTagMatch[1]) return attrs;
-  const attrStr = openTagMatch[1];
-  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted attribute values.
-  const attrRegex = ATTRIBUTE_RE;
-  attrRegex.lastIndex = 0;
-  let match;
-  while ((match = attrRegex.exec(attrStr)) !== null) {
-    const [, name, rawValue] = match;
-    if (name.startsWith("data-bascik-")) continue;
-    if (rawValue === undefined) {
+  const openingTag = componentContent.match(
+    new RegExp(`^<[\\w-]+(?:${ATTR_VALUE})>`),
+  )?.[0];
+  if (!openingTag) return attrs;
+  const tagEnd = openingTag.length - 1;
+  for (const attr of scanWholeAttributes(openingTag)) {
+    const { name } = attr;
+    if (/^data-bascik-/i.test(name)) continue;
+    // A quote or `<` cannot be written back in a name (HTML's attribute name
+    // rule excludes them); such a name is the tail of a malformed value, as
+    // in `data-bascik-prop-t="say "hi""`, never an attribute to carry over.
+    if (/["'<]/.test(name)) continue;
+    if (attr.valueStart === -1) {
       attrs[name] = "";
-    } else if (rawValue.startsWith('"') || rawValue.startsWith("'")) {
-      attrs[name] = rawValue.slice(1, -1);
-    } else {
-      attrs[name] = rawValue;
+      continue;
     }
+    let value = openingTag.slice(attr.valueStart, attr.valueEnd);
+    const quote = openingTag[attr.valueStart - 1];
+    // An unquoted value that runs into the tag's `/>` leaves the slash to
+    // the self-closing syntax, as Bascik reads `<my-card title=x/>`.
+    if (
+      quote !== '"' &&
+      quote !== "'" &&
+      attr.valueEnd === tagEnd &&
+      value.endsWith("/")
+    )
+      value = value.slice(0, -1);
+    attrs[name] = value;
   }
   return attrs;
 };

@@ -1019,3 +1019,32 @@ describe("a component with an empty template (F026)", () => {
     ).toThrow(/\(3 substitutions\)/);
   });
 });
+
+describe("usage attributes outside [\\w:-] reach the root (F027)", () => {
+  beforeEach(() => {
+    (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+
+  it("inherits @click, x-on:click.prevent, :class and hx-on::after-request whole", () => {
+    const list: ComponentList = {
+      "my-card": {
+        fileName: "src/components/my-card.html",
+        fileContent: `<div class="card"><span data-bascik-prop-title>t</span></div>`,
+      },
+    };
+    const html = `<main><my-card @click="open()" x-on:click.prevent="go()" :class="{a:1}" hx-on::after-request="done()" class="x" data-bascik-prop-title="Hi"></my-card></main>`;
+    for (const result of [
+      viaCore(html, list, PAGE_PATH),
+      viaWrapper(html, list, PAGE_PATH),
+    ]) {
+      const root = /<div [^>]*>/.exec(result.transpiledHtmlBody)?.[0] ?? "";
+      expect(root).toContain('@click="open()"');
+      expect(root).toContain('x-on:click.prevent="go()"');
+      expect(root).toContain(':class="{a:1}"');
+      expect(root).toContain('hx-on::after-request="done()"');
+      expect(root).not.toMatch(/x-on:click=""/);
+      expect(root).toMatch(/class="[^"]*card x"/);
+      expect(result.transpiledHtmlBody).toContain("<span>Hi</span>");
+    }
+  });
+});
