@@ -172,6 +172,8 @@ import {
   resolveCssImportsSync,
   shieldCssStrings,
   quotedAttributeValueRanges,
+  declaredCssClassNames,
+  scopeCssClassSelectors,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -522,10 +524,8 @@ export const prefixElementAttribute = (
       } else {
         scopedClassesSet = new Set<string>();
         const { css: shieldedCss } = shieldCssStrings(combinedCss);
-        for (const m of shieldedCss.matchAll(
-          /(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g,
-        )) {
-          scopedClassesSet.add(m[0]);
+        for (const name of declaredCssClassNames(shieldedCss)) {
+          scopedClassesSet.add(name);
         }
         cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
       }
@@ -947,9 +947,7 @@ export const prefixElementAttribute = (
         const { css: shieldedCss, restore: restoreCssStrings } =
           shieldCssStrings(component.cssFileContent);
         component.cssFileContent = restoreCssStrings(
-          shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
-            return minifyAttributeName(`bascik__${scopeKey}__${className}`);
-          }),
+          scopeCssClassSelectors(shieldedCss, scopeKey),
         );
 
         // Convert CSS hash-ID selectors (#id) to component-scoped class selectors

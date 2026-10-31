@@ -220,7 +220,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /((?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
       (_match, prefix: string, elementName: string) =>
         `${prefix}${toClass(elementName)}`,
     );
@@ -826,6 +826,79 @@ export const shieldCssStrings = (
     restore: shield.restore,
   };
 };
+
+// One CSS escape: a hex code point (1-6 digits, one optional whitespace
+// terminator) or any other character except a newline.
+const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
+
+/**
+ * The class name after each `.` in CSS whose strings and `url()` contents are
+ * shielded: an identifier that starts with a letter, `_`, a non-ASCII
+ * character or an escape, and runs over word characters, `-`, non-ASCII
+ * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`).
+ */
+const cssClassSelectorNames = (): RegExp =>
+  new RegExp(
+    String.raw`(?<=\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
+    "g",
+  );
+
+/** The identifier a CSS escape sequence stands for (`md\:flex` -> `md:flex`). */
+export const unescapeCssIdentifier = (raw: string): string =>
+  raw.includes("\\")
+    ? raw.replace(
+        /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([\s\S]))/g,
+        (_match, hex: string | undefined, char: string | undefined) => {
+          if (hex === undefined) return char ?? "";
+          const codePoint = Number.parseInt(hex, 16);
+          return codePoint === 0 ||
+            codePoint > 0x10ffff ||
+            (codePoint >= 0xd800 && codePoint <= 0xdfff)
+            ? "\ufffd"
+            : String.fromCodePoint(codePoint);
+        },
+      )
+    : raw;
+
+/**
+ * Escape a class name for use after `.` in a selector, past its first
+ * character: anything other than a word character, `-` or non-ASCII is
+ * escaped (control characters as hex), so `md:flex` -> `md\:flex`.
+ */
+const escapeCssIdentifierTail = (name: string): string =>
+  name.replace(/[^\w\u0080-\uffff-]/g, (char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f
+      ? `\\${code.toString(16)} `
+      : `\\${char}`;
+  });
+
+/** Every class name a (string-shielded) stylesheet declares, unescaped. */
+export const declaredCssClassNames = (shieldedCss: string): string[] =>
+  [...shieldedCss.matchAll(cssClassSelectorNames())].map(([raw]) =>
+    unescapeCssIdentifier(raw),
+  );
+
+/**
+ * Rename every class selector in a (string-shielded) stylesheet to
+ * `bascik__<scopeKey>__<name>`, hashed when identifiers are minified. An
+ * escaped name is unescaped first, so the selector and the class attribute
+ * token it matches get the same scoped name, then escaped again.
+ */
+export const scopeCssClassSelectors = (
+  shieldedCss: string,
+  scopeKey: string,
+): string =>
+  shieldedCss.replace(cssClassSelectorNames(), (raw) => {
+    if (!raw.includes("\\"))
+      return minifyAttributeName(`bascik__${scopeKey}__${raw}`);
+    const name = unescapeCssIdentifier(raw);
+    const full = `bascik__${scopeKey}__${name}`;
+    const scoped = minifyAttributeName(full);
+    return scoped === full
+      ? `bascik__${scopeKey}__${escapeCssIdentifierTail(name)}`
+      : escapeCssIdentifierTail(scoped);
+  });
 
 /**
  * Hide every at-rule prelude except `@scope`'s (from the `@` up to the next
@@ -1743,11 +1816,7 @@ export const scopeInlineStyleTags = (
       );
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
-      css = restore(
-        shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) =>
-          minifyAttributeName(`bascik__${componentName}__${className}`),
-        ),
-      );
+      css = restore(scopeCssClassSelectors(shieldedCss, componentName));
       const { css: idCss, idsConverted } = convertCssIdSelectorsToClasses(
         css,
         componentName,

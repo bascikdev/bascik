@@ -2968,3 +2968,15 @@ describe("quotedAttributeValueRanges", () => {
     ]);
   });
 });
+
+describe("scopeInlineStyleTags – escaped class selectors", () => {
+  it("keeps the escape in the scoped selector", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>.md\\:flex{display:flex}.w-1\\/2{width:50%}.\\31 0{color:red}</style>",
+      "card",
+    );
+    expect(html).toBe(
+      "<style>.bascik__card__md\\:flex{display:flex}.bascik__card__w-1\\/2{width:50%}.bascik__card__10{color:red}</style>",
+    );
+  });
+});

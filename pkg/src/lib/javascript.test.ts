@@ -2630,3 +2630,106 @@ describe("prefixElementAttribute – backslash before a closing quote", () => {
     );
   });
 });
+
+describe("prefixElementAttribute – escaped class selectors", () => {
+  it("scopes the attribute token an escaped class selector names", () => {
+    const c = makeComponent(
+      '<div class="md:flex w-1/2 plain md">x</div>',
+      ".md\\:flex { display: flex } .w-1\\/2 { width: 50% } .plain { color: red }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("md:flex")} ${scopeClass("w-1/2")} ${scopeClass("plain")} md">x</div>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("md\\:flex")} { display: flex } .${scopeClass("w-1\\/2")} { width: 50% } .${scopeClass("plain")} { color: red }`,
+    );
+  });
+
+  it("matches a hex escape to its character", () => {
+    const c = makeComponent(
+      '<p class="10 a+b">x</p>',
+      ".\\31 0 { color: red } .a\\2b b { color: blue }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `class="${scopeClass("10")} ${scopeClass("a+b")}"`,
+    );
+    expect(result.cssFileContent).toContain(`.${scopeClass("10")} {`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("a\\+b")} {`);
+  });
+
+  it("gives the selector and the attribute the same hash when identifiers are minified", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<div class="md:flex">x</div>',
+          ".md\\:flex { display: flex }",
+        ),
+        "class",
+        "test1234",
+      );
+      const token = result.fileContent.match(/class="([^"]+)"/)?.[1];
+      expect(token).toMatch(/^b[0-9a-zA-Z]{11}$/);
+      expect(result.cssFileContent).toBe(`.${token} { display: flex }`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("scopes a non-ASCII class name as one token", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<p class="naïve na">x</p>', ".naïve { color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<p class="${scopeClass("naïve")} na">x</p>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("naïve")} { color: red }`,
+    );
+  });
+
+  it("reads an escaped space as part of the name, as browsers do", () => {
+    // `.foo\ {` names the class "foo " (a typo for `.foo {`): neither the
+    // browser nor Bascik matches it to `class="foo"`, so the rule stays dead
+    // rather than silently styling something else.
+    const result = prefixElementAttribute(
+      makeComponent('<p class="foo">x</p>', ".foo\\ { color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("foo\\ ")}{ color: red }`,
+    );
+    expect(result.fileContent).toBe('<p class="foo">x</p>');
+  });
+
+  it("leaves a backslash before a newline (not an escape) where it was", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<p class="foo">x</p>', ".foo\\\n{ color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("foo")}\\\n{ color: red }`,
+    );
+    expect(result.fileContent).toBe(`<p class="${scopeClass("foo")}">x</p>`);
+  });
+
+  it("converts an element after an escaped class like any scoped class", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="md:flex"><p>x</p></div>',
+        ".md\\:flex p { display: flex }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("md\\:flex")} .${scopeClass("el__p")} { display: flex }`,
+    );
+  });
+});
