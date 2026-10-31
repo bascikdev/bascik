@@ -345,6 +345,7 @@ describe("generate-press-kit", () => {
       expect(dev?.watch).toEqual([
         "src/pages/assets/bascik-logo.svg",
         "src/pages/assets/favicon.svg",
+        "src/lib/press-logo.ts",
       ]);
       expect(dev).not.toHaveProperty("outputs");
       expect(build.pipeline?.exec?.some((e) => e.script === script)).toBe(true);

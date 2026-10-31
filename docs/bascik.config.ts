@@ -73,9 +73,11 @@ export default defineConfig({
         watch: [
           "src/pages/assets/bascik-logo.svg",
           "src/pages/assets/favicon.svg",
+          "src/lib/press-logo.ts",
         ],
         // Generates the brand kit (logos, PNG exports, social images, and the zip) into dist/assets/press/.
-        // Only the two authored logo SVGs are watched; the generated kit never is.
+        // Only the two authored logo SVGs and the logo parser it shares with the /press page are watched;
+        // the generated kit never is.
       },
     ],
   },
