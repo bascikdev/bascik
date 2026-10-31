@@ -640,16 +640,30 @@ describe("audit-config exec entries", () => {
     );
   });
 
-  it("reports a cwd that does not exist", () => {
+  it("warns (not errors) about a cwd that does not exist, as Bascik does", () => {
     const findings = execFindings(
       { script: "scripts/sync.ts", cwd: "packagez/site" },
       ["/project/scripts/sync.ts"],
     );
     expect(findings).toEqual([
       expect.objectContaining({
-        level: "error",
+        level: "warn",
         message: expect.stringContaining('cwd "packagez/site" does not exist'),
       }),
     ]);
+  });
+
+  it("accepts a post script whose cwd is inside the output directory the build creates", () => {
+    expect(
+      execFindings({ script: "scripts/post.ts", phase: "post", cwd: "dist" }, [
+        "/project/scripts/post.ts",
+      ]),
+    ).toEqual([]);
+    expect(
+      execFindings(
+        { script: "scripts/post.ts", phase: "post", cwd: "dist/assets" },
+        ["/project/scripts/post.ts"],
+      ),
+    ).toEqual([]);
   });
 });

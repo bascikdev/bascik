@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdirSync, mkdtempSync, existsSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  existsSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -15,6 +21,7 @@ import {
   validateConfigPaths,
   validateUserConfig,
   collectConfigWarnings,
+  collectExecCwdWarnings,
   formatConfigErrors,
   normalizeBasePath,
   isSameOrInsideOnDisk,
@@ -1296,37 +1303,122 @@ describe("referenced files (fs half)", () => {
     ]);
   });
 
-  it("rejects an exec cwd that is not a directory, and checks the script from the project root", () => {
-    // The script exists at the project root; the typo'd cwd does not exist.
+  it("does not reject an exec cwd at startup, and checks the script from the project root", () => {
+    // The script exists at the project root; the cwd folders do not exist yet.
     const fs = {
       existsSync: (path: string) => path === "/project/scripts/sync.ts",
+      isDirectory: () => false,
+      isReadableFile: () => true,
+    };
+    expect(
+      validateConfigPaths(
+        {
+          pipeline: {
+            exec: [
+              { script: "scripts/sync.ts", cwd: "packagez/site" },
+              { script: "scripts/sync.ts", phase: "post", cwd: "dist" },
+            ],
+          },
+        },
+        { fs, cwd: "/project" },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts a post script whose cwd is the output directory on a clean checkout", () => {
+    // No dist/ yet: the build creates it before the post phase runs.
+    const project = mkdtempSync(join(tmpdir(), "bascik-exec-cwd-"));
+    try {
+      mkdirSync(join(project, "src", "pages"), { recursive: true });
+      mkdirSync(join(project, "scripts"));
+      writeFileSync(join(project, "scripts", "post.mjs"), "");
+      const config = {
+        pipeline: {
+          exec: [
+            { script: "scripts/post.mjs", phase: "post", cwd: "dist" },
+            { script: "scripts/post.mjs", phase: "post", cwd: "dist/assets" },
+          ],
+        },
+      };
+      expect(validateUserConfig(config, {}, { cwd: project, env: {} })).toEqual(
+        [],
+      );
+      expect(collectExecCwdWarnings(config, {}, { cwd: project })).toEqual([]);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("warns about an exec cwd that is missing outside the output directory", () => {
+    const fs = {
+      existsSync: () => true,
       isDirectory: (path: string) => path === "/project/packages/site",
       isReadableFile: () => true,
     };
-    const errors = validateConfigPaths(
+    const warnings = collectExecCwdWarnings(
       {
+        directory: { out: "public" },
         pipeline: {
           exec: [
             { script: "scripts/sync.ts", cwd: "packagez/site" },
             { script: "scripts/sync.ts", cwd: "packages/site" },
-            { script: "scripts/sync.ts", cwd: "scripts/sync.ts" },
+            { script: "scripts/sync.ts", phase: "post", cwd: "public/en" },
+            { script: "scripts/sync.ts", phase: "post", cwd: "dist" },
           ],
+        },
+      },
+      {
+        build: {
+          directory: { out: "out" },
+          pipeline: {
+            exec: [
+              { script: "scripts/sync.ts", phase: "post", cwd: "out" },
+              { script: "scripts/sync.ts", cwd: "public" },
+            ],
+          },
         },
       },
       { fs, cwd: "/project" },
     );
-    expect(errors).toEqual([
-      {
-        key: "pipeline.exec[0].cwd",
-        value: "packagez/site",
-        message: "directory does not exist",
-      },
-      {
-        key: "pipeline.exec[2].cwd",
-        value: "scripts/sync.ts",
-        message: "directory does not exist",
-      },
+    const message =
+      "directory does not exist yet; the script fails to start unless an earlier step creates it";
+    expect(warnings).toEqual([
+      { key: "pipeline.exec[0].cwd", value: "packagez/site", message },
+      { key: "pipeline.exec[3].cwd", value: "dist", message },
+      { key: "build.pipeline.exec[1].cwd", value: "public", message },
     ]);
+  });
+
+  it("initBascikConfig starts with a missing exec cwd and warns once, naming it", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const fs = {
+        existsSync: () => true,
+        isDirectory: (path: string) => path === "/project/src/pages",
+        isReadableFile: () => true,
+      };
+      expect(() =>
+        initBascikConfig(
+          {
+            pipeline: {
+              exec: [
+                { script: "scripts/a.ts", phase: "post", cwd: "dist" },
+                { script: "scripts/b.ts", cwd: "packagez/site" },
+              ],
+            },
+          },
+          {},
+          { isBuild: true },
+          { fs, cwd: "/project", env: {} },
+        ),
+      ).not.toThrow();
+      const lines = warn.mock.calls.map((call) => String(call[0]));
+      expect(lines.filter((line) => line.includes("pipeline.exec"))).toEqual([
+        expect.stringContaining('pipeline.exec[1].cwd "packagez/site"'),
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("checks TLS key and cert files only when TLS is enabled", () => {

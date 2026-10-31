@@ -23,7 +23,7 @@ export default defineConfig({
 });
 ```
 
-Every entry is an object with at least a `script` key. A bare string such as `exec: ['scripts/generate-sitemap.ts']` is rejected at startup with `pipeline.exec[0]: expected an object with a script key`; write `{ script: 'scripts/generate-sitemap.ts' }` instead.
+Every entry is an object with at least a `script` key. A bare string such as `exec: ['scripts/generate-sitemap.ts']` is rejected at startup, and the error shows the object form to write instead: `{ script: 'scripts/generate-sitemap.ts' }`.
 
 ## Lifecycle Execution Phases
 
@@ -51,15 +51,15 @@ export default defineConfig({
 
 Each exec entry in `pipeline.exec` accepts:
 
-| Property            | Type                            | Default         | Description                                                                                                                                    |
-| :------------------ | :------------------------------ | :-------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                                                          |
-| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                                                        |
-| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                                                       |
-| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root, and the directory must exist                            |
-| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                                                         |
-| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                                                |
-| `timeout`           | `number`                        | `60000`         | Maximum run time in milliseconds, in every phase including `parallel`; `0` means no limit. See [Timeouts and stopping](#timeouts-and-stopping) |
+| Property            | Type                            | Default         | Description                                                                                                                                                                                                             |
+| :------------------ | :------------------------------ | :-------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                                                                                                                                   |
+| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                                                                                                                                 |
+| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                                                                                                                                |
+| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root. A missing folder is a startup warning (none inside `directory.out`, which the build creates) and an error when the script starts |
+| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                                                                                                                                  |
+| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                                                                                                                         |
+| `timeout`           | `number`                        | `60000`         | Maximum run time in milliseconds, in every phase including `parallel`; `0` means no limit. See [Timeouts and stopping](#timeouts-and-stopping)                                                                          |
 
 ```ts
 // Full exec entry configuration

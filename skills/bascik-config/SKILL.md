@@ -29,7 +29,7 @@ If every value would equal a default, do not create the file. If one exists, kee
 node <skill-dir>/scripts/audit-config.mjs
 ```
 
-It reports values that restate defaults, `siteUrl` in config, exec scripts or `cwd` folders that do not exist, watched output paths, `minify` values in the default export that silently change production builds, and `build.pipeline.exec` lists that drop default scripts. Exit code 1 means an error; `--strict` also fails on redundant values.
+It reports values that restate defaults, `siteUrl` in config, exec scripts that do not exist, `cwd` folders that do not exist outside the output directory (a warning), watched output paths, `minify` values in the default export that silently change production builds, and `build.pipeline.exec` lists that drop default scripts. Exit code 1 means an error; `--strict` also fails on redundant values.
 
 ## Shape
 

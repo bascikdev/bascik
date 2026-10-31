@@ -1532,20 +1532,9 @@ export const validateConfigPaths = (
             "file does not exist",
           );
         }
-        // The child starts in `cwd`; the script path itself is still a
-        // project path (exec.ts resolves it from the project root).
-        if (
-          isPlainObject(entry) &&
-          typeof entry.cwd === "string" &&
-          entry.cwd.length > 0 &&
-          !fs.isDirectory(resolvePath(entry.cwd))
-        ) {
-          push(
-            `pipeline.exec[${index}].cwd`,
-            entry.cwd,
-            "directory does not exist",
-          );
-        }
+        // `cwd` is not checked here: a post script may start in a folder
+        // the build creates (dist/). collectExecCwdWarnings reports a
+        // missing one, and exec.ts names it if it is still missing at spawn.
       });
     }
   }
@@ -1566,6 +1555,82 @@ export const validateConfigPaths = (
 };
 
 /* ── Warnings (non-fatal) ─────────────────────────────────────────────── */
+
+/**
+ * Warns about a `pipeline.exec[].cwd` folder that does not exist at startup.
+ * Not an error: an earlier step may create it, and a folder inside the
+ * output directory (a post script that runs in dist/) is made by the build
+ * itself, so those are skipped. A cwd still missing when the script starts
+ * fails there, with the folder named (exec.ts).
+ */
+export const collectExecCwdWarnings = (
+  userConfig: unknown,
+  modeOverrides: unknown,
+  deps: { fs?: ConfigValidationFs; cwd?: string } = {},
+): ConfigValidationError[] => {
+  const fs = deps.fs ?? defaultFs;
+  const root = resolve(deps.cwd ?? process.cwd());
+  const outOf = (layer: unknown): string | undefined =>
+    isPlainObject(layer) &&
+    isPlainObject(layer.directory) &&
+    typeof layer.directory.out === "string" &&
+    layer.directory.out.length > 0
+      ? layer.directory.out
+      : undefined;
+  const baseOut = outOf(userConfig) ?? DEFAULT_DIRECTORY.out;
+  const perMode =
+    isPlainObject(modeOverrides) &&
+    ("dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides);
+  // [key prefix, layer, the output directories its entries can run with]
+  const layers: [string, unknown, string[]][] = [];
+  if (perMode) {
+    const overrides = modeOverrides as Record<string, unknown>;
+    const modes = ["dev", "build", "server"] as const;
+    layers.push([
+      "",
+      userConfig,
+      modes.map((mode) => outOf(overrides[mode]) ?? baseOut),
+    ]);
+    for (const mode of modes)
+      if (mode in overrides)
+        layers.push([
+          `${mode}.`,
+          overrides[mode],
+          [outOf(overrides[mode]) ?? baseOut],
+        ]);
+  } else {
+    const flatOut = outOf(modeOverrides) ?? baseOut;
+    layers.push(["", userConfig, [baseOut, flatOut]]);
+    if (isPlainObject(modeOverrides))
+      layers.push(["", modeOverrides, [flatOut]]);
+  }
+  const warnings: ConfigValidationError[] = [];
+  for (const [prefix, layer, outs] of layers) {
+    if (!isPlainObject(layer) || !isPlainObject(layer.pipeline)) continue;
+    const exec = layer.pipeline.exec;
+    if (!Array.isArray(exec)) continue;
+    exec.forEach((entry, index) => {
+      if (
+        !isPlainObject(entry) ||
+        typeof entry.cwd !== "string" ||
+        entry.cwd.length === 0
+      )
+        return;
+      const dir = resolve(root, entry.cwd);
+      if (outs.some((out) => isSameOrInside(dir, resolve(root, out)))) return;
+      if (fs.isDirectory(dir)) return;
+      warnings.push({
+        key: `${prefix}pipeline.exec[${index}].cwd`,
+        value: entry.cwd,
+        message:
+          "directory does not exist yet; the script fails to start unless an earlier step creates it",
+      });
+    });
+  }
+  return warnings;
+};
 
 /**
  * Non-fatal findings about user-supplied paths. A project with no shared
