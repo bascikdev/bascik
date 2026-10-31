@@ -46,12 +46,20 @@ interface ListedProcess {
   started: string;
 }
 
+/** One `ps` snapshot: every process, by pid. */
+type ProcessTable = Map<number, { ppid: number; started: string }>;
+
+/** A `ps` snapshot taken when first asked for, or undefined if `ps` failed. */
+type ProcessSnapshot = () => ProcessTable | undefined;
+
 /**
  * Every process `ps` lists, by pid, or undefined when it cannot list them.
  * Tried in order: with start times, without them, and the plain POSIX form.
+ * Each call blocks the main thread for the whole `ps` run, tens of
+ * milliseconds on a busy machine, so callers acting at the same moment share
+ * one through `sharedSnapshot`.
  */
-const listProcesses = ():
-  Map<number, { ppid: number; started: string }> | undefined => {
+const listProcesses = (): ProcessTable | undefined => {
   if (process.platform === "win32") return undefined;
   for (const args of [
     ["-A", "-o", "pid=", "-o", "ppid=", "-o", "lstart="],
@@ -65,7 +73,7 @@ const listProcesses = ():
       return undefined;
     }
     if (listed.status !== 0 || typeof listed.stdout !== "string") continue;
-    const processes = new Map<number, { ppid: number; started: string }>();
+    const processes: ProcessTable = new Map();
     for (const line of listed.stdout.split("\n")) {
       const match = /^\s*(\d+)\s+(\d+)(?:\s+(\S.*?))?\s*$/.exec(line);
       if (!match) continue;
@@ -79,18 +87,34 @@ const listProcesses = ():
   return undefined;
 };
 
+/** One `ps` snapshot, taken on first use and shared by every later caller. */
+const sharedSnapshot = (): ProcessSnapshot => {
+  let taken = false;
+  let table: ProcessTable | undefined;
+  return () => {
+    if (!taken) {
+      taken = true;
+      table = listProcesses();
+    }
+    return table;
+  };
+};
+
 /**
  * Every process below `roots` in one `ps` snapshot, by root pid. Listed
  * before the root is signaled: once it dies its children are re-parented
  * and can no longer be found. POSIX only; a missing `ps` yields no
  * descendants, and the direct child is still signaled.
  */
-const listDescendants = (roots: number[]): Map<number, ListedProcess[]> => {
+const listDescendants = (
+  roots: number[],
+  snapshot: ProcessSnapshot = listProcesses,
+): Map<number, ListedProcess[]> => {
   const byRoot = new Map<number, ListedProcess[]>(
     roots.map((pid) => [pid, []]),
   );
   if (roots.length === 0) return byRoot;
-  const processes = listProcesses();
+  const processes = snapshot();
   if (!processes) return byRoot;
   const children = new Map<number, number[]>();
   for (const [pid, { ppid }] of processes) {
@@ -128,8 +152,8 @@ interface TreeRoot {
   script: string;
 }
 
-/** Set once the no-start-time warning has been printed. */
-let warnedNoStartTime = false;
+/** The scripts already warned about processes left without a start time. */
+const warnedNoStartTime = new Set<string>();
 
 /**
  * The listed processes that are still the same processes: SIGKILL comes
@@ -142,14 +166,16 @@ let warnedNoStartTime = false;
  * reused pid apart, so there a process is confirmed only by an unchanged
  * parent chain up to the script, while the script itself still runs: no
  * other program can be a child of a live process the script started. A
- * process that cannot be confirmed is not signaled, and Bascik says so once.
+ * process that cannot be confirmed is not signaled, and Bascik says so, the
+ * first time for each script.
  */
 const stillRunning = (
   listed: ListedProcess[],
   root: TreeRoot,
+  snapshot: ProcessSnapshot = listProcesses,
 ): ListedProcess[] => {
   if (listed.length === 0) return listed;
-  const processes = listProcesses();
+  const processes = snapshot();
   if (!processes) return [];
   const byPid = new Map(listed.map((entry) => [entry.pid, entry]));
   const chainUnchanged = (entry: ListedProcess): boolean => {
@@ -170,14 +196,18 @@ const stillRunning = (
     unconfirmed.push(entry.pid);
     return false;
   });
-  if (unconfirmed.length > 0 && !warnedNoStartTime) {
-    warnedNoStartTime = true;
-    const count =
-      unconfirmed.length === 1
-        ? "1 process the script started"
-        : `${unconfirmed.length} processes the script started`;
+  if (unconfirmed.length > 0 && !warnedNoStartTime.has(root.script)) {
+    warnedNoStartTime.add(root.script);
+    const one = unconfirmed.length === 1;
+    const count = one
+      ? "1 process the script started"
+      : `${unconfirmed.length} processes the script started`;
+    const pids = `pid ${unconfirmed.join(", ")}`;
+    const outcome = one
+      ? "was not sent SIGKILL. Stop it by hand if it is still running."
+      : "were not sent SIGKILL. Stop them by hand if they are still running.";
     console.warn(
-      `[bascik] warning: exec "${root.script}": ps on this system reports no process start times, so ${count} (pid ${unconfirmed.join(", ")}) could not be confirmed as the same process and was not sent SIGKILL. Stop it by hand if it is still running.`,
+      `[bascik] warning: exec "${root.script}": ps on this system reports no process start times, so ${count} (${pids}) could not be confirmed as the same ${one ? "process" : "processes"} and ${outcome}`,
     );
   }
   return confirmed;
@@ -228,11 +258,14 @@ const killLeftovers = (
   pendingLeftovers.set(descendants, { timer, root });
 };
 
-/** Send the pending leftover SIGKILLs now (Bascik is exiting). */
-const killPendingLeftovers = (clock: FrameworkClock): void => {
+/** Send the pending leftover SIGKILLs now (Bascik is exiting), checked in one snapshot. */
+const killPendingLeftovers = (
+  clock: FrameworkClock,
+  snapshot: ProcessSnapshot,
+): void => {
   for (const [descendants, { timer, root }] of pendingLeftovers) {
     clock.clearTimeout(timer);
-    killListed(stillRunning(descendants, root));
+    killListed(stillRunning(descendants, root, snapshot));
   }
   pendingLeftovers.clear();
 };
@@ -310,7 +343,7 @@ export const resetActiveExecChildrenForTests = (): void => {
   for (const { timer } of pendingLeftovers.values())
     nativeClock.clearTimeout(timer);
   pendingLeftovers.clear();
-  warnedNoStartTime = false;
+  warnedNoStartTime.clear();
   warnedTaskkill = false;
   activeChildren.clear();
   childRecords.clear();
@@ -326,14 +359,19 @@ export const execShutdownHandler = async (
   options?: ExecOptions,
 ): Promise<void> => {
   const clock = options?.clock ?? nativeClock;
-  killPendingLeftovers(clock);
+  // Each `ps` run blocks the main thread, so a stop takes two at most, not
+  // one per child: one now, for the leftovers' re-check and every child's
+  // tree before any of them is signaled, and one at the shared deadline.
+  const atStart = sharedSnapshot();
+  const atDeadline = sharedSnapshot();
+  killPendingLeftovers(clock, atStart);
   if (activeChildren.size === 0) return;
   const childrenToClose = Array.from(activeChildren);
-  // One `ps` snapshot for every child, taken before any of them is signaled.
   const trees = listDescendants(
     childrenToClose
       .map((child) => child.pid)
       .filter((pid): pid is number => pid !== undefined),
+    atStart,
   );
   const treeOf = (child: ChildProcess): ListedProcess[] => {
     const record = childRecords.get(child);
@@ -406,11 +444,11 @@ export const execShutdownHandler = async (
 
       deadlineTimer = clock.setTimeout(() => {
         cleanup();
-        const confirmed = stillRunning(descendants, {
-          pid: child.pid,
-          running: isRunning(child),
-          script,
-        });
+        const confirmed = stillRunning(
+          descendants,
+          { pid: child.pid, running: isRunning(child), script },
+          atDeadline,
+        );
         if (activeChildren.has(child))
           signalTree(child, "SIGKILL", confirmed, script);
         else killListed(confirmed);
