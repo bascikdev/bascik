@@ -44,22 +44,62 @@ const DEFAULT_IMPORT_ROOT = "src";
 const DEFAULT_API_ROOT = "src/api";
 const DEFAULT_PAGES_ROOT = "src/pages";
 
+/**
+ * The config source with `//` and `/* *\/` comments replaced by spaces (line breaks kept), so a commented-out
+ * setting never drives the editor while the compiler, which imports the real config, ignores it. Quotes and
+ * template literals are skipped, so `https://` in a string stays. One forward pass with `indexOf`, so an
+ * unclosed `/*` (a comment to the end of the file) or a run of them stays linear.
+ */
+function stripConfigComments(source: string | undefined): string {
+  const text = source ?? "";
+  let out = "";
+  let copiedTo = 0;
+  let i = 0;
+  const blank = (end: number) => {
+    out += text.slice(copiedTo, i) + text.slice(i, end).replace(/[^\n]/g, " ");
+    copiedTo = end;
+    i = end;
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "/" && text[i + 1] === "/") {
+      const end = text.indexOf("\n", i + 2);
+      blank(end < 0 ? text.length : end);
+    } else if (c === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2);
+      blank(close < 0 ? text.length : close + 2);
+    } else if (c === '"' || c === "'" || c === "`") {
+      // A quoted string ends at its quote, or (unclosed) at the line break; a template at its backtick.
+      let j = i + 1;
+      while (
+        j < text.length &&
+        text[j] !== c &&
+        (c === "`" || text[j] !== "\n")
+      )
+        j += text[j] === "\\" ? 2 : 1;
+      i = j + 1;
+    } else {
+      i++;
+    }
+  }
+  return copiedTo === 0 ? text : out + text.slice(copiedTo);
+}
+
 /** Reads `directory.pages` from the config source. The key must be exactly `pages`. */
 export function parsePagesRoot(source: string | undefined): string {
   return (
-    /(?<![\w$])pages\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ??
-    DEFAULT_PAGES_ROOT
+    /(?<![\w$])pages\s*:\s*['"]([^'"]+)['"]/.exec(
+      stripConfigComments(source),
+    )?.[1] ?? DEFAULT_PAGES_ROOT
   );
 }
 
 /**
  * Reads `scoping.attributes.name` from the config source: true only when the `attributes` object sets
- * `name: true`. Line comments are ignored; a `name` key anywhere else is not the toggle.
+ * `name: true`. Comments are ignored; a `name` key anywhere else is not the toggle.
  */
 export function parseScopesName(source: string | undefined): boolean {
-  // Line comments only: a block-comment regex is quadratic on unclosed `/*` runs, and the other config readers
-  // here do not strip them either.
-  const code = (source ?? "").replace(/(^|[^:"'])\/\/[^\n]*/g, "$1");
+  const code = stripConfigComments(source);
   const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
   if (!attributes) return false;
   return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
@@ -80,7 +120,8 @@ export function isUsageSourcePath(
 /** Reads `directory.api` from the config source. `apiTimeout` does not match: the key must be exactly `api`. */
 export function parseApiRoot(source: string | undefined): string {
   return (
-    /\bapi\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ?? DEFAULT_API_ROOT
+    /\bapi\s*:\s*['"]([^'"]+)['"]/.exec(stripConfigComments(source))?.[1] ??
+    DEFAULT_API_ROOT
   );
 }
 
@@ -97,7 +138,9 @@ export function normalizeComponentName(name: string): string {
 
 export function parseComponentRoots(source: string | undefined): string[] {
   if (!source) return DEFAULT_COMPONENT_ROOTS;
-  const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
+  const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(
+    stripConfigComments(source),
+  );
   if (!match?.[1]) return DEFAULT_COMPONENT_ROOTS;
   const literals = Array.from(
     match[1].matchAll(/['"]([^'"]+)['"]/g),
@@ -108,8 +151,9 @@ export function parseComponentRoots(source: string | undefined): string[] {
 
 export function parseImportRoot(source: string | undefined): string {
   return (
-    /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source ?? "")?.[1] ??
-    DEFAULT_IMPORT_ROOT
+    /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(
+      stripConfigComments(source),
+    )?.[1] ?? DEFAULT_IMPORT_ROOT
   );
 }
 
