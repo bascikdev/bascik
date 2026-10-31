@@ -43,11 +43,13 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 | Scoping compatibility rules                                               | `docs/content/compatibility.md` is the source; `docs/scripts/generate-compatibility-rules.ts` writes `lsp/src/compatibility-rules.json` and `pkg/src/lib/compatibility-rules.json` |
 | Which files the server is sent, how it is launched                        | `extensions/vscode-bascik/src/client-options.ts`, `extension.ts`                                                                                                                   |
 | Project discovery, file watching, workspace folders, stale results        | `lsp/src/server.ts`, tested in `lsp/src/server.test.ts`                                                                                                                            |
-| Highlighting                                                              | `syntaxes/bascik-html.tmLanguage.json`                                                                                                                                             |
+| Highlighting                                                              | `syntaxes/bascik-html.tmLanguage.json` (attributes), `syntaxes/bascik-typescript-script.tmLanguage.json` (TypeScript in `type="text/typescript"` scripts)                          |
 
 Scoping rules (`css-*`, `js-*`) apply to component files only. Pages, API routes, and scripts outside the component folders are not scoped, so they are not checked.
 
 Highlighting is a TextMate injection into `text.html`, the prefix of `text.html.derivative`, the root grammar of the `html` language (`text.html.basic` has no language, so an injection there never loads). Its rule is a begin/end that includes `text.html.basic#attribute-interior`, so the value keeps HTML string scopes. The real-editor suite reads scopes with `_workbench.captureSyntaxTokens`.
+
+The TypeScript script injection embeds VS Code's own `source.ts` and maps it to the `typescript` language with `embeddedLanguages`. VS Code loads an injection for every dot prefix of the root scope but merges its `embeddedLanguages` only when `injectTo` names the root scope exactly, so that grammar injects into `text.html.derivative`. `src/grammar.test.ts` tokenizes documents with `vscode-textmate` and the `tm-grammars` copies of VS Code's grammars; an unnamed begin/end rule that an injection can match again at the same position loops, which is why the rule sets a `contentName` its selector excludes.
 
 ---
 
