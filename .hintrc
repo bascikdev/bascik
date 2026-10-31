@@ -34,7 +34,7 @@
   },
   "ignoredUrls": [
     {
-      "domain": ".*(e2e|dist|test-results|coverage|hint-report|.vscode-test).*",
+      "domain": "/(e2e|dist|test-results|coverage|hint-report|\\.vscode-test)/",
       "hints": [
         "*"
       ]
