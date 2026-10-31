@@ -7,7 +7,8 @@
  * Creates:
  *  - src/pages/index.html   — starter HTML page
  *  - src/components/        — empty components directory
- *  - .gitignore additions    — dist/ and node_modules/.cache/bascik/
+ *  - .gitignore additions    — dist/, node_modules/.cache/bascik/, and the
+ *    TLS key and certificate the server generates (newline style kept)
  *  - .vscode/settings.json   — "html.validate.scripts": false (merged, never replaced)
  *  - .vscode/extensions.json — recommends the Bascik extension (merged, never replaced)
  *  - AGENTS.md               — the project brief for coding assistants (merged, never replaced)
@@ -17,8 +18,10 @@
  *    installed with the skills CLI at this Bascik version's tag
  *
  * Updates package.json (if present):
- *  - Adds "type": "module" only when absent (never rewrites "commonjs")
- *  - Adds @bascik/bascik dependency when missing
+ *  - Adds "type": "module" only when absent; a "commonjs" project is refused
+ *    before anything is written
+ *  - Adds the @bascik/bascik dependency at `^<running version>` when it is in
+ *    neither dependencies nor devDependencies
  *  - Adds "dev" and "build" scripts if not already defined
  */
 
@@ -60,7 +63,19 @@ const INDEX_HTML = `<!DOCTYPE html>
 </html>
 `;
 
-const REQUIRED_GITIGNORE_ENTRIES = ["dist/", "node_modules/.cache/bascik/"];
+/**
+ * Lines init makes sure `.gitignore` has. The two `.pem` names are the files
+ * pki.ts writes into the project folder when `http.tls.enabled` is set
+ * without a keyFile or certFile; the private key must never be committed.
+ * The exact names, not `*.pem`, so certificates a project commits on purpose
+ * stay tracked.
+ */
+export const REQUIRED_GITIGNORE_ENTRIES = [
+  "dist/",
+  "node_modules/.cache/bascik/",
+  "bascik-privkey.pem",
+  "bascik-cert.pem",
+];
 
 /** Write a file only if it does not already exist. Returns true when written. */
 async function writeIfAbsent(path: string, content: string): Promise<boolean> {
@@ -94,6 +109,11 @@ export async function initProject(options: InitOptions = {}): Promise<void> {
   const indexPath = join(pagesDir, "index.html");
   const gitignorePath = join(cwd, ".gitignore");
   const pkgPath = join(cwd, "package.json");
+  const version = options.version ?? (await readVersion());
+
+  // Read and check package.json before writing anything, so a refusal (a
+  // "commonjs" project) leaves the folder exactly as it was.
+  const pkgPlan = await planPackageJson(pkgPath, version);
 
   // Ensure directories exist
   await mkdir(pagesDir, { recursive: true });
@@ -107,14 +127,21 @@ export async function initProject(options: InitOptions = {}): Promise<void> {
       : "  skipped: src/pages/index.html (already exists)",
   );
 
-  await ensureGitignoreEntries(gitignorePath, REQUIRED_GITIGNORE_ENTRIES);
-  console.log("  updated: .gitignore (dist/, node_modules/.cache/bascik/)");
+  const addedToGitignore = await ensureGitignoreEntries(
+    gitignorePath,
+    REQUIRED_GITIGNORE_ENTRIES,
+  );
+  console.log(
+    addedToGitignore.length > 0
+      ? `  updated: .gitignore (${addedToGitignore.join(", ")})`
+      : "  skipped: .gitignore (already set)",
+  );
 
-  const scripts = await updatePackageJson(pkgPath);
+  const scripts = await writePackageJson(pkgPath, pkgPlan);
   const commands = bascikCommands(scripts);
   await setUpVscode(cwd);
   await setUpAgentFiles(cwd, commands);
-  await setUpSkills(cwd, options);
+  await setUpSkills(cwd, options, version);
   printDone(commands);
 }
 
@@ -174,12 +201,15 @@ async function setUpAgentFiles(cwd: string, commands: Commands): Promise<void> {
  * with the skills CLI. A failed install is reported with the command to run
  * later and never fails init.
  */
-async function setUpSkills(cwd: string, options: InitOptions): Promise<void> {
+async function setUpSkills(
+  cwd: string,
+  options: InitOptions,
+  version: string,
+): Promise<void> {
   if (options.skills === false) {
     console.log("  skipped: agent skills (--no-skills)");
     return;
   }
-  const version = options.version ?? (await readVersion());
   if (!options.yes) {
     let answer: string;
     if (options.ask) {
@@ -202,27 +232,47 @@ async function setUpSkills(cwd: string, options: InitOptions): Promise<void> {
   for (const line of skillsReportLines(result)) console.log(`  ${line}`);
 }
 
+/** What init will do to package.json, decided before anything is written. */
+type PackageJsonPlan =
+  | { kind: "skip"; reason: string }
+  | {
+      kind: "update";
+      pkg: Record<string, unknown>;
+      changes: string[];
+      scripts: Record<string, string>;
+    };
+
 /**
- * Add what Bascik needs to package.json. Resolves with the scripts it ends
- * up with, or undefined when there is no package.json it could read.
+ * The dependency range init writes for @bascik/bascik: a caret range on the
+ * version that is running, as create-bascik writes. `latest` is a dist-tag,
+ * not a range, so it would float to whatever the tag points at on every
+ * install without a lockfile; it is only the fallback when the running
+ * version cannot be read.
  */
-async function updatePackageJson(
+export function bascikDependencyRange(version: string): string {
+  return version === "unknown" ? "latest" : `^${version}`;
+}
+
+/**
+ * Read package.json and work out what Bascik needs added. Throws, before
+ * init has written anything, when the project sets "type": "commonjs".
+ */
+async function planPackageJson(
   pkgPath: string,
-): Promise<Record<string, string> | undefined> {
+  version: string,
+): Promise<PackageJsonPlan> {
   let pkgRaw: string;
   try {
     pkgRaw = await readFile(pkgPath, "utf8");
   } catch {
-    console.log("  skipped: package.json (not found — run `npm init` first)");
-    return undefined;
+    return { kind: "skip", reason: "not found — run `npm init` first" };
   }
 
   let pkg: Record<string, unknown>;
   try {
     pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
   } catch {
-    console.log("  skipped: package.json (could not parse — edit manually)");
-    return undefined;
+    return { kind: "skip", reason: "could not parse — edit manually" };
   }
 
   const changes: string[] = [];
@@ -230,7 +280,8 @@ async function updatePackageJson(
   if (pkg.type === "commonjs") {
     throw new Error(
       '[bascik] init aborted: package.json sets "type": "commonjs". ' +
-        "Bascik config uses ESM syntax, so update this project manually if you want to migrate.",
+        "Bascik config uses ESM syntax, so update this project manually if you want to migrate. " +
+        "Nothing was written.",
     );
   }
 
@@ -240,12 +291,20 @@ async function updatePackageJson(
     changes.push('"type": "module"');
   }
 
-  if (typeof pkg.dependencies !== "object" || pkg.dependencies === null) {
-    pkg.dependencies = {};
-  }
-  const dependencies = pkg.dependencies as Record<string, string>;
-  if (!dependencies["@bascik/bascik"]) {
-    dependencies["@bascik/bascik"] = "latest";
+  const hasDependency = (field: string): boolean => {
+    const deps = pkg[field];
+    return (
+      typeof deps === "object" &&
+      deps !== null &&
+      Boolean((deps as Record<string, unknown>)["@bascik/bascik"])
+    );
+  };
+  if (!hasDependency("dependencies") && !hasDependency("devDependencies")) {
+    if (typeof pkg.dependencies !== "object" || pkg.dependencies === null) {
+      pkg.dependencies = {};
+    }
+    (pkg.dependencies as Record<string, string>)["@bascik/bascik"] =
+      bascikDependencyRange(version);
     changes.push('"@bascik/bascik" dependency');
   }
 
@@ -264,13 +323,28 @@ async function updatePackageJson(
     changes.push('"build" script');
   }
 
-  if (changes.length > 0) {
-    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
-    console.log(`  updated: package.json (${changes.join(", ")})`);
+  return { kind: "update", pkg, changes, scripts };
+}
+
+/**
+ * Write the planned package.json changes. Resolves with the scripts it ends
+ * up with, or undefined when there is no package.json it could read.
+ */
+async function writePackageJson(
+  pkgPath: string,
+  plan: PackageJsonPlan,
+): Promise<Record<string, string> | undefined> {
+  if (plan.kind === "skip") {
+    console.log(`  skipped: package.json (${plan.reason})`);
+    return undefined;
+  }
+  if (plan.changes.length > 0) {
+    await writeFile(pkgPath, JSON.stringify(plan.pkg, null, 2) + "\n", "utf8");
+    console.log(`  updated: package.json (${plan.changes.join(", ")})`);
   } else {
     console.log("  skipped: package.json (already configured)");
   }
-  return scripts;
+  return plan.scripts;
 }
 
 /**
@@ -321,10 +395,14 @@ to change a default: https://bascik.dev/configuration
 `);
 }
 
+/**
+ * Append the entries `.gitignore` lacks, in the file's own newline style (a
+ * CRLF file stays CRLF). Resolves with the entries it added.
+ */
 async function ensureGitignoreEntries(
   path: string,
   entries: string[],
-): Promise<void> {
+): Promise<string[]> {
   let current = "";
   try {
     current = await readFile(path, "utf8");
@@ -332,18 +410,18 @@ async function ensureGitignoreEntries(
     current = "";
   }
 
-  const normalized = current.replace(/\r\n/g, "\n");
-  const lines = normalized.length > 0 ? normalized.split("\n") : [];
-  const existing = new Set(lines.map((line) => line.trim()));
+  const newline = current.includes("\r\n") ? "\r\n" : "\n";
+  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
   const toAppend = entries.filter((entry) => !existing.has(entry));
   if (toAppend.length === 0) {
-    return;
+    return [];
   }
 
-  let next = normalized;
+  let next = current;
   if (next.length > 0 && !next.endsWith("\n")) {
-    next += "\n";
+    next += newline;
   }
-  next += toAppend.join("\n") + "\n";
+  next += toAppend.join(newline) + newline;
   await writeFile(path, next, "utf8");
+  return toAppend;
 }
