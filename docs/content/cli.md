@@ -15,7 +15,7 @@ Scaffolds a complete starter project in a new directory. Prompts for a project n
 ```text
 my-project/
   package.json
-  vite.config.js
+  vite.config.ts
   .gitignore
   .vscode/
     launch.json
@@ -63,7 +63,7 @@ my-project/
         contact-form.test.ts
 ```
 
-Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.js`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
+Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.ts`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
 
 After scaffolding, the tool prompts you interactively:
 

@@ -1218,7 +1218,8 @@ describe("scaffold", () => {
     await scaffold("my-app", "/tmp");
     expect(writtenTo("package.json")).toBeDefined();
     expect(writtenTo("bascik.config.ts")).toBeUndefined();
-    expect(writtenTo("vite.config.js")).toBeDefined();
+    expect(writtenTo("vite.config.ts")).toBeDefined();
+    expect(writtenTo("vite.config.js")).toBeUndefined();
     expect(writtenTo(".gitignore")).toBeDefined();
     expect(writtenTo(".hintrc")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
@@ -1391,7 +1392,7 @@ describe("scaffold", () => {
     it("misuse: lists five files and counts the rest", async () => {
       existing([
         "package.json",
-        "vite.config.js",
+        "vite.config.ts",
         ".gitignore",
         "e2e/playwright.config.ts",
         "e2e/app.spec.ts",

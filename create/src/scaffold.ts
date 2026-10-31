@@ -1250,7 +1250,7 @@ const starterFiles = (
   return [
     // Root
     ["package.json", PACKAGE_JSON(packageName, template)],
-    ["vite.config.js", VITE_CONFIG],
+    ["vite.config.ts", VITE_CONFIG],
     [".gitignore", cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE],
 
     // E2E
