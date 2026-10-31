@@ -1373,27 +1373,77 @@ export const resolveCssImportsSync = (
  * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
  * which requires @import rules to precede all other style rules.
  */
+/**
+ * A function returning the `{}` nesting depth at an offset of `css`, for
+ * offsets asked in increasing order. Braces in strings and comments do not
+ * count.
+ */
+const braceDepthScanner = (css: string): ((offset: number) => number) => {
+  let index = 0;
+  let depth = 0;
+  return (offset: number): number => {
+    while (index < offset) {
+      const char = css[index];
+      if (char === '"' || char === "'") {
+        let end = index + 1;
+        while (end < css.length && css[end] !== char && css[end] !== "\n")
+          end += css[end] === "\\" ? 2 : 1;
+        index = end + 1;
+        continue;
+      }
+      if (char === "/" && css[index + 1] === "*") {
+        const end = css.indexOf("*/", index + 2);
+        index = end === -1 ? css.length : end + 2;
+        continue;
+      }
+      if (char === "{") depth++;
+      else if (char === "}" && depth > 0) depth--;
+      index++;
+    }
+    return depth;
+  };
+};
+
 export const hoistCssImports = (css: string): string => {
   if (!css || !css.includes("@import")) return css;
 
-  const importRegex =
-    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
-  const imports: string[] = [];
-  const seen = new Set<string>();
-
-  const cleanedCss = css.replace(importRegex, (statement) => {
-    const trimmed = statement.trim();
-    if (!seen.has(trimmed)) {
-      seen.add(trimmed);
-      imports.push(trimmed);
-    }
-    return "";
+  // An `@import` statement, or an `@layer a, b;` statement. The spec lets
+  // `@layer` statements precede `@import`, and a statement that names the
+  // layer an import goes into (`@layer base, theme; @import … layer(theme)`)
+  // sets the layer order, so one that came before an import moves up with it.
+  const statementRegex =
+    /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
+  // Only top-level `@layer` statements move: one inside `@media` must stay
+  // there.
+  const depthAt = braceDepthScanner(css);
+  const statements = [...css.matchAll(statementRegex)].filter(
+    (statement) =>
+      /^@import/i.test(statement[0]) || depthAt(statement.index) === 0,
+  );
+  let lastImport = -1;
+  statements.forEach((statement, index) => {
+    if (/^@import/i.test(statement[0])) lastImport = index;
   });
-
-  if (imports.length === 0) return css;
+  if (lastImport === -1) return css;
+  const hoisted: string[] = [];
+  const seen = new Set<string>();
+  let cleanedCss = "";
+  let copiedTo = 0;
+  for (const statement of statements.slice(0, lastImport + 1)) {
+    const trimmed = statement[0].trim();
+    const isImport = /^@import/i.test(trimmed);
+    // Imports are deduplicated; layer statements are kept as written.
+    if (!isImport || !seen.has(trimmed)) {
+      seen.add(trimmed);
+      hoisted.push(trimmed);
+    }
+    cleanedCss += css.slice(copiedTo, statement.index);
+    copiedTo = statement.index + statement[0].length;
+  }
+  cleanedCss += css.slice(copiedTo);
 
   const body = cleanedCss.trim();
-  return body ? `${imports.join("\n")}\n${body}` : imports.join("\n");
+  return body ? `${hoisted.join("\n")}\n${body}` : hoisted.join("\n");
 };
 
 export const getComponentCss = async (
@@ -1515,8 +1565,12 @@ export const scopeCustomPropertiesInStyleValue = (
  * Only names that appear in this CSS are scoped — external layer names
  * referenced elsewhere are left untouched.
  */
+// The name in an `@import … layer(name)` statement (strings and `url()`
+// contents shielded first).
+const IMPORT_LAYER_NAME = /(@import\b[^;{}]*?\blayer\(\s*)([\w-]+)(?=\s*\))/gi;
+
 export const scopeLayerNames = (css: string, componentName: string): string => {
-  if (!css.includes("@layer")) return css;
+  if (!css.includes("@layer") && !css.includes("layer(")) return css;
   const layerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   shielded.replace(
@@ -1526,6 +1580,10 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
       return "";
     },
   );
+  // A preserved remote `@import url(…) layer(name)` puts its rules in a layer
+  // of this component too.
+  for (const [, , name] of shielded.matchAll(IMPORT_LAYER_NAME))
+    layerNames.add(name);
   if (layerNames.size === 0) return css;
   const scopedNames = new Map<string, string>();
   layerNames.forEach((name) => {
@@ -1534,11 +1592,17 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
       minifyAttributeName(`bascik__${componentName}__layer__${name}`),
     );
   });
-  const replaced = shielded.replace(
-    /(@layer\s+)([\w-]+(?:\s*,\s*[\w-]+)*)/g,
-    (_: string, prefix: string, nameList: string) =>
-      `${prefix}${nameList.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name)}`,
-  );
+  const replaced = shielded
+    .replace(
+      /(@layer\s+)([\w-]+(?:\s*,\s*[\w-]+)*)/g,
+      (_: string, prefix: string, nameList: string) =>
+        `${prefix}${nameList.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name)}`,
+    )
+    .replace(
+      IMPORT_LAYER_NAME,
+      (_: string, prefix: string, name: string) =>
+        `${prefix}${scopedNames.get(name) ?? name}`,
+    );
   return restore(replaced);
 };
 

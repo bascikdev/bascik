@@ -3111,3 +3111,59 @@ describe("scopeContainerNames – several names in one declaration", () => {
     );
   });
 });
+
+describe("remote @import with layer()", () => {
+  const s = (name: string) => `bascik__c__layer__${name}`;
+
+  it("scopes the layer() name of an @import like the component's @layer names", () => {
+    const css =
+      "@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n@import 'https://x.test/b.css' layer( base ) supports(display: grid) screen;\n@import url(https://x.test/c.css) layer;\n.a {}";
+    expect(scopeLayerNames(css, "c")).toBe(
+      `@layer ${s("base")}, ${s("theme")};\n@import url(https://x.test/a.css) layer(${s("theme")});\n@import 'https://x.test/b.css' layer( ${s("base")} ) supports(display: grid) screen;\n@import url(https://x.test/c.css) layer;\n.a {}`,
+    );
+  });
+
+  it("scopes a layer only an @import names", () => {
+    expect(
+      scopeLayerNames("@import url(https://x.test/a.css) layer(vendor);", "c"),
+    ).toBe(`@import url(https://x.test/a.css) layer(${s("vendor")});`);
+  });
+
+  it("does not touch layer() text inside a string or url", () => {
+    const css = `@import url("https://x.test/layer(theme).css");\n.a::before { content: "layer(theme)" }\n@layer theme { .a {} }`;
+    expect(scopeLayerNames(css, "c")).toBe(
+      `@import url("https://x.test/layer(theme).css");\n.a::before { content: "layer(theme)" }\n@layer ${s("theme")} { .a {} }`,
+    );
+  });
+
+  it("keeps @layer statements that come before an @import ahead of it when hoisting", () => {
+    const css =
+      ".x { color: red }\n@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n.a {}\n@layer late;";
+    expect(hoistCssImports(css)).toBe(
+      "@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n.x { color: red }\n\n\n.a {}\n@layer late;",
+    );
+  });
+
+  it("does not hoist an @layer block, only statements", () => {
+    const css =
+      "@layer base { .a {} }\n@import url(https://x.test/a.css);\n.b {}";
+    expect(hoistCssImports(css)).toBe(
+      "@import url(https://x.test/a.css);\n@layer base { .a {} }\n\n.b {}",
+    );
+  });
+});
+
+describe("hoistCssImports – nested @layer statements", () => {
+  it("leaves an @layer statement inside a block where it is", () => {
+    const css =
+      '@media print { @layer a, b; .p::before { content: "}" } }\n@import url(https://x.test/a.css);\n.b {}';
+    expect(hoistCssImports(css)).toBe(
+      '@import url(https://x.test/a.css);\n@media print { @layer a, b; .p::before { content: "}" } }\n\n.b {}',
+    );
+  });
+
+  it("returns the CSS unchanged when only @layer statements are present", () => {
+    const css = "/* @import x; */ @layer a, b;\n.a {}";
+    expect(hoistCssImports(css)).toBe(css);
+  });
+});
