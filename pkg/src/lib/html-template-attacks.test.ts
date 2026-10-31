@@ -178,6 +178,18 @@ describe("<script> and <style> inside <svg> are markup, not raw text", () => {
   it("a CDATA section whose end depends on the parser's reading, after a breakout tag, keeps the hole out of an href", () =>
     safe(() => html`<svg><p></p><![CDATA[ > <a href="]]>${JS_URL}">x</a>`));
 
+  it("a CDATA section whose end depends on the parser's reading, inside <foreignObject> in a closed <svg>, is refused", () => {
+    const build = () => html`<svg><foreignObject><![CDATA[ > <a href="]]>${JS_URL}">x</a></foreignObject></svg>`;
+    safe(build);
+    refused(build, "comment");
+  });
+
+  it("a lowercase <![cdata[ whose end depends on the parser's reading, in a closed <svg>, is refused", () => {
+    const build = () => html`<svg><![cdata[ > <a href="]]>${JS_URL}">x</a></svg>`;
+    safe(build);
+    refused(build, "comment");
+  });
+
   it("a CDATA section whose end both readings agree on, after a breakout tag, still checks the href", () =>
     safe(() => html`<svg><p></p><![CDATA[x]]><a href="${JS_URL}">x</a>`));
 
