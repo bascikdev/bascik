@@ -20,9 +20,9 @@
   {
     "id": "css-reserved-class-prefix",
     "kind": "css",
-    "pattern": "(?<![\\w\"'-])\\.(?:el|id)__[A-Za-z_][\\w-]*",
+    "pattern": "(?<![\\w\"'-])\\.b_(?:el|id)_[\\w-]*",
     "flags": "g",
-    "message": "Class names starting with el__ or id__ share the names Bascik generates for element and #id selectors, so .el__p and p (or .id__btn and #btn) compile to the same class.",
+    "message": "Class names starting with b_el_ or b_id_ use the head Bascik reserves for the classes it generates from element and #id selectors (p in plan-card becomes b_el_plan-card_p, #btn becomes b_id_plan-card_btn), so the same name used as a global class can style a component's elements.",
     "suggestion": "Rename the class, for example .el-p or .item__p.",
     "severity": "warning"
   },

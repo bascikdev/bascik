@@ -1130,7 +1130,7 @@ describe("transpilePage – inline component <style> extraction & deduplication"
     expect(body).toContain('data-testid="multi"');
 
     // Scoped CSS in head covers element selector and class
-    expect(html).toContain(".bascik__comp-multi-root__el__h2");
+    expect(html).toContain(".b_el_comp-multi-root_h2");
     expect(html).toContain(".bascik__comp-multi-root__badge");
   });
 

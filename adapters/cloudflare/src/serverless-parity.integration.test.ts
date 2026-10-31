@@ -775,9 +775,11 @@ const numberInstanceNames = (text: string): string => {
     return `#${seen.get(token)}`;
   };
   return text
+    // `bascik__<name>__<id>__x`, and `b_id_<name>__<id>_x` for the class an
+    // #id rule generates in a per-instance stylesheet.
     .replace(
-      /__(r[0-9a-f]{7}|[0-9a-f]{8})__/g,
-      (_m, id: string) => `__${number(id)}__`,
+      /__(r[0-9a-f]{7}|[0-9a-f]{8})(?=_)/g,
+      (_m, id: string) => `__${number(id)}`,
     )
     .replace(/\bb[0-9a-zA-Z]{11}\b/g, (hash) => number(hash));
 };
@@ -950,11 +952,11 @@ for (const config of [
       );
       if (!config.identifiers) {
         expect(requestCss[0]).toContain(
-          ".bascik__edge-escaped__md\\:flex .bascik__edge-escaped__el__p",
+          ".bascik__edge-escaped__md\\:flex .b_el_edge-escaped_p",
         );
         // The space ending the hex escape stays apart from the combinator.
         expect(requestCss[0]).toContain(
-          ".bascik__edge-escaped__esc\\1  .bascik__edge-escaped__el__b",
+          ".bascik__edge-escaped__esc\\1  .b_el_edge-escaped_b",
         );
         expect(requestCss[1]).toContain(
           "@layer bascik__edge-layer__layer__base.bascik__edge-layer__layer__theme,",

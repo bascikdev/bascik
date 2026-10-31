@@ -1354,6 +1354,39 @@ describe("listComponents", () => {
   });
 });
 
+describe("listComponents – reserved generated class head", () => {
+  it("warns, with file and line, about an authored .b_el_ or .b_id_ class, and not about .el__p", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-reserved-head-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, "src/components/plan-card"), { recursive: true });
+      await writeFile(
+        join(cwd, "src/components/plan-card/plan-card.html"),
+        '<p class="b_el_x el__p">x</p>\n<style>\n  .el__p { color: blue; }\n  .b_id_plan-card_btn { color: red; }\n</style>\n',
+      );
+      await writeFile(
+        join(cwd, "src/components/plan-card/plan-card.css"),
+        "p {\n  margin: 0;\n}\n.b_el_x {\n  color: red;\n}\n",
+      );
+      await listComponents([join(cwd, "src/components")]);
+      const reserved = warnSpy.mock.calls
+        .map((c) => c.join(" "))
+        .filter((msg) => msg.includes("css-reserved-class-prefix"));
+      expect(reserved).toHaveLength(2);
+      expect(reserved.some((msg) => msg.includes("plan-card.css:4"))).toBe(
+        true,
+      );
+      expect(reserved.some((msg) => msg.includes("plan-card.html:4"))).toBe(
+        true,
+      );
+      expect(reserved[0]).toContain("b_el_");
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("isComponentSourceFile", () => {
   // The dev watcher uses this to decide which component-root edits rebuild
   // pages; it must accept every companion script listComponents inlines.

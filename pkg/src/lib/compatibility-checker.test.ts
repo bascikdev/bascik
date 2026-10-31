@@ -43,16 +43,22 @@ describe("compatibility-rules contract & positive/negative probes", () => {
     "css-reserved-class-prefix": {
       kind: "css",
       positive: [
-        ".el__p { color: blue; }",
-        ".card .id__btn { color: blue; }",
-        ".card, .el__item:hover { color: blue; }",
+        ".b_el_p { color: blue; }",
+        ".card .b_id_btn { color: blue; }",
+        ".card, .b_el_item:hover { color: blue; }",
+        ".b_el_card_p { color: blue; }",
+        ".b_id_card_btn > span { color: blue; }",
       ],
       negative: [
         ".block__el { color: blue; }",
         ".model__p { color: blue; }",
         ".el-p, .id-btn, .el_p { color: blue; }",
-        '.card::before { content: ".el__p"; }',
-        "/* .el__p { color: blue; } */",
+        // The generated names start with b_el_ and b_id_, so the double
+        // underscore forms an authored class compiles to stay distinct.
+        ".el__p, .id__btn { color: blue; }",
+        ".b-el-p, .bel_p, .b_elx, .ab_el_x, .B_EL_p { color: blue; }",
+        '.card::before { content: ".b_el_p"; }',
+        "/* .b_el_p { color: blue; } */",
       ],
     },
     "css-attribute-selector": {

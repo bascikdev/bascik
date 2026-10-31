@@ -218,12 +218,8 @@ describe.each([false, true])(
 
       // The constructs survived scoping as the build writes them.
       if (!identifiers) {
-        expect(out).toContain(
-          ".bascik__esc-card__md\\:flex .bascik__esc-card__el__p",
-        );
-        expect(out).toContain(
-          ".bascik__esc-card__esc\\1  .bascik__esc-card__el__b",
-        );
+        expect(out).toContain(".bascik__esc-card__md\\:flex .b_el_esc-card_p");
+        expect(out).toContain(".bascik__esc-card__esc\\1  .b_el_esc-card_b");
         expect(out).toContain(
           "@layer bascik__layer-card__layer__base.bascik__layer-card__layer__theme,",
         );

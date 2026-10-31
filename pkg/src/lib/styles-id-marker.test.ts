@@ -145,7 +145,7 @@ describe("createIdMarkerTest agrees with the id marker regex", () => {
 });
 
 describe("addIdClassesInHtml", () => {
-  const ids = [{ idName: "panel", className: "bascik__card__id__panel" }];
+  const ids = [{ idName: "panel", className: "b_id_card_panel" }];
 
   it("injects the id class for every spelling the marker accepts", () => {
     const html = [
@@ -161,9 +161,9 @@ describe("addIdClassesInHtml", () => {
     // The class goes right after the tag name, as for every injected class.
     expect(out).toBe(
       [
-        '<section class="bascik__card__id__panel" id="bascik__card__i1__panel"></section>',
-        "<p class=\"bascik__card__id__panel\" ID='PANEL'></p>",
-        '<i class="bascik__card__id__panel" id=x__panel/>',
+        '<section class="b_id_card_panel" id="bascik__card__i1__panel"></section>',
+        "<p class=\"b_id_card_panel\" ID='PANEL'></p>",
+        '<i class="b_id_card_panel" id=x__panel/>',
         '<b data-id="panel"></b>',
         '<u id="xpanel"></u>',
       ].join(""),
@@ -174,11 +174,11 @@ describe("addIdClassesInHtml", () => {
     const scoped = "bascik__kärtchen__i1__panel";
     const out = addIdClassesInHtml(
       `<div id="${scoped}"></div><div id="other"></div>`,
-      [{ idName: "panel", className: "bascik__kärtchen__id__panel" }],
+      [{ idName: "panel", className: "b_id_kärtchen_panel" }],
       { panel: scoped },
     );
     expect(out).toBe(
-      `<div class="bascik__kärtchen__id__panel" id="${scoped}"></div><div id="other"></div>`,
+      `<div class="b_id_kärtchen_panel" id="${scoped}"></div><div id="other"></div>`,
     );
   });
 });

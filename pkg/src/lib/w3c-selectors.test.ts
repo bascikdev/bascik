@@ -35,10 +35,10 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(`.bascik__${componentName}__el__li:first-child`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__li:last-child`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__p:only-child`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__div:empty`);
+      expect(scoped).toContain(`.b_el_${componentName}_li:first-child`);
+      expect(scoped).toContain(`.b_el_${componentName}_li:last-child`);
+      expect(scoped).toContain(`.b_el_${componentName}_p:only-child`);
+      expect(scoped).toContain(`.b_el_${componentName}_div:empty`);
     });
 
     it("scopes nth-child and nth-of-type expressions (:nth-child(2n+1), :nth-last-child(odd), :nth-of-type(3))", () => {
@@ -58,32 +58,18 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
+      expect(scoped).toContain(`.b_el_${componentName}_tr:nth-child(2n+1)`);
+      expect(scoped).toContain(`.b_el_${componentName}_tr:nth-child(odd)`);
+      expect(scoped).toContain(`.b_el_${componentName}_tr:nth-child(even)`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__tr:nth-child(2n+1)`,
+        `.b_el_${componentName}_tr:nth-last-child(-n+2)`,
       );
+      expect(scoped).toContain(`.b_el_${componentName}_td:first-of-type`);
+      expect(scoped).toContain(`.b_el_${componentName}_td:last-of-type`);
+      expect(scoped).toContain(`.b_el_${componentName}_td:only-of-type`);
+      expect(scoped).toContain(`.b_el_${componentName}_span:nth-of-type(3n)`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__tr:nth-child(odd)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__tr:nth-child(even)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__tr:nth-last-child(-n+2)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__td:first-of-type`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__td:last-of-type`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__td:only-of-type`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__span:nth-of-type(3n)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__span:nth-last-of-type(2)`,
+        `.b_el_${componentName}_span:nth-last-of-type(2)`,
       );
     });
 
@@ -98,10 +84,10 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
       );
 
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__li:nth-child(even of .highlight)`,
+        `.b_el_${componentName}_li:nth-child(even of .highlight)`,
       );
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__tr:nth-child(2n+1 of :not(.hidden))`,
+        `.b_el_${componentName}_tr:nth-child(2n+1 of :not(.hidden))`,
       );
     });
   });
@@ -120,18 +106,14 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(`.bascik__${componentName}__el__p:not(.lead)`);
+      expect(scoped).toContain(`.b_el_${componentName}_p:not(.lead)`);
+      expect(scoped).toContain(`.b_el_${componentName}_button:not([disabled])`);
+      expect(scoped).toContain(`.b_el_${componentName}_article:has(img)`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__button:not([disabled])`,
+        `.b_el_${componentName}_section:is(.hero, .banner)`,
       );
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__article:has(img)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__section:is(.hero, .banner)`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__header:where(.main-nav, .sub-nav)`,
+        `.b_el_${componentName}_header:where(.main-nav, .sub-nav)`,
       );
     });
   });
@@ -161,24 +143,20 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(`.bascik__${componentName}__el__a:link`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__a:visited`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__a:hover`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__a:active`);
+      expect(scoped).toContain(`.b_el_${componentName}_a:link`);
+      expect(scoped).toContain(`.b_el_${componentName}_a:visited`);
+      expect(scoped).toContain(`.b_el_${componentName}_a:hover`);
+      expect(scoped).toContain(`.b_el_${componentName}_a:active`);
+      expect(scoped).toContain(`.b_el_${componentName}_button:focus-visible`);
+      expect(scoped).toContain(`.b_el_${componentName}_form:focus-within`);
+      expect(scoped).toContain(`.b_el_${componentName}_input:enabled`);
+      expect(scoped).toContain(`.b_el_${componentName}_input:disabled`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__button:focus-visible`,
+        `.b_el_${componentName}_input:checked + .b_el_${componentName}_label`,
       );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__form:focus-within`,
-      );
-      expect(scoped).toContain(`.bascik__${componentName}__el__input:enabled`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__input:disabled`);
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__input:checked + .bascik__${componentName}__el__label`,
-      );
-      expect(scoped).toContain(`.bascik__${componentName}__el__input:required`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__div:target`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__p:lang(fr)`);
+      expect(scoped).toContain(`.b_el_${componentName}_input:required`);
+      expect(scoped).toContain(`.b_el_${componentName}_div:target`);
+      expect(scoped).toContain(`.b_el_${componentName}_p:lang(fr)`);
     });
   });
 
@@ -200,28 +178,14 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(`.bascik__${componentName}__el__a[href]`);
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[target="_blank"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[rel~="external"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[hreflang|="en"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[href^="https://"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[href$=".pdf"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a[href*="w3.org"]`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__input[type="text" i]`,
-      );
+      expect(scoped).toContain(`.b_el_${componentName}_a[href]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[target="_blank"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[rel~="external"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[hreflang|="en"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[href^="https://"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[href$=".pdf"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_a[href*="w3.org"]`);
+      expect(scoped).toContain(`.b_el_${componentName}_input[type="text" i]`);
     });
   });
 
@@ -239,16 +203,16 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
       );
 
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__div .bascik__${componentName}__el__span`,
+        `.b_el_${componentName}_div .b_el_${componentName}_span`,
       );
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__ul > .bascik__${componentName}__el__li`,
+        `.b_el_${componentName}_ul > .b_el_${componentName}_li`,
       );
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__h2 + .bascik__${componentName}__el__p`,
+        `.b_el_${componentName}_h2 + .b_el_${componentName}_p`,
       );
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__h2 ~ .bascik__${componentName}__el__p`,
+        `.b_el_${componentName}_h2 ~ .b_el_${componentName}_p`,
       );
     });
 
@@ -266,22 +230,14 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__blockquote::before`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__blockquote::after`,
-      );
-      expect(scoped).toContain(`.bascik__${componentName}__el__p::first-line`);
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__p::first-letter`,
-      );
+      expect(scoped).toContain(`.b_el_${componentName}_blockquote::before`);
+      expect(scoped).toContain(`.b_el_${componentName}_blockquote::after`);
+      expect(scoped).toContain(`.b_el_${componentName}_p::first-line`);
+      expect(scoped).toContain(`.b_el_${componentName}_p::first-letter`);
       expect(scoped).toContain(
         "::selection { background: #d3ff8d; color: black; }",
       );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__input::placeholder`,
-      );
+      expect(scoped).toContain(`.b_el_${componentName}_input::placeholder`);
     });
   });
 
@@ -304,15 +260,15 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
         componentName,
       );
 
-      expect(scoped).toContain(`& .bascik__${componentName}__el__h2`);
-      expect(scoped).toContain(`& > .bascik__${componentName}__el__p`);
+      expect(scoped).toContain(`& .b_el_${componentName}_h2`);
+      expect(scoped).toContain(`& > .b_el_${componentName}_p`);
       expect(scoped).toContain("& + .card");
       expect(scoped).toContain("& ~ .card");
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__p { margin-bottom: 0.5rem; }`,
+        `.b_el_${componentName}_p { margin-bottom: 0.5rem; }`,
       );
-      expect(scoped).toContain(`> .bascik__${componentName}__el__span`);
-      expect(scoped).toContain(`+ .bascik__${componentName}__el__hr`);
+      expect(scoped).toContain(`> .b_el_${componentName}_span`);
+      expect(scoped).toContain(`+ .b_el_${componentName}_hr`);
     });
   });
 
@@ -333,26 +289,24 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
       );
 
       expect(resultHtml).toContain(
-        `<article class="post bascik__${componentName}__el__article">`,
+        `<article class="post b_el_${componentName}_article">`,
       );
       expect(resultHtml).toContain(
-        `<h2 class="bascik__${componentName}__el__h2">Article Title</h2>`,
+        `<h2 class="b_el_${componentName}_h2">Article Title</h2>`,
+      );
+      expect(resultHtml).toContain(`<p class="b_el_${componentName}_p">`);
+      expect(resultHtml).toContain(
+        `<a class="b_el_${componentName}_a" href="#">link</a>`,
       );
       expect(resultHtml).toContain(
-        `<p class="bascik__${componentName}__el__p">`,
+        `<span class="b_el_${componentName}_span">inline span</span>`,
       );
       expect(resultHtml).toContain(
-        `<a class="bascik__${componentName}__el__a" href="#">link</a>`,
-      );
-      expect(resultHtml).toContain(
-        `<span class="bascik__${componentName}__el__span">inline span</span>`,
-      );
-      expect(resultHtml).toContain(
-        `<aside class="bascik__${componentName}__el__aside">Sidebar note</aside>`,
+        `<aside class="b_el_${componentName}_aside">Sidebar note</aside>`,
       );
     });
 
-    it("converts ID selectors to classes for per-instance scoping (#id -> .bascik__comp__id__name)", () => {
+    it("converts ID selectors to classes for per-instance scoping (#id -> .b_id_comp_name)", () => {
       const inputCss = `
         #main-btn { background: green; }
         #hero-title { font-size: 2rem; }
@@ -363,26 +317,26 @@ describe("W3C CSS Selectors & CSS2.1 Conformance", () => {
       );
 
       expect(scopedCss).toContain(
-        `.bascik__${componentName}__id__main-btn { background: green; }`,
+        `.b_id_${componentName}_main-btn { background: green; }`,
       );
       expect(scopedCss).toContain(
-        `.bascik__${componentName}__id__hero-title { font-size: 2rem; }`,
+        `.b_id_${componentName}_hero-title { font-size: 2rem; }`,
       );
       expect(idsConverted).toEqual([
         {
           idName: "main-btn",
-          className: `bascik__${componentName}__id__main-btn`,
+          className: `b_id_${componentName}_main-btn`,
         },
         {
           idName: "hero-title",
-          className: `bascik__${componentName}__id__hero-title`,
+          className: `b_id_${componentName}_hero-title`,
         },
       ]);
 
       const inputHtml = '<button id="main-btn" class="btn">Click</button>';
       const resultHtml = addIdClassesInHtml(inputHtml, idsConverted);
       expect(resultHtml).toContain(
-        `class="btn bascik__${componentName}__id__main-btn"`,
+        `class="btn b_id_${componentName}_main-btn"`,
       );
     });
   });

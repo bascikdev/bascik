@@ -46,27 +46,21 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
       );
 
       expect(scoped).toContain("@media screen");
+      expect(scoped).toContain(`.b_el_${componentName}_p { color: red; }`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__p { color: red; }`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__span { font-weight: bold; }`,
+        `.b_el_${componentName}_span { font-weight: bold; }`,
       );
       expect(scoped).toContain("@media print");
+      expect(scoped).toContain(`.b_el_${componentName}_p { color: black; }`);
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__p { color: black; }`,
-      );
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__a { text-decoration: underline; }`,
+        `.b_el_${componentName}_a { text-decoration: underline; }`,
       );
       expect(scoped).toContain("@media speech");
       expect(scoped).toContain(
-        `.bascik__${componentName}__el__p { voice-family: female; }`,
+        `.b_el_${componentName}_p { voice-family: female; }`,
       );
       expect(scoped).toContain("@media all");
-      expect(scoped).toContain(
-        `.bascik__${componentName}__el__div { margin: 0; }`,
-      );
+      expect(scoped).toContain(`.b_el_${componentName}_div { margin: 0; }`);
     });
 
     it("handles logical operators: and, not, only, and comma-separated query lists", () => {
@@ -89,13 +83,13 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
       expect(scoped).toContain(
         "@media only screen and (min-width: 480px) and (max-width: 768px)",
       );
-      expect(scoped).toContain(`.bascik__${componentName}__el__h1`);
+      expect(scoped).toContain(`.b_el_${componentName}_h1`);
       expect(scoped).toContain("@media not print and (monochrome)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__p`);
+      expect(scoped).toContain(`.b_el_${componentName}_p`);
       expect(scoped).toContain(
         "@media screen and (orientation: landscape), print and (color)",
       );
-      expect(scoped).toContain(`.bascik__${componentName}__el__article`);
+      expect(scoped).toContain(`.b_el_${componentName}_article`);
     });
   });
 
@@ -128,15 +122,15 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
       );
 
       expect(scoped).toContain("@media (width: 800px)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__p`);
+      expect(scoped).toContain(`.b_el_${componentName}_p`);
       expect(scoped).toContain(
         "@media (min-width: 320px) and (max-width: 1024px)",
       );
-      expect(scoped).toContain(`.bascik__${componentName}__el__section`);
+      expect(scoped).toContain(`.b_el_${componentName}_section`);
       expect(scoped).toContain("@media (orientation: landscape)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__nav`);
+      expect(scoped).toContain(`.b_el_${componentName}_nav`);
       expect(scoped).toContain("@media (aspect-ratio: 16/9)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__video`);
+      expect(scoped).toContain(`.b_el_${componentName}_video`);
       expect(scoped).toContain(
         "@media (resolution: 2dppx), (min-resolution: 192dpi), (min-resolution: 75dpcm)",
       );
@@ -163,11 +157,11 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
       );
 
       expect(scoped).toContain("@media (width <= 800px)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__p`);
+      expect(scoped).toContain(`.b_el_${componentName}_p`);
       expect(scoped).toContain("@media (400px < width <= 1000px)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__div`);
+      expect(scoped).toContain(`.b_el_${componentName}_div`);
       expect(scoped).toContain("@media (height >= 600px)");
-      expect(scoped).toContain(`.bascik__${componentName}__el__section`);
+      expect(scoped).toContain(`.b_el_${componentName}_section`);
     });
 
     it("handles user-preference media features (prefers-color-scheme, prefers-reduced-motion, forced-colors)", () => {
@@ -205,7 +199,7 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
         `--bascik__${componentName}__text-color: #e0e0e0;`,
       );
       expect(scoped).toContain(`var(--bascik__${componentName}__text-color)`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__p`);
+      expect(scoped).toContain(`.b_el_${componentName}_p`);
       expect(scoped).toContain("@media (prefers-reduced-motion: reduce)");
       expect(scoped).toContain("@media (forced-colors: active)");
     });
@@ -258,7 +252,7 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
       expect(scopedHtml).toContain(
         `@container bascik__${componentName}__container__panel (min-width: 400px)`,
       );
-      expect(scopedHtml).toContain(`.bascik__${componentName}__el__h2`);
+      expect(scopedHtml).toContain(`.b_el_${componentName}_h2`);
     });
 
     it("preserves CSS string literals and URLs inside @media rules", () => {
@@ -309,7 +303,7 @@ describe("W3C Media Queries 20120229 & Media Queries 4 Conformance", () => {
         ".header{display:flex;justify-content:space-between;}",
       );
       expect(minified).toContain(
-        `.bascik__${componentName}__el__p{margin:0;color:#333333;}`,
+        `.b_el_${componentName}_p{margin:0;color:#333333;}`,
       );
     });
   });

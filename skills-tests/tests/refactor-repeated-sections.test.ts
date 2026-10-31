@@ -10,11 +10,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   CHECK,
+  SCOPED_CLASS_PATTERN,
   componentUsage,
   diffInstances,
   findRepeated,
   fingerprint,
   parseCliArgs,
+  scopedComponentOf,
 } from "../../skills/bascik-refactor/scripts/repeated-sections.mjs";
 
 type Tree = { tag: string; children?: Tree[] };
@@ -49,6 +51,42 @@ describe("fingerprint", () => {
     expect(fingerprint(t("HEADER", t("NAV", t("A"))))).not.toBe(
       fingerprint(t("HEADER", t("DIV", t("A")))),
     );
+  });
+});
+
+describe("scopedComponentOf", () => {
+  it("reads the component from an authored scoped class", () => {
+    expect(scopedComponentOf("bascik__plan-card__title")).toBe("plan-card");
+    expect(scopedComponentOf("bascik__plan-card__a1b2c3d4__title")).toBe(
+      "plan-card",
+    );
+  });
+
+  it("reads the component from the classes element and #id rules generate", () => {
+    // A root styled only by `section { }` carries nothing but this class.
+    expect(scopedComponentOf("b_el_plan-card_section")).toBe("plan-card");
+    expect(scopedComponentOf("b_id_plan-card_buy")).toBe("plan-card");
+    expect(scopedComponentOf("b_el_plan-card__a1b2c3d4_p")).toBe("plan-card");
+  });
+
+  it("ignores global classes, hashed names, and look-alikes", () => {
+    for (const name of [
+      "plan-card",
+      "el__p",
+      "bascik",
+      "b1A2b3C4d5E6",
+      "b_el_",
+      "b-el-plan-card_p",
+      "b_xx_plan-card_p",
+      "bascik__plan-card",
+    ])
+      expect(scopedComponentOf(name)).toBeUndefined();
+  });
+
+  it("survives the trip into the page as a pattern source", () => {
+    const inPage = new RegExp(SCOPED_CLASS_PATTERN.source);
+    const m = inPage.exec("b_el_plan-card_p");
+    expect(m?.[1] ?? m?.[2]).toBe("plan-card");
   });
 });
 

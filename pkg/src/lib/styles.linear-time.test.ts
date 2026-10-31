@@ -44,7 +44,7 @@ describe("convertCssElementSelectorsToClasses on a missing `)`", () => {
       // to the next `)` anywhere in the stylesheet: 31 KB took 4 s.
       const css = (n: number) => head + rules(n);
       const { css: out } = convertCssElementSelectorsToClasses(css(50), "card");
-      expect(out).toContain(".bascik__card__y49 .bascik__card__el__h2");
+      expect(out).toContain(".bascik__card__y49 .b_el_card_h2");
       expectLinearTime(css, 2_000, (text) =>
         convertCssElementSelectorsToClasses(text, "card"),
       );
@@ -63,7 +63,7 @@ describe("convertCssElementSelectorsToClasses on hex-escaped scoped names", () =
         `.bascik__card__${"\\1 a\\12345 b\\abcdef0\\9".repeat(n)} h2 ;\n` +
         rules(n);
       const { css: out } = convertCssElementSelectorsToClasses(css(50), "card");
-      expect(out).toContain(".bascik__card__y49 .bascik__card__el__h2");
+      expect(out).toContain(".bascik__card__y49 .b_el_card_h2");
       expect(out).toContain("\\9 h2 ;");
       expectLinearTime(css, 2_000, (text) =>
         convertCssElementSelectorsToClasses(text, "card"),
@@ -148,10 +148,10 @@ describe("element selector passes stay linear on long stretches without a stop",
 
   it("converts a list in selector position and leaves the same list in a value alone", () => {
     expect(convert("h2, h3 { color: red }").css).toContain(
-      ".bascik__card__el__h2, .bascik__card__el__h3 {",
+      ".b_el_card_h2, .b_el_card_h3 {",
     );
     expect(convert("a { font-family: h2, h3; }").css).toBe(
-      ".bascik__card__el__a { font-family: h2, h3; }",
+      ".b_el_card_a { font-family: h2, h3; }",
     );
   });
 });

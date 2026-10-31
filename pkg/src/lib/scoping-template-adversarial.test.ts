@@ -97,6 +97,11 @@ const cases: Case[] = [
     css: `.card { color: red; &:hover p { color: blue } & > .link:focus span { margin: 0 } &.card:is(.link) li { padding: 0 } }`,
   },
   {
+    name: "generated b_id_ and b_el_ classes as descendant anchors",
+    html: `<section id="panel"><p class="el__p">x <span>y</span></p><ul><li>z</li></ul></section>`,
+    css: `#panel p span { color: red } #panel > ul li { margin: 0 } p > em, ul li { padding: 0 } .el__p { color: blue } p { color: red }`,
+  },
+  {
     name: "@media preludes with commas",
     html: `<div class="a b">x</div>`,
     css: `@media screen, print { .a { color: red } .b > p { margin: 0 } } @media (min-width: 1px), (orientation: portrait) and (hover: hover) { .a { color: blue } }`,

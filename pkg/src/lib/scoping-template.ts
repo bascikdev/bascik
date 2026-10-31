@@ -15,8 +15,9 @@
  * ---------------------
  * The instance ID reaches the pipeline output in exactly two ways:
  *   1. raw, inside scoped names built as `bascik__<name>__<instanceId>__<value>`
- *      (and names derived from those, such as `__id__`, `__el__`, keyframe,
- *      layer, and custom property names);
+ *      (and names derived from those, such as keyframe, layer, and custom
+ *      property names, and the generated `b_id_<name>__<instanceId>_<id>` and
+ *      `b_el_<name>__<instanceId>_<tag>` classes of a per-instance stylesheet);
  *   2. through `minifyAttributeName`, which hashes such a string into
  *      `b` + 11 Base62 characters when identifier minification is on. A hash
  *      can itself feed a later name (CSS `#id` selectors become classes named
@@ -33,8 +34,9 @@
  * against the component's own authored text, or acts only on exact delimited
  * matches (`id="…"`, `getElementById("…")`, `#…`, `.…`). A check that reads
  * generated names by pattern (the descendant-element pass matching
- * `.bascik__…` or a 12-character hash, CSS escapes in a scoped class name)
- * keys on the delimiters and the authored tail, never on the instance part.
+ * `.bascik__…`, `.b_el_…`, `.b_id_…` or a 12-character hash, CSS escapes in
+ * a scoped class name) keys on the delimiters and the authored tail, never on
+ * the instance part.
  * Instance IDs are lowercase hex and hashes are Base62, so the instance part
  * of a name never contains a quote, space, backslash, `<`, `>`, `#`, `.`,
  * `@`, `\x00`, or `__` beyond the delimiters it was built with (an escape
