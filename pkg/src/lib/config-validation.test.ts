@@ -3,10 +3,12 @@ import {
   mkdirSync,
   mkdtempSync,
   existsSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join, posix, resolve, win32 } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
@@ -1135,22 +1137,25 @@ describe("directory.out overlap with source folders", () => {
   // The same check with the file system injected, so it also runs on a
   // case-sensitive file system (Linux CI), where the test below skips.
   it("compares folders by identity on disk, walking the child's ancestors", () => {
-    // A case-insensitive disk: /p/SRC and /p/src are one entry.
+    // A case-insensitive disk: /p/SRC and /p/src are one entry. posix, so
+    // only the identity can match them (win32 strings would on their own).
     const identify = (path: string) =>
       ({ "/p": "1", "/p/src": "2", "/p/src/pages": "3" })[path.toLowerCase()];
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify)).toBe(true);
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/Src/Pages", identify)).toBe(
-      true,
-    );
     expect(
-      isSameOrInsideOnDisk("/p/src/pages/out", "/p/SRC/PAGES", identify),
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify, posix),
     ).toBe(true);
-    expect(isSameOrInsideOnDisk("/p/src", "/p/SRC/PAGES", identify)).toBe(
-      false,
-    );
-    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/DIST", identify)).toBe(
-      false,
-    );
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/Src/Pages", identify, posix),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages/out", "/p/SRC/PAGES", identify, posix),
+    ).toBe(true);
+    expect(
+      isSameOrInsideOnDisk("/p/src", "/p/SRC/PAGES", identify, posix),
+    ).toBe(false);
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/DIST", identify, posix),
+    ).toBe(false);
     // No identity (nothing on disk, or no fs given): strings only, which
     // are exact on posix. On win32 the strings alone already ignore case.
     expect(
@@ -1359,7 +1364,8 @@ describe("referenced files (fs half)", () => {
   it("does not reject an exec cwd at startup, and checks the script from the project root", () => {
     // The script exists at the project root; the cwd folders do not exist yet.
     const fs = {
-      existsSync: (path: string) => path === "/project/scripts/sync.ts",
+      existsSync: (path: string) =>
+        path === resolve("/project", "scripts/sync.ts"),
       isDirectory: () => false,
       isReadableFile: () => true,
     };
@@ -1405,7 +1411,8 @@ describe("referenced files (fs half)", () => {
   it("warns about an exec cwd that is missing outside the output directory", () => {
     const fs = {
       existsSync: () => true,
-      isDirectory: (path: string) => path === "/project/packages/site",
+      isDirectory: (path: string) =>
+        path === resolve("/project", "packages/site"),
       isReadableFile: () => true,
     };
     const warnings = collectExecCwdWarnings(
@@ -1447,7 +1454,8 @@ describe("referenced files (fs half)", () => {
     try {
       const fs = {
         existsSync: () => true,
-        isDirectory: (path: string) => path === "/project/src/pages",
+        isDirectory: (path: string) =>
+          path === resolve("/project", "src/pages"),
         isReadableFile: () => true,
       };
       expect(() =>
@@ -2007,5 +2015,19 @@ describe("initBascikConfig integration", () => {
       { fs: allowAllFs, env: {} },
     );
     expect(cfg.http.port).toBe(8080);
+  });
+});
+
+// The unit-windows job resolves cwd "/project" plus "scripts/sync.ts" to
+// "D:\project\scripts\sync.ts" there, so a fake file system that
+// compares against the posix literal answers "missing" on Windows and
+// nowhere else (two exec tests failed only on Windows that way, and a third
+// passed by chance). Name each fake path through
+// resolve(), which spells it the way the validator does on every host.
+describe("fake file systems in this file", () => {
+  it("compare paths through resolve(), not posix literals", () => {
+    const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+    const literal = new RegExp(String.raw`===\s*["'\x60]/project/`, "g");
+    expect(source.match(literal) ?? []).toEqual([]);
   });
 });
