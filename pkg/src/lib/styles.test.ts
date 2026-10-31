@@ -3224,3 +3224,25 @@ describe("dotted @layer names", () => {
     );
   });
 });
+
+describe("extractInlineStyles – media attribute values", () => {
+  it.each(["screen", "SCREEN", "screen and (min-width: 1px)"])(
+    "wraps media=%j in an @media rule so it does not apply when printing",
+    (media) => {
+      const { css } = extractInlineStyles(
+        `<style media="${media}">.card { color: red }</style>`,
+      );
+      expect(css).toBe(`@media ${media} {\n.card { color: red }\n}`);
+    },
+  );
+
+  it.each(["all", "ALL", " all ", ""])(
+    "emits media=%j unconditionally",
+    (media) => {
+      const { css } = extractInlineStyles(
+        `<style media="${media}">.card { color: red }</style>`,
+      );
+      expect(css).toBe(".card { color: red }");
+    },
+  );
+});

@@ -1937,11 +1937,9 @@ export const extractInlineStyles = (
       readStartTagAttributes(openTag, 0)
         .find((attribute) => attribute.name === "media")
         ?.value.trim() ?? "";
-    if (
-      media &&
-      media.toLowerCase() !== "all" &&
-      media.toLowerCase() !== "screen"
-    ) {
+    // Only `all` (or no value) applies everywhere; `screen` does not apply
+    // when printing, so it keeps its wrapper like any other query.
+    if (media && media.toLowerCase() !== "all") {
       css = `@media ${media} {\n${css}\n}`;
     }
     cssBlocks.push(css);
