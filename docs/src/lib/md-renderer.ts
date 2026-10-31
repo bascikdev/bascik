@@ -556,7 +556,11 @@ function _transformMd(
   html = html.replace(/\n?<\/blockquote>/g, "</div>");
 
   // Wrap all tables in <doc-table> component and ensure table header cells have scope="col"
-  html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
+  // The whole opening tag, so an aligned column's <th align="center"> gets it too; <thead> is not a match.
+  html = html.replace(
+    /<th\b(?![^>]*\bscope=)([^>]*)>/g,
+    (_, attributes: string) => `<th scope="col"${attributes}>`,
+  );
   html = html.replace(
     /(<table[\s\S]*?<\/table>)/g,
     "<doc-table>$1</doc-table>",

@@ -106,6 +106,32 @@ const x = 1;
     expect(html).toContain("</table></doc-table>");
   });
 
+  // content/lighthouse.md centers its score columns with :---:, which marked writes as <th align="center">.
+  it('renderMd adds scope="col" to aligned header cells too, and leaves <thead> and a set scope alone', async () => {
+    const mdContent = [
+      "| Left | Center | Right | Plain |",
+      "| :--- | :----: | ----: | ----- |",
+      "| 1 | 2 | 3 | 4 |",
+      "",
+      '<table><tr><th scope="row">Row</th><td>x</td></tr></table>',
+      "",
+    ].join("\n");
+    const mdFile = join(tempDir, "aligned-table.md");
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile);
+    expect(html).toContain('<th scope="col" align="left">Left</th>');
+    expect(html).toContain('<th scope="col" align="center">Center</th>');
+    expect(html).toContain('<th scope="col" align="right">Right</th>');
+    expect(html).toContain('<th scope="col">Plain</th>');
+    expect(html).toContain("<thead>");
+    expect(html).not.toMatch(/<thead scope/);
+    expect(html).toContain('<th scope="row">Row</th>');
+    expect(
+      html.match(/<th\b[^>]*>/g)?.every((tag) => /\bscope=/.test(tag)),
+    ).toBe(true);
+  });
+
   it("renderMd gives site images lazy loading and the real size of PNG files in src/pages", async () => {
     const mdFile = join(tempDir, "images.md");
     await writeFile(
