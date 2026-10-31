@@ -216,11 +216,14 @@ export const convertCssElementSelectorsToClasses = (
   // or a prefix of a hyphenated custom element such as `code-block`.
   //
   // Note: this pass only applies after Pass 1 has scoped the class selector.
+  // Every argument and attribute scan stops at `{`, `}` or `;`: a missing `)`
+  // or `]` (a typo) would otherwise rescan the rest of the stylesheet from
+  // each scoped class, which is quadratic.
   let previousResult: string;
   do {
     previousResult = result;
     result = result.replace(
-      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+      /((?:\.(?:bascik__(?:[\w-]|\\[^\n])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^){};]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
       (_match, prefix: string, elementName: string) =>
         `${prefix}${toClass(elementName)}`,
     );
