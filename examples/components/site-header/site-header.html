@@ -76,7 +76,7 @@ A site header: a skip link, the site name, and the main navigation, with the cur
       ><span data-bascik-prop-name>Example Site</span></a
     >
     <nav aria-label="Site" data-testid="site-header-nav">
-      <script data-bascik-build>
+      <script data-bascik-build type="text/typescript">
         import { navLinks } from "./links.ts";
         export default () => navLinks(process.env.BASCIK_PAGE_PATH);
       </script>

@@ -35,7 +35,7 @@ Every page is a short shell: `<site-head />` in `<head>`, then `<site-header><th
 
 `site-head` is the site's own component: it holds the stylesheet, favicon, and `theme-init`. The header and footer are the [Site Header](https://bascik.dev/example-components/site-header) and [Site Footer](https://bascik.dev/example-components/site-footer) example components. Edit their navigation in `links.ts` next to each component; the header marks the current page at build time. The theme toggle goes in the header's slot.
 
-Code is TypeScript throughout: the helpers in `src/lib/`, the API route, the exec scripts, and the components' browser scripts (`<script type="text/typescript">`, which Bascik strips to JavaScript with no setup).
+Code is TypeScript throughout: the helpers in `src/lib/`, the API route, the exec scripts, and every script in the pages and components, in the browser and at build time (`<script type="text/typescript">` and `<script data-bascik-build type="text/typescript">`, which Bascik strips to JavaScript with no setup).
 
 ## SEO Tags
 

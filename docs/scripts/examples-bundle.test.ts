@@ -2,6 +2,7 @@
 // every example component is documented and exercised. Browser behavior is in e2e/examples.spec.ts.
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { relative } from "node:path";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -219,5 +220,59 @@ describe("example components follow the test id and semantic root rules", () => 
       ),
     ).toBe("nav");
     expect(rootTagOf("<link rel=icon />\n<script>x</script>")).toBe(undefined);
+  });
+});
+
+// TypeScript by default (.github/copilot-instructions.md): every script in the examples, browser or build time,
+// is TypeScript, so a copied example starts typed. An unmarked inline block runs as JavaScript.
+describe("example scripts are TypeScript", () => {
+  const htmlFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true, recursive: true })
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.endsWith(".html") &&
+          !/[\\/](node_modules|dist)([\\/]|$)/.test(entry.parentPath),
+      )
+      .map((entry) => join(entry.parentPath, entry.name));
+  /** Inline script open tags that would run as JavaScript: no TypeScript type, no .ts src, and not a data block. */
+  const javaScriptTags = (source: string): string[] =>
+    [...source.replace(/<!--[\s\S]*?-->/g, "").matchAll(/<script\b[^>]*>/gi)]
+      .map((match) => match[0])
+      .filter((tag) => {
+        const type = /\btype="([^"]*)"/i.exec(tag)?.[1].toLowerCase();
+        if (type === "text/typescript") return false;
+        if (type && type !== "module" && !type.includes("javascript"))
+          return false;
+        return !/\bsrc="[^"]*\.m?ts"/i.test(tag);
+      });
+
+  it("marks every inline script in the example components and the starter site as TypeScript", () => {
+    const untyped = htmlFiles(examplesDir).flatMap((file) =>
+      javaScriptTags(readFileSync(file, "utf8")).map(
+        (tag) => `${relative(examplesDir, file)}: ${tag}`,
+      ),
+    );
+    expect(untyped).toEqual([]);
+  });
+
+  it("misuse: counts a build script, a module, and a JavaScript src as JavaScript, and skips data blocks and comments", () => {
+    expect(
+      javaScriptTags(
+        [
+          "<script data-bascik-build>x</script>",
+          '<script type="module">x</script>',
+          '<script src="/app.js"></script>',
+          '<script type="text/typescript" data-bascik-build>x</script>',
+          '<script data-bascik-build src="./nav.ts"></script>',
+          '<script type="application/ld+json">{}</script>',
+          "<!-- <script>old</script> -->",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "<script data-bascik-build>",
+      '<script type="module">',
+      '<script src="/app.js">',
+    ]);
   });
 });

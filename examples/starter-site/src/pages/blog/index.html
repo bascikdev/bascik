@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <site-head />
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       // Uses the seo() helper in src/lib/seo.ts. Replace with a plain <title> and description if needed.
       import { seo } from "@/lib/seo.ts";
       export default () =>
@@ -24,7 +24,7 @@
     <site-header><theme-toggle /></site-header>
     <main id="main" class="container" data-testid="blog-main">
       <h1>Blog</h1>
-      <script data-bascik-build>
+      <script data-bascik-build type="text/typescript">
         import { getPosts, postList } from "@/lib/posts.ts";
         export default async () => postList(await getPosts());
       </script>
