@@ -2732,6 +2732,24 @@ describe("prefixElementAttribute – escaped class selectors", () => {
       `.${scopeClass("md\\:flex")} .${scopeClass("el__p")} { display: flex }`,
     );
   });
+
+  it("keeps the whitespace that ends a hex escape inside the class name, never a descendant combinator", () => {
+    // `.a\1 b` is the one class `a<U+0001>b`: the space ends the escape.
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="a\u0001b">x</p><div class="c\u0001"><p>y</p></div>',
+        ".a\\1 b { color: red } .c\\1  p { margin: 0 }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("a\\1 b")} { color: red } .${scopeClass("c\\1 ")} .${scopeClass("el__p")} { margin: 0 }`,
+    );
+    expect(result.fileContent).toBe(
+      `<p class="${scopeClass("a\u0001b")} ${scopeClass("el__p")}">x</p><div class="${scopeClass("c\u0001")}"><p class="${scopeClass("el__p")}">y</p></div>`,
+    );
+  });
 });
 
 describe("prefixElementAttribute – custom properties in style attributes", () => {

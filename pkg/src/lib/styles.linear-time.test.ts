@@ -46,6 +46,26 @@ describe("convertCssElementSelectorsToClasses on a missing `)`", () => {
   );
 });
 
+describe("convertCssElementSelectorsToClasses on hex-escaped scoped names", () => {
+  it(
+    "stays linear over a long run of hex escapes that never reaches a `{`",
+    () => {
+      // Each hex escape has one way to match (up to six digits, then its
+      // terminating whitespace or none), so a failing name is scanned once.
+      const css = (n: number) =>
+        `.bascik__card__${"\\1 a\\12345 b\\abcdef0\\9".repeat(n)} h2 ;\n` +
+        rules(n);
+      const { css: out } = convertCssElementSelectorsToClasses(css(50), "card");
+      expect(out).toContain(".bascik__card__y49 .bascik__card__el__h2");
+      expect(out).toContain("\\9 h2 ;");
+      expectLinearTime(css, 2_000, (text) =>
+        convertCssElementSelectorsToClasses(text, "card"),
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
 describe("removeIdSelectors", () => {
   it(
     "stays linear on many [id] rules and selector lists",
