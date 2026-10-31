@@ -494,9 +494,16 @@ describe("PLAYWRIGHT_CONFIG", () => {
     );
   });
 
-  it("misuse: gives the e2e build the URL it serves, so a fresh project without BASCIK_SITE_URL still builds its sitemap", () => {
+  it("misuse: falls back to the URL the e2e server runs on only when neither BASCIK_SITE_URL nor the project's .env sets one", () => {
+    // A literal localhost here would beat a real BASCIK_SITE_URL and .env,
+    // and the e2e build would rewrite dist/ with a localhost sitemap.
+    expect(PLAYWRIGHT_CONFIG).not.toMatch(
+      /BASCIK_SITE_URL:\s*'http:\/\/localhost:8080'/,
+    );
+    expect(PLAYWRIGHT_CONFIG).toContain("process.env.BASCIK_SITE_URL");
+    expect(PLAYWRIGHT_CONFIG).toContain("new URL('../.env', import.meta.url)");
     expect(PLAYWRIGHT_CONFIG).toMatch(
-      /webServer:\s*\{[^}]*\benv:\s*\{\s*BASCIK_SITE_URL:\s*'http:\/\/localhost:8080'/,
+      /webServer:\s*\{[^}]*\benv:\s*\{\s*BASCIK_SITE_URL:\s*siteUrl\s*\}/,
     );
   });
 });

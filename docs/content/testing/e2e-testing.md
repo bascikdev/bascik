@@ -15,7 +15,19 @@ npm install -D @playwright/test
 Configure Playwright to build and serve your compiled Bascik application before running tests:
 
 ```ts
+import { existsSync, readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import { defineConfig } from "@playwright/test";
+
+// The build needs a site URL for the sitemap and robots.txt. Yours wins, from
+// BASCIK_SITE_URL or the project's .env, so dist/ keeps its real sitemap; only
+// a project with neither builds one for the server this test run starts.
+const envFile = new URL("../.env", import.meta.url);
+const siteUrl =
+  process.env.BASCIK_SITE_URL ||
+  (existsSync(envFile) &&
+    parseEnv(readFileSync(envFile, "utf8")).BASCIK_SITE_URL) ||
+  "http://localhost:8080";
 
 export default defineConfig({
   testDir: "./",
@@ -27,9 +39,7 @@ export default defineConfig({
     // Playwright runs the command beside this config; the site is one up.
     cwd: "..",
     command: "npx bascik --build && npx bascik --server --port 8080",
-    // The sitemap and robots.txt need a site URL; this test build points them
-    // at the server it runs. The real one comes from BASCIK_SITE_URL or .env.
-    env: { BASCIK_SITE_URL: "http://localhost:8080" },
+    env: { BASCIK_SITE_URL: siteUrl },
     url: "http://localhost:8080",
     reuseExistingServer: !process.env.CI,
   },
