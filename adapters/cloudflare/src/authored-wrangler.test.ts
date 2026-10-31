@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { realpath } from "node:fs/promises";
+import { realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SiteGraph } from "@bascik/bascik/adapter";
@@ -408,5 +408,55 @@ describe("build notes report the settings the Worker deploys with", () => {
         wrangler: JSON.stringify({ compatibility_date: "2026-09-01" }),
       }),
     ).rejects.toThrow(/for compatibility date 2026-09-01 \(wrangler\.jsonc\)/);
+  }, 60_000);
+});
+
+describe("a project reached through a symlinked folder", () => {
+  it("misuse: an unsupported import still names the project-relative file and the route", async () => {
+    const real = await realpath(
+      await mkdtemp(join(tmpdir(), "bascik-cf-linked-real-")),
+    );
+    roots.push(real);
+    const linkParent = await mkdtemp(join(tmpdir(), "bascik-cf-linked-"));
+    roots.push(linkParent);
+    const root = join(linkParent, "site");
+    await symlink(real, root, "junction");
+    const distDir = join(root, "dist");
+    const outDir = join(distDir, ".bascik", "cloudflare-workers");
+    await mkdir(join(outDir, ".staging"), { recursive: true });
+    const filePath = join(root, "src/api/run.ts");
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      `import { execFile } from "node:child_process";\nexport const GET = () => new Response(typeof execFile);`,
+    );
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [
+        { path: "/api/run", filePath, paramNames: [], isDynamic: false },
+      ],
+      importRoot: root,
+    };
+    const error = await build({
+      graph,
+      distDir,
+      outDir,
+      projectRoot: root,
+      variant: "workers",
+      log: () => {},
+      runtimeEntry: "",
+    }).then(
+      () => undefined,
+      (err: Error) => err,
+    );
+    expect(error?.message).toMatch(
+      /"node:child_process" \(imported by src\/api\/run\.ts\)[\s\S]*Reached from: API route \/api\/run/,
+    );
   }, 60_000);
 });

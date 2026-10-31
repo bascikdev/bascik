@@ -13,8 +13,14 @@ import {
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
-import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
+import {
+  mkdir,
+  copyFile,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
@@ -176,14 +182,28 @@ export const build = async (
   const collisions = detectControlCollisions(graph.publicFiles, variant);
   if (collisions.length) throw new Error(collisions.join("\n"));
 
+  // esbuild names importers by their real path: a project reached through
+  // a symlinked folder (macOS tmpdir, a linked workspace) is keyed and
+  // reported by it too, or no import chain would find its owner.
+  const realRoot = await realpath(projectRoot).catch(() => projectRoot);
   const owners = new Map<string, Set<string>>();
-  const addOwner = (file: string, owner: string) => {
+  const addOwnerAt = (file: string, owner: string) => {
     let set = owners.get(file);
     if (!set) {
       set = new Set();
       owners.set(file, set);
     }
     set.add(owner);
+  };
+  const addOwner = (file: string, owner: string) => {
+    addOwnerAt(file, owner);
+    let real = file;
+    try {
+      real = realpathSync(file);
+    } catch {
+      // Not on disk (yet): only the spelling the graph gave is known.
+    }
+    if (real !== file) addOwnerAt(real, owner);
   };
 
   // A dynamic /404 page already answers 404 from the worker. A static one is
@@ -466,7 +486,7 @@ export const build = async (
                 {
                   text:
                     `"${args.path}" cannot be resolved from a module file. The @/ alias is available inside ` +
-                    `<script> blocks only; in ${relative(projectRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
+                    `<script> blocks only; in ${relative(realRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
                 },
               ],
             }));
@@ -507,7 +527,7 @@ export const build = async (
                   formatUnsupportedImport({
                     specifier: args.path,
                     importer: args.importer,
-                    projectRoot,
+                    projectRoot: realRoot,
                     owners: ownerList,
                     compat: missingIn,
                   }),
