@@ -599,6 +599,23 @@ describe("audit-components", () => {
     );
   });
 
+  it("flags a page's inline JavaScript module and warns that a relative import in its .ts file fails the build", async () => {
+    const root = project({
+      ...clean,
+      "src/pages/tool.html": page(`      <script type="module">
+        import { start } from "./util.js";
+        start();
+      </script>`),
+    });
+    const { findings } = await audit(root);
+    const js = findings.filter((f) => f.rule === "js-not-ts");
+    expect(js).toHaveLength(1);
+    expect(js[0]).toMatchObject({ file: "src/pages/tool.html", line: 9 });
+    expect(js[0].suggestion).toContain('<script type="module" src="name.ts">');
+    expect(js[0].suggestion).toMatch(/relative.*import fails the build/);
+    expect(js[0].suggestion).toMatch(/esbuild/);
+  });
+
   it('accepts a page <script src="x.ts">, which Bascik compiles and inlines, and counts it as TypeScript', async () => {
     const root = project({
       ...clean,

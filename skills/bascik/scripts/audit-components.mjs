@@ -384,7 +384,7 @@ function checkScripts(doc, options, findings, stats) {
         : `Mark it <script type="text/typescript"> and add types (erasable syntax works with no setup), or move it to ${componentName}.ts beside the template and load it with <script src="${componentName}.ts">.`;
     else
       suggestion = module
-        ? `Move it to a .ts file beside the page and load it with <script type="module" src="name.ts">, which Bascik compiles and inlines (inline type="text/typescript" blocks are classic scripts, so they cannot hold import or export), or move the behavior into a component with a .ts companion.`
+        ? `Move it to a .ts file beside the page and load it with <script type="module" src="name.ts">, which Bascik compiles and inlines without bundling, so a relative, @/ or .ts import fails the build (bundle it with esbuild or import a published /js/*.js URL; inline type="text/typescript" blocks are classic scripts, so they cannot hold import or export), or move the behavior into a component with a .ts companion.`
         : `Mark it <script type="text/typescript"> and add types, or move the behavior into a component with a .ts companion.`;
     findings.push({
       rule: "js-not-ts",
