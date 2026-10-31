@@ -54,6 +54,9 @@ const mf = new Miniflare({
   assets: {
     directory: publicDir,
     binding: "ASSETS",
+    // Cloudflare Pages' own asset behavior, which a Pages project cannot
+    // change (the Workers variant reads its settings from the generated
+    // wrangler.jsonc: see readHarnessSettings in the adapter's tests).
     assetConfig: {
       not_found_handling: "404-page",
       html_handling: "auto-trailing-slash",
