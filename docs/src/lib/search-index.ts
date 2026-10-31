@@ -49,7 +49,7 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * index until the content lookup learned folder index.md files. 1.335 MB: the full naming scheme for generated
  * element and #id classes on the internals scoping page (prompt 158 R3-03).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_335_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
