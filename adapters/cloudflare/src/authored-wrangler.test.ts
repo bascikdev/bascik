@@ -247,3 +247,46 @@ describe("the static 404 page's Content-Security-Policy on a 404 for any URL", (
     expect(logs.filter((l) => l.includes("404"))).toEqual([]);
   }, 60_000);
 });
+
+describe("the static 404 page at its own URLs under an authored html_handling", () => {
+  it.each([
+    "auto-trailing-slash",
+    "force-trailing-slash",
+    "drop-trailing-slash",
+    "none",
+  ])(
+    "html_handling %s: /404, /404/ and /404.html answer 404 with the page, never a redirect",
+    async (htmlHandling) => {
+      const site = await buildSite({
+        files: { "404.html": "<p>lost</p>" },
+        wrangler: JSON.stringify({ assets: { html_handling: htmlHandling } }),
+      });
+      const harness = await serve(site);
+      for (const path of ["/404", "/404/", "/404.html"]) {
+        const res = await harness.fetch(path, { redirect: "manual" });
+        expect(res.status, `${path} under ${htmlHandling}`).toBe(404);
+        expect(await res.text(), path).toContain("<p>lost</p>");
+        const head = await harness.fetch(path, {
+          method: "HEAD",
+          redirect: "manual",
+        });
+        await head.arrayBuffer();
+        expect(head.status, `HEAD ${path}`).toBe(404);
+      }
+    },
+    60_000,
+  );
+
+  it("misuse: not_found_handling none and html_handling none still find the page by its file name", async () => {
+    const site = await buildSite({
+      files: { "404.html": "<p>lost</p>" },
+      wrangler: JSON.stringify({
+        assets: { html_handling: "none", not_found_handling: "none" },
+      }),
+    });
+    const harness = await serve(site);
+    const res = await harness.fetch("/404/", { redirect: "manual" });
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("<p>lost</p>");
+  }, 60_000);
+});

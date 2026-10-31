@@ -628,6 +628,23 @@ describe("createCloudflareWorker: a static 404.html under its own URLs", () => {
     expect(await res.text()).toBe("<h1>Not here</h1>");
   });
 
+  it("when the canonical URL misses (html_handling none), the page is fetched by its file name", async () => {
+    const { env, requests } = assets((request) =>
+      new URL(request.url).pathname.endsWith(".html")
+        ? new Response("<h1>Not here</h1>")
+        : new Response("", { status: 404 }),
+    );
+    const res = await worker(
+      graphOf({ base: "/shop/", staticNotFoundPage: true }),
+    ).fetch(get("/shop/404/"), env, ctx());
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("<h1>Not here</h1>");
+    expect(requests.map((r) => r.url)).toEqual([
+      "https://example.test/shop/404",
+      "https://example.test/shop/404.html",
+    ]);
+  });
+
   it("without staticNotFoundPage, /404 is forwarded as any other asset", async () => {
     const { env, requests } = notFound();
     const res = await worker(graphOf()).fetch(get("/404?x=1"), env, ctx());

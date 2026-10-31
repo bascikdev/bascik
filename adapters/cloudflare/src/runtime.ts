@@ -610,17 +610,31 @@ export const createCloudflareWorker = (
         }
         // The asset layer serves 404.html at its own URL with 200 (and
         // redirects its aliases). Fetch the canonical asset and answer with
-        // the status the Node server uses for the custom 404 page.
-        const assetUrl = new URL(request.url);
-        assetUrl.pathname = graph.base === "/" ? "/404" : `${graph.base}404`;
-        assetUrl.search = "";
-        const asset = await forwardToAssets(
-          new Request(assetUrl, {
-            method: request.method === "HEAD" ? "HEAD" : "GET",
-            headers: request.headers,
-          }),
-          env,
+        // the status the Node server uses for the custom 404 page. Through
+        // the binding, html_handling resolves `/404` without a redirect,
+        // except `"none"`, where only the file name finds the page.
+        const fetchNotFoundAsset = (pathname: string) => {
+          const assetUrl = new URL(request.url);
+          assetUrl.pathname = pathname;
+          assetUrl.search = "";
+          return forwardToAssets(
+            new Request(assetUrl, {
+              method: request.method === "HEAD" ? "HEAD" : "GET",
+              headers: request.headers,
+            }),
+            env,
+          );
+        };
+        let asset = await fetchNotFoundAsset(
+          graph.base === "/" ? "/404" : `${graph.base}404`,
         );
+        if (asset.status !== 200) {
+          const byFileName = await fetchNotFoundAsset(`${graph.base}404.html`);
+          if (byFileName.status === 200) {
+            asset.body?.cancel().catch(() => {});
+            asset = byFileName;
+          } else byFileName.body?.cancel().catch(() => {});
+        }
         if (asset.status !== 200) return asset;
         return new Response(request.method === "HEAD" ? null : asset.body, {
           status: 404,
