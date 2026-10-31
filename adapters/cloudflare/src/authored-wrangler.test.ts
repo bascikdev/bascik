@@ -460,3 +460,23 @@ describe("a project reached through a symlinked folder", () => {
     );
   }, 60_000);
 });
+
+describe("authored files named like the adapter's own", () => {
+  it("a service worker at src/pages/worker.js deploys and is served: the generated worker.js sits beside public/", async () => {
+    const site = await buildSite({
+      files: { "worker.js": "self.addEventListener('fetch', () => {});" },
+    });
+    const harness = await serve(site);
+    const res = await harness.fetch("/worker.js");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("addEventListener");
+  }, 60_000);
+
+  it("misuse: an authored _routes.json on the Workers variant fails the build instead of deploying unreachable", async () => {
+    await expect(
+      buildSite({ files: { "_routes.json": "{}" } }),
+    ).rejects.toThrow(
+      /--target cloudflare-workers: authored file "_routes\.json" would never be served/,
+    );
+  }, 60_000);
+});

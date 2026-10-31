@@ -82,9 +82,16 @@ export const buildInvocationRoutes = (input: {
   return { include: sorted, exclude: [], overflowed: false };
 };
 
+/**
+ * Public paths a deployment reserves. Pages reads `_worker.js` and
+ * `_routes.json` from the public root; the Worker answers 404 for both on
+ * every target (runtime.ts, GENERATED_CONTROL_PATHS), so on Workers an
+ * authored one would deploy and never be served. The Workers variant's
+ * worker.js and wrangler.jsonc sit beside public/, never in it.
+ */
 const CONTROL_FILES: Record<string, string[]> = {
   pages: ["_worker.js", "_routes.json"],
-  workers: ["wrangler.jsonc", "worker.js"],
+  workers: ["_worker.js", "_routes.json"],
 };
 const ASSET_CONTROL_FILES = new Set(["_headers", "_redirects"]);
 
@@ -97,7 +104,9 @@ export const detectControlCollisions = (
   for (const path of [...publicPaths].sort()) {
     if (control.has(path)) {
       problems.push(
-        `[bascik] --target cloudflare-${variant}: authored file "${path}" collides with a generated control file. Rename it or remove it from directory.pages.`,
+        variant === "pages"
+          ? `[bascik] --target cloudflare-${variant}: authored file "${path}" collides with a generated control file. Rename it or remove it from directory.pages.`
+          : `[bascik] --target cloudflare-${variant}: authored file "${path}" would never be served: the Worker answers 404 for it, a Cloudflare control path. Rename it or remove it from directory.pages.`,
       );
     }
   }

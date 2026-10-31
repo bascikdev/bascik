@@ -381,7 +381,7 @@ Bascik generates an inventory of invocation routes during build (`buildInvocatio
 - Every dynamic page alias (e.g. `/`, `/account`, `/account.html`, `/account/`)
 - The aliases of a static `404.html` (`/404`, `/404/`, `/404.html`), so the Worker answers the custom 404 page with status `404` at its own URL, as `bascik --server` does, instead of the asset layer's `200`
 - `/api/*` if the project has API routes
-- `/_routes.json` and `/_worker.js` (generated control files)
+- `/_routes.json` and `/_worker.js` (generated control files on Pages), which the Worker answers with 404 on every target. A `src/pages/_routes.json` or `src/pages/_worker.js` fails the build, since it would never be served; a `src/pages/worker.js` or `wrangler.jsonc` deploys as a normal file, because the generated ones sit beside `public/`, not in it
 - `/*` if the overflow limit is exceeded
 
 You do not copy this inventory into your own config. The build writes it into the generated `wrangler.jsonc` on every build, so it follows new pages and API routes. Patterns you list in your own `assets.run_worker_first` are added after the computed ones, so a path you want the Worker to answer first stays in the list without hiding the routes the build needs.

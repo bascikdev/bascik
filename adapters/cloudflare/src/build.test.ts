@@ -119,6 +119,26 @@ describe("detectControlCollisions", () => {
       expect.stringContaining("_worker.js"),
     ]);
   });
+
+  it("workers: the paths the Worker refuses collide, the files written beside public/ do not", () => {
+    // worker.js and wrangler.jsonc are written to the output folder, never
+    // to public/, so a service worker at src/pages/worker.js deploys.
+    expect(
+      detectControlCollisions(["worker.js", "wrangler.jsonc"], "workers"),
+    ).toEqual([]);
+    // The Worker answers 404 for these on every target: an authored one
+    // would deploy and never be served.
+    const problems = detectControlCollisions(
+      ["_routes.json", "docs/_routes.json", "_worker.js"],
+      "workers",
+    );
+    expect(problems).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] --target cloudflare-workers: authored file "_routes\.json" .*404/,
+      ),
+      expect.stringMatching(/"_worker\.js"/),
+    ]);
+  });
 });
 
 describe("node builtin policy for the pinned Cloudflare target", () => {
