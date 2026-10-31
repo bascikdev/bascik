@@ -5,8 +5,7 @@ import { join } from "node:path";
 import {
   runRetentionExperiment,
   compareRetentionTrends,
-  tlsCleanupRuntimeSkipReason,
-  tlsCleanupRuntimeSupported,
+  skipUnsupportedRetentionLane,
   type RetentionCheckpoint,
 } from "./module-retention.test-helper.ts";
 import {
@@ -135,9 +134,9 @@ describe("module retention lifecycle evidence", () => {
     { timeout: 60_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       directories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -275,6 +274,12 @@ describe("module retention lifecycle evidence", () => {
       for (const checkpoint of checkpoints.filter((value) => value.snapshot)) {
         expect((await stat(checkpoint.snapshot!)).mode & 0o077).toBe(0);
       }
+      // The module-entry oracle only proves release when it watched
+      // superseded generations: changing helpers must add entries.
+      if (changing)
+        expect(checkpoints[2].observedModuleEntries).toBeGreaterThan(
+          checkpoints[0].observedModuleEntries,
+        );
       if (!changing) {
         expect(checkpoints[2].cache).toBe(checkpoints[0].cache);
         expect(checkpoints[2].graph).toBe(checkpoints[0].graph);

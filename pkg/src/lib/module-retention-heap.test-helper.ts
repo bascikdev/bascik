@@ -105,6 +105,7 @@ export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
         "LoadCache",
         "ScriptRegistry",
         "MemoryStore",
+        "Timeout",
       ].includes(name)
     )
       classes[name] = (classes[name] ?? 0) + 1;
@@ -163,8 +164,14 @@ export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
   const namespaces = new Set<number>();
   const frameworkPaths: string[][] = [];
   for (const registry of registries) {
+    // WHY fail closed: the namespace count below is compared with the
+    // checkpoint's cache size, and a renamed private field would otherwise
+    // read as "nothing retained" instead of "nothing observed".
     const cache = property(registry, "cache");
-    if (cache === undefined) continue;
+    assert(
+      cache !== undefined,
+      "ScriptRegistry heap node has no cache property: update the retention heap observation",
+    );
     for (
       let cacheEdge = starts[cache];
       cacheEdge < starts[cache + 1];
@@ -203,6 +210,7 @@ export function analyzeRetentionHeap(heap: HeapSnapshot, project: string) {
     }
   }
   return {
+    registries: registries.length,
     classes,
     fixtureJobs,
     categories,
