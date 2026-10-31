@@ -217,14 +217,19 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Lookahead for the end of a tag name, as in the compiler: HTML whitespace, `/` or `>`. */
+const TAG_NAME_END = "(?=[\\t\\n\\f\\r />])";
+
 export function findMatchingClose(
   html: string,
   tagName: string,
   contentStart: number,
 ): number {
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const openRe = new RegExp(`<${tn}[\\s>]`, "gi");
-  const closeRe = new RegExp(`<\\/${tn}>`, "gi");
+  // Tag names end at HTML whitespace, `/` or `>`, and an end tag may carry whitespace or junk before
+  // its `>`, the shapes the compiler accepts (component-tags.ts, component-slots.ts).
+  const openRe = new RegExp(`<${tn}${TAG_NAME_END}`, "gi");
+  const closeRe = new RegExp(`<\\/${tn}(?:[\\t\\n\\f\\r /][^>]*)?>`, "gi");
   let depth = 1;
   let pos = contentStart;
   while (pos < html.length) {
@@ -1362,7 +1367,7 @@ export function createDiagnostics(
         name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       );
       const componentTagRe = new RegExp(
-        `<(${escapedNames.join("|")})\\b`,
+        `<(${escapedNames.join("|")})${TAG_NAME_END}`,
         "gi",
       );
       let compMatch: RegExpExecArray | null;
@@ -1417,7 +1422,10 @@ export function createDiagnostics(
 
             if (compMeta.props.length > 0) {
               const insideOpenTag = openTagText
-                .replace(new RegExp(`^<${escapeRegExp(tagName)}\\b`, "i"), "")
+                .replace(
+                  new RegExp(`^<${escapeRegExp(tagName)}${TAG_NAME_END}`, "i"),
+                  "",
+                )
                 .replace(/\/?>$/, "");
               const baseAttrOffset = openTagText.indexOf(insideOpenTag);
               const bareAttrRe =
@@ -1432,7 +1440,7 @@ export function createDiagnostics(
                 );
                 if (!declaredProp) continue;
                 const alreadySupplied = new RegExp(
-                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}\\b`,
+                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}(?![\\w-])`,
                   "i",
                 ).test(openTagText);
                 if (alreadySupplied) continue;
