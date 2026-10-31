@@ -1,6 +1,6 @@
 import {
+  readStartTag,
   scanWholeAttributes,
-  startTagLength,
 } from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import {
@@ -39,13 +39,13 @@ export const extractInheritableAttributes = (
   // value (title="a > b") does not end it, and a quote inside an unquoted
   // value (title=it's) does not start one.
   if (!/^<[\w-]/.test(componentContent)) return attrs;
-  const openTagLength = startTagLength(componentContent);
-  if (openTagLength === -1) return attrs;
-  const openTag = componentContent.slice(0, openTagLength);
-  const tagEnd = openTagLength - 1;
+  const startTag = readStartTag(componentContent);
+  if (startTag.end === -1) return attrs;
+  const openTag = componentContent.slice(0, startTag.end);
+  const tagEnd = startTag.end - 1;
   // Double-quoted, single-quoted, whitespace-spaced, and unquoted values; an
   // unquoted value runs to whitespace or `>`, as in the browser.
-  for (const attribute of scanWholeAttributes(openTag)) {
+  for (const attribute of startTag.attributes) {
     const { name } = attribute;
     if (/^data-bascik-/i.test(name)) continue;
     // Framework names such as `@click`, `x-on:click.prevent`, `#ref` and

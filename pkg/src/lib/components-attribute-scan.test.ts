@@ -436,3 +436,51 @@ describe("scanWholeAttributes separators", () => {
     );
   });
 });
+
+// extractProps and extractInheritableAttributes read the start tag once
+// (prompt 158 R2-09): the attributes readStartTag returns for a whole
+// template are the ones a second scan of the start tag alone would find.
+describe("readStartTag", () => {
+  it.each([
+    ["a plain start tag before content", '<my-card title="a">body</my-card>'],
+    ["a `>` inside a quoted value", '<my-card title="a > b" x=1>body'],
+    ["a quote inside an unquoted value", "<my-card title=it's x='y'>body"],
+    ["a self-closing unquoted value", "<my-card title=x/>rest"],
+    ["no attributes", "<my-card>rest"],
+    ["a name that starts with `=`", '<my-card =x="1" y>rest'],
+  ])("%s", async (_label, html) => {
+    const { readStartTag, scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    const { attributes, end } = readStartTag(html);
+    expect(end).toBeGreaterThan(0);
+    expect(html[end - 1]).toBe(">");
+    expect(attributes).toEqual(scanWholeAttributes(html.slice(0, end)));
+  });
+
+  it.each([
+    ["an unterminated quoted value", '<my-card title="a>b'],
+    ["no `>` at all", "<my-card title=a"],
+    ["an empty template", ""],
+  ])("reports no start tag for %s", async (_label, html) => {
+    const { readStartTag } = await import("./component-attribute-scan.ts");
+    expect(readStartTag(html).end).toBe(-1);
+  });
+
+  it("agrees with a second scan of the start tag on any input", async () => {
+    const { readStartTag, scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^<[a-z][a-z-]{0,6}[ a-z=/"'<>`-]{0,40}$/),
+        fc.string({ maxLength: 10 }),
+        (tag, rest) => {
+          const html = tag + rest;
+          const { attributes, end } = readStartTag(html);
+          if (end === -1) return;
+          expect(attributes).toEqual(scanWholeAttributes(html.slice(0, end)));
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+});
