@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Milk frother reviews</title>
+    <style>
+      body {
+        margin: 0;
+        font: 20px/30px sans-serif;
+      }
+      .page {
+        height: 2000px;
+        border-bottom: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Infinite scroll: every time the sentinel scrolls into view another 2,000 px of reviews is appended, so a
+         scroll-through that follows the page height would never end. -->
+    <h1>Milk frother reviews</h1>
+    <div id="list"><div class="page">Reviews 1</div></div>
+    <div id="sentinel"></div>
+    <script>
+      let n = 1;
+      new IntersectionObserver((entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        const page = document.createElement("div");
+        page.className = "page";
+        page.textContent = `Reviews ${++n}`;
+        document.getElementById("list").append(page);
+      }).observe(document.getElementById("sentinel"));
+    </script>
+  </body>
+</html>

@@ -10,18 +10,22 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   contextOptions,
-  openPage,
   POLITE_HELP,
   POLITE_OPTIONS,
   politeBrowser,
   politeFlags,
   politeSummary,
-  routeUrl,
 } from "./lib/capture.mjs";
 import { loadMatrix } from "./lib/matrix.mjs";
 import { loadPlaywright, loadSharp } from "./lib/project-deps.mjs";
 import { collectNodes, diffGeometry } from "./geometry-diff.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import {
+  DEFAULT_SETTLE_MS,
+  pixels,
+  validateMask,
+  withPage,
+} from "./lib/checks.mjs";
 
 export { contextOptions };
 
@@ -31,13 +35,20 @@ Compares a route on production and on the Bascik target at every breakpoint matr
 pixels (per-channel tolerance), geometry (collectNodes) and interactions (interactions.json). No route passes on
 one screenshot or a Lighthouse score. Exits 1 when any case fails.
 
+Each side is captured the way the parity checks capture it: the page is scrolled through and back (lazy images
+load, scroll-triggered reveals run), then waits --settle-ms after navigation and for the DOM to go quiet.
+
 Options:
   --prod <url>            Live production origin
   --target <url>          Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>          Route to compare (repeatable, required)
   --matrix <file>         Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --interactions <file>   Interaction steps JSON (optional; see below)
-  --mask <selector>       Element to paint over on both sides, such as a rotating carousel (repeatable)
+  --mask <selector>       Element to paint over on both sides, such as a rotating carousel (repeatable); the settle
+                          wait ignores changes inside it
+  --settle-ms <n>         Least time after navigation before a capture, then 0.75 s without a DOM change outside
+                          the masks, as every parity check waits (default ${DEFAULT_SETTLE_MS}; 0 for a site with no
+                          timers)
   --evidence <selector>   Element whose box and computed styles go into the report (repeatable;
                           default: header, h1, main, footer)
   --tolerance <n>         Per-channel pixel tolerance 0-255 (default 10)
@@ -328,6 +339,7 @@ export function parseCliArgs(argv) {
       matrix: { type: "string" },
       interactions: { type: "string" },
       mask: { type: "string", multiple: true },
+      "settle-ms": { type: "string" },
       accepted: { type: "string" },
       evidence: { type: "string", multiple: true },
       tolerance: { type: "string" },
@@ -343,6 +355,13 @@ export function parseCliArgs(argv) {
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
   const polite = politeFlags(values, values);
+  for (const selector of values.mask ?? []) validateMask(selector);
+  const settleMs = pixels(
+    "--settle-ms",
+    values["settle-ms"],
+    DEFAULT_SETTLE_MS,
+    "milliseconds",
+  );
   const seen = new Set();
   for (const route of values.route) {
     validateRoute(route);
@@ -371,6 +390,7 @@ export function parseCliArgs(argv) {
     matrix: values.matrix ?? "docs/migration/breakpoints.json",
     interactions: values.interactions,
     mask: values.mask ?? [],
+    settleMs,
     accepted: values.accepted,
     evidence: values.evidence ?? ["header", "h1", "main", "footer"],
     tolerance,
@@ -576,44 +596,44 @@ async function main() {
         const label = `${c.width}x${c.height}`;
         const allowed = acceptedFor(accepted, route, c);
         const masks = [...new Set([...args.mask, ...allowed.masks])];
-        const side = async (name, origin) => {
-          const { context, page } = await openPage(
+        const side = (name, origin) =>
+          withPage(
             browser,
-            routeUrl(origin, route),
+            origin,
+            route,
             c,
-          );
-          try {
-            const file = join(dir, `${name}-${label}.png`);
-            const png = await page.screenshot({
-              path: file,
-              fullPage: true,
-              animations: "disabled",
-              mask: masks.map((s) => page.locator(s)),
-              maskColor: "#ff00ff",
-            });
-            const nodes = await page.evaluate(collectNodes);
-            const facts = await evidence(page, args.evidence);
-            const interactions = [];
-            for (const [i, step] of steps.entries())
-              if (appliesTo(step, route, c)) {
-                try {
-                  interactions.push(
-                    await runInteraction(page, step, i, { label }),
-                  );
-                } catch (error) {
-                  interactions.push({
-                    name: step.name,
-                    action: step.action,
-                    ok: false,
-                    failures: [error.message.split("\n")[0]],
-                  });
+            async (page) => {
+              const file = join(dir, `${name}-${label}.png`);
+              const png = await page.screenshot({
+                path: file,
+                fullPage: true,
+                animations: "disabled",
+                mask: masks.map((s) => page.locator(s)),
+                maskColor: "#ff00ff",
+              });
+              const nodes = await page.evaluate(collectNodes);
+              const facts = await evidence(page, args.evidence);
+              const interactions = [];
+              for (const [i, step] of steps.entries())
+                if (appliesTo(step, route, c)) {
+                  try {
+                    interactions.push(
+                      await runInteraction(page, step, i, { label }),
+                    );
+                  } catch (error) {
+                    interactions.push({
+                      name: step.name,
+                      action: step.action,
+                      ok: false,
+                      failures: [error.message.split("\n")[0]],
+                    });
+                  }
                 }
-              }
-            return { file, png, nodes, facts, interactions };
-          } finally {
-            await context.close();
-          }
-        };
+              return { file, png, nodes, facts, interactions };
+            },
+            masks,
+            args.settleMs,
+          );
         const prod = await side("prod", args.prod);
         const target = await side("target", args.target);
         const [a, b] = await Promise.all(

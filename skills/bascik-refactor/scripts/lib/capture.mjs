@@ -18,38 +18,66 @@ export function contextOptions(matrixCase) {
   return options;
 }
 
+/** How many viewport-height steps the scroll-through takes at most, so an infinite-scroll page cannot hold it. */
+export const SCROLL_STEPS_CAP = 40;
+
 /**
- * Waits until the page is stable enough to measure: fonts ready, eager images complete, finite animations
- * finished, scrolled to the top. Each wait is capped so a lazy image or a looping animation cannot hang the run.
+ * Waits until the page is stable enough to measure: fonts ready, every image complete, finite animations finished,
+ * scrolled to the top. Before that it scrolls the page through in viewport-height steps (at most SCROLL_STEPS_CAP)
+ * and back: a loading="lazy" image is switched to eager, so a full-page screenshot draws it whatever distance
+ * Chromium would have loaded it from, and content that appears when it scrolls into view (an IntersectionObserver
+ * fade-in, framer-motion whileInView, content-visibility: auto) is revealed on both sides alike. Every scroll is
+ * instant, also on a page with scroll-behavior: smooth. Each wait is capped so an image that never loads or a
+ * looping animation cannot hang the run.
  */
 export async function settle(page, { timeout = 10_000 } = {}) {
-  await page.evaluate(async (limit) => {
-    const capped = (promise) =>
-      Promise.race([promise, new Promise((r) => setTimeout(r, limit))]);
-    await capped(document.fonts.ready);
-    await capped(
-      Promise.all(
-        [...document.images]
-          .filter((img) => !img.complete && img.loading !== "lazy")
-          .map(
-            (img) =>
-              new Promise((r) => {
-                img.addEventListener("load", r, { once: true });
-                img.addEventListener("error", r, { once: true });
-              }),
-          ),
-      ),
-    );
-    await capped(
-      Promise.all(
-        document
-          .getAnimations()
-          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
-          .map((a) => a.finished.catch(() => {})),
-      ),
-    );
-    window.scrollTo(0, 0);
-  }, timeout);
+  await page.evaluate(
+    async ({ limit, cap }) => {
+      const capped = (promise) =>
+        Promise.race([promise, new Promise((r) => setTimeout(r, limit))]);
+      const frames = () =>
+        new Promise((r) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => r())),
+        );
+      const jump = (top) =>
+        window.scrollTo({ top, left: 0, behavior: "instant" });
+      const loaded = (img) =>
+        img.complete ||
+        new Promise((r) => {
+          img.addEventListener("load", r, { once: true });
+          img.addEventListener("error", r, { once: true });
+        });
+      await capped(document.fonts.ready);
+      for (const img of document.images)
+        if (img.loading === "lazy" && !img.complete) img.loading = "eager";
+      const step = Math.max(1, window.innerHeight);
+      for (let i = 1; i <= cap; i++) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const before = window.scrollY;
+        if (before >= max) break;
+        jump(Math.min(i * step, max));
+        // A page whose window does not scroll (overflow: hidden on the root) ends the pass at once.
+        if (window.scrollY <= before) break;
+        await frames();
+      }
+      // Images added by the pass (a lazy section, a reveal) load eagerly too.
+      for (const img of document.images)
+        if (img.loading === "lazy" && !img.complete) img.loading = "eager";
+      jump(0);
+      await frames();
+      await capped(Promise.all([...document.images].map(loaded)));
+      await capped(
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+            .map((a) => a.finished.catch(() => {})),
+        ),
+      );
+      jump(0);
+    },
+    { limit: timeout, cap: SCROLL_STEPS_CAP },
+  );
 }
 
 /**

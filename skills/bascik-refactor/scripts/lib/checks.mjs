@@ -284,7 +284,7 @@ export async function quiet(page, masks = [], settleMs = DEFAULT_SETTLE_MS) {
           characterData: true,
         });
       });
-      window.scrollTo(0, 0);
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     },
     { quietMs: QUIET_MS, cap: QUIET_CAP_MS, masks, settleMs },
   );
@@ -293,7 +293,9 @@ export async function quiet(page, masks = [], settleMs = DEFAULT_SETTLE_MS) {
 /**
  * Opens `route` on `origin` for one case, settled and quiet (see quiet()), runs `fn(page)` and closes the context.
  * `masks` are the documented dynamic regions the quiet wait ignores; `settleMs` is the least time after navigation
- * before `fn` runs (DEFAULT_SETTLE_MS when undefined).
+ * before `fn` runs (DEFAULT_SETTLE_MS when undefined). After the quiet wait the page is settled again (scrolled
+ * through and back, see settle()), so a section that mounted or hydrated late still loads its lazy images and runs
+ * its scroll-triggered reveals before anything is measured.
  */
 export async function withPage(
   browser,
@@ -311,6 +313,7 @@ export async function withPage(
   );
   try {
     await quiet(page, masks ?? [], settleMs ?? DEFAULT_SETTLE_MS);
+    await settle(page);
     return await fn(page, context);
   } finally {
     await context.close();

@@ -20,6 +20,7 @@ import {
   validateStep,
 } from "../../skills/bascik-refactor/scripts/compare-route.mjs";
 import { routeUrl } from "../../skills/bascik-refactor/scripts/lib/capture.mjs";
+import { DEFAULT_SETTLE_MS } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
 import {
   loadPlaywright,
   loadSharp,
@@ -635,6 +636,25 @@ describe("parseCliArgs", () => {
         "-1",
       ]),
     ).toThrow(/--tolerance/);
+  });
+
+  const base = ["--prod", "a", "--target", "b", "--route", "/"];
+
+  it("waits like the checks: --settle-ms defaults to the checks' settle time and takes 0", () => {
+    expect(parseCliArgs(base).settleMs).toBe(DEFAULT_SETTLE_MS);
+    expect(parseCliArgs([...base, "--settle-ms", "0"]).settleMs).toBe(0);
+    expect(parseCliArgs([...base, "--settle-ms", "8000"]).settleMs).toBe(8000);
+  });
+
+  it("misuse: a --settle-ms that is not a number of milliseconds, or an empty or unbalanced --mask, names the flag", () => {
+    for (const bad of ["abc", "-5", ""])
+      expect(() => parseCliArgs([...base, `--settle-ms=${bad}`])).toThrow(
+        /--settle-ms must be a number of milliseconds/,
+      );
+    expect(() => parseCliArgs([...base, "--mask", " "])).toThrow(/--mask/);
+    expect(() =>
+      parseCliArgs([...base, "--mask", "[data-testid=carousel"]),
+    ).toThrow(/--mask/);
   });
 });
 

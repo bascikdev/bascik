@@ -222,7 +222,7 @@ It writes `{ thresholds, sources, cases }`, where `sources` names the file each 
 
 One route at a time, one section at a time:
 
-1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, complete images and finished animations. Keep production read-only: every script blocks service workers and the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
+1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, scroll the page through and back (lazy images load and scroll-triggered fade-ins run), wait for complete images and finished animations, then wait 5 seconds after navigation (`--settle-ms`) and for the DOM to go quiet. Every script, `compare-route.mjs` included, does this the same way. Keep production read-only: every script blocks service workers and the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
 2. **Find the owning production subtree from stable anchors.** Use visible heading text, `href`, `src`, `alt`, landmarks and test ids, never generated class names. Climb to the smallest ancestor that owns one coherent section, and stop there.
 3. **Extract structure, geometry and computed styles.** Use a fixed property list: display, position, box sizing, sizes, margins, paddings, gap, alignment, overflow, colors, backgrounds, border, radius, shadow, font family, size and weight, line height, letter spacing, text alignment, white-space, transform and z-index. Add `::before` and `::after`, child order, line counts, image `currentSrc`, intrinsic size and `object-fit`.
 4. **Read the legacy owner of that subtree only.** Translate the resolved behavior. Do not copy React or Sass wholesale.
@@ -434,7 +434,9 @@ node "$REFACTOR/compare-route.mjs" \
 
 Each route gets `report.json` and a pair of PNGs per case under `artifacts/compare/`. A case fails when more than 0.1 percent of its pixels differ (`--max-ratio`), when the geometry diff flags a node, or when an interaction ends in a different state on the two sides. A missing or ambiguous trigger fails at once and names its locator and case.
 
-Mask only documented dynamic regions, such as a rotating review carousel. No route passes on one screenshot, and no route passes on a Lighthouse score.
+`compare-route.mjs` captures each side the way the parity checks do: it scrolls the page through and back, so a lazy photo far below the fold is drawn and a section that fades in on scroll is visible on both sides, then waits until 5 seconds after navigation and for the DOM to go quiet, so a banner mounted after hydration or a caption that types itself out is finished. Pass `--settle-ms` with a longer time for a later timer, or 0 for a site with none.
+
+Mask only documented dynamic regions, such as a rotating review carousel; the quiet wait ignores changes inside a mask. No route passes on one screenshot, and no route passes on a Lighthouse score.
 
 ### Parity Checks
 

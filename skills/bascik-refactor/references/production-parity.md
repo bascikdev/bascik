@@ -86,8 +86,24 @@ import nothing else.
 ## Capture settings
 
 Identical on both sides: width and height, browser version, device scale factor 1, zoom 100 percent, light color
-scheme, reduced motion, scroll position 0, the same cookie notice state. Before measuring, wait for
-`document.fonts.ready`, complete eager images and finished finite animations. `scripts/lib/capture.mjs` does this.
+scheme, reduced motion, scroll position 0, the same cookie notice state. Every script, `compare-route.mjs` included,
+captures a page the same way (`settle` in `scripts/lib/capture.mjs`, `withPage` in `scripts/lib/checks.mjs`):
+
+1. Wait for `document.fonts.ready`.
+2. Scroll the page through in viewport-height steps (at most 40) and back to the top, instantly even under
+   `scroll-behavior: smooth`. Every `loading="lazy"` image is switched to eager first, so a full-page screenshot draws
+   a photo far below the fold on both sides, whatever distance Chromium would have loaded it from. Content that
+   appears when it scrolls into view (an IntersectionObserver fade-in, framer-motion `whileInView`,
+   `content-visibility: auto`) is revealed on both sides; many such libraries ignore reduced motion. An
+   infinite-scroll list grows by what those 40 steps load, on both sides alike.
+3. Wait for every image to complete and finite animations to finish.
+4. Wait until 5 seconds after navigation started (`--settle-ms`), then until the DOM goes 0.75 seconds without a
+   change outside the `--mask` regions (at most 4 seconds), so a banner mounted after hydration or a caption that
+   types itself out is finished on both sides.
+5. Settle again (steps 1 to 3), for a section that mounted or hydrated during the wait.
+
+Each wait is capped, so an image that never loads or a looping animation cannot hang the run. A page that scrolls
+inside an element instead of the window is not scrolled through: compare such a section with an element screenshot.
 
 Production stays read-only, and every script that loads it (every check, `run-checks.mjs`, `capture-baselines.mjs`,
 `compare-route.mjs` and `geometry-diff.mjs`) enforces it in the browser, on both sides alike:

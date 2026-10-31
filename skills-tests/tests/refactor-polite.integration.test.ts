@@ -317,7 +317,10 @@ describe("polite production", () => {
           "--no-legacy-repo",
         ],
       ],
-      ["compare-route", () => ["--out", join(tmp, "compare")]],
+      [
+        "compare-route",
+        () => ["--out", join(tmp, "compare"), "--settle-ms", "0"],
+      ],
       ["geometry-diff", () => []],
     ];
     it.each(scripts)(
