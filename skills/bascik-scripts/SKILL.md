@@ -149,7 +149,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Unexported methods return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/server-scripts`, `/stream-scripts`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
+Unexported methods, and any method other than `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` and `HEAD` (an exported `PURGE` is never called), return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/server-scripts`, `/stream-scripts`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
 
 ## Blogs and Markdown collections
 
