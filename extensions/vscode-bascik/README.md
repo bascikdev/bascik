@@ -131,7 +131,7 @@ The extension reports high-signal problems in the editor and Problems panel:
 - standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
 - runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold typed route handlers with `Request` and `context` arguments.
+Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold route handlers with `request` and `context` arguments, typed in TypeScript (`params` is `Record<string, string | string[]>`, since a `[...name]` catch-all is a `string[]`) and without annotations in JavaScript.
 
 ## Nested Projects and Custom Configuration
 

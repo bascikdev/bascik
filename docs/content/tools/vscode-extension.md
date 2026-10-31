@@ -194,13 +194,15 @@ JavaScript and TypeScript files under `src/api/` receive route-specific checks:
 - A route file with no recognized HTTP method export reports an error.
 - A `request.json()` or `req.json()` call outside an apparent `try` block receives an information diagnostic, because malformed JSON can otherwise produce an unhandled error.
 
-The extension also ships snippets for scaffolding route handlers in TypeScript and JavaScript:
+The extension also ships snippets for scaffolding route handlers in TypeScript and JavaScript. In a `.ts` file the handler's arguments are typed; in a `.js` file the same snippets insert them without annotations.
 
-| Prefix        | Inserts                                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bascik-api`  | A route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments |
-| `bascik-get`  | A typed `GET` handler                                                                                                                                     |
-| `bascik-post` | A typed `POST` handler with JSON request body parsing                                                                                                     |
+| Prefix        | Inserts                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik-api`  | A route handler with an HTTP method picker and `request: Request` and `context: { params: Record<string, string \| string[]>; remoteIp: string }` arguments in TypeScript |
+| `bascik-get`  | A `GET` handler                                                                                                                                                           |
+| `bascik-post` | A `POST` handler with JSON request body parsing                                                                                                                           |
+
+`params` holds a `string[]` for a [catch-all](/api-routes#catch-all-routes) `[...name]` segment and a `string` for a `[param]` segment, so narrow the value before you use it as either.
 
 ## Several Scripts in One File
 
