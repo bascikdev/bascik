@@ -525,6 +525,36 @@ describe("transformTypeScriptScriptTags", () => {
     expect(out).not.toContain(": string");
   });
 
+  it.each([
+    [
+      '<script data-x="a type=b" type="text/typescript">const a: number = 1;</script>',
+      '<script data-x="a type=b">const a         = 1;</script>',
+    ],
+    [
+      "<script data-x='a type=b' type=\"text/typescript\">const a: number = 1;</script>",
+      "<script data-x='a type=b'>const a         = 1;</script>",
+    ],
+    [
+      '<script\n  data-x="a\n  type=b"\n  type="text/typescript"\n  defer\n>const a: number = 1;</script>',
+      '<script data-x="a\n  type=b"\n  defer\n>const a         = 1;</script>',
+    ],
+    [
+      '<script type="text/typescript" data-x="a type=b">const a: number = 1;</script>',
+      '<script data-x="a type=b">const a         = 1;</script>',
+    ],
+    [
+      "<script type=text/typescript defer>const a: number = 1;</script>",
+      "<script defer>const a         = 1;</script>",
+    ],
+  ])(
+    "removes the real type attribute, not ` type=` text in another value (F044): %j",
+    async (html, expected) => {
+      expect(
+        await transformTypeScriptScriptTags(html, "src/pages/index.html"),
+      ).toBe(expected);
+    },
+  );
+
   it("does not strip data-type or treat data-src as external when transforming TypeScript scripts", async () => {
     const html =
       '<!-- <script type="text/typescript">enum Broken { A }</script> -->' +

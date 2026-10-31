@@ -31,7 +31,10 @@ import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
 import { availableParallelism } from "node:os";
 import { BascikConfig } from "./config.ts";
-import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  ANY_DIRECTIVE_ATTR_NAME,
+  removeHtmlAttribute,
+} from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
 import {
   classifySpecifier,
@@ -56,7 +59,6 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
   "i",
 );
 
-const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
 // A tag and its whole name, as the tokenizer reads one: up to tag whitespace,
 // `/` or `>`, so `<script.x>` and `<style-guide>` are other elements, never a
 // script or a raw-text element. Sticky: it is only asked about one `<`.
@@ -757,7 +759,9 @@ export const looksLikeTypeScript = (code: string): boolean => {
 
 /** Remove the `type="..."` attribute from a script open tag. */
 const withoutTypeAttribute = (openTag: string): string => {
-  const cleaned = openTag.replace(TYPE_ATTR_RE, "");
+  // The tokenizer that found the type removes it, so ` type=` text inside another
+  // attribute's value is never mistaken for it.
+  const cleaned = removeHtmlAttribute(openTag, "type");
   // `<script  defer>` -> `<script defer>`; `<script>` stays `<script>`.
   return cleaned
     .replace(/<script\s+/i, "<script ")
