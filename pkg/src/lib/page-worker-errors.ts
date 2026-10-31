@@ -36,13 +36,14 @@ export const toPageWorkerFailure = (
   error: unknown,
   failedDependencies: string[] = [],
 ): PageWorkerFailure => {
+  // String() also covers an Error whose message was set to a non-string.
   const failure: PageWorkerFailure = {
-    message: error instanceof Error ? error.message : String(error),
+    message: String(error instanceof Error ? error.message : error),
   };
   if (error instanceof PageProcessingError) {
     failure.stage = error.stage;
     const cause = error.cause;
-    failure.message = cause instanceof Error ? cause.message : String(cause);
+    failure.message = String(cause instanceof Error ? cause.message : cause);
   }
   const located = locateBuildError(error);
   if (located)

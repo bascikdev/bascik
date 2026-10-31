@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BuildScriptError, locateBuildError } from "./build-error.ts";
-import { PageProcessingError } from "./page-diagnostics.ts";
+import { normalizePageError, PageProcessingError } from "./page-diagnostics.ts";
 import {
   failedDependenciesOf,
   fromPageWorkerFailure,
@@ -78,5 +78,74 @@ describe("page worker failures across the thread boundary (F054)", () => {
         failedDependencies: ["a.ts", 3, null, "b.ts"],
       }),
     ).toEqual(["a.ts", "b.ts"]);
+  });
+});
+
+describe("every error shape a page worker can throw (R2-03)", () => {
+  /** What the terminal and overlay read from a page error: message, stage, location. */
+  const reported = (error: unknown) => {
+    const normalized = normalizePageError(PAGE, error);
+    return {
+      message: normalized.message,
+      stage: normalized.stage,
+      location: locateBuildError(normalized),
+    };
+  };
+  const located = buildError();
+  const shapes: Array<[string, unknown]> = [
+    ["a BuildScriptError with its location", located],
+    ["a plain Error", new Error("Page does not contain a non-empty <body>")],
+    ["a TypeError", new TypeError("x is not a function")],
+    [
+      "an Error whose cause is a located BuildScriptError",
+      new Error("compile failed", { cause: located }),
+    ],
+    [
+      "an AggregateError holding a located BuildScriptError",
+      new AggregateError([new Error("other"), located], "2 failures"),
+    ],
+    ["an AggregateError with no message", new AggregateError([located])],
+    [
+      "a PageProcessingError whose cause is not an Error",
+      new PageProcessingError(PAGE, "render components", "a thrown string"),
+    ],
+    [
+      "a PageProcessingError around an AggregateError",
+      new PageProcessingError(
+        PAGE,
+        "validate markup",
+        new AggregateError([located], "many"),
+      ),
+    ],
+    ["a thrown string", "boom"],
+    ["a thrown number", 42],
+    ["thrown null", null],
+    ["thrown undefined", undefined],
+    ["a thrown plain object", { message: "looks like an error", code: 7 }],
+    ["a thrown Symbol", Symbol("odd")],
+  ];
+
+  it.each(shapes)(
+    "%s reports the same message, stage and location as the serial path",
+    (_label, thrown) => {
+      const restored = fromPageWorkerFailure(PAGE, acrossThreads(thrown));
+      expect(restored).toBeInstanceOf(Error);
+      expect(reported(restored)).toEqual(reported(thrown));
+    },
+  );
+
+  it("keeps the message of an Error whose message is not a string", () => {
+    const odd = Object.assign(new Error("x"), { message: 404 });
+    const detail = acrossThreads(odd);
+    expect(detail.message).toBe("404");
+    expect(fromPageWorkerFailure(PAGE, detail)?.message).toBe("404");
+  });
+
+  it("survives a cyclic cause chain", () => {
+    const cyclic = new Error("loop");
+    (cyclic as { cause?: unknown }).cause = cyclic;
+    expect(fromPageWorkerFailure(PAGE, acrossThreads(cyclic))?.message).toBe(
+      "loop",
+    );
   });
 });
