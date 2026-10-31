@@ -46,4 +46,29 @@ describe("Server Script Diagnostics: linear time", () => {
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
+
+  // server-script-returns-response walks the default export's body once:
+  // each `(`, `{` and `:` looks back only to the previous token.
+  it.each([
+    ["nested blocks and calls", "if (a) { f(b); } "],
+    ["annotated helpers", "function h(x: T): R { return new Response(x); } "],
+    ["spaced parentheses", "g(   (   (   x   )   )   ); "],
+    ["returned Responses", 'if (q) return new Response("x"); '],
+  ])(
+    "misuse: a huge handler full of %s is checked for returned Responses in linear time",
+    (_name, unit) => {
+      const handlerOf = (n: number): string =>
+        `export default async (request) => {\n${unit.repeat(n)}\nreturn "";\n};`;
+      const small = handlerOf(4_000);
+      const large = handlerOf(16_000);
+      analyze(large);
+      expect(
+        growthOf(
+          () => analyze(small),
+          () => analyze(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });

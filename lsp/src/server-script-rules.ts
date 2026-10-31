@@ -1,4 +1,5 @@
 import { findModuleSpecifiers } from "./module-specifiers.js";
+import { maskCommentsAndStrings } from "./api-rules.js";
 import {
   HTML_MODULE,
   callOf,
@@ -38,6 +39,9 @@ export interface AnalyzeOptions {
 }
 
 export const UNESCAPED_MARKUP_RULE = "server-script-unescaped-markup";
+
+/** A server or stream script whose default export returns a Response. */
+export const RETURNS_RESPONSE_RULE = "server-script-returns-response";
 
 /** Tags that join their values into a string as they are, like no tag at all. */
 const PLAIN_STRING_TAGS = new Set([
@@ -265,6 +269,17 @@ export function analyzeServerScriptSource(
   if (opts.directive !== "server" && opts.directive !== "stream") {
     return diagnostics;
   }
+
+  // server-script-returns-response: the API-route habit, refused at request time.
+  if (!opts.hasSrcAttribute)
+    for (const { start, end } of findReturnedResponses(body))
+      diagnostics.push({
+        code: RETURNS_RESPONSE_RULE,
+        message: `This data-bascik-${opts.directive} script returns a Response, which Bascik refuses when the page is requested: the script's return value is spliced into the page as markup. Return a string or an html\`...\` value from @bascik/bascik/html. A Response belongs in an API route (src/api/).`,
+        severity: "warning",
+        start,
+        end,
+      });
 
   // server-script-bascik-import
   // An ESM import whose specifier is exactly @bascik/bascik or starts with @bascik/bascik/
@@ -573,4 +588,219 @@ function lastOpenAfterClose(text: string, name: string): boolean {
     ? (closes[closes.length - 1].index ?? -1)
     : -1;
   return lastOpen > lastClose;
+}
+
+/** Keywords whose `(...)` is followed by a block, not a function body. */
+const BLOCK_KEYWORDS = new Set([
+  "if",
+  "for",
+  "while",
+  "switch",
+  "catch",
+  "with",
+  "case",
+]);
+
+/**
+ * A returned Response, from just after `return` (or at an arrow's expression
+ * body): any parentheses and `await` before it, then `new Response(` or
+ * `Response.json(` / `.redirect(` / `.error(`. Group 1 is what gets marked.
+ */
+const RESPONSE_VALUE =
+  /(?:\(|\bawait\b|\s)*(new\s+Response|Response\s*\.\s*(?:json|redirect|error))\s*\(/y;
+
+type FunctionBody = { block: number } | { expression: number };
+
+function skipSpace(code: string, i: number): number {
+  while (i < code.length && isSpace(code[i])) i++;
+  return i;
+}
+
+function wordAt(code: string, i: number): string {
+  let end = i;
+  while (end < code.length && isWordChar(code[end])) end++;
+  return code.slice(i, end);
+}
+
+/** The word just before `i` (past whitespace), or "" when none. */
+function wordBefore(code: string, i: number): string {
+  let end = i;
+  while (end > 0 && isSpace(code[end - 1])) end--;
+  let start = end;
+  while (start > 0 && isWordChar(code[start - 1])) start--;
+  return code.slice(start, end);
+}
+
+/** Index of the `)` that closes the `(` at `open`, or -1. */
+function closeParen(code: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === "(") depth++;
+    else if (code[i] === ")" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * The body of the function that starts at `i` in masked code: a function
+ * declaration or expression, or an arrow function. A TypeScript return type
+ * is skipped. Anything else (a call such as `withAuth(...)`, a class) is not
+ * read, so the rule stays quiet.
+ */
+function functionBodyAt(code: string, i: number): FunctionBody | undefined {
+  i = skipSpace(code, i);
+  if (wordAt(code, i) === "async") i = skipSpace(code, i + 5);
+  let isArrow = true;
+  if (wordAt(code, i) === "function") {
+    isArrow = false;
+    i = skipSpace(code, i + 8);
+    if (code[i] === "*") i = skipSpace(code, i + 1);
+    i = skipSpace(code, i + wordAt(code, i).length);
+  }
+  if (code[i] === "(") {
+    const close = closeParen(code, i);
+    if (close < 0) return undefined;
+    i = close + 1;
+  } else if (isArrow && wordAt(code, i).length > 0) {
+    i += wordAt(code, i).length;
+  } else return undefined;
+  if (!isArrow) {
+    const open = code.indexOf("{", i);
+    return open < 0 ? undefined : { block: open };
+  }
+  const arrow = code.indexOf("=>", i);
+  // Only a return type may sit between the parameters and the arrow.
+  if (
+    arrow < 0 ||
+    (code.slice(i, arrow).trim() !== "" && code[skipSpace(code, i)] !== ":")
+  )
+    return undefined;
+  const body = skipSpace(code, arrow + 2);
+  return code[body] === "{" ? { block: body } : { expression: body };
+}
+
+/** The body of the function a name is declared as, if it is one. */
+function declaredFunctionBody(
+  code: string,
+  name: string,
+): FunctionBody | undefined {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return undefined;
+  const escaped = name.replace(/\$/g, () => "\\$");
+  const declared = new RegExp(
+    `\\b(?:async\\s+)?function\\s*\\*?\\s*${escaped}(?![\\w$])|\\b(?:const|let|var)\\s+${escaped}(?![\\w$])[^=;]*=(?![=>])`,
+  ).exec(code);
+  if (declared === null) return undefined;
+  return declared[0].endsWith("=")
+    ? functionBodyAt(code, declared.index + declared[0].length)
+    : functionBodyAt(code, declared.index);
+}
+
+/** The default export's function body, from `export default` or `export { name as default }`. */
+function defaultExportBody(code: string): FunctionBody | undefined {
+  const exported = /\bexport\s+default\b/.exec(code);
+  if (exported !== null) {
+    const at = skipSpace(code, exported.index + exported[0].length);
+    const word = wordAt(code, at);
+    const afterWord = skipSpace(code, at + word.length);
+    if (
+      word.length > 0 &&
+      word !== "async" &&
+      word !== "function" &&
+      code.slice(afterWord, afterWord + 2) !== "=>"
+    )
+      // `export default withAuth(...)` is a call: what it returns is not read.
+      return code[afterWord] === "(" || code[afterWord] === "."
+        ? undefined
+        : declaredFunctionBody(code, word);
+    return functionBodyAt(code, at);
+  }
+  for (const clause of code.matchAll(/\bexport\s*\{([^{}]*)\}/g)) {
+    for (const spec of clause[1].split(",")) {
+      const named = /^\s*([\w$]+)\s+as\s+default\s*$/.exec(spec);
+      if (named !== null) return declaredFunctionBody(code, named[1]);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Each `new Response(...)` or `Response.json(...)` (`.redirect`, `.error`)
+ * the default export returns, as offsets into `body`. Comments and strings are
+ * masked first, so the words in either never count, and a `return` inside a
+ * nested function (a helper, a callback, a method) belongs to that function.
+ * One pass over the default export's body.
+ */
+export function findReturnedResponses(
+  body: string,
+): { start: number; end: number }[] {
+  const code = maskCommentsAndStrings(body);
+  const fn = defaultExportBody(code);
+  if (fn === undefined) return [];
+  const found: { start: number; end: number }[] = [];
+  const responseAt = (at: number): void => {
+    RESPONSE_VALUE.lastIndex = at;
+    const m = RESPONSE_VALUE.exec(code);
+    if (m === null) return;
+    const start = m.index + m[0].lastIndexOf(m[1]);
+    found.push({ start, end: start + m[1].length });
+  };
+  if ("expression" in fn) {
+    responseAt(fn.expression);
+    return found;
+  }
+  // true for a `{` that opens a function body, false for a block or object.
+  const frames: boolean[] = [];
+  let functionDepth = 0;
+  const parenWords: string[] = [];
+  let lastClose = { at: -1, word: "" };
+  // Set when `: Type` follows a `)`, so `function f(): T {` still reads as a function.
+  let annotatedClose: { at: number; word: string } | undefined;
+  for (let i = fn.block + 1; i < code.length; i++) {
+    const c = code[i];
+    if (c === "(") parenWords.push(wordBefore(code, i));
+    else if (c === ")") {
+      lastClose = { at: i, word: parenWords.pop() ?? "" };
+      annotatedClose = undefined;
+    } else if (c === ":") {
+      if (
+        wordBefore(code, i) === "" &&
+        code[skipSpaceBackIn(code, i) - 1] === ")"
+      )
+        annotatedClose = lastClose;
+    } else if (c === ";" || (c === "=" && code[i + 1] !== ">")) {
+      annotatedClose = undefined;
+    } else if (c === "{") {
+      // A function body follows `=>`, or the `)` of a parameter list (with
+      // or without a return type), but not the `)` of `if (...)` and the like.
+      const prev = skipSpaceBackIn(code, i);
+      const close = prev - 1 === lastClose.at ? lastClose : annotatedClose;
+      const isFunction =
+        (code[prev - 1] === ">" && code[prev - 2] === "=") ||
+        (close !== undefined && !BLOCK_KEYWORDS.has(close.word));
+      annotatedClose = undefined;
+      frames.push(isFunction);
+      if (isFunction) functionDepth++;
+    } else if (c === "}") {
+      if (frames.length === 0) break;
+      if (frames.pop()) functionDepth--;
+    } else if (
+      functionDepth === 0 &&
+      c === "r" &&
+      code.startsWith("return", i) &&
+      !isWordChar(code[i - 1] ?? "") &&
+      !isWordChar(code[i + 6] ?? "")
+    ) {
+      // `return` then a line break returns undefined (automatic semicolon insertion).
+      let j = i + 6;
+      while (code[j] === " " || code[j] === "\t") j++;
+      if (code[j] !== "\n" && code[j] !== "\r") responseAt(j);
+      i += 5;
+    }
+  }
+  return found;
+}
+
+function skipSpaceBackIn(code: string, end: number): number {
+  while (end > 0 && isSpace(code[end - 1])) end--;
+  return end;
 }

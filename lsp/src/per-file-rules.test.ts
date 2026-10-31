@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { DiagnosticSeverity } from "vscode-languageserver";
 import { createDiagnostics } from "./analyzer.js";
 import {
   findComponentStructureProblems,
@@ -733,6 +734,59 @@ describe("api-unguarded-json in the editor", () => {
     );
     expect(codesFor("/site/src/api/x.ts", "typescript", route)).toContain(
       "api-unguarded-json",
+    );
+  });
+});
+
+describe("server-script-returns-response in the editor", () => {
+  const page = [
+    "<main>",
+    "  <script data-bascik-server>",
+    "    export default async () => {",
+    "      return Response.json({ ok: true });",
+    "    };",
+    "  </script>",
+    "</main>",
+  ].join("\n");
+
+  it("warns on the returned Response in a page's server script", () => {
+    const [warning] = createDiagnostics(
+      TextDocument.create("file:///site/src/pages/a.html", "html", 1, page),
+      "/site/src/pages/a.html",
+      snapshot(),
+    ).filter((d) => d.code === "server-script-returns-response");
+    expect(warning.severity).toBe(DiagnosticSeverity.Warning);
+    expect(warning.range).toEqual({
+      start: { line: 3, character: 13 },
+      end: { line: 3, character: 26 },
+    });
+  });
+
+  it("stays quiet in an API route, where a Response is the contract", () => {
+    const route =
+      'export default async () => {\n  return new Response("x");\n};\nexport const GET = () => Response.json({});\n';
+    expect(codesFor("/site/src/api/x.ts", "typescript", route)).not.toContain(
+      "server-script-returns-response",
+    );
+  });
+
+  it("stays quiet in a build script on a page", () => {
+    const build = page.replace("data-bascik-server", "data-bascik-build");
+    expect(codesFor("/site/src/pages/a.html", "html", build)).not.toContain(
+      "server-script-returns-response",
+    );
+  });
+
+  it("is silenced by bascik-ignore on the line above the return", () => {
+    const ignored = page.replace(
+      "      return Response",
+      "      // bascik-ignore server-script-returns-response\n      return Response",
+    );
+    expect(codesFor("/site/src/pages/a.html", "html", ignored)).not.toContain(
+      "server-script-returns-response",
+    );
+    expect(codesFor("/site/src/pages/a.html", "html", page)).toContain(
+      "server-script-returns-response",
     );
   });
 });

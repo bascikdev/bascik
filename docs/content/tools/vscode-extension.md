@@ -177,6 +177,7 @@ Server and stream script diagnostics enforce the runtime contract and flag outpu
 
 - An inline server or stream script must `export default` a handler function.
 - Server and stream scripts may import `@bascik/bascik/html`, and nothing else from `@bascik/bascik`, which is build tooling.
+- A default export that returns a `Response` (`return new Response(...)`, `return Response.json(...)`) gets `server-script-returns-response`: the return value is spliced into the page as markup, so return a string or an `html` value, and put a Response in an [API route](/api-routes).
 - A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)` or holds a joined string, because wrapping would escape the value twice.
 - Template substitutions in URL attributes, event handlers, unquoted attributes, inline scripts, and CSS contexts receive targeted warnings because normal HTML escaping is not sufficient there. Inside an `html` template, the ones `html` refuses are errors.
 - `esc()` inside an `html` template is reported as `html-escaped-twice`, and a `.join("")` of `html` values inside one as `html-joined-string`. Both would show escaped tags as text on the page.
