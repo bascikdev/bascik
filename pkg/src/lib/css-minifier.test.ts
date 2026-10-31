@@ -92,4 +92,27 @@ describe("minifyCss", () => {
       ":root{--empty: ;--x:1px;}",
     );
   });
+
+  it("keeps the whitespace that ends a hex escape apart from the combinator after it", () => {
+    // `.\31  p` is the class `1` and a descendant `p`; one space would make
+    // it the class `1p` (CSS Syntax: an escape consumes one whitespace).
+    expect(minifyCss(".\\31  p { color: red; }")).toBe(".\\31  p{color:red;}");
+    expect(minifyCss(".a\\1\n  .b { color: red; }")).toBe(
+      ".a\\1  .b{color:red;}",
+    );
+    expect(minifyCss(".a\\00003a   :hover { color: red; }")).toBe(
+      ".a\\00003a  :hover{color:red;}",
+    );
+  });
+
+  it("misuse: still collapses spaces after a seven-digit hex run or a plain backslash escape", () => {
+    // Six digits end an escape, so the seventh is text and the spaces after
+    // it are one combinator; `\:` is not a hex escape at all.
+    expect(minifyCss(".a\\1234567   p { color: red; }")).toBe(
+      ".a\\1234567 p{color:red;}",
+    );
+    expect(minifyCss(".md\\:flex   p { color: red; }")).toBe(
+      ".md\\:flex p{color:red;}",
+    );
+  });
 });

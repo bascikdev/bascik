@@ -22,7 +22,15 @@ export const minifyCss = (css: string): string => {
   );
   const minified = shielded
     .replace(/\n/g, " ")
-    .replace(/\s\s+/g, " ")
+    // A hex escape consumes the one whitespace after it (`.\31  p` is the
+    // class `1` and a descendant `p`), so a run after one keeps two spaces:
+    // the escape's and the combinator's. Six digits end an escape, so a
+    // longer hex run is text and its spaces collapse as usual.
+    .replace(
+      /(\\[0-9a-fA-F]{1,6}(?![0-9a-fA-F]))?\s\s+/g,
+      (_match, hexEscape: string | undefined) =>
+        hexEscape === undefined ? " " : `${hexEscape}  `,
+    )
     // Preserve the single space in an empty CSS custom property declaration
     // (`--empty: ;` or `--empty: }`) per CSS Custom Properties Level 1.
     .replace(/(?<!-)--([\w-]+)\s*:\s+(?=[;}])/g, "--$1: ")
