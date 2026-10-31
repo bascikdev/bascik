@@ -1263,6 +1263,123 @@ describe("CI stages and the deploy stage", () => {
     }
   });
 
+  /** A step's `run: |` block as the shell receives it. */
+  const runBlock = (text: string) => {
+    const lines = text.split("\n");
+    const start = lines.findIndex((line) => /^ {8}run: \|$/.test(line));
+    expect(start, "run: | block").toBeGreaterThan(-1);
+    const body: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (line.trim() && !line.startsWith(" ".repeat(10))) break;
+      body.push(line.slice(10));
+    }
+    return body.join("\n");
+  };
+
+  it.skipIf(process.platform === "win32")(
+    "asks GitHub again while no pull request lists a fresh merge commit, then fails with the merged-pull-request error",
+    () => {
+      const SHA = "4".repeat(40);
+      const merged = JSON.stringify([
+        {
+          number: 12,
+          merged_at: "2026-10-31T12:00:00Z",
+          base: { ref: "main" },
+        },
+      ]);
+      for (const id of ["deploy-docs", "deploy-demo"]) {
+        const step = jobs
+          .get(id)!
+          .steps.find(
+            (s) =>
+              s.name === "Check the commit came from a merged pull request",
+          )!;
+        const script = runBlock(step.text);
+        const dir = mkdtempSync(join(tmpdir(), "bascik-merged-pr-retry-"));
+        try {
+          // Fake gh answers with the next line of answers.txt (the last one
+          // repeats); fake sleep only records that it was called.
+          writeFileSync(
+            join(dir, "gh"),
+            [
+              "#!/bin/sh",
+              `n=$(cat "${dir}/calls" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "${dir}/calls"`,
+              `line=$(sed -n "\${n}p" "${dir}/answers.txt"); [ -n "$line" ] || line=$(tail -n 1 "${dir}/answers.txt")`,
+              'printf "%s\n" "$line"',
+            ].join("\n"),
+            { mode: 0o755 },
+          );
+          writeFileSync(
+            join(dir, "sleep"),
+            `#!/bin/sh\necho "$1" >> "${dir}/sleeps"\n`,
+            { mode: 0o755 },
+          );
+          const run = (answers: string[]) => {
+            writeFileSync(join(dir, "answers.txt"), `${answers.join("\n")}\n`);
+            rmSync(join(dir, "calls"), { force: true });
+            rmSync(join(dir, "sleeps"), { force: true });
+            const result = spawnSync(
+              "bash",
+              ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+              {
+                cwd: repoDir,
+                encoding: "utf8",
+                env: {
+                  ...process.env,
+                  PATH: `${dir}:${process.env.PATH}`,
+                  REPO: "bascikdev/bascik",
+                  SHA,
+                  PULLS: join(dir, "pulls.json"),
+                },
+              },
+            );
+            const read = (name: string) => {
+              try {
+                return readFileSync(join(dir, name), "utf8").trim().split("\n");
+              } catch {
+                return [];
+              }
+            };
+            return {
+              ...result,
+              calls: read("calls")[0],
+              sleeps: read("sleeps"),
+            };
+          };
+
+          const late = run(["[]", "[]", merged]);
+          expect(late.stderr, id).toBe("");
+          expect(late.status, id).toBe(0);
+          expect(late.stdout, id).toMatch(/pull request #12; deploying/);
+          expect(late.calls, id).toBe("3");
+          expect(late.sleeps, id).toEqual(["10", "10"]);
+
+          const never = run(["[]"]);
+          expect(never.status, id).toBe(1);
+          expect(never.stderr, id).toMatch(
+            /::error::444444444444 did not come from a pull request merged into main/,
+          );
+          expect(never.calls, id).toBe("3");
+          expect(never.sleeps, id).toEqual(["10", "10"]);
+
+          // A pull request that is listed but not merged is an answer, not a delay.
+          const open = run([JSON.stringify([{ number: 7, state: "open" }])]);
+          expect(open.status, id).toBe(1);
+          expect(open.stderr, id).toMatch(/#7 \(open\)/);
+          expect(open.calls, id).toBe("1");
+          expect(open.sleeps, id).toEqual([]);
+
+          const prompt = run([merged]);
+          expect(prompt.status, id).toBe(0);
+          expect(prompt.calls, id).toBe("1");
+          expect(prompt.sleeps, id).toEqual([]);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
   it("names github.sha, the commit the push run built, in the Preview comment", () => {
     const comment = jobs.get("preview-comment")!.body.join("\n");
     expect(comment).toContain("SHA: ${{ github.sha }}");

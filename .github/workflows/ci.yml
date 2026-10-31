@@ -1001,8 +1001,9 @@ jobs:
         run: yarn pkg:build && yarn docs:build
 
       # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
-      # commit that a merged pull request put there; a commit pushed straight to main fails here. Runs after the build,
-      # which gives GitHub time to link a fresh merge commit to its pull request. Emergency path: DEPLOYMENT.md.
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. GitHub can take a few
+      # seconds to link a fresh merge commit to its pull request, so the step runs after the build and asks up to three
+      # times, 10 s apart, while the answer is an empty list. Emergency path: DEPLOYMENT.md.
       - name: Check the commit came from a merged pull request
         if: github.ref == 'refs/heads/main'
         env:
@@ -1011,7 +1012,12 @@ jobs:
           SHA: ${{ github.sha }}
           PULLS: ${{ runner.temp }}/pulls.json
         run: |
-          gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+          for attempt in 1 2 3; do
+            gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+            [ "$(tr -d '[:space:]' < "$PULLS")" = "[]" ] && [ "$attempt" -lt 3 ] || break
+            echo "No pull request lists $SHA yet (try $attempt of 3); asking again in 10 s."
+            sleep 10
+          done
           node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
@@ -1123,8 +1129,9 @@ jobs:
         run: yarn adapter:cf:demo:build
 
       # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
-      # commit that a merged pull request put there; a commit pushed straight to main fails here. Runs after the build,
-      # which gives GitHub time to link a fresh merge commit to its pull request. Emergency path: DEPLOYMENT.md.
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. GitHub can take a few
+      # seconds to link a fresh merge commit to its pull request, so the step runs after the build and asks up to three
+      # times, 10 s apart, while the answer is an empty list. Emergency path: DEPLOYMENT.md.
       - name: Check the commit came from a merged pull request
         if: github.ref == 'refs/heads/main'
         env:
@@ -1133,7 +1140,12 @@ jobs:
           SHA: ${{ github.sha }}
           PULLS: ${{ runner.temp }}/pulls.json
         run: |
-          gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+          for attempt in 1 2 3; do
+            gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+            [ "$(tr -d '[:space:]' < "$PULLS")" = "[]" ] && [ "$attempt" -lt 3 ] || break
+            echo "No pull request lists $SHA yet (try $attempt of 3); asking again in 10 s."
+            sleep 10
+          done
           node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
 
       # Runs right before Wrangler. Skips the upload or deploy when the branch has moved on: a newer commit that
