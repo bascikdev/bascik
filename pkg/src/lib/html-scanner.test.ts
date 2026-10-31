@@ -404,7 +404,21 @@ describe("removeHtmlRanges", () => {
   it("writes the separator exactly where the output before a removal ends in < or an unfinished reference", () => {
     // The reference model: the regex on everything written so far.
     const pendingRe = /(?:<|&[#0-9A-Za-z]*)$/;
-    const piece = fc.constantFrom("&", "#", "x", "0", "a", ";", "<", ">", " ");
+    // Long reference runs reach past any fixed look-back window.
+    const longReference = fc
+      .string({
+        unit: fc.constantFrom("0", "1", "a", "x"),
+        minLength: 60,
+        maxLength: 100,
+      })
+      .map((run) => `&#${run}`);
+    const piece = fc.oneof(
+      {
+        weight: 9,
+        arbitrary: fc.constantFrom("&", "#", "x", "0", "a", ";", "<", ">", " "),
+      },
+      { weight: 1, arbitrary: longReference },
+    );
     fc.assert(
       fc.property(
         fc.array(fc.array(piece, { maxLength: 80 }), {
@@ -418,8 +432,9 @@ describe("removeHtmlRanges", () => {
           let expected = "";
           let at = 0;
           texts.forEach((t, k) => {
-            expected += t.join("");
-            at += t.length;
+            const text = t.join("");
+            expected += text;
+            at += text.length;
             if (k === texts.length - 1) return;
             ranges.push({ start: at, end: at + removed.length });
             if (pendingRe.test(expected)) expected += SEAM_SEPARATOR;
