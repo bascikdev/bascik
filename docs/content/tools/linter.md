@@ -167,6 +167,16 @@ When the shared group is what you want, silence it on the line above the attribu
 
 `bascik-ignore` covers its own line and the next, so for a group spread over many lines use `<!-- bascik-disable shared-name-group -->` and `<!-- bascik-enable -->`, or turn the rule off for the project with `"disabledRules": ["shared-name-group"]` in `bascik.ext.json`.
 
+### `component-name-underscore`
+
+A component whose tag name holds an underscore gets a warning on its file. The tag is the file name up to its first dot, lowercased, so `site-nav_x.html` defines `<site-nav_x>`, while `site-nav.my_v2.html` defines `<site-nav>` and a folder name never counts:
+
+```text
+src/components/site-nav_x.html:1:1 - warning: (component-name-underscore) Component "site-nav_x" has an underscore in its name. The name is legal, but underscores can make two components' generated id classes spell the same name: #btn in <site-nav_x> and #x_btn in <site-nav> both compile to the class b_id_site-nav_x_btn, which stops the build. Use hyphens (e.g. "site-nav-x").
+```
+
+The name is legal HTML, so this is a warning, not an error. The build itself fails only when two components really do generate one class, with an error that names both rules and their lines; see [The Naming Scheme](/internals/scoping-system#the-remaining-collision-cases). Rename the file with hyphens, or silence the rule for the project with `"disabledRules": ["component-name-underscore"]` under `diagnostics` in `bascik.ext.json`.
+
 ### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
 
 Two rules are hints: advice that is easy to ignore and never fails a run.

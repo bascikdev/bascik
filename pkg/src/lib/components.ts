@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { dirname, posix, relative, resolve } from "node:path";
+import { isMainThread } from "node:worker_threads";
 import {
   getComponentCss,
   extractInlineStyles,
@@ -36,6 +37,7 @@ import {
   isDirectiveScriptOpenTag,
 } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import { assertNoGeneratedIdClassCollisions } from "./generated-id-classes.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
   findMarkerAnchors,
@@ -896,6 +898,11 @@ export const listComponents = async (
     },
     {} as ComponentList,
   );
+  // Two components whose `#id` rules generate one class would style each
+  // other's elements. Checked once per list, before it is cached, so every
+  // consumer stops on it; the main thread loads the list before any page
+  // worker gets a job, so a worker never needs to repeat the check.
+  if (isMainThread) await assertNoGeneratedIdClassCollisions(builtList);
   if (isDefaultRoots) {
     componentListCache = builtList;
   }

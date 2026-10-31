@@ -24,6 +24,10 @@ import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
+import {
+  GeneratedIdClassCollisionError,
+  formatGeneratedIdClassCollision,
+} from "./generated-id-classes.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -789,6 +793,26 @@ export const checkProject = async (
       .filter((f): f is string => Boolean(f));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    let matchedIdClassCollision = false;
+    if (error instanceof GeneratedIdClassCollisionError) {
+      matchedIdClassCollision = true;
+      for (const collision of error.collisions) {
+        const { className, first, second } = collision;
+        // The message's last two lines are the fix.
+        const fix = formatGeneratedIdClassCollision(collision)
+          .split("\n")
+          .slice(-2)
+          .map((line) => line.trim())
+          .join(" ");
+        items.push({
+          category: "generated-id-class-collision",
+          severity: "error",
+          message: `<${first.component}> #${first.idName} and <${second.component}> #${second.idName} both generate the class ${className}`,
+          locations: [collision.firstLocation, collision.secondLocation],
+          suggestion: fix,
+        });
+      }
+    }
     const duplicateBlockRegex =
       /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
     let matchedDuplicate = false;
@@ -808,7 +832,7 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate) {
+    if (!matchedDuplicate && !matchedIdClassCollision) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -1275,6 +1299,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
       "generate.cspHashes is on, but these components embed the instance id in\n" +
       "their stylesheet or client scripts, so a server or stream script that\n" +
       "returns them cannot satisfy a hash-only Content-Security-Policy.",
+  },
+  "generated-id-class-collision": {
+    title: "Components whose #id rules generate one class",
+    description:
+      "An #id rule becomes the class b_id_<component>_<id>, so an underscore in a\n" +
+      "component name or an id can let two components spell the same class, and\n" +
+      "each rule would style the other's element. Builds stop on it too.",
   },
   "unmatched-tag": {
     title: "Components with no matching file",

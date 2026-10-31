@@ -13,6 +13,7 @@ import {
 import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { GeneratedIdClassCollisionError } from "./generated-id-classes.ts";
 
 const {
   listPagesMock,
@@ -925,6 +926,65 @@ describe("checkProject", () => {
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
       expect(item?.locations).toHaveLength(2);
+    });
+
+    it("reports two components whose #id rules generate one class, with both rule locations and the fix", async () => {
+      await setupProject({
+        "pages/index.html": "<site-nav></site-nav><site-nav_x></site-nav_x>",
+        "src/components/site-nav.html": '<a id="x_btn">a</a>',
+        "src/components/site-nav_x.html": '<a id="btn">b</a>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockRejectedValue(
+        new GeneratedIdClassCollisionError([
+          {
+            className: "b_id_site-nav_x_btn",
+            first: {
+              component: "site-nav",
+              idName: "x_btn",
+              fileName: join(workDir, "src/components/site-nav.html"),
+            },
+            second: {
+              component: "site-nav_x",
+              idName: "btn",
+              fileName: join(workDir, "src/components/site-nav_x.html"),
+            },
+            firstLocation: {
+              filePath: "src/components/site-nav.css",
+              line: 4,
+              column: 1,
+            },
+            secondLocation: { filePath: "src/components/site-nav_x.html" },
+          },
+        ]),
+      );
+      deepReadDirFlatMock.mockResolvedValue([
+        join(workDir, "src/components/site-nav.html"),
+        join(workDir, "src/components/site-nav_x.html"),
+      ]);
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "generated-id-class-collision",
+      );
+      expect(item).toMatchObject({
+        severity: "error",
+        message:
+          "<site-nav> #x_btn and <site-nav_x> #btn both generate the class b_id_site-nav_x_btn",
+        locations: [
+          { filePath: "src/components/site-nav.css", line: 4, column: 1 },
+          { filePath: "src/components/site-nav_x.html" },
+        ],
+      });
+      expect(item?.suggestion).toContain("#x-btn");
+      // Not also reported as an unexplained component scan failure.
+      expect(
+        findings.items.filter((i) => i.category === "component-list"),
+      ).toEqual([]);
+      // The fallback scan still knows both components, so neither tag is unmatched.
+      expect(
+        findings.items.filter((i) => i.category === "unmatched-tag"),
+      ).toEqual([]);
     });
 
     it("falls back to scanning every configured component root, so <local-card> in a second root is known", async () => {
