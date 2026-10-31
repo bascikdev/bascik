@@ -5,7 +5,7 @@
  * Separated from the CLI entry so it can be unit-tested without I/O.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
@@ -125,7 +125,8 @@ export const VSCODE_LAUNCH_JSON =
     2,
   ) + "\n";
 
-export const VITE_CONFIG = `import { defineConfig } from 'vite';
+/** \`vitest/config\`, not \`vite\`: the project depends on vitest, and vite is only vitest's own dependency. */
+export const VITE_CONFIG = `import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -138,7 +139,18 @@ export default defineConfig({
 });
 `;
 
-export const PLAYWRIGHT_CONFIG = `import { defineConfig } from '@playwright/test';
+export const PLAYWRIGHT_CONFIG = `import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
+import { defineConfig } from '@playwright/test';
+
+// The build needs a site URL for the sitemap and robots.txt. Yours wins, from
+// BASCIK_SITE_URL or the project's .env, so dist/ keeps its real sitemap; only
+// a project with neither builds one for the server this test run starts.
+const envFile = new URL('../.env', import.meta.url);
+const siteUrl =
+  process.env.BASCIK_SITE_URL ||
+  (existsSync(envFile) && parseEnv(readFileSync(envFile, 'utf8')).BASCIK_SITE_URL) ||
+  'http://localhost:8080';
 
 export default defineConfig({
   testDir: './',
@@ -150,6 +162,7 @@ export default defineConfig({
     // Playwright runs the command beside this config; the site is one up.
     cwd: '..',
     command: 'npx bascik --build && npx bascik --server --port 8080',
+    env: { BASCIK_SITE_URL: siteUrl },
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
   },
@@ -251,10 +264,14 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
   });
 `);
 
+/** \`.env\` files hold the site URL and secrets, and Bascik loads them, so they stay out of git. */
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
 *.pem
+.env
+.env.*
+!.env.example
 `;
 
 /** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
@@ -1091,21 +1108,69 @@ export const HELLO_API_ROUTE = `export const GET = async (
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
-/** Returns an error message if the name is invalid, or null if it is fine. */
+/**
+ * Returns an error message if the name is invalid, or null if it is fine.
+ *
+ * The name is a new folder under the current directory: one name, or a relative
+ * path such as `sites/my-site` whose last segment names the site. `.`, `..`, an
+ * absolute path and whitespace are refused, because the folder would be the
+ * current or a parent directory, would not be where the printed `cd` points, or
+ * would not be a valid npm package name.
+ */
 export function validateProjectName(name: string): string | null {
-  if (!name) return "Project name cannot be empty.";
-  if (!/^[a-z0-9@._/-][a-z0-9@._/\- ]*$/i.test(name)) {
+  if (!name.trim()) return "Project name cannot be empty.";
+  if (!/^[a-z0-9@._/\- ]+$/i.test(name)) {
     return `"${name}" is not a valid directory name.`;
+  }
+  if (name.includes(" ")) {
+    return `"${name}" contains a space. Use dashes instead, such as "${name.trim().replace(/ +/g, () => "-")}".`;
+  }
+  if (name.startsWith("/")) {
+    return `"${name}" is an absolute path. Run create-bascik in the parent folder and pass only the new folder's name.`;
+  }
+  const segments = name.split("/");
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return `"${name}" names the current or a parent folder with "." or "..". create-bascik writes a new folder; to add Bascik to an existing project, see ${MANUAL_SETUP_URL}`;
+  }
+  if (segments.some((segment) => segment === "")) {
+    return `"${name}" has an empty path segment. Remove the extra "/".`;
+  }
+  if (segments.some((segment) => segment.startsWith("."))) {
+    return `"${name}" starts a folder name with ".", which hides the folder and is not a valid npm package name.`;
   }
   return null;
 }
+
+/** Where the docs explain adding Bascik to a project that already exists. */
+export const MANUAL_SETUP_URL =
+  "https://bascik.dev/getting-started#manual-setup";
+
+/**
+ * The site's name: the last segment of the project name, which is the folder
+ * the starter is written to. It is the brand on the pages.
+ */
+export const siteNameOf = (projectName: string): string =>
+  projectName.split("/").pop() ?? projectName;
+
+/**
+ * The package.json name for a project name: npm wants it lowercase and without
+ * a leading `_`. A scoped `@scope/name` stays scoped; a nested path such as
+ * `sites/my-site` uses its last segment.
+ */
+export const packageNameOf = (projectName: string): string => {
+  const name = /^@[^/]+\/[^/]+$/.test(projectName)
+    ? projectName
+    : siteNameOf(projectName);
+  return name.toLowerCase().replace(/^_+/, () => "") || "bascik-app";
+};
 
 // ─── Scaffold ─────────────────────────────────────────────────────────────────
 
 /**
  * Scaffold a new Bascik project into `targetDir/<projectName>`.
  *
- * @param projectName  The name used for the directory and package.json name.
+ * @param projectName  The folder to create, relative to `targetDir` (see `validateProjectName`).
+ *                     Its last segment names the site and, lowercased, the package.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
  * @param options      `template` picks the starter (defaults to the static `default`).
  */
@@ -1115,25 +1180,22 @@ export async function scaffold(
   options: { template?: Template } = {},
 ): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
+  const siteName = siteNameOf(projectName);
   const template = options.template ?? "default";
-  const cloudflare = template === "cloudflare";
   const notes: string[] = [];
 
+  const dirs = starterDirectories(template);
+  const files = starterFiles(siteName, packageNameOf(projectName), template);
+
+  // Nothing is written when the folder already holds a file the starter would replace.
+  await assertScaffoldTarget(projectName, root, dirs, files);
+
   // Create all directories up front
-  await Promise.all([
-    mkdir(join(root, "e2e"), { recursive: true }),
-    ...(cloudflare
-      ? [mkdir(join(root, "src", "api"), { recursive: true })]
-      : []),
-    mkdir(join(root, "src", "pages", "assets"), { recursive: true }),
-    mkdir(join(root, "src", "pages", "css"), { recursive: true }),
-    mkdir(join(root, "src", "components", "site-meta"), { recursive: true }),
-    mkdir(join(root, "src", "components", "site-header"), { recursive: true }),
-    mkdir(join(root, "src", "components", "site-footer"), { recursive: true }),
-    mkdir(join(root, "src", "components", "feat-card"), { recursive: true }),
-    mkdir(join(root, "src", "components", "my-counter"), { recursive: true }),
-    mkdir(join(root, "src", "components", "contact-form"), { recursive: true }),
-  ]);
+  await Promise.all(
+    dirs.map((dir) =>
+      mkdir(join(root, ...dir.split("/")), { recursive: true }),
+    ),
+  );
 
   await Promise.all([
     // Coding assistants: merged into an AGENTS.md or CLAUDE.md the folder already has.
@@ -1141,19 +1203,6 @@ export async function scaffold(
     writeAgentFiles(root, { template }).then((report) => {
       notes.push(...agentFilesReportLines(report));
     }),
-
-    // Root
-    writeFile(
-      join(root, "package.json"),
-      PACKAGE_JSON(projectName, template),
-      "utf8",
-    ),
-    writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
-    writeFile(
-      join(root, ".gitignore"),
-      cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE,
-      "utf8",
-    ),
 
     // Editor: merged into any .vscode files the folder already has, never replaced
     writeVscodeFiles(root).then(async (report) => {
@@ -1163,146 +1212,156 @@ export async function scaffold(
       }
     }),
 
-    // E2E
-    writeFile(
-      join(root, "e2e", "playwright.config.ts"),
-      PLAYWRIGHT_CONFIG,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "e2e", "app.spec.ts"),
-      cloudflare ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC,
-      "utf8",
-    ),
-
-    // Assets
-    writeFile(
-      join(root, "src", "pages", "favicon.ico"),
-      Buffer.from(FAVICON_ICO_B64, "base64"),
-    ),
-    writeFile(
-      join(root, "src", "pages", "assets", "favicon-32x32.png"),
-      Buffer.from(FAVICON_32_PNG_B64, "base64"),
-    ),
-    writeFile(
-      join(root, "src", "pages", "assets", "apple-touch-icon.png"),
-      Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
-    ),
-    writeFile(
-      join(root, "src", "pages", "assets", "favicon.svg"),
-      FAVICON_SVG,
-      "utf8",
-    ),
-
-    // Global CSS
-    writeFile(
-      join(root, "src", "pages", "css", "styles.css"),
-      STYLES_CSS,
-      "utf8",
-    ),
-
-    // Pages
-    writeFile(
-      join(root, "src", "pages", "index.html"),
-      indexPage(projectName, { template }),
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "pages", "about.html"),
-      aboutPage(projectName),
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "pages", "contact.html"),
-      contactPage(projectName),
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "pages", "404.html"),
-      notFoundPage(projectName),
-      "utf8",
-    ),
-
-    // Cloudflare template: the edge demo page and its API route
-    ...(cloudflare
-      ? [
-          writeFile(
-            join(root, "src", "pages", "edge.html"),
-            edgePage(projectName),
-            "utf8",
-          ),
-          writeFile(
-            join(root, "src", "api", "hello.ts"),
-            HELLO_API_ROUTE,
-            "utf8",
-          ),
-        ]
-      : []),
-
-    // Components
-    writeFile(
-      join(root, "src", "components", "site-meta", "site-meta.html"),
-      SITE_META_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "site-meta", "site-meta.test.ts"),
-      SITE_META_TEST,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "site-header", "site-header.html"),
-      SITE_HEADER_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "site-header", "site-header.test.ts"),
-      SITE_HEADER_TEST,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "site-footer", "site-footer.html"),
-      SITE_FOOTER_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "site-footer", "site-footer.test.ts"),
-      SITE_FOOTER_TEST,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "feat-card", "feat-card.html"),
-      FEAT_CARD_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "feat-card", "feat-card.test.ts"),
-      FEAT_CARD_TEST,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "my-counter", "my-counter.html"),
-      MY_COUNTER_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "my-counter", "my-counter.test.ts"),
-      MY_COUNTER_TEST,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "contact-form", "contact-form.html"),
-      CONTACT_FORM_HTML,
-      "utf8",
-    ),
-    writeFile(
-      join(root, "src", "components", "contact-form", "contact-form.test.ts"),
-      CONTACT_FORM_TEST,
-      "utf8",
+    // Everything else is the starter's own and is new.
+    ...files.map(([path, data]) =>
+      typeof data === "string"
+        ? writeFile(join(root, ...path.split("/")), data, "utf8")
+        : writeFile(join(root, ...path.split("/")), data),
     ),
   ]);
 
   return { notes };
+}
+
+/** The folders the starter creates, relative to the project root, with `/` separators. */
+const starterDirectories = (template: Template): string[] => [
+  "e2e",
+  ...(template === "cloudflare" ? ["src/api"] : []),
+  "src/pages/assets",
+  "src/pages/css",
+  "src/components/site-meta",
+  "src/components/site-header",
+  "src/components/site-footer",
+  "src/components/feat-card",
+  "src/components/my-counter",
+  "src/components/contact-form",
+];
+
+/**
+ * The files the starter writes as its own, relative to the project root. AGENTS.md,
+ * CLAUDE.md and the .vscode files are not here: they are merged into what the folder has.
+ */
+const starterFiles = (
+  siteName: string,
+  packageName: string,
+  template: Template,
+): Array<[path: string, data: string | Buffer]> => {
+  const cloudflare = template === "cloudflare";
+  return [
+    // Root
+    ["package.json", PACKAGE_JSON(packageName, template)],
+    ["vite.config.ts", VITE_CONFIG],
+    [".gitignore", cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE],
+
+    // E2E
+    ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
+    ["e2e/app.spec.ts", cloudflare ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
+
+    // Assets
+    ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
+    [
+      "src/pages/assets/favicon-32x32.png",
+      Buffer.from(FAVICON_32_PNG_B64, "base64"),
+    ],
+    [
+      "src/pages/assets/apple-touch-icon.png",
+      Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
+    ],
+    ["src/pages/assets/favicon.svg", FAVICON_SVG],
+
+    // Global CSS
+    ["src/pages/css/styles.css", STYLES_CSS],
+
+    // Pages
+    ["src/pages/index.html", indexPage(siteName, { template })],
+    ["src/pages/about.html", aboutPage(siteName)],
+    ["src/pages/contact.html", contactPage(siteName)],
+    ["src/pages/404.html", notFoundPage(siteName)],
+
+    // Cloudflare template: the edge demo page and its API route
+    ...(cloudflare
+      ? ([
+          ["src/pages/edge.html", edgePage(siteName)],
+          ["src/api/hello.ts", HELLO_API_ROUTE],
+        ] as Array<[string, string]>)
+      : []),
+
+    // Components
+    ["src/components/site-meta/site-meta.html", SITE_META_HTML],
+    ["src/components/site-meta/site-meta.test.ts", SITE_META_TEST],
+    ["src/components/site-header/site-header.html", SITE_HEADER_HTML],
+    ["src/components/site-header/site-header.test.ts", SITE_HEADER_TEST],
+    ["src/components/site-footer/site-footer.html", SITE_FOOTER_HTML],
+    ["src/components/site-footer/site-footer.test.ts", SITE_FOOTER_TEST],
+    ["src/components/feat-card/feat-card.html", FEAT_CARD_HTML],
+    ["src/components/feat-card/feat-card.test.ts", FEAT_CARD_TEST],
+    ["src/components/my-counter/my-counter.html", MY_COUNTER_HTML],
+    ["src/components/my-counter/my-counter.test.ts", MY_COUNTER_TEST],
+    ["src/components/contact-form/contact-form.html", CONTACT_FORM_HTML],
+    ["src/components/contact-form/contact-form.test.ts", CONTACT_FORM_TEST],
+  ];
+};
+
+/** Thrown before anything is written when the target folder cannot take the starter. */
+export class ScaffoldTargetError extends Error {
+  override name = "ScaffoldTargetError";
+}
+
+/** The file's type, or null when nothing is there (including when a parent is a file). */
+const entryAt = async (path: string): Promise<"directory" | "other" | null> => {
+  try {
+    return (await stat(path)).isDirectory() ? "directory" : "other";
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      // A dangling symlink is still in the way of a new file.
+      try {
+        await lstat(path);
+        return "other";
+      } catch {
+        return null;
+      }
+    }
+    throw err;
+  }
+};
+
+/**
+ * Refuse a target that cannot take the starter without losing something: a file
+ * where the project folder goes, or a project folder that already has one of the
+ * starter's own files (or a file where one of its folders goes). A folder that
+ * holds only files the starter merges into, such as AGENTS.md or .vscode/, is fine.
+ */
+async function assertScaffoldTarget(
+  projectName: string,
+  root: string,
+  dirs: string[],
+  files: Array<[path: string, data: string | Buffer]>,
+): Promise<void> {
+  const rootEntry = await entryAt(root);
+  if (rootEntry === null) return;
+  if (rootEntry !== "directory") {
+    throw new ScaffoldTargetError(
+      `"${projectName}" already exists and is not a folder. Choose another project name.`,
+    );
+  }
+  const found = await Promise.all([
+    ...dirs.map(async (dir) =>
+      (await entryAt(join(root, ...dir.split("/")))) === "other" ? dir : null,
+    ),
+    ...files.map(async ([path]) =>
+      (await entryAt(join(root, ...path.split("/")))) === null ? null : path,
+    ),
+  ]);
+  const conflicts = found.filter((path): path is string => path !== null);
+  if (conflicts.length === 0) return;
+  const shown = conflicts.slice(0, 5).join(", ");
+  const more = conflicts.length > 5 ? ` and ${conflicts.length - 5} more` : "";
+  throw new ScaffoldTargetError(
+    `"${projectName}" already has ${shown}${more}, which the starter would replace. ` +
+      `Nothing was written. create-bascik makes new projects: choose another name, ` +
+      `or to add Bascik to an existing project see ${MANUAL_SETUP_URL}`,
+  );
 }
 
 /** What `scaffold` wants the user to know, such as a file it could not merge. */

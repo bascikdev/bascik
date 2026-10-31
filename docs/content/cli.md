@@ -10,12 +10,12 @@ npm create bascik@rc
 # or: npm create bascik@rc my-project -- --template cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/
   package.json
-  vite.config.js
+  vite.config.ts
   .gitignore
   .vscode/
     launch.json
@@ -63,7 +63,7 @@ my-project/
         contact-form.test.ts
 ```
 
-Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.js`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
+Every scaffolded project includes co-located unit tests for its components, Playwright E2E browser tests in `e2e/`, Vitest configuration in `vite.config.ts`, and pre-configured test scripts (`npm test`, `npm run test:watch`, `npm run test:coverage`, and `npm run e2e`).
 
 After scaffolding, the tool prompts you interactively:
 
@@ -75,13 +75,13 @@ Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+Select **Y** for all three and you're live at `http://localhost:8080` with no extra commands. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
 | Flag                | Description                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
 | `--no-skills`       | Do not install the agent skills                                                                                     |
-| `--no-install`      | Do not run `npm install`                                                                                            |
+| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                  |
 | `--no-dev`          | Do not start the dev server                                                                                         |
 | `--template <name>` | `default` (alias `static`) or `cloudflare`                                                                          |
 
@@ -203,6 +203,8 @@ bascik --build --env-file .env.base --env-file .env.staging  # later files win
 ```
 
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
+
+Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
 
 The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
 

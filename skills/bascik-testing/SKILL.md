@@ -31,8 +31,8 @@ Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
 3. Import the `.ts` file directly in `search-logic.test.ts`. No browser is needed.
 
 ```ts
-// vite.config.ts
-import { defineConfig } from "vite";
+// vite.config.ts: vitest/config, not vite, which the project does not declare
+import { defineConfig } from "vitest/config";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 

@@ -73,7 +73,7 @@ npx skills add https://bascik.dev --skill bascik-refactor
 
 ### Project Brief
 
-New projects also get an `AGENTS.md` at the root, a short brief that GitHub Copilot, Cursor, Codex, and other assistants read before they start: the commands to run (`npm run dev`, `npm run build`, `npx bascik --check`, and a preview), the house rules (pages that read like a list of component tags without splitting too far, TypeScript for new code including browser scripts, `html` from `@bascik/bascik/html` for visitor data, semantic HTML, `data-testid` on component roots and controls, and `bascik --check` before calling work done), and where the skills live. It links to these docs instead of repeating them.
+New projects also get an `AGENTS.md` at the root, a short brief that GitHub Copilot, Cursor, Codex, and other assistants read before they start: the commands to run (`npm run dev`, `npm run build` and the site URL it needs, `npx bascik --check`, and a preview), the house rules (pages that read like a list of component tags without splitting too far, TypeScript for new code including browser scripts, `html` from `@bascik/bascik/html` for visitor data, semantic HTML, `data-testid` on component roots and controls, and `bascik --check` before calling work done), and where the skills live. It links to these docs instead of repeating them.
 
 Claude Code reads `CLAUDE.md` and skips `AGENTS.md` when both exist, so new projects also get a `CLAUDE.md` whose first line imports the brief:
 

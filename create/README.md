@@ -19,6 +19,8 @@ Pass a project name as an argument or run without arguments to be prompted:
 npm create bascik@rc
 ```
 
+The name is a new folder under the current one, such as `my-site` or `sites/my-site`; `.`, `..`, absolute paths and spaces are refused. A folder that already has one of the starter's files, such as `package.json` or `src/pages/index.html`, is refused before anything is written. To add Bascik to an existing project, see [Manual Setup](https://bascik.dev/getting-started#manual-setup).
+
 ## What it scaffolds
 
 `create-bascik` creates a complete, ready-to-run starter site:
@@ -52,12 +54,12 @@ Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cur
 
 Yes, the default and what `-y` answers, runs the [skills CLI](https://skills.sh) to install every [Bascik skill](https://bascik.dev/agent-skills) except the opt-in `bascik-refactor`, at the release tag matching the Bascik version scaffolded. `--no-skills` skips it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag.
 
-| Flag           | Effect                                 |
-| :------------- | :------------------------------------- |
-| `-y`, `--yes`  | Answer every question with its default |
-| `--no-skills`  | Do not install the agent skills        |
-| `--no-install` | Do not run `npm install`               |
-| `--no-dev`     | Do not start the dev server            |
+| Flag           | Effect                                             |
+| :------------- | :------------------------------------------------- |
+| `-y`, `--yes`  | Answer every question with its default             |
+| `--no-skills`  | Do not install the agent skills                    |
+| `--no-install` | Do not run `npm install`, nor start the dev server |
+| `--no-dev`     | Do not start the dev server                        |
 
 After scaffolding:
 
