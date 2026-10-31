@@ -91,4 +91,16 @@ describe("extension packaging", () => {
       expect(ships(file), file).toBe(true);
     }
   });
+
+  it("ships every grammar the manifest contributes", () => {
+    const { contributes } = JSON.parse(read("package.json")) as {
+      contributes: { grammars: { path: string }[] };
+    };
+    expect(contributes.grammars.length).toBeGreaterThan(1);
+    for (const { path } of contributes.grammars) {
+      const file = relative(extensionRoot, resolve(extensionRoot, path));
+      expect(ships(file), file).toBe(true);
+      expect(() => JSON.parse(read(file)), file).not.toThrow();
+    }
+  });
 });

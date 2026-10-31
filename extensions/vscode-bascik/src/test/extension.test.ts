@@ -2935,6 +2935,117 @@ suite("Extension Integration Suite", () => {
         `Nothing here is a Bascik attribute: ${JSON.stringify(tokens)}`,
       );
     });
+
+    // The injection embeds VS Code's own TypeScript grammar and maps it to the `typescript` language, so the
+    // editor's language-aware commands (comment toggling, brackets, snippets) act as TypeScript in the block.
+    const TYPESCRIPT_PAGE = [
+      "<script",
+      "  data-bascik-build",
+      '  type="text/typescript"',
+      ">",
+      '  import { seo } from "@/lib/seo.ts";',
+      "  const count: number = 1;",
+      "</script>",
+      "<p>Milk frother</p>",
+      "<script>",
+      "  const total = 2;",
+      "</script>",
+      '<script type="text/typscript">',
+      "  const typo = 3;",
+      "</script>",
+      "",
+    ].join("\n");
+
+    test("colors a type=text/typescript block with VS Code's TypeScript grammar and keeps the tag's Bascik colors", async () => {
+      const tokens = await tokensOf(TYPESCRIPT_PAGE);
+      const annotation = scopesOf(tokens, "number");
+      assert.ok(
+        annotation.includes("source.ts") &&
+          annotation.includes("support.type.primitive.ts"),
+        `number should be a TypeScript type, got ${annotation.join(" ")}`,
+      );
+      assert.ok(
+        scopesOf(tokens, "import").includes("keyword.control.import.ts"),
+        "import should be a TypeScript keyword",
+      );
+      assert.ok(
+        scopesOf(tokens, "data-bascik-build").includes(
+          "entity.other.attribute-name.bascik",
+        ),
+        "The Bascik attribute on the TypeScript script tag keeps its color",
+      );
+      assert.ok(
+        !scopesOf(tokens, "Milk frother").some((scope) =>
+          scope.startsWith("source."),
+        ),
+        "The document goes back to HTML after the block",
+      );
+      assert.ok(
+        scopesOf(tokens, "total").includes("source.js"),
+        "A plain script stays JavaScript",
+      );
+      const typo = tokens.find((token) => token.c.includes("typo"));
+      assert.ok(typo, "The misspelled block should be tokenized");
+      assert.ok(
+        !typo.t.split(" ").includes("source.ts"),
+        "A misspelled type is left to VS Code's HTML grammar",
+      );
+    });
+
+    test("toggles a // comment inside a type=text/typescript block and <!-- --> outside it", async () => {
+      const document = await openWorkspaceDocument({
+        language: "html",
+        content: TYPESCRIPT_PAGE,
+        directory: "src/components",
+      });
+      const editor = await vscode.window.showTextDocument(document, {
+        preview: false,
+      });
+      try {
+        // Make sure the embedded grammar has loaded before asking for the language at a position.
+        await vscode.commands.executeCommand(
+          "_workbench.captureSyntaxTokens",
+          document.uri,
+        );
+        // The editor tokenizes the model in the background and loads an embedded language's configuration when
+        // it first meets the language, so a toggle right after opening can find nothing to apply. Retry until the
+        // line changes; a wrong comment style still fails.
+        const toggleAt = async (lineNumber: number): Promise<string> => {
+          const before = document.lineAt(lineNumber).text;
+          for (let attempt = 0; attempt < 40; attempt++) {
+            editor.selection = new vscode.Selection(
+              lineNumber,
+              4,
+              lineNumber,
+              4,
+            );
+            await vscode.commands.executeCommand("editor.action.commentLine");
+            if (document.lineAt(lineNumber).text !== before) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          return document.lineAt(lineNumber).text;
+        };
+        assert.strictEqual(
+          await toggleAt(5),
+          "  // const count: number = 1;",
+          "A TypeScript line gets a TypeScript line comment",
+        );
+        assert.strictEqual(
+          await toggleAt(7),
+          "<!-- <p>Milk frother</p> -->",
+          "An HTML line outside the block keeps HTML comments",
+        );
+        assert.strictEqual(
+          await toggleAt(12),
+          "  <!-- const typo = 3; -->",
+          "A misspelled type is not TypeScript",
+        );
+      } finally {
+        await vscode.commands.executeCommand(
+          "workbench.action.revertAndCloseActiveEditor",
+        );
+      }
+    });
   });
 
   // VS Code's built-in HTML server joins every <script> without type="module" into one JavaScript file, so two
