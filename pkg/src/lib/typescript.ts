@@ -35,7 +35,7 @@ import {
   ANY_DIRECTIVE_ATTR_NAME,
   removeHtmlAttribute,
 } from "./html-patterns.ts";
-import { getScriptType } from "./script-types.ts";
+import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import {
   classifySpecifier,
   findModuleSpecifiers,
@@ -750,9 +750,10 @@ export const looksLikeTypeScript = (code: string): boolean => {
   try {
     new Function(stripped);
   } catch {
-    // `import`/`export` are not allowed in a Function body; treat the strip
-    // difference alone as sufficient evidence for module-shaped code.
-    return /^\s*(?:import|export)\b/m.test(stripped);
+    // Top-level `await` parses as an async function body; `import`/`export`
+    // parse in neither, so for module-shaped code (anywhere on a line) the
+    // strip difference alone is sufficient evidence.
+    return parsesAs(AsyncFunction, stripped) || hasStaticModuleSyntax(stripped);
   }
   return true;
 };
@@ -858,16 +859,18 @@ export const transformTypeScriptScriptTags = async (
       }
 
       if (!diagnose) continue;
-      const type = getScriptType(open);
-      if (
-        (type === undefined || type === "text/javascript") &&
-        looksLikeTypeScript(body)
-      ) {
+      if (isJavaScriptScript(open) && looksLikeTypeScript(body)) {
+        // A text/typescript block always becomes a classic script, so module
+        // code goes to a companion that keeps type="module".
+        const fix =
+          getScriptType(open) === "module"
+            ? `Move it to a companion .ts file referenced with <script type="module" src="name.ts">, which Bascik strips and keeps a module.`
+            : `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
+              `or move it to a companion .ts file referenced with <script src="name.ts">.`;
         console.warn(
           `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
-            `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
-            `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
-            `or move it to a companion .ts file referenced with <script src="name.ts">.`,
+            `Browsers do not execute TypeScript in a JavaScript <script>, so this block will fail at runtime. ` +
+            fix,
         );
       }
       continue;

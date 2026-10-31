@@ -441,6 +441,25 @@ describe("looksLikeTypeScript", () => {
     expect(looksLikeTypeScript("const y = z!;")).toBe(true);
   });
 
+  it("returns true for module-shaped TypeScript wherever import/export sit", () => {
+    expect(looksLikeTypeScript('const z: string = "x"; export {}')).toBe(true);
+    expect(looksLikeTypeScript("const r: Response = await fetch(u);")).toBe(
+      true,
+    );
+  });
+
+  it("does not take `export` text inside a template for module syntax", () => {
+    // Invalid in both languages; only the template's text looks like an export.
+    expect(
+      looksLikeTypeScript("const s = `\nexport {}`; const n: number = ;"),
+    ).toBe(false);
+  });
+
+  it("returns false for module-shaped JavaScript", () => {
+    expect(looksLikeTypeScript('const z = "x"; export {}')).toBe(false);
+    expect(looksLikeTypeScript("const r = await fetch(u);")).toBe(false);
+  });
+
   it("returns false for code that is invalid in both JavaScript and TypeScript", () => {
     expect(looksLikeTypeScript("const = ;")).toBe(false);
     expect(looksLikeTypeScript("function {")).toBe(false);
@@ -638,6 +657,51 @@ describe("transformTypeScriptScriptTags", () => {
     expect(message).toContain('type="text/typescript"');
     expect(message).toMatch(/TypeScript/);
   });
+
+  it.each([
+    '<script type="module">const z: string = "x";</script>',
+    '<script type="module">const z: string = "x"; export {}</script>',
+    '<script type="module">\nimport { a } from "/js/a.js";\nconst n: number = a;\n</script>',
+    '<script type="module">const r: Response = await fetch("/x");</script>',
+    '<script type="application/javascript">let a: number = 1;</script>',
+    '<script type="text/ecmascript">let a: number = 1;</script>',
+  ])(
+    "warns for TypeScript in any JavaScript script type (F045): %s",
+    async (html) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const out = await transformTypeScriptScriptTags(
+        html,
+        "src/pages/index.html",
+      );
+      expect(out).toBe(html);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain("src/pages/index.html");
+      if (html.includes('type="module"')) {
+        // A text/typescript block is a classic script, so a module goes to a companion.
+        expect(message).toContain('<script type="module" src="name.ts">');
+        expect(message).not.toContain(
+          'Mark it <script type="text/typescript">',
+        );
+      }
+      warn.mockRestore();
+    },
+  );
+
+  it.each([
+    '<script type="module">import { a } from "/js/a.js";\nexport const b = a < 2 ? "x" : "y";</script>',
+    '<script type="module">const r = await fetch("/x"); export default r;</script>',
+    '<script type="application/ld+json">{"a": 1}</script>',
+    '<script type="text/template"><p>{{ a: b }}</p></script>',
+  ])(
+    "does not warn for valid JavaScript or non-JavaScript types: %s",
+    async (html) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await transformTypeScriptScriptTags(html, "src/pages/index.html");
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    },
+  );
 
   it("does not warn for ordinary inline JavaScript", async () => {
     const html =
