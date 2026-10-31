@@ -284,12 +284,12 @@ const getHandler = (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Default dev-mode watcher count: pages assets, pages html, components,
-// import root. Extra watchers (watchPaths, api, config) are
-// opt-in and asserted separately.
-const DEV_WATCHER_COUNT = 4;
+// import root, api (installed even before the api folder exists, F079).
+// Extra watchers (watchPaths, config) are opt-in and asserted separately.
+const DEV_WATCHER_COUNT = 5;
 
 describe("watchFiles – watcher setup", () => {
-  it("calls chokidar.watch four times in dev mode with default config", async () => {
+  it("calls chokidar.watch five times in dev mode with default config", async () => {
     await watchFiles();
     expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
   });
@@ -470,7 +470,13 @@ describe("watchFiles – import root watcher (watcher 3)", () => {
     mockWatch.mockClear();
     mockExistsSync.mockReturnValue(false);
     await watchFiles();
-    expect(mockWatch).toHaveBeenCalledTimes(3);
+    // pages assets, pages html, components, api: no import-root watcher.
+    expect(mockWatch).toHaveBeenCalledTimes(4);
+    expect(
+      mockWatch.mock.calls.some(
+        (c) => Array.isArray(c[0]) && c[0].includes(mockGetImportRoot()),
+      ),
+    ).toBe(false);
   });
 
   it("watches a custom import root outside the project", async () => {
@@ -1534,6 +1540,53 @@ describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
       logSpy.mock.calls.some((c) => c.join(" ").includes("module invalidated")),
     ).toBe(false);
     logSpy.mockRestore();
+  });
+});
+
+// F079: the api folder may not exist when `bascik` starts. Chokidar 6
+// reports a watched path that appears later, so the watcher is installed
+// anyway and the first route file added registers its route.
+describe("watchFiles – api folder created after dev start", () => {
+  beforeEach(async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    // Only the import root exists: no src/api at boot.
+    mockExistsSync.mockImplementation((p: string) => p === mockGetImportRoot());
+    await watchFiles();
+    mockApiInvalidateFile.mockClear();
+  });
+
+  const apiWatcherIndex = (): number =>
+    mockWatch.mock.calls.findIndex(
+      (c) => Array.isArray(c[0]) && c[0].includes("src/api"),
+    );
+
+  it("still watches the configured api folder", () => {
+    expect(apiWatcherIndex()).toBeGreaterThanOrEqual(0);
+  });
+
+  it("registers a route file added once the folder appears", async () => {
+    const handler = getHandler(apiWatcherIndex(), "add");
+    await handler?.("/project/src/api/ping.ts");
+    expect(mockApiInvalidateFile).toHaveBeenCalledWith(
+      "/project/src/api/ping.ts",
+    );
+    expect(mockEventEmit).toHaveBeenCalledWith("api-route-changed", {
+      path: "/project/src/api/ping.ts",
+      type: "add",
+    });
+  });
+
+  it("is not installed for a build", async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    (BascikConfig as any).isBuild = true;
+    try {
+      await watchFiles();
+      expect(apiWatcherIndex()).toBe(-1);
+    } finally {
+      (BascikConfig as any).isBuild = false;
+    }
   });
 });
 

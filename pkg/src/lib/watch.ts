@@ -430,9 +430,12 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     );
   }
 
-  // Watch API routes directory in dev mode if it exists or routes are present
+  // Watch the API routes directory in dev mode, whether or not it exists
+  // yet: chokidar reports a watched path that appears later, so a folder
+  // created after `bascik` starts registers its routes on the first add
+  // instead of 404ing until a restart.
   const apiDir = BascikConfig.directory?.api ?? "src/api";
-  if (!BascikConfig.isBuild && existsSync(resolve(process.cwd(), apiDir))) {
+  if (!BascikConfig.isBuild) {
     w(
       chokidar
         .watch([apiDir], {
