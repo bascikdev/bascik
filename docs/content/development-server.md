@@ -87,6 +87,7 @@ When a syntax error, build script failure, or invalid component reference occurs
 - **Source Line Remapping:** Displays the original HTML template file, line number, and column.
 - **Detailed Stack Traces:** Strips internal V8 and Node runtime frames to highlight your authored code.
 - **Auto-Dismiss on Fix:** As soon as you correct the error and save the file, the dev server re-transpiles the page and dismisses the overlay instantly.
+- **Keyboard and Screen Readers:** The overlay is a modal alert dialog named "Bascik Build Error". It moves focus to its Dismiss button, Escape closes it, and focus returns to where it was. The next error opens it again. While the connection is down, the reconnect banner is a polite status message, so screen readers announce it without moving focus.
 
 A typo in a build script, then the fix:
 
