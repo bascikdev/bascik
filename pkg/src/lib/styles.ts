@@ -1023,8 +1023,8 @@ export const addIdClassesInHtml = (
     const scopedId = scopedIdNames?.[idName];
     if (!result.includes(idName) && (!scopedId || !result.includes(scopedId)))
       return;
-    const idMarker = idMarkerPattern(idName, scopedId);
     if (/["'>\s]/.test(idName + (scopedId ?? ""))) {
+      const idMarker = idMarkerPattern(idName, scopedId);
       // Not a CSS id (those are `[a-zA-Z][\w-]*`): keep the regex.
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const idPattern = new RegExp(
@@ -1040,7 +1040,7 @@ export const addIdClassesInHtml = (
       createIdMarkerTest(idName, scopedId) ??
       (() => {
         // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-        const marker = new RegExp(idMarker, "iy");
+        const marker = new RegExp(idMarkerPattern(idName, scopedId), "iy");
         return (markup: string, at: number): boolean => {
           marker.lastIndex = at;
           return marker.test(markup);
