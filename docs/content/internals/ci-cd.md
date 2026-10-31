@@ -132,7 +132,9 @@ jobs:
     # publishes the VS Code extension with vsce (Microsoft Entra ID credentials)
 ```
 
-All jobs follow the same steps: install dependencies, build, run tests, then publish.
+All jobs follow the same steps: check out the full history, check that the tagged commit is on `main`, install dependencies, build, run tests, then publish.
+
+**Releases come only from `main`.** The step right after checkout runs `node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"`. It dereferences the tag to its commit and fails the job, naming the tag and the commit, unless that commit is an ancestor of `origin/main` (`git merge-base --is-ancestor`), so a tag pushed on an unmerged branch publishes nothing. The checkout uses `fetch-depth: 0`, because `actions/checkout` otherwise fetches only the tagged commit and `origin/main` would be missing; the script reports that case as a checkout error, not as "not on main". `pkg/e2e/scripts/release-on-main.test.ts` runs the script against a real throwaway repository and fails when a publish job in `release.yml` lacks the check right after a full-history checkout.
 
 ## Publishing to npm
 
@@ -156,34 +158,37 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 
 ### `@bascik/bascik`
 
+Tag the commit on `main`, after the release pull request is merged:
+
 ```sh
-# 1. Bump version in pkg/package.json
-# 2. Update CHANGELOG.md
-git add pkg/package.json CHANGELOG.md
-git commit -m "chore: release v1.2.0"
-git tag v1.2.0
-git push origin main v1.2.0
+# 1. On a branch: bump the version in pkg/package.json, update CHANGELOG.md, commit
+# 2. Merge the branch into main through a pull request
+git fetch origin main
+git tag v1.2.0 origin/main
+git push origin v1.2.0
 ```
 
 ### `create-bascik`
 
 ```sh
-# 1. Bump version in create/package.json
-git add create/package.json
-git commit -m "chore: release create-bascik v1.0.3"
-git tag create-v1.0.3
-git push origin main create-v1.0.3
+# 1. On a branch: bump the version in create/package.json, commit
+# 2. Merge the branch into main through a pull request
+git fetch origin main
+git tag create-v1.0.3 origin/main
+git push origin create-v1.0.3
 ```
 
 ### `@bascik/adapter-cloudflare` and `@bascik/language-server`
 
 ```sh
-# Bump version in lsp/package.json, then:
-git tag lsp-v0.1.0
-git push origin main lsp-v0.1.0
-# After @bascik/bascik is on npm, bump version in adapters/cloudflare/package.json, then:
-git tag adapter-cloudflare-v1.0.0
-git push origin main adapter-cloudflare-v1.0.0
+# Bump the version in lsp/package.json and merge it into main through a pull request, then:
+git fetch origin main
+git tag lsp-v0.1.0 origin/main
+git push origin lsp-v0.1.0
+# After @bascik/bascik is on npm, bump the version in adapters/cloudflare/package.json and merge it, then:
+git fetch origin main
+git tag adapter-cloudflare-v1.0.0 origin/main
+git push origin adapter-cloudflare-v1.0.0
 ```
 
 Push each tag by name, never with `git push --tags`, which pushes every local tag (stale ones from a dry run included) and can start a publish job out of the order in `RELEASING.md`.

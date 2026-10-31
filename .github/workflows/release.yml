@@ -3,6 +3,8 @@ name: Release
 # The tag must be <prefix><version in that package's package.json>.
 # Prerelease versions (1.0.0-rc.1) publish under the matching dist-tag (rc), not latest.
 # Push each tag by name, never with --tags, and in the publish order in RELEASING.md.
+# Tag only commits on main: every job fails before building when the tagged commit is not an ancestor of
+# origin/main (.github/scripts/release-on-main.mjs), so a tag on an unmerged branch publishes nothing.
 # pkg:      git tag v1.0.0-rc.1 && git push origin v1.0.0-rc.1
 # create:   git tag create-v1.0.0-rc.1 && git push origin create-v1.0.0-rc.1
 # adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 && git push origin adapter-cloudflare-v1.0.0-rc.1
@@ -29,7 +31,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -65,7 +74,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -106,7 +122,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -142,7 +165,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
@@ -180,7 +210,14 @@ jobs:
       id-token: write
 
     steps:
+      # Full history, so the next step can see origin/main.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Enable Corepack
         run: corepack enable
