@@ -506,13 +506,24 @@ export const WELL_KNOWN_SEGMENT = ".well-known";
  * well-known directory; a path outside the base uses the root rule and is
  * rejected by base matching anyway.
  */
+/**
+ * Segment boundaries for the private-path rules: `/`, and `\` because
+ * Windows `path.resolve` treats a backslash as a separator, so `/a\.env`
+ * opens `dist\a\.env` there. Treating it as a boundary everywhere keeps the
+ * rule the same on every platform (a POSIX file name with a backslash before
+ * a dot is refused too, which is the safe side).
+ */
+const PATH_SEGMENT_SEPARATOR = /[/\\]/;
+
 export const hasHiddenSegment = (pathname: string, base = "/"): boolean => {
   let path = pathname;
   if (base !== "/" && base.length > 1) {
     const prefix = base.endsWith("/") ? base : `${base}/`;
     if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
   }
-  const segments = path.split("/").filter((segment) => segment.length > 0);
+  const segments = path
+    .split(PATH_SEGMENT_SEPARATOR)
+    .filter((segment) => segment.length > 0);
   return segments.some(
     (segment, index) =>
       segment.startsWith(".") &&
@@ -539,7 +550,9 @@ export const isPrivatePathname = (
     const prefix = base.endsWith("/") ? base : `${base}/`;
     if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
   }
-  const first = path.split("/").find((segment) => segment.length > 0);
+  const first = path
+    .split(PATH_SEGMENT_SEPARATOR)
+    .find((segment) => segment.length > 0);
   return first !== undefined && isBascikFolderName(first);
 };
 

@@ -55,11 +55,7 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import {
-  InvalidApiPathError,
-  isBascikFolderName,
-  isPrivatePathname,
-} from "./route-matching.ts";
+import { InvalidApiPathError, isPrivatePathname } from "./route-matching.ts";
 import {
   resolveResponseSecurity,
   type ResponseSecurity,
@@ -698,12 +694,20 @@ export const createRequestHandler = () => {
           res.end("Bad Request");
           return;
         }
-        // dist/.bascik holds server script source and adapter output. The
-        // path check above already refuses it; this guards the file actually
-        // opened, whatever spelling reached it.
+        // dist/.bascik holds server script source and adapter output, and
+        // with security.hideDotfiles on every dot segment is private. The
+        // request-path check above already refuses both; this applies the
+        // same rule to the file actually opened, whatever spelling reached it
+        // (on Windows `resolve` also splits on `\`).
         if (
-          isBascikFolderName(
-            fullPath.slice(distDir.length + 1).split(sep)[0] ?? "",
+          isPrivatePathname(
+            "/" +
+              fullPath
+                .slice(distDir.length + 1)
+                .split(sep)
+                .join("/"),
+            "/",
+            BascikConfig.security?.hideDotfiles !== false,
           )
         ) {
           responseStatus = 404;

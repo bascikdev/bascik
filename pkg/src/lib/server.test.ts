@@ -1123,6 +1123,40 @@ describe("startHttp2Server – security config toggles", () => {
     },
   );
 
+  // F174: Windows path.resolve treats `\\` as a separator, so a request
+  // whose only separators before the dotfile are (encoded) backslashes must
+  // still be refused. On POSIX the request-level check refuses it; on the
+  // Windows CI job the resolved-path guard is exercised too.
+  it.each([
+    "/a%5C..%5C.env",
+    "/x%5C.env",
+    "/a%5C.git%5Cconfig.txt",
+    "/assets%5C.secret.json",
+  ])(
+    "security.hideDotfiles on: %s (backslash separators) answers 404 with no disk access",
+    async (path) => {
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/.bascik%5Cserver-scripts.json", "/.BASCIK%5Ccomponents.json"])(
+    "security.hideDotfiles: false still hides %s (backslash after .bascik)",
+    async (path) => {
+      BascikConfigRef.security = { hideDotfiles: false };
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
   it("security.hideDotfiles: false still answers traversal with 400", async () => {
     BascikConfigRef.security = { hideDotfiles: false };
     const stream = makeStream();

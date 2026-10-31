@@ -84,6 +84,27 @@ describe("isPrivatePathname", () => {
     expect(isPrivatePathname!(`/docs${path}`, "/docs/", false)).toBe(true);
   });
 
+  // Windows path.resolve treats a backslash as a separator, so a backslash
+  // is a segment boundary here too (F174).
+  it.each([
+    ["/a\\..\\.env", true],
+    ["/x\\.env", true],
+    ["/a\\.git\\config", true],
+    ["/docs\\.well-known\\security.txt", true],
+    ["/a\\b.txt", false],
+  ])("on: %s private=%s (backslash separators)", (path, expected) => {
+    expect(isPrivatePathname!(path, "/")).toBe(expected);
+    expect(routeMatching.hasHiddenSegment(path, "/")).toBe(expected);
+  });
+
+  it.each([
+    ["/.bascik\\server-scripts.json", true],
+    ["/.BASCIK\\components.json", true],
+    ["/a\\.env", false],
+  ])("off: %s private=%s (backslash separators)", (path, expected) => {
+    expect(isPrivatePathname!(path, "/", false)).toBe(expected);
+  });
+
   it("off under a base: .bascik is the first segment below the base", () => {
     expect(
       isPrivatePathname!("/docs/.bascik/components.json", "/docs/", false),
