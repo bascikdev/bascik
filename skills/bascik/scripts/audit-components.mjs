@@ -2,7 +2,7 @@
 // Audit how a Bascik project's pages are composed from components, whether they use semantic HTML, and whether
 // their code is TypeScript.
 // Dependency-free; Node.js 22.22+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -16,6 +16,7 @@ import {
 } from "./lib/project.mjs";
 import {
   PAGE_CONTEXT_VARS,
+  importSpecifiers,
   pageContextOf,
   resolveLocalImport,
 } from "./lib/build-scripts.mjs";
@@ -72,6 +73,11 @@ Rules:
                        URLs; a browser script sets textContent instead. Test files, decoders, and an XML escaper
                        (named escapeXml or the like, or with a comment directly above saying it writes XML for a
                        feed or sitemap) are skipped
+  single-use-module    A module in src/lib/ (data, helper, types) that one component or one page uses, followed
+                       through @/ and relative imports in inline scripts, src= files, .ts companions, and other
+                       src/lib modules: move it into that component's folder (or beside that page, as a .ts file)
+                       and import it with ./. A module that config, an exec script, an API route, or a second
+                       component or page also imports is shared and stays. Test files do not count as users
 
 Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
 checked by the bascik-seo audit):
@@ -593,6 +599,194 @@ function checkEscapers(root, docs, layout, importRoot, findings) {
   }
 }
 
+const MODULE_FILE_EXTENSIONS = [...SCRIPT_FILE_EXTENSIONS, ".json"];
+// The pages folder publishes every file but markup, scripts, and Markdown: a .json or .js data file there is public.
+const UNPUBLISHED_IN_PAGES = /\.(?:ts|mts|cts|mjs|cjs)$/i;
+const SHARED = Symbol("shared");
+
+/** The specifier a script tag's src= stands for: a bare "name.ts" is "./name.ts", as in a browser. */
+const srcSpecifier = (src) =>
+  /^(?:\.{1,2}\/|@\/)/.test(src) ? src : `./${src}`;
+
+/**
+ * single-use-module: a src/lib module (data, helper, types) that exactly one component or one page uses belongs in
+ * that component's folder, or beside that page, imported with ./. Users are found through @/ and relative imports
+ * in every page and component script (inline or src=), every script file of the project, and src/lib modules that
+ * import each other (a module a lib module imports serves that module's users). Config, exec scripts, API routes,
+ * and other code outside the pages and component folders make a module shared. Test files are not users.
+ */
+function checkSingleUseModules(root, docs, layout, importRoot, findings) {
+  const libDirs = [
+    ...new Set([join(root, "src", "lib"), join(importRoot, "lib")]),
+  ].filter((dir) => insideDir(dir, root) && existsSync(dir));
+  if (libDirs.length === 0) return;
+  const inLib = (file) => libDirs.some((dir) => insideDir(file, dir));
+  const skipped = [
+    layout.outDir,
+    ...SKIPPED_DIRS.map((dir) => join(root, dir)),
+  ];
+  const isSkipped = (file) =>
+    skipped.some((dir) => insideDir(file, dir)) ||
+    isTestFile(file) ||
+    /\.d\.[cm]?ts$/i.test(file);
+
+  const componentDocs = docs.filter((doc) => doc.kind === "component");
+  // A component in a folder of its own owns every file in that folder; a component written straight into a root
+  // owns only its companions (name.ts, name.css).
+  const folders = componentDocs
+    .filter(
+      (doc) =>
+        doc.local &&
+        !layout.componentRoots.some((r) => resolve(r) === dirname(doc.path)),
+    )
+    .map((doc) => ({ dir: dirname(doc.path), doc }))
+    .sort((a, b) => b.dir.length - a.dir.length);
+  const flat = componentDocs.filter(
+    (doc) =>
+      doc.local &&
+      layout.componentRoots.some((r) => resolve(r) === dirname(doc.path)),
+  );
+  const ownerOfFile = (file) => {
+    if (inLib(file)) return undefined;
+    const folder = folders.find(({ dir }) => insideDir(file, dir));
+    if (folder) return folder.doc;
+    const companion = flat.find(
+      (doc) =>
+        dirname(doc.path) === dirname(file) &&
+        basename(file).startsWith(`${doc.tag}.`),
+    );
+    if (companion) return companion;
+    if (insideDir(file, layout.pagesDir)) return { kind: "module", path: file };
+    return SHARED;
+  };
+
+  const direct = new Map(); // lib file -> Set of users (a doc, a module, or SHARED)
+  const libEdges = new Map(); // lib file -> Set of lib files it imports
+  const keyOf = new Map(); // user identity -> one object per user
+  const userKey = (user) => {
+    if (user === SHARED) return SHARED;
+    const key =
+      user.kind === "component" ? `component:${user.tag}` : `file:${user.path}`;
+    if (!keyOf.has(key)) keyOf.set(key, user);
+    return key;
+  };
+  const addUse = (target, from, user) => {
+    if (!target?.found || !inLib(target.file)) return;
+    const file = resolve(target.file);
+    if (from && inLib(from)) {
+      if (resolve(from) === file) return;
+      const edges = libEdges.get(file) ?? new Set();
+      edges.add(resolve(from));
+      libEdges.set(file, edges);
+      return;
+    }
+    const users = direct.get(file) ?? new Set();
+    users.add(userKey(user));
+    direct.set(file, users);
+  };
+
+  for (const doc of docs) {
+    const user = doc.kind === "component" && !doc.local ? SHARED : doc;
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const dir = dirname(doc.path);
+      if (node.attrs.src !== undefined) {
+        const src = node.attrs.src.trim();
+        if (src && !/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src))
+          addUse(
+            resolveLocalImport(srcSpecifier(src), dir, importRoot),
+            undefined,
+            user,
+          );
+      }
+      for (const specifier of importSpecifiers(node.body ?? ""))
+        addUse(resolveLocalImport(specifier, dir, importRoot), undefined, user);
+      return false;
+    });
+  }
+  for (const path of walkFiles(root, SCRIPT_FILE_EXTENSIONS)) {
+    if (isSkipped(path)) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const owner = ownerOfFile(path);
+    for (const specifier of importSpecifiers(code))
+      addUse(
+        resolveLocalImport(specifier, dirname(path), importRoot),
+        path,
+        owner,
+      );
+  }
+
+  // A lib module serves the users of every lib module that imports it, through any number of steps.
+  const usersOf = new Map();
+  const collect = (file, seen = new Set()) => {
+    if (usersOf.has(file)) return usersOf.get(file);
+    const users = new Set(direct.get(file) ?? []);
+    seen.add(file);
+    for (const from of libEdges.get(file) ?? [])
+      if (!seen.has(from)) for (const u of collect(from, seen)) users.add(u);
+    return users;
+  };
+  for (const dir of libDirs)
+    for (const path of walkFiles(dir, MODULE_FILE_EXTENSIONS)) {
+      if (isSkipped(path)) continue;
+      const file = resolve(path);
+      usersOf.set(file, collect(file));
+    }
+
+  for (const [file, users] of usersOf) {
+    if (users.size !== 1) continue;
+    const [only] = users;
+    if (only === SHARED) continue;
+    const user = keyOf.get(only);
+    const rel = (path) => relative(root, path).replace(/\\/g, "/");
+    const name = basename(file);
+    const destination = dirname(user.path);
+    const intoPages = insideDir(destination, layout.pagesDir);
+    const tsName = name.replace(/\.[^.]+$/, ".ts");
+    const target =
+      intoPages && !UNPUBLISHED_IN_PAGES.test(name) ? tsName : name;
+    const stem = name.replace(/\.[^.]+$/, "");
+    const tests = readdirSafe(dirname(file)).filter(
+      (entry) => entry.startsWith(`${stem}.`) && isTestFile(entry),
+    );
+    const who =
+      user.kind === "component"
+        ? `<${user.tag}> (${rel(user.path)})`
+        : rel(user.path);
+    const where =
+      user.kind === "component"
+        ? `into ${rel(destination)}/`
+        : `beside ${rel(user.path)}, into ${rel(destination)}/`;
+    const withTests = tests.length ? ` with ${tests.join(", ")}` : "";
+    const asTs =
+      target !== name
+        ? ` as a .ts module (export the data from ${tsName}): a ${name.slice(name.lastIndexOf("."))} file in the pages folder is copied to the site as a public file`
+        : "";
+    findings.push({
+      rule: "single-use-module",
+      level: "warn",
+      file: rel(file),
+      line: 1,
+      message: `${rel(file)} is used only by ${who}, so it belongs with that ${user.kind === "module" ? "file" : user.kind}, not in ${rel(dirname(file))}/.`,
+      suggestion: `Move it ${where}${withTests}${asTs}, and import it as "./${target}". ${user.kind === "component" ? "A page that also needs it (for JSON-LD, say) imports it from the component's folder. " : ""}Keep src/lib/ for modules several components or pages share.`,
+    });
+  }
+}
+
+/** The names in `dir`, or none when it cannot be read. */
+function readdirSafe(dir) {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
 /** Audit the project at `root`. Returns `{ findings, stats }`. Exported for tests. */
 export async function auditProject(root, options = {}) {
   const limits = { ...DEFAULT_LIMITS };
@@ -1051,6 +1245,15 @@ export async function auditProject(root, options = {}) {
 
   // hand-written-escaper
   checkEscapers(root, docs, { outDir }, importRoot, findings);
+
+  // single-use-module
+  checkSingleUseModules(
+    root,
+    docs,
+    { outDir, pagesDir, componentRoots: roots },
+    importRoot,
+    findings,
+  );
 
   // js-not-ts
   for (const doc of docs) checkScripts(doc, options, findings, stats);

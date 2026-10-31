@@ -728,8 +728,8 @@ describe("audit-components: build-once and once-reads-page", () => {
       [
         `<script data-bascik-build>import { trail } from "./trail.ts"; export default () => trail();</script>`,
         {
-          "src/components/site-footer/trail.ts": `import { here } from "@/lib/here.ts";\nexport const trail = (): string => here();\n`,
-          "src/lib/here.ts": `export const here = (): string => process.env.BASCIK_ROUTE ?? "";\n`,
+          "src/components/site-footer/trail.ts": `import { here } from "./here.ts";\nexport const trail = (): string => here();\n`,
+          "src/components/site-footer/here.ts": `export const here = (): string => process.env.BASCIK_ROUTE ?? "";\n`,
         },
       ],
       [
@@ -779,9 +779,9 @@ describe("audit-components: build-once and once-reads-page", () => {
 
   it("misuse: flags a data-bascik-build-once script that reads page context, naming the variable and the module", async () => {
     const root = withFooter(
-      `<script data-bascik-build-once>import { hero } from "@/lib/hero.ts"; export default () => hero();</script>`,
+      `<script data-bascik-build-once>import { hero } from "@/components/site-footer/hero.ts"; export default () => hero();</script>`,
       {
-        "src/lib/hero.ts": `export const hero = (): string => \`<link rel="preload" href="\${process.env.BASCIK_PAGE_PATH}.webp">\`;\n`,
+        "src/components/site-footer/hero.ts": `export const hero = (): string => \`<link rel="preload" href="\${process.env.BASCIK_PAGE_PATH}.webp">\`;\n`,
         "src/pages/post.html": page(
           `      <script data-bascik-build-once>export default () => process.env.BASCIK_ROUTE ?? "";</script>`,
         ),
@@ -793,7 +793,7 @@ describe("audit-components: build-once and once-reads-page", () => {
       "src/components/site-footer/site-footer.html",
     );
     expect(findings[0].message).toMatch(
-      /reads BASCIK_PAGE_PATH \(in src\/lib\/hero\.ts\), which is empty there/,
+      /reads BASCIK_PAGE_PATH \(in src\/components\/site-footer\/hero\.ts\), which is empty there/,
     );
     expect(findings[1].file).toBe("src/pages/post.html");
     expect(findings[1].message).toMatch(/this page reads BASCIK_ROUTE/);
@@ -1727,6 +1727,176 @@ export const card = (t: string): SafeHtml => html\`<h2>\${t}</h2>\`;
   });
 });
 
+describe("audit-components: single-use-module", () => {
+  const withFiles = (extra: Record<string, string>) =>
+    project({ ...clean, ...extra });
+  const moduleFindings = (findings: Finding[]) =>
+    findings.filter((f) => f.rule === "single-use-module");
+  const faqList = (script: string) => `<section data-testid="faq-list">
+  <h2>Questions</h2>
+${script}</section>
+`;
+  const entries = `export const faqs: { q: string; a: string }[] = [
+  { q: "Does it froth oat milk?", a: "Yes." },
+];
+`;
+
+  it("warns about a src/lib module that one component's inline build script imports through @/, and names the folder to move it to", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      rule: "single-use-module",
+      level: "warn",
+      file: "src/lib/faqs.ts",
+      line: 1,
+    });
+    expect(found[0].message).toContain("<faq-list>");
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toContain('"./faqs.ts"');
+    expect(found[0].suggestion).toMatch(/several components or pages/);
+  });
+
+  it("follows a relative import from a component's .ts companion, and moves the module's test with it", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/lib/faqs.test.ts": `import { faqs } from "./faqs.ts";\nexport const count = faqs.length;\n`,
+      "src/components/faq-list/faq-list.html": faqList(
+        `  <script data-bascik-build-once src="./faq-list.ts"></script>\n`,
+      ),
+      "src/components/faq-list/faq-list.ts": `import { html } from "@bascik/bascik/html";
+import { faqs } from "../../lib/faqs.ts";
+export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+`,
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].suggestion).toContain("faqs.test.ts");
+  });
+
+  it("counts a script's src= naming a src/lib file as a use", async () => {
+    const root = withFiles({
+      "src/lib/nav.ts": `import { html } from "@bascik/bascik/html";
+export default () => html\`<a href="/">Home</a>\`;
+`,
+      "src/components/main-nav/main-nav.html": `<nav aria-label="Main" data-testid="main-nav">
+  <script data-bascik-build-once src="@/lib/nav.ts"></script>
+</nav>
+`,
+      "src/pages/help.html": page(`      <main-nav />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/nav.ts"]);
+    expect(found[0].message).toContain("<main-nav>");
+  });
+
+  it("tells a module that one page uses to sit beside that page as a .ts file, never .json, which the pages folder publishes", async () => {
+    const root = withFiles({
+      "src/lib/pricing.ts": `export const plans = ["Basic", "Barista"];\n`,
+      "src/lib/hours.json": `{ "open": "9:00" }\n`,
+      "src/pages/pricing/index.html": page(
+        `      <h1>Pricing</h1>
+      <script data-bascik-build type="text/typescript">
+        import { html } from "@bascik/bascik/html";
+        import { plans } from "@/lib/pricing.ts";
+        import hours from "@/lib/hours.json" with { type: "json" };
+        export default () => html\`<p>\${plans.join(", ")} from \${hours.open}</p>\`;
+      </script>`,
+      ),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual([
+      "src/lib/hours.json",
+      "src/lib/pricing.ts",
+    ]);
+    const [json, ts] = found;
+    expect(ts.message).toContain("src/pages/pricing/index.html");
+    expect(ts.suggestion).toContain("src/pages/pricing/");
+    expect(ts.suggestion).toContain('"./pricing.ts"');
+    expect(json.suggestion).toMatch(/\.ts module/);
+    expect(json.suggestion).toMatch(/public/);
+  });
+
+  it("follows one src/lib module into another: both serve the one component", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": `import { raw } from "./faq-data.ts";\nexport const faqs = raw;\n`,
+      "src/lib/faq-data.ts": `export const raw = [{ q: "Is it loud?" }];\n`,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faq-data.ts", "src/lib/faqs.ts"]);
+  });
+
+  it("leaves shared, unused, and test-only modules, and modules that config, exec scripts, or API routes also import", async () => {
+    const use = (
+      spec: string,
+    ) => `  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => String(value);
+  </script>
+`;
+    const root = withFiles({
+      // Two components.
+      "src/lib/site.ts": `export const value = "Milk frother";\n`,
+      // One component and the config.
+      "src/lib/routes.ts": `export const value = ["/drafts/**"];\n`,
+      // One page and an exec script.
+      "src/lib/posts.ts": `export const value = [];\n`,
+      // One component and an API route.
+      "src/lib/stock.ts": `export const value = 3;\n`,
+      // One component, reached only through a shared lib module.
+      "src/lib/format.ts": `export const value = "x";\n`,
+      "src/lib/money.ts": `import { value as f } from "./format.ts";\nexport const value = f;\n`,
+      // Nobody, and a test only.
+      "src/lib/unused.ts": `export const value = 0;\n`,
+      "src/lib/tested.ts": `export const value = 1;\n`,
+      "src/lib/tested.test.ts": `import { value } from "./tested.ts";\nexport const v = value;\n`,
+      // An import that names a missing file is the build's to report.
+      "src/components/brand-mark/brand-mark.html": `<p data-testid="brand-mark">
+${use("@/lib/site.ts")}${use("@/lib/routes.ts")}${use("@/lib/money.ts")}${use("@/lib/missing.ts")}</p>
+`,
+      "src/components/brand-line/brand-line.html": `<p data-testid="brand-line">
+${use("@/lib/site.ts")}${use("@/lib/stock.ts")}${use("@/lib/money.ts")}</p>
+`,
+      "src/pages/help.html": page(`      <brand-mark />
+      <brand-line />
+${use("@/lib/posts.ts")}`),
+      "bascik.config.ts": `import { value } from "./src/lib/routes.ts";
+export default { sitemap: { exclude: value } };
+`,
+      "scripts/feed.ts": `import { value } from "../src/lib/posts.ts";\nconsole.log(value);\n`,
+      "src/api/stock.ts": `import { value } from "@/lib/stock.ts";\nexport const GET = () => Response.json(value);\n`,
+      // A module already beside its component is where it belongs.
+      "src/components/faq-list/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html": faqList(use("./faqs.ts")),
+    });
+    expect(moduleFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("does not flag the starter site's shared seo and posts helpers", async () => {
+    const { findings } = await audit(starterSite);
+    expect(moduleFindings(findings)).toEqual([]);
+  });
+});
+
 describe("audit-components CLI", () => {
   const cli = (args: string[], cwd?: string) =>
     spawnSync(process.execPath, [script, ...args], {
@@ -1804,6 +1974,7 @@ describe("audit-components CLI", () => {
       "unlabeled-control",
       "missing-main",
       "hand-written-escaper",
+      "single-use-module",
     ])
       expect(run.stdout).toContain(rule);
   });
