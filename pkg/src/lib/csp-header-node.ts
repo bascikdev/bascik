@@ -26,7 +26,7 @@ import {
   type CspRouteHashes,
 } from "./content-security-policy.ts";
 import { getHttpPath } from "./paths.ts";
-import type { StoredPage } from "./types.ts";
+import type { StoredPage } from "./stored-page.ts";
 import { privateDirFor } from "./private-dir.ts";
 
 let prodManifest: CspHashesManifest | null | undefined;

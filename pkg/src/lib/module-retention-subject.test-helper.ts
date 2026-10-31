@@ -1216,7 +1216,7 @@ async function sample(
     return (
       plan &&
       !currentPlans.has(
-        plan as import("./types.ts").StoredPage["serverScriptPlan"],
+        plan as import("./stored-page.ts").StoredPage["serverScriptPlan"],
       )
     );
   }).length;

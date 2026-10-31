@@ -10,7 +10,7 @@ import {
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
 import type { ComponentManifest } from "./component-manifest-file.ts";
-import type { StoredPage } from "./types.ts";
+import type { StoredPage } from "./stored-page.ts";
 
 export const getBrotliQuality = (
   config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig,
