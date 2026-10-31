@@ -440,7 +440,7 @@ Mask only documented dynamic regions, such as a rotating review carousel; the qu
 
 ### Parity Checks
 
-Pixels and boxes miss what a reviewer notices first: a button that does nothing, a menu that opens unstyled, a link in the wrong weight. `run-checks.mjs` runs one check per issue type on every route and matrix case, after `production-defects.mjs` has logged what production itself gets wrong. Each check matches elements by test id, role, name or text, never by class, and a check that crashes is a finding:
+Pixels and boxes miss what a reviewer notices first: a button that does nothing, a menu that opens unstyled, a link in the wrong weight. `run-checks.mjs` runs one check per issue type on every route and matrix case, after `production-defects.mjs` has logged what production itself gets wrong. Each check matches elements by test id, role, name or text, never by class. Text is what a reader sees (a menu hidden in the markup adds nothing), compared with all whitespace removed, so React's markup and the same page formatted by Prettier match; keep the source formatted. A check that crashes is a finding:
 
 ```sh
 node "$REFACTOR/production-defects.mjs" --prod "$PROD_URL" --route / --route /pricing

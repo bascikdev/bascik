@@ -48,6 +48,42 @@ export const normalize = (value) =>
     .trim();
 
 /**
+ * A text key as the checks compare it, the same way the in-page helper does: all whitespace removed. React writes no
+ * whitespace between elements and formatted HTML has newlines there, so the same page reads "v5.0.1Copyright" on one
+ * side and "v5.0.1 Copyright" on the other; markup formatting must never make two keys of one element. Keys keep their
+ * whitespace for messages.
+ */
+export const keyMatch = (key) => String(key ?? "").replace(/\s+/g, "");
+
+/**
+ * `text` with whitespace collapsed, cut after `max` characters that are not whitespace (default 80), as the in-page
+ * helper capText cuts a key: two texts that differ only in whitespace are cut at the same place.
+ */
+export function capKeyText(text, max = 80) {
+  const value = normalize(text);
+  let kept = 0;
+  let i = 0;
+  for (; i < value.length && kept < max; i++) if (!/\s/.test(value[i])) kept++;
+  return value.slice(0, i).trim();
+}
+
+/**
+ * A lookup of `entries` ({ key: value }, or [key, value] pairs) by keyMatch: get(key) finds the value whose key differs
+ * only in whitespace. The first entry wins.
+ */
+export function byKeyMatch(entries) {
+  const map = new Map();
+  for (const [key, value] of Array.isArray(entries)
+    ? entries
+    : Object.entries(entries ?? {}))
+    if (!map.has(keyMatch(key))) map.set(keyMatch(key), value);
+  return {
+    get: (key) => map.get(keyMatch(key)),
+    has: (key) => map.has(keyMatch(key)),
+  };
+}
+
+/**
  * The file and folder name of a route under --out and in docs/migration/review: "/" -> "index", "/pricing/team/" ->
  * "pricing_team". A route the readable name cannot tell apart from another ("/index", "/docs/a_b" next to
  * "/docs/a/b", upper case, non-ASCII) gets a hash of the route appended, as compare-route.mjs does for every folder.

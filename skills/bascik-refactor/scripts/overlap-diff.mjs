@@ -12,6 +12,7 @@ import {
   casesOf,
   finding,
   hideMasks,
+  keyMatch,
   masksOf,
   parseArgsFor,
   pixels,
@@ -145,14 +146,18 @@ export function findOverlaps(boxes) {
 const pairName = (p) => `${p.a} and ${p.b}`;
 
 /**
- * For each production pair, the index of its target pair, or -1: the first unused target pair with the same two keys,
- * so pairs that share their keys (the dots of a timeline whose labels sit elsewhere) pair up in document order.
+ * For each production pair, the index of its target pair, or -1: the first unused target pair with the same two keys
+ * once whitespace is removed (keyMatch: React markup and formatted HTML key one element alike), so pairs that share
+ * their keys (the dots of a timeline whose labels sit elsewhere) pair up in document order.
  */
 export function pairUp(prod, target) {
   const used = new Set();
   return prod.map((p) => {
     const i = target.findIndex(
-      (q, index) => !used.has(index) && q.a === p.a && q.b === p.b,
+      (q, index) =>
+        !used.has(index) &&
+        keyMatch(q.a) === keyMatch(p.a) &&
+        keyMatch(q.b) === keyMatch(p.b),
     );
     if (i >= 0) used.add(i);
     return i;
@@ -259,11 +264,9 @@ function collectBoxes(arg) {
     return inside ? pathOf(n) : null;
   };
   const keyOf = (el) => {
-    if (norm(el.textContent) && !["SVG", "IMG"].includes(tagOf(el)))
-      return textKey(el);
+    if (keyText(el) && !["SVG", "IMG"].includes(tagOf(el))) return textKey(el);
     let n = el.parentElement;
-    while (n && n !== document.body && !norm(n.textContent))
-      n = n.parentElement;
+    while (n && n !== document.body && !keyText(n)) n = n.parentElement;
     const base = n && n !== document.body ? textKey(n) : "BODY";
     const same = el.parentElement
       ? [...el.parentElement.children].filter((c) => c.tagName === el.tagName)

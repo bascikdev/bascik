@@ -14,10 +14,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { inPage, onElementSource } from "./lib/dom.mjs";
 import {
+  keyMatch,
   casesOf,
   finding,
   masksOf,
-  normalize,
   parseArgsFor,
   reload,
   result,
@@ -154,7 +154,7 @@ function anchorOf(el, mode) {
     tag: tagOf(el),
     role: roleOf(el),
     name: accName(el),
-    text: norm(el.textContent).slice(0, 70),
+    text: keyText(el, 70),
     href: href && href.startsWith("#") ? href : null,
     testId: el.getAttribute("data-testid"),
   };
@@ -798,8 +798,8 @@ const anchorKey = (a) =>
  * The index in `candidates` of the target element that is the same as the production `anchor`, or -1. Only a
  * candidate activated the same way (click or hover) matches. Tried in order: the same data-testid, the same role and
  * accessible name, the same in-page href, the same tag and text, then the same text on another tag (a card that
- * became a link). Whitespace is normalized; class names are never used. Indexes in `used` are skipped, so repeated
- * elements pair up in document order.
+ * became a link). Whitespace is ignored (keyMatch: React markup and formatted HTML read alike); class names are never
+ * used. Indexes in `used` are skipped, so repeated elements pair up in document order.
  */
 export function matchAnchor(anchor, candidates, used = new Set()) {
   const mode = anchor.mode ?? "click";
@@ -810,17 +810,17 @@ export function matchAnchor(anchor, candidates, used = new Set()) {
   const tries = [
     (c) => anchor.testId && c.testId === anchor.testId,
     (c) =>
-      normalize(anchor.name) &&
+      keyMatch(anchor.name) &&
       c.role === anchor.role &&
-      normalize(c.name) === normalize(anchor.name),
+      keyMatch(c.name) === keyMatch(anchor.name),
     (c) => anchor.href && c.href === anchor.href,
     (c) =>
-      normalize(anchor.text) &&
+      keyMatch(anchor.text) &&
       c.tag === anchor.tag &&
-      normalize(c.text) === normalize(anchor.text),
+      keyMatch(c.text) === keyMatch(anchor.text),
     (c) =>
-      normalize(anchor.name || anchor.text) &&
-      normalize(c.name || c.text) === normalize(anchor.name || anchor.text),
+      keyMatch(anchor.name || anchor.text) &&
+      keyMatch(c.name || c.text) === keyMatch(anchor.name || anchor.text),
   ];
   for (const test of tries) {
     const i = candidates.findIndex((c, index) => free(c, index) && test(c));
@@ -908,7 +908,7 @@ export function diffEffects(prod, target) {
       );
     else if (
       scrolls(a) &&
-      (a.scrollTarget !== b.scrollTarget ||
+      (keyMatch(a.scrollTarget) !== keyMatch(b.scrollTarget) ||
         Math.sign(a.scrollDelta) !== Math.sign(b.scrollDelta))
     )
       add(
@@ -936,7 +936,9 @@ export function diffEffects(prod, target) {
         "different-effect",
         `leaves the page at ${a.url} in production and at ${b.url} on the target`,
       );
-    const lost = (x, y) => x.filter((v) => !y.includes(v));
+    // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
+    const lost = (x, y) =>
+      x.filter((v) => !y.some((w) => keyMatch(w) === keyMatch(v)));
     const missingChanges = lost(a.changed, b.changed);
     if (missingChanges.length)
       add(
@@ -961,7 +963,7 @@ export function diffEffects(prod, target) {
         "different-effect",
         `the target shows ${extraShown.join(", ")}; production does not`,
       );
-    if (a.focused !== b.focused)
+    if (keyMatch(a.focused) !== keyMatch(b.focused))
       add(
         a.focused && !b.focused ? "missing-effect" : "different-effect",
         `moves focus to ${a.focused ?? "nothing"} in production and to ${b.focused ?? "nothing"} on the target`,

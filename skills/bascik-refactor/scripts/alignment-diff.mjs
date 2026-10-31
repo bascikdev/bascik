@@ -7,6 +7,7 @@
 // Why: text was misaligned at certain breakpoints only, and one screenshot per route never showed it.
 import { inPage } from "./lib/dom.mjs";
 import {
+  byKeyMatch,
   casesOf,
   finding,
   masksOf,
@@ -87,8 +88,10 @@ export function diffAlignment(
           target: b,
         }),
       );
+    // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
+    const nodes = byKeyMatch(t.nodes);
     for (const [key, a] of Object.entries(p.nodes)) {
-      const b = t.nodes[key];
+      const b = nodes.get(key);
       if (!b) {
         at(key, "missing", "in production, not on the target");
         continue;
@@ -168,8 +171,8 @@ function measureAlignment(arg) {
     const text = textOf(el);
     if (!text && !media) continue;
     const base = textKey(el);
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
+    const n = (seen.get(matchKeyInPage(base)) ?? 0) + 1;
+    seen.set(matchKeyInPage(base), n);
     const key = n > 1 ? `${base} #${n}` : base;
     const rects = [];
     if (media) rects.push(el.getBoundingClientRect());

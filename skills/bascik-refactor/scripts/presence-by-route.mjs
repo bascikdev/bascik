@@ -12,9 +12,12 @@
 import { contextOptions, routeUrl, settle } from "./lib/capture.mjs";
 import { inPage } from "./lib/dom.mjs";
 import {
+  byKeyMatch,
+  capKeyText,
   casesOf,
   DEFAULT_SETTLE_MS,
   finding,
+  keyMatch,
   masksOf,
   normalize,
   parseArgsFor,
@@ -116,16 +119,18 @@ export function presenceReasons(info) {
 
 /**
  * The name of a layer on both sides: role and accessible name when it has both, otherwise tag and name or text.
- * Whitespace is normalized and class names are never used, so a div and a section with one role match. A live region
- * without a name ({ live: true }) is named by its anchor (its data-testid, its id, or its place among the live regions)
- * and never by its text: a ticker or a status line changes its text by design, and reading it at another moment on
- * each side must not make two layers out of one.
+ * Whitespace is normalized and class names are never used, so a div and a section with one role match; diffPresence
+ * compares keys with whitespace removed (keyMatch), so React markup and the same layer formatted by Prettier match.
+ * The text is the text a reader sees, cut after 60 visible characters. A live region without a name ({ live: true }) is
+ * named by its anchor (its data-testid, its id, or its place among the live regions) and never by its text: a ticker
+ * or a status line changes its text by design, and reading it at another moment on each side must not make two layers
+ * out of one.
  */
 export function presenceKey({ tag, role, name, text, live, anchor }) {
   if (role && normalize(name)) return `${role}:${normalize(name)}`;
   if (normalize(name)) return `${tag}:${normalize(name)}`;
   if (live) return `${role ?? tag}#${anchor ?? "live"}`;
-  return `${tag}:${normalize(text).slice(0, 60).trim()}`;
+  return `${tag}:${capKeyText(text, 60)}`;
 }
 
 const snapshotId = (s) => `${s.route} ${s.width} ${s.state}`;
@@ -155,12 +160,15 @@ export function diffPresence(prod, target) {
         (x) =>
           x.route === s.route && x.width === s.width && x.state === "fresh",
       );
-    const has = (snap, key) => snap?.items.some((i) => i.key === key) ?? false;
+    const has = (snap, key) =>
+      snap?.items.some((i) => keyMatch(i.key) === keyMatch(key)) ?? false;
     const pKeys = new Set(p.items.map((i) => i.key));
     const tKeys = new Set(t.items.map((i) => i.key));
-    const id = (key) => `${p.route} ${p.width} ${key}`;
+    const pMatch = byKeyMatch(p.items.map((i) => [i.key, i]));
+    const tMatch = byKeyMatch(t.items.map((i) => [i.key, i]));
+    const id = (key) => `${p.route} ${p.width} ${keyMatch(key)}`;
     for (const item of p.items) {
-      const other = t.items.find((i) => i.key === item.key);
+      const other = tMatch.get(item.key);
       if (!other || !item.dock || !other.dock || item.dock === other.dock)
         continue;
       if (reported.has(`${id(item.key)} placement`)) continue;
@@ -175,7 +183,7 @@ export function diffPresence(prod, target) {
       );
     }
     for (const key of pKeys) {
-      if (tKeys.has(key) || reported.has(id(key))) continue;
+      if (tMatch.has(key) || reported.has(id(key))) continue;
       reported.add(id(key));
       const dismissedHere = p.state !== "fresh" && has(fresh(target, t), key);
       findings.push(
@@ -195,7 +203,7 @@ export function diffPresence(prod, target) {
       );
     }
     for (const key of tKeys) {
-      if (pKeys.has(key) || reported.has(id(key))) continue;
+      if (pMatch.has(key) || reported.has(id(key))) continue;
       reported.add(id(key));
       const cameBack = p.state !== "fresh" && has(fresh(prod, p), key);
       findings.push(
@@ -249,11 +257,7 @@ function inventory(arg) {
       )
         continue;
       const r = el.getBoundingClientRect();
-      if (
-        !isRendered(el) ||
-        !norm(el.textContent) ||
-        r.height > innerHeight * 0.4
-      )
+      if (!isRendered(el) || !keyText(el) || r.height > innerHeight * 0.4)
         continue;
       topBars.add(el);
       candidates.add(el);
@@ -326,7 +330,8 @@ function inventory(arg) {
         el.getAttribute("role") ?? (tagOf(el) === "DIALOG" ? "dialog" : null),
       name: ariaName,
       // A live region's text changes by design: it neither names the layer nor counts toward a stable page.
-      text: live ? "" : norm(el.textContent).slice(0, 60),
+      // The text a reader sees: a closed menu kept in the markup as a hidden list adds nothing.
+      text: live ? "" : keyText(el, 60),
       live,
       anchor: live
         ? el.getAttribute("data-testid") ||

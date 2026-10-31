@@ -1,8 +1,8 @@
 /**
  * production-defects' corrections against the keys the parity checks write, in a real browser: a defect is keyed by
- * the page helper textKey ("TAG:text", 70 characters), and a parity finding on the same element must carry the same
- * key, or applyCorrections never moves it to `corrected` and run-checks fails the route on a difference the
- * decisions ledger already explains.
+ * the page helper textKey ("TAG:text", cut after 80 visible characters), and a parity finding on the same element must
+ * carry the same key, or applyCorrections never moves it to `corrected` and run-checks fails the route on a difference
+ * the decisions ledger already explains.
  *
  * Why: spacing-diff keyed its blocks at 40 characters, so every heading longer than that missed its correction.
  */

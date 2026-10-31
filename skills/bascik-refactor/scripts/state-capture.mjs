@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inPage } from "./lib/dom.mjs";
 import {
+  byKeyMatch,
   casesOf,
   finding,
   hideMasks,
@@ -193,10 +194,12 @@ export function diffStateStyles(
  */
 export function diffItemStates(anchor, prod, target) {
   const findings = [];
+  // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one item alike.
+  const targets = byKeyMatch(target);
   for (const [key, states] of Object.entries(prod ?? {}))
     for (const state of ["hover", "focus-visible"]) {
       const a = states[state] ?? {};
-      const b = target?.[key]?.[state];
+      const b = targets.get(key)?.[state];
       if (!b) continue;
       for (const property of Object.keys(a)) {
         if (a[property] === b[property]) continue;

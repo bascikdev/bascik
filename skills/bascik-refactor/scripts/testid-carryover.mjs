@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { inPage } from "./lib/dom.mjs";
 import {
+  keyMatch,
   casesOf,
   finding,
   masksOf,
@@ -145,10 +146,11 @@ export function scanSource(root) {
 
 const describe = (a) =>
   `${a.tag}${a.name || a.text ? ` "${a.name || a.text}"` : ""}${a.index ? ` (#${a.index + 1})` : ""}`;
+// Name and text are compared with whitespace removed (keyMatch): React markup and formatted HTML read alike.
 const sameAnchor = (a, b) =>
   a.tag === b.tag &&
-  normalize(a.name) === normalize(b.name) &&
-  normalize(a.text) === normalize(b.text) &&
+  keyMatch(a.name) === keyMatch(b.name) &&
+  keyMatch(a.text) === keyMatch(b.text) &&
   (a.index ?? 0) === (b.index ?? 0);
 
 /**
@@ -282,9 +284,9 @@ function collectHooks(arg) {
       tag: tagOf(el),
       role: roleOf(el),
       name: accName(el).slice(0, 70),
-      text: norm(el.textContent).slice(0, 70),
+      text: keyText(el, 70),
     };
-    const id = `${anchor.tag}|${anchor.name}|${anchor.text}`;
+    const id = matchKeyInPage(`${anchor.tag}|${anchor.name}|${anchor.text}`);
     anchor.index = counts.get(id) ?? 0;
     counts.set(id, anchor.index + 1);
     for (const attr of arg.attrs)

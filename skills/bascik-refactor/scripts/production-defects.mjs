@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { inPage } from "./lib/dom.mjs";
 import {
+  keyMatch,
   casesOf,
   finding,
   masksOf,
@@ -195,8 +196,9 @@ export function detectDefects(snapshot) {
   return defects;
 }
 
+// Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
 const defectId = (d) =>
-  `${d.kind}|${d.route}|${d.width}|${d.key ?? d.selector}${d.other ? `|${d.other}` : ""}`;
+  `${d.kind}|${d.route}|${d.width}|${keyMatch(d.key ?? d.selector)}${d.other ? `|${keyMatch(d.other)}` : ""}`;
 
 /**
  * Compares the target's defects with production's at the same cases. A defect on both sides is copied-defect (the
@@ -293,7 +295,9 @@ export function applyCorrections(findings, defects) {
         (d) =>
           d.route === f.route &&
           d.width === f.width &&
-          ((d.key && (f.key === d.key || f.section === d.key)) ||
+          ((d.key &&
+            (keyMatch(f.key) === keyMatch(d.key) ||
+              keyMatch(f.section) === keyMatch(d.key))) ||
             (d.selector && f.selector === d.selector)),
       );
     (hit ? corrected : kept).push(f);

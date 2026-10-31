@@ -14,6 +14,7 @@ import {
   politeFlags,
 } from "./lib/capture.mjs";
 import {
+  byKeyMatch,
   DEFAULT_SETTLE_MS,
   pixels,
   validateMask,
@@ -104,8 +105,11 @@ export function collectNodes(doc = document, view = window, masks = []) {
 export function diffGeometry(prod, target, thresholds = DEFAULT_THRESHOLDS) {
   const moved = [];
   const missing = [];
+  // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
+  const targets = byKeyMatch(target);
+  const prods = byKeyMatch(prod);
   for (const [key, p] of Object.entries(prod)) {
-    const t = target[key];
+    const t = targets.get(key);
     if (!t) {
       missing.push(key);
       continue;
@@ -120,7 +124,7 @@ export function diffGeometry(prod, target, thresholds = DEFAULT_THRESHOLDS) {
     )
       moved.push({ key, dx, dy, dw, prod: p, target: t });
   }
-  const extra = Object.keys(target).filter((key) => !(key in prod));
+  const extra = Object.keys(target).filter((key) => !prods.has(key));
   return {
     ok: moved.length === 0 && missing.length === 0 && extra.length === 0,
     moved,
