@@ -155,6 +155,77 @@ describe("scripts.typescript compiler selection (transformBrowserTypeScript)", (
   });
 });
 
+describe("scripts.typescript function output validation (F040)", () => {
+  const accepted = [
+    // esbuild with minify: true puts `export` mid-line.
+    ["minified export default", "const a=1;export default()=>1;\n"],
+    [
+      "minified top-level await with export",
+      "const t=await fetch(url),e=await t.text();export default()=>e;\n",
+    ],
+    [
+      "top-level await with no import or export",
+      'const res = await fetch("https://example.com");\nconsole.log(await res.text());\n',
+    ],
+    ["minified import", 'import{a}from"./a.js";console.log(a);'],
+  ] as const;
+
+  for (const runtime of ["server", "browser"] as const) {
+    it.each(accepted)(
+      `accepts valid module output (${runtime}): %s`,
+      async (_label, output) => {
+        (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+          output;
+        await expect(
+          transformBrowserTypeScript("const x: number = 1;", {
+            sourcePath: "src/pages/index.html",
+            kind: "inline",
+            runtime,
+          }),
+        ).resolves.toBe(output);
+      },
+    );
+  }
+
+  it.each([
+    ["TypeScript left in place", "const a: number = await f();\n"],
+    [
+      "an export only inside a string",
+      'const s = "\nexport default 1";\nconst a: number = 1;\n',
+    ],
+    ["an export only inside a comment", "// export default\nlet b: string;\n"],
+  ])(
+    "still rejects output that is not JavaScript: %s",
+    async (_label, output) => {
+      (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+        output;
+      await expect(
+        transformBrowserTypeScript("const x: number = 1;", {
+          sourcePath: "src/pages/index.html",
+          kind: "inline",
+          runtime: "server",
+        }),
+      ).rejects.toThrow(
+        /src\/pages\/index\.html[\s\S]*did not return valid JavaScript/,
+      );
+    },
+  );
+
+  it("lets compileDirectiveTypeScript return top-level-await output from a function compiler", async () => {
+    const output =
+      "const r = await Promise.resolve(1);\nexport default () => String(r);\n";
+    (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
+      output.replace("\n", " ");
+    await expect(
+      compileDirectiveTypeScript(
+        "const r: number = await Promise.resolve(1);\nexport default () => String(r);",
+        "src/pages/index.html",
+        "inline",
+      ),
+    ).resolves.toBe(output.replace("\n", " "));
+  });
+});
+
 describe("isTypeScriptFile", () => {
   it("recognizes .ts and .mts browser script files", () => {
     expect(isTypeScriptFile("src/components/demo/demo.ts")).toBe(true);

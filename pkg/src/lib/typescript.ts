@@ -580,19 +580,37 @@ const resolveCompilerOption = (): TypeScriptCompilerOption => {
 export const isBrowserTypeScriptEnabled = (): boolean =>
   resolveCompilerOption() !== false;
 
-/**
- * Parse check for compiler output. `import`/`export` are not allowed in a
- * `Function` body, so module-shaped output is accepted on the strength of the
- * compiler having returned a string at all; everything else must parse.
- */
-const isParseableJavaScript = (code: string): boolean => {
+const AsyncFunction = (async () => {}).constructor as new (
+  body: string,
+) => unknown;
+
+/** Whether `code` parses as the body of `constructor`. */
+const parsesAs = (
+  constructor: new (body: string) => unknown,
+  code: string,
+): boolean => {
   try {
-    new Function(code);
+    new constructor(code);
     return true;
   } catch {
-    return /^\s*(?:import|export)\b/m.test(code);
+    return false;
   }
 };
+
+/**
+ * Parse check for compiler output. Output that parses as a script, or as an
+ * async function body (a module that is one only because of top-level
+ * `await`), is JavaScript. `import`/`export` are not allowed in either, so
+ * output with static module syntax anywhere (esbuild's minified
+ * `const a=1;export default()=>1;` included) is accepted on the strength of
+ * the compiler having returned a string at all; a directive script's output
+ * then gets the real ES module check (`checkDirectiveModuleSyntax`). Module
+ * keywords inside strings and comments do not count.
+ */
+const isParseableJavaScript = (code: string): boolean =>
+  parsesAs(Function, code) ||
+  parsesAs(AsyncFunction, code) ||
+  hasStaticModuleSyntax(code);
 
 /**
  * Transform browser TypeScript according to `scripts.typescript`.
