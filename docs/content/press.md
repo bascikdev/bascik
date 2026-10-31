@@ -43,7 +43,7 @@ Use the full-color logo unless you are limited to one color. The black and white
 
 ### Spacing and Minimum Size
 
-Keep clear space of at least one quarter of the logo's height on every side of the wordmark and the mark. The height is that of the whole lime tile, not of the letters inside it: a wordmark shown 48 px tall needs 12 px of clear space on each side. Keep text, other logos, and the edges of images, cards, and buttons outside that space.
+Keep clear space of at least one quarter of the logo's height on every side of the wordmark and the mark. The height is that of the whole tile (lime, black, or white), not of the letters inside it: a wordmark shown 48 px tall needs 12 px of clear space on each side. Keep text, other logos, and the edges of images, cards, and buttons outside that space.
 
 The SVG and PNG files in the kit are cropped to the artwork, with no space around the tile, so whoever places a file adds the clear space as padding or margin. Never place a file edge to edge in a container with rounded corners, a border, or clipped overflow: the container cuts off or covers the tile's sharp corners. Pad the logo inside the container by at least a quarter of its height instead.
 

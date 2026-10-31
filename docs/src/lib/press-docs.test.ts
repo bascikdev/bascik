@@ -33,7 +33,9 @@ describe("press page: spacing and minimum size", () => {
   it("states the clear-space unit precisely: a quarter of the whole tile's height, not the letters'", () => {
     expect(CLEAR_SPACE_RATIO).toBe(0.25);
     expect(spacing).toMatch(/one quarter of the logo's height/);
-    expect(spacing).toMatch(/whole lime tile, not of the letters/);
+    expect(spacing).toMatch(
+      /whole tile \(lime, black, or white\), not of the letters/,
+    );
     // The worked example agrees with the rule.
     const example = /(\d+) px tall needs (\d+) px of clear space/.exec(spacing);
     expect(example, spacing).not.toBeNull();
