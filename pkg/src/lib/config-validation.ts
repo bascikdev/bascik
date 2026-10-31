@@ -417,6 +417,34 @@ export const validateConfigShape = (
   // Protections first: a mistake here changes what the site ships.
   validateSecurity(raw.security, push);
 
+  // A section replaced by a scalar (`generate: false`) would replace the
+  // whole defaults block in the merge, leaving every key in it undefined.
+  for (const section of OBJECT_SECTIONS) {
+    const value = raw[section];
+    if (value !== undefined && !isPlainObject(value))
+      push(section, value, "expected an object");
+  }
+  for (const [section, keys] of BOOLEAN_LEAVES) {
+    const value = raw[section];
+    if (isPlainObject(value)) validateBooleans(value, section, keys, push);
+  }
+  if (isPlainObject(raw.scoping) && raw.scoping.attributes !== undefined) {
+    const attributes = raw.scoping.attributes;
+    if (!isPlainObject(attributes))
+      push(
+        "scoping.attributes",
+        attributes,
+        "expected an object { class?, id?, name? }",
+      );
+    else
+      validateBooleans(
+        attributes,
+        "scoping.attributes",
+        ["class", "id", "name"],
+        push,
+      );
+  }
+
   /* directory */
   if (isPlainObject(raw.directory)) {
     const dir = raw.directory;
@@ -543,6 +571,13 @@ export const validateConfigShape = (
           'expected a hostname like "localhost" or "example.com", not a URL or path',
         );
       }
+    }
+    if (http.tls !== undefined && !isPlainObject(http.tls)) {
+      push(
+        "http.tls",
+        http.tls,
+        "expected an object { enabled?, keyFile?, certFile? }",
+      );
     }
     if (isPlainObject(http.tls)) {
       const tls = http.tls;
@@ -757,6 +792,7 @@ export const validateConfigShape = (
         );
       }
     }
+    validateScriptsCache(scripts.cache, push);
     if (
       scripts.stripAnsi !== undefined &&
       typeof scripts.stripAnsi !== "boolean"
@@ -856,6 +892,7 @@ export const validateConfigShape = (
               'expected "pre", "post", or "parallel"',
             );
           }
+          validateExecEntryFields(entry, `pipeline.exec[${index}]`, push);
         });
       }
     }
@@ -998,6 +1035,143 @@ export const validateConfigShape = (
 };
 
 type Push = (key: string, value: unknown, message: string) => void;
+
+/** Top-level sections that only take an object (minify, security and contentSecurityPolicy check their own forms). */
+const OBJECT_SECTIONS = [
+  "directory",
+  "components",
+  "scoping",
+  "assets",
+  "generate",
+  "pipeline",
+  "scripts",
+  "http",
+  "logging",
+] as const;
+
+/** Settings that take only true or false, by section. */
+const BOOLEAN_LEAVES: readonly (readonly [string, readonly string[]])[] = [
+  [
+    "generate",
+    ["sitemap", "robots", "sitemapLastmod", "cspHashes", "manifest"],
+  ],
+  ["scoping", ["scriptBlocks", "inheritAttributes", "deduplicateCss"]],
+  ["logging", ["requests", "copies", "deletes", "transpiles"]],
+];
+
+const validateBooleans = (
+  section: Record<string, unknown>,
+  prefix: string,
+  keys: readonly string[],
+  push: Push,
+): void => {
+  for (const key of keys) {
+    const value = section[key];
+    if (value !== undefined && typeof value !== "boolean")
+      push(`${prefix}.${key}`, value, "expected true or false");
+  }
+};
+
+/** An optional array of non-empty strings; reports the array or each bad entry. */
+const validateStringList = (
+  value: unknown,
+  key: string,
+  expected: string,
+  push: Push,
+): void => {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    push(key, value, `expected an array of ${expected}`);
+    return;
+  }
+  value.forEach((entry, index) => {
+    if (typeof entry !== "string" || entry.length === 0)
+      push(`${key}[${index}]`, entry, `expected a non-empty string`);
+  });
+};
+
+/** `scripts.cache`: true, false, or { enabled?, include?, exclude?, environment? }. */
+const validateScriptsCache = (cache: unknown, push: Push): void => {
+  if (cache === undefined || typeof cache === "boolean") return;
+  if (!isPlainObject(cache)) {
+    push(
+      "scripts.cache",
+      cache,
+      "expected true, false, or an object { enabled?, include?, exclude?, environment? }",
+    );
+    return;
+  }
+  validateBooleans(cache, "scripts.cache", ["enabled"], push);
+  validateStringList(
+    cache.include,
+    "scripts.cache.include",
+    "glob strings",
+    push,
+  );
+  validateStringList(
+    cache.exclude,
+    "scripts.cache.exclude",
+    "glob strings",
+    push,
+  );
+  validateStringList(
+    cache.environment,
+    "scripts.cache.environment",
+    "environment variable names",
+    push,
+  );
+};
+
+/** The optional fields of one `pipeline.exec` entry (script and phase are checked by the caller). */
+const validateExecEntryFields = (
+  entry: Record<string, unknown>,
+  prefix: string,
+  push: Push,
+): void => {
+  const { watch, cwd, env, args, timeout } = entry;
+  if (watch !== undefined) {
+    if (typeof watch === "string") {
+      if (watch.length === 0)
+        push(`${prefix}.watch`, watch, "expected a non-empty glob string");
+    } else if (Array.isArray(watch)) {
+      validateStringList(watch, `${prefix}.watch`, "glob strings", push);
+    } else {
+      push(
+        `${prefix}.watch`,
+        watch,
+        "expected a glob string or an array of glob strings",
+      );
+    }
+  }
+  if (cwd !== undefined && (typeof cwd !== "string" || cwd.length === 0))
+    push(`${prefix}.cwd`, cwd, "expected a non-empty directory path");
+  if (env !== undefined) {
+    if (!isPlainObject(env)) {
+      push(`${prefix}.env`, env, "expected an object of string values");
+    } else {
+      for (const [name, value] of Object.entries(env))
+        if (typeof value !== "string")
+          push(
+            `${prefix}.env[${JSON.stringify(name)}]`,
+            value,
+            "expected a string",
+          );
+    }
+  }
+  validateStringList(args, `${prefix}.args`, "argument strings", push);
+  if (
+    timeout !== undefined &&
+    (typeof timeout !== "number" ||
+      !Number.isFinite(timeout) ||
+      timeout < 0 ||
+      timeout > MAX_TIMER_DELAY)
+  )
+    push(
+      `${prefix}.timeout`,
+      timeout,
+      `expected a number of milliseconds from 0 (no timeout) to ${MAX_TIMER_DELAY}`,
+    );
+};
 
 /**
  * An optional object of positive whole numbers (the render and expansion

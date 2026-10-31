@@ -376,6 +376,177 @@ describe("http.maxBodySize, http.apiTimeout and http.httpCache", () => {
   });
 });
 
+// F094: these keys used to accept any value. A string "false" is truthy, so
+// `generate: { sitemap: "false" }` still generated the sitemap.
+describe("value types of boolean, cache and exec settings", () => {
+  const shape = (raw: unknown) => validateConfigShape(raw, { cwd: "/project" });
+
+  it.each([
+    ["generate", "sitemap"],
+    ["generate", "robots"],
+    ["generate", "sitemapLastmod"],
+    ["generate", "cspHashes"],
+    ["generate", "manifest"],
+    ["scoping", "scriptBlocks"],
+    ["scoping", "inheritAttributes"],
+    ["scoping", "deduplicateCss"],
+    ["logging", "requests"],
+    ["logging", "copies"],
+    ["logging", "deletes"],
+    ["logging", "transpiles"],
+  ])("rejects a non-boolean %s.%s", (section, key) => {
+    for (const value of ["false", 0, null, {}]) {
+      const errors = shape({ [section]: { [key]: value } });
+      expect(errors, String(value)).toHaveLength(1);
+      expect(errors[0].key).toBe(`${section}.${key}`);
+      expect(errors[0].value).toBe(value);
+      expect(errors[0].message).toBe("expected true or false");
+    }
+    expect(shape({ [section]: { [key]: false } })).toEqual([]);
+    expect(shape({ [section]: { [key]: true } })).toEqual([]);
+  });
+
+  it.each(["class", "id", "name"])(
+    "rejects a non-boolean scoping.attributes.%s",
+    (key) => {
+      const errors = shape({ scoping: { attributes: { [key]: "yes" } } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe(`scoping.attributes.${key}`);
+    },
+  );
+
+  it.each([
+    "directory",
+    "components",
+    "scoping",
+    "assets",
+    "generate",
+    "pipeline",
+    "scripts",
+    "http",
+    "logging",
+  ])("rejects a %s section that is not an object", (section) => {
+    for (const value of [false, "x", null, []]) {
+      const errors = shape({ [section]: value });
+      expect(errors, JSON.stringify(value)).toHaveLength(1);
+      expect(errors[0].key).toBe(section);
+      expect(errors[0].message).toBe("expected an object");
+    }
+  });
+
+  it.each([
+    ["scoping.attributes", { scoping: { attributes: true } }],
+    ["http.tls", { http: { tls: "on" } }],
+  ])("rejects a %s that is not an object", (key, raw) => {
+    const errors = shape(raw);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe(key);
+  });
+
+  it("rejects a scripts.cache that is neither a boolean nor an object", () => {
+    for (const value of ["off", 0, null, ["a"]]) {
+      const errors = shape({ scripts: { cache: value } });
+      expect(errors, JSON.stringify(value)).toHaveLength(1);
+      expect(errors[0].key).toBe("scripts.cache");
+      expect(errors[0].message).toContain("true, false, or an object");
+    }
+  });
+
+  it("checks the fields of an object scripts.cache", () => {
+    const errors = shape({
+      scripts: {
+        cache: {
+          enabled: "no",
+          include: "src/**",
+          exclude: [""],
+          environment: ["API_KEY", 7],
+        },
+      },
+    });
+    expect(errors.map((error) => error.key)).toEqual([
+      "scripts.cache.enabled",
+      "scripts.cache.include",
+      "scripts.cache.exclude[0]",
+      "scripts.cache.environment[1]",
+    ]);
+    expect(
+      shape({
+        scripts: {
+          cache: {
+            enabled: false,
+            include: ["src/**"],
+            exclude: [],
+            environment: ["API_KEY"],
+          },
+        },
+      }),
+    ).toEqual([]);
+    expect(shape({ scripts: { cache: false } })).toEqual([]);
+  });
+
+  it("checks the optional fields of an exec entry", () => {
+    const errors = shape({
+      pipeline: {
+        exec: [
+          {
+            script: "scripts/a.ts",
+            watch: 7,
+            cwd: "",
+            env: { A: 1 },
+            args: "--full",
+            timeout: "60s",
+          },
+          { script: "scripts/b.ts", watch: ["content/", ""], env: "A=1" },
+          { script: "scripts/c.ts", args: ["--full", 2], timeout: -1 },
+        ],
+      },
+    });
+    expect(errors.map((error) => error.key)).toEqual([
+      "pipeline.exec[0].watch",
+      "pipeline.exec[0].cwd",
+      'pipeline.exec[0].env["A"]',
+      "pipeline.exec[0].args",
+      "pipeline.exec[0].timeout",
+      "pipeline.exec[1].watch[1]",
+      "pipeline.exec[1].env",
+      "pipeline.exec[2].args[1]",
+      "pipeline.exec[2].timeout",
+    ]);
+  });
+
+  it("accepts every documented exec entry field", () => {
+    expect(
+      shape({
+        pipeline: {
+          exec: [
+            {
+              script: "scripts/a.ts",
+              phase: "parallel",
+              cwd: ".",
+              args: ["--full"],
+              env: { CUSTOM: "1" },
+              timeout: 60000,
+              watch: ["content/"],
+            },
+            { script: "scripts/b.ts", watch: "content/**/*.md", timeout: 0 },
+          ],
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("initBascikConfig refuses a string boolean instead of treating it as true", () => {
+    expect(() =>
+      initBascikConfig(
+        { generate: { sitemap: "false" as unknown as boolean } },
+        {},
+        { isBuild: true },
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toThrow(/generate\.sitemap[\s\S]*expected true or false/);
+  });
+});
+
 describe("http.cacheControl", () => {
   it("types and accepts a string or a per-extension map (yarn pkg:typecheck)", () => {
     const one = defineConfig({
