@@ -19,6 +19,8 @@ Bascik loads the first file it finds and ignores the rest, so a `bascik.config.j
 
 Only these three filenames are discovered: no `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
 
+Bascik reads the file's `export default` object and the mode exports `dev`, `build` and `server` (see [Mode Overrides](#mode-overrides-dev-build-server)). Each one it finds must be a plain object: `export default () => ({ ... })` or `export const build = "prod"` is an error naming the export, not a config that is quietly ignored. A file whose only exports are names Bascik does not read, such as `export const config = defineConfig({ ... })`, is an error too, and a file that exports nothing prints a warning, since the built-in defaults then apply. Other named exports next to `export default` are fine.
+
 TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
 
 ### Config Changes Need a Restart
