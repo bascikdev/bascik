@@ -37,7 +37,11 @@ import {
   type ServerScriptDiagnostic,
 } from "./server-script-rules.js";
 import { HAND_WRITTEN_ESCAPER_RULE } from "./hand-written-escaper.js";
-import { normalizeModulePath, scriptModulesOf } from "./script-modules.js";
+import {
+  normalizeModulePath,
+  scriptModulesOf,
+  type ScriptModules,
+} from "./script-modules.js";
 import { parseImportSpecifier } from "./server-script-templates.js";
 import {
   analyzeComponentSource,
@@ -653,7 +657,7 @@ export function createDiagnostics(
   snapshot: ProjectSnapshot | undefined,
   openDocumentTexts: { fsPath: string; text: string }[] = [],
   /** The files that run in Node (see script-modules.ts); found from the snapshot when left out. */
-  scriptModules?: ReadonlySet<string>,
+  scriptModules?: ScriptModules,
 ): Diagnostic[] {
   const { languageId } = document;
 
@@ -782,13 +786,22 @@ export function createDiagnostics(
   // A .ts or .js file that runs in Node (a directive script's src= file, a
   // module a script imports, an API route) gets the markup and escaper rules
   // that inline directive scripts get. See script-modules.ts.
+  const isScriptLanguage =
+    languageId === "typescript" || languageId === "javascript";
+  const modules =
+    isScriptLanguage && snapshot !== undefined
+      ? (scriptModules ?? scriptModulesOf(snapshot, openDocumentTexts))
+      : undefined;
+  const modulePath = normalizeModulePath(fsPath);
   const isScriptModuleDocument =
-    (languageId === "typescript" || languageId === "javascript") &&
-    (isApiRouteDocument ||
-      (snapshot !== undefined &&
-        (scriptModules ?? scriptModulesOf(snapshot, openDocumentTexts)).has(
-          normalizeModulePath(fsPath),
-        )));
+    isScriptLanguage &&
+    (isApiRouteDocument || modules?.has(modulePath) === true);
+  // API routes, and what server scripts, stream scripts and API routes
+  // import, run per request: every sink rule applies.
+  const isRequestTimeModule =
+    isApiRouteDocument || modules?.requestTime.has(modulePath) === true;
+  // A module browser code imports too is also scoped for the browser.
+  const isBrowserModule = modules?.browser.has(modulePath) === true;
   if (
     isScriptModuleDocument &&
     earlyExtConfig.diagnostics?.serverScriptRules !== false
@@ -797,6 +810,7 @@ export function createDiagnostics(
       analyzeServerScriptSource(text, {
         hasSrcAttribute: false,
         directive: "module",
+        requestTime: isRequestTimeModule,
         escapeFunctions: earlyExtConfig.diagnostics?.escapeFunctions ?? [],
       }),
       0,
@@ -1617,8 +1631,8 @@ export function createDiagnostics(
     }
   } else if (languageId === "css") {
     addCompatibilityDiagnostics(text, "css", 0);
-  } else if (!isScriptModuleDocument) {
-    // A module that runs in Node is never scoped for the browser.
+  } else if (!isScriptModuleDocument || isBrowserModule) {
+    // A module that only runs in Node is never scoped for the browser.
     addCompatibilityDiagnostics(text, "js", 0);
   }
 

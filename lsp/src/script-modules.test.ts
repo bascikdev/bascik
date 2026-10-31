@@ -476,3 +476,219 @@ export function escapeHtml(value: string): string {
     );
   });
 });
+
+describe("review 2026-10-31: which modules run per request, outside roots, shared browser code", () => {
+  const SINKS = [
+    "server-script-sink-event-handler",
+    "server-script-sink-style",
+    "server-script-sink-url-attribute",
+  ];
+  const SEARCH_ROUTE = `import { esc } from "@bascik/bascik/html";
+export function GET(request: Request) {
+  const q = new URL(request.url).searchParams.get("q") ?? "";
+  return new Response(
+    \`<button onclick="\${q}">Froth</button><a href="\${esc(q)}">Milk frother</a><div style="\${q}"></div>\`,
+  );
+}
+`;
+  const codesIn = (
+    diagnostics: { filePath: string; code?: string }[],
+    name: string,
+  ) =>
+    diagnostics
+      .filter((d) => d.filePath.replace(/\\/g, "/").endsWith(name))
+      .map((d) => d.code ?? "")
+      .sort();
+
+  it("an API route is request-time code: event handler, URL and style sinks warn", async () => {
+    write("src/api/search.ts", SEARCH_ROUTE);
+    const result = await checkFiles({ cwd: root, targets: ["src/api"] });
+    expect(codesIn(result.diagnostics, "search.ts")).toEqual(
+      expect.arrayContaining(SINKS),
+    );
+  });
+
+  it("a helper of a server script, a stream script or an API route is request-time; one only build scripts import is not", async () => {
+    const helper = (name: string) =>
+      write(
+        `src/lib/${name}.ts`,
+        `export const button = (q: string) => \`<button onclick="\${q}" style="\${q}">Froth</button>\`;\n`,
+      );
+    helper("server-helper");
+    helper("stream-helper");
+    helper("api-helper");
+    helper("build-helper");
+    helper("both-helper");
+    write(
+      "src/pages/index.html",
+      PAGE(`<script data-bascik-server>
+      import { button } from "@/lib/server-helper.ts";
+      import { button as b2 } from "@/lib/both-helper.ts";
+      export default () => button("x") + b2("y");
+    </script>
+    <script data-bascik-stream>
+      import { button } from "@/lib/stream-helper.ts";
+      export default async function* () { yield button("x"); }
+    </script>
+    <script data-bascik-build>
+      import { button } from "@/lib/build-helper.ts";
+      import { button as b2 } from "@/lib/both-helper.ts";
+      export default () => button("x") + b2("y");
+    </script>`),
+    );
+    write(
+      "src/api/x.ts",
+      'import { button } from "@/lib/api-helper.ts";\nexport const GET = () => new Response(button("x"));\n',
+    );
+    const modules = findScriptModules({
+      projectRoot: root,
+      importRoot: path.join(root, "src"),
+      html: [
+        [
+          path.join(root, "src/pages/index.html"),
+          fs.readFileSync(path.join(root, "src/pages/index.html"), "utf8"),
+        ],
+      ],
+      apiRoutes: [path.join(root, "src/api/x.ts")],
+    });
+    const requestTime = [...modules.requestTime].map(rel).sort();
+    expect(requestTime).toEqual([
+      "src/api/x.ts",
+      "src/lib/api-helper.ts",
+      "src/lib/both-helper.ts",
+      "src/lib/server-helper.ts",
+      "src/lib/stream-helper.ts",
+    ]);
+    expect(
+      modules.has(
+        normalizeModulePath(path.join(root, "src/lib/build-helper.ts")),
+      ),
+    ).toBe(true);
+
+    const result = await checkFiles({
+      cwd: root,
+      targets: [{ path: "src/pages", extensions: ["html"] }, "src/api"],
+      projectPath: root,
+    });
+    for (const name of [
+      "server-helper.ts",
+      "stream-helper.ts",
+      "api-helper.ts",
+      "both-helper.ts",
+    ])
+      expect(codesIn(result.diagnostics, name), name).toEqual([
+        "server-script-sink-event-handler",
+        "server-script-sink-style",
+      ]);
+    // Build time: the site's own values in a handler or style are not sinks.
+    expect(codesIn(result.diagnostics, "build-helper.ts")).toEqual([]);
+  });
+
+  it("a helper under a component root outside the project is checked (directory.components: ../shared/components)", async () => {
+    const site = path.join(root, "site");
+    write(
+      "site/bascik.config.ts",
+      'export default { directory: { components: ["src/components", "../shared/components"] } };\n',
+    );
+    write("site/src/pages/index.html", PAGE("<site-header></site-header>"));
+    write(
+      "shared/components/site-header/site-header.html",
+      `<header>\n  <script data-bascik-build>\n    import { links } from "./links.ts";\n    export default () => links();\n  </script>\n</header>\n`,
+    );
+    write(
+      "shared/components/site-header/links.ts",
+      `const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);
+export const links = () => ["Milk frother"].map((n) => \`<a href="/">\${n}</a>\`).join("");
+`,
+    );
+    const result = await checkFiles({
+      cwd: site,
+      targets: [
+        { path: "src/pages", extensions: ["html"] },
+        "src/components",
+        "../shared/components",
+      ].filter(
+        (t) => typeof t !== "string" || fs.existsSync(path.join(site, t)),
+      ),
+      projectPath: site,
+    });
+    expect(codesIn(result.diagnostics, "site-header/links.ts")).toEqual([
+      ESCAPER,
+      MARKUP,
+    ]);
+  });
+
+  it("a module both a browser companion and a build script import keeps its browser scoping diagnostics, and gets the markup rules", async () => {
+    write(
+      "src/components/milk-card/milk-card.html",
+      `<article>\n  <script src="milk-card.ts"></script>\n  <script data-bascik-build src="./milk-card.build.ts"></script>\n</article>\n`,
+    );
+    write(
+      "src/components/milk-card/milk-card.ts",
+      'import { label } from "./shared.ts";\nlabel();\n',
+    );
+    write(
+      "src/components/milk-card/milk-card.build.ts",
+      'import { label } from "./shared.ts";\nexport default () => label();\n',
+    );
+    write(
+      "src/components/milk-card/shared.ts",
+      "export const label = () => {\n  const id = location.hash;\n  document.getElementById(`card-${id}`);\n  return `<b>${id}</b>`;\n};\n",
+    );
+    const result = await checkFiles({
+      cwd: root,
+      targets: ["src/components"],
+      projectPath: root,
+    });
+    const shared = codesIn(result.diagnostics, "milk-card/shared.ts");
+    expect(shared).toContain(MARKUP);
+    expect(shared.some((c) => c.startsWith("js-"))).toBe(true);
+  });
+});
+
+describe("review 2026-10-31: the editor reuses the module set while imports stay the same", () => {
+  it("returns the cached set for the same buffers, for an edit that changes no import, and recomputes when an import changes", async () => {
+    const page = write(
+      "src/pages/index.html",
+      PAGE(
+        '<script data-bascik-build>import { a } from "@/lib/a.ts"; export default () => a;</script>',
+      ),
+    );
+    const a = write("src/lib/a.ts", "export const a = 1;\n");
+    write("src/lib/b.ts", ESCAPE_HTML);
+    const snapshot = await buildSnapshot(root);
+    const pageText = fs.readFileSync(page, "utf8");
+    const first = scriptModulesOf(snapshot, [
+      { fsPath: page, text: pageText },
+      { fsPath: a, text: "export const a = 1;\n" },
+    ]);
+    // Typing in a.ts or in the page's markup: no import changed.
+    const second = scriptModulesOf(snapshot, [
+      {
+        fsPath: page,
+        text: pageText.replace("<body>", "<body>\n<p>Froth</p>"),
+      },
+      { fsPath: a, text: "export const a = 2; // typing\n" },
+    ]);
+    expect(second).toBe(first);
+    const third = scriptModulesOf(snapshot, [
+      { fsPath: page, text: pageText },
+      { fsPath: a, text: 'import "./b.ts";\nexport const a = 1;\n' },
+    ]);
+    expect(third).not.toBe(first);
+    expect(
+      third.has(normalizeModulePath(path.join(root, "src/lib/b.ts"))),
+    ).toBe(true);
+    // A page's unsaved import of a helper changes the set too.
+    const fourth = scriptModulesOf(snapshot, [
+      {
+        fsPath: page,
+        text: PAGE(
+          '<script data-bascik-build>import { b } from "@/lib/b.ts"; export default () => b;</script>',
+        ),
+      },
+    ]);
+    expect([...fourth].map(rel).sort()).toEqual(["src/lib/b.ts"]);
+  });
+});

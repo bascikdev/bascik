@@ -19,9 +19,11 @@ import {
 } from "./project.js";
 import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
 import {
+  ScriptModules,
   findScriptModules,
   normalizeModulePath,
   scriptModulesOf,
+  snapshotRoots,
 } from "./script-modules.js";
 
 /**
@@ -206,6 +208,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   const checkedScriptModules = findScriptModules({
     projectRoot: snapshot.projectRoot,
     importRoot: snapshot.importRoot,
+    extraRoots: snapshotRoots(snapshot),
     html: collected
       .filter((file) => file.toLowerCase().endsWith(".html"))
       .flatMap((file): [string, string][] => {
@@ -224,10 +227,10 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
         )
       : [],
   });
-  const scriptModules = new Set([
-    ...scriptModulesOf(snapshot),
-    ...checkedScriptModules,
-  ]);
+  const scriptModules = ScriptModules.union(
+    scriptModulesOf(snapshot),
+    checkedScriptModules,
+  );
   const seen = new Set(collected.map(normalizeModulePath));
   const files = [
     ...collected,

@@ -50,6 +50,12 @@ export interface AnalyzeOptions {
    * (or are imported by code that does).
    */
   directive: "server" | "stream" | "build" | "routes" | "module";
+  /**
+   * "module" only: the module runs per request (an API route, or a module a
+   * server script, stream script or API route imports), so every sink rule
+   * applies as in a server script.
+   */
+  requestTime?: boolean;
   /** A project's own escapers, trusted like esc() (bascik.ext.json diagnostics.escapeFunctions). */
   escapeFunctions?: readonly string[];
   /** Added to body line numbers so messages name the file line (the body's first line is line 1 + lineOffset). */
@@ -289,12 +295,17 @@ export function analyzeServerScriptSource(
   // their output is a page, and a title with & or < breaks it whoever wrote
   // the value. See the sink notes in the template loop.
   const requestTime =
-    opts.directive === "server" || opts.directive === "stream";
+    opts.directive === "server" ||
+    opts.directive === "stream" ||
+    (opts.directive === "module" && opts.requestTime === true);
 
   // server-script-bascik-import
   // An ESM import whose specifier is exactly @bascik/bascik or starts with @bascik/bascik/
   // Build scripts may import build tooling, so this is for server and stream only.
-  const moduleSpecifiers = requestTime ? findModuleSpecifiers(body) : [];
+  const moduleSpecifiers =
+    opts.directive === "server" || opts.directive === "stream"
+      ? findModuleSpecifiers(body)
+      : [];
   for (const { start, end, value } of moduleSpecifiers) {
     if (value === HTML_MODULE) continue;
     if (value === "@bascik/bascik" || value.startsWith("@bascik/bascik/")) {

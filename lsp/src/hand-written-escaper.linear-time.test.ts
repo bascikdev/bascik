@@ -112,3 +112,31 @@ describe("findScriptModules: linear time", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 });
+
+describe("findScriptModules: unclosed script tags (review 2026-10-31)", () => {
+  // While typing, a page has openers with no </script> yet. The scan once
+  // read to the end of the page from every opener.
+  const root = path.resolve("/nonexistent-bascik-project");
+  const scan = (text: string) =>
+    findScriptModules({
+      projectRoot: root,
+      importRoot: path.join(root, "src"),
+      html: [[path.join(root, "src/pages/index.html"), text]],
+    });
+  it.each([
+    ["an opener with no close", "<script data-bascik-build>x\n"],
+    ["an unclosed attribute quote", '<script data-bascik-build title="\n'],
+    ["a bare opener", "<script \n"],
+    [
+      "an opener with a src= and no close",
+      '<script data-bascik-build src="./a.ts">\n',
+    ],
+  ])(
+    "%s repeated (CPU growth under 8x for 4x the openers)",
+    (_name, unit) => {
+      const page = (n: number) => unit.repeat(n);
+      expect(growth(scan, page(4_000), page(16_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
