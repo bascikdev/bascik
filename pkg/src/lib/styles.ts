@@ -406,7 +406,7 @@ export const injectClassIntoTag = (
   let replaced = false;
   let finalStr = "";
   const attrRegexG =
-    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
+    /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*?))(?=\s|\/>|>|$)/gi;
   let match;
 
   while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
@@ -415,15 +415,28 @@ export const injectClassIntoTag = (
       (r) => matchStart > r.start && matchStart < r.end,
     );
     if (!isInside) {
-      const classQuote = match[2] !== undefined ? "'" : '"';
       const rawUnquoted = match[3];
+      // An unquoted value is read up to whitespace or `>`, as browsers do,
+      // so it can hold `=` and quotes (`class=a"b`): quote it with the
+      // quote it does not hold, or encode `"` when it holds both.
+      const classQuote =
+        match[2] !== undefined ||
+        (rawUnquoted?.includes('"') && !rawUnquoted.includes("'"))
+          ? "'"
+          : '"';
       const trailingSlash =
         rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
       const unquotedClean =
         rawUnquoted !== undefined && rawUnquoted.endsWith("/")
           ? rawUnquoted.slice(0, -1)
           : rawUnquoted;
-      const classVal = match[1] ?? match[2] ?? unquotedClean ?? "";
+      const classVal =
+        match[1] ??
+        match[2] ??
+        (classQuote === '"'
+          ? unquotedClean?.replaceAll('"', "&quot;")
+          : unquotedClean) ??
+        "";
       finalStr =
         openTag.substring(0, matchStart) +
         ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}${trailingSlash}` +

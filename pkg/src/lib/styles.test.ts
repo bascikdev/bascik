@@ -3040,6 +3040,24 @@ describe("quotedAttributeValueRanges", () => {
     expect(out.match(/\sclass=/g)).toHaveLength(1);
   });
 
+  it("appends to the class attribute's own unquoted value when it holds = or a quote (PR 115 review)", () => {
+    // The browser reads `a=b`, `a"b` and `a'b` whole: one class attribute
+    // must come out, holding the original token and the scoped one, quoted
+    // so the value still reads the same.
+    for (const [tag, expected] of [
+      [`<p class=a=b>`, `<p class="a=b X">`],
+      [`<p class=a"b>`, `<p class='a"b X'>`],
+      [`<p class=a'b>`, `<p class="a'b X">`],
+      [`<p class=a"b'c>`, `<p class="a&quot;b'c X">`],
+      [`<p class=a=b id="i">`, `<p class="a=b X" id="i">`],
+      [`<img class=a=b/>`, `<img class="a=b X"/>`],
+    ]) {
+      const out = injectClassIntoTag(tag, "X");
+      expect(out, tag).toBe(expected);
+      expect(out.match(/\sclass=/g), tag).toHaveLength(1);
+    }
+  });
+
   it("treats an unclosed value as running to the end of the tag", () => {
     const tag = `<a title='never closed class="x"`;
     expect(quotedAttributeValueRanges(tag)).toEqual([
