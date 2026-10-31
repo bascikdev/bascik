@@ -1,13 +1,20 @@
 // Unit tests for the pure functions in the public agent skills' scripts and the starter site's helpers.
 // The end-to-end checks (copy, build, lint, audit) are in examples.integration.test.ts.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  componentTagOf,
   destinationFor,
   loadBundle,
   selectFiles,
@@ -101,6 +108,28 @@ describe("add-example", () => {
     );
   });
 
+  it("names the component an .html destination under the component root defines, in either layout", () => {
+    const root = layout.componentRoot;
+    expect(
+      componentTagOf(join(root, "site-header/site-header.html"), root),
+    ).toBe("site-header");
+    expect(componentTagOf(join(root, "site-header.html"), root)).toBe(
+      "site-header",
+    );
+    expect(componentTagOf(join(root, "ui/Tab-Group.HTML"), root)).toBe(
+      "tab-group",
+    );
+    expect(
+      componentTagOf(join(root, "site-header/links.ts"), root),
+    ).toBeUndefined();
+    expect(
+      componentTagOf(join("/p/src/pages", "index.html"), root),
+    ).toBeUndefined();
+    expect(
+      componentTagOf(join("/p/src", "..components/x.html"), root),
+    ).toBeUndefined();
+  });
+
   it("prints the config, package.json, and README instead of copying them", () => {
     for (const file of [
       "bascik.config.ts",
@@ -170,6 +199,90 @@ describe("add-example", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("the CLI with a site whose component already exists elsewhere", () => {
+    const header = `<header data-testid="site-header"><a href="/">Milk frother</a></header>\n`;
+    const siteBundle = {
+      version: 1,
+      examples: [
+        {
+          name: "mini-site",
+          kind: "site",
+          docs: "https://github.com/bascikdev/bascik",
+          description: "A one-page site.",
+          files: [
+            {
+              path: "src/pages/index.html",
+              content: "<site-header />\n",
+              uses: ["site-header"],
+            },
+            {
+              path: "src/components/site-header/site-header.html",
+              content: header,
+              uses: [],
+            },
+          ],
+        },
+      ],
+    };
+    const addSite = (existing: string) => {
+      const root = mkdtempSync(join(tmpdir(), "bascik-add-example-"));
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ dependencies: { "@bascik/bascik": "*" } }),
+      );
+      writeFileSync(join(root, "bundle.json"), JSON.stringify(siteBundle));
+      // The flat layout new-component.mjs --flat writes: src/components/<name>.html.
+      mkdirSync(join(root, "src/components"), { recursive: true });
+      writeFileSync(join(root, "src/components/site-header.html"), existing);
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik/scripts/add-example.mjs",
+              import.meta.url,
+            ),
+          ),
+          "mini-site",
+          "--source",
+          join(root, "bundle.json"),
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      const written = (path: string) => existsSync(join(root, path));
+      rmLater.push(root);
+      return { result, written };
+    };
+    const rmLater: string[] = [];
+    afterAll(() => {
+      for (const dir of rmLater) rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("misuse: refuses to write a second <site-header> next to a different flat one, naming it, and writes nothing", () => {
+      const { result, written } = addSite("<header>Mine</header>\n");
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stderr).toContain(
+        "a component named <site-header> already exists at src/components/site-header.html",
+      );
+      expect(written("src/components/site-header/site-header.html")).toBe(
+        false,
+      );
+      expect(written("src/pages/index.html")).toBe(false);
+    });
+
+    it("keeps an identical existing component and adds the rest of the site", () => {
+      const { result, written } = addSite(header);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        "same  src/components/site-header.html  (already in the project)",
+      );
+      expect(written("src/components/site-header/site-header.html")).toBe(
+        false,
+      );
+      expect(written("src/pages/index.html")).toBe(true);
+    });
   });
 });
 
