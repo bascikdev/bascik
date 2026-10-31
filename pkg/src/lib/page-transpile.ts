@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { threadId } from "node:worker_threads";
 import { getTag, listComponents, maskRawTextContent } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -38,7 +39,7 @@ import { mem } from "./mem.ts";
 import { ownershipTracker, toOutputFileKey } from "./ownership.ts";
 import {
   executeRoutesScript,
-  isDynamicRoute,
+  isDynamicPagePath,
   resolveRoutePath,
 } from "./routes.ts";
 import {
@@ -212,7 +213,7 @@ export const transpilePage = async (
       resume();
       // Directive scripts record where they are before the routes script is removed.
       rawHtml = stampDirectiveSources(fileBuf.toString(), pagePath);
-      if (isDynamicRoute(pagePath)) {
+      if (isDynamicPagePath(pagePath)) {
         const pendingRoutes = executeRoutesScript(rawHtml, pagePath);
         pause();
         const routesResult = await pendingRoutes;
@@ -498,7 +499,7 @@ export const transpilePage = async (
   }
 
   if (!BascikConfig.isBuild) {
-    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion())}`;
+    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base), nextLiveReloadVersion(threadId))}`;
   }
 
   // Minify the body AFTER component resolution so that <pre> blocks from resolved
@@ -539,9 +540,25 @@ export const transpilePage = async (
     resume();
   }
 
+  // A page may leave out <head>: the HTML parser implies one right before
+  // <body>. Component and inline styles still need a place, so a head is
+  // written there, where the browser would have put it. A head-less page
+  // with nothing to put in it is left as written.
+  const impliedHead =
+    headTag.contentStart === undefined &&
+    bodyTag.startIndex !== undefined &&
+    transpiledHead.trim() !== ""
+      ? {
+          tag: {
+            contentStart: bodyTag.startIndex,
+            closeIndex: bodyTag.startIndex,
+          },
+          content: `<head>${transpiledHead}</head>`,
+        }
+      : undefined;
   const replacements = [
     { tag: bodyTag, content: transpiledHtmlBody },
-    { tag: headTag, content: transpiledHead },
+    impliedHead ?? { tag: headTag, content: transpiledHead },
   ]
     .filter(
       (

@@ -1,5 +1,21 @@
 import { Worker } from "node:worker_threads";
 
+/**
+ * A task the worker itself reported as failed (`{ ok: false, error }`). A
+ * worker may add `detail`, plain data describing the failure that the caller
+ * knows how to read; the pool passes it through untouched. A worker crash or
+ * exit rejects with a plain Error instead.
+ */
+export class WorkerTaskError extends Error {
+  readonly detail: unknown;
+
+  constructor(message: string, detail?: unknown) {
+    super(message);
+    this.name = "WorkerTaskError";
+    this.detail = detail;
+  }
+}
+
 interface QueuedTask<Task, Result> {
   task: Task;
   resolve: (value: Result) => void;
@@ -182,7 +198,7 @@ export class WorkerPool<Task, Result> {
       slot.completedAny = true;
       this.#consecutiveStartupFailures = 0;
       if (message.ok) job.resolve(message.result);
-      else job.reject(new Error(message.error));
+      else job.reject(new WorkerTaskError(message.error, message.detail));
     }
     // A worker left over after `shrink` lowered the capacity while it was busy.
     if (this.#slots.length > this.#capacity) {

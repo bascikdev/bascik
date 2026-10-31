@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { relative, resolve } from "node:path";
+import { BascikConfig } from "./config.ts";
 import {
+  extractPageRouteParamNames,
+  isDynamicPagePath,
+  pageRoutePath,
   isDynamicRoute,
   extractRouteParamNames,
   resolveRoutePath,
@@ -367,5 +372,36 @@ describe("computePagePath", () => {
         "src/pages",
       ),
     ).toBe("/blog/");
+  });
+});
+
+describe("pageRoutePath / isDynamicPagePath (F048)", () => {
+  const pagesRoot = resolve(process.cwd(), BascikConfig.directory.pages);
+
+  it("tests only the part of the path inside directory.pages", () => {
+    expect(pageRoutePath(`${pagesRoot}/blog/[slug].html`)).toBe(
+      "blog/[slug].html",
+    );
+    expect(isDynamicPagePath(`${pagesRoot}/blog/[slug].html`)).toBe(true);
+    expect(isDynamicPagePath(`${pagesRoot}/about.html`)).toBe(false);
+    expect(extractPageRouteParamNames(`${pagesRoot}/[a]/[b].html`)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("accepts a cwd-relative spelling of the same page", () => {
+    const relPages = relative(process.cwd(), pagesRoot);
+    expect(isDynamicPagePath(`${relPages}/blog/[slug].html`)).toBe(true);
+    expect(isDynamicPagePath(`${relPages}/blog/post.html`)).toBe(false);
+  });
+
+  it("uses a path outside directory.pages as given", () => {
+    expect(pageRoutePath("/elsewhere/[x]/page.html")).toBe(
+      "/elsewhere/[x]/page.html",
+    );
+    expect(isDynamicPagePath("[slug].html")).toBe(
+      isDynamicRoute("[slug].html"),
+    );
   });
 });

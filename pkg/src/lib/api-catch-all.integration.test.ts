@@ -61,6 +61,8 @@ const routeFiles = [
   "users/[id].ts",
   "users/me.ts",
   "health.ts",
+  "items/[a]/[b].ts",
+  "items/[a]/[b]/[c].ts",
 ].map((f) => `${API}/${f}`);
 
 describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
@@ -245,6 +247,21 @@ describe("catch-all API routes over HTTP/1.1 and HTTP/2", () => {
       const res = await send(path);
       expect(res.status).toBe(400);
       expect(res.body).not.toContain("params");
+    });
+
+    // F052: an encoded slash must not pick the three-param route (forging a
+    // segment) nor reach a [param] handler; values decode once.
+    it("rejects an encoded slash in a [param] value instead of forging a segment", async () => {
+      for (const path of ["/api/items/x/a%2Fb", "/api/items/x/a%5Cb"]) {
+        const res = await send(path);
+        expect(res.status, path).toBe(400);
+        expect(res.body).not.toContain("params");
+      }
+      const ok = await send("/api/items/x/100%2520/z");
+      expect(JSON.parse(ok.body)).toEqual({
+        file: "items/[a]/[b]/[c].ts",
+        params: { a: "x", b: "100%20", c: "z" },
+      });
     });
 
     it("literal dot-dot segments are rejected before routing", async () => {

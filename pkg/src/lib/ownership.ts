@@ -345,6 +345,16 @@ export const reconcileOwnership = (
 };
 
 /**
+ * A staged artifact: calling it renames the temp sibling over the target;
+ * `discard` removes the temp sibling when the transaction is abandoned (a
+ * no-op once committed).
+ */
+export interface StagedArtifact {
+  (): Promise<void>;
+  discard: () => Promise<void>;
+}
+
+/**
  * Stage one JSON artifact: write to a temp sibling and validate the serialized
  * JSON without touching the target. Returns a commit handle. Used so a targeted
  * build can stage EVERY metadata file and validate them before renaming any of
@@ -353,7 +363,7 @@ export const reconcileOwnership = (
 export const stageJsonArtifact = async (
   targetPath: string,
   content: unknown,
-): Promise<() => Promise<void>> => {
+): Promise<StagedArtifact> => {
   const dir = dirname(targetPath);
   await mkdir(dir, { recursive: true });
   const payload = JSON.stringify(content, null, 2);
@@ -365,15 +375,23 @@ export const stageJsonArtifact = async (
   if (!reparsed || typeof reparsed !== "object") {
     throw new Error("[bascik] ownership: staged artifact failed validation");
   }
-  await writeFile(tmp, payload, "utf8");
-  return async () => {
+  const discard = () => rm(tmp, { force: true }).catch(() => {});
+  try {
+    await writeFile(tmp, payload, "utf8");
+  } catch (err) {
+    // A write that failed partway (a full disk) can leave a partial temp.
+    await discard();
+    throw err;
+  }
+  const commit = async () => {
     try {
       await rename(tmp, targetPath);
     } catch (err) {
-      await rm(tmp, { force: true }).catch(() => {});
+      await discard();
       throw err;
     }
   };
+  return Object.assign(commit, { discard });
 };
 
 /**
@@ -428,6 +446,7 @@ import {
 } from "./csp-hashes.ts";
 import { emitPrecompressedSidecars } from "./precompress.ts";
 import {
+  isComponentScriptId,
   serverSidecarRegistry,
   sidecarHasPageEntries,
   type ServerScriptEntry,
@@ -460,6 +479,56 @@ const sidecarPath = (): string =>
  * reconciled and re-added only when a manifest is written again.
  */
 export const COMPONENTS_OWNER = "components";
+
+/**
+ * The synthetic owner of page server scripts a degraded targeted build
+ * (no usable ownership.json) carried over from the prior sidecar without
+ * knowing which page wrote them. Their pages were not rebuilt and still carry
+ * the placeholders, so the scripts must stay, and must keep an owner so the
+ * next targeted build retains them too. A full build owns every page again
+ * and drops this owner.
+ */
+export const RETAINED_SCRIPTS_OWNER = "retained-scripts";
+
+/**
+ * Degraded targeted build: the prior sidecar's page scripts that no rebuilt
+ * owner claims, under `RETAINED_SCRIPTS_OWNER`, so the reconciled sidecar
+ * keeps them the way the manifest and CSP reconcilers keep prior entries.
+ */
+const retainUnownedPageScripts = (
+  inv: OwnershipInventory,
+  prior: ServerScriptsSidecar | null,
+): void => {
+  if (!prior?.scripts) return;
+  const owned = new Set(Object.values(inv.owners).flatMap((o) => o.scripts));
+  const retained = Object.keys(prior.scripts)
+    .filter((id) => !owned.has(id) && !isComponentScriptId(id))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (retained.length === 0) return;
+  inv.owners[RETAINED_SCRIPTS_OWNER] = {
+    source: RETAINED_SCRIPTS_OWNER,
+    relSource: RETAINED_SCRIPTS_OWNER,
+    outputs: [],
+    scripts: retained,
+  };
+};
+
+/**
+ * A script a rebuilt page claims again is that page's, not a retained one:
+ * drop it from `RETAINED_SCRIPTS_OWNER`, and the owner once it is empty.
+ */
+const pruneRetainedScripts = (inv: OwnershipInventory): void => {
+  const retained = inv.owners[RETAINED_SCRIPTS_OWNER];
+  if (!retained) return;
+  const claimed = new Set(
+    Object.values(inv.owners)
+      .filter((o) => o.source !== RETAINED_SCRIPTS_OWNER)
+      .flatMap((o) => o.scripts),
+  );
+  const scripts = retained.scripts.filter((id) => !claimed.has(id));
+  if (scripts.length === 0) delete inv.owners[RETAINED_SCRIPTS_OWNER];
+  else inv.owners[RETAINED_SCRIPTS_OWNER] = { ...retained, scripts };
+};
 
 async function readJsonIfPresent<T>(path: string): Promise<T | null> {
   try {
@@ -663,7 +732,8 @@ export const finalizeOwnedArtifacts = async (
     if (result.degradedToAdditive) {
       console.warn(
         "[bascik] warning: no compatible ownership inventory found; this targeted build " +
-          "merged additively and could not prune outputs removed outside this process. " +
+          "merged additively (the untouched pages keep their outputs and server scripts) " +
+          "and could not prune outputs removed outside this process. " +
           "A fresh ownership inventory was written; run a full build to reconcile the whole site.",
       );
     }
@@ -673,6 +743,7 @@ export const finalizeOwnedArtifacts = async (
   // The components owner is never an untouched owner to retain: it is
   // rebuilt below from the reconciled page sidecar, or it goes away.
   delete inv.owners[COMPONENTS_OWNER];
+  pruneRetainedScripts(inv);
   validateInventory(inv);
 
   // Prompt 140: with `http.precompress`, emit verified `.br`/`.gz` sidecars
@@ -694,100 +765,109 @@ export const finalizeOwnedArtifacts = async (
   const priorCsp = await readJsonIfPresent<CspHashesManifest>(cspPath());
   const priorSidecar =
     await readJsonIfPresent<ServerScriptsSidecar>(sidecarPath());
+  if (result.degradedToAdditive) retainUnownedPageScripts(inv, priorSidecar);
 
   // ── Stage EVERY artifact and validate it BEFORE any rename ──────────────
-  const commits: Array<() => Promise<void>> = [];
-
-  if (BascikConfig.generate?.manifest) {
-    const files = reconcileManifest(
-      inv,
-      priorManifest,
-      currentManifest,
-      priorInventory,
-    );
-    commits.push(await stageJsonArtifact(manifestPath(), { version, files }));
-  }
-
+  const commits: StagedArtifact[] = [];
   // Page-owned sidecar entries decide whether the site renders components at
   // request time (prompt 157, D1). The reconciled sidecar is the only reliable
   // source: a targeted build runs in a fresh process and rebuilds only some
   // pages, so an untouched page's server script must still count.
   const sidecar = reconcileSidecar(inv, priorSidecar, currentSidecar);
   let componentManifest: ComponentManifest | null = null;
-  if (sidecar && sidecarHasPageEntries(sidecar.scripts)) {
-    // Regenerated fully from the current component list on every such build;
-    // listComponents serves the list processAllPages loaded (before any --only
-    // filter), so a targeted build of one static page sees every component.
-    // Usually started while the pages compiled (startComponentManifest).
-    componentManifest = await takeComponentManifest(
-      await listComponents(),
-      BascikConfig,
-    );
-    const componentScripts = Object.values(componentManifest.components)
-      .flatMap((entry) => entry.jobs.map((job) => job.id))
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    for (const id of componentScripts) {
-      const entry = serverSidecarRegistry.getScript(id);
-      if (entry) sidecar.scripts[id] = entry;
+  try {
+    if (BascikConfig.generate?.manifest) {
+      const files = reconcileManifest(
+        inv,
+        priorManifest,
+        currentManifest,
+        priorInventory,
+      );
+      commits.push(await stageJsonArtifact(manifestPath(), { version, files }));
     }
-    inv.owners[COMPONENTS_OWNER] = {
-      source: COMPONENTS_OWNER,
-      relSource: COMPONENTS_OWNER,
-      outputs: [],
-      scripts: componentScripts,
-    };
-    commits.push(
-      await stageJsonArtifact(
-        componentManifestPath(outDir()),
-        sortedComponentManifest(componentManifest),
-      ),
-    );
-  }
 
-  if (BascikConfig.generate?.cspHashes) {
-    let csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
-    if (componentManifest) {
-      // Every route with a server or stream placeholder, rebuilt or untouched,
-      // can render any manifest component at request time (D5). Each is
-      // widened from its own hashes: this build's for a rebuilt page, the
-      // copy its inventory output keeps for an untouched one (a prior entry
-      // was already widened by the manifest of its own build, whose hashes
-      // may since have changed), or that prior entry when an older inventory
-      // kept no copy. The copy is recorded for the next targeted build.
-      const placeholderRoutes: string[] = [];
-      for (const owner of Object.values(inv.owners)) {
-        if (owner.source === COMPONENTS_OWNER || owner.scripts.length === 0)
-          continue;
-        owner.outputs = owner.outputs.map((output) => {
-          const own =
-            currentCsp[output.route] ?? output.csp ?? csp[output.route];
-          placeholderRoutes.push(output.route);
-          if (!own) return output;
-          csp[output.route] = own;
-          return { ...output, csp: own };
-        });
+    if (sidecar && sidecarHasPageEntries(sidecar.scripts)) {
+      // Regenerated fully from the current component list on every such build;
+      // listComponents serves the list processAllPages loaded (before any --only
+      // filter), so a targeted build of one static page sees every component.
+      // Usually started while the pages compiled (startComponentManifest).
+      componentManifest = await takeComponentManifest(
+        await listComponents(),
+        BascikConfig,
+      );
+      const componentScripts = Object.values(componentManifest.components)
+        .flatMap((entry) => entry.jobs.map((job) => job.id))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      for (const id of componentScripts) {
+        const entry = serverSidecarRegistry.getScript(id);
+        if (entry) sidecar.scripts[id] = entry;
       }
-      csp = widenRouteCspHashes(
-        csp,
-        placeholderRoutes,
-        manifestCspHashes(componentManifest),
+      inv.owners[COMPONENTS_OWNER] = {
+        source: COMPONENTS_OWNER,
+        relSource: COMPONENTS_OWNER,
+        outputs: [],
+        scripts: componentScripts,
+      };
+      commits.push(
+        await stageJsonArtifact(
+          componentManifestPath(outDir()),
+          sortedComponentManifest(componentManifest),
+        ),
       );
     }
-    commits.push(await stageJsonArtifact(cspPath(), csp));
-  }
 
-  if (sidecar) {
-    commits.push(await stageJsonArtifact(sidecarPath(), sidecar));
-  }
+    if (BascikConfig.generate?.cspHashes) {
+      let csp = reconcileCsp(inv, priorCsp, currentCsp, priorInventory);
+      if (componentManifest) {
+        // Every route with a server or stream placeholder, rebuilt or untouched,
+        // can render any manifest component at request time (D5). Each is
+        // widened from its own hashes: this build's for a rebuilt page, the
+        // copy its inventory output keeps for an untouched one (a prior entry
+        // was already widened by the manifest of its own build, whose hashes
+        // may since have changed), or that prior entry when an older inventory
+        // kept no copy. The copy is recorded for the next targeted build.
+        const placeholderRoutes: string[] = [];
+        for (const owner of Object.values(inv.owners)) {
+          if (owner.source === COMPONENTS_OWNER || owner.scripts.length === 0)
+            continue;
+          owner.outputs = owner.outputs.map((output) => {
+            const own =
+              currentCsp[output.route] ?? output.csp ?? csp[output.route];
+            placeholderRoutes.push(output.route);
+            if (!own) return output;
+            csp[output.route] = own;
+            return { ...output, csp: own };
+          });
+        }
+        csp = widenRouteCspHashes(
+          csp,
+          placeholderRoutes,
+          manifestCspHashes(componentManifest),
+        );
+      }
+      commits.push(await stageJsonArtifact(cspPath(), csp));
+    }
 
-  commits.unshift(await stageJsonArtifact(ownershipPath(), inv));
+    if (sidecar) {
+      commits.push(await stageJsonArtifact(sidecarPath(), sidecar));
+    }
 
-  // ── Commit. All artifacts are already validated on disk as temp siblings,
-  // so a failure during writing/validation happened before the loop below and
-  // left the previous valid artifact set untouched. Each rename is atomic per
-  // file; a rename failure throws and aborts before obsolete-output pruning. ──
-  for (const commit of commits) {
-    await commit();
+    commits.unshift(await stageJsonArtifact(ownershipPath(), inv));
+
+    // ── Commit. All artifacts are already validated on disk as temp siblings,
+    // so a failure during writing/validation happened before the loop below and
+    // left the previous valid artifact set untouched. Each rename is atomic per
+    // file; a rename failure throws and aborts before obsolete-output pruning. ──
+    for (const commit of commits) {
+      await commit();
+    }
+  } catch (err) {
+    // A step after staging threw (a component build script failing in the
+    // component manifest, a later staging or a rename): remove every temp
+    // sibling still on disk. A targeted build never clears the private
+    // folder, so they would otherwise pile up, one per failed run.
+    await Promise.all(commits.map((staged) => staged.discard()));
+    throw err;
   }
 
   // ── Prune obsolete outputs only AFTER metadata commit ────────────────────

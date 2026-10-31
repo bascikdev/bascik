@@ -384,6 +384,18 @@ class MemoryStore {
   }
 
   /** Removes this page's failed-dependency entries, e.g. when it rebuilds successfully. */
+  /**
+   * The missing dependencies recorded for a page (project-relative). A page
+   * worker reads its own store with this after a failed compile and sends the
+   * list to the main thread, whose store the watchers consult.
+   */
+  failedDependenciesOf(absolutePagePath: string): string[] {
+    const deps: string[] = [];
+    for (const [depPath, pages] of this.#failedDependencies)
+      if (pages.has(absolutePagePath)) deps.push(depPath);
+    return deps.sort();
+  }
+
   clearFailedDependencies(absolutePagePath: string): void {
     for (const [depPath, pages] of this.#failedDependencies) {
       pages.delete(absolutePagePath);

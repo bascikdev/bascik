@@ -222,12 +222,12 @@ Use `--only <glob>` to selectively rebuild a subset of pages without compiling t
 ```sh
 bascik --build --only "blog/**"
 bascik --build --only "blog/**" --only "about.html"
-bascik --build --only="docs/pages/internals/*"
+bascik --build --only="internals/*"
 ```
 
 Important rules for targeted builds:
 
-- The glob is matched relative to `directory.pages`.
+- The glob is matched relative to `directory.pages`: `internals/*` builds `src/pages/internals/*.html`. A glob that starts with the pages folder itself (`src/pages/internals/*`) matches nothing, and the error names the glob to use instead.
 - Multiple `--only` flags union together.
 - `--only` is only valid with `--build`. Passing `--only` without `--build` is an error.
 - A glob that matches zero pages produces an error.

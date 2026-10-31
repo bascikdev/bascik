@@ -1002,6 +1002,39 @@ describe("deleteDistFile – displayRelativePath branches", () => {
     await deleteDistFile("dist/index.html");
     expect(console.log).toHaveBeenCalledWith("deleted file: index.html");
   });
+
+  // F181: the output folder's name went into a RegExp unescaped, so regex
+  // characters (or a Windows backslash) kept the prefix, and an unbalanced
+  // "(" threw inside the log line.
+  it.each([
+    ["site (copy)", "site (copy)/index.html"],
+    ["build+site", "build+site/index.html"],
+    ["out.v2", "out.v2/index.html"],
+    ["site(", "site(/index.html"],
+    ["build/site", "build/site/index.html"],
+    ["build\\site", "build\\site\\index.html"],
+  ])(
+    "strips an output folder named %s from the logged path",
+    async (out, path) => {
+      const saved = BascikConfig.directory.out;
+      (BascikConfig.directory as { out: string }).out = out;
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await deleteDistFile(path);
+        expect(console.log).toHaveBeenCalledWith("deleted file: index.html");
+        expect(console.error).not.toHaveBeenCalled();
+      } finally {
+        (BascikConfig.directory as { out: string }).out = saved;
+      }
+    },
+  );
+
+  it("keeps a path whose first folder only starts like the output folder", async () => {
+    await deleteDistFile("distant/index.html");
+    expect(console.log).toHaveBeenCalledWith(
+      "deleted file: distant/index.html",
+    );
+  });
 });
 
 describe("deleteDistDir – error handling", () => {

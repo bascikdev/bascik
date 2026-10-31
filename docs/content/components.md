@@ -674,7 +674,7 @@ You can include multiple `<style>` blocks in a single component file. For exampl
 </style>
 ```
 
-At build time, Bascik extracts every `<style>` block from the component file, combines them with any companion `.css` file, applies class and selector scoping, and injects the resulting CSS into the document `<head>`.
+At build time, Bascik extracts every `<style>` block from the component file, combines them with any companion `.css` file, applies class and selector scoping, and injects the resulting CSS into the document `<head>`. A page that leaves out `<head>` (HTML allows it) gets one, written right before `<body>` where the browser would imply it, so its component styles still ship.
 
 > **Readability & Maintainability:** While Bascik supports multiple `<style>` tags in a single component file, using multiple `<style>` tags (or mixing an inline `<style>` tag with a companion `.css` file) is not recommended for readability and maintainability. Choose a single stylesheet pattern per component.
 

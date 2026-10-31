@@ -4,7 +4,7 @@ Dynamic routes allow you to generate multiple static HTML pages from a single te
 
 ## How It Works
 
-When Bascik processes your `src/pages` directory, any file containing square brackets in its name, such as `src/pages/blog/[slug].html` or `src/pages/[category]/[id].html`, is treated as a dynamic route template.
+When Bascik processes your `src/pages` directory, any file containing square brackets in its name, such as `src/pages/blog/[slug].html` or `src/pages/[category]/[id].html`, is treated as a dynamic route template. Only the path inside `src/pages` counts: brackets in the folders that hold your project (`~/Projects [2026]/site/`) do not make a page a template.
 
 During the build or development startup:
 
@@ -125,7 +125,7 @@ Dynamic routes automatically integrate into Bascik's built-in sitemap generator 
 
 Bascik validates routes scripts, route parameters, and output destinations during the build:
 
-- **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources.
+- **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources, with or without `pipeline.workers`. Paths that differ only in letter case (`About.html` and `about.html`) collide too, because case-insensitive file systems and hosts would serve one file for both.
 - **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected: the entry is skipped with a warning that names it.
 - **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
 - **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik skips that entry with a warning that parameter `id` is missing.

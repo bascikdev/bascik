@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WorkerPool } from "./worker-pool.ts";
+import { WorkerPool, WorkerTaskError } from "./worker-pool.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;
@@ -101,6 +101,18 @@ describe("WorkerPool", () => {
     const promise = pool.run("task-a");
     failWith(workers[0], "boom");
     await expect(promise).rejects.toThrow("boom");
+    await pool.terminate();
+  });
+
+  it("passes the worker's failure detail through untouched (F054)", async () => {
+    const pool = makePool(1);
+    const promise = pool.run("task-a");
+    const detail = { message: "boom", location: { sourceFile: "a.html" } };
+    workers[0].emit("message", { ok: false, error: "boom", detail });
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(WorkerTaskError);
+    expect((error as WorkerTaskError).message).toBe("boom");
+    expect((error as WorkerTaskError).detail).toEqual(detail);
     await pool.terminate();
   });
 

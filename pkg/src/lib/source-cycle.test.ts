@@ -498,3 +498,141 @@ describe("source-owned phase cycles", () => {
     }
   });
 });
+
+// F031 / F189: a cycle fails only for its own work. A build-error from a
+// parallel script an earlier cycle started, or from a source outside any
+// cycle (a startup parallel script, a watcher error), must not discard a
+// later cycle's successful compile.
+describe("source cycles fail only for their own errors", () => {
+  const silenceErrors = () =>
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  it("an earlier cycle's parallel script failing during a later compile does not fail the later cycle", async () => {
+    vi.useFakeTimers();
+    const consoleSpy = silenceErrors();
+    const emitter = new EventEmitter();
+    const reloads: unknown[] = [];
+    const errors: unknown[] = [];
+    emitter.on("transpiled", (payload) => reloads.push(payload));
+    emitter.on("build-error", (payload) => errors.push(payload));
+    const parallel = gate();
+    const secondCompile = gate();
+    const compiled: string[][] = [];
+    const cycle = createSourceCycle({
+      entries: [
+        {
+          script: "scripts/optimize-images.ts",
+          phase: "parallel",
+          watch: ["content/"],
+        },
+      ],
+      run: () => parallel.promise,
+      emitter,
+      compile: async (paths, publish) => {
+        compiled.push(paths);
+        if (compiled.length === 2) await secondCompile.promise;
+        publish("transpiled", { relativePagePath: `${compiled.length}.html` });
+      },
+    });
+    cycle.enqueue("content/post.md");
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    cycle.enqueue("src/pages/about.html");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(compiled).toHaveLength(2);
+    // The image script from the first edit fails while the page compiles.
+    parallel.reject(new Error("sharp: unsupported image"));
+    await vi.advanceTimersByTimeAsync(0);
+    secondCompile.resolve();
+    await cycle.idle();
+    expect(errors).toEqual([
+      expect.objectContaining({
+        message: "sharp: unsupported image",
+        file: "scripts/optimize-images.ts",
+      }),
+    ]);
+    expect(reloads).toEqual([
+      { relativePagePath: "1.html" },
+      { relativePagePath: "2.html" },
+    ]);
+    // The page edit is not re-queued as failed: the next edit compiles alone.
+    cycle.enqueue("src/pages/contact.html");
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(compiled[2]).toEqual([resolve("src/pages/contact.html")]);
+    cycle.close();
+    consoleSpy.mockRestore();
+  });
+
+  it("a build-error from outside any cycle during a compile does not fail that cycle", async () => {
+    vi.useFakeTimers();
+    const emitter = new EventEmitter();
+    const reloads: unknown[] = [];
+    emitter.on("transpiled", (payload) => reloads.push(payload));
+    const compiling = gate();
+    const release = gate();
+    const compiled: string[][] = [];
+    const cycle = createSourceCycle({
+      entries: [],
+      run: vi.fn(),
+      emitter,
+      compile: async (paths, publish) => {
+        compiled.push(paths);
+        compiling.resolve();
+        await release.promise;
+        publish("transpiled", { relativePagePath: "about.html" });
+      },
+    });
+    cycle.enqueue("src/pages/about.html");
+    await vi.advanceTimersByTimeAsync(50);
+    await compiling.promise;
+    // A startup parallel script (exec-publication) or the watcher reports.
+    emitter.emit("build-error", {
+      message: "exec producer failed: boom",
+      file: "scripts/startup.ts",
+    });
+    release.resolve();
+    await cycle.idle();
+    expect(reloads).toEqual([{ relativePagePath: "about.html" }]);
+    cycle.enqueue("src/pages/contact.html");
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(compiled[1]).toEqual([resolve("src/pages/contact.html")]);
+    cycle.close();
+  });
+
+  it("a build-error the compile itself reports still fails the cycle and retries its paths", async () => {
+    vi.useFakeTimers();
+    const emitter = new EventEmitter();
+    const reloads: unknown[] = [];
+    emitter.on("transpiled", (payload) => reloads.push(payload));
+    const compiled: string[][] = [];
+    const cycle = createSourceCycle({
+      entries: [],
+      run: vi.fn(),
+      emitter,
+      compile: async (paths, publish) => {
+        compiled.push(paths);
+        await Promise.resolve();
+        if (compiled.length === 1)
+          emitter.emit("build-error", { message: "page failed" });
+        publish("transpiled", { relativePagePath: "about.html" });
+      },
+    });
+    cycle.enqueue("src/pages/about.html");
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(reloads).toEqual([]);
+    cycle.enqueue("src/pages/contact.html");
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(compiled[1].sort()).toEqual(
+      [
+        resolve("src/pages/about.html"),
+        resolve("src/pages/contact.html"),
+      ].sort(),
+    );
+    expect(reloads).toEqual([{ relativePagePath: "about.html" }]);
+    cycle.close();
+  });
+});

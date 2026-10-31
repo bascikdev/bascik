@@ -555,6 +555,74 @@ describe("processAllPages – early page worker pool", () => {
     });
   });
 
+  // F049: the worker path must reject two sources that produce one output
+  // path, as the serial path does, instead of letting the last worker win.
+  describe("route conflicts", () => {
+    const routesFor = (byTemplate: Record<string, string[]>) =>
+      vi.mocked(executeRoutesScript).mockImplementation(async (_html, path) => {
+        const slugs = byTemplate[String(path)] ?? [];
+        const name = /\[([^\]]+)\]/.exec(String(path))?.[1] ?? "slug";
+        return {
+          cleanedHtml: "<html><body>route</body></html>",
+          routes: slugs.map((value) => ({ params: { [name]: value } })),
+        } as never;
+      });
+
+    const outputsRun = () =>
+      pools[0].run.mock.calls.map(([job]) => job.relativePagePath);
+
+    it.each([true, false])(
+      "fails when a static page and a template produce the same page (workers: %s)",
+      async (useWorkers) => {
+        vi.mocked(listPages).mockResolvedValue([
+          "src/pages/posts/hello.html",
+          "src/pages/posts/[slug].html",
+          "src/pages/about.html",
+        ]);
+        routesFor({ "src/pages/posts/[slug].html": ["hello", "other"] });
+        await expect(processAllPages({ useWorkers })).rejects.toThrow(
+          /Route conflict: "src\/pages\/posts\/hello\.html" and "src\/pages\/posts\/\[slug\]\.html" both produce output path "pages\/posts\/hello\.html"/,
+        );
+        if (useWorkers) {
+          // The first source keeps the path; the clash is never compiled, and
+          // the unrelated pages still are.
+          expect(outputsRun().sort()).toEqual([
+            "pages/about.html",
+            "pages/posts/hello.html",
+            "pages/posts/other.html",
+          ]);
+          expect(pools[0].terminate).toHaveBeenCalledOnce();
+        }
+      },
+    );
+
+    it("fails when two templates produce the same page", async () => {
+      vi.mocked(listPages).mockResolvedValue([
+        "src/pages/[a].html",
+        "src/pages/[b].html",
+      ]);
+      routesFor({
+        "src/pages/[a].html": ["milk-frother"],
+        "src/pages/[b].html": ["milk-frother"],
+      });
+      await expect(processAllPages()).rejects.toThrow(
+        /Route conflict: .*both produce output path "pages\/milk-frother\.html"/,
+      );
+      expect(outputsRun()).toEqual(["pages/milk-frother.html"]);
+    });
+
+    it("fails when two sources differ only in letter case", async () => {
+      vi.mocked(listPages).mockResolvedValue([
+        "src/pages/About.html",
+        "src/pages/about.html",
+      ]);
+      await expect(processAllPages()).rejects.toThrow(
+        /Route conflict: "src\/pages\/About\.html" and "src\/pages\/about\.html"/,
+      );
+      expect(outputsRun()).toEqual(["pages/About.html"]);
+    });
+  });
+
   it("does not start a pool when workers are off", async () => {
     vi.mocked(listPages).mockResolvedValue(staticPages(3));
     await processAllPages({ useWorkers: false });

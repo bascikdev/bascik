@@ -181,7 +181,7 @@ A failing script follows [When a script fails](#when-a-script-fails) the same wa
 
 ### Parallel scripts in dev
 
-A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
+A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure, and it never fails a later edit's cycle: a script started by one edit that fails while a later edit's pages compile is reported on its own, and the later edit still reloads. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
 
 In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and under the default `onExecError: 'error'` reports any failure with a nonzero exit status.
 

@@ -64,8 +64,22 @@ export const stripLiveReloadScript = (html: string): string => {
 export const LIVE_RELOAD_VERSION_ATTR = "data-bascik-live-reload-version";
 
 let lastPageVersion = 0;
-/** A version for a page being compiled now, unique in this process. */
-export const nextLiveReloadVersion = (): string => String(++lastPageVersion);
+/**
+ * Room for each thread's own count in a version. A thread id is never reused
+ * within a process, so `threadId * THREAD_VERSION_SPAN + count` stays unique
+ * across the main thread (id 0, versions 1, 2, ...) and every page worker of
+ * every pool, which each count from 1 (F055: a fresh pool for each dev
+ * rebuild re-stamped a changed page with the version it had before). Digits
+ * only, and below 2^53 for two million threads.
+ */
+const THREAD_VERSION_SPAN = 2 ** 32;
+/**
+ * A version for a page being compiled now, unique in this process. `thread`
+ * is the compiling thread's `threadId` from `node:worker_threads` (passed in,
+ * so this module needs no Node import).
+ */
+export const nextLiveReloadVersion = (thread = 0): string =>
+  String(thread * THREAD_VERSION_SPAN + ++lastPageVersion);
 
 /**
  * The version on the last live-reload script in a stored page, quoted or

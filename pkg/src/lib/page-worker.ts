@@ -2,6 +2,11 @@ import { parentPort, workerData } from "node:worker_threads";
 import { transpilePage, type PageJob } from "./processing.ts";
 import type { ComponentList, TranspilePageResult } from "./types.ts";
 import { setChildWorkerCount } from "./script-runner.ts";
+import { mem } from "./mem.ts";
+import {
+  toPageWorkerFailure,
+  type PageWorkerFailure,
+} from "./page-worker-errors.ts";
 import {
   CHILD_WORKER_COUNT_MESSAGE,
   PAGE_WORKER_INIT_MESSAGE,
@@ -19,7 +24,8 @@ export type PageWorkerResult = Omit<TranspilePageResult, "distHtml"> & {
 };
 
 export type PageWorkerMessage =
-  { ok: true; result: PageWorkerResult | null } | { ok: false; error: string };
+  | { ok: true; result: PageWorkerResult | null }
+  | { ok: false; error: string; detail?: PageWorkerFailure };
 
 export interface PageWorkerPort {
   postMessage(
@@ -48,6 +54,9 @@ export const handlePageWorkerMessage = async (
   data: { componentList: ComponentList; globalStylesHtml: string } | null,
   input: string | PageJob,
 ): Promise<void> => {
+  const failedPagePath = typeof input === "string" ? input : input.pagePath;
+  // Only what this compile records may travel back with a failure.
+  mem.clearFailedDependencies(failedPagePath);
   try {
     const { componentList, globalStylesHtml } = data ?? {
       componentList: {},
@@ -83,7 +92,19 @@ export const handlePageWorkerMessage = async (
     ]);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    port?.postMessage({ ok: false, error: errorMsg });
+    // The class and fields of an error do not survive the thread boundary,
+    // so the location, stage and missing helpers go as data (F053, F054).
+    const failedDependencies = mem.failedDependenciesOf(failedPagePath);
+    const detail = toPageWorkerFailure(error, failedDependencies);
+    const hasDetail =
+      detail.stage !== undefined ||
+      detail.location !== undefined ||
+      detail.failedDependencies !== undefined;
+    port?.postMessage(
+      hasDetail
+        ? { ok: false, error: errorMsg, detail }
+        : { ok: false, error: errorMsg },
+    );
   }
 };
 
