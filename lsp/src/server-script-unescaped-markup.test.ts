@@ -1214,3 +1214,49 @@ describe("hand-written-html-escaper on an XML-named escaper (review round 2)", (
     expect(diags[0].message).toContain("comment");
   });
 });
+
+describe("a hole that calls a project module's function gets no wrap fix (review round 2)", () => {
+  const diagsOf = (
+    body: string,
+    directive: AnalyzeOptions["directive"] = "build",
+  ) => analyze(body, { directive }).filter((d) => d.code === RULE);
+
+  it.each([
+    'import { productCard } from "@/lib/cards.ts";\nexport default () => `<main>${productCard(products[0])}</main>`;',
+    'import productCard from "./cards.js";\nexport default () => `<main>${productCard(products[0])}</main>`;',
+    'import * as cards from "../lib/cards";\nexport default () => `<main>${cards.productCard(products[0])}</main>`;',
+    'import { productCard as card } from "@/lib/cards.ts";\nexport default () => {\n  const first = card(products[0]);\n  return `<main>${first}</main>`;\n};',
+    'import {\n  productCard,\n  type Product,\n} from "@/lib/cards.ts";\nexport default () => `<main>${products.map((p: Product) => productCard(p))}</main>`;',
+  ])("%s", (body) => {
+    const diags = diagsOf(body);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].template?.fixable).toBe(false);
+    expect(diags[0].message).toMatch(
+      /(?:productCard|cards\.productCard|card)\(\) comes from a project module/,
+    );
+    expect(diags[0].message).not.toContain(
+      "Wrap the template in html`...` from",
+    );
+  });
+
+  it("request-time code too", () => {
+    const diags = diagsOf(
+      'import { productCard } from "./cards.ts";\nexport default (request) => `<main>${productCard(request.url)}</main>`;',
+      "server",
+    );
+    expect(diags[0].template?.fixable).toBe(false);
+  });
+
+  it("a package's function and a local function keep the fix", () => {
+    expect(
+      diagsOf(
+        'import slugify from "slugify";\nexport default (t) => `<main>${slugify(t)}</main>`;',
+      )[0].template?.fixable,
+    ).toBe(true);
+    expect(
+      diagsOf(
+        "const upper = (s) => s.toUpperCase();\nexport default (t) => `<main>${upper(t)}</main>`;",
+      )[0].template?.fixable,
+    ).toBe(true);
+  });
+});

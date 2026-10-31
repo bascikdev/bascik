@@ -15,6 +15,7 @@ import {
   isMessageArgument,
   isEscapedJson,
   looksLikeMarkup,
+  parseImportSpecifier,
   markupInCode,
   scanTemplateHtml,
   REGEX_AFTER_KEYWORD,
@@ -339,6 +340,7 @@ export function analyzeServerScriptSource(
   };
 
   const joined = joinedNames(body);
+  const projectNames = projectImportNames(body);
   for (const literal of findTemplateLiterals(body)) {
     const isHtml = literal.tag !== null && ctx.htmlTags.includes(literal.tag);
     // SQL, URLs and plain text: `WHERE id = ${id}` is not an attribute.
@@ -517,6 +519,22 @@ export function analyzeServerScriptSource(
         // markup in a joined string, would show as text.
         if (escaper !== undefined || isJoined(hole.expr, joined))
           fixable = false;
+        // A project helper may return a markup string (a card, a list),
+        // which html would escape: the page would show its tags as text.
+        const helper =
+          escaper === undefined
+            ? projectHelperIn(hole.expr, projectNames, ctx.bindings)
+            : undefined;
+        if (helper !== undefined) {
+          fixable = false;
+          pending.push({
+            code: UNESCAPED_MARKUP_RULE,
+            message: `${head} ${helper}() comes from a project module: if it returns markup as a string, wrapping this template in html would show its tags as text. Build that function's markup with html\`...\` first, since html inserts an html value as it is, then wrap this template.`,
+            severity: "warning",
+            ...at,
+          });
+          continue;
+        }
         // html would throw on this template, so the advice is esc().
         const throwsReason =
           throwsAt > 0
@@ -598,6 +616,61 @@ export function analyzeServerScriptSource(
   }
 
   return diagnostics;
+}
+
+/**
+ * The local names a script imports from its project's own modules (a
+ * `./`, `../` or `@/` specifier): default, named (`a as b`) and namespace
+ * imports. Type-only imports bind no value and are left out. The import
+ * clause is bounded, so the scan stays linear.
+ */
+function projectImportNames(body: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of body.matchAll(
+    /\bimport\s+(?!type\s)([^;'"`]{1,1000}?)\s+from\s*["'](?:\.\.?\/|@\/)/g,
+  )) {
+    const clause = m[1];
+    const brace = /\{([^}]*)\}/.exec(clause);
+    if (brace)
+      for (const entry of brace[1].split(",")) {
+        if (/^\s*type\s/.test(entry)) continue;
+        const specifier = parseImportSpecifier(entry);
+        if (specifier) names.add(specifier[1]);
+      }
+    const rest = brace ? clause.replace(brace[0], "") : clause;
+    const namespace = /\*\s*as\s+([\w$]+)/.exec(rest);
+    if (namespace) names.add(namespace[1]);
+    const defaultName = /^\s*([\w$]+)\s*(?:,|$)/.exec(rest);
+    if (defaultName) names.add(defaultName[1]);
+  }
+  return names;
+}
+
+/**
+ * The first project-imported name a hole uses (not as a member, `x.name`),
+ * looking one step through a name bound in the script (`const first =
+ * card(p)`), or undefined.
+ */
+function projectHelperIn(
+  expr: string,
+  names: Set<string>,
+  bindings: Map<string, string[]>,
+): string | undefined {
+  if (names.size === 0) return undefined;
+  const find = (text: string): string | undefined => {
+    for (const m of text.matchAll(/(?<![\w$.])([\w$]+)(?:\.[\w$]+)*/g))
+      if (names.has(m[1])) return m[0];
+    return undefined;
+  };
+  const direct = find(expr);
+  if (direct !== undefined) return direct;
+  const name = expr.trim();
+  if (!/^[\w$]+$/.test(name)) return undefined;
+  for (const value of bindings.get(name) ?? []) {
+    const found = find(value);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 /** A template whose first tag is an XML prolog or the root of a sitemap or a feed. */
