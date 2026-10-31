@@ -1091,21 +1091,69 @@ export const HELLO_API_ROUTE = `export const GET = async (
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
-/** Returns an error message if the name is invalid, or null if it is fine. */
+/**
+ * Returns an error message if the name is invalid, or null if it is fine.
+ *
+ * The name is a new folder under the current directory: one name, or a relative
+ * path such as `sites/my-site` whose last segment names the site. `.`, `..`, an
+ * absolute path and whitespace are refused, because the folder would be the
+ * current or a parent directory, would not be where the printed `cd` points, or
+ * would not be a valid npm package name.
+ */
 export function validateProjectName(name: string): string | null {
   if (!name) return "Project name cannot be empty.";
-  if (!/^[a-z0-9@._/-][a-z0-9@._/\- ]*$/i.test(name)) {
+  if (!/^[a-z0-9@._/\- ]+$/i.test(name)) {
     return `"${name}" is not a valid directory name.`;
+  }
+  if (name.includes(" ")) {
+    return `"${name}" contains a space. Use dashes instead, such as "${name.trim().replace(/ +/g, () => "-")}".`;
+  }
+  if (name.startsWith("/")) {
+    return `"${name}" is an absolute path. Run create-bascik in the parent folder and pass only the new folder's name.`;
+  }
+  const segments = name.split("/");
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return `"${name}" names the current or a parent folder with "." or "..". create-bascik writes a new folder; to add Bascik to an existing project, see ${MANUAL_SETUP_URL}`;
+  }
+  if (segments.some((segment) => segment === "")) {
+    return `"${name}" has an empty path segment. Remove the extra "/".`;
+  }
+  if (segments.some((segment) => segment.startsWith("."))) {
+    return `"${name}" starts a folder name with ".", which hides the folder and is not a valid npm package name.`;
   }
   return null;
 }
+
+/** Where the docs explain adding Bascik to a project that already exists. */
+export const MANUAL_SETUP_URL =
+  "https://bascik.dev/getting-started#manual-setup";
+
+/**
+ * The site's name: the last segment of the project name, which is the folder
+ * the starter is written to. It is the brand on the pages.
+ */
+export const siteNameOf = (projectName: string): string =>
+  projectName.split("/").pop() ?? projectName;
+
+/**
+ * The package.json name for a project name: npm wants it lowercase and without
+ * a leading `_`. A scoped `@scope/name` stays scoped; a nested path such as
+ * `sites/my-site` uses its last segment.
+ */
+export const packageNameOf = (projectName: string): string => {
+  const name = /^@[^/]+\/[^/]+$/.test(projectName)
+    ? projectName
+    : siteNameOf(projectName);
+  return name.toLowerCase().replace(/^_+/, () => "") || "bascik-app";
+};
 
 // ─── Scaffold ─────────────────────────────────────────────────────────────────
 
 /**
  * Scaffold a new Bascik project into `targetDir/<projectName>`.
  *
- * @param projectName  The name used for the directory and package.json name.
+ * @param projectName  The folder to create, relative to `targetDir` (see `validateProjectName`).
+ *                     Its last segment names the site and, lowercased, the package.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
  * @param options      `template` picks the starter (defaults to the static `default`).
  */
@@ -1115,6 +1163,7 @@ export async function scaffold(
   options: { template?: Template } = {},
 ): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
+  const siteName = siteNameOf(projectName);
   const template = options.template ?? "default";
   const cloudflare = template === "cloudflare";
   const notes: string[] = [];
@@ -1145,7 +1194,7 @@ export async function scaffold(
     // Root
     writeFile(
       join(root, "package.json"),
-      PACKAGE_JSON(projectName, template),
+      PACKAGE_JSON(packageNameOf(projectName), template),
       "utf8",
     ),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
@@ -1204,22 +1253,22 @@ export async function scaffold(
     // Pages
     writeFile(
       join(root, "src", "pages", "index.html"),
-      indexPage(projectName, { template }),
+      indexPage(siteName, { template }),
       "utf8",
     ),
     writeFile(
       join(root, "src", "pages", "about.html"),
-      aboutPage(projectName),
+      aboutPage(siteName),
       "utf8",
     ),
     writeFile(
       join(root, "src", "pages", "contact.html"),
-      contactPage(projectName),
+      contactPage(siteName),
       "utf8",
     ),
     writeFile(
       join(root, "src", "pages", "404.html"),
-      notFoundPage(projectName),
+      notFoundPage(siteName),
       "utf8",
     ),
 
@@ -1228,7 +1277,7 @@ export async function scaffold(
       ? [
           writeFile(
             join(root, "src", "pages", "edge.html"),
-            edgePage(projectName),
+            edgePage(siteName),
             "utf8",
           ),
           writeFile(

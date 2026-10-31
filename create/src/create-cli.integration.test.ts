@@ -212,6 +212,23 @@ describe("npm create bascik and the agent skills", () => {
     },
   );
 
+  it.each([[".."], ["."], ["/abs/site"], ["my site"]])(
+    "misuse: the project name %j is refused before anything is written",
+    async (name) => {
+      const { status, output, parent } = await create([
+        name,
+        "-y",
+        "--no-skills",
+        ...QUIET,
+      ]);
+      expect(status, output).toBe(1);
+      expect(output).toContain(`Error: "${name}"`);
+      expect(output).not.toContain("Creating Bascik project");
+      expect(readdirSync(parent)).toEqual([]);
+      expect(existsSync(join(parent, "..", "package.json"))).toBe(false);
+    },
+  );
+
   it("misuse: a typo'd --no-skill is refused before anything is written", async () => {
     const { status, output, parent } = await create([
       "my-site",

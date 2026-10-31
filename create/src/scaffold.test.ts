@@ -33,9 +33,12 @@ import {
   aboutPage,
   contactPage,
   edgePage,
+  MANUAL_SETUP_URL,
   indexPage,
   notFoundPage,
+  packageNameOf,
   scaffold,
+  siteNameOf,
   validateProjectName,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
@@ -234,6 +237,72 @@ describe("validateProjectName", () => {
     const res = validateProjectName("my app*invalid");
     expect(res).not.toBeNull();
     expect(res).toContain("is not a valid directory name");
+  });
+
+  it("accepts a relative path, a scoped name and capitals", () => {
+    expect(validateProjectName("sites/my-site")).toBeNull();
+    expect(validateProjectName("@acme/site")).toBeNull();
+    expect(validateProjectName("MySite")).toBeNull();
+  });
+
+  it.each([".", "..", "../sibling", "a/../..", "sites/./x"])(
+    "misuse: refuses %j, which writes into the current or a parent folder, and points at the manual setup",
+    (name) => {
+      const res = validateProjectName(name);
+      expect(res).toContain('"." or ".."');
+      expect(res).toContain(MANUAL_SETUP_URL);
+    },
+  );
+
+  it("misuse: refuses an absolute path, which would be created under the current folder instead", () => {
+    expect(validateProjectName("/tmp/site")).toContain("is an absolute path");
+  });
+
+  it.each(["my site", " my-site", "my-site "])(
+    "misuse: refuses %j, with a space the printed cd command and npm cannot use",
+    (name) => {
+      expect(validateProjectName(name)).toContain("contains a space");
+    },
+  );
+
+  it("suggests the dashed name for a name with spaces", () => {
+    expect(validateProjectName("my  site")).toContain('"my-site"');
+  });
+
+  it.each(["a//b", "my-site/"])(
+    "misuse: refuses %j, which has an empty path segment",
+    (name) => {
+      expect(validateProjectName(name)).toContain("empty path segment");
+    },
+  );
+
+  it("misuse: refuses a hidden folder name", () => {
+    expect(validateProjectName(".site")).toContain('with "."');
+  });
+});
+
+describe("packageNameOf and siteNameOf", () => {
+  it("uses the name as it is when it is already a package name", () => {
+    expect(packageNameOf("my-site")).toBe("my-site");
+    expect(siteNameOf("my-site")).toBe("my-site");
+  });
+
+  it("lowercases the package name and keeps the site name's capitals", () => {
+    expect(packageNameOf("MySite")).toBe("mysite");
+    expect(siteNameOf("MySite")).toBe("MySite");
+  });
+
+  it("uses the last segment of a nested path", () => {
+    expect(packageNameOf("sites/My-Site")).toBe("my-site");
+    expect(siteNameOf("sites/My-Site")).toBe("My-Site");
+  });
+
+  it("keeps a scoped name scoped", () => {
+    expect(packageNameOf("@Acme/Site")).toBe("@acme/site");
+  });
+
+  it("drops a leading underscore, which npm does not allow", () => {
+    expect(packageNameOf("_site")).toBe("site");
   });
 });
 
@@ -1218,6 +1287,19 @@ describe("scaffold", () => {
   it("uses cwd as default targetDir", async () => {
     await scaffold("app");
     expect(allWrittenPaths().every((p) => p.includes("app"))).toBe(true);
+  });
+
+  it("names the package and brands the pages after the last segment of a nested name", async () => {
+    await scaffold("sites/My-Site", "/tmp");
+    expect(
+      allWrittenPaths().every((p) => p.startsWith("/tmp/sites/My-Site/")),
+    ).toBe(true);
+    expect(JSON.parse(writtenTo("/tmp/sites/My-Site/package.json")!).name).toBe(
+      "my-site",
+    );
+    const index = writtenTo("/tmp/sites/My-Site/src/pages/index.html")!;
+    expect(index).toContain('data-bascik-prop-brand="My-Site"');
+    expect(index).not.toContain("sites/My-Site");
   });
 
   it("injects the project name into the index page", async () => {
