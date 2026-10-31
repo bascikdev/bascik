@@ -137,15 +137,23 @@ const scanStartTag = (
 };
 
 /**
- * Where the tokenizer stands: in text; inside a tag's name (`name`, where
- * `=` and quotes are name characters, up to tag whitespace, `/` or `>`), at
- * or in an attribute name or between attributes (`tag`), or in an attribute
+ * Where the tokenizer stands: in text; at the `/` of an end tag's `</`
+ * (`end-tag-open`, before its name); inside a tag's name (`name`, where `=`
+ * and quotes are name characters, up to tag whitespace, `/` or `>`), at or
+ * in an attribute name or between attributes (`tag`), or in an attribute
  * value (`before-value`, `quoted`, `unquoted`); or in a bogus comment
  * (`bogus`), which `<!` (other than `<!--`), `<?`, or `</` before a
  * character that is not a letter opens, and the next `>` ends, quotes or not.
  */
 export type AttributeScanState =
-  "text" | "name" | "tag" | "before-value" | "quoted" | "unquoted" | "bogus";
+  | "text"
+  | "end-tag-open"
+  | "name"
+  | "tag"
+  | "before-value"
+  | "quoted"
+  | "unquoted"
+  | "bogus";
 
 /**
  * Tokenizer state after reading `html[0, cursor)`. It also depends on
@@ -202,7 +210,9 @@ const isLetterCode = (code: number): boolean =>
  * The state a `<` at `at`, read in text, leads to, as the tokenizer reads
  * it from the characters after it (up to three: `<!--`):
  *
- * - `<` and a letter, or `</` and a letter, starts a tag's name (`name`).
+ * - `<` and a letter starts a tag's name (`name`); `</` and a letter, an end
+ *   tag's (`end-tag-open`, whose `/` is the end tag's own, not the end of a
+ *   name: `</p"='x>` is one end tag, `p"='x` its name).
  * - `<!--` starts a comment. The masker resolves comments itself and blanks
  *   their insides, and leaves one with no end as text, so it stays `text`.
  * - `<!`, `<?`, or `</` and anything else but the end of input, starts a
@@ -218,7 +228,7 @@ const stateAfterLess = (html: string, at: number): AttributeScanState => {
   if (next !== 47) return "text";
   const after = html.charCodeAt(at + 2);
   if (Number.isNaN(after)) return "text";
-  return isLetterCode(after) ? "name" : "bogus";
+  return isLetterCode(after) ? "end-tag-open" : "bogus";
 };
 
 /** `[\t\n\f\r /]`: what ends a tag name and starts the attributes. */
@@ -273,7 +283,8 @@ export const createAttributeValueScanner = (
         continue;
       }
       const code = html.charCodeAt(cursor);
-      if (state === "name") {
+      if (state === "end-tag-open") state = "name";
+      else if (state === "name") {
         if (code === 62) state = "text";
         else if (isTagNameSpaceOrSlash(code)) state = "tag";
       } else if (state === "unquoted") {
@@ -338,6 +349,8 @@ export const stepAttributeValueState = (
         : { state, quote };
     case "bogus":
       return code === 62 ? { state: "text", quote } : { state, quote };
+    case "end-tag-open":
+      return { state: "name", quote };
     case "name":
       if (code === 62) return { state: "text", quote };
       return isTagNameSpaceOrSlash(code)

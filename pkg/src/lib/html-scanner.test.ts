@@ -112,6 +112,27 @@ const fragment = fc.constantFrom(
   "<select>",
   "<span>",
   "</span>",
+  // Raw-text closers with attributes or a quote after the name, and
+  // breakouts from foreign content, with or without a table around it.
+  '<script>a("</script")</script>',
+  "<script>a('</scriptx>')</script>",
+  "<script>a()</script foo>",
+  "<svg><p>",
+  "<math><mi><div>",
+  "<svg><foreignObject><p>",
+  "<table><svg><tr>",
+  "<table><math><mi><td>",
+  "<svg><br>",
+  "<svg></p>",
+  "<tr>",
+  "<caption>",
+  "<head>",
+  "<body>",
+  "<math><mi><td></math>",
+  "<div>",
+  "<li>",
+  "<h1>",
+  "<button>",
 );
 const soup = fc
   .array(fragment, { maxLength: 18 })
@@ -330,6 +351,176 @@ describe("scanHtml", () => {
     });
   });
 
+  describe("start tags that close an open <p> in an integration point", () => {
+    const script = "<script>a()</script>";
+    // "In body", these start tags close a <p> open in button scope first.
+    // Left open, the <p> let a later `</p>` pop the element after it, and
+    // the end tag of the SVG or MathML then closed it, where the browser
+    // ignores that end tag at the still-open element (shrunk by fast-check
+    // from the insertion-point property, R2-07-b).
+    it.each(["div", "section", "ul", "h2", "hr", "form", "p", "pre"])(
+      "<%s> closes the <p>, as in parse5",
+      (name) => {
+        for (const html of [
+          `<svg><foreignObject><p><${name}><svg></p></svg>${script}`,
+          `<math><mi><p><${name}><svg></p></math>${script}`,
+          `<svg><foreignObject><p><div "a>b"><svg></p></svg>${script}`,
+        ]) {
+          const { scripts, stoppedAt, insertionPoint } = scan(html);
+          const expected = parsedLocations(html).scripts.filter(
+            (r) => r.start < stoppedAt,
+          );
+          expect(
+            scripts
+              .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
+              .map((s) => ({ start: s.start, end: s.end })),
+            html,
+          ).toEqual(expected);
+          const inserted = "<script>inserted()</script>";
+          const page =
+            html.slice(0, insertionPoint) +
+            inserted +
+            html.slice(insertionPoint);
+          expect(
+            parsedLocations(page).scripts.some(
+              (r) => r.start === insertionPoint,
+            ),
+            html,
+          ).toBe(true);
+        }
+      },
+    );
+
+    it("misuse: a <p> behind a <button> stays open, as in parse5", () => {
+      // Button scope stops at <button>, so the <div> closes no <p> there.
+      const html = `<svg><foreignObject><p><button><div></div></button></p></svg>${script}`;
+      expect(ordinaryScripts(html)).toEqual(
+        parsedLocations(html).scripts.map((r) => html.slice(r.start, r.end)),
+      );
+    });
+  });
+
+  describe("end tags inside a <select> in foreign content", () => {
+    // Parsers that read `<select>` content with the "in select" mode ignore
+    // every end tag there but the select's and its options'; the newer
+    // customizable `<select>` parses more. Inside SVG or MathML, where the
+    // end tag decides whether the foreign content closes, the scan stops at
+    // one instead of guessing (shrunk by fast-check, R2-07-b).
+    it.each([
+      "<svg><foreignObject><p><select></p></foreignObject><p>",
+      "<math><mi><select></mi></math><script>a()</script>",
+      "<svg><desc><div><select></div></desc></svg><script>a()</script>",
+    ])("stops at it, and agrees with parse5 before it: %s", (html) => {
+      const { scripts, stoppedAt, insertionPoint } = scan(html);
+      expect(stoppedAt).toBe(html.indexOf("</", html.indexOf("<select>")));
+      expect(
+        scripts
+          .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
+          .filter((s) => s.start < stoppedAt),
+      ).toEqual([]);
+      const inserted = "<script>inserted()</script>";
+      const page =
+        html.slice(0, insertionPoint) + inserted + html.slice(insertionPoint);
+      expect(
+        parsedLocations(page).scripts.some((r) => r.start === insertionPoint),
+      ).toBe(true);
+    });
+
+    it("misuse: options and the select's own end tag are still followed", () => {
+      const html =
+        "<svg><foreignObject><select><option>a</option><optgroup></optgroup></select></foreignObject></svg><script>a()</script>";
+      expect(scan(html).stoppedAt).toBe(html.length);
+      expect(ordinaryScripts(html)).toEqual(["<script>a()</script>"]);
+    });
+  });
+
+  describe("ignored start tags in an integration point", () => {
+    const script = "<script>a()</script>";
+    // "In body" ignores these start tags, so they open nothing inside an
+    // integration point, and the end tag of the SVG or MathML after them
+    // still closes it. Counted as open, they kept everything after in
+    // foreign content: its scripts stayed in place and the insertion point
+    // moved back to the <svg> or <math> (R2-07-b).
+    it.each([
+      "td",
+      "th",
+      "tr",
+      "tbody",
+      "thead",
+      "tfoot",
+      "caption",
+      "colgroup",
+      "head",
+      "html",
+      "body",
+    ])(
+      "an ignored <%s> in an integration point with no table opens nothing, as in parse5",
+      (name) => {
+        for (const html of [
+          `<math><mi><${name}></math>${script}`,
+          `<svg><foreignObject><${name}></svg>${script}`,
+          `<svg><desc><${name}></desc></svg>${script}`,
+        ]) {
+          const expected = parsedLocations(html).scripts.map((r) =>
+            html.slice(r.start, r.end),
+          );
+          expect(expected, html).toEqual([script]);
+          expect(ordinaryScripts(html), html).toEqual(expected);
+          expect(scanHtml(html).insertionPoint, html).toBe(html.length);
+        }
+      },
+    );
+
+    it("misuse: the same tags after a <table> opened in the integration point still count, as in parse5", () => {
+      for (const html of [
+        `<math><mi><table><td></math>${script}`,
+        `<svg><foreignObject><table><tr></svg>${script}`,
+      ]) {
+        const { scripts, stoppedAt } = scan(html);
+        const expected = parsedLocations(html).scripts.filter(
+          (r) => r.start < stoppedAt,
+        );
+        expect(
+          scripts
+            .filter((s) => !s.inTemplate && !s.inForeign && s.terminated)
+            .map((s) => ({ start: s.start, end: s.end })),
+          html,
+        ).toEqual(expected);
+      }
+    });
+  });
+
+  it("places an inserted script where parse5 runs it, in random malformed markup", () => {
+    // The insertion point (R2-07-b): a script written there is an ordinary
+    // HTML script, outside <template> and SVG/MathML, with exactly the
+    // inserted source range, whatever the page leaves open after it. It may
+    // be earlier than it has to be where the scan errs toward foreign
+    // content (`<math><mi><td></math>`: the ignored `<td>` is counted as
+    // open, so `</math>` is not known to close the math), never later.
+    const inserted = "<script>inserted()</script>";
+    let inside = 0;
+    fc.assert(
+      fc.property(soup, (html) => {
+        const { insertionPoint } = scanHtml(html);
+        if (insertionPoint > 0 && insertionPoint < html.length) inside++;
+        expect(insertionPoint).toBeGreaterThanOrEqual(0);
+        expect(insertionPoint).toBeLessThanOrEqual(html.length);
+        const page =
+          html.slice(0, insertionPoint) + inserted + html.slice(insertionPoint);
+        expect(
+          parsedLocations(page).scripts.filter(
+            (r) => r.start === insertionPoint,
+          ),
+        ).toEqual([
+          { start: insertionPoint, end: insertionPoint + inserted.length },
+        ]);
+      }),
+      { numRuns: Number(process.env.SCAN_ORACLE_RUNS ?? 4000) },
+    );
+    // Not only appends: many pages end inside markup.
+    expect(inside).toBeGreaterThan(200);
+  }, 60_000);
+
   it("matches parse5 on every script and comment range in random malformed markup", () => {
     fc.assert(
       fc.property(soup, (html) => {
@@ -355,9 +546,9 @@ describe("scanHtml", () => {
             .map((r) => [r.start, r.end]),
         );
       }),
-      { numRuns: 4000 },
+      { numRuns: Number(process.env.SCAN_ORACLE_RUNS ?? 4000) },
     );
-  });
+  }, 60_000);
 });
 
 describe("removeHtmlRanges", () => {
