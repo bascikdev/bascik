@@ -2980,3 +2980,68 @@ describe("scopeInlineStyleTags – escaped class selectors", () => {
     );
   });
 });
+
+describe("removeIdSelectors – only the [id] attribute, whole blocks, paren-aware lists", () => {
+  it.each([
+    '[id-test="x"] { color: red }',
+    "[idx] { color: red }",
+    "[data-id] { color: red }",
+    ".a[id-ref] > p { color: red }",
+  ])("keeps %s, which is not an [id] selector", (input) => {
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it.each([
+    "[ID] { color: red }",
+    "[ id ] { color: red }",
+    "[id ~= x] { color: red }",
+    '.a[id="x"] { color: red }',
+    ".a:not([id]) { color: red }",
+  ])("strips %s", (input) => {
+    expect(removeIdSelectors(input)).toBe("");
+  });
+
+  it("removes a nested block with the [id] rule and keeps the next rule", () => {
+    expect(
+      removeIdSelectors(
+        '[id="x"] { color: red; &:hover { color: blue } }\n.b { color: green }',
+      ),
+    ).toBe("\n.b { color: green }");
+  });
+
+  it("keeps the enclosing @media block intact around a nested [id] rule", () => {
+    const input =
+      "@media (min-width: 600px) {\n  [id] { color: red; @media print { color: blue } }\n  .b { color: green }\n}\n.c { color: gray }";
+    expect(removeIdSelectors(input)).toBe(
+      "@media (min-width: 600px) {\n  \n  .b { color: green }\n}\n.c { color: gray }",
+    );
+  });
+
+  it("splits a selector list only at top-level commas", () => {
+    expect(removeIdSelectors(':is(.a, [id="x"]) { color: red }')).toBe("");
+    expect(removeIdSelectors('.k, .a:not([id="x"], .c) { color: red }')).toBe(
+      ".k { color: red }",
+    );
+    expect(
+      removeIdSelectors(
+        ".k:is(.x, .y), [id] { color: red }\n.z { color: blue }",
+      ),
+    ).toBe(".k:is(.x, .y) { color: red }\n.z { color: blue }");
+  });
+
+  it("leaves an @supports selector() test alone", () => {
+    const input = "@supports selector([id]) { .a { color: red } }";
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it("does not treat [id] in a declaration value as a selector", () => {
+    const input = ".grid { grid-template-columns: [id] 1fr [end]; }";
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it("removes an unclosed [id] rule to the end instead of leaving half of it (a typo)", () => {
+    expect(removeIdSelectors(".a { color: red }\n[id] { color: blue")).toBe(
+      ".a { color: red }\n",
+    );
+  });
+});

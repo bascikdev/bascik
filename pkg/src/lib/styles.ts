@@ -628,27 +628,80 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
   return restore(replaced);
 };
 
+// An `[id]` attribute selector (`[id]`, `[ ID ]`, `[id="x"]`, `[id~=x]`), but
+// not a longer attribute name such as `[id-ref]` or `[idx]`.
+const ID_ATTRIBUTE_SELECTOR = /\[\s*id\s*(?:[~|^$*]?=|\])/i;
+
+/** Split a selector list at its top-level commas (not inside `()` or `[]`). */
+const splitSelectorList = (selectorList: string): string[] => {
+  const parts: string[] = [];
+  let depth = 0;
+  let partStart = 0;
+  for (let i = 0; i < selectorList.length; i++) {
+    const char = selectorList[i];
+    if (char === "(" || char === "[") depth++;
+    else if ((char === ")" || char === "]") && depth > 0) depth--;
+    else if (char === "," && depth === 0) {
+      parts.push(selectorList.slice(partStart, i));
+      partStart = i + 1;
+    }
+  }
+  parts.push(selectorList.slice(partStart));
+  return parts;
+};
+
+/** The index just past the `}` that closes the block opened at `open`. */
+const blockEnd = (css: string, open: number): number => {
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) return i + 1;
+  }
+  return css.length;
+};
+
 export const removeIdSelectors = (css: string): string => {
-  if (!/\[id\b/i.test(css)) return css;
+  if (!ID_ATTRIBUTE_SELECTOR.test(css)) return css;
   // Strips the [id] / [id="…"] attribute-selector form which cannot be
   // reliably scoped without DOM wrapping.  The hash form (#foo) is now
   // handled by convertCssIdSelectorsToClasses.
   // Shield string literals first so a `}` inside a quoted value (e.g.
-  // content: "x}y") can't terminate the rule match early.
+  // content: "x}y") can't end a block early.
   const { css: shielded, restore } = shieldCssStrings(css);
-  const replaced = shielded.replace(
-    /((?:^|[;{}])\s*)([^{};]*?\[id\b[^\]]*\][^{};]*?)(\{[\s\S]*?\})/gim,
-    (_match, prefix: string, selectorHeader: string, block: string) => {
-      const keptSelectors = selectorHeader
-        .split(",")
-        .filter((part) => !/\[id\b/i.test(part))
-        .map((part) => part.trim())
-        .filter(Boolean);
-      if (keptSelectors.length === 0) return prefix;
-      return `${prefix}${keptSelectors.join(", ")} ${block}`;
-    },
-  );
-  return restore(replaced);
+  let result = "";
+  let copiedTo = 0;
+  // A rule prelude is the text from the last `{`, `}` or `;` to the next `{`.
+  let preludeStart = 0;
+  for (let i = 0; i < shielded.length; i++) {
+    const char = shielded[i];
+    if (char === ";" || char === "}") {
+      preludeStart = i + 1;
+      continue;
+    }
+    if (char !== "{") continue;
+    const prelude = shielded.slice(preludeStart, i);
+    const selectorStart =
+      preludeStart + (prelude.length - prelude.trimStart().length);
+    preludeStart = i + 1;
+    // At-rule preludes (`@supports selector([id])`) are not selectors.
+    if (shielded[selectorStart] === "@" || !ID_ATTRIBUTE_SELECTOR.test(prelude))
+      continue;
+    const keptSelectors = splitSelectorList(prelude)
+      .filter((part) => !ID_ATTRIBUTE_SELECTOR.test(part))
+      .map((part) => part.trim())
+      .filter(Boolean);
+    result += shielded.slice(copiedTo, selectorStart);
+    if (keptSelectors.length > 0) {
+      result += `${keptSelectors.join(", ")} `;
+      copiedTo = i;
+    } else {
+      // Drop the whole rule, nested blocks included.
+      copiedTo = blockEnd(shielded, i);
+      i = copiedTo - 1;
+      preludeStart = copiedTo;
+    }
+  }
+  return restore(result + shielded.slice(copiedTo));
 };
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────
