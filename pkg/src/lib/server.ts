@@ -1104,14 +1104,29 @@ export const createRequestHandler = () => {
           // No `stream` scripts (or HEAD): today's buffered path, byte for byte.
           // HEAD keeps this path so it can report content-length with no body,
           // matching the static-file HEAD branch.
-          const htmlBuf = await executeServerScriptPlan(
-            plan,
-            request,
-            context,
-            timeout,
-            page.absolutePagePath,
-            page.componentManifest,
-          );
+          // A client that goes away before the page is ready aborts the
+          // scripts' `signal`, as on a streamed page, and gets no response.
+          const abort = new AbortController();
+          const onClose = (): void => {
+            if (!abort.signal.aborted)
+              abort.abort(new Error("client disconnected"));
+          };
+          res.on("close", onClose);
+          let htmlBuf: Buffer;
+          try {
+            htmlBuf = await executeServerScriptPlan(
+              plan,
+              request,
+              context,
+              timeout,
+              page.absolutePagePath,
+              page.componentManifest,
+              abort.signal,
+            );
+          } finally {
+            res.off("close", onClose);
+          }
+          if (abort.signal.aborted || res.destroyed) return;
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
           return res.end(isHead ? undefined : htmlBuf);
