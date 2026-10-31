@@ -164,8 +164,12 @@ main().catch((err) => {
 let runnerDirectory: Promise<string> | undefined;
 let resultCounter = 0;
 
-/** A private directory holding the runner, made once per process (or thread) and removed at exit. */
-const getRunnerDirectory = async (): Promise<string> => {
+/**
+ * A private directory holding the runner, made once per process (or thread)
+ * and removed at exit. A directory a temp-file cleaner deleted is made again
+ * once; a temp directory that cannot be written is an error, not a retry loop.
+ */
+const getRunnerDirectory = async (recreated = false): Promise<string> => {
   const pending = (runnerDirectory ??= (async () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-handler-"));
     await writeFile(join(dir, "runner.mjs"), RUNNER_CODE, {
@@ -181,17 +185,29 @@ const getRunnerDirectory = async (): Promise<string> => {
     });
     return dir;
   })());
-  const dir = await pending.catch(() => undefined);
+  let dir: string;
+  try {
+    dir = await pending;
+  } catch (err) {
+    if (runnerDirectory === pending) runnerDirectory = undefined;
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[bascik] Cannot create the script runner directory in "${tmpdir()}": ${reason}. Build and routes scripts run from a temporary directory; point TMPDIR (TEMP on Windows) at a writable directory.`,
+      { cause: err },
+    );
+  }
   // A temp-file cleaner can delete the directory during a long dev session.
-  const present =
-    dir !== undefined &&
-    (await stat(join(dir, "runner.mjs")).then(
-      () => true,
-      () => false,
-    ));
+  const present = await stat(join(dir, "runner.mjs")).then(
+    () => true,
+    () => false,
+  );
   if (present) return dir;
   if (runnerDirectory === pending) runnerDirectory = undefined;
-  return getRunnerDirectory();
+  if (recreated)
+    throw new Error(
+      `[bascik] The script runner directory "${dir}" disappeared right after it was created. Check what is removing files from "${tmpdir()}".`,
+    );
+  return getRunnerDirectory(true);
 };
 
 /**
