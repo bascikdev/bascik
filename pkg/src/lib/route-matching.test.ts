@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   InvalidApiPathError,
   hasHiddenSegment,
@@ -225,6 +225,48 @@ describe("matchApiRoute [param] routes and encoded separators", () => {
     expect(() => match(["/api/[p]/[q]/[r]"], "/api/x/a%2Fb")).not.toThrow();
     expect(match(["/api/[p]/[q]/[r]"], "/api/x/a%2Fb")).toBeNull();
     expect(match(["/api/[p]/[q]/[r]"], "/api/a%2Fb/c")).toBeNull();
+  });
+
+  // Per-request cost (prompt 158 R2-09): every raw segment of a [param]
+  // route is decoded, so a segment without `%` (which decodes to itself)
+  // skips decodeURIComponent; an encoded one is still decoded exactly once.
+  it("decodes only the segments that hold a percent-encoding", () => {
+    const decode = vi.spyOn(globalThis, "decodeURIComponent");
+    try {
+      const routes = ["/api/users/[id]/items/[item]"].map(route);
+      decode.mockClear();
+      expect(
+        matchApiRoute(
+          routes,
+          "/api/users/42/items/abc",
+          "/api/users/42/items/abc",
+        )?.params,
+      ).toEqual({ id: "42", item: "abc" });
+      expect(decode).not.toHaveBeenCalled();
+      decode.mockClear();
+      expect(
+        matchApiRoute(
+          routes,
+          "/api/users/a b/items/100%20",
+          "/api/users/a%20b/items/100%2520",
+        )?.params,
+      ).toEqual({ id: "a b", item: "100%20" });
+      expect(decode.mock.calls).toEqual([["a%20b"], ["100%2520"]]);
+      // Malformed encoding still keeps the raw text; an encoded separator
+      // is still refused.
+      expect(
+        matchApiRoute(
+          routes,
+          "/api/users/%E0%A4%A/items/x",
+          "/api/users/%E0%A4%A/items/x",
+        )?.params,
+      ).toEqual({ id: "%E0%A4%A", item: "x" });
+      expect(() => match(["/api/users/[id]"], "/api/users/a%2Fb")).toThrow(
+        /encoded path separator/,
+      );
+    } finally {
+      decode.mockRestore();
+    }
   });
 
   it("answers 400 (InvalidApiPathError) for %2F, %2f or %5C inside a [param] value", () => {

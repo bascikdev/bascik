@@ -456,52 +456,77 @@ const replaceSafeAttr = (
  * A lookup of whether an offset of `html` lies in the code of a JavaScript (or TypeScript)
  * `<script>` body, outside its string and template literals. Markup a script builds sits in
  * its literals; a `<` in its code is an operator (`count<max`) or a type argument. Script
- * bodies are scanned on the first lookup, so markup with no tag candidates costs nothing.
+ * elements are found on the first lookup, so markup with no tag candidates costs nothing,
+ * and a script's type and literal spans are read only when a lookup lands in its body:
+ * a component's own tags sit outside its scripts, so most scripts are never read.
  */
 const createScriptCodeLookup = (html: string): ((index: number) => boolean) => {
-  let codeStarts: number[] | undefined;
-  const codeEnds: number[] = [];
-  const build = (): void => {
-    codeStarts = [];
-    if (!html.includes("<script")) return;
-    for (const match of scanElementContents(
-      html,
-      "script",
-      SCRIPT_ELEMENT_SCAN,
-    )) {
-      const openTag = html.slice(match.start, match.contentStart);
-      if (
-        !isJavaScriptScript(openTag) &&
-        getScriptType(openTag) !== "text/typescript"
-      )
-        continue;
-      const body = html.slice(match.contentStart, match.contentEnd);
-      let cursor = match.contentStart;
-      for (const span of findJsLiteralSpans(body)) {
-        if (match.contentStart + span.start > cursor) {
-          codeStarts.push(cursor);
-          codeEnds.push(match.contentStart + span.start);
-        }
-        cursor = match.contentStart + span.end;
+  interface ScriptBody {
+    contentStart: number;
+    contentEnd: number;
+    openTag: string;
+    /** Code ranges (absolute offsets) outside literals; empty for a non-JavaScript type. */
+    code?: { starts: number[]; ends: number[] };
+  }
+  let scripts: ScriptBody[] | undefined;
+  const codeOf = (script: ScriptBody): { starts: number[]; ends: number[] } => {
+    if (script.code) return script.code;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    script.code = { starts, ends };
+    const { openTag, contentStart, contentEnd } = script;
+    if (
+      !isJavaScriptScript(openTag) &&
+      getScriptType(openTag) !== "text/typescript"
+    )
+      return script.code;
+    const body = html.slice(contentStart, contentEnd);
+    let cursor = contentStart;
+    for (const span of findJsLiteralSpans(body)) {
+      if (contentStart + span.start > cursor) {
+        starts.push(cursor);
+        ends.push(contentStart + span.start);
       }
-      if (match.contentEnd > cursor) {
-        codeStarts.push(cursor);
-        codeEnds.push(match.contentEnd);
-      }
+      cursor = contentStart + span.end;
     }
+    if (contentEnd > cursor) {
+      starts.push(cursor);
+      ends.push(contentEnd);
+    }
+    return script.code;
   };
-  return (index) => {
-    if (codeStarts === undefined) build();
-    const starts = codeStarts!;
+  /** The index of the last entry of `starts` at or before `index`, or -1. */
+  const lastAtOrBefore = (starts: readonly number[], index: number): number => {
     let low = 0;
     let high = starts.length - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
       if (starts[mid] > index) high = mid - 1;
-      else if (codeEnds[mid] <= index) low = mid + 1;
-      else return true;
+      else low = mid + 1;
     }
-    return false;
+    return high;
+  };
+  let scriptStarts: number[] = [];
+  return (index) => {
+    if (scripts === undefined) {
+      scripts = html.includes("<script")
+        ? scanElementContents(html, "script", SCRIPT_ELEMENT_SCAN).map(
+            (match) => ({
+              contentStart: match.contentStart,
+              contentEnd: match.contentEnd,
+              openTag: html.slice(match.start, match.contentStart),
+            }),
+          )
+        : [];
+      scriptStarts = scripts.map((script) => script.contentStart);
+    }
+    const at = lastAtOrBefore(scriptStarts, index);
+    if (at === -1) return false;
+    const script = scripts[at];
+    if (index >= script.contentEnd) return false;
+    const { starts, ends } = codeOf(script);
+    const range = lastAtOrBefore(starts, index);
+    return range !== -1 && index < ends[range];
   };
 };
 

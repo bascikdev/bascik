@@ -2,8 +2,8 @@ import { createContentShield, shieldElementContents } from "./shielding.ts";
 import { decodeCharacterReferences } from "./character-references.ts";
 import {
   createAttributeValueScanner,
+  readStartTag,
   scanWholeAttributes,
-  startTagLength,
   type AttributeValueScanner,
 } from "./component-attribute-scan.ts";
 import {
@@ -286,14 +286,14 @@ export const extractProps = (
   // The start tag, read as the browser reads it: a quote inside an unquoted
   // value (`title=it's`) does not start a quoted one.
   if (!/^<[a-zA-Z]/.test(componentContent)) return props;
-  const openingTagLength = startTagLength(componentContent);
-  if (openingTagLength === -1) return props;
-  const openingTag = componentContent.slice(0, openingTagLength);
+  const startTag = readStartTag(componentContent);
+  if (startTag.end === -1) return props;
+  const openingTag = componentContent.slice(0, startTag.end);
   // Only whole attribute names count. A token that looks like a prop marker
   // inside another attribute's quoted value (e.g. a doc reference in
   // `title="see data-bascik-prop-x"`) is text, never a prop.
   const propRegexpPrefix = /^data-bascik-prop-/i;
-  for (const attr of scanWholeAttributes(openingTag)) {
+  for (const attr of startTag.attributes) {
     const propMatch = propRegexpPrefix.exec(attr.name);
     if (!propMatch) continue;
     const propName = attr.name.slice(propMatch[0].length);

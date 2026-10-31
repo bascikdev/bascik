@@ -1872,8 +1872,20 @@ const checkOutputDirectoryOverlap = (
   fs: ConfigValidationFs,
 ): ConfigValidationError[] => {
   // Compared on disk too: "SRC" is src on a case-insensitive file system.
+  // Each mode compares every source folder with the output folder both ways,
+  // walking the child's ancestors, so one validation asks about the same few
+  // paths many times: each is read from disk once per validation.
+  const identities = new Map<string, string | undefined>();
+  const identify = fs.entryIdentity
+    ? (path: string): string | undefined => {
+        if (identities.has(path)) return identities.get(path);
+        const identity = fs.entryIdentity!(path);
+        identities.set(path, identity);
+        return identity;
+      }
+    : undefined;
   const overlaps = (child: string, parent: string): boolean =>
-    isSameOrInsideOnDisk(child, parent, fs.entryIdentity?.bind(fs));
+    isSameOrInsideOnDisk(child, parent, identify);
   const root = resolve(cwd);
   const perMode =
     isPlainObject(modeOverrides) &&

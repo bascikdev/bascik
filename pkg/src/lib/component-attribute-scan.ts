@@ -75,12 +75,16 @@ export const scanWholeAttributes = (openTag: string): ScannedAttribute[] =>
   scanStartTag(openTag).attributes;
 
 /**
- * The length of the start tag at the beginning of `html` (through its `>`),
- * read with the same rules as scanWholeAttributes, or -1 when it has no `>`.
- * A `>` inside a quoted value does not end it, and a quote inside an
- * unquoted value (`title=it's`) does not start one.
+ * The start tag at the beginning of `html`: its attributes, read with the
+ * same rules as scanWholeAttributes, and its length through its `>` (`end`),
+ * or -1 when it has no `>`. A `>` inside a quoted value does not end it, and
+ * a quote inside an unquoted value (`title=it's`) does not start one. The
+ * attributes are the ones scanWholeAttributes finds in `html.slice(0, end)`,
+ * so a caller reads the tag once.
  */
-export const startTagLength = (html: string): number => scanStartTag(html).end;
+export const readStartTag = (
+  html: string,
+): { attributes: ScannedAttribute[]; end: number } => scanStartTag(html);
 
 const scanStartTag = (
   openTag: string,

@@ -325,6 +325,16 @@ const buildTimeCases: HostileCase[] = [
       addIdClassesInHtml(html, [{ idName: "main", className: "k" }]),
   },
   {
+    // The marker scanner (createIdMarkerTest): quoted values that never
+    // close, and scoped prefixes, from every `id`.
+    site: "styles: id class injection, unclosed quoted scoped values",
+    input: (size) => repeatTo(`<a id="x__main id='c__main `, size),
+    run: (html) =>
+      addIdClassesInHtml(html, [{ idName: "main", className: "k" }], {
+        main: "bascik__c__i1__main",
+      }),
+  },
+  {
     site: "styles: element class injection",
     input: (size) => repeatTo("<div x", size),
     run: (html) => addElementClassesInHtml(html, "cmp", ["div"]),

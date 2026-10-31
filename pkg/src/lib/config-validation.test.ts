@@ -1163,6 +1163,46 @@ describe("directory.out overlap with source folders", () => {
     );
   });
 
+  // Startup cost: each mode compares every source folder with the output
+  // folder both ways, and each comparison walks the child's ancestors, so
+  // without a memo one validation ran hundreds of lstat calls.
+  it("identifies each path on disk at most once per validation", () => {
+    const calls = new Map<string, number>();
+    // A case-insensitive disk where every folder exists.
+    const fs = {
+      ...allowAllFs,
+      entryIdentity: (path: string) => {
+        calls.set(path, (calls.get(path) ?? 0) + 1);
+        return path.toLowerCase();
+      },
+    };
+    const errorsFor = (config: unknown, overrides: unknown = {}) => {
+      calls.clear();
+      return validateUserConfig(config, overrides, {
+        fs,
+        cwd: "/p",
+        env: {},
+      }).filter((error) => error.key === "directory.out");
+    };
+    expect(
+      errorsFor(
+        { directory: { out: "dist" } },
+        { build: { directory: { out: "dist" } }, server: {} },
+      ),
+    ).toEqual([]);
+    expect(calls.size).toBeGreaterThan(0);
+    for (const [path, count] of calls) expect(count, path).toBe(1);
+
+    // The memo still sees the alias: "SRC" is the src folder on this disk.
+    const deleting = errorsFor({ directory: { out: "SRC" } });
+    expect(deleting).toHaveLength(1);
+    expect(deleting[0].message).toContain('directory.pages "src/pages"');
+    for (const [path, count] of calls) expect(count, path).toBe(1);
+    // A later validation reads the disk again: a folder made since counts.
+    expect(errorsFor({ directory: { out: "SRC" } })).toHaveLength(1);
+    expect(calls.size).toBeGreaterThan(0);
+  });
+
   // On a case-insensitive file system (the macOS and Windows default) "SRC"
   // is the src folder, and emptying it deletes the sources. The check
   // compares the folders on disk, not only the path strings.
