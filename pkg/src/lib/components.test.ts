@@ -2184,6 +2184,66 @@ describe("extractInheritableAttributes – attribute names as the HTML tokenizer
   });
 });
 
+describe("injectProps – end tags the close finder pairs (F032)", () => {
+  it.each([
+    ["<p data-bascik-prop-title>old</p foo>", "<p>new</p foo>"],
+    ["<p data-bascik-prop-title>old</p/>", "<p>new</p/>"],
+    ["<p data-bascik-prop-title>old</p\tclass=x>", "<p>new</p\tclass=x>"],
+    ["<p data-bascik-prop-title>old</p >", "<p>new</p >"],
+    ["<p data-bascik-prop-title>old</P>", "<p>new</P>"],
+    [
+      '<div data-bascik-prop-title>old<p>x</p></div class="x">',
+      '<div>new</div class="x">',
+    ],
+    [
+      "<div><p data-bascik-prop-title>old</p foo></div>",
+      "<div><p>new</p foo></div>",
+    ],
+  ])("fills %j", (template, expected) => {
+    const warn = vi.fn();
+    expect(injectProps(template, { title: "new" }, warn)).toBe(expected);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unclosed receiver", "<p data-bascik-prop-title>old", "p"],
+    [
+      "a void receiver",
+      '<meta name="description" data-bascik-prop-title content="d" />',
+      "meta",
+    ],
+  ])(
+    "warns for %s instead of dropping the value silently",
+    (_label, template, tag) => {
+      const warn = vi.fn();
+      const out = injectProps(template, { title: "new" }, warn);
+      expect(out).not.toContain("data-bascik-prop-title");
+      expect(out).not.toContain("new");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toBe(
+        `Ignoring data-bascik-prop-title on a <${tag}> with no end tag: the value replaces an element's content, so it needs a </${tag}>. ` +
+          'To put the value in an attribute, use data-bascik-attr-{attribute}="title".',
+      );
+    },
+  );
+
+  it("does not warn for a receiver whose prop is not given", () => {
+    const warn = vi.fn();
+    expect(injectProps("<p data-bascik-prop-title>old", {}, warn)).toBe(
+      "<p>old",
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does not take a longer tag name's end tag as the close", () => {
+    expect(
+      injectProps("<p data-bascik-prop-title>old</param></p>", {
+        title: "new",
+      }),
+    ).toBe("<p>new</p>");
+  });
+});
+
 describe("injectProps – quote-aware scanning", () => {
   it("matches the marker element when a previous attribute value contains >", () => {
     const template = '<p title="a > b" data-bascik-prop-title></p>';

@@ -666,11 +666,20 @@ export const injectProps = (
       const contentStart = openMatch.index + openTag.length;
       const closeIndex = findClose(tagName, contentStart);
       if (closeIndex === -1) {
+        warn(
+          `Ignoring data-bascik-prop-${propName} on a <${tagName.toLowerCase()}> with no end tag: the value replaces an element's content, so it needs a </${tagName.toLowerCase()}>. ` +
+            `To put the value in an attribute, use data-bascik-attr-{attribute}="${propName}".`,
+        );
         searchIndex = contentStart;
         continue;
       }
+      // The close as the finder pairs it, attributes and `/` included
+      // (`</p foo>` closes a `<p>` in a browser too).
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "iy");
+      const closeRe = new RegExp(
+        `<\\/${tagName}(?:[\\t\\n\\f\\r /][^>]*)?>`,
+        "iy",
+      );
       closeRe.lastIndex = closeIndex;
       const closeTag = closeRe.exec(source)?.[0];
       if (!closeTag) {

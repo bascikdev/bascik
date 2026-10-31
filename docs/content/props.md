@@ -8,6 +8,8 @@ Props in Bascik borrow the same basic idea as props in React: pass values into a
 
 Add a `data-bascik-prop-{name}` attribute (no value) to any element in the component template. The element's inner content will be replaced with the prop value at build time.
 
+The receiver needs an end tag, since the value becomes its content. On a void element such as `<meta>` or `<img>`, or on an element the template leaves unclosed, the value is not written and Bascik warns, naming the component file; bind the value to an attribute instead (see [Put a prop in an attribute](#put-a-prop-in-an-attribute)). An end tag with attributes or a slash, such as `</p class="x">`, still closes the element, as it does in a browser.
+
 Set `data-bascik-prop-{name}="value"` on the component tag. The value is injected into the matching template element.
 
 Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostrophes render as text rather than markup. Use entity-encoded quotes such as `&quot;` or `&#39;` inside the usage attribute. Use a [slot](/slots) when the value should be interpreted as HTML.
