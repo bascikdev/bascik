@@ -413,6 +413,25 @@ describe("rules moved from bascik --check keep their edge cases", () => {
       ).toBe(true);
     });
 
+    it("checks inline TypeScript component scripts like JavaScript ones, as the compiler does", () => {
+      for (const type of ["text/typescript", "TEXT/TypeScript"]) {
+        const text = `<div class="a"></div><script type="${type}">const el = document.querySelector("div")!; el.id = "x";</script>`;
+        expect(
+          diagnosticsFor(component, "html", text)
+            .filter((d) => /^js-/.test(String(d.code)))
+            .map((d) => d.code),
+        ).toEqual(["js-id-setter"]);
+      }
+      // A script type the browser does not run (a data block) is not code, so it stays unchecked.
+      const dataBlock =
+        '<div class="a"></div><script type="application/json">{"id": "x", "el.id = 1": true}</script>';
+      expect(
+        diagnosticsFor(component, "html", dataBlock).filter((d) =>
+          /^js-/.test(String(d.code)),
+        ),
+      ).toEqual([]);
+    });
+
     it("checks inline style blocks whatever their end tag spelling, and skips <style-guide>", () => {
       const text =
         '<style-guide>[data-a] text</style-guide><div class="x"></div>' +

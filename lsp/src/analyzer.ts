@@ -695,7 +695,9 @@ export function createDiagnostics(
       normalized === "text/javascript" ||
       normalized === "application/javascript" ||
       normalized === "text/ecmascript" ||
-      normalized === "application/ecmascript"
+      normalized === "application/ecmascript" ||
+      // Bascik transpiles inline TypeScript and scopes it like JavaScript (components.ts isJs).
+      normalized === "text/typescript"
     );
   };
 
