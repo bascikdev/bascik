@@ -43,9 +43,9 @@ A site footer: secondary links and a copyright line. The links live in links.ts 
     margin: 0;
   }
 </style>
-<footer class="footer">
+<footer class="footer" data-testid="site-footer">
   <div class="row">
-    <nav aria-label="Footer">
+    <nav aria-label="Footer" data-testid="site-footer-nav">
       <script data-bascik-build-once>
         import { footerLinks } from "./links.ts";
         export default () => footerLinks();

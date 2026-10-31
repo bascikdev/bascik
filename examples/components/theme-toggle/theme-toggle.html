@@ -17,8 +17,21 @@ A button that switches between light and dark themes and remembers the choice. N
     font: inherit;
     cursor: pointer;
   }
+
+  /* An author display value beats the hidden attribute, so restate it: the button stays hidden until its script runs. */
+  .toggle[hidden] {
+    display: none;
+  }
 </style>
-<button class="toggle" id="toggle" type="button" hidden>Dark theme</button>
+<button
+  class="toggle"
+  id="toggle"
+  type="button"
+  data-testid="theme-toggle"
+  hidden
+>
+  Dark theme
+</button>
 <script type="text/typescript">
   // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
   const toggle = document.getElementById("toggle") as HTMLButtonElement;

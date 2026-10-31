@@ -65,13 +65,17 @@ A site header: a skip link, the site name, and the main navigation, with the cur
     text-underline-offset: 0.3em;
   }
 </style>
-<a class="skip-link" href="#main">Skip to content</a>
-<header class="header">
+<!-- The skip link is the header's first child, so it is the first stop in the Tab order and the <header> is the
+     component's one root (a data-testid or class on <site-header> lands on it). -->
+<header class="header" data-testid="site-header">
+  <a class="skip-link" href="#main" data-testid="site-header-skip-link"
+    >Skip to content</a
+  >
   <div class="bar">
     <a class="brand" href="/"
       ><span data-bascik-prop-name>Example Site</span></a
     >
-    <nav aria-label="Site">
+    <nav aria-label="Site" data-testid="site-header-nav">
       <script data-bascik-build>
         import { navLinks } from "./links.ts";
         export default () => navLinks(process.env.BASCIK_PAGE_PATH);

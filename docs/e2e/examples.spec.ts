@@ -3,9 +3,11 @@
 //  - a temporary copy of the starter site served with bascik --server, with the test page
 //    e2e/fixtures/example-components.html added: two instances of every example component, tested pair by pair,
 //    then the starter site's own behavior
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import type axe from "axe-core";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +25,26 @@ const fixturePage = fileURLToPath(
   new URL("./fixtures/example-components.html", import.meta.url),
 );
 const tabs = (scope: Locator) => scope.getByRole("tab");
+const axeScript = createRequire(import.meta.url).resolve("axe-core/axe.min.js");
+
+/** Run axe on the page as it is now and return each violation as "rule: targets". */
+async function axeViolations(
+  page: Page,
+  disabledRules: string[] = [],
+): Promise<string[]> {
+  await page.addScriptTag({ path: axeScript });
+  return page.evaluate(async (disabled) => {
+    const { axe: runner } = window as unknown as { axe: typeof axe };
+    const result = await runner.run(document, {
+      resultTypes: ["violations"],
+      rules: Object.fromEntries(disabled.map((id) => [id, { enabled: false }])),
+    });
+    return result.violations.map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(" | ")}`,
+    );
+  }, disabledRules);
+}
 
 test.describe("example component pages", () => {
   test("each component page shows a live preview and the exact component file", async ({
@@ -206,6 +228,144 @@ test.describe("built examples", () => {
     test.beforeEach(async ({ page }) => {
       await page.emulateMedia({ colorScheme: "light" });
       await page.goto(`${origin}/example-components`);
+    });
+
+    test("every instance carries its component's test ids, which a production build never hashes", async ({
+      page,
+    }) => {
+      const pairs: Array<[wrapper: string, root: string, parts: string[]]> = [
+        ["tabs", "tab-group", ["tab-group-tablist"]],
+        [
+          "dialog",
+          "modal-dialog",
+          ["modal-dialog-dialog", "modal-dialog-close"],
+        ],
+        ["menu", "popover-menu", ["popover-menu-panel"]],
+        ["copy", "copy-button", ["copy-button-trigger", "copy-button-status"]],
+        [
+          "filter",
+          "filter-list",
+          ["filter-list-search", "filter-list-query", "filter-list-items"],
+        ],
+        [
+          "form",
+          "contact-form",
+          [
+            "contact-form-name",
+            "contact-form-email",
+            "contact-form-message",
+            "contact-form-submit",
+            "contact-form-status",
+          ],
+        ],
+        ["theme", "theme-toggle", []],
+      ];
+      for (const [wrapper, root, parts] of pairs)
+        for (const instance of ["a", "b"]) {
+          const scope = page.getByTestId(`${wrapper}-${instance}`);
+          await expect(
+            scope.getByTestId(root),
+            `${root} in ${wrapper}-${instance}`,
+          ).toHaveCount(1);
+          for (const part of parts)
+            await expect(
+              scope.getByTestId(part),
+              `${part} in ${wrapper}-${instance}`,
+            ).toHaveCount(1);
+        }
+      // The tab buttons are created by the script, one per section.
+      await expect(
+        page.getByTestId("tabs-a").getByTestId("tab-group-tab"),
+      ).toHaveCount(3);
+      await expect(
+        page.getByTestId("tabs-b").getByTestId("tab-group-tab"),
+      ).toHaveCount(2);
+      // The page's own header and footer plus the second pair inside <main>.
+      for (const id of [
+        "site-header",
+        "site-header-skip-link",
+        "site-header-nav",
+        "site-footer",
+        "site-footer-nav",
+      ])
+        await expect(page.getByTestId(id), id).toHaveCount(2);
+      await expect(
+        page.getByTestId("header-b").getByTestId("site-header"),
+      ).toHaveCount(1);
+      await expect(
+        page.getByTestId("footer-b").getByTestId("site-footer"),
+      ).toHaveCount(1);
+      await expect(page.getByTestId("site-header").first()).toHaveJSProperty(
+        "tagName",
+        "HEADER",
+      );
+    });
+
+    test("without JavaScript, the controls a script drives stay hidden and the content shows", async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({ javaScriptEnabled: false });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${origin}/example-components`);
+        for (const id of [
+          "filter-list-search",
+          "tab-group-tablist",
+          "theme-toggle",
+        ]) {
+          const controls = page.getByTestId(id);
+          await expect(controls, id).toHaveCount(2);
+          for (const control of await controls.all())
+            await expect(control, id).toBeHidden();
+        }
+        await expect(
+          page.getByTestId("filter-a").getByRole("listitem"),
+        ).toHaveText(["Apple", "Banana", "Cherry"]);
+        await expect(
+          page.getByTestId("tabs-a").getByText("A yearly"),
+        ).toBeVisible();
+        await expect(
+          page.getByTestId("tabs-a").getByText("A lifetime"),
+        ).toBeVisible();
+      } finally {
+        await context.close();
+      }
+    });
+
+    test("has no axe violations, closed and with each widget in use", async ({
+      page,
+    }) => {
+      // This test page puts two site headers on one page, so two navigation landmarks share the name "Site" by
+      // design; a real page has one header. Every other rule runs.
+      const pageOfPairs = ["landmark-unique"];
+      expect(await axeViolations(page, pageOfPairs)).toEqual([]);
+
+      await page
+        .getByTestId("dialog-a")
+        .getByRole("button", { name: "Open A" })
+        .click();
+      await expect(
+        page.getByRole("dialog", { name: "Dialog A" }),
+      ).toBeVisible();
+      expect(await axeViolations(page, pageOfPairs)).toEqual([]);
+      await page.keyboard.press("Escape");
+
+      await page
+        .getByTestId("menu-a")
+        .getByRole("button", { name: "Menu A" })
+        .click();
+      await expect(page.getByRole("link", { name: "About A" })).toBeVisible();
+      expect(await axeViolations(page, pageOfPairs)).toEqual([]);
+      await page.keyboard.press("Escape");
+
+      await page.getByTestId("filter-a").getByLabel("Filter A").fill("an");
+      await tabs(page.getByTestId("tabs-a")).nth(1).click();
+      await page
+        .getByTestId("theme-a")
+        .getByRole("button", { name: "Dark theme" })
+        .click();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+      expect(await axeViolations(page, pageOfPairs)).toEqual([]);
     });
 
     test("tab groups switch independently and follow the arrow-key pattern", async ({
@@ -393,6 +553,29 @@ test.describe("built examples", () => {
   });
 
   test.describe("starter site", () => {
+    test("every starter page has no axe violations, in light and dark themes", async ({
+      page,
+    }) => {
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        for (const path of [
+          "/",
+          "/about",
+          "/contact",
+          "/blog/",
+          "/blog/hello-world/",
+          "/blog/tags/",
+          "/blog/tags/guides/",
+          "/no-such-page",
+        ]) {
+          await page.goto(`${origin}${path}`);
+          expect(await axeViolations(page), `${path} (${colorScheme})`).toEqual(
+            [],
+          );
+        }
+      }
+    });
+
     test("the contact page posts to the real API route", async ({ page }) => {
       await page.goto(`${origin}/contact`);
       await page.getByLabel("Name").fill("Ada");

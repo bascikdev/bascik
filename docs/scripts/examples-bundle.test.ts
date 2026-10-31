@@ -14,6 +14,7 @@ import {
   titleOf,
 } from "./examples-bundle.ts";
 import { fileTree, githubUrl } from "../src/lib/examples.ts";
+import { testIdAdvisory } from "../../skills/bascik/scripts/lib/testids.mjs";
 import { NAV } from "../src/lib/nav.ts";
 
 const docsRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -147,5 +148,76 @@ describe("every example component is documented and exercised", () => {
         `put two <${name}> instances in e2e/fixtures/example-components.html`,
       ).toBeGreaterThanOrEqual(2);
     }
+  });
+});
+
+// The house rule for examples (.github/copilot-instructions.md): a data-testid on every component root and
+// interactive part, named after the component, and a root that is the element the HTML standard defines for the job.
+describe("example components follow the test id and semantic root rules", () => {
+  const starterSite = join(examplesDir, "starter-site");
+  // The starter site's own config lists both component folders; the advisory reads the same list.
+  const config = {
+    default: { directory: { components: ["src/components", "../components"] } },
+  };
+  const componentFile = (name: string) =>
+    readFileSync(join(examplesDir, `components/${name}/${name}.html`), "utf8");
+  /** The first element of a component that is not a style, script, link, meta, or template tag, or a comment. */
+  const rootTagOf = (source: string) =>
+    source
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<(style|script|template)\b[\s\S]*?<\/\1>/g, "")
+      .match(/<(?!\/|link\b|meta\b)([a-z][a-z0-9-]*)/)?.[1];
+
+  it("has a data-testid on every component root, interactive part, form, dialog, and landmark, and on every starter page's <main>", () => {
+    const gaps = testIdAdvisory(starterSite, config).map(
+      (gap: { file: string; line: number; message: string }) =>
+        `${gap.file}:${gap.line} ${gap.message}`,
+    );
+    expect(gaps).toEqual([]);
+  });
+
+  it.each(componentNames)("%s names every data-testid after itself", (name) => {
+    const ids = [
+      ...componentFile(name).matchAll(/\bdata-testid="([^"]*)"/g),
+    ].map((match) => match[1]);
+    const misnamed = ids.filter(
+      (id) => id !== name && !id.startsWith(`${name}-`),
+    );
+    expect(misnamed, `test ids in ${name} start with "${name}"`).toEqual([]);
+    expect(new Set(ids).size, `duplicate test ids in ${name}`).toBe(ids.length);
+  });
+
+  it("roots each component in the element that fits its job", () => {
+    expect(
+      Object.fromEntries(
+        componentNames.map((name) => [name, rootTagOf(componentFile(name))]),
+      ),
+    ).toEqual({
+      "contact-form": "form",
+      // An inline group: the button and its status message flow with the surrounding text.
+      "copy-button": "span",
+      // A list and its <search> controls; no element groups a search with its results.
+      "filter-list": "div",
+      // A fragment: the trigger in the page flow, then the <dialog> it opens.
+      "modal-dialog": "button",
+      "popover-menu": "button",
+      "site-footer": "footer",
+      // The skip link is the header's first child, so the <header> is the one root.
+      "site-header": "header",
+      // HTML has no tabs element: the root groups the tablist and its panels.
+      "tab-group": "div",
+      // Head-only: a <meta> and a script, no body root.
+      "theme-init": undefined,
+      "theme-toggle": "button",
+    });
+  });
+
+  it("misuse: the root check reads past comments, styles, and head tags", () => {
+    expect(
+      rootTagOf(
+        '<!-- <div> -->\n<style>.a { b: c }</style>\n<meta name="x" />\n<nav class="n"></nav>\n<script>x</script>',
+      ),
+    ).toBe("nav");
+    expect(rootTagOf("<link rel=icon />\n<script>x</script>")).toBe(undefined);
   });
 });
