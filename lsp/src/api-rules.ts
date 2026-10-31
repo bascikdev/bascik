@@ -37,7 +37,7 @@ const STAR_EXPORT_REGEX = /\bexport\s*\*\s*from\b/;
  * One pass. A `/` starts a regex literal (whose body is blanked too) where an expression may begin: at
  * the start, after an operator or punctuator other than `)` and `]`, or after a keyword such as `return`.
  */
-function maskCommentsAndStrings(text: string): string {
+export function maskCommentsAndStrings(text: string): string {
   const out = text.split("");
   const blank = (from: number, to: number) => {
     for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";

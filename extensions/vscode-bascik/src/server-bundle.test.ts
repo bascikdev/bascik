@@ -165,6 +165,17 @@ describe("the bundled language server", () => {
     expect(codes).not.toContain("server-script-bascik-import");
   });
 
+  it("reports server-script-returns-response from the bundled server", async () => {
+    const diagnostics = await diagnosticsFor(
+      "src/pages/status.html",
+      "html",
+      "<script data-bascik-server>\nexport default async () => {\n  return Response.json({ ok: true });\n};\n</script>",
+    );
+    expect(diagnostics.map((d) => d.code)).toContain(
+      "server-script-returns-response",
+    );
+  });
+
   it("answers Find All References for a component", async () => {
     // A nested project of its own, so its snapshot is built after these files exist.
     const refs = join(project, "refs");

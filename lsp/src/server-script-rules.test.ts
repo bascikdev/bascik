@@ -343,4 +343,205 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
       expect(codes).not.toContain("server-script-sink-inline-script");
     });
   });
+
+  describe("server-script-returns-response", () => {
+    const RULE = "server-script-returns-response";
+    const responseDiags = (
+      body: string,
+      directive: "server" | "stream" | "build" | "routes" = "server",
+    ) =>
+      analyzeServerScriptSource(body, {
+        hasSrcAttribute: false,
+        directive,
+      }).filter((d) => d.code === RULE);
+
+    it.each([
+      [
+        "server",
+        "new Response in a function declaration",
+        'export default async function handler(request) {\n  return new Response("Hello");\n}',
+        "new Response",
+      ],
+      [
+        "stream",
+        "new Response in a stream script",
+        'export default async function () {\n  return new Response("Hello");\n}',
+        "new Response",
+      ],
+      [
+        "server",
+        "Response.json in an async arrow",
+        "export default async (request) => {\n  const data = { ok: true };\n  return Response.json(data);\n};",
+        "Response.json",
+      ],
+      [
+        "server",
+        "Response.redirect in a branch",
+        'export default async (request) => {\n  if (!request.headers.get("cookie")) {\n    return Response.redirect("/login", 302);\n  }\n  return "<p>Hi</p>";\n};',
+        "Response.redirect",
+      ],
+      [
+        "server",
+        "an arrow whose body is a Response",
+        'export default () => new Response("Hello");',
+        "new Response",
+      ],
+      [
+        "server",
+        "an awaited Response in parentheses",
+        'export default async () => {\n  return (await new Response("Hello"));\n};',
+        "new Response",
+      ],
+      [
+        "stream",
+        "a named handler exported as default",
+        "async function render(request) {\n  return Response.json({ ok: true });\n}\nexport default render;",
+        "Response.json",
+      ],
+      [
+        "server",
+        "a const arrow in an export clause",
+        'const render = async () => {\n  return new Response("x");\n};\nexport { render as default };',
+        "new Response",
+      ],
+      [
+        "server",
+        "a TypeScript handler with a return type",
+        "export default async function (request: Request): Promise<string> {\n  return Response.json({ ok: true });\n}",
+        "Response.json",
+      ],
+      [
+        "server",
+        "a TypeScript arrow with a return type",
+        'export default async (request: Request): Promise<Response> => {\n  return new Response("x");\n};',
+        "new Response",
+      ],
+      [
+        "server",
+        "a Response returned from a switch case and a try block",
+        'export default async (request) => {\n  switch (request.method) {\n    case "GET": {\n      try {\n        return Response.json({});\n      } catch (error) {\n        throw error;\n      }\n    }\n  }\n  return "";\n};',
+        "Response.json",
+      ],
+    ])(
+      "warns on a %s script returning %s",
+      (directive, _name, body, marked) => {
+        const diags = responseDiags(body, directive as "server" | "stream");
+        expect(diags).toHaveLength(1);
+        expect(diags[0].severity).toBe("warning");
+        expect(body.slice(diags[0].start, diags[0].end)).toBe(marked);
+        expect(diags[0].message).toContain(`data-bascik-${directive} script`);
+        expect(diags[0].message).toContain("spliced into the page as markup");
+        expect(diags[0].message).toContain("html`...`");
+        expect(diags[0].message).toContain("API route");
+      },
+    );
+
+    it("reports each return of a Response in the handler", () => {
+      const body =
+        'export default async (request) => {\n  if (request.method === "HEAD") return new Response(null);\n  return Response.json({});\n};';
+      expect(
+        responseDiags(body).map((d) => body.slice(d.start, d.end)),
+      ).toEqual(["new Response", "Response.json"]);
+    });
+
+    it.each([
+      [
+        "a build script",
+        "build",
+        'export default async function () {\n  return new Response("x");\n}',
+      ],
+      [
+        "a routes script",
+        "routes",
+        "export default async function () {\n  return Response.json([]);\n}",
+      ],
+    ])("stays quiet in %s", (_name, directive, body) => {
+      expect(responseDiags(body, directive as "build" | "routes")).toEqual([]);
+    });
+
+    it.each([
+      [
+        "a Response built but not returned",
+        'export default async () => {\n  const res = new Response("x");\n  return await res.text();\n};',
+      ],
+      [
+        "the words in a string",
+        'export default () => {\n  return "return new Response(";\n};',
+      ],
+      [
+        "the words in a template literal",
+        "export default () => {\n  return `<pre>return Response.json(data)</pre>`;\n};",
+      ],
+      [
+        "the words in a line comment",
+        'export default () => {\n  // return new Response("x");\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "the words in a block comment",
+        'export default () => {\n  /* return Response.json({}) */\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "a nested helper function",
+        'export default async () => {\n  function toResponse(text) {\n    return new Response(text);\n  }\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "a nested arrow callback",
+        'export default async () => {\n  const responses = items.map((item) => {\n    return Response.json(item);\n  });\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "an object method",
+        'export default async () => {\n  const api = { reply() { return new Response("x"); } };\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "a helper declared outside the default export",
+        'function toResponse(text) {\n  return new Response(text);\n}\nexport default () => "<p>Hi</p>";',
+      ],
+      [
+        "a return of a value on the next line (ASI returns undefined)",
+        'export default () => {\n  return\n  new Response("x");\n};',
+      ],
+      [
+        "a nested TypeScript helper with a return type",
+        'export default async () => {\n  function toResponse(text: string): Response {\n    return new Response(text);\n  }\n  return "<p>Hi</p>";\n};',
+      ],
+      [
+        "a wrapped handler (what the wrapper returns is not read)",
+        'function withAuth(handler) {\n  return new Response("denied");\n}\nexport default withAuth(async () => "<p>Hi</p>");',
+      ],
+      [
+        "a type or class named like Response",
+        'export default () => {\n  return new MyResponse("x").html + Responses.json;\n};',
+      ],
+    ])("misuse: stays quiet for %s", (_name, body) => {
+      expect(responseDiags(body)).toEqual([]);
+    });
+
+    it("stays quiet for a script with src, whose body is not the script", () => {
+      expect(
+        analyzeServerScriptSource('export default () => new Response("x");', {
+          hasSrcAttribute: true,
+          directive: "server",
+        }).filter((d) => d.code === RULE),
+      ).toEqual([]);
+    });
+
+    it("keeps reporting returns after an if block and a nested function", () => {
+      const body =
+        'export default async (request) => {\n  if (request.url) {\n    const f = () => { return 1; };\n  }\n  return new Response("x");\n};';
+      expect(
+        responseDiags(body).map((d) => body.slice(d.start, d.end)),
+      ).toEqual(["new Response"]);
+    });
+
+    it("misuse: an unfinished script mid-edit reports nothing and does not throw", () => {
+      for (const body of [
+        "export default async (request) => {\n  return new Response(",
+        "export default",
+        "export default async function (",
+        'export default async () => { return "<p>',
+      ])
+        expect(() => responseDiags(body)).not.toThrow();
+      expect(responseDiags("export default async function (").length).toBe(0);
+    });
+  });
 });

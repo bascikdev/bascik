@@ -127,6 +127,16 @@ To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence
 
 ![VS Code: a server script returns a template that interpolates a query parameter, the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup@2x.webp)
 
+### `server-script-returns-response`
+
+A server or stream script's return value is spliced into the page as markup, so a script that returns a `Response` (the API-route habit) is refused when the page is requested: an error in dev and an empty slot with a warning in production (see [Return Values](/server-scripts#return-values)). The linter warns where the default export returns `new Response(...)`, `Response.json(...)`, `Response.redirect(...)` or `Response.error(...)`, including an arrow whose body is one:
+
+```text
+src/pages/status.html:6:16 - warning: (server-script-returns-response) This data-bascik-server script returns a Response, which Bascik refuses when the page is requested: the script's return value is spliced into the page as markup. Return a string or an html`...` value from @bascik/bascik/html. A Response belongs in an API route (src/api/).
+```
+
+Return the markup (a string or an `html` value), or move the code to an [API route](/api-routes) when the response itself is what you want. The words in strings and comments, a `return` inside a nested helper or callback, a Response that is built but not returned, `data-bascik-build` scripts and API routes are not reported. A default export wrapped in a call (`export default withAuth(handler)`) is not read.
+
 ### `shared-name-group`
 
 `name` ships as written ([Component Best Practices](/component-best-practices#name-form-controls-and-groups)), so a component that holds a whole name group makes one group of all its copies on a page. The linter warns on the `name` attribute in the component file when the component is used more than once on one page and holds:
