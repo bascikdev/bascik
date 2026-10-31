@@ -28,11 +28,51 @@ interface ChildExecutionRecord {
   /** Set once the timeout fired; the promise rejects when the child is gone. */
   timedOut: boolean;
   /** The processes the script started, listed when it was first signaled. */
-  descendants: number[];
+  descendants: ListedProcess[];
 }
 
 /** How long a timed-out child gets after SIGKILL before the run is given up on. */
 const KILL_GRACE_MS = 500;
+
+/** A process from a `ps` snapshot; `started` tells a reused pid apart. */
+interface ListedProcess {
+  pid: number;
+  /** The start time `ps` reports (`lstart`), or "" where ps has no such column. */
+  started: string;
+}
+
+/**
+ * Every process `ps` lists, by pid, or undefined when it cannot list them.
+ * Tried in order: with start times, without them, and the plain POSIX form.
+ */
+const listProcesses = ():
+  Map<number, { ppid: number; started: string }> | undefined => {
+  if (process.platform === "win32") return undefined;
+  for (const args of [
+    ["-A", "-o", "pid=", "-o", "ppid=", "-o", "lstart="],
+    ["-A", "-o", "pid=", "-o", "ppid="],
+    ["-o", "pid,ppid"],
+  ]) {
+    let listed: ReturnType<typeof spawnSync>;
+    try {
+      listed = spawnSync("ps", args, { encoding: "utf8" });
+    } catch {
+      return undefined;
+    }
+    if (listed.status !== 0 || typeof listed.stdout !== "string") continue;
+    const processes = new Map<number, { ppid: number; started: string }>();
+    for (const line of listed.stdout.split("\n")) {
+      const match = /^\s*(\d+)\s+(\d+)(?:\s+(\S.*?))?\s*$/.exec(line);
+      if (!match) continue;
+      processes.set(Number(match[1]), {
+        ppid: Number(match[2]),
+        started: match[3] ?? "",
+      });
+    }
+    return processes;
+  }
+  return undefined;
+};
 
 /**
  * Every process below `roots` in one `ps` snapshot, by root pid. Listed
@@ -40,39 +80,92 @@ const KILL_GRACE_MS = 500;
  * and can no longer be found. POSIX only; a missing `ps` yields no
  * descendants, and the direct child is still signaled.
  */
-const listDescendants = (roots: number[]): Map<number, number[]> => {
-  const byRoot = new Map<number, number[]>(roots.map((pid) => [pid, []]));
-  if (roots.length === 0 || process.platform === "win32") return byRoot;
+const listDescendants = (roots: number[]): Map<number, ListedProcess[]> => {
+  const byRoot = new Map<number, ListedProcess[]>(
+    roots.map((pid) => [pid, []]),
+  );
+  if (roots.length === 0) return byRoot;
+  const processes = listProcesses();
+  if (!processes) return byRoot;
   const children = new Map<number, number[]>();
-  for (const args of [
-    ["-A", "-o", "pid=", "-o", "ppid="],
-    ["-o", "pid,ppid"],
-  ]) {
-    const listed = spawnSync("ps", args, { encoding: "utf8" });
-    if (listed.status !== 0 || typeof listed.stdout !== "string") continue;
-    for (const line of listed.stdout.split("\n")) {
-      const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
-      if (!match) continue;
-      const pid = Number(match[1]);
-      const ppid = Number(match[2]);
-      const siblings = children.get(ppid);
-      if (siblings) siblings.push(pid);
-      else children.set(ppid, [pid]);
-    }
-    break;
+  for (const [pid, { ppid }] of processes) {
+    const siblings = children.get(ppid);
+    if (siblings) siblings.push(pid);
+    else children.set(ppid, [pid]);
   }
   for (const root of roots) {
-    const found: number[] = [];
+    const found: ListedProcess[] = [];
     const queue = [...(children.get(root) ?? [])];
     while (queue.length > 0) {
       const pid = queue.shift()!;
-      if (pid === process.pid || found.includes(pid)) continue;
-      found.push(pid);
+      if (pid === process.pid || found.some((entry) => entry.pid === pid))
+        continue;
+      found.push({ pid, started: processes.get(pid)?.started ?? "" });
       queue.push(...(children.get(pid) ?? []));
     }
     byRoot.set(root, found);
   }
   return byRoot;
+};
+
+/**
+ * The listed processes that are still the same processes: SIGKILL comes
+ * hundreds of milliseconds after the snapshot, and a pid that exited on
+ * SIGTERM may belong to another program by then. Matched by start time, not
+ * parent, since a descendant whose parent died has been re-parented. When
+ * `ps` cannot list processes now, none is confirmed and none is signaled.
+ */
+const stillRunning = (listed: ListedProcess[]): ListedProcess[] => {
+  if (listed.length === 0) return listed;
+  const processes = listProcesses();
+  if (!processes) return [];
+  return listed.filter(
+    (entry) => processes.get(entry.pid)?.started === entry.started,
+  );
+};
+
+/** SIGKILL each listed process (already confirmed by stillRunning). */
+const killListed = (listed: ListedProcess[]): void => {
+  for (const { pid } of listed) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+};
+
+/**
+ * Processes a timed-out script left behind, waiting for their SIGKILL, with
+ * the timer that sends it. An exit before then sends it at once.
+ */
+const pendingLeftovers = new Map<ListedProcess[], TimeoutHandle>();
+
+/**
+ * After a timed-out script exits, SIGKILL whatever it started that is still
+ * running KILL_GRACE_MS later: a watcher that ignored SIGTERM outlives its
+ * parent, and nothing else would stop it once the run has settled.
+ */
+const killLeftovers = (
+  descendants: ListedProcess[],
+  clock: FrameworkClock,
+): void => {
+  if (descendants.length === 0) return;
+  const timer = clock.setTimeout(() => {
+    pendingLeftovers.delete(descendants);
+    killListed(stillRunning(descendants));
+  }, KILL_GRACE_MS);
+  if (typeof (timer as any)?.unref === "function") (timer as any).unref();
+  pendingLeftovers.set(descendants, timer);
+};
+
+/** Send the pending leftover SIGKILLs now (Bascik is exiting). */
+const killPendingLeftovers = (clock: FrameworkClock): void => {
+  for (const [descendants, timer] of pendingLeftovers) {
+    clock.clearTimeout(timer);
+    killListed(stillRunning(descendants));
+  }
+  pendingLeftovers.clear();
 };
 
 /**
@@ -83,7 +176,7 @@ const listDescendants = (roots: number[]): Map<number, number[]> => {
 const signalTree = (
   child: ChildProcess,
   signal: NodeJS.Signals,
-  descendants: number[],
+  descendants: ListedProcess[],
 ): void => {
   if (process.platform === "win32" && child.pid !== undefined) {
     try {
@@ -95,7 +188,7 @@ const signalTree = (
       // fall through to the direct child
     }
   }
-  for (const pid of descendants) {
+  for (const { pid } of descendants) {
     try {
       process.kill(pid, signal);
     } catch {
@@ -110,7 +203,7 @@ const signalTree = (
 };
 
 /** The record's descendants, listed on first use (while the child still holds them). */
-const descendantsOf = (record: ChildExecutionRecord): number[] => {
+const descendantsOf = (record: ChildExecutionRecord): ListedProcess[] => {
   if (record.descendants.length === 0 && record.child.pid !== undefined)
     record.descendants =
       listDescendants([record.child.pid]).get(record.child.pid) ?? [];
@@ -124,6 +217,9 @@ const entryExecutions = new Map<ExecEntry, Promise<number>>();
 export const getActiveExecChildrenCount = (): number => activeChildren.size;
 
 export const resetActiveExecChildrenForTests = (): void => {
+  for (const timer of pendingLeftovers.values())
+    nativeClock.clearTimeout(timer);
+  pendingLeftovers.clear();
   activeChildren.clear();
   childRecords.clear();
   entryExecutions.clear();
@@ -137,8 +233,9 @@ export const resetActiveExecChildrenForTests = (): void => {
 export const execShutdownHandler = async (
   options?: ExecOptions,
 ): Promise<void> => {
-  if (activeChildren.size === 0) return;
   const clock = options?.clock ?? nativeClock;
+  killPendingLeftovers(clock);
+  if (activeChildren.size === 0) return;
   const childrenToClose = Array.from(activeChildren);
   // One `ps` snapshot for every child, taken before any of them is signaled.
   const trees = listDescendants(
@@ -146,11 +243,15 @@ export const execShutdownHandler = async (
       .map((child) => child.pid)
       .filter((pid): pid is number => pid !== undefined),
   );
-  const treeOf = (child: ChildProcess): number[] => {
+  const treeOf = (child: ChildProcess): ListedProcess[] => {
     const record = childRecords.get(child);
     const listed = child.pid !== undefined ? (trees.get(child.pid) ?? []) : [];
     if (record) {
-      record.descendants = [...new Set([...record.descendants, ...listed])];
+      const known = new Set(record.descendants.map((entry) => entry.pid));
+      record.descendants = [
+        ...record.descendants,
+        ...listed.filter((entry) => !known.has(entry.pid)),
+      ];
       return record.descendants;
     }
     return listed;
@@ -172,6 +273,10 @@ export const execShutdownHandler = async (
           clock.clearTimeout(deadlineTimer);
           deadlineTimer = null;
         }
+        removeListeners();
+      };
+
+      const removeListeners = () => {
         if (typeof (child as any).removeListener === "function") {
           (child as any).removeListener("close", onClose);
           (child as any).removeListener("error", onClose);
@@ -182,9 +287,19 @@ export const execShutdownHandler = async (
       };
 
       const onClose = () => {
-        cleanup();
         activeChildren.delete(child);
         childRecords.delete(child);
+        // A process the script started may have ignored SIGTERM and outlived
+        // it; keep the deadline so SIGKILL still reaches it before exit. The
+        // timer now holds the event loop open: with the child gone nothing
+        // else may, and the caller's exit must wait for this stop to finish.
+        if (descendants.length > 0) {
+          removeListeners();
+          if (typeof (deadlineTimer as any)?.ref === "function")
+            (deadlineTimer as any).ref();
+          return;
+        }
+        cleanup();
         resolve();
       };
 
@@ -199,7 +314,8 @@ export const execShutdownHandler = async (
       deadlineTimer = clock.setTimeout(() => {
         cleanup();
         if (activeChildren.has(child))
-          signalTree(child, "SIGKILL", descendants);
+          signalTree(child, "SIGKILL", stillRunning(descendants));
+        else killListed(stillRunning(descendants));
         resolve();
       }, 200);
 
@@ -217,7 +333,9 @@ export const execShutdownHandler = async (
 // crash net; `runShutdownHandlers` for SIGINT / SIGTERM and exec-failure
 // stops), so no exit leaves a parallel script running in the terminal.
 registerExitStopper(() =>
-  activeChildren.size > 0 ? execShutdownHandler() : null,
+  activeChildren.size > 0 || pendingLeftovers.size > 0
+    ? execShutdownHandler()
+    : null,
 );
 
 export const runScript = (
@@ -335,7 +453,7 @@ const spawnScript = (
         record.escalationTimer = clock.setTimeout(() => {
           record.escalationTimer = null;
           if (activeChildren.has(child))
-            signalTree(child, "SIGKILL", record.descendants);
+            signalTree(child, "SIGKILL", stillRunning(record.descendants));
           record.escalationTimer = clock.setTimeout(() => {
             record.escalationTimer = null;
             if (record.settled) return;
@@ -358,6 +476,7 @@ const spawnScript = (
       if (record.settled) return;
       record.settled = true;
       if (record.timedOut) {
+        killLeftovers(record.descendants, clock);
         rejectPromise(timeoutError());
         return;
       }

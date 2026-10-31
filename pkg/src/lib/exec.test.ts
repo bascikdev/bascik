@@ -89,7 +89,12 @@ const {
   };
 });
 
-vi.mock("node:child_process", () => ({ spawn: mockSpawn }));
+const { mockSpawnSync } = vi.hoisted(() => ({ mockSpawnSync: vi.fn() }));
+
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+  spawnSync: mockSpawnSync,
+}));
 vi.mock("chokidar", () => ({ default: { watch: mockWatch } }));
 vi.mock("./events.js", () => ({
   eventEmitter: { emit: mockEventEmit },
@@ -123,6 +128,8 @@ const cfg = BascikConfig as {
 
 beforeEach(() => {
   resetMocks();
+  // `ps` lists nothing unless a test says otherwise.
+  mockSpawnSync.mockReset().mockReturnValue({ status: 1, stdout: "" });
   resetActiveExecChildrenForTests();
   cfg.pipeline.exec = undefined;
   cfg.directory = { out: undefined, pages: undefined, components: undefined };
@@ -671,6 +678,120 @@ describe("exec timeout escalation and lifecycle", () => {
     await expect(promise).rejects.toThrow(/timed out after 1000ms/);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "re-checks the listed descendants before SIGKILL, so a reused pid is left alone",
+    async () => {
+      vi.useFakeTimers();
+      const proc = { pid: 4242, kill: vi.fn(), on: vi.fn(() => proc) };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      // At SIGTERM: the script started 5001 (a watcher) and 5001 started 5002.
+      mockSpawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: [
+          "4242 1 Fri Oct 30 10:00:00 2026",
+          "5001 4242 Fri Oct 30 10:00:01 2026",
+          "5002 5001 Fri Oct 30 10:00:02 2026",
+        ].join("\n"),
+      });
+      // At SIGKILL: 5001 ignored SIGTERM and was re-parented when its parent
+      // died; 5002 exited and its pid now belongs to an unrelated program.
+      mockSpawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: [
+          "4242 1 Fri Oct 30 10:00:00 2026",
+          "5001 1 Fri Oct 30 10:00:01 2026",
+          "5002 77 Fri Oct 30 10:00:03 2026",
+        ].join("\n"),
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+
+      vi.advanceTimersByTime(1000);
+      expect(kill.mock.calls).toEqual([
+        [5001, "SIGTERM"],
+        [5002, "SIGTERM"],
+      ]);
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGTERM");
+
+      kill.mockClear();
+      vi.advanceTimersByTime(500);
+      expect(kill.mock.calls).toEqual([[5001, "SIGKILL"]]);
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
+
+      vi.advanceTimersByTime(500);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "signals no listed descendant with SIGKILL when ps cannot confirm them",
+    async () => {
+      vi.useFakeTimers();
+      const proc = { pid: 4242, kill: vi.fn(), on: vi.fn(() => proc) };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      mockSpawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: "5001 4242 Fri Oct 30 10:00:01 2026",
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+
+      vi.advanceTimersByTime(1000);
+      expect(kill.mock.calls).toEqual([[5001, "SIGTERM"]]);
+      kill.mockClear();
+      vi.advanceTimersByTime(500);
+      expect(kill).not.toHaveBeenCalled();
+      expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
+      vi.advanceTimersByTime(500);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "SIGKILLs a started process still running after the timed-out script exited",
+    async () => {
+      vi.useFakeTimers();
+      let closeCb: ((code: number) => void) | undefined;
+      const proc = {
+        pid: 4242,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: any) => {
+          if (event === "close") closeCb = cb;
+          return proc;
+        }),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      mockSpawnSync.mockReturnValue({
+        status: 0,
+        stdout: "5001 4242 Fri Oct 30 10:00:01 2026",
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      expect(kill.mock.calls).toEqual([[5001, "SIGTERM"]]);
+
+      // The script exits on SIGTERM; the run settles at once, and the process
+      // it started, which ignored SIGTERM, is killed 500 ms later.
+      closeCb!(143);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+      kill.mockClear();
+      vi.advanceTimersByTime(499);
+      expect(kill).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(kill.mock.calls).toEqual([[5001, "SIGKILL"]]);
+      expect(proc.kill).not.toHaveBeenCalledWith("SIGKILL");
+    },
+  );
+
   it("does not fire SIGKILL if child closes during the 500ms escalation window", async () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
@@ -837,6 +958,91 @@ describe("exec timeout escalation and lifecycle", () => {
     await stopping;
     expect(getActiveExecChildrenCount()).toBe(0);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "on exit, SIGKILLs a started process that outlived its script's SIGTERM",
+    async () => {
+      vi.useFakeTimers();
+      let closeCb: ((code: number) => void) | undefined;
+      const proc = {
+        pid: 4242,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: any) => {
+          if (event === "close") closeCb = cb;
+          return proc;
+        }),
+        once: vi.fn((event: string, cb: any) => {
+          if (event === "close") closeCb = cb;
+          return proc;
+        }),
+        removeListener: vi.fn(),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      mockSpawnSync.mockReturnValue({
+        status: 0,
+        stdout: "5001 4242 Fri Oct 30 10:00:01 2026",
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      cfg.pipeline.exec = [
+        { script: "scripts/css-watch.ts", phase: "parallel", timeout: 0 },
+      ];
+      void startExecParallel().catch(() => undefined);
+
+      const stopping = stopBeforeExit();
+      expect(kill.mock.calls).toEqual([[5001, "SIGTERM"]]);
+      // The script exits on SIGTERM; the watcher it started ignores it. The
+      // stop is not done until SIGKILL has reached the watcher.
+      let done = false;
+      void stopping!.then(() => (done = true));
+      closeCb!(0);
+      await Promise.resolve();
+      expect(done).toBe(false);
+      kill.mockClear();
+      vi.advanceTimersByTime(200);
+      await stopping;
+      expect(kill.mock.calls).toEqual([[5001, "SIGKILL"]]);
+      expect(getActiveExecChildrenCount()).toBe(0);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "an exit right after a timeout SIGKILLs what the timed-out script left at once",
+    async () => {
+      vi.useFakeTimers();
+      let closeCb: ((code: number) => void) | undefined;
+      const proc = {
+        pid: 4242,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: any) => {
+          if (event === "close") closeCb = cb;
+          return proc;
+        }),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      mockSpawnSync.mockReturnValue({
+        status: 0,
+        stdout: "5001 4242 Fri Oct 30 10:00:01 2026",
+      });
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      cfg.pipeline.exec = [{ script: "scripts/long.ts", timeout: 1000 }];
+      const promise = runExecPhase("pre");
+      void promise.catch(() => undefined);
+      vi.advanceTimersByTime(1000);
+      closeCb!(143);
+      await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+      expect(getActiveExecChildrenCount()).toBe(0);
+
+      // A failed build exits now, before the 500 ms leftover timer.
+      kill.mockClear();
+      const stopping = stopBeforeExit();
+      expect(stopping).not.toBeNull();
+      await stopping;
+      expect(kill.mock.calls).toEqual([[5001, "SIGKILL"]]);
+      expect(stopBeforeExit()).toBeNull();
+      vi.advanceTimersByTime(500);
+      expect(kill.mock.calls).toHaveLength(1);
+    },
+  );
 
   it("executes options.clock injection when provided", async () => {
     let clockNow = 1000;

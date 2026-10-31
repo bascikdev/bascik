@@ -34,15 +34,28 @@ const waitFor = async (check: () => boolean, ms = 5000): Promise<void> => {
  * `tailwindcss --watch` would) and writes its pid. With `ignoreTerm` the
  * wrapper also ignores SIGTERM, so only the SIGKILL escalation ends it.
  */
-const writeWrapper = async (ignoreTerm: boolean): Promise<string> => {
+const writeWrapper = async (
+  ignoreTerm: boolean,
+  grandchildIgnoresTerm = false,
+): Promise<string> => {
   await mkdir(join(project, "scripts"), { recursive: true });
-  const script = join("scripts", ignoreTerm ? "stubborn.mjs" : "wrapper.mjs");
+  const script = join(
+    "scripts",
+    grandchildIgnoresTerm
+      ? "stubborn-grandchild.mjs"
+      : ignoreTerm
+        ? "stubborn.mjs"
+        : "wrapper.mjs",
+  );
+  const grandchildCode = grandchildIgnoresTerm
+    ? "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"
+    : "setInterval(() => {}, 1000)";
   await writeFile(
     join(project, script),
     `import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 ${ignoreTerm ? 'process.on("SIGTERM", () => {});' : ""}
-const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+const grandchild = spawn(process.execPath, ["-e", "${grandchildCode}"], { stdio: "ignore" });
 writeFileSync("grandchild.pid", String(grandchild.pid));
 setInterval(() => {}, 1000);
 `,
@@ -133,6 +146,18 @@ describe.skipIf(process.platform === "win32")(
       // The wrapper ignored SIGTERM; by the time the run settles SIGKILL has
       // ended it, so nothing of this run is still active.
       expect(getActiveExecChildrenCount()).toBe(0);
+      await waitFor(() => !isAlive(pid));
+    });
+
+    it("still SIGKILLs a started process that ignored SIGTERM after its parent died", async () => {
+      // The wrapper dies on SIGTERM, so the grandchild is re-parented before
+      // the SIGKILL escalation re-checks it; it is the same process, so it
+      // must still be killed.
+      const script = await writeWrapper(false, true);
+      const run = runScript({ script, timeout: 1500 });
+      const pid = await grandchildPid();
+
+      await expect(run).rejects.toThrow("timed out after 1500ms");
       await waitFor(() => !isAlive(pid));
     });
 
