@@ -47,8 +47,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * fields repeated on every section. Raise it only for new content, never to fit a format that wastes space.
  * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
  * index until the content lookup learned folder index.md files.
+ * 1.345 MB: the rc.10 docs sweep took the index to 1,334,643 bytes, and building every code sample's markup with
+ * html (its import, SafeHtml types, String(output) in the sample tests) added about 4 KB, for 1,338,640.
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_330_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
