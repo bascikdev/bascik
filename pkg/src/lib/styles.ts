@@ -72,7 +72,17 @@ export const elementSelectorClassName = (
  * every instance styles them all. See `elementSelectorClassName` for the head.
  */
 export const idSelectorClassName = (scopeKey: string, idName: string): string =>
-  minifyAttributeName(`b_id_${scopeKey}_${idName}`);
+  minifyAttributeName(readableIdSelectorClassName(scopeKey, idName));
+
+/**
+ * `idSelectorClassName` before `minify.identifiers` hashes it. The hash is a
+ * function of this string, so two pairs share a hash exactly when they share
+ * this name (`generated-id-classes.ts` checks that across the site).
+ */
+export const readableIdSelectorClassName = (
+  scopeKey: string,
+  idName: string,
+): string => `b_id_${scopeKey}_${idName}`;
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
 // error (e.g. breaking `0.7rem 1em` across two lines) can place a unit
@@ -810,6 +820,40 @@ export const removeIdSelectors = (css: string): string => {
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────
 
+/** The `#id` selector `convertCssIdSelectorsToClasses` rewrites, on masked CSS. */
+const CSS_ID_SELECTOR_PATTERN = /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g;
+
+/**
+ * The ids the `#id` selectors in `css` name, in first-seen order: exactly the
+ * ids `convertCssIdSelectorsToClasses` turns into generated classes. Used by
+ * the site-wide generated class collision check, which needs the names
+ * without building them.
+ */
+export const cssIdSelectorNames = (css: string): string[] => {
+  if (!css.includes("#")) return [];
+  const { masked } = maskCssSyntax(css, { keepUrlArguments: false });
+  const names = new Set<string>();
+  for (const match of masked.matchAll(CSS_ID_SELECTOR_PATTERN))
+    names.add(match[1]);
+  return [...names];
+};
+
+/**
+ * The offset in `css` of the first `#id` selector naming `idName`, or -1.
+ * For locating an error, so it runs only when one is reported.
+ */
+export const cssIdSelectorOffset = (css: string, idName: string): number => {
+  if (!css.includes("#")) return -1;
+  const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: false });
+  for (const match of masked.matchAll(CSS_ID_SELECTOR_PATTERN)) {
+    // A mask token ends before the `#`, so the restored prefix is the
+    // original text up to the selector.
+    if (match[1] === idName)
+      return restore(masked.slice(0, match.index)).length;
+  }
+  return -1;
+};
+
 /**
  * Convert CSS hash ID selectors (`#idName { … }`) to component-scoped class
  * selectors, then inject the generated class onto the matching HTML element.
@@ -854,7 +898,7 @@ export const convertCssIdSelectorsToClasses = (
   // selectors scoping while leaving `content: "url(#local)"` byte-identical.
   const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: false });
   const cssStr = masked.replace(
-    /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g,
+    CSS_ID_SELECTOR_PATTERN,
     (_: string, idName: string) => {
       if (!seen.has(idName)) {
         const className = idSelectorClassName(componentName, idName);
