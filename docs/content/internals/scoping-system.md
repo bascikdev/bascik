@@ -56,7 +56,7 @@ With `minify.identifiers: true` (the default in builds), every readable name abo
 
 Two cases can still produce one name for two meanings:
 
-- **A global class with the generated shape.** A class that is not in the component's stylesheet stays global, so a page that writes `class="b_el_site-nav_p"`, or a site stylesheet that styles `.b_el_site-nav_p`, shares the class Bascik generates for `p { }` in `site-nav`. This is the same risk any global class name carries. The `css-reserved-class-prefix` lint rule warns about any `.b_el_` or `.b_id_` class in component CSS, in `bascik --check` and the editor.
+- **A global class with the generated shape.** A class that is not in the component's stylesheet stays global, so a page that writes `class="b_el_site-nav_p"`, or a site stylesheet that styles `.b_el_site-nav_p`, shares the class Bascik generates for `p { }` in `site-nav`. This is the same risk any global class name carries. The `css-reserved-class-prefix` lint rule warns about any `.b_el_` or `.b_id_` class in component CSS, in `bascik --check` and the editor. It does not read site stylesheets or `class=` attributes in markup, so those uses are not linted.
 - **A component name with an underscore.** Element names have no underscore, so `b_el_<componentName>_<tagName>` always splits at its last underscore. An `id` can contain one: component `my` with `#card_btn` and component `my_card` with `#btn` both produce `b_id_my_card_btn`. Hyphenated component names, the form custom element names use, avoid this.
 
 ### Class attributes intentionally omit the instanceId

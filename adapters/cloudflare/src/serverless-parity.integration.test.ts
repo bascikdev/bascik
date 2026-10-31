@@ -774,14 +774,16 @@ const numberInstanceNames = (text: string): string => {
     if (!seen.has(token)) seen.set(token, seen.size);
     return `#${seen.get(token)}`;
   };
-  return text
-    // `bascik__<name>__<id>__x`, and `b_id_<name>__<id>_x` for the class an
-    // #id rule generates in a per-instance stylesheet.
-    .replace(
-      /__(r[0-9a-f]{7}|[0-9a-f]{8})(?=_)/g,
-      (_m, id: string) => `__${number(id)}`,
-    )
-    .replace(/\bb[0-9a-zA-Z]{11}\b/g, (hash) => number(hash));
+  return (
+    text
+      // `bascik__<name>__<id>__x`, and `b_id_<name>__<id>_x` for the class an
+      // #id rule generates in a per-instance stylesheet.
+      .replace(
+        /__(r[0-9a-f]{7}|[0-9a-f]{8})(?=_)/g,
+        (_m, id: string) => `__${number(id)}`,
+      )
+      .replace(/\bb[0-9a-zA-Z]{11}\b/g, (hash) => number(hash))
+  );
 };
 
 const PRODUCT_NAMES = [
