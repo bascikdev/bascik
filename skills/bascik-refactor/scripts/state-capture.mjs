@@ -55,7 +55,7 @@ export const DIM_TOLERANCE = 0.1;
 /** A click that scrolls the page at least this far and flips no open state is an in-page link, not a disclosure. */
 const SCROLL_ONLY = 8;
 
-const HELP = `Usage: node state-capture.mjs --prod <url> --target <url> --route <path>... [options]
+const HELP = `Usage: node state-capture.mjs --prod <url> [--target <url>] --route <path>... [options]
 
 Opens every disclosure on each route (an element whose click or hover flips aria-expanded or open, or shows new
 content, including a menu that opens on CSS :hover) on both sides, waits for the opening animation to finish, and
@@ -67,9 +67,13 @@ pixel crop of the panel (a channel may differ by ${PIXEL_CHANNEL_TOLERANCE} of 2
 scroll is not a disclosure (interaction-crawl checks it). Masked regions are left out of the crops (made invisible,
 so a menu drawn over a masked video still shows), and a masked dialog's backdrop is not drawn. Writes both crops to --out for the review page. Exits 1 on any finding.
 
+Without --target (the inventory stage), it opens production's disclosures alone, writes their crops and the list to
+--out and exits 0; nothing is compared. capture-baselines.mjs --states records the same open states as baselines.
+
 Options:
   --prod <url>      Live production origin
-  --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
+  --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server); leave it out
+                    to capture production's open states alone
   --route <path>    Route to check (repeatable, required)
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
   --skip-control <selector>
@@ -738,9 +742,9 @@ const stateLabel = (item) =>
 /**
  * Production's side of one route and case: every disclosure discovered there that opens a panel, in order, each with
  * its captured open state. The crop PNG is carried in the result as a buffer (`cropPng`), so the production cache can
- * keep it; `stem(n)` names the crop file of the n-th open state.
+ * keep it; `cropFile(n)` names the crop file of the n-th open state.
  */
-async function captureProduction(browser, options, route, c, stem, extra) {
+async function captureProduction(browser, options, route, c, cropFile, extra) {
   const { sharp, masks, skip, settleMs } = extra;
   return withPage(
     browser,
@@ -758,7 +762,7 @@ async function captureProduction(browser, options, route, c, stem, extra) {
       );
       const opened = [];
       for (const item of items) {
-        const file = `${stem(opened.length)}-prod.png`;
+        const file = cropFile(opened.length);
         const state = await openState(page, options.prod, route, item, file, {
           masks,
           volatile,
@@ -780,6 +784,42 @@ async function captureProduction(browser, options, route, c, stem, extra) {
 }
 
 /**
+ * Production's open states for one route and case, from the production cache when it holds them (keyed like every
+ * state-capture run, so capture-baselines.mjs --states and the first run-checks share entries), each crop written to
+ * `cropFile(n)`. Resolves to [{ item, label, state }], where state.crop is the crop's path (or undefined).
+ * `extra` is { sharp, masks, skip }.
+ */
+export async function productionStates(
+  browser,
+  options,
+  route,
+  c,
+  cropFile,
+  extra,
+) {
+  const settleMs = settleOf(options);
+  const opened = await cachedProd(
+    options,
+    { check: CHECK, route, case: c },
+    () =>
+      captureProduction(browser, options, route, c, cropFile, {
+        ...extra,
+        settleMs,
+      }),
+  );
+  return opened.map(({ item, state }, n) => {
+    const { cropPng, ...rest } = state;
+    const prod = { ...rest, crop: undefined };
+    // A cached crop is written back where this run looks for it.
+    if (cropPng) {
+      prod.crop = cropFile(n);
+      writeFileSync(prod.crop, cropPng);
+    }
+    return { item, label: stateLabel(item), state: prod };
+  });
+}
+
+/**
  * Compares the open states of every disclosure on one route and case. Production's open states are captured first
  * (from the production cache when it holds them: discover, the volatile texts and every open state with its crop), and
  * the target is then opened state by state, matched to production's disclosures.
@@ -789,14 +829,26 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
   const settleMs = settleOf(options);
   const findings = [];
   const stem = (n) => join(dir, `${routeSlug(route)}-${c.width}-${n}`);
-  const production = cachedProd(options, { check: CHECK, route, case: c }, () =>
-    captureProduction(browser, options, route, c, stem, {
-      sharp,
-      masks,
-      skip,
-      settleMs,
-    }),
+  const production = productionStates(
+    browser,
+    options,
+    route,
+    c,
+    (n) => `${stem(n)}-prod.png`,
+    { sharp, masks, skip },
   );
+  if (!options.target) {
+    // Production alone (the inventory stage): its open states and crops, nothing compared.
+    for (const { label, state } of await production)
+      states.push({
+        anchor: label,
+        route,
+        width: c.width,
+        height: c.height,
+        prod: { crop: state.crop, box: state.box },
+      });
+    return findings;
+  }
   // Awaited inside the target's page below; a crash must not surface first as an unhandled rejection.
   production.catch(() => {});
   await withPage(
@@ -815,15 +867,7 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
       );
       const opened = await production;
       const used = new Set();
-      for (const [n, { item, state }] of opened.entries()) {
-        const { cropPng, ...rest } = state;
-        // A cached crop is written back where this run's review page looks for it.
-        const prod = { ...rest, crop: undefined };
-        if (cropPng) {
-          prod.crop = `${stem(n)}-prod.png`;
-          writeFileSync(prod.crop, cropPng);
-        }
-        const label = stateLabel(item);
+      for (const [n, { item, label, state: prod }] of opened.entries()) {
         const i = matchAnchor(
           item.anchor,
           targetItems.map((t) => t.anchor),
@@ -903,7 +947,10 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
   return findings;
 }
 
-/** Resolves to { check, ok, findings, states }, where states lists the crops of each open state on both sides. */
+/**
+ * Resolves to { check, ok, findings, states }, where states lists the crops of each open state on both sides. Without
+ * a target, production's open states alone (productionOnly: true, no findings).
+ */
 export async function runCheck(browser, options) {
   const dir = join(options.out ?? "artifacts/checks", "states");
   mkdirSync(dir, { recursive: true });
@@ -920,11 +967,17 @@ export async function runCheck(browser, options) {
           skip: skipControlsOf(options),
         })),
       );
-  return result(CHECK, findings, { states });
+  return result(CHECK, findings, {
+    states,
+    ...(options.target ? {} : { productionOnly: true }),
+  });
 }
 
 export function parseCliArgs(argv) {
-  const args = parseArgsFor(argv, { extra: SKIP_CONTROL_OPTION });
+  const args = parseArgsFor(argv, {
+    extra: SKIP_CONTROL_OPTION,
+    need: ["prod", "route"],
+  });
   if (args.help) return args;
   const { "skip-control": skipControls, ...rest } = args;
   return { ...rest, skipControls: skipControlsFrom(skipControls) };

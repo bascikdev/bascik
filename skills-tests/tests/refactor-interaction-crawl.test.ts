@@ -4,16 +4,22 @@
 //
 // Why it exists: a hero button that scrolls to a section did nothing on the target, and the old interaction trace only
 // compared open/closed booleans for steps someone remembered to write down.
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CHECK,
+  DEFAULT_DRAFT,
   INTERACTIVE_SELECTOR,
   activatable,
   diffEffects,
+  draftInteractions,
   effectOf,
   matchAnchor,
   parseCliArgs,
 } from "../../skills/bascik-refactor/scripts/interaction-crawl.mjs";
+import { validateStep } from "../../skills/bascik-refactor/scripts/compare-route.mjs";
 
 type Effect = {
   scrollDelta: number;
@@ -308,10 +314,10 @@ describe("effectOf: where a scrolled-to heading lands", () => {
 });
 
 describe("parseCliArgs", () => {
-  it("needs --prod, --target and --route", () => {
+  it("needs --prod and --route; without --target it runs on production alone (the inventory stage)", () => {
     expect(() => parseCliArgs([])).toThrow(/--prod/);
     expect(() => parseCliArgs(["--prod", "https://example.com"])).toThrow(
-      /--target/,
+      /--route/,
     );
     expect(() =>
       parseCliArgs([
@@ -321,6 +327,38 @@ describe("parseCliArgs", () => {
         "http://localhost:8080",
       ]),
     ).toThrow(/--route/);
+    const args = parseCliArgs([
+      "--prod",
+      "https://example.com",
+      "--route",
+      "/",
+    ]);
+    expect(args.target).toBeUndefined();
+    expect(args.discover).toBeUndefined();
+  });
+
+  it("misuse: --target pointing at production is refused with a pointer to production-only mode", () => {
+    for (const [prod, target] of [
+      ["https://www.example.com", "https://www.example.com"],
+      ["https://www.example.com", "https://www.example.com/"],
+      ["https://www.example.com", "https://example.com"],
+      ["https://example.com/", "http://WWW.example.com"],
+    ])
+      expect(() =>
+        parseCliArgs(["--prod", prod, "--target", target, "--route", "/"]),
+      ).toThrow(/--target .* is production.*leave --target out/s);
+  });
+
+  it("--discover writes a draft next to interactions.json, never over it", () => {
+    const args = parseCliArgs([
+      "--prod",
+      "https://example.com",
+      "--route",
+      "/",
+      "--discover",
+    ]);
+    expect(args.discover).toBe(DEFAULT_DRAFT);
+    expect(DEFAULT_DRAFT).toBe("docs/migration/interactions.draft.json");
   });
 
   it("returns help without other flags", () => {
@@ -451,5 +489,215 @@ describe("activatable: controls the operator lists with --skip-control", () => {
       false,
     );
     expect(check(button("[data-testid=menu]"), "click", [], skip)).toBe(true);
+  });
+});
+
+describe("--discover: --discover-out misuse", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "bascik-crawl-draft-"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const base = ["--prod", "https://example.com", "--route", "/"];
+
+  it("--discover-out needs --discover", () => {
+    expect(() =>
+      parseCliArgs([...base, "--discover-out", join(dir, "d.json")]),
+    ).toThrow(/--discover-out needs --discover/);
+  });
+
+  it("refuses to overwrite a reviewed interactions.json, but replaces an earlier draft", () => {
+    const reviewed = join(dir, "interactions.json");
+    writeFileSync(reviewed, JSON.stringify([{ name: "x", action: "click" }]));
+    expect(() =>
+      parseCliArgs([...base, "--discover", "--discover-out", reviewed]),
+    ).toThrow(/is not a draft.*would overwrite/s);
+    const draft = join(dir, "interactions.draft.json");
+    writeFileSync(draft, JSON.stringify({ draft: true, interactions: [] }));
+    expect(
+      parseCliArgs([...base, "--discover", "--discover-out", draft]).discover,
+    ).toBe(draft);
+  });
+});
+
+describe("draftInteractions", () => {
+  const button = (over: Record<string, unknown> = {}) => ({
+    mode: "click",
+    tag: "BUTTON",
+    role: "button",
+    name: "Products",
+    text: "Products",
+    href: null,
+    testId: null,
+    ...over,
+  });
+  const crawled = [
+    {
+      route: "/",
+      width: 400,
+      prod: [
+        {
+          selector: "#products-button",
+          anchor: button(),
+          reason: "selector",
+          effect: {
+            ...none,
+            changed: ["aria-expanded: false -> true", "hidden: true -> false"],
+            shown: ['A "Boards"'],
+          },
+        },
+        {
+          selector: "#menu-close",
+          anchor: button({
+            name: "Close",
+            text: "Close",
+            testId: "menu-close",
+            via: "BUTTON:Products",
+          }),
+          via: [{ selector: "#products-button", anchor: button() }],
+          reason: "selector",
+          effect: { ...none, changed: ["aria-expanded: true -> false"] },
+        },
+        {
+          // No observable effect: not a step.
+          selector: "#noop",
+          anchor: button({ name: "Nothing", text: "Nothing" }),
+          reason: "listener",
+          effect: none,
+        },
+        {
+          // Never measured (gone after the reload): not a step.
+          selector: "#gone",
+          anchor: button({ name: "Gone", text: "Gone" }),
+          reason: "selector",
+          effect: null,
+        },
+      ],
+      target: null,
+    },
+    {
+      route: "/",
+      width: 1024,
+      prod: [
+        {
+          selector: "#products-button",
+          anchor: button(),
+          reason: "selector",
+          effect: {
+            ...none,
+            changed: ["aria-expanded: false -> true", "hidden: true -> false"],
+          },
+        },
+        {
+          selector: "a.pricing",
+          anchor: {
+            mode: "click",
+            tag: "A",
+            role: "link",
+            name: "Pricing",
+            text: "Pricing",
+            href: "#pricing",
+            testId: null,
+          },
+          reason: "selector",
+          effect: { ...none, scrollDelta: 900, scrollTarget: 'H2 "Pricing"' },
+        },
+        {
+          selector: "nav > .hover-menu",
+          anchor: {
+            mode: "hover",
+            tag: "A",
+            role: "link",
+            name: "Shop",
+            text: "Shop",
+            href: null,
+            testId: null,
+          },
+          reason: "css-hover",
+          effect: { ...none, shown: ['A "Milk frother"'] },
+        },
+      ],
+      target: null,
+    },
+  ];
+  const cases = [
+    { width: 400, height: 800 },
+    { width: 1024, height: 800 },
+  ];
+
+  it("turns each crawled control with an effect into one step, located by test id, role and name, or selector", () => {
+    const draft = draftInteractions(crawled, cases, {
+      prod: "https://www.example.com",
+    });
+    expect(draft.draft).toBe(true);
+    expect(draft.note).toMatch(/review/i);
+    const steps = draft.interactions;
+    expect(steps.map((s: { name: string }) => s.name)).toEqual([
+      'click button "Products"',
+      'click button "Close" inside BUTTON:Products',
+      'click a "Pricing"',
+      'hover a "Shop"',
+    ]);
+    for (const [i, step] of steps.entries()) {
+      expect(step.draft).toBe(true);
+      expect(step.route).toBe("/");
+      expect(() => validateStep(step, i)).not.toThrow();
+    }
+    // Found at every case: no width bounds. Found at one width only: bounded to it.
+    expect(steps[0]).toMatchObject({
+      role: "button",
+      roleName: "Products",
+      action: "click",
+      expect: { ariaExpanded: true },
+    });
+    expect(steps[0].minWidth).toBeUndefined();
+    expect(steps[0].maxWidth).toBeUndefined();
+    expect(steps[1]).toMatchObject({
+      testId: "menu-close",
+      expect: { ariaExpanded: false },
+      minWidth: 400,
+      maxWidth: 400,
+    });
+    expect(steps[2]).toMatchObject({
+      role: "link",
+      roleName: "Pricing",
+      minWidth: 1024,
+    });
+    expect(steps[2].observed).toMatch(/scrolls 900 px to H2 "Pricing"/);
+    expect(steps[3]).toMatchObject({ action: "hover", role: "link" });
+  });
+
+  it("falls back to the selector when a control has no test id and no accessible name", () => {
+    const draft = draftInteractions(
+      [
+        {
+          route: "/about",
+          width: 400,
+          prod: [
+            {
+              selector: "main > div:nth-of-type(2) > span",
+              anchor: {
+                mode: "click",
+                tag: "SPAN",
+                role: null,
+                name: "",
+                text: "Show details",
+                href: null,
+                testId: null,
+              },
+              reason: "delegated",
+              effect: { ...none, changed: ["hidden: true -> false"] },
+            },
+          ],
+          target: null,
+        },
+      ],
+      [{ width: 400, height: 800 }],
+    );
+    expect(draft.interactions[0]).toMatchObject({
+      name: 'click span "Show details"',
+      route: "/about",
+      selector: "main > div:nth-of-type(2) > span",
+    });
   });
 });

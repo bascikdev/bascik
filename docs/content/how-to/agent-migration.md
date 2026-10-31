@@ -19,8 +19,9 @@ Everything ships in the opt-in `bascik-refactor` agent skill:
   - [`driver-agent.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/driver-agent.md): the agent that runs the queue behind a PASS gate.
   - [`decisions-ledger.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/decisions-ledger.md): every intentional difference from the old site.
   - [`visual-review.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/visual-review.md): an agent with image input that looks for differences side by side.
-- Twenty scripts:
+- Twenty-one scripts:
   - [`breakpoint-matrix.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/breakpoint-matrix.mjs): finds the legacy breakpoints and writes the viewport matrix.
+  - [`capture-baselines.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/capture-baselines.mjs): records production alone, before any target page exists: a full-page screenshot, element geometry and every open state per route and matrix case.
   - [`geometry-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/geometry-diff.mjs): compares element boxes between production and Bascik.
   - [`compare-route.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/compare-route.mjs): pixel diff, geometry, evidence and interaction traces per route.
   - [`lighthouse-gate.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/lighthouse-gate.mjs): fails unless every report is 100 in all five categories.
@@ -170,6 +171,28 @@ for (const r of routes) console.log(process.env.TARGET_URL + r.path);' > docs/mi
 ```
 
 `integrations.json` lists every third-party script with its network and cookie contract (`name`, `loads`, `origins`, `cookies`, `pages`), so nothing disappears silently.
+
+### Inventory Production Before Any Page Exists
+
+There is no target yet, so the inventory scripts run on production alone: leave out `--target`. Never point `--target` at production instead; the scripts refuse it, because it would load the live site twice at once. Each one writes production's side to `artifacts/checks/` and exits 0, and stores it in the production cache, so the first comparison of a route later loads only the target.
+
+```sh
+node "$REFACTOR/interaction-crawl.mjs" --prod "$PROD_URL" --route / --route /pricing --discover
+node "$REFACTOR/presence-by-route.mjs" --prod "$PROD_URL" --route / --route /pricing
+node "$REFACTOR/state-capture.mjs" --prod "$PROD_URL" --route / --route /pricing
+```
+
+`--discover` turns the crawl into a first draft of `interactions.json` at `docs/migration/interactions.draft.json`: one step per control that did something, found by test id, role and name, or selector, with what production did in `"observed"`. The file and every step say `"draft": true`, and `compare-route.mjs` refuses a draft. Review each step (add the panel it opens, fix `expect`, drop noise, add what a crawl cannot do, such as typing in a search box), remove every `"draft"`, and save the steps as `docs/migration/interactions.json`.
+
+### Production Baselines
+
+A baseline is what production looks like at one route and matrix case, recorded before the target exists. `capture-baselines.mjs` records them one page at a time, with the same settings every check uses:
+
+```sh
+node "$REFACTOR/capture-baselines.mjs" --prod "$PROD_URL" --route / --route /pricing --states
+```
+
+For every route and case it writes `artifacts/baselines/<route>/<case>.png` (the full page), `<case>.nodes.json` (the box of every visible heading, paragraph, button and link, the geometry `geometry-diff.mjs` compares) and, with `--states`, a crop of every dropdown, drawer and accordion opened. `artifacts/baselines/index.json` lists them by id. A baseline id is `<route>@<case>`, with the case id `--cases` takes: `/pricing@360x812`, or `/@1408x900-dark` for a dark color scheme case. An open state adds `#<label>`, such as `/@360x812#BUTTON:Menu`. The one-route prompt names its baselines by id in `{{BASELINE_IDS}}`. With `--states`, the open states land in the production cache under `state-capture.mjs`'s own key, so the first `run-checks.mjs` with the same `--mask`, `--skip-control` and `--settle-ms` reads them instead of opening production's menus again.
 
 The example site on this page is a generic marketing site: a header with a mobile drawer, a hero, a review carousel, a pricing slider, a contact form and a press list.
 
@@ -509,7 +532,7 @@ Every prompt reads the [execution contract](https://github.com/bascikdev/bascik/
 
 Number the prompts and keep them in the repository, grouped into phases. The [prompt pack index](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/prompt-pack-index.md) is the template:
 
-1. Record the real site: inventories and baselines.
+1. Record the real site: inventories and baselines, on production alone (`capture-baselines.mjs`, and the crawl without `--target`).
 2. Local runtime: bootstrap, config boundaries, Worker packaging, redirects, headers, the test harness and the Lighthouse runner.
 3. The shared shell and the home page.
 4. Forms.

@@ -20,6 +20,7 @@ const NO_ARGS: Record<string, RegExp> = {
   "breakpoint-matrix": /--css/,
   "geometry-diff": /--prod <url> is required/,
   "compare-route": /--prod <url> is required/,
+  "capture-baselines": /--prod <url> is required/,
   "lighthouse-gate": /--dir <folder>/,
   "llms-txt": /BASCIK_OUT_DIR is not set/,
   "responsive-webp": /--src <image> is required/,

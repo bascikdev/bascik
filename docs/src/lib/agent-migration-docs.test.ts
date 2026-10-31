@@ -65,6 +65,7 @@ const SCRIPTS = [
   "scripts/production-defects.mjs",
   "scripts/run-checks.mjs",
   "scripts/review-page.mjs",
+  "scripts/capture-baselines.mjs",
 ];
 
 /** The parity checks run-checks.mjs runs, one per issue type a human caught after the automated loop passed. */

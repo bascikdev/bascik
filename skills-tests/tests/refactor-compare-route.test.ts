@@ -12,6 +12,7 @@ import {
   buildReport,
   contextOptions,
   loadAccepted,
+  loadInteractions,
   parseCliArgs,
   reportDirName,
   pixelDiff,
@@ -750,5 +751,40 @@ describe("project dependencies", () => {
     expect(typeof playwright.chromium?.launch).toBe("function");
     const sharp = await loadSharp({ cwd: packageDir });
     expect(typeof sharp).toBe("function");
+  });
+});
+
+describe("loadInteractions", () => {
+  it("misuse: refuses a draft from interaction-crawl --discover until a person reviews it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-interactions-"));
+    try {
+      const step = {
+        name: "open the menu",
+        route: "/",
+        testId: "menu-trigger",
+        action: "click",
+      };
+      const reviewed = join(dir, "interactions.json");
+      writeFileSync(reviewed, JSON.stringify([step]));
+      expect(loadInteractions(reviewed)).toHaveLength(1);
+      const draftFile = join(dir, "interactions.draft.json");
+      writeFileSync(
+        draftFile,
+        JSON.stringify({ draft: true, interactions: [step] }),
+      );
+      expect(() => loadInteractions(draftFile)).toThrow(
+        /is a draft from interaction-crawl --discover/,
+      );
+      // A draft step copied into a reviewed file is refused too, by its position.
+      writeFileSync(
+        reviewed,
+        JSON.stringify([step, { ...step, name: "close it", draft: true }]),
+      );
+      expect(() => loadInteractions(reviewed)).toThrow(
+        /interactions\[1\] "close it" is still marked draft/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

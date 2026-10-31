@@ -21,6 +21,9 @@
  *  10. run-checks          one command runs them all per route and exits nonzero on any finding
  *  15. production cache    production measured once, read back on the next run (a request counter proves it), and
  *                          --cases runs a subset that the report marks partial
+ *  16. production only     before any target page exists: interaction-crawl, presence-by-route and state-capture run
+ *                          on production alone (the crawl also writes draft interactions.json steps), and
+ *                          capture-baselines records the baselines through the cache the first run-checks reads
  *   9. review-page         the side-by-side page a human signs off on
  *
  * Every check module exports CHECK (its name) and runCheck(browser, options), which resolves to
@@ -743,6 +746,258 @@ describe("15. the production cache and --cases", () => {
         if (s.prod.crop)
           expect(existsSync(s.prod.crop), s.prod.crop).toBe(true);
     }
+  }, 300_000);
+});
+
+describe("16. production only: the inventory stage and its baselines", () => {
+  let work: string;
+
+  beforeAll(() => {
+    work = mkdtempSync(join(tmpdir(), "bascik-parity-prod-only-"));
+    writeFileSync(
+      join(work, "breakpoints.json"),
+      JSON.stringify({ cases: DESKTOP }, null, 2),
+    );
+  });
+  afterAll(() => rmSync(work, { recursive: true, force: true }));
+
+  const node = (script: string, args: string[]) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(SCRIPTS, `${script}.mjs`), ...args],
+      { cwd: packageDir, encoding: "utf8", timeout: 300_000 },
+    );
+    return { result, text: `${result.stdout}\n${result.stderr}` };
+  };
+  /** Requests a side of one fixture answered while `fn` ran. */
+  const during = async <T>(prefix: string, fn: () => T | Promise<T>) => {
+    const before = await server.requests(prefix);
+    const value = await fn();
+    return { value, n: (await server.requests(prefix)) - before };
+  };
+
+  it("interaction-crawl without --target crawls production alone, exits 0 and writes a draft compare-route refuses", async () => {
+    const draft = join(work, "interactions.draft.json");
+    const prod = server.site("interaction-crawl", "prod");
+    const { value, n } = await during("/interaction-crawl/prod/", () =>
+      node("interaction-crawl", [
+        "--prod",
+        prod,
+        "--route",
+        "/",
+        "--matrix",
+        join(work, "breakpoints.json"),
+        "--settle-ms",
+        "0",
+        "--out",
+        join(work, "checks"),
+        "--no-prod-cache",
+        "--discover",
+        "--discover-out",
+        draft,
+      ]),
+    );
+    expect(value.result.status, value.text).toBe(0);
+    expect(n).toBeGreaterThan(0);
+    expect(value.text).toMatch(
+      /ok {4}interaction-crawl {2}production only \(no --target\)/,
+    );
+    expect(value.text).toMatch(/draft interaction step\(s\) written to/);
+    const report = JSON.parse(
+      readFileSync(join(work, "checks", "interaction-crawl.json"), "utf8"),
+    );
+    expect(report).toMatchObject({ ok: true, productionOnly: true });
+    expect(report.findings).toEqual([]);
+    expect(report.crawled[0].target).toBeNull();
+    expect(report.crawled[0].prod.length).toBeGreaterThan(0);
+
+    const file = JSON.parse(readFileSync(draft, "utf8"));
+    expect(file.draft).toBe(true);
+    const byName = new Map(
+      file.interactions.map((s: { name: string }) => [s.name, s]),
+    );
+    expect(byName.get('click button "Products"')).toMatchObject({
+      role: "button",
+      roleName: "Products",
+      action: "click",
+      expect: { ariaExpanded: true },
+      draft: true,
+    });
+    expect(
+      (byName.get('click button "See features"') as { observed: string })
+        .observed,
+    ).toMatch(/scrolls \d+ px/);
+
+    const { loadInteractions } = (await import(
+      join(SCRIPTS, "compare-route.mjs")
+    )) as { loadInteractions: (file: string) => unknown };
+    expect(() => loadInteractions(draft)).toThrow(/is a draft/);
+  }, 300_000);
+
+  it("misuse: --target equal to --prod is refused before production is loaded", async () => {
+    const prod = server.site("interaction-crawl", "prod");
+    for (const script of [
+      "interaction-crawl",
+      "state-capture",
+      "presence-by-route",
+    ]) {
+      const { value, n } = await during("/interaction-crawl/prod/", () =>
+        node(script, ["--prod", prod, "--target", `${prod}/`, "--route", "/"]),
+      );
+      expect(value.result.status, script).toBe(1);
+      expect(value.result.stderr).toMatch(/is production.*leave --target out/s);
+      expect(n, script).toBe(0);
+    }
+  });
+
+  it("presence-by-route and state-capture without a target inventory production alone", async () => {
+    const presence = await load("presence-by-route");
+    const routes = ["/", "/about", "/pricing"];
+    const p = await presence.runCheck(browser, {
+      prod: server.site("presence-by-route", "prod"),
+      routes,
+      cases: DESKTOP,
+      settleMs: 0,
+    });
+    expect(p).toMatchObject({ ok: true, productionOnly: true, findings: [] });
+    const inventory = p.inventory as Array<{ prod: unknown[]; target: null }>;
+    expect(inventory[0].target).toBeNull();
+    expect(inventory[0].prod.length).toBeGreaterThan(0);
+
+    const states = await load("state-capture");
+    const { value: s, n } = await during("/state-capture/defect/", () =>
+      states.runCheck(browser, {
+        prod: server.site("state-capture", "prod"),
+        route: "/",
+        cases: DESKTOP,
+        settleMs: 0,
+        out: join(work, "states-only"),
+      }),
+    );
+    expect(n, "no target was loaded").toBe(0);
+    expect(s).toMatchObject({ ok: true, productionOnly: true, findings: [] });
+    const list = s.states as Array<{
+      prod: { crop?: string };
+      target?: unknown;
+    }>;
+    expect(list.length).toBeGreaterThan(0);
+    for (const state of list) {
+      expect(state.target).toBeUndefined();
+      expect(existsSync(state.prod.crop as string)).toBe(true);
+    }
+  }, 300_000);
+
+  it("capture-baselines writes <route>@<caseId> baselines with open states, and the first run-checks reads them from the cache", async () => {
+    const prod = server.site("state-capture", "prod");
+    const out = join(work, "baselines");
+    const cache = join(work, "prod-cache");
+    const shared = [
+      "--route",
+      "/",
+      "--matrix",
+      join(work, "breakpoints.json"),
+      "--settle-ms",
+      "0",
+      "--prod-cache",
+      cache,
+    ];
+    // Misuse: a baseline is production alone.
+    const refused = await during("/state-capture/", () =>
+      node("capture-baselines", [
+        "--prod",
+        prod,
+        "--target",
+        server.site("state-capture", "clean"),
+        ...shared,
+      ]),
+    );
+    expect(refused.value.result.status).toBe(1);
+    expect(refused.value.result.stderr).toMatch(/records production only/);
+    expect(refused.n).toBe(0);
+
+    const first = await during("/state-capture/prod/", () =>
+      node("capture-baselines", [
+        "--prod",
+        prod,
+        "--states",
+        "--out",
+        out,
+        ...shared,
+      ]),
+    );
+    expect(first.value.result.status, first.value.text).toBe(0);
+    expect(first.n).toBeGreaterThan(0);
+    expect(first.value.text).toContain("baseline  /@1024x800");
+    const index = JSON.parse(readFileSync(join(out, "index.json"), "utf8"));
+    expect(index).toMatchObject({ format: 1, prod });
+    expect(index.baselines).toHaveLength(1);
+    const b = index.baselines[0];
+    expect(b).toMatchObject({
+      id: "/@1024x800",
+      route: "/",
+      caseId: "1024x800",
+      png: "index/1024x800.png",
+      nodes: "index/1024x800.nodes.json",
+      status: 200,
+    });
+    const png = readFileSync(join(out, b.png));
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    expect(
+      Object.keys(JSON.parse(readFileSync(join(out, b.nodes), "utf8"))).length,
+    ).toBe(b.nodeCount);
+    expect(b.nodeCount).toBeGreaterThan(0);
+    expect(b.states.length).toBeGreaterThan(0);
+    for (const state of b.states) {
+      expect(state.id).toBe(`/@1024x800#${state.label}`);
+      expect(existsSync(join(out, state.crop))).toBe(true);
+    }
+
+    // The first run-checks with the same --prod, masks, skip-controls and settle time loads no production page.
+    const checks = await during("/state-capture/prod/", () =>
+      node("run-checks", [
+        "--prod",
+        prod,
+        "--target",
+        server.site("state-capture", "defect"),
+        "--only",
+        "state-capture",
+        "--out",
+        join(work, "run"),
+        ...shared,
+      ]),
+    );
+    expect(checks.n, checks.value.text).toBe(0);
+    expect(checks.value.text).toMatch(/production: 1 measurements from cache/);
+    // The defect target still fails: the cached open states are compared, not skipped.
+    expect(checks.value.result.status, checks.value.text).toBe(1);
+
+    // A second capture reads its pages back from the cache too.
+    const again = await during("/state-capture/prod/", () =>
+      node("capture-baselines", [
+        "--prod",
+        prod,
+        "--states",
+        "--out",
+        out,
+        ...shared,
+      ]),
+    );
+    expect(again.value.result.status, again.value.text).toBe(0);
+    expect(again.n).toBe(0);
+
+    // Misuse: an index of another production origin is never mixed in.
+    const other = await during("/interaction-crawl/prod/", () =>
+      node("capture-baselines", [
+        "--prod",
+        server.site("interaction-crawl", "prod"),
+        "--out",
+        out,
+        ...shared,
+      ]),
+    );
+    expect(other.value.result.status).toBe(1);
+    expect(other.value.result.stderr).toMatch(/holds baselines of/);
+    expect(other.n).toBe(0);
   }, 300_000);
 });
 

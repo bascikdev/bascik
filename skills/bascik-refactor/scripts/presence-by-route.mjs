@@ -46,7 +46,7 @@ export const DISMISS_NAME =
 const STABLE_MS = 750;
 const MAX_WAIT_MS = 5000;
 
-const HELP = `Usage: node presence-by-route.mjs --prod <url> --target <url> --route <path>... [options]
+const HELP = `Usage: node presence-by-route.mjs --prod <url> [--target <url>] --route <path>... [options]
 
 For every route and matrix case, opens the page in a fresh browser context (no cookies, no storage), waits until
 --settle-ms after it started loading (a modal on a 3 s timer is on the page) and until the page has been stable for
@@ -61,9 +61,13 @@ route, and inventories every route again, in that tab and then in a new tab: a d
 and tabs in production must persist on the target. Reports per route and case: missing, extra, placement (docked on
 another edge), and trigger (a layer that comes back after it was dismissed, or the reverse). Exits 1 on any finding.
 
+Without --target (the inventory stage, before any target page exists), it inventories production alone, writes the
+inventory to <out>/presence-by-route.json and exits 0; nothing is compared. A --target that is production is refused.
+
 Options:
   --prod <url>           Live production origin
-  --target <url>         Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
+  --target <url>         Bascik origin, such as http://localhost:8080 (a production build: bascik --server); leave it
+                         out to inventory production alone
   --route <path>         Route to inventory (repeatable, required; pass every route, presence differs per route)
   --dismiss <selector>   Another control that dismisses a layer, such as '[data-consent="accept"]' (repeatable)
   --mask <selector>      A documented dynamic region to leave out (repeatable)
@@ -500,7 +504,10 @@ async function inventorySide(
   return snapshots;
 }
 
-/** Resolves to { check, ok, findings, inventory }. Options: prod, target, routes, cases, dismiss. */
+/**
+ * Resolves to { check, ok, findings, inventory }. Options: prod, target, routes, cases, dismiss. Without a target,
+ * production alone is inventoried (productionOnly: true, no findings).
+ */
 export async function runCheck(browser, options) {
   const routes = routesOf(options);
   const dismiss = options.dismiss ?? [];
@@ -511,36 +518,46 @@ export async function runCheck(browser, options) {
   for (const c of casesOf(options)) {
     const [prod, target] = await Promise.all([
       // Keyed by every route in order: the dismissed and new-tab states walk them in one browser context.
-      cachedProd(options, { check: CHECK, routes, case: c }, () =>
-        inventorySide(
-          browser,
-          options.prod,
-          routes,
-          c,
-          dismiss,
-          masks,
-          settleMs,
-        ),
+      cachedProd(
+        options,
+        { check: CHECK, routes, case: c, dismiss: [...dismiss].sort() },
+        () =>
+          inventorySide(
+            browser,
+            options.prod,
+            routes,
+            c,
+            dismiss,
+            masks,
+            settleMs,
+          ),
       ),
-      inventorySide(
-        browser,
-        options.target,
-        routes,
-        c,
-        dismiss,
-        masks,
-        settleMs,
-      ),
+      // Without a target (the inventory stage, before any page exists), production alone is inventoried.
+      options.target
+        ? inventorySide(
+            browser,
+            options.target,
+            routes,
+            c,
+            dismiss,
+            masks,
+            settleMs,
+          )
+        : null,
     ]);
     inventories.push({ width: c.width, prod, target });
-    findings.push(...diffPresence(prod, target));
+    if (target) findings.push(...diffPresence(prod, target));
   }
-  return result(CHECK, findings, { inventory: inventories });
+  return result(CHECK, findings, {
+    inventory: inventories,
+    ...(options.target ? {} : { productionOnly: true }),
+  });
 }
 
 export function parseCliArgs(argv) {
   const args = parseArgsFor(argv, {
     extra: { dismiss: { type: "string", multiple: true } },
+    need: ["prod", "route"],
   });
   if (args.help) return args;
   return { ...args, dismiss: args.dismiss ?? [] };

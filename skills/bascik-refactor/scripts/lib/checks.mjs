@@ -130,6 +130,43 @@ export function validateMask(selector, flag = "--mask") {
     );
 }
 
+/**
+ * Whether two origins are one site: the same host, ignoring a leading "www.", the scheme and a trailing slash (a
+ * --target of http://example.com still loads the production site that https://www.example.com redirects to). Another
+ * port is another site (a local server). A value that is not a URL is never the same site as anything.
+ */
+export function sameSite(a, b) {
+  try {
+    const host = (url) => {
+      const u = new URL(url);
+      return `${u.hostname.toLowerCase().replace(/^www\./, "")}:${u.port}${u.pathname.replace(/\/+$/, "")}`;
+    };
+    return host(a) === host(b);
+  } catch {
+    return false;
+  }
+}
+
+/** The checks that run on production alone when --target is left out, for the inventory stage. */
+export const PRODUCTION_ONLY_CHECKS = Object.freeze([
+  "interaction-crawl",
+  "presence-by-route",
+  "state-capture",
+  "production-defects",
+]);
+
+/**
+ * Rejects a --target that is the production site itself: every check would load production twice at once (against
+ * the read-only, one-page-at-a-time rule) and compare it with itself. The inventory stage, before any target page
+ * exists, runs the production-only checks without --target and capture-baselines.mjs.
+ */
+export function validateTarget(prod, target) {
+  if (prod && target && sameSite(prod, target))
+    throw new Error(
+      `--target ${target} is production (--prod ${prod}): --target is the Bascik build, such as http://localhost:8080 from bascik --server. To inventory production before any target page exists, leave --target out: ${PRODUCTION_ONLY_CHECKS.join(", ").replace(/, ([^,]+)$/, " and $1")} run on production alone, and capture-baselines.mjs records the production baselines`,
+    );
+}
+
 /** The routes a runCheck call covers: options.routes, or options.route, or "/". */
 export function routesOf(options) {
   if (Array.isArray(options.routes) && options.routes.length)
@@ -328,11 +365,16 @@ export function caseIdsFrom(values) {
 /**
  * Parses the flags every check shares (--prod, --target, --route, --matrix, --cases, --out, --json, --help, and the
  * production cache flags --refresh-prod, --no-prod-cache and --prod-cache) plus `extra` parseArgs options. `need`
- * lists the flags that must be present.
+ * lists the flags that must be present (a production-only check leaves "target" out); a --target that is production
+ * is always refused (validateTarget). `defaultOut` is the --out default.
  */
 export function parseArgsFor(
   argv,
-  { extra = {}, need = ["prod", "target", "route"] } = {},
+  {
+    extra = {},
+    need = ["prod", "target", "route"],
+    defaultOut = DEFAULT_OUT,
+  } = {},
 ) {
   const { values } = parseArgs({
     args: argv,
@@ -358,6 +400,7 @@ export function parseArgsFor(
         throw new Error("--route <path> is required (repeatable)");
     } else if (!values[flag]) throw new Error(`--${flag} <url> is required`);
   }
+  validateTarget(values.prod, values.target);
   for (const selector of values.mask ?? []) validateMask(selector);
   for (const route of values.route ?? []) validateRoute(route);
   validateRouteSet(values.route);
@@ -378,7 +421,7 @@ export function parseArgsFor(
     route: values.route ?? [],
     mask: values.mask ?? [],
     matrix: values.matrix ?? DEFAULT_MATRIX,
-    out: values.out ?? DEFAULT_OUT,
+    out: values.out ?? defaultOut,
   };
 }
 
@@ -440,7 +483,8 @@ export function runFooter(prodCache, gate) {
 
 /**
  * The CLI of one check: parse, load the matrix (and --cases) before any browser starts, open the production cache,
- * run, print, write <out>/<check>.json and exit 1 on any finding.
+ * run, print, write <out>/<check>.json and exit 1 on any finding. A production-only run (the report says
+ * productionOnly: no --target) writes its inventory and exits 0.
  */
 export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   const args = parseCliArgs(process.argv.slice(2));
@@ -472,6 +516,10 @@ export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   const file = join(args.out, `${check}.json`);
   writeFileSync(file, JSON.stringify(report, null, 2) + "\n");
   if (args.json) console.log(JSON.stringify(report, null, 2));
+  else if (report.productionOnly)
+    console.log(
+      `ok    ${check}  production only (no --target): inventory written to ${file}, nothing compared`,
+    );
   else {
     console.log(`${report.ok ? "ok  " : "FAIL"}  ${check}  (${file})`);
     for (const f of report.findings) console.log(`      ${formatFinding(f)}`);

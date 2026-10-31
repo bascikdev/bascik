@@ -24,6 +24,7 @@ import {
   validateMask,
   validateRoute,
   validateRouteSet,
+  validateTarget,
 } from "./lib/checks.mjs";
 import {
   DEFAULT_PROD_CACHE,
@@ -165,6 +166,7 @@ export function parseCliArgs(argv) {
   if (values.help) return { help: true };
   if (!values.prod) throw new Error("--prod <url> is required");
   if (!values.target) throw new Error("--target <url> is required");
+  validateTarget(values.prod, values.target);
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
   for (const route of values.route) validateRoute(route);

@@ -9,6 +9,8 @@
 //
 // Why: a hero button that scrolls to a section did nothing on the target, and a hand-written interactions.json only
 // compared open and closed states for the steps someone remembered to write down.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { inPage, onElementSource } from "./lib/dom.mjs";
 import {
   casesOf,
@@ -30,10 +32,14 @@ import {
 import { routeUrl, settle } from "./lib/capture.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 import { cachedProd } from "./lib/prod-cache.mjs";
+import { caseId } from "./lib/matrix.mjs";
 
 export const CHECK = "interaction-crawl";
 
-const HELP = `Usage: node interaction-crawl.mjs --prod <url> --target <url> --route <path>... [options]
+/** Where --discover writes the draft steps: next to interactions.json, never over it. */
+export const DEFAULT_DRAFT = "docs/migration/interactions.draft.json";
+
+const HELP = `Usage: node interaction-crawl.mjs --prod <url> [--target <url>] --route <path>... [options]
 
 Discovers every interactive element on each production route (the selector below; any element with a click or
 hover listener, found with CDP DOMDebugger.getEventListeners; with a delegated click listener on document, body or
@@ -50,6 +56,14 @@ name, in-page href or text, does the same, and reports missing elements and miss
 whose selector finds nothing after the fresh load (an id that changes per load) is found again by the same anchors; a
 target element that still cannot be activated is reported as unmeasured, never passed. Exits 1 on any finding.
 
+Without --target (the inventory stage, before any target page exists), it crawls production alone, writes what each
+control did to <out>/interaction-crawl.json and exits 0; nothing is compared. A --target that is production is
+refused: it would load production twice at once. With --discover it also writes the crawl as draft interactions.json
+steps (default ${DEFAULT_DRAFT}): one per control that did something, found by test id, role and name, or
+selector, with what production did in "observed". The file and each step say "draft": true, and compare-route.mjs
+refuses a draft, so a person reviews each step (adds a panel, fixes expect, drops noise), removes "draft" and saves
+the result as docs/migration/interactions.json.
+
 Side effects: the crawl is not read-only toward production. Plain navigation links and submit buttons are never
 activated, but every other control is clicked (or hovered) from a fresh load, once per matrix case and once more per
 layer it opens, and state-capture does it again. A handler that posts to the live site (add to cart, subscribe through
@@ -58,8 +72,12 @@ side-effecting one with --skip-control; compare those by hand.
 
 Options:
   --prod <url>      Live production origin
-  --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
+  --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server); leave it out
+                    to crawl production alone
   --route <path>    Route to crawl (repeatable, required)
+  --discover        Also write the crawl as draft interactions.json steps
+  --discover-out <file>
+                    Where --discover writes (default ${DEFAULT_DRAFT}); never a reviewed interactions.json
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
   --skip-control <selector>
                     A control with side effects on the live site to never activate, on either side, such as
@@ -812,6 +830,12 @@ const scrolls = (e) => Math.abs(e.scrollDelta) >= SCROLL_MIN;
 
 /** What an effect does, in words, for a finding about an element the target lacks. */
 function effectText(e) {
+  const words = effectWords(e);
+  return words ? ` (in production it ${words})` : "";
+}
+
+/** What an effect does, in words ("scrolls 640 px to H2 "Features"; shows P "Free""), or "" for none. */
+function effectWords(e) {
   if (!e) return "";
   const parts = [];
   if (scrolls(e))
@@ -822,7 +846,7 @@ function effectText(e) {
   if (e.changed.length) parts.push(`changes ${e.changed.join(", ")}`);
   if (e.shown.length) parts.push(`shows ${e.shown.join(", ")}`);
   if (e.focused) parts.push(`moves focus to ${e.focused}`);
-  return parts.length ? ` (in production it ${parts.join("; ")})` : "";
+  return parts.join("; ");
 }
 
 /**
@@ -1023,16 +1047,97 @@ export async function crawl(
 }
 
 /**
+ * Whether an effect is something a step can be written for: a scroll, a hash, a changed open state or value, or
+ * content that showed. Focus alone (every click focuses its button) is not.
+ */
+function observable(effect) {
+  return Boolean(
+    effect &&
+    (scrolls(effect) ||
+      effect.hash ||
+      effect.changed.length ||
+      effect.shown.length),
+  );
+}
+
+/**
+ * The crawl as draft interactions.json steps, for --discover: one step per control that did something on production
+ * (`crawled` is runCheck's list: [{ route, width, prod: [{ selector, anchor, via, effect }] }]), in crawl order per
+ * route, a control inside an opened layer right after the step that opens it. Each step finds its trigger by test id,
+ * then role and accessible name, then the crawl's selector; a control found at only some of `cases` gets the widths
+ * it was found at as minWidth and maxWidth. "expect" holds the aria-expanded state it leaves, when it changes one, and
+ * "observed" what production did, in words. The file and every step are marked "draft": compare-route.mjs refuses
+ * them until a person has reviewed each step.
+ */
+export function draftInteractions(crawled, cases, { prod } = {}) {
+  const steps = new Map();
+  const widths = new Map();
+  const allWidths = [...new Set((cases ?? []).map((c) => c.width))];
+  for (const side of crawled ?? []) {
+    for (const item of side.prod ?? []) {
+      if (!observable(item.effect)) continue;
+      const a = item.anchor;
+      const id = `${side.route} ${anchorKey(a)}`;
+      const seen = widths.get(id) ?? new Set();
+      seen.add(side.width);
+      widths.set(id, seen);
+      if (steps.has(id)) continue;
+      const label = a.name || a.text;
+      const step = {
+        name: `${a.mode === "hover" ? "hover" : "click"} ${a.tag.toLowerCase()} "${label}"${a.via ? ` inside ${a.via}` : ""}`,
+        route: side.route,
+      };
+      if (a.testId) step.testId = a.testId;
+      else if (a.role && a.name) {
+        step.role = a.role;
+        step.roleName = a.name;
+      } else step.selector = item.selector;
+      step.action = a.mode === "hover" ? "hover" : "click";
+      const expect = {};
+      if (item.effect.changed.includes("aria-expanded: false -> true"))
+        expect.ariaExpanded = true;
+      else if (item.effect.changed.includes("aria-expanded: true -> false"))
+        expect.ariaExpanded = false;
+      step.expect = expect;
+      step.observed = effectWords(item.effect);
+      step.draft = true;
+      steps.set(id, step);
+    }
+  }
+  const interactions = [...steps].map(([id, step]) => {
+    const found = [...widths.get(id)];
+    if (allWidths.length && allWidths.every((w) => found.includes(w)))
+      return step;
+    return {
+      ...step,
+      minWidth: Math.min(...found),
+      maxWidth: Math.max(...found),
+    };
+  });
+  return {
+    draft: true,
+    generatedBy: "interaction-crawl.mjs --discover",
+    ...(prod ? { prod } : {}),
+    cases: (cases ?? []).map(caseId),
+    note: 'A draft from the production crawl. Review every step: add a "panel" for what it opens, set "expect", bound it with minWidth and maxWidth, drop steps that are noise, add the interactions the crawl cannot do (typing, keyboard), name the "legacy" owner, then remove every "draft" and save the steps as docs/migration/interactions.json. compare-route.mjs refuses a draft.',
+    interactions,
+  };
+}
+
+/**
  * Runs the crawl on both sides (at once) for every route and case. Resolves to { check, ok, findings, crawled }.
- * Options: prod, target, routes, cases, masks, skipControls.
+ * Without a target (the inventory stage), production alone is crawled (productionOnly: true, no findings). With
+ * `discover` (a file), the crawl is also written there as draft interactions.json steps (draftInteractions).
+ * Options: prod, target, routes, cases, masks, skipControls, discover.
  */
 export async function runCheck(browser, options) {
   const masks = masksOf(options);
   const skip = skipControlsOf(options);
+  const cases = casesOf(options);
   const findings = [];
   const crawled = [];
   for (const route of routesOf(options))
-    for (const c of casesOf(options)) {
+    for (const c of cases) {
       const [prod, target] = await Promise.all([
         cachedProd(options, { check: CHECK, route, case: c }, () =>
           crawl(
@@ -1045,33 +1150,98 @@ export async function runCheck(browser, options) {
             skip,
           ),
         ),
-        crawl(
-          browser,
-          options.target,
-          route,
-          c,
-          masks,
-          settleOf(options),
-          skip,
-        ),
+        options.target
+          ? crawl(
+              browser,
+              options.target,
+              route,
+              c,
+              masks,
+              settleOf(options),
+              skip,
+            )
+          : null,
       ]);
       crawled.push({ route, width: c.width, prod, target });
-      for (const f of diffEffects(prod, target))
-        findings.push({ ...f, route, width: c.width });
+      if (target)
+        for (const f of diffEffects(prod, target))
+          findings.push({ ...f, route, width: c.width });
     }
-  return result(CHECK, findings, { crawled });
+  const extra = { crawled };
+  if (!options.target) extra.productionOnly = true;
+  if (options.discover) {
+    const draft = draftInteractions(crawled, cases, { prod: options.prod });
+    mkdirSync(dirname(options.discover), { recursive: true });
+    writeFileSync(options.discover, JSON.stringify(draft, null, 2) + "\n");
+    extra.draft = {
+      file: options.discover,
+      steps: draft.interactions.length,
+    };
+  }
+  return result(CHECK, findings, extra);
+}
+
+/**
+ * Rejects a --discover-out that would overwrite a reviewed interactions.json (any existing file not marked "draft"),
+ * before any browser starts.
+ */
+function checkDraftFile(file) {
+  if (!existsSync(file)) return;
+  let data;
+  try {
+    data = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    data = null;
+  }
+  if (data?.draft !== true)
+    throw new Error(
+      `--discover-out ${file} is not a draft (no "draft": true), so writing the crawl there would overwrite reviewed interaction steps; pass another file, such as ${DEFAULT_DRAFT}`,
+    );
 }
 
 export function parseCliArgs(argv) {
-  const args = parseArgsFor(argv, { extra: SKIP_CONTROL_OPTION });
+  const args = parseArgsFor(argv, {
+    extra: {
+      ...SKIP_CONTROL_OPTION,
+      discover: { type: "boolean", default: false },
+      "discover-out": { type: "string" },
+    },
+    need: ["prod", "route"],
+  });
   if (args.help) return args;
-  const { "skip-control": skipControls, ...rest } = args;
-  return { ...rest, skipControls: skipControlsFrom(skipControls) };
+  const {
+    "skip-control": skipControls,
+    discover,
+    "discover-out": discoverOut,
+    ...rest
+  } = args;
+  if (discoverOut !== undefined && !discover)
+    throw new Error(
+      "--discover-out needs --discover (it names the file the draft interactions are written to)",
+    );
+  const draftFile = discover ? (discoverOut ?? DEFAULT_DRAFT) : undefined;
+  if (draftFile) checkDraftFile(draftFile);
+  return {
+    ...rest,
+    skipControls: skipControlsFrom(skipControls),
+    ...(draftFile ? { discover: draftFile } : {}),
+  };
 }
 
 if (isMain(import.meta.url)) {
   try {
-    await runCli({ check: CHECK, help: HELP, parseCliArgs, runCheck });
+    await runCli({
+      check: CHECK,
+      help: HELP,
+      parseCliArgs,
+      runCheck,
+      summary: (report) =>
+        report.draft
+          ? [
+              `      ${report.draft.steps} draft interaction step(s) written to ${report.draft.file}; review each one, remove "draft" and save them as docs/migration/interactions.json`,
+            ]
+          : [],
+    });
   } catch (error) {
     fail(`${CHECK}: ${error.message}`);
   }

@@ -206,6 +206,45 @@ describe("--cases: a subset of the matrix for the iteration loop", () => {
     ).toEqual(["360"]);
   });
 
+  it("misuse: run-checks and every check refuse a --target that is production, pointing at production-only mode", () => {
+    const prod = ["--prod", "https://www.example.com"];
+    expect(() =>
+      parseCliArgs([
+        ...prod,
+        "--target",
+        "https://example.com/",
+        "--route",
+        "/",
+        "--legacy-src",
+        "../legacy",
+      ]),
+    ).toThrow(
+      /--target https:\/\/example\.com\/ is production.*interaction-crawl, presence-by-route, state-capture and production-defects run on production alone.*capture-baselines/s,
+    );
+    expect(() =>
+      parseArgsFor([
+        ...prod,
+        "--target",
+        "https://www.example.com",
+        "--route",
+        "/",
+      ]),
+    ).toThrow(/is production/);
+    // Another host, or the same host on another port, is a real target.
+    for (const target of [
+      "http://localhost:8080",
+      "https://staging.example.com",
+      "https://www.example.com:8443",
+    ])
+      expect(
+        parseArgsFor([...prod, "--target", target, "--route", "/"]).target,
+      ).toBe(target);
+    // The checks that compare two sides still need --target by default.
+    expect(() => parseArgsFor([...prod, "--route", "/"])).toThrow(
+      /--target <url> is required/,
+    );
+  });
+
   it("run-checks takes the production cache flags and rejects --refresh-prod with --no-prod-cache", () => {
     expect(parseCliArgs(base)).toMatchObject({
       prodCache: "artifacts/prod-cache",

@@ -37,12 +37,42 @@ Record these before writing any page. Every later prompt reads them.
 - `interactions.json`: every interactive surface (dropdowns, drawer, carousel, tabs, slider, modal, sticky header) as
   an array of steps: `{ "name", "route", "testId" | "role" + "roleName" | "selector", "nth", "panel", "action",
 "key", "expect": { "ariaExpanded", "visible", "focused" }, "minWidth", "maxWidth", "legacy" }`. Actions: click,
-  press, hover, keyboard, outside-click, focus-out. Steps run in order on one page per matrix case.
+  press, hover, keyboard, outside-click, focus-out. Steps run in order on one page per matrix case. Start it from the
+  crawl: `interaction-crawl.mjs --prod "$PROD_URL" --route <path>... --discover` (no `--target`) writes
+  `interactions.draft.json`, one step per control that did something, with what production did in `"observed"`.
+  The file and each step say `"draft": true` and `compare-route.mjs` refuses them: review each step (add its
+  `"panel"`, fix `"expect"`, drop noise, add what the crawl cannot do, such as typing), remove every `"draft"` and
+  save the steps here.
 - `integrations.json`: every third-party script with its network and cookie contract:
   `[{ "name", "loads", "origins", "cookies", "pages" }]`.
 - `decisions.md`: the differences-and-decisions ledger (template: `templates/decisions-ledger.md`).
 - `accepted.json`: one entry per ledger row that changes pixels, `[{ "id", "route", "minWidth", "maxWidth", "mask",
 "maxRatio" }]`, passed to `compare-route.mjs --accepted`. The scripts never read `decisions.md` itself.
+
+### Production alone, before any target page exists
+
+The inventory stage has no target, so its scripts run without `--target`: `interaction-crawl.mjs` (with `--discover`
+for the draft above), `presence-by-route.mjs` (each route's layers, fresh, dismissed and in a new tab),
+`state-capture.mjs` (every open state with its crop) and `production-defects.mjs` write production's side to
+`artifacts/checks/<check>.json` and exit 0; nothing is compared. A `--target` that is production (the same host,
+with or without `www.`, either scheme) is refused everywhere, since it loads the live site twice at once.
+
+### Production baselines (artifacts/baselines/)
+
+`capture-baselines.mjs --prod "$PROD_URL" --route <path>... [--states]` records, one page at a time, for every route
+and matrix case:
+
+- `artifacts/baselines/<route slug>/<caseId>.png`: the full page, settled like every check, masked regions invisible;
+- `<caseId>.nodes.json`: the collectNodes geometry (`geometry-diff.mjs`'s boxes);
+- with `--states`, `<caseId>.state-<n>.png`: each open state state-capture finds;
+- `artifacts/baselines/index.json`: every baseline with its files, HTTP status and open states.
+
+A baseline id is `<route>@<caseId>`, with the case id `--cases` takes: `/pricing@360x812`, `/@1408x900-dark`. An open
+state adds `#<label>`: `/@360x812#BUTTON:Menu`. Prompts name baselines by id (`{{BASELINE_IDS}}` in
+`templates/one-route.md`). A run adds to `index.json`; an index of another `--prod` is refused. Everything goes
+through the production cache, and the open states under state-capture's own key, so the first `run-checks.mjs` with
+the same `--prod`, `--mask`, `--skip-control` and `--settle-ms` reads them instead of opening production's
+disclosures again. A route that answers with an HTTP error is kept with its status and printed as a warning.
 
 ## Environment and servers
 
@@ -165,8 +195,9 @@ bar for done:
   (`--prod-cache <dir>` moves it, `--no-prod-cache` turns it off), and the next run loads only the target. The key
   holds everything that changes what production measures: the check, the skill's scripts (an updated skill misses
   every entry), the browser version, the production origin, the route (presence-by-route: every route, in order),
-  the full matrix case (width, height and every variant), `--settle-ms`, and the sorted `--mask`, `--skip-control`
-  and `--dismiss` selectors. A changed mask or skip-control is a miss, never a stale hit. state-capture caches
+  the full matrix case (width, height and every variant), `--settle-ms`, and the sorted `--mask` and
+  `--skip-control` selectors (presence-by-route also its `--dismiss` selectors, which no other check uses). A changed
+  mask or skip-control is a miss, never a stale hit. state-capture caches
   production's whole side of a case: the disclosures it found, what the page changes on its own, and every open state
   with its crop. A corrupt entry is measured again; a cache folder that cannot be written prints a warning and the run
   goes on uncached. The run prints `production: N measurements from cache (oldest <date>), M captured`, and
@@ -351,6 +382,7 @@ so when one is missing. Run any of them with `--help`.
 | Script                       | What it does                                                             |
 | ---------------------------- | ------------------------------------------------------------------------ |
 | `breakpoint-matrix.mjs`      | Thresholds from CSS, Sass and scripts, expanded into `breakpoints.json`  |
+| `capture-baselines.mjs`      | Production alone: page PNG, geometry, open states per route and case     |
 | `geometry-diff.mjs`          | collectNodes on both sides per matrix case, flagged by threshold; exit 1 |
 | `compare-route.mjs`          | Pixels, geometry, evidence, interactions, `--accepted`; report and PNGs  |
 | `lighthouse-gate.mjs`        | Five categories at 100 for a form factor and a URL list; exit 1          |

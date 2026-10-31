@@ -253,6 +253,22 @@ describe("parseCliArgs", () => {
     ).toEqual(["/", "/pricing"]);
   });
 
+  it("runs on production alone without --target (the inventory stage); misuse: --target equal to --prod is refused", () => {
+    expect(
+      parseCliArgs(["--prod", "https://example.com", "--route", "/"]).target,
+    ).toBeUndefined();
+    expect(() =>
+      parseCliArgs([
+        "--prod",
+        "https://example.com",
+        "--target",
+        "https://example.com/",
+        "--route",
+        "/",
+      ]),
+    ).toThrow(/is production.*leave --target out/s);
+  });
+
   it("defaults the matrix and the output folder, and takes extra dismiss selectors", () => {
     const args = parseCliArgs([...base, "--route", "/"]);
     expect(args.matrix).toBe("docs/migration/breakpoints.json");

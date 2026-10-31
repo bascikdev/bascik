@@ -7,7 +7,9 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
 - Route: {{ROUTE}}
 - Legacy entry: {{LEGACY_ENTRY}}
 - Target page: {{TARGET_PAGE}}
-- Production baselines: {{BASELINE_IDS}}
+- Production baselines: {{BASELINE_IDS}} (ids `<route>@<caseId>` in `artifacts/baselines/index.json`, such as
+  `{{ROUTE}}@360x812`; an open state adds `#<label>`. Each has `artifacts/baselines/<route slug>/<caseId>.png`, its
+  `.nodes.json` geometry and its open-state crops, recorded by `capture-baselines.mjs` in phase 1)
 - Components to use or create: {{REQUIRED_COMPONENTS}}
 - Interactions on this route (from `interactions.json`): {{INTERACTIONS}}
 
@@ -18,7 +20,10 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
    heading, overflow or sideways scroll becomes a row in `docs/migration/decisions.md` that says
    "production defect: fix in target". Build the corrected version of those elements; the parity checks compare them
    with the correction, not with production.
-2. Capture production and the target for {{ROUTE}} at every case in the breakpoint matrix with identical settings.
+2. Read the production baselines {{BASELINE_IDS}}: what {{ROUTE}} looks like at each case and with each open state,
+   before any target page exists. When one is missing, record it first:
+   `node "$REFACTOR/capture-baselines.mjs" --prod "$PROD_URL" --route "{{ROUTE}}" --states`. Then capture the target
+   at every case in the breakpoint matrix with identical settings.
 3. Work one section at a time, top to bottom. For each section:
    1. Find the owning production subtree from stable anchors (heading text, `href`, `src`, `alt`, landmarks, test
       ids), never generated class names.

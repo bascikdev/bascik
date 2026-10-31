@@ -367,7 +367,10 @@ export function parseCliArgs(argv) {
   };
 }
 
-/** Reads interactions.json and validates every step up front, so a typo fails before any browser starts. */
+/**
+ * Reads interactions.json and validates every step up front, so a typo fails before any browser starts. A draft from
+ * interaction-crawl --discover (the file or a step marked "draft": true) is refused until a person has reviewed it.
+ */
 export function loadInteractions(file) {
   let data;
   try {
@@ -375,10 +378,18 @@ export function loadInteractions(file) {
   } catch (error) {
     throw new Error(`${file}: cannot read interactions (${error.message})`);
   }
+  if (data?.draft === true)
+    throw new Error(
+      `${file} is a draft from interaction-crawl --discover: review every step, remove each "draft", and save the steps as docs/migration/interactions.json`,
+    );
   const steps = Array.isArray(data) ? data : data?.interactions;
   if (!Array.isArray(steps))
     throw new Error(`${file}: expected an array of steps`);
   steps.forEach((step, i) => {
+    if (step?.draft === true)
+      throw new Error(
+        `${file}: interactions[${i}] "${step.name ?? "(unnamed)"}" is still marked draft (from interaction-crawl --discover); review it and remove "draft"`,
+      );
     try {
       validateStep(step, i);
     } catch (error) {

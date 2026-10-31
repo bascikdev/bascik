@@ -133,7 +133,7 @@ describe("cachedProd", () => {
     for (const [options, k] of [
       [{ masks: [".a"] }, key],
       [{ masks: [".a", ".b"], skipControls: ["[data-cart]"] }, key],
-      [{ masks: [".a", ".b"], dismiss: [".close"] }, key],
+      [{ masks: [".a", ".b"] }, { ...key, dismiss: [".close"] }],
       [{ masks: [".a", ".b"], settleMs: 0 }, key],
       [{ masks: [".a", ".b"], prod: "https://staging.example.com" }, key],
       [{ masks: [".a", ".b"] }, { ...key, route: "/about" }],
@@ -150,6 +150,21 @@ describe("cachedProd", () => {
     // The same key again is a hit.
     await run({ masks: [".a"] });
     expect(fn.calls).toBe(11);
+  });
+
+  it("--dismiss changes only presence-by-route's key: state-capture's production side is the same with or without it", async () => {
+    // run-checks passes --dismiss to every check; capture-baselines --states takes none. Its open states must still be
+    // the entries the first run-checks reads.
+    const state = await open();
+    const fn = counter(1);
+    const key = { check: "state-capture", route: "/", case: CASE };
+    await cachedProd({ ...base, prodCache: state }, key, fn);
+    await cachedProd(
+      { ...base, dismiss: [".close"], prodCache: state },
+      key,
+      fn,
+    );
+    expect(fn.calls).toBe(1);
   });
 
   it("misses after a browser update or a change to the skill's scripts", async () => {
