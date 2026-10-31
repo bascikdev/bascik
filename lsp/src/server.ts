@@ -5,6 +5,8 @@ import * as fsPromises from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
   type Connection,
+  type Diagnostic,
+  DiagnosticSeverity,
   DidChangeWatchedFilesNotification,
   type Disposable,
   FileChangeType,
@@ -34,9 +36,84 @@ import {
 } from "./analyzer.js";
 import { createReferences } from "./references.js";
 import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
+import { mayHaveTypeScriptBlocks } from "./typescript-blocks.js";
+import type {
+  TypeScriptEngine,
+  TypeScriptEngineSettings,
+} from "./typescript-engine.js";
+import {
+  TYPESCRIPT_DIAGNOSTIC_SOURCE,
+  type TypeScriptDiagnostic,
+} from "./typescript-service.js";
 
 /** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
 const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
+
+/**
+ * With TypeScript checks on, also the files a `type="text/typescript"` block can import and the files that decide
+ * how it is checked.
+ */
+const TYPESCRIPT_WATCHED_FILE_PATTERNS = [
+  "**/*.{ts,mts,cts,js,mjs,cjs}",
+  "**/{tsconfig,package}.json",
+];
+
+/** Files an edit to which can change a TypeScript block's errors. */
+const TYPESCRIPT_INPUT_FILE =
+  /\.(?:[mc]?ts|[mc]?js)$|(?:^|[\\/])(?:tsconfig|package)\.json$/i;
+
+/** Quiet period after an edit before TypeScript checks the open pages again. Bascik's diagnostics do not wait. */
+const TYPESCRIPT_DELAY_MS = 150;
+
+/** What the client may pass in `initializationOptions`. */
+export interface BascikInitializationOptions {
+  typescript?: {
+    /** `false` turns TypeScript checks of `type="text/typescript"` blocks off. Default `true`. */
+    enabled?: boolean;
+    /** A `typescript` package folder to use before the project's own (VS Code passes its bundled copy). */
+    path?: string;
+  };
+  /**
+   * The editor answers hover, completion and definition inside quoted `type="text/typescript"` blocks itself
+   * (VS Code's HTML support does, and cannot be turned off), so the server answers only what the editor cannot.
+   * TypeScript errors are sent either way.
+   */
+  editorHasEmbeddedTypeScript?: boolean;
+}
+
+/** The client's options with every field checked, since any client can send anything. */
+export function readInitializationOptions(value: unknown): {
+  typescriptEnabled: boolean;
+  typescriptPath: string | undefined;
+  editorHasEmbeddedTypeScript: boolean;
+} {
+  const options =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const typescript =
+    typeof options.typescript === "object" && options.typescript !== null
+      ? (options.typescript as Record<string, unknown>)
+      : {};
+  return {
+    typescriptEnabled: typescript.enabled !== false,
+    typescriptPath:
+      typeof typescript.path === "string" && typescript.path.trim() !== ""
+        ? typescript.path.trim()
+        : undefined,
+    editorHasEmbeddedTypeScript: options.editorHasEmbeddedTypeScript === true,
+  };
+}
+
+export interface BascikLanguageServerOptions {
+  /**
+   * Starts the engine that checks `type="text/typescript"` blocks, with the client's TypeScript settings. Left
+   * out, TypeScript checks are off.
+   */
+  createTypeScriptEngine?: (
+    settings: TypeScriptEngineSettings,
+  ) => TypeScriptEngine;
+}
 
 /**
  * The packages whose presence in a package.json makes a folder without a config a Bascik project: Bascik itself
@@ -115,8 +192,26 @@ export class BascikLanguageServer {
   >();
   /** Project roots already named in the output panel as not Bascik projects, so the note is written once. */
   private readonly reportedNonBascikRoots = new Set<string>();
+  /** The TypeScript engine, when the client left TypeScript checks on and the host can start one. */
+  private typeScript: TypeScriptEngine | undefined;
+  /** Whether the editor answers language features inside TypeScript blocks itself (stage two reads it). */
+  public editorHasEmbeddedTypeScript = false;
+  /** The last diagnostics of each kind per open document; a publish sends both, since it replaces the list. */
+  private readonly bascikDiagnostics = new Map<string, Diagnostic[]>();
+  private readonly typeScriptDiagnostics = new Map<string, Diagnostic[]>();
+  private readonly typeScriptTimers = new Map<
+    string,
+    { timer: NodeJS.Timeout; first: string | undefined }
+  >();
+  /** Bumped per project on every TypeScript input change, so a check of several pages stops once it is stale. */
+  private readonly typeScriptGenerations = new Map<string, number>();
+  /** Project roots whose missing TypeScript has been noted in the output panel. */
+  private readonly reportedTypeScriptRoots = new Set<string>();
 
-  constructor(private readonly connection: Connection) {
+  constructor(
+    private readonly connection: Connection,
+    private readonly options: BascikLanguageServerOptions = {},
+  ) {
     this.documents.listen(this.connection);
     this.setupHandlers();
   }
@@ -141,6 +236,16 @@ export class BascikLanguageServer {
             ?.relativePatternSupport === true;
         this.clientSendsFolderChanges =
           params.capabilities.workspace?.workspaceFolders === true;
+        const clientOptions = readInitializationOptions(
+          params.initializationOptions,
+        );
+        this.editorHasEmbeddedTypeScript =
+          clientOptions.editorHasEmbeddedTypeScript;
+        if (clientOptions.typescriptEnabled) {
+          this.typeScript = this.options.createTypeScriptEngine?.({
+            clientPath: clientOptions.typescriptPath,
+          });
+        }
 
         return {
           capabilities: {
@@ -183,14 +288,18 @@ export class BascikLanguageServer {
       if (change.document.languageId === "html") {
         this.scheduleRevalidation(change.document, true);
       }
+      this.typeScriptInputChanged(change.document, false);
     });
 
     this.documents.onDidClose((event) => {
       this.deletedBuffers.delete(event.document.uri);
+      this.bascikDiagnostics.delete(event.document.uri);
+      this.typeScriptDiagnostics.delete(event.document.uri);
       this.connection.sendDiagnostics({
         uri: event.document.uri,
         diagnostics: [],
       });
+      this.typeScriptInputChanged(event.document, true);
       // Closing an open HTML buffer changes which usages supply component props.
       if (event.document.languageId === "html") {
         this.scheduleRevalidation(event.document, true);
@@ -355,13 +464,16 @@ export class BascikLanguageServer {
     if (!this.clientWatchesFiles) return;
     this.watcherRegistration?.dispose();
     this.watcherRegistration = undefined;
+    const patterns = this.typeScript
+      ? [...WATCHED_FILE_PATTERNS, ...TYPESCRIPT_WATCHED_FILE_PATTERNS]
+      : WATCHED_FILE_PATTERNS;
     const watchers: FileSystemWatcher[] = this.clientWatchesFolders
       ? this.workspaceFolders.flatMap((folder) =>
-          WATCHED_FILE_PATTERNS.map((pattern) => ({
+          patterns.map((pattern) => ({
             globPattern: { baseUri: pathToFileURL(folder).toString(), pattern },
           })),
         )
-      : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
+      : patterns.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
     // Called with `void`, so a rejection here (an editor refusing the registration, or a connection
     // closing mid-request) would be unhandled and end the process. Without watchers the server still
@@ -413,7 +525,16 @@ export class BascikLanguageServer {
       if (isConfigFile(fsPath)) {
         // A config file appearing or disappearing also changes which project the files below it belong to.
         this.invalidateProject(path.dirname(path.resolve(fsPath)));
+        this.typeScript?.forgetProject(path.dirname(path.resolve(fsPath)));
         everything = true;
+        continue;
+      }
+      if (this.typeScript && TYPESCRIPT_INPUT_FILE.test(fsPath)) {
+        // An open buffer is the newer text; the engine already has it.
+        if (!this.documents.get(pathToFileURL(fsPath).toString()))
+          this.typeScript.fileChanged(fsPath);
+        const projectRoot = this.findProjectRoot(fsPath);
+        if (projectRoot) this.scheduleTypeScriptCheck(projectRoot, undefined);
         continue;
       }
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
@@ -618,21 +739,15 @@ export class BascikLanguageServer {
     const fsPath = uriToFsPath(document.uri);
     // A file outside every workspace folder belongs to no project, so there is nothing to check it against.
     if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root))) {
-      this.connection.sendDiagnostics({
-        uri: document.uri,
-        version,
-        diagnostics: [],
-      });
+      this.typeScriptDiagnostics.delete(document.uri);
+      this.publish(document.uri, version, []);
       return;
     }
     // A React or Vue app has its own src/components and src/api; Bascik's rules do not apply there.
     const projectRoot = this.findProjectRoot(fsPath);
     if (projectRoot && !this.isBascikProject(projectRoot)) {
-      this.connection.sendDiagnostics({
-        uri: document.uri,
-        version,
-        diagnostics: [],
-      });
+      this.typeScriptDiagnostics.delete(document.uri);
+      this.publish(document.uri, version, []);
       return;
     }
     const snapshot = await this.getSnapshotForFile(fsPath);
@@ -645,10 +760,161 @@ export class BascikLanguageServer {
 
     const diagnostics = createDiagnostics(document, fsPath, snapshot, openDocs);
 
+    this.publish(document.uri, version, diagnostics);
+  }
+
+  /**
+   * Sends a document's Bascik diagnostics with its latest TypeScript diagnostics. A publish replaces the
+   * document's whole list, so each kind is sent with the other's last result. TypeScript's may be from a slightly
+   * older version for the moment until its next check, which follows shortly.
+   */
+  private publish(uri: string, version: number, bascik: Diagnostic[]): void {
+    this.bascikDiagnostics.set(uri, bascik);
+    this.connection.sendDiagnostics({
+      uri,
+      version,
+      diagnostics: [...bascik, ...(this.typeScriptDiagnostics.get(uri) ?? [])],
+    });
+  }
+
+  /**
+   * An edit to an open document that TypeScript blocks depend on: a page's own text, or a file a block may import
+   * (whose unsaved text the engine reads instead of the file on disk).
+   */
+  private typeScriptInputChanged(
+    document: TextDocument,
+    closed: boolean,
+  ): void {
+    if (!this.typeScript || !document.uri.startsWith("file:")) return;
+    const fsPath = uriToFsPath(document.uri);
+    const projectRoot = this.findProjectRoot(fsPath);
+    if (document.languageId === "html") {
+      if (closed && projectRoot) this.typeScript.closePage(projectRoot, fsPath);
+      // A page edit only changes that page's blocks.
+      if (!closed && projectRoot)
+        this.scheduleTypeScriptCheck(projectRoot, document.uri);
+      return;
+    }
+    if (!TYPESCRIPT_INPUT_FILE.test(fsPath)) return;
+    this.typeScript.setOpenFile(
+      fsPath,
+      closed ? undefined : document.getText(),
+    );
+    if (projectRoot) this.scheduleTypeScriptCheck(projectRoot, undefined);
+  }
+
+  /**
+   * Checks the project's open pages with TypeScript after a quiet period, the edited page first. Earlier
+   * requests for the project go stale at once, so a running check stops instead of finishing work nobody reads.
+   */
+  private scheduleTypeScriptCheck(
+    projectRoot: string,
+    firstUri: string | undefined,
+  ): void {
+    const engine = this.typeScript;
+    if (!engine) return;
+    engine.cancel(projectRoot);
+    this.typeScriptGenerations.set(
+      projectRoot,
+      (this.typeScriptGenerations.get(projectRoot) ?? 0) + 1,
+    );
+    const previous = this.typeScriptTimers.get(projectRoot);
+    if (previous) clearTimeout(previous.timer);
+    const first = firstUri ?? previous?.first;
+    const timer = setTimeout(() => {
+      this.typeScriptTimers.delete(projectRoot);
+      void this.checkTypeScriptProject(engine, projectRoot, first);
+    }, TYPESCRIPT_DELAY_MS);
+    this.typeScriptTimers.set(projectRoot, { timer, first });
+  }
+
+  private async checkTypeScriptProject(
+    engine: TypeScriptEngine,
+    projectRoot: string,
+    firstUri: string | undefined,
+  ): Promise<void> {
+    const pages = this.documents
+      .all()
+      .filter(
+        (document) =>
+          document.languageId === "html" &&
+          document.uri.startsWith("file:") &&
+          this.findProjectRoot(uriToFsPath(document.uri)) === projectRoot,
+      )
+      .sort((a, b) => Number(b.uri === firstUri) - Number(a.uri === firstUri));
+    const generation = this.typeScriptGenerations.get(projectRoot);
+    for (const page of pages) {
+      // A newer edit scheduled a fresh check of every page; this one would only repeat its work.
+      if (this.typeScriptGenerations.get(projectRoot) !== generation) return;
+      await this.checkTypeScriptPage(engine, projectRoot, page);
+    }
+  }
+
+  private async checkTypeScriptPage(
+    engine: TypeScriptEngine,
+    projectRoot: string,
+    document: TextDocument,
+  ): Promise<void> {
+    const { uri, version } = document;
+    const text = document.getText();
+    const previous = this.typeScriptDiagnostics.get(uri);
+    // A page that never mentions TypeScript costs nothing: TypeScript is not even loaded for it.
+    if (!mayHaveTypeScriptBlocks(text)) {
+      if (previous?.length) this.publishTypeScript(document, []);
+      return;
+    }
+    const fsPath = uriToFsPath(uri);
+    if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root)))
+      return;
+    if (!this.isBascikProject(projectRoot)) return;
+    const snapshot = await this.getSnapshotForFile(fsPath);
+    const result = await engine.diagnostics({
+      projectRoot,
+      importRoot: snapshot?.importRoot ?? path.join(projectRoot, "src"),
+      htmlPath: fsPath,
+      text,
+    });
+    // Edited or closed meanwhile: a newer check follows, or there is nothing to show.
+    if (this.documents.get(uri)?.version !== version) return;
+    if (result.status === "cancelled") return;
+    if (result.status === "failed") {
+      this.connection.console.error(
+        `Bascik could not check the TypeScript in ${fsPath}: ${result.message}`,
+      );
+      return;
+    }
+    if (result.status === "unavailable") {
+      // Off without TypeScript, quietly: one line in the output panel per project, nothing in the editor.
+      if (!this.reportedTypeScriptRoots.has(projectRoot)) {
+        this.reportedTypeScriptRoots.add(projectRoot);
+        this.connection.console.info(`${projectRoot}: ${result.message}`);
+      }
+      if (previous?.length) this.publishTypeScript(document, []);
+      return;
+    }
+    this.reportedTypeScriptRoots.delete(projectRoot);
+    this.publishTypeScript(
+      document,
+      result.diagnostics.map((diagnostic) =>
+        toLspDiagnostic(document, diagnostic),
+      ),
+    );
+  }
+
+  private publishTypeScript(
+    document: TextDocument,
+    diagnostics: Diagnostic[],
+  ): void {
+    this.typeScriptDiagnostics.set(document.uri, diagnostics);
+    // Bascik's own check has not published yet (it waits on the project snapshot); it sends these with its own.
+    if (!this.bascikDiagnostics.has(document.uri)) return;
     this.connection.sendDiagnostics({
       uri: document.uri,
-      version,
-      diagnostics,
+      version: document.version,
+      diagnostics: [
+        ...(this.bascikDiagnostics.get(document.uri) ?? []),
+        ...diagnostics,
+      ],
     });
   }
 
@@ -696,7 +962,31 @@ export class BascikLanguageServer {
     for (const { timer } of this.revalidationTimers.values())
       clearTimeout(timer);
     this.revalidationTimers.clear();
+    for (const { timer } of this.typeScriptTimers.values()) clearTimeout(timer);
+    this.typeScriptTimers.clear();
+    void this.typeScript?.dispose();
+    this.typeScript = undefined;
     this.watcherRegistration?.dispose();
     this.watcherRegistration = undefined;
   }
+}
+
+/** A TypeScript diagnostic as the editor shows it: its range in the HTML, TypeScript's code, and Bascik's source tag. */
+function toLspDiagnostic(
+  document: TextDocument,
+  diagnostic: TypeScriptDiagnostic,
+): Diagnostic {
+  return {
+    range: {
+      start: document.positionAt(diagnostic.start),
+      end: document.positionAt(diagnostic.end),
+    },
+    message: diagnostic.message,
+    severity:
+      diagnostic.category === "error"
+        ? DiagnosticSeverity.Error
+        : DiagnosticSeverity.Warning,
+    source: TYPESCRIPT_DIAGNOSTIC_SOURCE,
+    code: diagnostic.code,
+  };
 }

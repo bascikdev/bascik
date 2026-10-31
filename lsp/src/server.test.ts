@@ -4,7 +4,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { FileChangeType, type Diagnostic } from "vscode-languageserver";
-import { BascikLanguageServer, uriToFsPath } from "./server.js";
+import {
+  BascikLanguageServer,
+  type BascikLanguageServerOptions,
+  readInitializationOptions,
+  uriToFsPath,
+} from "./server.js";
+import {
+  createInProcessTypeScriptEngine,
+  type TypeScriptCheckRequest,
+  type TypeScriptDiagnosticsResult,
+  type TypeScriptEngine,
+} from "./typescript-engine.js";
+import { TYPESCRIPT_6_DIR } from "./typescript.test.util.js";
 
 type Handler = (...args: any[]) => any;
 
@@ -730,4 +742,409 @@ describe("uriToFsPath", () => {
       );
     },
   );
+});
+
+const pause = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits until `check` passes, for diagnostics that arrive after TypeScript's quiet period. */
+async function eventually(
+  check: () => void,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      check();
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await pause(25);
+    }
+  }
+}
+
+/** An engine that records its calls and answers from `answer`. */
+function recordingEngine(
+  answer: (
+    request: TypeScriptCheckRequest,
+  ) =>
+    | Promise<TypeScriptDiagnosticsResult>
+    | TypeScriptDiagnosticsResult = () => ({
+    status: "ok",
+    diagnostics: [],
+  }),
+) {
+  const engine = {
+    diagnostics: vi.fn(async (request: TypeScriptCheckRequest) =>
+      answer(request),
+    ),
+    cancel: vi.fn(),
+    setOpenFile: vi.fn(),
+    fileChanged: vi.fn(),
+    closePage: vi.fn(),
+    forgetProject: vi.fn(),
+    dispose: vi.fn(async () => undefined),
+  } satisfies TypeScriptEngine;
+  return engine;
+}
+
+const PAGE =
+  '<main data-bascik-slott>Milk frother</main>\n<script type="text/typescript">\n  const speed: number = "fast";\n</script>\n';
+
+describe("BascikLanguageServer TypeScript diagnostics", () => {
+  let root: string;
+  let server: BascikLanguageServer;
+  let fake: ReturnType<typeof createFakeConnection>;
+
+  const write = async (relative: string, content: string) => {
+    const file = path.join(root, relative);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, content);
+    return file;
+  };
+  const uri = (file: string) => pathToFileURL(file).toString();
+
+  const start = async (
+    options: BascikLanguageServerOptions,
+    initializationOptions: unknown = {},
+  ) => {
+    server = new BascikLanguageServer(fake.connection as never, options);
+    fake.state.clientSendsFolderChanges = true;
+    await fake.handlers.get("initialize")!({
+      workspaceFolders: [{ uri: uri(root), name: "site" }],
+      capabilities: {
+        workspace: {
+          didChangeWatchedFiles: {
+            dynamicRegistration: true,
+            relativePatternSupport: true,
+          },
+          workspaceFolders: true,
+        },
+      },
+      initializationOptions,
+    });
+    fake.handlers.get("initialized")!();
+  };
+  const realEngine: BascikLanguageServerOptions = {
+    createTypeScriptEngine: (settings) =>
+      createInProcessTypeScriptEngine(settings),
+  };
+  const withTypeScript6 = { typescript: { path: TYPESCRIPT_6_DIR } };
+
+  const open = (file: string, text: string, languageId = "html", version = 1) =>
+    fake.handlers.get("didOpen")!({
+      textDocument: { uri: uri(file), languageId, version, text },
+    });
+  const change = (file: string, text: string, version: number) =>
+    fake.handlers.get("didChange")!({
+      textDocument: { uri: uri(file), version },
+      contentChanges: [{ text }],
+    });
+  const close = (file: string) =>
+    fake.handlers.get("didClose")!({ textDocument: { uri: uri(file) } });
+
+  const published = (file: string): Diagnostic[][] =>
+    fake.connection.sendDiagnostics.mock.calls
+      .map(([params]) => params as { uri: string; diagnostics: Diagnostic[] })
+      .filter((params) => params.uri === uri(file))
+      .map((params) => params.diagnostics);
+  const latest = (file: string) => published(file).at(-1) ?? [];
+  const typeScriptOf = (file: string) =>
+    latest(file).filter((d) => d.source === "ts (bascik)");
+
+  beforeEach(async () => {
+    root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "bascik-lsp-ts-")),
+    );
+    await write("bascik.config.ts", "export default {};\n");
+    fake = createFakeConnection();
+  });
+
+  afterEach(async () => {
+    server?.dispose();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("publishes Bascik's diagnostics first, then adds TypeScript's at the exact range", async () => {
+    await start(realEngine, withTypeScript6);
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() => expect(published(page).length).toBeGreaterThan(0));
+    // The first publish is Bascik's alone.
+    expect(published(page)[0].map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+    ]);
+    await eventually(() => expect(typeScriptOf(page)).toHaveLength(1));
+    expect(typeScriptOf(page)[0]).toMatchObject({
+      code: 2322,
+      severity: 1,
+      source: "ts (bascik)",
+      range: {
+        start: { line: 2, character: 8 },
+        end: { line: 2, character: 13 },
+      },
+    });
+    // Bascik's diagnostic is still there beside it.
+    expect(latest(page).map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+      2322,
+    ]);
+  });
+
+  it("clears TypeScript's error on an unsaved page edit and keeps Bascik's", async () => {
+    await start(realEngine, withTypeScript6);
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() => expect(typeScriptOf(page)).toHaveLength(1));
+    change(page, PAGE.replace('"fast"', "3"), 2);
+    await eventually(() => expect(typeScriptOf(page)).toEqual([]));
+    expect(latest(page).map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+    ]);
+  });
+
+  it("checks the page again on an unsaved edit to an imported .ts file, and on a change on disk", async () => {
+    await start(realEngine, withTypeScript6);
+    const helper = await write(
+      "src/pages/frother.ts",
+      "export const speed: string = 'fast';\n",
+    );
+    const text =
+      '<script type="text/typescript">\n  import { speed } from "./frother.ts";\n  const rpm: number = speed;\n</script>\n';
+    const page = await write("src/pages/index.html", text);
+    open(page, text);
+    await eventually(() =>
+      expect(typeScriptOf(page).map((d) => d.code)).toEqual([2322]),
+    );
+
+    open(helper, "export const speed: string = 'fast';\n", "typescript");
+    change(helper, "export const speed: number = 3;\n", 2);
+    await eventually(() => expect(typeScriptOf(page)).toEqual([]));
+
+    // Closing the buffer goes back to the file on disk.
+    close(helper);
+    await eventually(() =>
+      expect(typeScriptOf(page).map((d) => d.code)).toEqual([2322]),
+    );
+
+    await fs.writeFile(helper, "export const speed = 4;\n");
+    await server.handleWatchedFileChanges([
+      { fsPath: helper, type: FileChangeType.Changed },
+    ]);
+    await eventually(() => expect(typeScriptOf(page)).toEqual([]));
+  });
+
+  it("never asks the engine about a page without TypeScript blocks", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write(
+      "src/pages/index.html",
+      "<script>const a = 1;</script>\n",
+    );
+    open(page, '<script>const speed: number = "fast";</script>\n');
+    await pause(400);
+    expect(engine.diagnostics).not.toHaveBeenCalled();
+    expect(latest(page).some((d) => d.source === "ts (bascik)")).toBe(false);
+  });
+
+  it("starts no engine when the client turns TypeScript off, and watches no TypeScript files", async () => {
+    const create = vi.fn(() => recordingEngine());
+    await start(
+      { createTypeScriptEngine: create },
+      { typescript: { enabled: false } },
+    );
+    expect(create).not.toHaveBeenCalled();
+    await pause(10);
+    const [, registration] = fake.connection.client.register.mock
+      .calls[0] as unknown as [
+      unknown,
+      { watchers: { globPattern: { pattern: string } }[] },
+    ];
+    expect(registration.watchers.map((w) => w.globPattern.pattern)).toEqual([
+      "**/bascik.config.{ts,js,mjs}",
+      "**/*.html",
+    ]);
+  });
+
+  it("passes the client's TypeScript path to the engine and watches the files blocks import", async () => {
+    const create = vi.fn(() => recordingEngine());
+    await start(
+      { createTypeScriptEngine: create },
+      { typescript: { path: " /editor/typescript " } },
+    );
+    expect(create).toHaveBeenCalledWith({ clientPath: "/editor/typescript" });
+    await pause(10);
+    const [, registration] = fake.connection.client.register.mock
+      .calls[0] as unknown as [
+      unknown,
+      { watchers: { globPattern: { pattern: string } }[] },
+    ];
+    expect(registration.watchers.map((w) => w.globPattern.pattern)).toEqual([
+      "**/bascik.config.{ts,js,mjs}",
+      "**/*.html",
+      "**/*.{ts,mts,cts,js,mjs,cjs}",
+      "**/{tsconfig,package}.json",
+    ]);
+  });
+
+  it("without TypeScript, writes one line to the output panel per project and publishes nothing for it", async () => {
+    const engine = recordingEngine(() => ({
+      status: "unavailable",
+      message: "TypeScript checks are off: none found",
+    }));
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    const other = await write("src/pages/other.html", PAGE);
+    open(page, PAGE);
+    open(other, PAGE);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    await pause();
+    const notes = fake.connection.console.info.mock.calls.filter(([message]) =>
+      String(message).includes("TypeScript checks are off"),
+    );
+    expect(notes).toEqual([[`${root}: TypeScript checks are off: none found`]]);
+    expect(latest(page).map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+    ]);
+  });
+
+  it("drops a result for a page edited while it was checked, and cancels the stale request at once", async () => {
+    let release: (() => void) | undefined;
+    const engine = recordingEngine(async (request) => {
+      if (request.text.includes('"fast"'))
+        await new Promise<void>((resolve) => (release = resolve));
+      return {
+        status: "ok",
+        diagnostics: request.text.includes('"fast"')
+          ? [{ start: 0, end: 4, message: "stale", code: 1, category: "error" }]
+          : [],
+      };
+    });
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() => expect(release).toBeDefined());
+    const cancelsBefore = engine.cancel.mock.calls.length;
+    change(page, PAGE.replace('"fast"', "3"), 2);
+    expect(engine.cancel.mock.calls.length).toBe(cancelsBefore + 1);
+    release!();
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    await pause();
+    expect(
+      published(page)
+        .flat()
+        .some((d) => d.message === "stale"),
+    ).toBe(false);
+  });
+
+  it("logs a failed check and keeps going", async () => {
+    const engine = recordingEngine(() => ({
+      status: "failed",
+      message: "TypeError: boom",
+    }));
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() =>
+      expect(fake.connection.console.error).toHaveBeenCalledWith(
+        expect.stringContaining("TypeError: boom"),
+      ),
+    );
+    expect(latest(page).map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+    ]);
+  });
+
+  it("tells the engine about closed pages, open buffers and config changes", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    close(page);
+    expect(engine.closePage).toHaveBeenCalledWith(root, page);
+    const helper = await write("src/lib/a.ts", "export const a = 1;\n");
+    open(helper, "export const a = 2;\n", "typescript");
+    expect(engine.setOpenFile).toHaveBeenLastCalledWith(
+      helper,
+      "export const a = 2;\n",
+    );
+    close(helper);
+    expect(engine.setOpenFile).toHaveBeenLastCalledWith(helper, undefined);
+    await server.handleWatchedFileChanges([
+      {
+        fsPath: path.join(root, "bascik.config.ts"),
+        type: FileChangeType.Changed,
+      },
+      {
+        fsPath: path.join(root, "tsconfig.json"),
+        type: FileChangeType.Created,
+      },
+    ]);
+    expect(engine.forgetProject).toHaveBeenCalledWith(root);
+    expect(engine.fileChanged).toHaveBeenCalledWith(
+      path.join(root, "tsconfig.json"),
+    );
+  });
+
+  it("gives a page outside every workspace folder no TypeScript diagnostics", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const outside = path.join(os.tmpdir(), "bascik-outside-page.html");
+    open(outside, PAGE);
+    await pause(400);
+    expect(engine.diagnostics).not.toHaveBeenCalled();
+  });
+});
+
+describe("readInitializationOptions", () => {
+  it("turns TypeScript on by default and reads the editor's flag", () => {
+    expect(readInitializationOptions(undefined)).toEqual({
+      typescriptEnabled: true,
+      typescriptPath: undefined,
+      editorHasEmbeddedTypeScript: false,
+    });
+    expect(
+      readInitializationOptions({
+        typescript: { enabled: true, path: "/ts" },
+        editorHasEmbeddedTypeScript: true,
+      }),
+    ).toEqual({
+      typescriptEnabled: true,
+      typescriptPath: "/ts",
+      editorHasEmbeddedTypeScript: true,
+    });
+  });
+
+  it("misuse: ignores options of the wrong type rather than failing to start", () => {
+    for (const value of [
+      null,
+      "typescript",
+      3,
+      [],
+      { typescript: "on" },
+      { typescript: null },
+    ]) {
+      expect(readInitializationOptions(value)).toEqual({
+        typescriptEnabled: true,
+        typescriptPath: undefined,
+        editorHasEmbeddedTypeScript: false,
+      });
+    }
+    expect(
+      readInitializationOptions({
+        typescript: { enabled: "false", path: "   " },
+        editorHasEmbeddedTypeScript: "yes",
+      }),
+    ).toEqual({
+      typescriptEnabled: true,
+      typescriptPath: undefined,
+      editorHasEmbeddedTypeScript: false,
+    });
+    expect(
+      readInitializationOptions({ typescript: { enabled: false, path: 7 } }),
+    ).toMatchObject({
+      typescriptEnabled: false,
+      typescriptPath: undefined,
+    });
+  });
 });
