@@ -63,6 +63,7 @@ To have coding agents refactor a live site to production parity at every breakpo
 - **Re-sync form state on `pageshow`** after Back/Forward or reload.
 - **`bascik --check` reports components printed only by build scripts as unused.** That is expected.
 - **Add `"html.validate.scripts": false` to `.vscode/settings.json`** (or run `bascik init`, which merges it in). Otherwise VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports".
+- **Scope the old site's editor linters to source files.** Once the head moves into a component and a build script, webhint and axe report a missing charset, viewport, and `<title>` on every page. `bascik init` writes a scoped `.hintrc`; carry the legacy site's own `.hintrc`, `.htmlvalidate.json`, or `axe-linter.yml` across with the exceptions in `read-doc.mjs /testing/linting#editor-linters-read-source`, and never add head tags back to source pages to quiet them.
 - **Do not generate page files into `src/pages/`.** Use dynamic routes.
 - **Exclude data-reading build scripts from the cache** (`scripts.cache.exclude`) and watch `content/` (`pipeline.watchPaths`).
 - **Tailwind:** run it as a `pre` exec script with `scoping.attributes.class: false`; see `read-doc.mjs /libraries`.

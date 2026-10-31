@@ -86,6 +86,7 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 | Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
 | Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
+| Handle false editor linter warnings  | `/testing/linting#editor-linters-read-source`                                |
 | Fix a known problem                  | `/testing/troubleshooting`                                                   |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

@@ -70,6 +70,8 @@ Run `bascik init` to create the starter directory structure, or add `"dev": "bas
 
 VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a page with two Bascik scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. The setting turns off only VS Code's check of code inside `<script>` tags in `.html` files. The Bascik extension offers to add the setting to a Bascik workspace the first time it starts there, and changes nothing unless you click. See [Several Scripts in One File](/tools/vscode-extension#several-scripts-in-one-file) for what the setting changes.
 
+`bascik init` also writes a `.hintrc` for webhint, built from the pages and components folders in your `bascik.config`. Editor linters read source files, so without it they report a missing charset, viewport, or `<title>` that Bascik adds at build time. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source).
+
 <!-- demo:component-html -->
 
 ```html

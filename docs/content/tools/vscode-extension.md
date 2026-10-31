@@ -212,7 +212,7 @@ A Bascik page or component often has more than one `<script>`: a build script, a
 A module cannot have multiple default exports.
 ```
 
-Bascik runs each script on its own, so the page builds fine. The fix is to turn off VS Code's inline script check with the `html.validate.scripts` setting:
+VS Code also checks `type="text/typescript"` blocks as TypeScript, without Bascik's `@/` import root. Bascik runs each script on its own, so the page builds fine. The fix is to turn off VS Code's inline script check with the `html.validate.scripts` setting:
 
 ```json
 {

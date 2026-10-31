@@ -13,7 +13,7 @@ The package's source files have distinct responsibilities:
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
 
-`validateProjectName` refuses `.`, `..`, an absolute path, spaces and empty or hidden path segments, so the project is always a new folder under the current one; its last segment names the site, and lowercased, the package. Before writing anything, `scaffold` checks the target: a file where the project folder goes, or a folder that already has one of the starter's own files (or a file where one of its folders goes), throws a `ScaffoldTargetError` naming them, which the CLI prints in one line and exits 1. AGENTS.md, CLAUDE.md and `.vscode/` are not in the way, since those are merged. Any other filesystem error is printed as `Error: could not create <name>: <reason>`.
+`validateProjectName` refuses `.`, `..`, an absolute path, spaces and empty or hidden path segments, so the project is always a new folder under the current one; its last segment names the site, and lowercased, the package. Before writing anything, `scaffold` checks the target: a file where the project folder goes, or a folder that already has one of the starter's own files (or a file where one of its folders goes), throws a `ScaffoldTargetError` naming them, which the CLI prints in one line and exits 1. AGENTS.md, CLAUDE.md, `.hintrc` and `.vscode/` are not in the way, since those are merged. Any other filesystem error is printed as `Error: could not create <name>: <reason>`.
 
 ## What the CLI generates
 
@@ -24,6 +24,8 @@ Running `npx create-bascik <name>` writes this structure:
   package.json
   vite.config.ts
   .gitignore
+  .hintrc                webhint in the editor, scoped to what Bascik builds
+  .hintrc.dist.json      webhint for the built pages in dist/
   .vscode/
     launch.json
     extensions.json
@@ -70,7 +72,7 @@ Running `npx create-bascik <name>` writes this structure:
         contact-form.test.ts
 ```
 
-The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `vite.config.ts` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
+The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors, `.hintrc` scopes webhint's charset, viewport, and title checks to [what Bascik builds](/testing/linting#editor-linters-read-source) with `.hintrc.dist.json` turning them back on for `dist/`, `vite.config.ts` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling.
 
 After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one. The dev server question is skipped when the install is, and `npm run dev` runs only when `npm install` exits 0; otherwise the CLI prints the next steps, `npm install` included.
 
@@ -94,7 +96,7 @@ The scaffold runs `npm install` and `npm run dev` so users do not need Yarn or p
 
 ## Modifying the scaffold
 
-All generated file content is defined as string constants in `scaffold.ts`. To change what a new project looks like, edit the relevant constant there. The `.vscode/settings.json` and `.vscode/extensions.json` content lives in `vscode-settings.ts` instead, which has an identical copy at `pkg/src/lib/vscode-settings.ts` for `bascik init`; a unit test fails when the two differ. Both commands merge into `.vscode` files a folder already has: they add the missing setting or recommendation, keep comments and other entries, keep a value the user already set, and leave a file that is not valid JSON alone with a printed note saying what to add. An existing `launch.json` is never replaced. After any change, rebuild before testing:
+All generated file content is defined as string constants in `scaffold.ts`. To change what a new project looks like, edit the relevant constant there. The `.vscode/settings.json`, `.vscode/extensions.json`, `.hintrc` and `.hintrc.dist.json` content lives in `vscode-settings.ts` instead, which has an identical copy at `pkg/src/lib/vscode-settings.ts` for `bascik init`; a unit test fails when the two differ. Both commands merge into `.vscode` files a folder already has: they add the missing setting or recommendation, keep comments and other entries, keep a value the user already set, and leave a file that is not valid JSON alone with a printed note saying what to add. An existing `launch.json` is never replaced. For webhint, an existing `.hintrc` or `.hintrc.json` (webhint reads `.hintrc`, then `.hintrc.js`, then `.hintrc.json`, then `package.json` `hintConfig`) is merged the same way, a `.hintrc.js` or `hintConfig` is left alone with a note, and `.hintrc.dist.json` is written only when absent. After any change, rebuild before testing:
 
 ```sh
 cd create
