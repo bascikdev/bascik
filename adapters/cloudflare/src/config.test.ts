@@ -961,6 +961,60 @@ describe("generateWranglerConfig: the authored config carried into the generated
     ]);
   });
 
+  it("an env section's own run_worker_first: true is kept, not replaced by the computed routes", () => {
+    const { config, warnings } = generate({
+      assets: { html_handling: "auto-trailing-slash" },
+      env: {
+        production: { assets: { run_worker_first: true } },
+        staging: { assets: { run_worker_first: ["/admin/*"] } },
+      },
+    });
+    const env = config.env as Record<
+      string,
+      { assets: Record<string, unknown> }
+    >;
+    expect(env.production.assets.run_worker_first).toBe(true);
+    expect(env.staging.assets.run_worker_first).toEqual([
+      "/_routes.json",
+      "/_worker.js",
+      "/admin/*",
+    ]);
+    // The top level keeps its computed routes.
+    expect((config.assets as Record<string, unknown>).run_worker_first).toEqual(
+      ["/_routes.json", "/_worker.js"],
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("misuse: a run_worker_first that is neither true nor a list of patterns is reported, naming the file and key", () => {
+    const { config, warnings } = generate({
+      env: {
+        production: { assets: { run_worker_first: "true" } },
+      },
+      assets: { run_worker_first: ["/admin/*", 42] },
+    });
+    const env = config.env as Record<
+      string,
+      { assets: Record<string, unknown> }
+    >;
+    // A string is not Wrangler's true: the computed routes still deploy.
+    expect(env.production.assets.run_worker_first).toEqual([
+      "/_routes.json",
+      "/_worker.js",
+    ]);
+    expect((config.assets as Record<string, unknown>).run_worker_first).toEqual(
+      ["/_routes.json", "/_worker.js", "/admin/*"],
+    );
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "env\.production\.assets\.run_worker_first" must be true or a list of route patterns.*"true"/,
+      ),
+      expect.stringMatching(
+        /^\[bascik\] wrangler\.jsonc: "assets\.run_worker_first" must be true or a list of route patterns.*42/,
+      ),
+    ]);
+  });
+
   it("$schema: an authored relative path is rebased, a URL kept, and the default points at a resolvable schema or is left out", () => {
     expect(
       generate({ $schema: "node_modules/wrangler/config-schema.json" }).config

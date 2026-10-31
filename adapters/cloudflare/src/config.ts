@@ -409,8 +409,24 @@ export function generateWranglerConfig(input: GenerateWranglerConfigInput): {
       throw new Error(
         `${at(`${keyPrefix}assets.binding`)} must be "${ASSETS_BINDING}" or left out: the generated Worker serves static files through env.${ASSETS_BINDING}.`,
       );
+    // Wrangler takes a boolean or a list of route patterns. Anything else
+    // (a string "true", a number in the list) never reaches Wrangler: say
+    // so, since the Worker would silently run first for fewer paths.
+    const strayFirst =
+      authoredFirst === undefined || typeof authoredFirst === "boolean"
+        ? []
+        : Array.isArray(authoredFirst)
+          ? authoredFirst.filter((p) => typeof p !== "string")
+          : [authoredFirst];
+    if (strayFirst.length)
+      warnings.push(
+        `${at(`${keyPrefix}assets.run_worker_first`)} must be true or a list of route patterns: ${strayFirst.map((v) => JSON.stringify(v)).join(", ")} is ignored, and the Worker runs first only for the routes the build computes${Array.isArray(authoredFirst) ? " and your other patterns" : ""}.`,
+      );
     let first: true | string[];
-    if (runWorkerFirst === true) first = true;
+    // The top-level `true` is resolved by build.ts (it also decides who
+    // sends the static files' headers); an env section's own `true` is
+    // kept for that environment, as Wrangler would read it.
+    if (runWorkerFirst === true || authoredFirst === true) first = true;
     else {
       const extra = Array.isArray(authoredFirst)
         ? authoredFirst.filter((p): p is string => typeof p === "string")
