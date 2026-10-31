@@ -187,9 +187,15 @@ describe("release.yml instructions", () => {
     }
   });
 
-  it("pushes each documented tag by name to origin", () => {
-    const commands = [...workflow.matchAll(/^#.*git tag (\S+) && (.*)$/gm)];
+  it("tags origin/main and pushes each documented tag by name to origin", () => {
+    const examples = workflow
+      .split("\n")
+      .filter((line) => /^#.*git tag /.test(line));
+    const commands = [
+      ...workflow.matchAll(/^#.*git tag (\S+) origin\/main && (.*)$/gm),
+    ];
     expect(commands.length).toBeGreaterThanOrEqual(6);
+    expect(commands.length, examples.join("\n")).toBe(examples.length);
     for (const [, tag, push] of commands) {
       expect(push.trim().split(/\s{2,}/)[0]).toBe(`git push origin ${tag}`);
     }
