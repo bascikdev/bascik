@@ -923,9 +923,10 @@ export const executeBuildScripts = async (
     // is ignored there. Running either one here would hide the other, so
     // the tag is ambiguous and rejected, the same way for every directive.
     if (srcAttribute && trimmedScript) {
-      throw new Error(
-        `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${where}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`,
-      );
+      const message = `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${where}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`;
+      // The location travels as data so the dev overlay can name the file.
+      if (location) throw new BuildScriptError(message, location);
+      throw new Error(message);
     }
     if (!trimmedScript) {
       const srcPath = srcAttribute;

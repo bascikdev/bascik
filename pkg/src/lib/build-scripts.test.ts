@@ -3158,6 +3158,18 @@ describe("src= that cannot be used", () => {
     },
   );
 
+  it("carries the src= plus body location as data for the dev overlay", async () => {
+    const error = await executeBuildScripts(
+      `<main>\n<script data-bascik-build src="./nav.ts">\n  export default () => "<p>inline</p>";\n</script></main>`,
+      "src/pages/index.html",
+    ).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ line: 2, column: 1 });
+    expect((error as BuildScriptError).sourceFile).toMatch(
+      /src[\\/]pages[\\/]index\.html$/,
+    );
+  });
+
   it("accepts a src= tag whose body is only whitespace", async () => {
     mockReadFile.mockResolvedValueOnce('export default () => "<p>file</p>";');
     resolveWith("<p>file</p>");
