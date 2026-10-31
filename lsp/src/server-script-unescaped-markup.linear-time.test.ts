@@ -97,3 +97,54 @@ describe("server-script-unescaped-markup: linear time", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 });
+
+describe("build-time code and Node modules: linear time (review round 2)", () => {
+  const analyzeModule = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "module",
+      escapeFunctions: [],
+    } as AnalyzeOptions);
+  const growthOfModules = (small: string, large: string): number =>
+    growthOf(
+      () => analyzeModule(small),
+      () => analyzeModule(large),
+    );
+
+  it(
+    "nested declarations, each scanned to its end, read in linear time (CPU growth under 8x for 4x the depth)",
+    () => {
+      const nested = (d: number) =>
+        Array.from({ length: d }, (_, i) => `const a${i} = () => { `).join("") +
+        "return 1;" +
+        " };".repeat(d);
+      expect(growthOfModules(nested(2_000), nested(8_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "a one-line run of declarations with no end reads in linear time (CPU growth under 8x for 4x the run)",
+    () => {
+      const run = (n: number) => "const a = x / y / `<p>${z}</p>` / ".repeat(n);
+      expect(growthOfModules(run(2_500), run(10_000))).toBeLessThan(8);
+      const open = (n: number) => "const a = `<p>${x}".repeat(n);
+      expect(growthOfModules(open(2_500), open(10_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "templates nested in each other's holes read in linear time (CPU growth under 8x for 4x the depth)",
+    () => {
+      const nested = (n: number) =>
+        "export const t = () => " +
+        "`<p>${".repeat(n) +
+        "x" +
+        "}</p>`".repeat(n) +
+        ";";
+      expect(growthOfModules(nested(500), nested(2_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});

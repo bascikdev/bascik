@@ -357,55 +357,158 @@ export interface ExemptContext {
 }
 
 /**
- * `const|let|var NAME = EXPR` bindings, each EXPR up to `;` or the line end
- * at depth 0. A let or var name also collects every later plain assignment
- * (`NAME = EXPR`, `NAME += EXPR`, `NAME ||= EXPR`, `NAME ??= EXPR`), so a
- * name reassigned from request data is not trusted from its declaration.
+ * `const|let|var NAME = EXPR` bindings, each EXPR up to `;`, `,` or the line
+ * end at its own depth, or the bracket that closes the one it is in. A let
+ * or var name also collects every later plain assignment (`NAME = EXPR`,
+ * `NAME += EXPR`, `NAME ||= EXPR`, `NAME ??= EXPR`), so a name reassigned
+ * from request data is not trusted from its declaration. Every value's end
+ * is found in one pass (valueEnds), so nested declarations, each of which
+ * runs to the end of the ones around it, are not each scanned again.
  */
 export function findBindings(body: string): Map<string, string[]> {
-  const bindings = new Map<string, string[]>();
-  const valueAt = (from: number): string => {
-    let depth = 0;
-    let i = from;
-    for (; i < body.length; i++) {
-      const c = body[i];
-      if (c === "'" || c === '"' || c === "`") {
-        const close = c === "`" ? templateEnd(body, i) : stringEnd(body, i);
-        i = close - 1;
-      } else if (c === "(" || c === "[" || c === "{") depth++;
-      else if (c === ")" || c === "]" || c === "}") {
-        if (depth === 0) break;
-        depth--;
-      } else if (depth === 0 && (c === ";" || c === "\n" || c === ",")) break;
-    }
-    return body.slice(from, i);
-  };
-  const add = (name: string, value: string): void => {
-    const list = bindings.get(name) ?? [];
-    list.push(value);
-    bindings.set(name, list);
-  };
+  const found: { name: string; from: number }[] = [];
   const reassignable = new Set<string>();
   for (const m of body.matchAll(
     /\b(const|let|var)\s+([\w$]+)\s*=(?![=>])\s*/g,
   )) {
-    add(m[2], valueAt((m.index ?? 0) + m[0].length));
+    found.push({ name: m[2], from: (m.index ?? 0) + m[0].length });
     if (m[1] !== "const") reassignable.add(m[2]);
   }
   for (const m of body.matchAll(/\b(?:let|var)\s+([\w$]+)\s*[;,\n]/g))
     reassignable.add(m[1]);
-  if (reassignable.size === 0) return bindings;
-  // Plain assignments: not after `.` (a property) or a declaration keyword
-  // (counted above); `-=`, `*=` and the like always store a number.
-  for (const m of body.matchAll(
-    /(?<![\w$.])([\w$]+)\s*(?:\+|\|\||\?\?|&&)?=(?![=>])\s*/g,
-  )) {
-    if (!reassignable.has(m[1])) continue;
-    const before = body.slice(Math.max(0, (m.index ?? 0) - 6), m.index);
-    if (/\b(?:const|let|var)\s+$/.test(before)) continue;
-    add(m[1], valueAt((m.index ?? 0) + m[0].length));
+  if (reassignable.size > 0)
+    // Plain assignments: not after `.` (a property) or a declaration keyword
+    // (counted above); `-=`, `*=` and the like always store a number.
+    for (const m of body.matchAll(
+      /(?<![\w$.])([\w$]+)\s*(?:\+|\|\||\?\?|&&)?=(?![=>])\s*/g,
+    )) {
+      if (!reassignable.has(m[1])) continue;
+      const before = body.slice(Math.max(0, (m.index ?? 0) - 6), m.index);
+      if (/\b(?:const|let|var)\s+$/.test(before)) continue;
+      found.push({ name: m[1], from: (m.index ?? 0) + m[0].length });
+    }
+  const ends = valueEnds(
+    body,
+    [...new Set(found.map((f) => f.from))].sort((x, y) => x - y),
+  );
+  const bindings = new Map<string, string[]>();
+  for (const { name, from } of found) {
+    const end = ends.get(from);
+    // Inside a string, comment or template text: not code.
+    if (end === undefined) continue;
+    const list = bindings.get(name) ?? [];
+    list.push(body.slice(from, end));
+    bindings.set(name, list);
   }
   return bindings;
+}
+
+/**
+ * The end of the value that starts at each offset in `froms` (ascending):
+ * the first `;`, `,` or newline at the value's own bracket depth, or the
+ * closing bracket of the one it is in, or the end of the body. One pass
+ * over the code: strings, comments, regex literals and template text are
+ * skipped (a value that starts inside one gets no end), and a template's
+ * holes are code one level deeper. Values still open are kept on a stack,
+ * shallowest first, so each one is closed once.
+ */
+function valueEnds(body: string, froms: number[]): Map<number, number> {
+  const ends = new Map<number, number>();
+  const open: { from: number; depth: number }[] = [];
+  let next = 0;
+  let depth = 0;
+  /** "t" in a template's text, "h" in a hole's code; empty at the top level. */
+  const modes: ("t" | "h")[] = [];
+  /** The depth each open hole's code starts at. */
+  const holeDepths: number[] = [];
+  let regexOk = true;
+  let before = "";
+  const close = (atDepth: number, at: number): void => {
+    while (open.length > 0 && open[open.length - 1].depth >= atDepth)
+      ends.set(open.pop()!.from, at);
+  };
+  /** Drops starts before `to` that no code reaches (inside a skipped token). */
+  const skip = (to: number): void => {
+    while (next < froms.length && froms[next] < to) next++;
+  };
+  let i = 0;
+  while (i < body.length) {
+    if (modes[modes.length - 1] === "t") {
+      skip(i + 1);
+      const c = body[i];
+      if (c === "\\") i += 2;
+      else if (c === "`") {
+        modes.pop();
+        depth--;
+        regexOk = false;
+        before = c;
+        i++;
+      } else if (c === "$" && body[i + 1] === "{") {
+        modes.push("h");
+        depth++;
+        holeDepths.push(depth);
+        regexOk = true;
+        before = "{";
+        i += 2;
+      } else i++;
+      continue;
+    }
+    skip(i);
+    while (next < froms.length && froms[next] === i)
+      open.push({ from: froms[next++], depth });
+    const c = body[i];
+    if (c === "'" || c === '"') {
+      i = Math.min(stringEnd(body, i), body.length);
+      skip(i);
+      regexOk = false;
+      before = c;
+    } else if (c === "/" && body[i + 1] === "/") {
+      const newline = body.indexOf("\n", i);
+      i = newline === -1 ? body.length : newline;
+      skip(i);
+    } else if (c === "/" && body[i + 1] === "*") {
+      const end = body.indexOf("*/", i + 2);
+      i = end === -1 ? body.length : end + 2;
+      skip(i);
+    } else if (c === "/" && regexOk) {
+      i = skipRegexLiteral(body, i);
+      skip(i);
+      regexOk = false;
+      before = "/";
+    } else if (c === "`") {
+      modes.push("t");
+      depth++;
+      i++;
+    } else if (/[\w$]/.test(c)) {
+      const wordStart = i;
+      while (i < body.length && /[\w$]/.test(body[i])) i++;
+      regexOk =
+        before !== "." && REGEX_AFTER_KEYWORD.has(body.slice(wordStart, i));
+      before = "w";
+    } else {
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        close(depth, i);
+        if (
+          c === "}" &&
+          modes.length > 0 &&
+          depth === holeDepths[holeDepths.length - 1]
+        ) {
+          // The `}` that closes a hole: back to the template's text.
+          modes.pop();
+          holeDepths.pop();
+        }
+        depth--;
+      } else if (c === ";" || c === "\n" || c === ",") close(depth, i);
+      if (!/\s/.test(c)) {
+        regexOk = OPERAND_FOLLOWS.has(c);
+        before = c;
+      }
+      i++;
+    }
+  }
+  close(-Infinity, body.length);
+  return ends;
 }
 
 const stringEnd = (text: string, i: number): number => {

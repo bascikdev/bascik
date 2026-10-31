@@ -22,6 +22,8 @@ import {
   skipRegexLiteral,
   type ExemptContext,
   type HoleContext,
+  type TemplateHole,
+  type TemplateLiteral,
 } from "./server-script-templates.js";
 
 export interface ServerScriptDiagnostic {
@@ -341,7 +343,24 @@ export function analyzeServerScriptSource(
 
   const joined = joinedNames(body);
   const projectNames = projectImportNames(body);
-  for (const literal of findTemplateLiterals(body)) {
+  const literals = findTemplateLiterals(body);
+  const literalAt = new Map(literals.map((l) => [l.start, l]));
+  /**
+   * The untagged template a hole holds whole (`${`<li>${x}</li>`}`), found
+   * by offset: its holes are checked as its own, so the outer hole is fine
+   * exactly when the inner template has none. Read this way, templates
+   * nested deep in each other's holes are not each rescanned as text.
+   */
+  const wholeTemplateIn = (hole: TemplateHole): TemplateLiteral | undefined => {
+    let k = hole.start + 2;
+    while (k < hole.end && /\s/.test(body[k])) k++;
+    const inner = literalAt.get(k);
+    if (!inner || inner.tag !== null) return undefined;
+    let j = inner.end;
+    while (j < hole.end - 1 && /\s/.test(body[j])) j++;
+    return j === hole.end - 1 && body[j] === "}" ? inner : undefined;
+  };
+  for (const literal of literals) {
     const isHtml = literal.tag !== null && ctx.htmlTags.includes(literal.tag);
     // SQL, URLs and plain text: `WHERE id = ${id}` is not an attribute.
     // Build-time code also holds CLI text and generated TypeScript, so it
@@ -371,6 +390,12 @@ export function analyzeServerScriptSource(
     let fixable = markup && !plainTag && !xml && throwsAt === -1;
     for (const hole of literal.holes) {
       const context = scanned.holes[hole.index - 1];
+      const inner = wholeTemplateIn(hole);
+      const holeIsExempt = (): boolean =>
+        inner !== undefined
+          ? inner.holes.length === 0
+          : isExempt(hole.expr, ctx);
+      const shown = quoteHole(hole.expr);
       // A placeholder inside a <!-- --> comment within the literal is skipped.
       if (context.kind === "comment") continue;
       // A fragment that has opened no tag yet (` href="${u}"`) is read the
@@ -451,10 +476,10 @@ export function analyzeServerScriptSource(
         // help. Build-time names are the site's own (`<h${level}>`,
         // `<th${attributes}>`); a request value here is an injection.
         fixable = false;
-        if (requestTime && markup && !isExempt(hole.expr, ctx))
+        if (requestTime && markup && !holeIsExempt())
           pending.push({
             code: UNESCAPED_MARKUP_RULE,
-            message: `This markup template (line ${lineOf(literal.start)}) puts \${${hole.expr.trim()}} (hole ${hole.index}) where a tag or attribute name goes. html\`...\` throws there and escaping cannot make it safe: choose between fixed names in code (for example level === 1 ? "h1" : "h2").`,
+            message: `This markup template (line ${lineOf(literal.start)}) puts ${shown} (hole ${hole.index}) where a tag or attribute name goes. html\`...\` throws there and escaping cannot make it safe: choose between fixed names in code (for example level === 1 ? "h1" : "h2").`,
             severity: "warning",
             ...at,
           });
@@ -478,7 +503,7 @@ export function analyzeServerScriptSource(
           markup &&
           (sink === "server-script-sink-unquoted-attribute" ||
             sink === "server-script-sink-inline-script") &&
-          !isExempt(hole.expr, ctx)
+          !holeIsExempt()
         )
           diagnostics.push({
             code: sink,
@@ -500,29 +525,33 @@ export function analyzeServerScriptSource(
         continue;
       }
 
-      const exempt = isExempt(hole.expr, ctx);
+      const exempt = holeIsExempt();
       if (markup && !exempt) {
-        const escaper = handEscaper(hole.expr);
+        const escaper =
+          inner === undefined ? handEscaper(hole.expr) : undefined;
         if (xml) {
           // Any entity escaper is right for XML text and quoted values.
           if (escaper !== undefined) continue;
           pending.push({
             code: UNESCAPED_MARKUP_RULE,
-            message: `This XML template (line ${lineOf(literal.start)}) interpolates \${${hole.expr.trim()}} (hole ${hole.index}) without escaping. html\`...\` builds HTML, not XML, so escape the value with esc() from @bascik/bascik/html (its entities are valid XML too), or with an XML escaper that has a comment saying it is for XML.`,
+            message: `This XML template (line ${lineOf(literal.start)}) interpolates ${shown} (hole ${hole.index}) without escaping. html\`...\` builds HTML, not XML, so escape the value with esc() from @bascik/bascik/html (its entities are valid XML too), or with an XML escaper that has a comment saying it is for XML.`,
             severity: "warning",
             ...at,
           });
           continue;
         }
-        const head = `This markup template (line ${lineOf(literal.start)}) interpolates \${${hole.expr.trim()}} (hole ${hole.index}) without html.`;
+        const head = `This markup template (line ${lineOf(literal.start)}) interpolates ${shown} (hole ${hole.index}) without html.`;
         // The quick fix would escape twice: the escaper's output, or the
         // markup in a joined string, would show as text.
-        if (escaper !== undefined || isJoined(hole.expr, joined))
+        if (
+          escaper !== undefined ||
+          (inner === undefined && isJoined(hole.expr, joined))
+        )
           fixable = false;
         // A project helper may return a markup string (a card, a list),
         // which html would escape: the page would show its tags as text.
         const helper =
-          escaper === undefined
+          escaper === undefined && inner === undefined
             ? projectHelperIn(hole.expr, projectNames, ctx.bindings)
             : undefined;
         if (helper !== undefined) {
@@ -584,7 +613,9 @@ export function analyzeServerScriptSource(
         continue;
       }
 
-      // Text: a request value with no escaping call around it (info).
+      // Text: a request value with no escaping call around it (info). A
+      // whole inner template's own holes are checked as its own.
+      if (inner !== undefined) continue;
       const trimmedExpr = hole.expr.trim();
       const referencesRequestData =
         trimmedExpr.includes("request.") ||
@@ -676,6 +707,12 @@ function projectHelperIn(
 /** A template whose first tag is an XML prolog or the root of a sitemap or a feed. */
 const XML_TEMPLATE =
   /^\s*<(?:\?xml\b|(?:rss|feed|urlset|sitemapindex|url|loc|channel|item|entry)(?=[\s/>]))/;
+
+/** How a message quotes a hole: `${expr}`, cut short when the expression is long. */
+function quoteHole(expr: string): string {
+  const e = expr.trim();
+  return `\${${e.length > 60 ? `${e.slice(0, 57)}...` : e}}`;
+}
 
 /** A .join() of html values inside html: the joined string is escaped. */
 export const JOINED_RULE = "html-joined-string";
