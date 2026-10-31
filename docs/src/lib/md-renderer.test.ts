@@ -106,6 +106,32 @@ const x = 1;
     expect(html).toContain("</table></doc-table>");
   });
 
+  // content/lighthouse.md centers its score columns with :---:, which marked writes as <th align="center">.
+  it('renderMd adds scope="col" to aligned header cells too, and leaves <thead> and a set scope alone', async () => {
+    const mdContent = [
+      "| Left | Center | Right | Plain |",
+      "| :--- | :----: | ----: | ----- |",
+      "| 1 | 2 | 3 | 4 |",
+      "",
+      '<table><tr><th scope="row">Row</th><td>x</td></tr></table>',
+      "",
+    ].join("\n");
+    const mdFile = join(tempDir, "aligned-table.md");
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile);
+    expect(html).toContain('<th scope="col" align="left">Left</th>');
+    expect(html).toContain('<th scope="col" align="center">Center</th>');
+    expect(html).toContain('<th scope="col" align="right">Right</th>');
+    expect(html).toContain('<th scope="col">Plain</th>');
+    expect(html).toContain("<thead>");
+    expect(html).not.toMatch(/<thead scope/);
+    expect(html).toContain('<th scope="row">Row</th>');
+    expect(
+      html.match(/<th\b[^>]*>/g)?.every((tag) => /\bscope=/.test(tag)),
+    ).toBe(true);
+  });
+
   it("renderMd gives site images lazy loading and the real size of PNG files in src/pages", async () => {
     const mdFile = join(tempDir, "images.md");
     await writeFile(
@@ -737,6 +763,67 @@ Third content.
 
     const result = await extractDemoBlock(mdFile, "missing-marker");
     expect(result).toContain("<!-- demo:missing-marker not found");
+  });
+
+  // A typo'd marker id in a page shell used to ship an empty code block with no message at all.
+  it("extractDemoBlock warns with the file and marker when the marker is missing", async () => {
+    const mdFile = join(tempDir, "props.md");
+    await writeFile(
+      mdFile,
+      "# Props\n\n<!-- demo:source-html -->\n\n```html\n<p>x</p>\n```\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await extractDemoBlock(mdFile, "source-htlm");
+      expect(result).toContain("<!-- demo:source-htlm not found");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(
+        /\[md-renderer\].*demo:source-htlm.*props\.md/,
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("extractDemoBlock warns when the marker has no fenced code block after it", async () => {
+    const mdFile = join(tempDir, "nofence.md");
+    await writeFile(
+      mdFile,
+      "# Props\n\n<!-- demo:source-html -->\n\nJust prose.\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await extractDemoBlock(mdFile, "source-html");
+      expect(result).toContain("<!-- no code block after demo:source-html");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(
+        /\[md-renderer\].*no code block after demo:source-html.*nofence\.md/,
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("extractDemoBlock warns once, not twice, when the file is missing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await extractDemoBlock(join(tempDir, "gone.md"), "demo");
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("extractDemoBlock stays quiet when the block exists", async () => {
+    const mdFile = join(tempDir, "ok.md");
+    await writeFile(mdFile, "<!-- demo:usage -->\n\n```html\n<p>x</p>\n```\n");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await extractDemoBlock(mdFile, "usage");
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("renderMd gracefully handles ENOENT for missing files", async () => {

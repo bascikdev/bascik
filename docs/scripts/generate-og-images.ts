@@ -29,6 +29,8 @@ import { availableParallelism } from "node:os";
 import { renderAsync, type ResvgRenderOptions } from "@resvg/resvg-js";
 import sharp from "sharp";
 import { NAV } from "../src/lib/nav.ts";
+import { readRouteMarkdown } from "../src/lib/content-path.ts";
+import { pageDescription, pageTitle } from "../src/lib/meta-tags.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, "..");
@@ -222,18 +224,6 @@ function wrapText(
   return lines;
 }
 
-async function readMd(href: string): Promise<string | null> {
-  const standard = join(docsDir, "content", href.slice(1) + ".md");
-  try {
-    return await readFile(standard, "utf8");
-  } catch {}
-  const base = join(docsDir, "content", href.split("/").pop()! + ".md");
-  try {
-    return await readFile(base, "utf8");
-  } catch {}
-  return null;
-}
-
 function extractMetaFromMd(
   md: string,
   fallbackLabel: string,
@@ -314,16 +304,12 @@ function extractMetaFromMd(
 function extractMetaFromHtml(
   html: string,
 ): { title: string; description: string } | null {
-  const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-  const descMatch = html.match(
-    /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
-  );
-  if (!titleMatch && !descMatch) return null;
+  const title = pageTitle(html);
+  const description = pageDescription(html);
+  if (!title && !description) return null;
   return {
-    title: titleMatch
-      ? titleMatch[1].replace(/\s*-\s*Bascik( Docs)?$/, "").trim()
-      : "",
-    description: descMatch ? descMatch[1].trim() : "",
+    title: title.replace(/\s*-\s*Bascik( Docs)?$/, "").trim(),
+    description,
   };
 }
 
@@ -606,9 +592,9 @@ export async function generateOgImages(
       htmlMeta = extractMetaFromHtml(html);
     } catch {}
 
-    const md = await readMd(href);
-    const mdMeta = md
-      ? extractMetaFromMd(md, label)
+    const content = await readRouteMarkdown(href);
+    const mdMeta = content
+      ? extractMetaFromMd(content.markdown, label)
       : { title: label, description: "HTML components. Zero runtime." };
 
     const title =
@@ -620,7 +606,7 @@ export async function generateOgImages(
           htmlMeta?.description ||
           "HTML components. Zero runtime.";
     const codeSnippet = mdMeta.codeSnippet;
-    const fileName = `docs/content${href === "/" ? "/overview" : href}.md`;
+    const fileName = content ? `docs/${content.file}` : undefined;
 
     pagesMap.set(slug, {
       slug,

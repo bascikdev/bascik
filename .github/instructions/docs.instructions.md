@@ -119,6 +119,7 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 
 ## Markdown File Conventions
 
+- A page's file is `docs/content/<route>.md`, or `docs/content/<route>/index.md` for a route that is also a folder of pages (`/deployment`). The search index, `llms.txt`, the OG cards and the sidebar's "On this page" list find it by that rule (`docs/src/lib/content-path.ts`), so name it that way
 - First lines: `# Page Title` (h1), then a plain intro paragraph (styled as page-intro via CSS)
 - Prose: plain Markdown paragraphs
 - Section headings: `##` (h2), sub-sections: `###` (h3)

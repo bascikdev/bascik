@@ -19,18 +19,15 @@
   <nav class="docs-toc" aria-label="On this page" hidden>
     <p class="docs-toc-title">On this page</p>
     <ol class="docs-toc-list">
-      <!-- Per page, not build-once: the contents come from this page's own Markdown (BASCIK_PAGE_FILE). -->
+      <!-- Per page, not build-once: the contents come from this page's own Markdown (BASCIK_PAGE_FILE),
+           content/<route>.md or content/<route>/index.md (content-path.ts). -->
       <script data-bascik-build>
         import { renderPageTableOfContents } from "@/lib/render-nav.ts";
+        import { pageContentFile } from "@/lib/content-path.ts";
         export default async function () {
-          const pageContentPath = process.env.BASCIK_PAGE_FILE?.replace(
-            /\\/g,
-            "/",
-          )
-            .replace(/^.*\/pages\//, "")
-            .replace(/\.html$/, ".md");
-          return pageContentPath
-            ? await renderPageTableOfContents(`content/${pageContentPath}`)
+          const contentFile = pageContentFile(process.env.BASCIK_PAGE_FILE);
+          return contentFile
+            ? await renderPageTableOfContents(contentFile)
             : "";
         }
       </script>

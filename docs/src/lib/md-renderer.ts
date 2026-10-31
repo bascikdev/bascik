@@ -32,7 +32,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { marked } from "marked";
-import { slugFromHeadingHtml } from "./heading-slug.ts";
+import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
 import { escapeCode, highlightCode, unescapeCode } from "./highlight.ts";
 
 /** Pixel size of a PNG or WebP header, or null when the bytes are neither. */
@@ -368,7 +368,15 @@ export async function extractDemoBlock(
   markerId: string,
 ): Promise<string> {
   const block = await readDemoBlock(filePath, markerId);
-  if (block.code === undefined) return block.problem;
+  if (block.code === undefined) {
+    // readDemoBlock already warned about an unreadable file. A missing marker or fence would otherwise ship an
+    // empty code block with only an HTML comment to show for it (demo-markers.test.ts fails on one in the docs).
+    if (block.reason !== "file")
+      console.warn(
+        `[md-renderer] Warning: ${block.problem.replace(/^<!--\s*|\s*-->$/g, () => "")}; the code block is empty.`,
+      );
+    return block.problem;
+  }
   return highlightCode(block.code, block.lang);
 }
 
@@ -383,8 +391,8 @@ export async function readDemoBlock(
   filePath: string,
   markerId: string,
 ): Promise<
-  | { code: string; lang: string; problem?: undefined }
-  | { code?: undefined; problem: string }
+  | { code: string; lang: string; problem?: undefined; reason?: undefined }
+  | { code?: undefined; problem: string; reason: "file" | "marker" | "fence" }
 > {
   let md: string;
   try {
@@ -393,19 +401,28 @@ export async function readDemoBlock(
     console.warn(
       `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
     );
-    return { problem: `<!-- [md-renderer] File not found: ${filePath} -->` };
+    return {
+      problem: `<!-- [md-renderer] File not found: ${filePath} -->`,
+      reason: "file",
+    };
   }
   const markerRe = new RegExp(`<!--\\s*demo:${markerId}\\s*-->`, "i");
   const markerMatch = markerRe.exec(md);
   if (!markerMatch)
-    return { problem: `<!-- demo:${markerId} not found in ${filePath} -->` };
+    return {
+      problem: `<!-- demo:${markerId} not found in ${filePath} -->`,
+      reason: "marker",
+    };
 
   const rest = md.slice(markerMatch.index + markerMatch[0].length);
   // Match the next fenced code block (``` ... ```)
   const codeRe = /^```(\w*)\n([\s\S]*?)\n^```/m;
   const codeMatch = codeRe.exec(rest);
   if (!codeMatch)
-    return { problem: `<!-- no code block after demo:${markerId} -->` };
+    return {
+      problem: `<!-- no code block after demo:${markerId} in ${filePath} -->`,
+      reason: "fence",
+    };
   return { code: codeMatch[2], lang: codeMatch[1] || "text" };
 }
 
@@ -433,7 +450,11 @@ export async function renderMd(
     if (!firstH2) return "";
     md = md.slice(firstH2.index);
   }
-  return _transformMd(md, { skipFirstHeading, stripDemoBlocks, pageTop: true });
+  return _transformMd(
+    md,
+    { skipFirstHeading, stripDemoBlocks, pageTop: true },
+    filePath,
+  );
 }
 
 /**
@@ -479,7 +500,7 @@ export async function renderMdRange(
     md = md.slice(0, idx);
   }
 
-  return _transformMd(md, { ...options, pageTop: !from });
+  return _transformMd(md, { ...options, pageTop: !from }, filePath);
 }
 
 function _headingIndex(md: string, headingText: string): number {
@@ -497,6 +518,7 @@ function _transformMd(
     stripDemoBlocks = false,
     pageTop = false,
   }: RenderMdOptions = {},
+  filePath = "Markdown",
 ): string {
   if (stripDemoBlocks) {
     md = md
@@ -516,8 +538,17 @@ function _transformMd(
   }
 
   // Add id attributes to h2 and h3 headings and wrap text in a copyable anchor link.
+  // Two headings with one id send the second one's anchor link, its "On this page" entry and its search result
+  // to the first, so a repeat is reported (heading-ids.test.ts fails on one in docs/content too).
+  const headingsById = new Map<string, string>();
   html = html.replace(/<h([23])>(.*?)<\/h\1>/g, (_, level, text) => {
     const slug = slugFromHeadingHtml(text);
+    const first = headingsById.get(slug);
+    if (first === undefined) headingsById.set(slug, headingPlainText(text));
+    else
+      console.warn(
+        `[md-renderer] Warning: ${filePath}: heading "${headingPlainText(text)}" has the same id #${slug} as "${first}"; rename one so its link and table of contents entry reach it.`,
+      );
     return `<h${level} id="${slug}"><a class="anchor-link" href="#${slug}">${text}</a></h${level}>`;
   });
 
@@ -556,7 +587,11 @@ function _transformMd(
   html = html.replace(/\n?<\/blockquote>/g, "</div>");
 
   // Wrap all tables in <doc-table> component and ensure table header cells have scope="col"
-  html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
+  // The whole opening tag, so an aligned column's <th align="center"> gets it too; <thead> is not a match.
+  html = html.replace(
+    /<th\b(?![^>]*\bscope=)([^>]*)>/g,
+    (_, attributes: string) => `<th scope="col"${attributes}>`,
+  );
   html = html.replace(
     /(<table[\s\S]*?<\/table>)/g,
     "<doc-table>$1</doc-table>",

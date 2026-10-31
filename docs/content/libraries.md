@@ -397,6 +397,8 @@ One thing to be aware of: if a library dynamically sets a class or ID value at r
 }
 ```
 
+<!-- demo:state-output-html -->
+
 ```html
 <!-- .tab and .status are scoped; attribute selector is untouched -->
 <div v-scope="{ active: false }">
