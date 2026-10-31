@@ -283,6 +283,23 @@ describe("listComponents – native HTML element name warning", () => {
     warnSpy.mockRestore();
   });
 
+  it.each(["svg", "math", "selectedcontent", "param", "center"])(
+    "gives %s.html the native element warning, not only the hyphen advice (F033)",
+    async (name) => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockDeepReadDirFlat.mockResolvedValue([`src/components/${name}.html`]);
+      mockReadFile.mockResolvedValue(Buffer.from("<div>x</div>"));
+
+      await listComponents();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain(
+        `Component "${name}" has the same name as a native HTML element.`,
+      );
+      warnSpy.mockRestore();
+    },
+  );
+
   it("does not warn for hyphenated component names", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-nav.html"]);

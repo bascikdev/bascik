@@ -24,6 +24,22 @@ import { escapeXml, buildSitemapXml } from "./sitemap.ts";
 
 describe("Web Standards Validation via @webref & MDN BCD", () => {
   describe("HTML Standards Validation (WHATWG HTML §4 / @webref/elements & MDN BCD)", () => {
+    it("NATIVE_HTML_ELEMENTS holds every WHATWG HTML element, obsolete ones the parser still knows included, plus svg and math (F033)", async () => {
+      const allElements = await elements.listAll();
+      const htmlNames = allElements["html"].elements.map(
+        (el: { name: string }) => el.name,
+      );
+      // A component file named after any of these replaces every native tag.
+      const expected = new Set([...htmlNames, "svg", "math"]);
+      expect(
+        [...expected].filter((name) => !NATIVE_HTML_ELEMENTS.has(name)),
+      ).toEqual([]);
+      // And nothing else: a name outside the specs is not a native element.
+      expect(
+        [...NATIVE_HTML_ELEMENTS].filter((name) => !expected.has(name)),
+      ).toEqual([]);
+    });
+
     it("validates NATIVE_HTML_ELEMENTS against WHATWG HTML elements from @webref/elements", async () => {
       const allElements = await elements.listAll();
       const htmlSpec = allElements["html"];
