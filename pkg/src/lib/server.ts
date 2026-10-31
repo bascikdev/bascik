@@ -4,6 +4,7 @@ import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
 import { basename, extname, resolve, sep } from "node:path";
 import { isSameOrInside } from "./path-containment.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
 import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
@@ -223,18 +224,6 @@ export interface BascikResponse {
    */
   lingerClose?(): void;
 }
-
-/**
- * A filesystem error that means the request path names no file: it does not
- * exist (ENOENT), a component of it is a regular file (ENOTDIR, as in
- * `/robots.txt/x.png`), or a name is over the filesystem limit
- * (ENAMETOOLONG). The client asked for something that is not there, so it is
- * a 404, not a server fault. EACCES, EIO and the rest stay 500.
- */
-export const isNoSuchFileError = (err: unknown): boolean => {
-  const code = (err as NodeJS.ErrnoException)?.code;
-  return code === "ENOENT" || code === "ENOTDIR" || code === "ENAMETOOLONG";
-};
 
 export const isNetworkResetError = (err: unknown): boolean => {
   const code = (err as NodeJS.ErrnoException)?.code;

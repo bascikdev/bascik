@@ -8,6 +8,7 @@ import {
   findConfigFile,
 } from "./config-file-names.ts";
 import type { UserConfig } from "./types.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
 
 export { CONFIG_FILE_NAMES };
 
@@ -166,15 +167,17 @@ export const loadUserConfig = async (
   build: UserConfig;
   server: UserConfig;
 }> => {
-  // Probe first, in its own try. An ENOENT here means there is no config
-  // file: that is the zero-config default, so return silently. A warning
+  // Probe first, in its own try. A path that names no file here (ENOENT,
+  // or ENOTDIR and ENAMETOOLONG for a mistyped --config such as
+  // `package.json/bascik.config.ts`) means there is no config file: that is
+  // the zero-config default, so return silently. A warning
   // should mean something is wrong, and a missing config is not wrong.
   // An explicitly passed --config path, however, must exist (mirroring the
   // --env-file versus --env-file-if-exists distinction).
   try {
     await access(configPath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+    if (isNoSuchFileError(err)) {
       if (options.explicit) {
         throw new Error(
           `[bascik] error: --config "${configPath}" does not exist. ` +

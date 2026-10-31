@@ -278,6 +278,24 @@ describe("loadSidecar production readiness distinctions", () => {
     }
   });
 
+  // R2-05-d: only ENOENT means "no sidecar". A file where Bascik's private
+  // folder should be is a broken release layout, not a static one: serving
+  // it with every server script silently off would hide that.
+  it("refuses a sidecar path whose private folder is a file, naming the path", async () => {
+    const dir = outDir();
+    await mkdir(dir, { recursive: true });
+    try {
+      await writeFile(join(dir, ".bascik"), "not a folder");
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+        `[bascik] --server: Failed to load server scripts sidecar from ${path}: ENOTDIR`,
+      );
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a present sidecar with a valid empty scripts map", async () => {
     const dir = outDir();
     await mkdir(join(dir, ".bascik"), { recursive: true });

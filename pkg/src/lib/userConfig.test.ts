@@ -553,6 +553,24 @@ describe("resolveConfigPath", () => {
     ).rejects.toThrow(/does not exist/);
   });
 
+  it("says an explicit --config path does not exist when a folder in it is a file or a name is too long (R2-05-d)", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    // A typo that runs a file name into a path: package.json is not a folder.
+    await writeFile(join(dir, "package.json"), "{}");
+    const throughFile = join(dir, "package.json", "bascik.config.ts");
+    await expect(
+      loadUserConfig(throughFile, { explicit: true }),
+    ).rejects.toThrow(
+      `[bascik] error: --config "${throughFile}" does not exist.`,
+    );
+    const overlong = join(dir, `${"n".repeat(5000)}.config.ts`);
+    await expect(loadUserConfig(overlong, { explicit: true })).rejects.toThrow(
+      /does not exist/,
+    );
+  });
+
   it("lists every discoverable filename in the missing --config error", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     await expect(
