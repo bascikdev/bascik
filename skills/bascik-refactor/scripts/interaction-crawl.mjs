@@ -39,7 +39,8 @@ hover listener, found with CDP DOMDebugger.getEventListeners; with a delegated c
 window, the elements with a pointer cursor or a data attribute naming an in-page target; and the triggers of menus
 that open on CSS :hover), activates each one from a fresh load (a click, or a hover) and records the effect: scroll
 distance, the heading scrolled to and where it lands (a heading under a sticky header is a finding), location.hash,
-URL, aria-expanded, open and hidden changes, form values (a quantity stepper), content moved inside a clipped region
+URL (relative to the origin the route landed on, so a --prod that redirects to https or www still compares),
+aria-expanded, open and hidden changes, form values (a quantity stepper), content moved inside a clipped region
 (a carousel track that slides), newly visible elements and the focused element. A control that opens something (a
 dialog, a menu, a disclosure) is opened again and the controls inside it are crawled too, one level deep (a dialog's
 Close). What the page changes on its own with no activation (a carousel, a ticker, a late banner, a modal on a timer)
@@ -672,8 +673,15 @@ export async function activate(page, origin, route, item, options = {}) {
   const selector = typeof item === "string" ? item : item.selector;
   const mode =
     typeof item === "string" ? "click" : (item.anchor?.mode ?? "click");
-  const base = routeUrl(origin, "/");
   await reload(page, origin, route);
+  // URLs are recorded relative to the origin the route landed on: a --prod that redirects (http to https, a bare
+  // domain to www) would otherwise make every control "leave the page" at an absolute URL production never left.
+  const configured = new URL(routeUrl(origin, "/"));
+  const landed = await page.evaluate(() => location.origin).catch(() => null);
+  const base =
+    landed && landed !== "null"
+      ? `${landed}${configured.pathname}`
+      : configured.href;
   await parkPointer(page);
   for (const step of (typeof item === "string" ? [] : item.via) ?? []) {
     const opener = page.locator(step.selector).first();

@@ -12,6 +12,8 @@
  * the side whose fade started after the crawl's first look, so "See how it works" scrolled to the next heading there.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { loadPlaywright } from "../../skills/bascik-refactor/scripts/lib/project-deps.mjs";
 import {
   activate,
@@ -357,5 +359,54 @@ describe("controls with side effects on the live site", () => {
     expect(ids).not.toContain("add-to-cart");
     expect(ids).not.toContain("vote");
     expect(ids).toContain("site-menu");
+  }, 60_000);
+});
+
+describe("a production origin that redirects to another origin", () => {
+  const ABOUT = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>About · Milk frother</title></head>
+<body><main><h1>About</h1><button type="button" aria-expanded="false" data-testid="about-more">More</button></main>
+<script>
+document.querySelector("[data-testid=about-more]").addEventListener("click", (e) =>
+  e.currentTarget.setAttribute("aria-expanded", "true"),
+);
+</script>
+</body></html>`;
+
+  it("records the URL as a path, as on the target, instead of a 'leaves the page' finding on every control", async () => {
+    // --prod http://localhost:<port> while production answers from http://127.0.0.1:<port> (a 301, like http to
+    // https or a bare domain to www).
+    const server = createServer((req, res) => {
+      if (String(req.headers.host).startsWith("localhost")) {
+        res.writeHead(301, {
+          location: `http://127.0.0.1:${port}${req.url}`,
+        });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end(ABOUT);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      const effect = await activate(
+        tab,
+        `http://localhost:${port}/`,
+        "/about",
+        '[data-testid="about-more"]',
+        { masks: [], volatile: {}, settleMs: 0 },
+      );
+      expect(tab.url()).toBe(`http://127.0.0.1:${port}/about`);
+      expect(effect?.url).toBe("/about");
+      expect(effect?.changed).toContain("aria-expanded: false -> true");
+    } finally {
+      await context.close();
+      await new Promise((r) => server.close(r));
+    }
   }, 60_000);
 });
