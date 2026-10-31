@@ -27,6 +27,7 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
   - Misplaced `data-bascik-slot` attributes.
   - Scoping compatibility checks in CSS and JavaScript.
   - In-file ignore comment support (`<!-- bascik-ignore -->`, `/* bascik-ignore */`, `// bascik-ignore`).
+  - TypeScript errors in `<script type="text/typescript">` blocks, from TypeScript's own language service, with the source `ts (bascik)`. Each block is its own module; browser blocks get the DOM and server-side blocks (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) get Node.js; `@/` resolves against `scripts.importRoot`, and the project's `tsconfig.json` is the base. See [TypeScript](#typescript) below.
   - Configuration support via `bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`. The `.ts` and `.js` forms are read without running them (literal values only), and a config that cannot be read is logged to stderr with its file and line.
 - **Quick Fixes (`textDocument/codeAction`)**:
   - Adds the missing `data-bascik-prop-` prefix to a prop attribute (`missing-prop-prefix`).
@@ -47,6 +48,21 @@ Or install globally:
 npm install -g @bascik/language-server
 bascik-language-server --stdio
 ```
+
+## TypeScript
+
+TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: a `typescript` package folder the client passes in `initializationOptions.typescript.path` (the VS Code extension passes VS Code's own), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped. Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
+
+`initializationOptions`, all optional:
+
+```json
+{
+  "typescript": { "enabled": true, "path": "/path/to/node_modules/typescript" },
+  "editorHasEmbeddedTypeScript": false
+}
+```
+
+`editorHasEmbeddedTypeScript` tells the server the editor already answers completion and hover inside these blocks (VS Code's HTML support does). The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first.
 
 ## Project Config Discovery
 
@@ -96,9 +112,10 @@ For CI or an agent that wants a single pass instead of a running server, `--chec
 npx @bascik/language-server --check          # the current folder
 npx @bascik/language-server --check src      # one folder or file
 npx @bascik/language-server --check --fix    # also apply the fixes that have one correct answer
+npx @bascik/language-server --check --typescript  # also report TypeScript errors in type="text/typescript" blocks
 ```
 
-`--project <path>` names the project when the target lives outside it, such as a monorepo's shared components. The exit code is 1 when any error is found, otherwise 0. `--fix` applies the prop prefix and self-closing fixes above and rewrites those files; the `html` wrap fix is never applied there.
+`--project <path>` names the project when the target lives outside it, such as a monorepo's shared components. The exit code is 1 when any error is found, otherwise 0. `--fix` applies the prop prefix and self-closing fixes above and rewrites those files; the `html` wrap fix is never applied there. `--typescript` is opt-in, uses the project's own `typescript`, and without a usable one prints a single `note:` line and checks the rest.
 
 ## Development
 

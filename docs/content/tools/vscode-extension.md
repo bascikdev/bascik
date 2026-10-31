@@ -20,6 +20,7 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 | Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)          |
 | Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)             |
 | Write `type="text/typescript"`   | Colors the script as TypeScript           | [TypeScript in script tags](#typescript-in-script-tags) |
+| Make a type error in that script | Underlines it with TypeScript's message   | [TypeScript errors](#typescript-errors-in-script-tags)  |
 | Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)              |
 
 ## Complete Component Tags
@@ -153,7 +154,30 @@ Inside the block, VS Code's editing commands also work as they do in a `.ts` fil
 
 The rest of the file is unchanged. Scripts with no `type`, `type="module"`, or another JavaScript type stay JavaScript, any other type stays as VS Code shows it, and `.ts` companion files are ordinary TypeScript files. A `</script>` inside a `//` or `/* */` comment ends the block, as VS Code does for a JavaScript block. One inside a string is colored as part of the string, again as in a JavaScript block, but a browser and Bascik end the script there, so write it as `<\/script>` in a string.
 
-> **Colors and editing, not type checking.** The block gets TypeScript's colors and editing behavior, not TypeScript's IntelliSense: VS Code reports no type errors and offers no TypeScript completions or hover inside it, because VS Code's HTML support provides those only for JavaScript script types. Put code that needs them in a `.ts` file, such as a companion `<script src="counter.ts">` or a helper the block imports. Bascik's own checks, such as conflicting directives and unsafe server output, still run inside the block.
+> **Errors come from Bascik.** VS Code's HTML support completes and describes names declared in the block itself, but it reports no type errors there and knows nothing about what the block imports. The extension adds TypeScript's errors, as the next section describes. Bascik's own checks, such as conflicting directives and unsafe server output, run inside the block too.
+
+### TypeScript Errors in Script Tags
+
+A type error in a `<script type="text/typescript">` block is underlined with TypeScript's own message and error number, as it would be in a `.ts` file. The Problems panel lists it with the source `ts (bascik)`:
+
+```html
+<script type="text/typescript">
+  import { frotherSpeed } from "@/lib/frother.ts";
+
+  const rpm: number = "fast"; // TS2322: Type 'string' is not assignable to type 'number'.
+</script>
+```
+
+Each block is checked the way Bascik compiles it:
+
+- **Each block is its own module.** Two blocks in one file never share a top-level name, so one block cannot see another's variables.
+- **A browser block and a server-side block see different globals.** A block with no directive runs in the browser, so it gets the DOM (`document`, `HTMLButtonElement`) and no Node.js. A block with `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` runs in Node.js, so it gets Node.js's types when the project has `@types/node` installed, and no DOM.
+- **A directive script's `export default` is typed.** A server or stream script's `request`, `context`, and `{ signal }` get their types (`ServerScript` from `@bascik/bascik`), a build script must return a string or an `html` value (`BuildScript`), and a routes script must return route objects (`RoutesScript`). This needs a version of `@bascik/bascik` that publishes these types; with an older one the parameters are not checked.
+- **Imports resolve as Bascik resolves them.** Relative imports resolve from the page's folder, `@/` resolves against [`scripts.importRoot`](/configuration#scriptsimportroot), and `.ts` extensions in import paths are allowed. A misspelled import path is underlined on the path.
+- **Your `tsconfig.json` applies.** The project's `tsconfig.json`, when it has one, sets options such as `strict` and its own `paths`; Bascik's settings go on top, and each kind of block keeps the libraries it needs, so a tsconfig written for Node.js still gives browser blocks the DOM. Without a tsconfig, blocks are checked with `strict` on.
+- **Unsaved edits count.** Errors update as you type in the page, and when you edit a `.ts` file the page imports, before either is saved.
+
+The check uses VS Code's own TypeScript, so there is nothing to install, and it runs beside the extension's other diagnostics without delaying them. Scripts without `type="text/typescript"` are not type checked. To check in CI too, run [`bascik --check --typescript`](/cli#typescript-errors-with-typescript).
 
 ## Catch Problems as You Type
 
@@ -309,6 +333,17 @@ Configure extension behavior per project without modifying application config (`
 ```
 
 A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
+
+### TypeScript Settings
+
+Two settings control the TypeScript errors in script tags:
+
+| Setting                     | Default | What it does                                                                                                                                                                                              |
+| --------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bascik.typescript.enabled` | `true`  | Report TypeScript errors in `type="text/typescript"` blocks. Turn it off to keep only Bascik's own diagnostics                                                                                            |
+| `bascik.typescript.path`    | `""`    | An absolute path to a `typescript` package folder (TypeScript 5 or 6) to check with instead of VS Code's own. It is a user setting only, so a workspace you open cannot choose code for the editor to run |
+
+The extension never bundles TypeScript. It uses the TypeScript VS Code ships with, or the one `bascik.typescript.path` names, and falls back to the project's own `typescript` package. TypeScript 7 publishes no language service for other programs to use, so a TypeScript 7 install is skipped. When no usable TypeScript is found, the checks are off and the **Bascik** output panel says why, once. Changing either setting restarts the language server.
 
 ### Filter Generic Editor Word Suggestions
 
