@@ -37,7 +37,7 @@ Packages depend on each other, and `create-bascik` scaffolds projects that insta
 
 Release candidates use a semver prerelease version (`1.0.0-rc.1`) and publish under the `rc` dist-tag, so `npm install @bascik/bascik` never picks them up. Install one with `npm install @bascik/bascik@rc`.
 
-1. Confirm the versions in each `package.json` are the intended RC versions, and that `create/src/scaffold.ts` (`BASCIK_VERSION` and the dependency ranges), `adapters/cloudflare/package.json`, and `examples/starter-site/package.json` reference ranges that include them (for example `^1.0.0-rc.1`). `npm create bascik` installs the agent skills from the `v<BASCIK_VERSION>` tag, which step 3 pushes.
+1. Confirm the versions in each `package.json` are the intended RC versions, and that `create/src/scaffold.ts` (`BASCIK_VERSION` and the dependency ranges), `adapters/cloudflare/package.json` (the `@bascik/bascik` peer and dev dependency, which must match), `pkg/package.json` (the `@bascik/language-server` peer range), and `examples/starter-site/package.json` reference ranges that include them (for example `^1.0.0-rc.1`). `create/src/scaffold.test.ts` and `pkg/e2e/scripts/release-manifests.test.ts` fail when one is left behind, or when a published manifest uses Yarn's `workspace:` protocol, which `npm publish` does not rewrite. `npm create bascik` installs the agent skills from the `v<BASCIK_VERSION>` tag, which step 3 pushes.
 2. Commit and push the version bumps to `main`.
 3. Tag and push the first group, then wait for both jobs to succeed in the Actions tab:
 

@@ -45,7 +45,7 @@
     "@bascik/bascik": "^1.0.0-rc.10"
   },
   "devDependencies": {
-    "@bascik/bascik": "workspace:*",
+    "@bascik/bascik": "^1.0.0-rc.10",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",

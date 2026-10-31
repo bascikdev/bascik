@@ -127,7 +127,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bascik/adapter-cloudflare@workspace:adapters/cloudflare"
   dependencies:
-    "@bascik/bascik": "workspace:*"
+    "@bascik/bascik": "npm:^1.0.0-rc.10"
     "@playwright/test": "npm:^1.63.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.0.3"
@@ -144,7 +144,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@bascik/bascik@workspace:*, @bascik/bascik@workspace:pkg":
+"@bascik/bascik@npm:^1.0.0-rc.10, @bascik/bascik@workspace:*, @bascik/bascik@workspace:pkg":
   version: 0.0.0-use.local
   resolution: "@bascik/bascik@workspace:pkg"
   dependencies:
