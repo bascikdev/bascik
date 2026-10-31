@@ -96,7 +96,7 @@ export default defineConfig({
 ```
 
 - Exec scripts receive `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_OUT_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`.
-- `watch` reruns the matching script after a source edit in dev; exec-only inputs need no duplicate `pipeline.watchPaths` entry.
+- `watch` reruns the matching script after a source edit in dev; exec-only inputs need no duplicate `pipeline.watchPaths` entry. List every input the script reads, including local modules it imports: `pipeline.watchPaths` never reruns a script.
 - `pipeline.onExecError`: `'warn'` (dev default) reports and continues; `'error'` (`--build` default) stops with exit 1.
 - Full semantics (cycle ordering, retries, reload behavior): `read-doc.mjs /exec-scripts`.
 

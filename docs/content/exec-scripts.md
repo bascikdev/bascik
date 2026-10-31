@@ -84,6 +84,8 @@ When a script times out, Bascik sends `SIGTERM` to the script and to every proce
 
 `pipeline.exec[].watch` selects which scripts rerun after a matching source edit. That edit owns one phase-ordered rebuild cycle: matching pre scripts finish, parallel scripts start alongside associated page compilation, then matching post scripts run after compilation and its disk writes finish. Completion itself never queues a second compilation. Do not configure `pipeline.watchPaths` for generated outputs.
 
+List every source the script reads in its `watch`, including the local modules it imports (a page list in `src/lib/nav.ts`, for example). `pipeline.watchPaths` re-renders pages but never reruns a script, so an input missing from `watch` leaves the script's output stale until the dev server restarts.
+
 This illustrative configuration generates a catalog before compilation and observes its source inputs for subsequent updates:
 
 ```ts
