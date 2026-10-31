@@ -25,7 +25,8 @@
  * - Where the model cannot follow the browser, the scan stops and reports the
  *   rest of the input as one `unparsed` token, so callers never act on a
  *   guess. It stops at raw text, RCDATA, or SVG/MathML start tags inside
- *   `<select>` (parsers disagree there), `<frameset>`, CDATA directly inside
+ *   `<select>` (parsers disagree there), at end tags other than its options'
+ *   inside a `<select>` in SVG/MathML, `<frameset>`, CDATA directly inside
  *   an SVG/MathML integration point, end tags in foreign content that may
  *   close an element the scan does not track, and nesting deeper than
  *   MAX_TRACKED_DEPTH.
@@ -420,6 +421,75 @@ const TABLE_STRUCTURE_ELEMENTS = new Set([
   "col",
   "colgroup",
   "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+]);
+
+/**
+ * Start tags that close a `<p>` open in button scope before they are
+ * inserted ("in body"). `<table>` does too, except in quirks mode, which
+ * depends on the DOCTYPE; it is left out, which keeps a `<p>` open longer.
+ */
+const CLOSES_P = new Set([
+  "address",
+  "article",
+  "aside",
+  "blockquote",
+  "center",
+  "dd",
+  "details",
+  "dialog",
+  "dir",
+  "div",
+  "dl",
+  "dt",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hgroup",
+  "hr",
+  "li",
+  "listing",
+  "main",
+  "menu",
+  "nav",
+  "ol",
+  "p",
+  "plaintext",
+  "pre",
+  "search",
+  "section",
+  "summary",
+  "ul",
+  "xmp",
+]);
+
+/**
+ * Start tags that "in body" (and "in select") ignore: they insert no element.
+ * Inside an SVG or MathML integration point with no table open they open
+ * nothing, so they cannot keep an end tag after them from closing the
+ * foreign content. After a `<table>`, the table's insertion modes give the
+ * table-structure ones meaning, so they are only ignored with none open.
+ */
+const IGNORED_IN_BODY = new Set([
+  "body",
+  "caption",
+  "colgroup",
+  "head",
+  "html",
   "tbody",
   "td",
   "tfoot",
@@ -981,6 +1051,26 @@ export const scanHtml = (
     }
   };
 
+  /**
+   * Close a `<p>` open in button scope among the tracked elements, as the
+   * start tags in CLOSES_P do. The walk starts at an HTML element or an
+   * integration point (HTML rules apply), so it meets an integration point,
+   * a scope boundary or `<button>` before it leaves the tracked elements:
+   * only HTML elements lie above the `<p>` it pops to.
+   */
+  const closeParagraphInButtonScope = (tokenStart: number): void => {
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const entry = stack[k];
+      if (entry.namespace !== "html") return;
+      if (entry.name === "p") {
+        popTo(k, tokenStart, tokenStart, false);
+        return;
+      }
+      if (SCOPE_BOUNDARY_ELEMENTS.has(entry.name) || entry.name === "button")
+        return;
+    }
+  };
+
   /** Tree construction dispatcher for a start tag: HTML rules or foreign content rules. */
   const startTagUsesHtmlRules = (name: string): boolean => {
     if (stack.length === 0) return true;
@@ -1041,6 +1131,8 @@ export const scanHtml = (
       lost = true;
       return tag.end;
     }
+    if (stack.length > 0 && !selectOpen && CLOSES_P.has(name))
+      closeParagraphInButtonScope(start);
     if (name === "svg" || name === "math") {
       if (!tag.selfClosing) {
         if (stack.length === 0) foreignStartedInTable = openTables > 0;
@@ -1093,7 +1185,11 @@ export const scanHtml = (
       openPreformatted > 0
     )
       preformatted().sticky = true;
-    if (stack.length > 0 && !VOID_ELEMENTS.has(name)) {
+    if (
+      stack.length > 0 &&
+      !VOID_ELEMENTS.has(name) &&
+      !(openTables === 0 && IGNORED_IN_BODY.has(name))
+    ) {
       push({
         name,
         namespace: "html",
@@ -1208,6 +1304,17 @@ export const scanHtml = (
 
   const endElement = (name: string, tokenStart: number, end: number): void => {
     if (name === "select") selectOpen = false;
+    else if (
+      selectOpen &&
+      stack.length > 0 &&
+      name !== "option" &&
+      name !== "optgroup"
+    ) {
+      // "In select" ignores this end tag; the customizable `<select>` may
+      // not. In foreign content it decides whether the SVG or MathML closes.
+      lost = true;
+      return;
+    }
     if (stack.length === 0) {
       if (name === "template") closeTemplate();
       else if (isPreformatted(name)) closePreformattedElement(name);
