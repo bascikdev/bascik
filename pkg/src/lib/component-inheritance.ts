@@ -1,4 +1,7 @@
-import { ATTR_VALUE, scanWholeAttributes } from "./component-attribute-scan.ts";
+import {
+  scanWholeAttributes,
+  startTagLength,
+} from "./component-attribute-scan.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import {
   BLOCKED_URL,
@@ -17,16 +20,8 @@ import {
   isWordOrHyphenCode,
 } from "./element-content-scan.ts";
 
-/**
- * One attribute after whitespace: name and optional value. The lookbehind
- * starts a match only at the first character of a whitespace run (a match
- * never ends in whitespace, so the run before the next one is never cut),
- * which finds the same matches as `\s+...` but scans a run that holds no
- * attribute once instead of once per position: quadratic on a long run of
- * spaces in visitor slot content or a usage tag.
- */
-const ATTRIBUTE_RE =
-  /(?<!\s)\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
+/** Attribute names a usage passes to the component's root. */
+const INHERITABLE_NAME_RE = /^[\w:-]+$/;
 
 /**
  * Extract attributes from a component usage tag that should be inherited by
@@ -40,29 +35,27 @@ export const extractInheritableAttributes = (
 ): Record<string, string> => {
   if (!componentContent) return {};
   const attrs: Record<string, string> = {};
-  // Grab just the opening tag text (up to the first > or />).
-  // The attribute scan is quote-aware so a `>` inside a quoted attribute value
-  // (e.g. title="a > b") does not end the opening tag early.
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagMatch = componentContent.match(
-    new RegExp(`^<[\\w-]+(${ATTR_VALUE})(?:\\s*\\/?>)`),
-  );
-  if (!openTagMatch || !openTagMatch[1]) return attrs;
-  const attrStr = openTagMatch[1];
-  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted attribute values.
-  const attrRegex = ATTRIBUTE_RE;
-  attrRegex.lastIndex = 0;
-  let match;
-  while ((match = attrRegex.exec(attrStr)) !== null) {
-    const [, name, rawValue] = match;
-    if (name.startsWith("data-bascik-")) continue;
-    if (rawValue === undefined) {
+  // Just the opening tag, read as the browser reads it: a `>` inside a quoted
+  // value (title="a > b") does not end it, and a quote inside an unquoted
+  // value (title=it's) does not start one.
+  if (!/^<[\w-]/.test(componentContent)) return attrs;
+  const openTagLength = startTagLength(componentContent);
+  if (openTagLength === -1) return attrs;
+  const openTag = componentContent.slice(0, openTagLength);
+  // Double-quoted, single-quoted, whitespace-spaced, and unquoted values; an
+  // unquoted value runs to whitespace or `>`, as in the browser.
+  for (const attribute of scanWholeAttributes(openTag)) {
+    const name = attribute.name;
+    if (!INHERITABLE_NAME_RE.test(name) || name.startsWith("data-bascik-"))
+      continue;
+    if (attribute.valueStart === -1) {
       attrs[name] = "";
-    } else if (rawValue.startsWith('"') || rawValue.startsWith("'")) {
-      attrs[name] = rawValue.slice(1, -1);
-    } else {
-      attrs[name] = rawValue;
+      continue;
     }
+    const value = openTag.slice(attribute.valueStart, attribute.valueEnd);
+    const quoted = /["']/.test(openTag[attribute.valueStart - 1] ?? "");
+    // A trailing `/` of an unquoted value is the usage's self-closing slash.
+    attrs[name] = !quoted && value.endsWith("/") ? value.slice(0, -1) : value;
   }
   return attrs;
 };

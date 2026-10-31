@@ -208,6 +208,91 @@ describe("component search with a shared attribute scan", () => {
   });
 });
 
+describe("scanWholeAttributes reads values the way the browser does", () => {
+  const scan = async (tag: string) => {
+    const { scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    return scanWholeAttributes(tag).map((a) => ({
+      name: a.name,
+      value: a.valueStart === -1 ? null : tag.slice(a.valueStart, a.valueEnd),
+    }));
+  };
+
+  it.each([
+    [
+      "an unquoted URL with a query string",
+      "<my-card data-bascik-prop-href=/docs/page?q=1&x=2>",
+      [{ name: "data-bascik-prop-href", value: "/docs/page?q=1&x=2" }],
+    ],
+    [
+      "an unquoted value with an apostrophe",
+      "<my-card title=it's>",
+      [{ name: "title", value: "it's" }],
+    ],
+    [
+      "an unquoted value with a backtick, then another attribute",
+      "<my-card title=a`b data-x=1>",
+      [
+        { name: "title", value: "a`b" },
+        { name: "data-x", value: "1" },
+      ],
+    ],
+    [
+      'an unquoted value with " and <',
+      '<my-card title=a"b<c>',
+      [{ name: "title", value: 'a"b<c' }],
+    ],
+    [
+      "a name that starts with =",
+      "<my-card =x data-y=1>",
+      [
+        { name: "=x", value: null },
+        { name: "data-y", value: "1" },
+      ],
+    ],
+    ["a value cut by >", "<my-card a=b>c=d>", [{ name: "a", value: "b" }]],
+  ])("%s", async (_case, tag, expected) => {
+    expect(await scan(tag)).toEqual(expected);
+  });
+
+  it("agrees with parse5 on the attributes of arbitrary tags", async () => {
+    const { parseFragment } = await import("parse5");
+    const { scanWholeAttributes } =
+      await import("./component-attribute-scan.ts");
+    // ASCII whitespace only: the scanner splits on everything JavaScript's
+    // \s matches (see above), wider than HTML. No `&`, so values need no
+    // character reference decoding.
+    const alphabet = [..."ab=/>\"'`< \t\n"];
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom(...alphabet), { maxLength: 30 }),
+        (chars) => {
+          const tag = `<x ${chars.join("")}>`;
+          const element = parseFragment(tag).childNodes[0];
+          // An unclosed quote runs to the end, where the tag is dropped.
+          if (!element || !("attrs" in element)) return;
+          const seen = new Set<string>();
+          const scanned: { name: string; value: string }[] = [];
+          for (const a of scanWholeAttributes(tag)) {
+            const name = a.name.toLowerCase();
+            if (seen.has(name)) continue;
+            seen.add(name);
+            scanned.push({
+              name,
+              value:
+                a.valueStart === -1 ? "" : tag.slice(a.valueStart, a.valueEnd),
+            });
+          }
+          expect(scanned).toEqual(
+            element.attrs.map((a) => ({ name: a.name, value: a.value })),
+          );
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+});
+
 describe("scanWholeAttributes separators", () => {
   it("splits on every character a JavaScript \\s matches, not only ASCII whitespace", async () => {
     const { scanWholeAttributes } =
@@ -254,7 +339,9 @@ describe("scanWholeAttributes separators", () => {
   it("agrees with a regex-per-character reference on arbitrary tags", async () => {
     const { scanWholeAttributes } =
       await import("./component-attribute-scan.ts");
-    // The scanner as first written: one regex test per character.
+    // The scanner as a regex test per character, with the WHATWG rules: a
+    // name may start with `=`, and an unquoted value ends only at whitespace
+    // or `>` (quotes, `=`, `<` and backtick in it are value characters).
     const reference = (openTag: string) => {
       const out: number[][] = [];
       let i = 0;
@@ -265,6 +352,7 @@ describe("scanWholeAttributes separators", () => {
         while (i < n && /[\s/]/.test(openTag[i])) i++;
         if (i >= n || openTag[i] === ">") break;
         const nameStart = i;
+        if (openTag[i] === "=") i++;
         while (i < n && !/[\s=/>]/.test(openTag[i])) i++;
         const nameEnd = i;
         let valueStart = -1;
@@ -283,7 +371,7 @@ describe("scanWholeAttributes separators", () => {
             if (i < n) i++;
           } else {
             valueStart = i;
-            while (i < n && !/[\s"'=<>`]/.test(openTag[i])) i++;
+            while (i < n && !/[\s>]/.test(openTag[i])) i++;
             valueEnd = i;
           }
           attrEnd = i;
