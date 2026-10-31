@@ -67,6 +67,28 @@ function report(title, result) {
   return status;
 }
 
+/**
+ * How to run `npx <args>`. On Windows npx is a .cmd file, which only cmd.exe can start, and `shell: true` joins the
+ * arguments with spaces and no quoting, so a project path with a space split into several arguments. Instead each
+ * argument is quoted explicitly (trailing backslashes doubled so they do not escape the closing quote) and passed
+ * to cmd.exe as one verbatim command; /s strips the outer pair of quotes. Exported for tests.
+ */
+export function npxInvocation(
+  args,
+  platform = process.platform,
+  env = process.env,
+) {
+  if (platform !== "win32") return { command: "npx", args };
+  const quoted = ["npx", ...args]
+    .map((arg) => `"${arg.replace(/\\+$/, (slashes) => slashes + slashes)}"`)
+    .join(" ");
+  return {
+    command: env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${quoted}"`],
+    windowsVerbatimArguments: true,
+  };
+}
+
 export function integratedPerFileChecksCompleted(output) {
   return /\b\d+ files? checked by @bascik\/language-server\b/.test(output);
 }
@@ -140,15 +162,18 @@ async function main() {
       );
     }
   } else if (values.npx) {
-    const npx = process.platform === "win32" ? "npx.cmd" : "npx";
     for (const target of lintTargets) {
-      const args = ["--yes", "@bascik/language-server", ...lintArgs(target)];
+      const npx = npxInvocation([
+        "--yes",
+        "@bascik/language-server",
+        ...lintArgs(target),
+      ]);
       statuses.push(
         report(
           `npx ${label(target).replace("bascik-language-server", "@bascik/language-server")}`,
-          await run(npx, args, {
+          await run(npx.command, npx.args, {
             ...options,
-            shell: process.platform === "win32",
+            windowsVerbatimArguments: npx.windowsVerbatimArguments,
           }),
         ),
       );
