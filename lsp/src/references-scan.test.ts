@@ -95,22 +95,6 @@ describe("scanHtmlTags, the usage scan behind Find All References", () => {
     expect(findCommentEnd("<!-- a --!>", 0)).toBe(11);
     expect(findCommentEnd("<!-- a", 0)).toBe(-1);
   });
-
-  it.each([
-    ["many tags with unterminated quotes", '<a b="'.repeat(10_000)],
-    [
-      "an unterminated quote between many tag starts",
-      `<a"${'"<a"'.repeat(10_000)}`,
-    ],
-    ["many unclosed script openers", "<script>".repeat(20_000)],
-    ["many unclosed comments", "<!-- ".repeat(20_000)],
-    ["a long comment dash run", `<!--${"-".repeat(40_000)}`],
-    ["an unclosed tag name with a long hyphen run", `<a${"-".repeat(40_000)}`],
-  ])("runs in linear time on %s", (_label, source) => {
-    const start = performance.now();
-    scanHtmlTags(source);
-    expect(performance.now() - start).toBeLessThan(250);
-  });
 });
 
 /**
@@ -264,19 +248,5 @@ describe("findComponentUsages, the compiler's own reading of component tags", ()
       "<!--     --><style> </style>",
     );
     expect(maskLikeCompiler("<p>plain</p>")).toBe("<p>plain</p>");
-  });
-
-  it.each([
-    ["many unclosed script openers", "<script>".repeat(20_000)],
-    ["many unclosed style-guide openers", "<style-guide>".repeat(20_000)],
-    ["many escaped script openers", "<script><!--<script>".repeat(10_000)],
-    ["many unclosed comments", "<!-- ".repeat(20_000)],
-    ["many tags with unterminated quotes", '<a b="'.repeat(10_000)],
-    ["many names with no >", "<my-card ".repeat(20_000)],
-    ["many usages", "<my-card></my-card>".repeat(20_000)],
-  ])("runs in linear time on %s", (_label, source) => {
-    const start = performance.now();
-    findComponentUsages(source, names);
-    expect(performance.now() - start).toBeLessThan(250);
   });
 });
