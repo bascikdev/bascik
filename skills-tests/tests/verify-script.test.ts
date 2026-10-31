@@ -193,6 +193,73 @@ One plan.
     expect(testIdAdvisory(root)).toEqual([]);
   });
 
+  it("reports the first visible root after a head-only helper such as <theme-init /> (PR 115 review)", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<script>document.documentElement.dataset.theme = "light";</script>\n`,
+    );
+    write(
+      "src/components/site-head/site-head.html",
+      `<meta charset="utf-8" />\n<theme-init />\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<theme-init />\n<header class="top"><p>Milk frother</p></header>\n`,
+    );
+    write(
+      "src/components/site-banner/site-banner.html",
+      `<theme-init />\n<theme-init />\n<style>.b { color: red; }</style>\n<div class="b">Froth</div>\n`,
+    );
+    write(
+      "src/components/page-frame/page-frame.html",
+      `<site-head />\n<link rel="icon" href="/favicon.svg" />\n<section class="frame">x</section>\n`,
+    );
+    write(
+      "src/components/done-shell/done-shell.html",
+      `<theme-init />\n<header data-testid="done-shell">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    const gaps = testIdAdvisory(root);
+    expect(
+      gaps.map((gap) => `${gap.file}:${gap.line}  ${gap.message}`),
+    ).toEqual([
+      'src/components/page-frame/page-frame.html:3  <section> root of <page-frame> has no data-testid; add data-testid="page-frame"',
+      'src/components/site-banner/site-banner.html:4  <div> root of <site-banner> has no data-testid; add data-testid="site-banner"',
+      'src/components/site-shell/site-shell.html:2  <header> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+    ]);
+  });
+
+  it("counts <title> and <base> as head tags, so a component that renders only them has no root", () => {
+    write(
+      "src/components/page-title/page-title.html",
+      `<title>Milk frother</title>\n<base href="/" />\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<page-title />\n<header class="top">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<header> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+    ]);
+  });
+
+  it("misuse: a typo'd helper name before the markup is reported as the root, not taken for a head-only helper", () => {
+    write(
+      "src/components/theme-init/theme-init.html",
+      `<script>document.documentElement.dataset.theme = "light";</script>\n`,
+    );
+    write(
+      "src/components/site-shell/site-shell.html",
+      `<theme-int />\n<header class="top">x</header>\n`,
+    );
+    write("src/pages/index.html", page(`<main data-testid="home"></main>`));
+    expect(testIdAdvisory(root).map((gap) => gap.message)).toEqual([
+      '<theme-int> root of <site-shell> has no data-testid; add data-testid="site-shell"',
+      '<header> in <site-shell> has no data-testid; add data-testid="site-shell-header"',
+    ]);
+  });
+
   it("misuse: still asks for a test id on a root that is a component with body markup", () => {
     write(
       "src/components/plain-card/plain-card.html",
