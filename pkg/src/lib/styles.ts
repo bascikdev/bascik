@@ -1378,48 +1378,74 @@ export const getComponentCss = async (
  *   --brand: #d3ff8d   →  --bascik__my-comp__x1__brand: #d3ff8d
  *   var(--brand)        →  var(--bascik__my-comp__x1__brand)
  */
+/**
+ * Custom property names (without `--`) a stylesheet declares, as `--name:`
+ * declarations or `@property --name` rules, in first-seen order.
+ */
+export const declaredCustomPropertyNames = (css: string): Set<string> =>
+  css.includes("--")
+    ? customPropertyNamesInShielded(shieldCssStrings(css).css)
+    : new Set();
+
+const customPropertyNamesInShielded = (shielded: string): Set<string> => {
+  const names = new Set<string>();
+  for (const m of shielded.matchAll(/(?<!-)--(\w[\w-]*)(?=\s*:)/gm))
+    names.add(m[1]);
+  for (const m of shielded.matchAll(/@property\s+--(\w[\w-]*)\s*\{/gm))
+    names.add(m[1]);
+  return names;
+};
+
+const customPropertyScoper = (
+  names: ReadonlySet<string>,
+  componentName: string,
+) => {
+  const scoped = new Map<string, string>();
+  for (const name of names)
+    scoped.set(name, minifyAttributeName(`bascik__${componentName}__${name}`));
+  // Whole names only, so a later declared property name never matches inside
+  // an earlier generated name or a longer name.
+  return (match: string, prefix: string, name: string): string => {
+    const scopedName = scoped.get(name);
+    return scopedName === undefined ? match : `${prefix}--${scopedName}`;
+  };
+};
+
 export const scopeCssCustomProperties = (
   css: string,
   componentName: string,
 ): string => {
   if (!css.includes("--")) return css;
-  const propMap = new Map<string, string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  // Collect --var-name from element-level declarations:  --name:
-  const declRegex = /(?<!-)--(\w[\w-]*)(?=\s*:)/gm;
-  let m;
-  while ((m = declRegex.exec(shielded)) !== null) {
-    const originalName = m[1];
-    if (!propMap.has(originalName)) {
-      propMap.set(
-        originalName,
-        minifyAttributeName(`bascik__${componentName}__${originalName}`),
-      );
-    }
-  }
-  // Collect --name from @property at-rule declarations:  @property --name {
-  const atPropertyRegex = /@property\s+--(\w[\w-]*)\s*\{/gm;
-  while ((m = atPropertyRegex.exec(shielded)) !== null) {
-    const originalName = m[1];
-    if (!propMap.has(originalName)) {
-      propMap.set(
-        originalName,
-        minifyAttributeName(`bascik__${componentName}__${originalName}`),
-      );
-    }
-  }
-  if (propMap.size === 0) return css;
-  // One pass per pattern over whole names so a later declared property name
-  // never matches inside an earlier generated name or a longer name.
-  const scopeName = (match: string, prefix: string, name: string): string => {
-    const scoped = propMap.get(name);
-    return scoped === undefined ? match : `${prefix}--${scoped}`;
-  };
+  const names = customPropertyNamesInShielded(shielded);
+  if (names.size === 0) return css;
+  const scopeName = customPropertyScoper(names, componentName);
   const replaced = shielded
     .replace(/(@property\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName)
     .replace(/((?<!-))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
     .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName);
   return restore(replaced);
+};
+
+/**
+ * Rename the custom properties a component's stylesheets declare inside one
+ * `style` attribute value, the way `scopeCssCustomProperties` renames them in
+ * the stylesheet: `--name:` declarations and `var(--name)` references. Names
+ * the stylesheets do not declare stay global.
+ */
+export const scopeCustomPropertiesInStyleValue = (
+  value: string,
+  names: ReadonlySet<string>,
+  componentName: string,
+): string => {
+  if (names.size === 0 || !value.includes("--")) return value;
+  const { css: shielded, restore } = shieldCssStrings(value);
+  const scopeName = customPropertyScoper(names, componentName);
+  return restore(
+    shielded
+      .replace(/((?<![\w-]))--(\w[\w-]*)(?=\s*:)/gm, scopeName)
+      .replace(/(var\(\s*)--(\w[\w-]*)(?=\s*[,)])/gm, scopeName),
+  );
 };
 
 // ─── @layer Name Scoping ─────────────────────────────────────────────────────

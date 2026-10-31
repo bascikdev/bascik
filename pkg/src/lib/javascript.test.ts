@@ -2733,3 +2733,121 @@ describe("prefixElementAttribute – escaped class selectors", () => {
     );
   });
 });
+
+describe("prefixElementAttribute – custom properties in style attributes", () => {
+  const css = (name: string) => `--${scopeClass(name)}`;
+
+  it("renames a declaration the stylesheet also declares", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="card" style="--size: 2rem">x</div>',
+        ".card { --size: 1rem; width: var(--size) }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("card")}" style="${css("size")}: 2rem">x</div>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("card")} { ${css("size")}: 1rem; width: var(${css("size")}) }`,
+    );
+  });
+
+  it("renames var() references and @property names", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        `<div style="width: var(--size, 1px); --angle:45deg" data-x="--size: 1"></div><p style='rotate: var( --angle )'></p>`,
+        `@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; } .a { --size: 1rem }`,
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div style="width: var(${css("size")}, 1px); ${css("angle")}:45deg" data-x="--size: 1"></div><p style='rotate: var( ${css("angle")} )'></p>`,
+    );
+  });
+
+  it("scopes names an inline <style> declares", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<style>.card { --gap: 1rem; gap: var(--gap) }</style><div class="card" style="--gap: 2rem"></div>',
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toContain(`style="${css("gap")}: 2rem"`);
+    expect(`${result.fileContent}${result.cssFileContent ?? ""}`).toContain(
+      `gap: var(${css("gap")})`,
+    );
+  });
+
+  it("leaves names the stylesheet does not declare, and other values, alone", () => {
+    const source =
+      "<div style=\"--theme: dark; color: var(--brand); content: '--size: x'\"></div>";
+    const result = prefixElementAttribute(
+      makeComponent(source, ".a { --size: 1rem; --sizes: 2rem }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(source);
+  });
+
+  it("does not rename a longer name that starts with a declared one", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div style="--size-lg: 3rem; --size: 1rem"></div>',
+        ".a { --size: 1rem }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div style="--size-lg: 3rem; ${css("size")}: 1rem"></div>`,
+    );
+  });
+
+  it("uses the minified name the stylesheet uses", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<div style="--size: 2rem"></div>',
+          ".a { width: var(--size); --size: 1rem }",
+        ),
+        "class",
+        "test1234",
+      );
+      const name = result.cssFileContent?.match(/var\((--[^)]+)\)/)?.[1];
+      expect(name).toMatch(/^--b[0-9a-zA-Z]{11}$/);
+      expect(result.fileContent).toBe(`<div style="${name}: 2rem"></div>`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("uses the per-instance name when CSS is not deduplicated", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div style="--size: 2rem"></div>', ".a { --size: 1rem }"),
+      "class",
+      "test1234",
+      false,
+    );
+    const name = `--${scopeClassPerInstance("size")}`;
+    expect(result.cssFileContent).toBe(
+      `.${scopeClassPerInstance("a")} { ${name}: 1rem }`,
+    );
+    expect(result.fileContent).toBe(`<div style="${name}: 2rem"></div>`);
+  });
+
+  it("leaves style attributes in comments and textarea content alone", () => {
+    const source =
+      '<!-- <div style="--size: 2rem"></div> --><textarea><b style="--size: 1px"></b></textarea>';
+    const result = prefixElementAttribute(
+      makeComponent(source, ".a { --size: 1rem }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(source);
+  });
+});

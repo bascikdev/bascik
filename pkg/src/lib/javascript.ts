@@ -174,6 +174,8 @@ import {
   quotedAttributeValueRanges,
   declaredCssClassNames,
   scopeCssClassSelectors,
+  declaredCustomPropertyNames,
+  scopeCustomPropertiesInStyleValue,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -242,10 +244,12 @@ interface ScopedCssCacheEntry {
 
 const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
 const cssDeclaredClassesCache = new Map<string, Set<string>>();
+const cssDeclaredCustomPropertiesCache = new Map<string, Set<string>>();
 
 export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
   cssDeclaredClassesCache.clear();
+  cssDeclaredCustomPropertiesCache.clear();
 };
 
 export const __scopedCssCacheStatsForTests = {
@@ -501,6 +505,9 @@ export const prefixElementAttribute = (
   // `cssFileContent` unset for an empty or comment-only stylesheet, so "no stylesheet"
   // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
+  // Custom property names the component's stylesheets declare, so the same
+  // names are renamed inside the template's `style` attributes.
+  let declaredCustomProperties: Set<string> = new Set();
   if (attribute === "class") {
     const cssSources: string[] = [];
     if (component.cssFileContent) {
@@ -528,6 +535,17 @@ export const prefixElementAttribute = (
           scopedClassesSet.add(name);
         }
         cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
+      }
+      if (combinedCss.includes("--")) {
+        const cachedProperties =
+          cssDeclaredCustomPropertiesCache.get(combinedCss);
+        declaredCustomProperties =
+          cachedProperties ?? declaredCustomPropertyNames(combinedCss);
+        if (!cachedProperties)
+          cssDeclaredCustomPropertiesCache.set(
+            combinedCss,
+            declaredCustomProperties,
+          );
       }
     } else {
       scopedClassesSet = new Set<string>();
@@ -613,6 +631,45 @@ export const prefixElementAttribute = (
       },
     ),
   );
+
+  if (
+    attribute === "class" &&
+    declaredCustomProperties.size > 0 &&
+    /\sstyle\s*=/i.test(scopedAttrsHtml)
+  ) {
+    const styleShield = (() => {
+      const commentShield = createContentShield(scopedAttrsHtml);
+      const withoutComments = scopedAttrsHtml.includes("<!--")
+        ? scopedAttrsHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+            commentShield.hide(comment),
+          )
+        : scopedAttrsHtml;
+      const rawElements = shieldElementContents(withoutComments, [
+        "style",
+        "textarea",
+      ]);
+      return {
+        html: rawElements.html,
+        restore: (value: string) =>
+          commentShield.restore(rawElements.restore(value)),
+      };
+    })();
+    scopedAttrsHtml = styleShield.restore(
+      replaceSafeAttr(
+        styleShield.html,
+        "style",
+        (_fullMatch, prefix, quotedVal) => {
+          const quote = quotedVal[0] === '"' || quotedVal[0] === "'" ? 1 : 0;
+          const value = quotedVal.slice(quote, quotedVal.length - quote);
+          return `${prefix}${quotedVal.slice(0, quote)}${scopeCustomPropertiesInStyleValue(
+            value,
+            declaredCustomProperties,
+            scopeKey,
+          )}${quotedVal.slice(quotedVal.length - quote)}`;
+        },
+      ),
+    );
+  }
 
   if (attribute === "id" && declaredIds.size > 0) {
     const scopedIds = new Map(
