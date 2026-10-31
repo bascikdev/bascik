@@ -1118,7 +1118,7 @@ export const HELLO_API_ROUTE = `export const GET = async (
  * would not be a valid npm package name.
  */
 export function validateProjectName(name: string): string | null {
-  if (!name) return "Project name cannot be empty.";
+  if (!name.trim()) return "Project name cannot be empty.";
   if (!/^[a-z0-9@._/\- ]+$/i.test(name)) {
     return `"${name}" is not a valid directory name.`;
   }

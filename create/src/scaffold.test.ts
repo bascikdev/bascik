@@ -275,6 +275,14 @@ describe("validateProjectName", () => {
     },
   );
 
+  it.each([" ", "   ", "\t"])(
+    "misuse: refuses the blank name %j as empty, not with an empty dashed suggestion",
+    (name) => {
+      const res = validateProjectName(name);
+      expect(res).toBe("Project name cannot be empty.");
+    },
+  );
+
   it("suggests the dashed name for a name with spaces", () => {
     expect(validateProjectName("my  site")).toContain('"my-site"');
   });
