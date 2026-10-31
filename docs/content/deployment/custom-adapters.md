@@ -228,10 +228,19 @@ const runJob = async (job, load, request, context, signal, timeoutMs) => {
       mod.default(request, context, { signal: jobSignal }),
     { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
+  let printed;
+  let failure = result.error;
   if (result.ok) {
-    // What the value prints, by the rule every host uses: an array joined
-    // with no separator; an object, a Response or an array of Promises refused.
-    const printed = serverScriptOutput(result.value);
+    try {
+      // What the value prints, by the rule every host uses: an array joined
+      // with no separator; an object, a Response or an array of Promises refused.
+      printed = serverScriptOutput(result.value);
+    } catch (error) {
+      // The author's own toString threw while printing: the script failed.
+      failure = error;
+    }
+  }
+  if (printed) {
     if (printed.error) {
       // Production: an empty slot and one warning per script.
       if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
@@ -256,7 +265,7 @@ const runJob = async (job, load, request, context, signal, timeoutMs) => {
   if (result.aborted && !result.timedOut) return "";
   const message =
     `[bascik] server script error at "${new URL(request.url).pathname}":\n` +
-    `${result.error?.stack ?? result.error}\n    in the ${job.owner}`;
+    `${failure?.stack ?? failure}\n    in the ${job.owner}`;
   if (graph.onServerScriptError === "error") throw new Error(message);
   if (graph.onServerScriptError === "warn") console.warn(message);
   return "";
