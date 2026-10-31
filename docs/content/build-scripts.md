@@ -463,6 +463,7 @@ When a page needs the same data in several places, read or fetch it **once at pa
 Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`. Subsequent builds skip subprocess execution entirely for unchanged scripts. The cache key is a SHA-256 hash of:
 
 - The authored script body before temporary-module import rewriting
+- Whether the script runs as TypeScript (a `type="text/typescript"` tag or a `.ts` `src=`) and through a `scripts.typescript` compiler, so removing the marker re-runs the same text as JavaScript
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
 - The contents of the source and page files, when the script or a local helper it imports names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`, so a helper that reads its own page re-runs when the page changes

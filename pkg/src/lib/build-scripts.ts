@@ -530,6 +530,7 @@ const computeScriptCacheKey = async (
   pagePath: string = "",
   importRoot: string = getImportRoot(),
   variant: string = "",
+  language: "js" | "ts" | "ts-compiler" = "js",
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
@@ -537,6 +538,9 @@ const computeScriptCacheKey = async (
   // from page-specific records. Empty for the page-specific key, which keeps
   // existing cache entries valid.
   if (variant) hash.update(`VARIANT:${variant}`);
+  // TypeScript runs as different code than the same text as JavaScript.
+  // JavaScript adds nothing, so its existing cache entries stay valid.
+  if (language !== "js") hash.update(`LANGUAGE:${language}`);
   hash.update(script);
   hash.update(relative(process.cwd(), importRoot).replace(/\\/g, "/")); // alias target can change output
   hash.update(isBuild ? "1" : "0");
@@ -964,6 +968,18 @@ export const executeBuildScripts = async (
 
     let preparedScript: string;
     let specifierEdits: SpecifierEdit[];
+    const isTypeScript = isTypeScriptDirectiveScript(
+      openTag,
+      fromSrcFile ? moduleSourcePath : undefined,
+    );
+    // The same text is a different program as TypeScript (and through a
+    // `scripts.typescript` compiler) than as JavaScript, so the language is
+    // part of the cache key: removing the marker must not reuse its output.
+    const language = !isTypeScript
+      ? "js"
+      : typeof BascikConfig.scripts?.typescript === "function"
+        ? "ts-compiler"
+        : "ts";
     try {
       // Padded first, so the rewrite's edits are in the file's own lines and columns.
       // Without a known file there are no file lines to line up with.
@@ -977,10 +993,7 @@ export const executeBuildScripts = async (
             );
       // TypeScript (a marked tag, or a `.ts` src) becomes JavaScript before
       // its imports are rewritten. Strip-only keeps every line and column.
-      const javascript = isTypeScriptDirectiveScript(
-        openTag,
-        fromSrcFile ? moduleSourcePath : undefined,
-      )
+      const javascript = isTypeScript
         ? await compileDirectiveTypeScript(
             padded,
             moduleSourcePath,
@@ -1032,6 +1045,8 @@ export const executeBuildScripts = async (
             pageFile,
             pagePath,
             importRoot,
+            "",
+            language,
           )
         : null;
     const cacheKey = scriptIsNonCacheable ? null : computeKey;
@@ -1064,6 +1079,7 @@ export const executeBuildScripts = async (
             "",
             importRoot,
             "shared",
+            language,
           )
         : null;
 

@@ -1740,6 +1740,46 @@ describe("build-script output cache", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
+  it('keys a type="text/typescript" body apart from the same body unmarked', async () => {
+    // Unmarked, the body is JavaScript and fails; a cached TypeScript run of
+    // the same text must not hide that.
+    const body =
+      'export default (): string => { const n: number = 1; return "<p>" + n + "</p>"; };';
+    resolveWith("<p>1</p>");
+    expect(
+      await executeBuildScripts(
+        `<script data-bascik-build type="text/typescript">${body}</script>`,
+      ),
+    ).toBe("<p>1</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const keyOf = (call: unknown[]) => String(call[0]);
+    const tsCacheWrite = mockWriteFile.mock.calls
+      .map(keyOf)
+      .find((path) => path.includes("script-cache"));
+    expect(tsCacheWrite).toBeDefined();
+
+    mockExecFile.mockClear();
+    mockWriteFile.mockClear();
+    // A disk lookup for the TypeScript key would answer with its record.
+    mockReadFile.mockImplementation(async (path: string) => {
+      if (String(path) === tsCacheWrite)
+        return JSON.stringify({ v: SCRIPT_CACHE_VERSION, output: "<p>1</p>" });
+      if (String(path).endsWith("result.json"))
+        return JSON.stringify({
+          version: 1,
+          kind: "build",
+          result: "<p>js</p>",
+          readsPageContext: true,
+        });
+      throw new Error("ENOENT");
+    });
+    resolveWith("<p>js</p>");
+    expect(
+      await executeBuildScripts(`<script data-bascik-build>${body}</script>`),
+    ).toBe("<p>js</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses cached output for a static component build script", async () => {
     const sourceFile = "src/components/base-head.html";
     const html =
