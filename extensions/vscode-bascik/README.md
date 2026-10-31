@@ -7,6 +7,7 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 - **Move through components instantly.** Cmd/Ctrl-click a custom element to open its source, or hover to inspect its props, slots, source path, styles, and scripts.
 - **Complete component usage in context.** Suggest project component tags, inferred prop attributes, and named slots, with paired tag snippets for components that accept default content.
 - **Document component contracts.** Add an optional leading `@bascik` comment to describe a component and the props and slots inferred from its markup.
+- **Read TypeScript in script tags.** `<script type="text/typescript">` blocks are colored and edited as TypeScript instead of plain text.
 - **Catch scoping leaks early.** Get focused CSS and JavaScript warnings for patterns Bascik cannot safely rewrite.
 - **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server and stream scripts.
 - **Validate component contracts.** Find unclosed tags, conflicting directives, invalid preserve values, broken ID references, and unsupplied prop bindings as you type.
@@ -115,6 +116,8 @@ The header must precede markup, styles, and scripts. It can describe only member
 Press `Shift+F12` on a component tag, or on the first line, `<!-- @bascik` comment, or root tag line of a component file, to list every page and component that uses it with VS Code's standard Find All References. Usages that only appear in build script, Markdown, or server script output are not listed, because the index reads source files.
 
 Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and server scripts, including script `src` attributes. Dedicated highlighting makes Bascik attributes easy to recognize alongside standard HTML.
+
+A `<script type="text/typescript">` block is colored with VS Code's own TypeScript grammar instead of as plain text, in any attribute order and in Prettier-wrapped tags, and VS Code's editing commands treat it as TypeScript: **Toggle Line Comment** adds `//`, and brackets, auto-closing pairs, and TypeScript snippets follow TypeScript's rules. Other script types are unchanged. The block gets TypeScript colors and editing, not type checking, completions, or hover, which VS Code's HTML support provides only for JavaScript script types.
 
 ## Diagnostics That Understand Bascik
 

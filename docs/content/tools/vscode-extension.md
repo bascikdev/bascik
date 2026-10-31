@@ -11,15 +11,16 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 
 ## What You Get
 
-| When you...                      | The extension...                          | Learn more                                           |
-| -------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
-| Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)           |
-| Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
-| Write a `<script>`               | Offers the five execution directives      | [Script directives](#complete-script-directives)     |
-| Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
-| Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
-| Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)          |
-| Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)           |
+| When you...                      | The extension...                          | Learn more                                              |
+| -------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)              |
+| Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)            |
+| Write a `<script>`               | Offers the five execution directives      | [Script directives](#complete-script-directives)        |
+| Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover)    |
+| Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)          |
+| Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)             |
+| Write `type="text/typescript"`   | Colors the script as TypeScript           | [TypeScript in script tags](#typescript-in-script-tags) |
+| Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)              |
 
 ## Complete Component Tags
 
@@ -128,7 +129,31 @@ VS Code's standard Find All References works on components, so the shortcuts you
 
 > **Source files only.** References come from the HTML files in your project, so a usage that only exists in the output of a build script, a Markdown file, or a server script is not listed.
 
-Bascik-specific syntax highlighting also makes the framework's attributes easy to pick out of ordinary markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
+## Highlighting
+
+Bascik-specific syntax highlighting makes the framework's attributes easy to pick out of ordinary markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
+
+### TypeScript in Script Tags
+
+A `<script type="text/typescript">` block is colored as TypeScript, with the grammar VS Code uses for `.ts` files. Without the extension, VS Code shows the block as plain text: browsers do not run that type, so VS Code's HTML support colors only JavaScript script types. Bascik strips the types at build time, so the extension tells VS Code to treat the block as TypeScript:
+
+```html
+<script data-bascik-build-once type="text/typescript">
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
+
+  export default async function (): Promise<string> {
+    const md: string = await readFile("./content/milk-frother.md", "utf8");
+    return marked(md);
+  }
+</script>
+```
+
+Inside the block, VS Code's editing commands also work as they do in a `.ts` file: **Toggle Line Comment** (`Cmd+/` or `Ctrl+/`) adds `//` instead of `<!-- -->`, and bracket matching, auto-closing pairs, and TypeScript snippets follow TypeScript's rules. The `type` attribute can go anywhere in the tag, next to any directive, in single, double, or no quotes, and in a tag that Prettier wraps over several lines.
+
+The rest of the file is unchanged. Scripts with no `type`, `type="module"`, or another JavaScript type stay JavaScript, any other type stays as VS Code shows it, and `.ts` companion files are ordinary TypeScript files. A `</script>` inside a `//` or `/* */` comment ends the block, as VS Code does for a JavaScript block. One inside a string is colored as part of the string, again as in a JavaScript block, but a browser and Bascik end the script there, so write it as `<\/script>` in a string.
+
+> **Colors and editing, not type checking.** The block gets TypeScript's colors and editing behavior, not TypeScript's IntelliSense: VS Code reports no type errors and offers no TypeScript completions or hover inside it, because VS Code's HTML support provides those only for JavaScript script types. Put code that needs them in a `.ts` file, such as a companion `<script src="counter.ts">` or a helper the block imports. Bascik's own checks, such as conflicting directives and unsafe server output, still run inside the block.
 
 ## Catch Problems as You Type
 
