@@ -366,6 +366,32 @@ describe("BascikLanguageServer", () => {
       expect(codes(component)).toContain("attr-prop-unsupplied");
     });
 
+    it("stops counting a deleted page's buffer that the editor keeps open, until it is edited", async () => {
+      // VS Code keeps a model for a file it showed in Peek or References after the file is deleted.
+      await initialize();
+      const component = await write("src/components/my-card.html", COMPONENT);
+      const page = await write("src/pages/old.html", USAGE);
+      open(component, COMPONENT);
+      open(page, USAGE);
+      await settle();
+      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+
+      await fs.rm(page);
+      await fake.handlers.get("watchedFiles")!({
+        changes: [{ uri: uri(page), type: FileChangeType.Deleted }],
+      });
+      await settle();
+      expect(codes(component)).toContain("attr-prop-unsupplied");
+
+      // Typing in the orphaned buffer makes it unsaved work, which counts again.
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(page), version: 2 },
+        contentChanges: [{ text: USAGE }],
+      });
+      await settle();
+      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+    });
+
     it("reads a saved page from disk without rebuilding the project", async () => {
       await initialize();
       const component = await write("src/components/my-card.html", COMPONENT);

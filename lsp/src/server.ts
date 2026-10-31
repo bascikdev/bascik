@@ -261,6 +261,21 @@ export class BascikLanguageServer {
    * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
    * A buffer left open for a deleted file is not a source.
    */
+  /**
+   * A buffer the editor keeps open for a file deleted on disk (VS Code keeps the model of a file it showed
+   * in Peek or References), unedited since. It is not a source of usages for references or diagnostics.
+   */
+  private isOrphanedBuffer(document: TextDocument): boolean {
+    return this.deletedBuffers.get(document.uri) === document.version;
+  }
+
+  /** Open documents that still stand for a file or unsaved work, so their usages count. */
+  private liveOpenDocuments(): TextDocument[] {
+    return this.documents
+      .all()
+      .filter((document) => !this.isOrphanedBuffer(document));
+  }
+
   private referenceSources(snapshot: ProjectSnapshot): Map<string, string> {
     const sources = new Map<string, string>(snapshot.componentSourceByFile);
     for (const [file, text] of snapshot.htmlUsageByFile)
@@ -270,7 +285,7 @@ export class BascikLanguageServer {
         continue;
       const fsPath = uriToFsPath(document.uri);
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
-      if (this.deletedBuffers.get(document.uri) === document.version) continue;
+      if (this.isOrphanedBuffer(document)) continue;
       if (this.findProjectRoot(fsPath) !== snapshot.projectRoot) continue;
       if (isExcludedProjectPath(fsPath, snapshot.projectRoot)) continue;
       if (
@@ -525,7 +540,7 @@ export class BascikLanguageServer {
     const snapshot = await this.getSnapshotForFile(fsPath);
     // The document was edited or closed while the project was read; a newer check follows or the file is gone.
     if (this.documents.get(document.uri)?.version !== version) return;
-    const openDocs = this.documents.all().map((d) => ({
+    const openDocs = this.liveOpenDocuments().map((d) => ({
       fsPath: uriToFsPath(d.uri),
       text: d.getText(),
     }));
