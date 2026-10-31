@@ -171,6 +171,7 @@ import {
   extractInlineStyles,
   resolveCssImportsSync,
   shieldCssStrings,
+  quotedAttributeValueRanges,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -410,23 +411,7 @@ const replaceSafeAttr = (
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
-      const stringRanges: Array<{ start: number; end: number }> = [];
-      let j = 0;
-      let strChar = null;
-      let strStart = -1;
-      while (j < tagMatch.length) {
-        if (strChar) {
-          if (tagMatch[j] === "\\") j++;
-          else if (tagMatch[j] === strChar) {
-            stringRanges.push({ start: strStart, end: j });
-            strChar = null;
-          }
-        } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
-          strChar = tagMatch[j];
-          strStart = j;
-        }
-        j++;
-      }
+      const stringRanges = quotedAttributeValueRanges(tagMatch);
 
       let finalStr = "";
       let lastIdx = 0;

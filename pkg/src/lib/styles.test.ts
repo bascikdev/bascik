@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
+  injectClassIntoTag,
+  quotedAttributeValueRanges,
   getKeyframeNames,
   prefixKeyframes,
   removeIdSelectors,
@@ -2911,5 +2913,58 @@ describe("convertCssElementSelectorsToClasses – & with a pseudo-class or attri
     // the next rule; values after `:` are not element selectors.
     const input = ".bascik__card__card { &:hover color: red; }";
     expect(convert(input).css).toBe(input);
+  });
+});
+
+describe("injectClassIntoTag – backslashes in attribute values", () => {
+  // HTML attribute values have no backslash escapes: a quoted value ends at
+  // the next matching quote, whatever comes before it.
+  it.each([
+    ['<span data-sep="\\" class="tag">', '<span data-sep="\\" class="tag X">'],
+    [
+      '<a data-path="C:\\Users\\" class="tag">',
+      '<a data-path="C:\\Users\\" class="tag X">',
+    ],
+    ["<span data-sep='\\' class='tag'>", "<span data-sep='\\' class='tag X'>"],
+    // A backslash before a quote mid-value: the value still ends there, and
+    // `b"` is a separate (malformed) attribute; the class after it is real.
+    [
+      '<span data-re="a\\"b" class="tag">',
+      '<span data-re="a\\"b" class="tag X">',
+    ],
+  ])("appends to the real class attribute of %s", (tag, expected) => {
+    const out = injectClassIntoTag(tag, "X");
+    expect(out).toBe(expected);
+    expect(out.match(/\sclass=/g)).toHaveLength(1);
+  });
+
+  it("still ignores class text inside another attribute's value", () => {
+    expect(
+      injectClassIntoTag('<span data-x="a\\ class=nope" class="tag">', "X"),
+    ).toBe('<span data-x="a\\ class=nope" class="tag X">');
+  });
+
+  it("injects element classes on a tag whose earlier value ends in a backslash", () => {
+    const html = '<span data-sep="\\" class="tag">x</span>';
+    expect(addElementClassesInHtml(html, "card", ["span"])).toBe(
+      '<span data-sep="\\" class="tag bascik__card__el__span">x</span>',
+    );
+  });
+});
+
+describe("quotedAttributeValueRanges", () => {
+  it("opens a value only after = and ends it at the next matching quote", () => {
+    const tag = `<a b"="x" c = 'y\\' d=z"w e="">`;
+    const ranges = quotedAttributeValueRanges(tag).map(({ start, end }) =>
+      tag.slice(start, end + 1),
+    );
+    expect(ranges).toEqual([`"x"`, `'y\\'`, `""`]);
+  });
+
+  it("treats an unclosed value as running to the end of the tag", () => {
+    const tag = `<a title='never closed class="x"`;
+    expect(quotedAttributeValueRanges(tag)).toEqual([
+      { start: 9, end: tag.length },
+    ]);
   });
 });

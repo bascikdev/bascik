@@ -2603,3 +2603,30 @@ describe("prefixElementAttribute – component server and stream script output s
     serverSidecarRegistry.clear();
   });
 });
+
+describe("prefixElementAttribute – backslash before a closing quote", () => {
+  // HTML attribute values have no backslash escapes, so `data-sep="\"` ends
+  // at its second quote and the attributes after it are real attributes.
+  it("scopes a class attribute after a value ending in a backslash", () => {
+    const c = makeComponent(
+      '<span data-sep="\\" class="tag">x</span><span class="tag">y</span>',
+      "span {} .tag { color: red; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toBe(
+      `<span data-sep="\\" class="${scopeClass("tag")} ${scopeClass("el__span")}">x</span>` +
+        `<span class="${scopeClass("tag")} ${scopeClass("el__span")}">y</span>`,
+    );
+  });
+
+  it("scopes id and name attributes after a Windows path value", () => {
+    let c = makeComponent(
+      '<input data-path="C:\\Users\\" id="field" name="field">',
+    );
+    c = prefixElementAttribute(c, "id", "test1234");
+    c = prefixElementAttribute(c, "name", "test1234");
+    expect(c.fileContent).toBe(
+      `<input data-path="C:\\Users\\" id="${scope("field")}" name="${scope("field")}">`,
+    );
+  });
+});

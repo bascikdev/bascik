@@ -229,6 +229,41 @@ export const convertCssElementSelectorsToClasses = (
   return { css: restore(result), elementsConvertedClasses };
 };
 
+const HTML_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
+
+/**
+ * The quoted attribute values of one open tag, as `[start, end]` index pairs
+ * of their opening and closing quotes. Follows the HTML tokenizer: a quote
+ * opens a value only right after `=` (and optional whitespace), the value
+ * ends at the next matching quote, and backslashes are plain characters.
+ * A quote anywhere else (inside an attribute name or an unquoted value) is
+ * an ordinary character.
+ */
+export const quotedAttributeValueRanges = (
+  openTag: string,
+): Array<{ start: number; end: number }> => {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let afterEquals = false;
+  for (let j = 0; j < openTag.length; j++) {
+    const char = openTag[j];
+    if (afterEquals && (char === '"' || char === "'")) {
+      const end = openTag.indexOf(char, j + 1);
+      if (end === -1) {
+        ranges.push({ start: j, end: openTag.length });
+        break;
+      }
+      ranges.push({ start: j, end });
+      j = end;
+      afterEquals = false;
+    } else if (char === "=") {
+      afterEquals = true;
+    } else if (!HTML_WHITESPACE.has(char)) {
+      afterEquals = false;
+    }
+  }
+  return ranges;
+};
+
 /**
  * Helper to inject or append a scoped class onto an open HTML tag without
  * corrupting class-like text nested inside other attribute values.
@@ -243,23 +278,7 @@ export const injectClassIntoTag = (
       (tagHead) => `${tagHead} class="${className}"`,
     );
   }
-  const stringRanges: Array<{ start: number; end: number }> = [];
-  let j = 0;
-  let strChar = null;
-  let strStart = -1;
-  while (j < openTag.length) {
-    if (strChar) {
-      if (openTag[j] === "\\") j++;
-      else if (openTag[j] === strChar) {
-        stringRanges.push({ start: strStart, end: j });
-        strChar = null;
-      }
-    } else if (openTag[j] === '"' || openTag[j] === "'") {
-      strChar = openTag[j];
-      strStart = j;
-    }
-    j++;
-  }
+  const stringRanges = quotedAttributeValueRanges(openTag);
 
   let replaced = false;
   let finalStr = "";
