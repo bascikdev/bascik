@@ -1110,7 +1110,9 @@ export const shieldCssStrings = (
 
 // One CSS escape: a hex code point (1-6 digits, one optional whitespace
 // terminator) or any other character except a newline.
-const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
+// CSS Syntax preprocessing makes CRLF one newline, so a hex escape's one
+// terminating whitespace may be the two characters `\r\n`.
+const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
 
 /**
  * The class name after each `.` in CSS whose strings and `url()` contents are
@@ -1128,7 +1130,7 @@ const cssClassSelectorNames = (): RegExp =>
 const unescapeCssIdentifier = (raw: string): string =>
   raw.includes("\\")
     ? raw.replace(
-        /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([\s\S]))/g,
+        /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|([\s\S]))/g,
         (_match, hex: string | undefined, char: string | undefined) => {
           if (hex === undefined) return char ?? "";
           const codePoint = Number.parseInt(hex, 16);

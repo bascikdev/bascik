@@ -63,6 +63,11 @@ const cases: Case[] = [
     css: `.café { color: red } .ünï span { color: blue } .\\31 0x { margin: 0 } .na\\EF ve { padding: 0 }`,
   },
   {
+    name: "CRLF and lone CR ending hex escapes in class selectors",
+    html: `<p class="a1p">x</p><div class="c1"><p class="d&#1;p">y</p></div>`,
+    css: ".a\\31\r\np { color: red } .c\\31\r\n p { margin: 0 } .d\\1\rp { padding: 0 }",
+  },
+  {
     name: "control-character escapes in class selectors",
     html: `<p class="a&#9;b">x</p>`,
     css: `.a\\9 b { color: red }`,

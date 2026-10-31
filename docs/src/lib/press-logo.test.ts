@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import { COLORS, MARK_CROP, clearSpaceSvg, parseLogo } from "./press-logo.ts";
 
 const docsDir = join(import.meta.dirname, "../..");
@@ -14,6 +15,51 @@ function boundary(svg: string): number[] {
     Number(new RegExp(`\\b${name}="([^"]+)"`).exec(rect![0])![1]),
   );
 }
+
+/**
+ * The animation, script and comment nodes in an SVG string, as the browser's
+ * parser reads it (any tag case, any spelling the tokenizer accepts).
+ */
+function forbiddenNodes(svg: string): string[] {
+  const found: string[] = [];
+  const visit = (node: DefaultTreeAdapterTypes.Node): void => {
+    if (node.nodeName === "#comment") found.push("#comment");
+    if ("tagName" in node) {
+      const name = node.tagName.toLowerCase();
+      if (name.startsWith("animate") || name === "set" || name === "script")
+        found.push(name);
+    }
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+  };
+  visit(parseFragment(svg));
+  return found;
+}
+
+describe("forbiddenNodes", () => {
+  it("finds script, animation and comment nodes in any tag case", () => {
+    expect(forbiddenNodes("<svg><SCRIPT>alert(1)</SCRIPT></svg>")).toEqual([
+      "script",
+    ]);
+    expect(forbiddenNodes("<svg><Script >x</Script ></svg>")).toEqual([
+      "script",
+    ]);
+    expect(
+      forbiddenNodes(
+        '<svg><rect><ANIMATE attributeName="x"/><animateMotion/><set/></rect></svg>',
+      ),
+    ).toEqual(["animate", "animatemotion", "set"]);
+    expect(forbiddenNodes("<svg><!-- note --><rect/></svg>")).toEqual([
+      "#comment",
+    ]);
+    expect(forbiddenNodes("<svg><!----></svg>")).toEqual(["#comment"]);
+  });
+
+  it("finds nothing in plain artwork, so a clean diagram passes", () => {
+    expect(
+      forbiddenNodes('<svg><title>a</title><rect fill="red"/></svg>'),
+    ).toEqual([]);
+  });
+});
 
 describe("clearSpaceSvg", () => {
   it("draws the dashed boundary one quarter of the wordmark's height outside the artwork", async () => {
@@ -31,7 +77,7 @@ describe("clearSpaceSvg", () => {
     expect(svg).toContain(`points="${art.points}"`);
     expect(svg).toContain(`fill="${COLORS.lime}"`);
     expect(svg).toContain(`fill="${COLORS.ink}"`);
-    expect(svg).not.toMatch(/<animate|<script|<!--/);
+    expect(forbiddenNodes(svg)).toEqual([]);
   });
 
   it("uses the mark's cropped artwork, as the kit does", async () => {
