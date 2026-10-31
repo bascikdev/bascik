@@ -59,7 +59,7 @@ export default {
 };
 ```
 
-When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.pem` and `bascik-privkey.pem` files. If missing, it attempts to generate CA-trusted certificates using `mkcert` (if available) or falls back to OpenSSL self-signed certificates.
+When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.pem` and `bascik-privkey.pem` files. If missing, it attempts to generate CA-trusted certificates using `mkcert` (if available) or falls back to OpenSSL self-signed certificates. Present files are parsed with `X509Certificate`: an expired or not-yet-valid default certificate is regenerated with a warning, and a configured `certFile` in that state is kept and warned about, never replaced.
 
 ## Development Server Mode (`bascik`)
 
