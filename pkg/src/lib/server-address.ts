@@ -8,8 +8,39 @@
  * the server can all use it.
  */
 
-/** Letters, digits, dots, hyphens, underscores and colons (IPv6). */
-const PLAUSIBLE_HOSTNAME = /^[a-zA-Z0-9._:-]+$/;
+/** A DNS name or IPv4 address: letters, digits, dots, hyphens and underscores. */
+const PLAUSIBLE_NAME = /^[a-zA-Z0-9._-]+$/;
+
+const HEX_GROUP = /^[0-9a-fA-F]{1,4}$/;
+const IPV4 =
+  /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+const ZONE = /^[\w.-]+$/;
+
+/**
+ * A bare IPv6 address as `server.listen` takes it (`::`, `::1`,
+ * `2001:db8::1`, `::ffff:127.0.0.1`), with an optional `%zone` naming the
+ * interface of a link-local address (`fe80::1%en0`): eight hex groups, or
+ * fewer with one `::`, the last two of which may be an IPv4 address.
+ * Brackets belong in URLs only.
+ */
+const isIpv6Address = (value: string): boolean => {
+  const [address, zone, ...more] = value.split("%");
+  if (more.length > 0 || (zone !== undefined && !ZONE.test(zone))) return false;
+  const halves = address.split("::");
+  if (halves.length > 2) return false;
+  const groups = halves.map((half) => (half === "" ? [] : half.split(":")));
+  const all = groups.flat();
+  const last = all.at(-1);
+  const embedsIpv4 = last !== undefined && last.includes(".");
+  if (embedsIpv4 && !IPV4.test(last)) return false;
+  const hexGroups = embedsIpv4 ? all.slice(0, -1) : all;
+  if (!hexGroups.every((group) => HEX_GROUP.test(group))) return false;
+  const count = hexGroups.length + (embedsIpv4 ? 2 : 0);
+  return halves.length === 2 ? count < 8 : count === 8;
+};
+
+/** A bracketed IPv6 address as a URL writes it (`[::1]`, `[::1]:3000`). */
+const BRACKETED_IPV6 = /^\[[^\]]*:[^\]]*\](?::\d*)?$/;
 
 /** What a hostname must look like, as error messages say it. */
 export const HOSTNAME_EXPECTATION =
@@ -34,21 +65,32 @@ export const hostnameExpectation = (
   value: unknown,
   portSetting: string,
 ): string =>
-  hasPortSuffix(value)
-    ? `expected a hostname without a port, like "localhost"; set the port with ${portSetting}`
-    : HOSTNAME_EXPECTATION;
+  typeof value === "string" && BRACKETED_IPV6.test(value)
+    ? `${HOSTNAME_EXPECTATION}; write an IPv6 address without brackets, like "::1"${value.endsWith("]") ? "" : `, and set the port with ${portSetting}`}`
+    : hasPortSuffix(value)
+      ? `expected a hostname without a port, like "localhost"; set the port with ${portSetting}`
+      : HOSTNAME_EXPECTATION;
 
 /**
- * True for a bare hostname or IP address; false for a URL, path, blank, or
- * a host with a port (`localhost:3000` would reach server.listen as a raw
- * getaddrinfo ENOTFOUND).
+ * True for a bare hostname, IPv4 address or IPv6 address; false for a URL,
+ * path, blank, bracketed IPv6, or a host with a port (`localhost:3000` would
+ * reach server.listen as a raw getaddrinfo ENOTFOUND).
  */
 export const isPlausibleHostname = (value: unknown): value is string =>
   typeof value === "string" &&
-  value.length > 0 &&
-  !value.includes("://") &&
-  PLAUSIBLE_HOSTNAME.test(value) &&
-  !hasPortSuffix(value);
+  (value.includes(":") ? isIpv6Address(value) : PLAUSIBLE_NAME.test(value));
+
+/**
+ * The URL a server bound to `hostname` answers on: an IPv6 address goes in
+ * brackets, with its zone's `%` written `%25` (RFC 6874), so
+ * `http://[::1]:8080` opens where `http://::1:8080` would not.
+ */
+export const formatServerOrigin = (
+  protocol: string,
+  hostname: string,
+  port: number,
+): string =>
+  `${protocol}://${hostname.includes(":") ? `[${hostname.replace("%", "%25")}]` : hostname}:${port}`;
 
 /**
  * A port written as text: whole digits (surrounding whitespace allowed) from
