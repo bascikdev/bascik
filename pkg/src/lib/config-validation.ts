@@ -1529,6 +1529,20 @@ export const validateConfigPaths = (
             "file does not exist",
           );
         }
+        // The child starts in `cwd`; the script path itself is still a
+        // project path (exec.ts resolves it from the project root).
+        if (
+          isPlainObject(entry) &&
+          typeof entry.cwd === "string" &&
+          entry.cwd.length > 0 &&
+          !fs.isDirectory(resolvePath(entry.cwd))
+        ) {
+          push(
+            `pipeline.exec[${index}].cwd`,
+            entry.cwd,
+            "directory does not exist",
+          );
+        }
       });
     }
   }

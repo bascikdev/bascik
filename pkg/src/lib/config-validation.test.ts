@@ -1277,6 +1277,39 @@ describe("referenced files (fs half)", () => {
     expect(errors[0].message).toContain("file does not exist");
   });
 
+  it("rejects an exec cwd that is not a directory, and checks the script from the project root", () => {
+    // The script exists at the project root; the typo'd cwd does not exist.
+    const fs = {
+      existsSync: (path: string) => path === "/project/scripts/sync.ts",
+      isDirectory: (path: string) => path === "/project/packages/site",
+      isReadableFile: () => true,
+    };
+    const errors = validateConfigPaths(
+      {
+        pipeline: {
+          exec: [
+            { script: "scripts/sync.ts", cwd: "packagez/site" },
+            { script: "scripts/sync.ts", cwd: "packages/site" },
+            { script: "scripts/sync.ts", cwd: "scripts/sync.ts" },
+          ],
+        },
+      },
+      { fs, cwd: "/project" },
+    );
+    expect(errors).toEqual([
+      {
+        key: "pipeline.exec[0].cwd",
+        value: "packagez/site",
+        message: "directory does not exist",
+      },
+      {
+        key: "pipeline.exec[2].cwd",
+        value: "scripts/sync.ts",
+        message: "directory does not exist",
+      },
+    ]);
+  });
+
   it("checks TLS key and cert files only when TLS is enabled", () => {
     const tls = {
       enabled: true,

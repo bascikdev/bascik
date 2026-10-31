@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { matchesGlob, resolve, sep } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
@@ -158,7 +159,11 @@ const spawnScript = (
     BascikConfig.directory?.components ?? ["src/components"]
   ).map((root) => resolve(process.cwd(), root));
 
-  const resolvedScript = resolve(cwd, scriptPath);
+  // `script` is a project path, like every other path in the config (and as
+  // config validation checks it); `cwd` only sets the child's working
+  // directory. Passing the resolved path keeps Node from resolving a relative
+  // script against `cwd`.
+  const resolvedScript = resolve(process.cwd(), scriptPath);
   const isInside = (dir: string): boolean =>
     resolvedScript === dir || resolvedScript.startsWith(dir + sep);
   if (isInside(pagesDir) || componentRoots.some(isInside)) {
@@ -181,7 +186,7 @@ const spawnScript = (
   };
 
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(process.execPath, [scriptPath, ...args], {
+    const child = spawn(process.execPath, [resolvedScript, ...args], {
       stdio: "inherit",
       cwd,
       env: childEnv,
@@ -262,10 +267,21 @@ const spawnScript = (
       }
     });
 
-    child.on("error", (err) => {
+    child.on("error", (err: NodeJS.ErrnoException) => {
       cleanupRecord();
       if (record.settled) return;
       record.settled = true;
+      // Node reports a missing working directory as `spawn <node> ENOENT`,
+      // which blames the Node binary. Name the directory instead.
+      if (err?.code === "ENOENT" && entryObj.cwd && !existsSync(cwd)) {
+        rejectPromise(
+          new Error(
+            `[bascik] exec "${scriptPath}": working directory "${entryObj.cwd}" does not exist (${cwd}).`,
+            { cause: err },
+          ),
+        );
+        return;
+      }
       rejectPromise(err);
     });
   });

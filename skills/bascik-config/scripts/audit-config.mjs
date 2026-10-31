@@ -283,15 +283,23 @@ export function auditConfig(module, { root, exists = existsSync } = {}) {
         );
         return;
       }
-      const base = entry.cwd ? resolve(root, entry.cwd) : root;
+      // Bascik resolves `script` from the project root; `cwd` only sets the
+      // directory the script starts in.
       const script = isAbsolute(entry.script)
         ? entry.script
-        : resolve(base, entry.script);
-      if (!exists(script) && !exists(resolve(root, entry.script))) {
+        : resolve(root, entry.script);
+      if (!exists(script)) {
         add(
           "error",
           where,
-          `script "${entry.script}" does not exist. Only reference lifecycle scripts that are already in the project.`,
+          `script "${entry.script}" does not exist. Only reference lifecycle scripts that are already in the project (the path is relative to the project root, not to cwd).`,
+        );
+      }
+      if (typeof entry.cwd === "string" && !exists(resolve(root, entry.cwd))) {
+        add(
+          "error",
+          where,
+          `cwd "${entry.cwd}" does not exist. It is the directory the script starts in, relative to the project root.`,
         );
       }
       if (

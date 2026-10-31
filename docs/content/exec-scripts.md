@@ -61,15 +61,15 @@ export default defineConfig({
 
 Each exec entry in `pipeline.exec` accepts:
 
-| Property            | Type                            | Default         | Description                                                              |
-| :------------------ | :------------------------------ | :-------------- | :----------------------------------------------------------------------- |
-| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                    |
-| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                  |
-| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode |
-| `cwd`               | `string`                        | `process.cwd()` | Working directory for the script execution                               |
-| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                   |
-| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                          |
-| `timeout`           | `number`                        | `60000`         | Maximum execution time in milliseconds before terminating                |
+| Property            | Type                            | Default         | Description                                                                                                         |
+| :------------------ | :------------------------------ | :-------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                               |
+| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                             |
+| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                            |
+| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root, and the directory must exist |
+| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                              |
+| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                     |
+| `timeout`           | `number`                        | `60000`         | Maximum execution time in milliseconds before terminating                                                           |
 
 ```ts
 // Full exec entry configuration

@@ -147,13 +147,13 @@ describe("runExecPhase", () => {
     expect(mockSpawn).toHaveBeenNthCalledWith(
       1,
       process.execPath,
-      ["scripts/pre.ts"],
+      [resolve(process.cwd(), "scripts/pre.ts")],
       expect.anything(),
     );
     expect(mockSpawn).toHaveBeenNthCalledWith(
       2,
       process.execPath,
-      ["scripts/pre2.ts"],
+      [resolve(process.cwd(), "scripts/pre2.ts")],
       expect.anything(),
     );
   });
@@ -497,9 +497,9 @@ describe("startExecDev", () => {
 
     expect(mockSpawn).toHaveBeenCalledWith(
       process.execPath,
-      ["scripts/build.ts", "--format", "json"],
+      [resolve(process.cwd(), "scripts/build.ts"), "--format", "json"],
       expect.objectContaining({
-        cwd: expect.stringContaining("custom-dir"),
+        cwd: resolve(process.cwd(), "custom-dir"),
         env: expect.objectContaining({
           CUSTOM_VAR: "custom_val",
           BASCIK_BASE: "/",
@@ -535,7 +535,7 @@ describe("startExecDev", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         process.execPath,
-        ["scripts/test-out.ts"],
+        [resolve(process.cwd(), "scripts/test-out.ts")],
         expect.objectContaining({
           env: expect.objectContaining({
             BASCIK_OUT_DIR: expectedOut,
@@ -552,7 +552,7 @@ describe("startExecDev", () => {
 
     expect(mockSpawn).toHaveBeenCalledWith(
       process.execPath,
-      ["scripts/test-out.ts"],
+      [resolve(process.cwd(), "scripts/test-out.ts")],
       expect.objectContaining({
         cwd: resolve(process.cwd(), "sub-package"),
         env: expect.objectContaining({
@@ -560,6 +560,59 @@ describe("startExecDev", () => {
         }),
       }),
     );
+  });
+
+  it("resolves a relative script from the project root, not from the entry's cwd", async () => {
+    // Config validation and the docs resolve `script` from the project root;
+    // `cwd` is only the child's working directory.
+    cfg.pipeline.exec = [{ script: "scripts/sync.ts", cwd: "packages/site" }];
+    await runExecPhase("pre");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      [resolve(process.cwd(), "scripts/sync.ts")],
+      expect.objectContaining({
+        cwd: resolve(process.cwd(), "packages/site"),
+      }),
+    );
+  });
+
+  it("keeps an absolute script path as written when cwd is set", async () => {
+    const absolute = resolve(process.cwd(), "elsewhere", "gen.ts");
+    cfg.pipeline.exec = [{ script: absolute, cwd: "packages/site" }];
+    await runExecPhase("pre");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      [absolute],
+      expect.anything(),
+    );
+  });
+
+  it("names the missing working directory instead of the Node binary when cwd does not exist", async () => {
+    const proc = {
+      kill: vi.fn(),
+      on: vi.fn((event: string, cb: any) => {
+        if (event === "error") {
+          const err = Object.assign(
+            new Error(`spawn ${process.execPath} ENOENT`),
+            { code: "ENOENT" },
+          );
+          Promise.resolve().then(() => cb(err));
+        }
+        return proc;
+      }),
+    };
+    mockSpawn.mockImplementationOnce(() => proc as any);
+    cfg.pipeline.exec = [
+      { script: "scripts/sync.ts", cwd: "packagez/site-typo-dir" },
+    ];
+
+    const rejection = runExecPhase("pre");
+    await expect(rejection).rejects.toThrow(
+      /exec "scripts\/sync\.ts": working directory "packagez\/site-typo-dir" does not exist/,
+    );
+    await expect(rejection).rejects.not.toThrow(/spawn .* ENOENT/);
   });
 
   it("fails the build when a parallel script fails", async () => {

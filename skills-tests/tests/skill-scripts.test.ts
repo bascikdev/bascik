@@ -9,6 +9,7 @@ import {
   loadBundle,
   selectFiles,
 } from "../../skills/bascik/scripts/add-example.mjs";
+import { auditConfig } from "../../skills/bascik-config/scripts/audit-config.mjs";
 import {
   auditPages,
   inspectPage,
@@ -608,5 +609,47 @@ describe("contact.ts", () => {
     expect(response.headers.get("location")).toBe(
       "http://site.test/contact?sent=1",
     );
+  });
+});
+
+describe("audit-config exec entries", () => {
+  const root = "/project";
+  const execFindings = (entry: Record<string, unknown>, files: string[]) =>
+    (
+      auditConfig(
+        { default: { pipeline: { exec: [entry] } } },
+        { root, exists: (path: string) => files.includes(path) },
+      ) as { level: string; where: string; message: string }[]
+    ).filter((finding) => finding.where.includes("pipeline.exec"));
+
+  it("checks a relative script from the project root even when cwd is set, as Bascik runs it", () => {
+    expect(
+      execFindings({ script: "scripts/sync.ts", cwd: "packages/site" }, [
+        "/project/scripts/sync.ts",
+        "/project/packages/site",
+      ]),
+    ).toEqual([]);
+    // A script that only exists under cwd is not where Bascik looks for it.
+    const underCwd = execFindings(
+      { script: "scripts/local.ts", cwd: "packages/site" },
+      ["/project/packages/site/scripts/local.ts", "/project/packages/site"],
+    );
+    expect(underCwd).toHaveLength(1);
+    expect(underCwd[0].message).toContain(
+      'script "scripts/local.ts" does not exist',
+    );
+  });
+
+  it("reports a cwd that does not exist", () => {
+    const findings = execFindings(
+      { script: "scripts/sync.ts", cwd: "packagez/site" },
+      ["/project/scripts/sync.ts"],
+    );
+    expect(findings).toEqual([
+      expect.objectContaining({
+        level: "error",
+        message: expect.stringContaining('cwd "packagez/site" does not exist'),
+      }),
+    ]);
   });
 });
