@@ -54,6 +54,12 @@ Check a specific path or page:
 npx @bascik/language-server --check src/pages
 ```
 
+Name several paths to check them in one run. The project is found from the first one, and an option the checker does not know, such as a misspelled `--fixx`, stops it with a usage error instead of being ignored:
+
+```sh
+npx @bascik/language-server --check src/components src/pages
+```
+
 The checker reads `bascik.config.ts` to know which folders hold components. A component folder outside the project, such as a monorepo's shared components, is not under the directory you check, so check it separately. Run from the site, the checker uses the site's config for any folder listed in its `directory.components`; `--project` names the project explicitly from anywhere:
 
 ```sh
