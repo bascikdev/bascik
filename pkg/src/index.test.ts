@@ -228,6 +228,8 @@ describe("index.ts CLI runner functions", () => {
     );
   });
 
+  // The first runCli call imports index.ts and its whole module graph cold;
+  // under load that takes longer than the 5 s default, as the neighbors allow.
   it("runCli executes subcommands init, check, server, and dev/build", async () => {
     const { runCli } = await import("./index.ts");
 
@@ -270,7 +272,7 @@ describe("index.ts CLI runner functions", () => {
     const buildRes = await runCli(["--build"], { exitOnFinish: false });
     expect(buildRes.action).toBe("build");
     expect(transpileSpy).toHaveBeenCalled();
-  });
+  }, 30000);
 
   it("prints a clean error (no unhandled rejection banner, no Node stack) when the config fails to load", async () => {
     // Regression anchor: a syntax error in bascik.config must surface as one

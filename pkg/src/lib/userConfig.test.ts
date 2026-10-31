@@ -90,7 +90,8 @@ describe("loadUserConfig", () => {
       (err: unknown) => err as Error,
     );
     expect(error?.message).toContain(p);
-    expect(error?.message).toContain("config");
+    // The export name in backticks: the file path alone contains "config".
+    expect(error?.message).toMatch(/exports `config`/);
     expect(error?.message).toContain("export default defineConfig");
   });
 
