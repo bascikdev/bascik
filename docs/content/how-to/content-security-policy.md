@@ -109,8 +109,11 @@ if (!outDir)
   );
 
 const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi;
+// The HTML parser turns CR LF and lone CR into LF before the browser hashes a body.
 const hash = (body) =>
-  `'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`;
+  `'sha256-${createHash("sha256")
+    .update(body.replace(/\r\n?/g, "\n"), "utf8")
+    .digest("base64")}'`;
 
 function policyFor(html) {
   const hashes = new Set();
@@ -150,7 +153,7 @@ for (const entry of await readdir(outDir, {
 
 The script writes into `BASCIK_OUT_DIR`, never into `src/`, per the [lifecycle output rule](/exec-scripts). It adds only `script-src`, plus `object-src 'none'` and `base-uri 'self'`, which cost nothing and close two common injection routes.
 
-> **Hash the emitted bytes.** The browser hashes the text between the `<script>` tags exactly as served. Run the script last, after any other `post` step that edits the pages, or the hashes will not match.
+> **Hash the emitted text.** The browser hashes the text between the `<script>` tags as served, after the HTML parser turns each CR LF or lone CR into LF. Bascik hashes that same LF text, so a page saved with Windows line endings gets the same hashes as its LF spelling; the recipe's `hash` does the same. Run the script last, after any other `post` step that edits the pages, or the hashes will not match.
 
 ## What a meta tag cannot do
 
