@@ -6,7 +6,10 @@
 //   </script>
 //
 // Absolute URLs come from BASCIK_SITE_URL (set it per deployment, never in bascik.config.ts) and BASCIK_BASE.
-// Every value is escaped, so titles from content files or APIs are safe to pass in.
+// The tags are built with html from @bascik/bascik/html, which escapes every value for where it lands, so titles
+// from content files or APIs are safe to pass in. Each function returns a SafeHtml value: a build script can return
+// it, nest it in another html template, or turn it into a string with String(value).
+import { html, json, type SafeHtml } from "@bascik/bascik/html";
 
 export interface SeoOptions {
   /** The full document title, for example "Pricing - Acme". Unique per page, roughly 15 to 65 characters. */
@@ -33,18 +36,6 @@ export interface SeoOptions {
   modifiedTime?: string;
 }
 
-const ENTITIES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** Escape text for HTML content and quoted attribute values. */
-export const escapeHtml = (value: unknown): string =>
-  String(value ?? "").replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
-
 /** The site origin without a trailing slash, or undefined when BASCIK_SITE_URL is not set (for example in dev). */
 export const siteUrl = (): string | undefined =>
   process.env.BASCIK_SITE_URL?.replace(/\/+$/, "") || undefined;
@@ -66,57 +57,63 @@ export function absoluteUrl(path: string): string {
   return origin ? `${origin}${withBase}` : withBase;
 }
 
+/** One <meta> tag, or nothing when the value is empty. A hole cannot name an attribute, so each kind has its tag. */
+function meta(
+  attr: "name" | "property",
+  key: string,
+  value: string | undefined,
+): SafeHtml {
+  if (!value) return html``;
+  return attr === "name"
+    ? html`<meta name="${key}" content="${value}" />`
+    : html`<meta property="${key}" content="${value}" />`;
+}
+
 /** The canonical, Open Graph, and Twitter tags for one page. */
-export function seo(options: SeoOptions): string {
-  const tags: string[] = [];
-  const meta = (
-    attr: "name" | "property",
-    key: string,
-    value: string | undefined,
-  ) => {
-    if (value)
-      tags.push(`<meta ${attr}="${key}" content="${escapeHtml(value)}" />`);
-  };
-
-  tags.push(`<title>${escapeHtml(options.title)}</title>`);
-  meta("name", "description", options.description);
-  if (options.noindex) meta("name", "robots", "noindex");
-
+export function seo(options: SeoOptions): SafeHtml {
   // A canonical URL must be absolute, so it is only emitted when the site URL is known.
   const url = siteUrl() ? absoluteUrl(options.path ?? pagePath()) : undefined;
-  if (url) tags.push(`<link rel="canonical" href="${escapeHtml(url)}" />`);
-
-  meta("property", "og:type", options.type ?? "website");
-  meta("property", "og:title", options.title);
-  meta("property", "og:description", options.description);
-  meta("property", "og:url", url);
-  meta("property", "og:site_name", options.siteName);
-  if (options.image) {
-    meta("property", "og:image", absoluteUrl(options.image));
-    meta("property", "og:image:alt", options.imageAlt);
-  }
-  if (options.type === "article") {
-    meta("property", "article:published_time", options.publishedTime);
-    meta("property", "article:modified_time", options.modifiedTime);
-  }
-  meta(
-    "name",
-    "twitter:card",
-    options.image ? "summary_large_image" : "summary",
-  );
-  return tags.join("\n");
+  const tags = [
+    html`<title>${options.title}</title>`,
+    meta("name", "description", options.description),
+    options.noindex ? meta("name", "robots", "noindex") : undefined,
+    url ? html`<link rel="canonical" href="${url}" />` : undefined,
+    meta("property", "og:type", options.type ?? "website"),
+    meta("property", "og:title", options.title),
+    meta("property", "og:description", options.description),
+    meta("property", "og:url", url),
+    meta("property", "og:site_name", options.siteName),
+    ...(options.image
+      ? [
+          meta("property", "og:image", absoluteUrl(options.image)),
+          meta("property", "og:image:alt", options.imageAlt),
+        ]
+      : []),
+    ...(options.type === "article"
+      ? [
+          meta("property", "article:published_time", options.publishedTime),
+          meta("property", "article:modified_time", options.modifiedTime),
+        ]
+      : []),
+    meta(
+      "name",
+      "twitter:card",
+      options.image ? "summary_large_image" : "summary",
+    ),
+  ].filter((tag) => tag !== undefined && String(tag) !== "");
+  // An array of html values is inserted as it is, with no separator and no .join("").
+  return html`${tags}`;
 }
 
 /**
- * A JSON-LD block. `<` is escaped so a value such as "</script>" can never close the tag early. Bascik leaves
- * application/ld+json scripts untouched.
+ * A JSON-LD block. json() writes <, > and & as JSON escapes, so a value such as "</script>" can never close the tag
+ * early. Bascik leaves application/ld+json scripts untouched.
  */
-export function jsonLd(data: Record<string, unknown>): string {
-  const json = JSON.stringify({
-    "@context": "https://schema.org",
-    ...data,
-  }).replace(/</g, "\\u003c");
-  return `<script type="application/ld+json">${json}</script>`;
+export function jsonLd(data: Record<string, unknown>): SafeHtml {
+  const body = json({ "@context": "https://schema.org", ...data });
+  return html`<script type="application/ld+json">
+    ${body}
+  </script>`;
 }
 
 /** BreadcrumbList data. Paths are relative to the base; the last item may omit its path. */

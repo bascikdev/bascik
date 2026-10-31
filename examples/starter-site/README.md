@@ -39,9 +39,9 @@ Code is TypeScript throughout: the helpers in `src/lib/`, the API route, the exe
 
 ## SEO Tags
 
-`seo()` in `src/lib/seo.ts` writes the title, description, canonical URL, Open Graph, and Twitter tags for one page, escaping every value. Absolute URLs come from `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page path, so the same source works at any domain and base path. Call it from a build script in each page's `<head>` (see `src/pages/about.html`), not from a shared component, so each page gets its own canonical URL.
+`seo()` in `src/lib/seo.ts` writes the title, description, canonical URL, Open Graph, and Twitter tags for one page. It builds them with `html` from `@bascik/bascik/html`, which escapes every value for where it lands, so the starter has no escaper of its own. Absolute URLs come from `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page path, so the same source works at any domain and base path. Call it from a build script in each page's `<head>` (see `src/pages/about.html`), not from a shared component, so each page gets its own canonical URL.
 
-The helper also exports `jsonLd()` (it escapes `<` so data can never close the script tag), `breadcrumbList()`, and `article()`. A page marked `noindex` also needs `<meta name="bascik-sitemap" content="exclude" />` in its source; see [Sitemap](https://bascik.dev/sitemap#per-page-sitemap-exclusion).
+The helper also exports `jsonLd()` (it writes the data with `json()`, so a value can never close the script tag), `breadcrumbList()`, and `article()`. A page marked `noindex` also needs `<meta name="bascik-sitemap" content="exclude" />` in its source; see [Sitemap](https://bascik.dev/sitemap#per-page-sitemap-exclusion).
 
 ## Blog
 

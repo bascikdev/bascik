@@ -3,17 +3,18 @@
   <head>
     <site-head />
     <script data-bascik-build type="text/typescript">
+      import { html } from "@bascik/bascik/html";
       import { seo, jsonLd } from "@/lib/seo.ts";
-      export default () =>
-        [
-          seo({
-            title: "Example Site - Fast pages, plain HTML",
-            description:
-              "Example Site builds fast, accessible websites from plain HTML, CSS, and a little JavaScript.",
-            siteName: "Example Site",
-          }),
-          jsonLd({ "@type": "WebSite", name: "Example Site" }),
-        ].join("\n");
+      export default () => {
+        const tags = seo({
+          title: "Example Site - Fast pages, plain HTML",
+          description:
+            "Example Site builds fast, accessible websites from plain HTML, CSS, and a little JavaScript.",
+          siteName: "Example Site",
+        });
+        const website = jsonLd({ "@type": "WebSite", name: "Example Site" });
+        return html`${tags}${website}`;
+      };
     </script>
   </head>
 

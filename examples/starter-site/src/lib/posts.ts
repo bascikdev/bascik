@@ -17,6 +17,7 @@
 // cache and watch content/ (see this example's bascik.config.ts).
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { html, type SafeHtml } from "@bascik/bascik/html";
 import { marked } from "marked";
 
 export const POSTS_DIR = "content/posts";
@@ -169,18 +170,6 @@ export function groupByTag(
     .map(([tag, list]) => ({ tag, posts: list }));
 }
 
-const ENTITIES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** Escape text for HTML content and quoted attributes. Use it on every value you interpolate. */
-export const escapeHtml = (value: unknown): string =>
-  String(value ?? "").replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
-
 /** "January 15, 2026" for display. UTC, so the date never shifts with the build machine's time zone. */
 export const formatDate = (iso: string): string =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
@@ -188,15 +177,19 @@ export const formatDate = (iso: string): string =>
     timeZone: "UTC",
   });
 
-/** A post list as HTML. Classes are global unless the calling component's CSS defines them. */
-export function postList(posts: Post[]): string {
-  if (posts.length === 0) return "<p>No posts yet.</p>";
-  const items = posts.map(
-    (post) => `<li>
-  <a href="/blog/${post.slug}/">${escapeHtml(post.title)}</a>
-  <time datetime="${post.date}">${formatDate(post.date)}</time>
-  <p>${escapeHtml(post.description)}</p>
-</li>`,
-  );
-  return `<ul class="post-list">\n${items.join("\n")}\n</ul>`;
+/** A post list, built with html so every title and description is escaped. Classes are global unless the calling
+ * component's CSS defines them. */
+export function postList(posts: Post[]): SafeHtml {
+  if (posts.length === 0) return html`<p>No posts yet.</p>`;
+  const items = posts.map(({ slug, title, date, description }) => {
+    const shown = formatDate(date);
+    return html`<li>
+      <a href="/blog/${slug}/">${title}</a>
+      <time datetime="${date}">${shown}</time>
+      <p>${description}</p>
+    </li>`;
+  });
+  return html`<ul class="post-list">
+    ${items}
+  </ul>`;
 }
