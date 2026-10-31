@@ -6,6 +6,7 @@ import { join, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   entryIdentity,
+  folderPrefix,
   isSameOrInside,
   isSameOrInsideOnDisk,
 } from "./path-containment.ts";
@@ -239,6 +240,69 @@ describe("isSameOrInside", () => {
     expect(isSameOrInside(join(root, "a", "b"), root)).toBe(true);
     expect(isSameOrInside(join(root, "ab"), join(root, "a"))).toBe(false);
   });
+});
+
+/**
+ * The static file server resolves the request against the output folder and
+ * keeps isSameOrInside as the decision, then repeats it as
+ * `fullPath.startsWith(folderPrefix(distDir))` right before the fs call: that
+ * is the shape CodeQL's js/path-injection query models as a barrier. The two
+ * must give the same answer for every path `resolve(root, request)` produces
+ * (the folder itself excluded: the server answers 400 for it).
+ */
+describe("folderPrefix", () => {
+  it.each([
+    { path: posix, dir: "/p/dist", prefix: "/p/dist/" },
+    { path: posix, dir: "/p/dist/", prefix: "/p/dist/" },
+    { path: posix, dir: "/", prefix: "/" },
+    { path: win32, dir: "C:\\p\\dist", prefix: "C:\\p\\dist\\" },
+    { path: win32, dir: "C:\\", prefix: "C:\\" },
+    { path: win32, dir: "\\\\srv\\share", prefix: "\\\\srv\\share\\" },
+  ])("$dir -> $prefix", ({ path, dir, prefix }) => {
+    expect(folderPrefix(dir, path)).toBe(prefix);
+  });
+
+  const requests = [
+    "a.css",
+    "deep/a/b.js",
+    "/leading/slash.png",
+    "",
+    ".",
+    "..",
+    "../secret.cfg",
+    "../../../etc/shadow.cfg",
+    "a/../../escape.js",
+    "a/../b.js",
+    "../dist/back-in.css",
+    "../distx/sibling.css",
+    "..foo/named-dots.css",
+    "...",
+    "a\\..\\..\\back.css",
+    "C:/other-drive.css",
+    "D:\\x.css",
+    "//double/slash.css",
+  ];
+  const roots = [
+    { path: posix, root: "/p/dist" },
+    { path: posix, root: "/" },
+    { path: win32, root: "C:\\p\\dist" },
+    { path: win32, root: "C:\\" },
+    { path: win32, root: "\\\\srv\\share\\dist" },
+  ];
+  const cases = roots.flatMap(({ path, root }) =>
+    requests.map((request) => ({ path, root, request })),
+  );
+
+  it.each(cases)(
+    "$root + $request: the prefix check agrees with isSameOrInside",
+    ({ path, root, request }) => {
+      const child = path.resolve(root, request);
+      const helper = isSameOrInside(child, root, path) && child !== root;
+      expect(child.startsWith(folderPrefix(root, path)) && child !== root).toBe(
+        helper,
+      );
+    },
+  );
 });
 
 describe("isSameOrInsideOnDisk", () => {

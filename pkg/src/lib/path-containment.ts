@@ -41,6 +41,20 @@ export const isSameOrInside = (
 };
 
 /**
+ * `dir` with exactly one trailing separator: `/p/dist` becomes `/p/dist/`,
+ * while `/` and `C:\` stay as they are. For a path that `path.resolve(dir,
+ * request)` produced, `resolved.startsWith(folderPrefix(dir))` gives the same
+ * answer as `isSameOrInside(resolved, dir) && resolved !== dir` (the tests
+ * pin this). The static file server repeats its isSameOrInside decision in
+ * that shape right before it opens the file, because a `startsWith` on a
+ * resolved path is the barrier CodeQL's js/path-injection query models.
+ */
+export const folderPrefix = (
+  dir: string,
+  path: Pick<ContainmentPath, "sep"> = nodePath,
+): string => (dir.endsWith(path.sep) ? dir : `${dir}${path.sep}`);
+
+/**
  * The device and inode of the entry at `path`, without following a final
  * symlink (a recursive rm removes the link, not its target), or undefined
  * when nothing is there or the file system reports no inode (0).

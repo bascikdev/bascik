@@ -126,8 +126,19 @@ const components = (): ComponentList => {
 const NAMES = Object.keys(components());
 
 const PAGE_FILE = "src/pages/parity.html";
+/**
+ * A page whose server script returns `body`. JSON.stringify alone leaves `<`
+ * as is, so a body holding `</script>` or `<!--` would end or change the
+ * script element; `<`, `>` and the two JavaScript line separators are written
+ * as \u escapes, which the string literal turns back into the same text.
+ */
 const serverPage = (body: string): string =>
-  `<main><script data-bascik-server>export default () => ${JSON.stringify(body)};</script></main>`;
+  `<main><script data-bascik-server>export default () => ${JSON.stringify(
+    body,
+  ).replace(
+    /[<>\u2028\u2029]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  )};</script></main>`;
 
 const render = async (
   html: string,
@@ -247,3 +258,17 @@ describe.each([false, true])(
     });
   },
 );
+
+describe("the serverPage fixture", () => {
+  it("misuse: a body holding </script> or <!-- stays inside the server script", () => {
+    const body = "<p>a</script><!--b--></p>";
+    const page = serverPage(body);
+    expect(count(page.toLowerCase(), "</script")).toBe(1);
+    const code = page.slice(
+      page.indexOf(">", page.indexOf("<script")) + 1,
+      page.lastIndexOf("</script>"),
+    );
+    const handler = new Function(code.replace("export default", "return"))();
+    expect(handler()).toBe(body);
+  });
+});

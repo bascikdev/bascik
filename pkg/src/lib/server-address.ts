@@ -39,8 +39,13 @@ const isIpv6Address = (value: string): boolean => {
   return halves.length === 2 ? count < 8 : count === 8;
 };
 
-/** A bracketed IPv6 address as a URL writes it (`[::1]`, `[::1]:3000`). */
-const BRACKETED_IPV6 = /^\[[^\]]*:[^\]]*\](?::\d*)?$/;
+/**
+ * A bracketed IPv6 address as a URL writes it (`[::1]`, `[::1]:3000`): a
+ * colon somewhere inside the brackets. The part before the first colon
+ * excludes `:`, so only one split exists and an unclosed `[:::` fails in
+ * linear time.
+ */
+const BRACKETED_IPV6 = /^\[[^\]:]*:[^\]]*\](?::\d*)?$/;
 
 /** What a hostname must look like, as error messages say it. */
 const HOSTNAME_EXPECTATION =
@@ -82,7 +87,8 @@ export const isPlausibleHostname = (value: unknown): value is string =>
 
 /**
  * The URL a server bound to `hostname` answers on: an IPv6 address goes in
- * brackets, with its zone's `%` written `%25` (RFC 6874), so
+ * brackets, with every `%` written `%25` (RFC 6874 encodes the zone
+ * separator and any `%` in the zone alike), so
  * `http://[::1]:8080` opens where `http://::1:8080` would not.
  */
 export const formatServerOrigin = (
@@ -90,7 +96,7 @@ export const formatServerOrigin = (
   hostname: string,
   port: number,
 ): string =>
-  `${protocol}://${hostname.includes(":") ? `[${hostname.replace("%", "%25")}]` : hostname}:${port}`;
+  `${protocol}://${hostname.includes(":") ? `[${hostname.replaceAll("%", "%25")}]` : hostname}:${port}`;
 
 /**
  * A port written as text: whole digits (surrounding whitespace allowed) from

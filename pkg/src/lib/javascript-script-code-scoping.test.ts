@@ -29,7 +29,9 @@ const makeComponent = (fileContent: string): BascikComponent => ({
 });
 
 const scriptBodies = (html: string): string[] =>
-  [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi)].map(
+    (m) => m[1],
+  );
 
 const expectParses = (html: string): void => {
   for (const body of scriptBodies(html))

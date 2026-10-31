@@ -373,7 +373,7 @@ export async function extractDemoBlock(
     // empty code block with only an HTML comment to show for it (demo-markers.test.ts fails on one in the docs).
     if (block.reason !== "file")
       console.warn(
-        `[md-renderer] Warning: ${block.problem.replace(/^<!--\s*|\s*-->$/g, () => "")}; the code block is empty.`,
+        `[md-renderer] Warning: ${block.message}; the code block is empty.`,
       );
     return block.problem;
   }
@@ -384,15 +384,38 @@ export async function extractDemoBlock(
 export { escapeCode };
 
 /**
+ * A readDemoBlock failure: the message for the build log, and the same text as the HTML comment that stands in
+ * for the code block in the page. A marker id or path holding `<` or `>` is escaped inside the comment, so a
+ * `-->` or `--!>` in it (both end a comment in the HTML parser) cannot close the comment early.
+ */
+const demoBlockProblem = (
+  message: string,
+): { problem: string; message: string } => ({
+  problem: `<!-- ${message.replace(/[<>]/g, (char) => (char === "<" ? "&lt;" : "&gt;"))} -->`,
+  message,
+});
+
+/**
  * The raw, unescaped text of a named code block, for printing it as live markup (an example preview).
- * `problem` is an HTML comment describing why the block could not be read.
+ * `problem` is an HTML comment describing why the block could not be read; `message` is its text, for a log.
  */
 export async function readDemoBlock(
   filePath: string,
   markerId: string,
 ): Promise<
-  | { code: string; lang: string; problem?: undefined; reason?: undefined }
-  | { code?: undefined; problem: string; reason: "file" | "marker" | "fence" }
+  | {
+      code: string;
+      lang: string;
+      problem?: undefined;
+      message?: undefined;
+      reason?: undefined;
+    }
+  | {
+      code?: undefined;
+      problem: string;
+      message: string;
+      reason: "file" | "marker" | "fence";
+    }
 > {
   let md: string;
   try {
@@ -402,7 +425,7 @@ export async function readDemoBlock(
       `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
     );
     return {
-      problem: `<!-- [md-renderer] File not found: ${filePath} -->`,
+      ...demoBlockProblem(`[md-renderer] File not found: ${filePath}`),
       reason: "file",
     };
   }
@@ -410,7 +433,7 @@ export async function readDemoBlock(
   const markerMatch = markerRe.exec(md);
   if (!markerMatch)
     return {
-      problem: `<!-- demo:${markerId} not found in ${filePath} -->`,
+      ...demoBlockProblem(`demo:${markerId} not found in ${filePath}`),
       reason: "marker",
     };
 
@@ -420,7 +443,9 @@ export async function readDemoBlock(
   const codeMatch = codeRe.exec(rest);
   if (!codeMatch)
     return {
-      problem: `<!-- no code block after demo:${markerId} in ${filePath} -->`,
+      ...demoBlockProblem(
+        `no code block after demo:${markerId} in ${filePath}`,
+      ),
       reason: "fence",
     };
   return { code: codeMatch[2], lang: codeMatch[1] || "text" };

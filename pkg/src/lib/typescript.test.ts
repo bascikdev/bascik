@@ -215,14 +215,14 @@ describe("scripts.typescript function output validation (F040)", () => {
     const output =
       "const r = await Promise.resolve(1);\nexport default () => String(r);\n";
     (BascikConfig.scripts as { typescript: unknown }).typescript = () =>
-      output.replace("\n", " ");
+      output.replaceAll("\n", " ");
     await expect(
       compileDirectiveTypeScript(
         "const r: number = await Promise.resolve(1);\nexport default () => String(r);",
         "src/pages/index.html",
         "inline",
       ),
-    ).resolves.toBe(output.replace("\n", " "));
+    ).resolves.toBe(output.replaceAll("\n", " "));
   });
 });
 

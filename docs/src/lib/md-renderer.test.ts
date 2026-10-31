@@ -785,6 +785,29 @@ Third content.
     }
   });
 
+  // The problem comment ships in the page. A marker id (or path) holding a comment end, `-->` or the `--!>` the
+  // HTML parser also accepts, must not close it early and leave the rest of the message as live markup, and the
+  // warning prints the message itself, not the comment wrapper.
+  it.each(["a-->b", "a--!>b", "a--b"])(
+    "extractDemoBlock keeps the problem one comment for marker id %s",
+    async (marker) => {
+      const mdFile = join(tempDir, "comment-end.md");
+      await writeFile(mdFile, "# No marker");
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = await extractDemoBlock(mdFile, marker);
+        expect(result.startsWith("<!-- ")).toBe(true);
+        expect(result.endsWith(" -->")).toBe(true);
+        expect(result.slice(4, -3)).not.toMatch(/--!?>|<!--/);
+        expect(warn.mock.calls[0][0]).toMatch(
+          /^\[md-renderer\] Warning: demo:a.*b not found in .*comment-end\.md; the code block is empty\.$/,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
   it("extractDemoBlock warns when the marker has no fenced code block after it", async () => {
     const mdFile = join(tempDir, "nofence.md");
     await writeFile(

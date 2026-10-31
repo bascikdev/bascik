@@ -78,6 +78,22 @@ describe("hostnameExpectation", () => {
       );
   });
 
+  it("needs a colon inside the brackets and a closing bracket", () => {
+    for (const host of ["[:]", "[a:b]:", "[::]:"])
+      expect(hostnameExpectation(host, "--port")).toMatch(/without brackets/);
+    for (const host of [
+      "[]",
+      "[localhost]",
+      "[::1",
+      "[:::::",
+      "[::1]x",
+      "[::1]:80a",
+    ])
+      expect(hostnameExpectation(host, "--port")).not.toMatch(
+        /without brackets/,
+      );
+  });
+
   it("says what a hostname looks like for anything else", () => {
     expect(hostnameExpectation("http://host", "--port")).toMatch(
       /hostname like "localhost"/,
@@ -100,6 +116,17 @@ describe("formatServerOrigin", () => {
       "http://[fe80::1%25en0]:8080",
     );
     expect(new URL(formatServerOrigin("http", "::1", 8080)).port).toBe("8080");
+  });
+
+  it("encodes every % in the host, not only the first (RFC 6874)", () => {
+    // A validated host has one zone separator, but the function is exported:
+    // a host that reached it unvalidated must not leave a raw % in the URL.
+    expect(formatServerOrigin("http", "fe80::1%en%0", 8080)).toBe(
+      "http://[fe80::1%25en%250]:8080",
+    );
+    expect(formatServerOrigin("http", "fe80::1%%", 8080)).toBe(
+      "http://[fe80::1%25%25]:8080",
+    );
   });
 });
 
