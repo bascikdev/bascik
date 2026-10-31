@@ -343,6 +343,82 @@ describe("executeServerScripts in-process execution", () => {
   });
 });
 
+describe("planServerScripts: default export forms and src= with a body", () => {
+  it.each([
+    [
+      "a re-exported local",
+      "function handler() { return '<p>x</p>'; }\nexport { handler as default };",
+    ],
+    ["a re-export from a module", 'export { default } from "./helper.ts";'],
+    [
+      "a renamed re-export in a list",
+      'export { a, b as default } from "./helper.ts";',
+    ],
+    ["a namespace default", 'export * as default from "./helper.ts";'],
+    [
+      "a default export mid-line",
+      "const h = () => '<p>x</p>'; export default h;",
+    ],
+  ])("accepts %s as the default export", (_label, body) => {
+    const plan = planServerScripts(
+      `<script data-bascik-server>\n${body}\n</script>`,
+      "src/pages/test.html",
+    );
+    expect(plan.segments.some((segment) => segment.kind === "script")).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["no export at all", "function handler() { return '<p>x</p>'; }"],
+    [
+      "a default export only in a comment",
+      "// export default handler\nfunction handler() {}",
+    ],
+    [
+      "a default export only in a string",
+      'const text = "export default handler";',
+    ],
+    [
+      "a named export renamed from default",
+      'export { default as handler } from "./helper.ts";',
+    ],
+  ])("still rejects %s with the located message", (_label, body) => {
+    expect(() =>
+      planServerScripts(
+        `<script data-bascik-server>\n${body}\n</script>`,
+        "src/pages/test.html",
+      ),
+    ).toThrow(
+      /must export default a function in "src\/pages\/test\.html" at line 1\./,
+    );
+  });
+
+  it.each(["data-bascik-server", "data-bascik-stream"])(
+    "rejects a %s tag with both src= and an inline body, naming both",
+    (directive) => {
+      expect(() =>
+        planServerScripts(
+          `<main>\n<script ${directive} src="./nav.ts">\nexport default () => "<p>inline</p>";\n</script></main>`,
+          "src/pages/test.html",
+        ),
+      ).toThrow(
+        /<script> tag has both src="\.\/nav\.ts" and an inline body in "src\/pages\/test\.html" at line 2\. A script with src= runs only that file, as in a browser: move the body into "\.\/nav\.ts" or remove src=\./,
+      );
+    },
+  );
+
+  it("accepts src= with a whitespace-only body", () => {
+    const plan = planServerScripts(
+      `<script data-bascik-server src="./nav.ts">\n  \n</script>`,
+      "src/pages/test.html",
+    );
+    expect(plan.segments.some((segment) => segment.kind === "script")).toBe(
+      true,
+    );
+  });
+});
+
 describe("pageHasServerScripts (the dev manifest decision)", () => {
   const both = (html: string) => [html, Buffer.from(html)];
 

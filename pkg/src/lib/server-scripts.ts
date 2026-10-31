@@ -47,6 +47,7 @@ import {
   resolveScriptSrcPath,
   rewriteModuleSpecifiersWithEdits,
   findModuleSpecifiers,
+  hasDefaultExport,
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
@@ -361,11 +362,17 @@ export const planServerScripts = (
     if (mode === "stream" && firstStreamIndex === -1)
       firstStreamIndex = segments.length;
 
-    if (
-      !placeholderValue &&
-      !srcPath &&
-      !/^\s*export\s+default\b/m.test(scriptContent)
-    ) {
+    // Browsers run only the file when a script has src=; build and routes
+    // scripts reject the same ambiguous tag, so every host agrees on it.
+    if (srcPath && scriptContent.trim()) {
+      const where = filePath ? ` in "${filePath}"` : "";
+      throw new Error(
+        `[bascik] error: <script> tag has both src="${srcPath}" and an inline body${where} at line ${measured.tagLine}. ` +
+          `A script with src= runs only that file, as in a browser: move the body into "${srcPath}" or remove src=.`,
+      );
+    }
+
+    if (!placeholderValue && !srcPath && !hasDefaultExport(scriptContent)) {
       const where = filePath ? ` in "${filePath}"` : "";
       throw new Error(
         `[bascik] error: Inline server script must export default a function${where} at line ${startLine}. ` +

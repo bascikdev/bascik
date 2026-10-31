@@ -336,6 +336,38 @@ describe("executeRoutesScript", () => {
     warnSpy.mockRestore();
   });
 
+  it("reports an unreadable src= as the located routes script error, without running an empty module", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockReadFile.mockRejectedValueOnce(new Error("ENOENT: no such file"));
+    try {
+      await expect(
+        executeRoutesScript(
+          `<script data-bascik-routes src="./missing-routes.ts"></script>`,
+          "src/pages/blog/[slug].html",
+        ),
+      ).rejects.toThrow(
+        /routes script error in "src\/pages\/blog\/\[slug\]\.html" at \(line 1, column 1\):\nCannot read routes script src "\.\/missing-routes\.ts" \(src\/pages\/blog\/missing-routes\.ts\): ENOENT/,
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("rejects a routes tag with both src= and an inline body, naming both", async () => {
+    await expect(
+      executeRoutesScript(
+        `<script data-bascik-routes src="./routes.ts">export default () => [];</script>`,
+        "src/pages/blog/[slug].html",
+      ),
+    ).rejects.toThrow(
+      /<script> tag has both src="\.\/routes\.ts" and an inline body in "src\/pages\/blog\/\[slug\]\.html" at \(line 1, column 1\)\. A script with src= runs only that file/,
+    );
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
   it("supports unquoted src attribute in routes script tag", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));

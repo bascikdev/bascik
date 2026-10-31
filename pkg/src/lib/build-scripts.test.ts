@@ -3003,3 +3003,74 @@ describe("dependency scan memo", () => {
     expect(scansOf(source)).toBe(3);
   });
 });
+
+describe("src= that cannot be used", () => {
+  const MISSING_SRC_PAGE =
+    '<nav>\n  <script data-bascik-build src="./scripts/nav-missing.ts"></script>\n</nav>';
+
+  it("reports an unreadable src= file as the located build script error, without running an empty module", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const run = executeBuildScripts(MISSING_SRC_PAGE, "src/pages/index.html");
+      await expect(run).rejects.toBeInstanceOf(BuildScriptError);
+      await expect(run).rejects.toThrow(
+        /build script error in "src\/pages\/index\.html" at \(line 2, column 3\):\nCannot read build script src "\.\/scripts\/nav-missing\.ts" \(.*src\/pages\/scripts\/nav-missing\.ts\): ENOENT/,
+      );
+      await expect(run).rejects.not.toThrow(/missing default export/);
+      expect(mockExecFile).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("warns once and leaves an empty slot for an unreadable src= under onBuildScriptError 'warn'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await executeBuildScripts(
+        MISSING_SRC_PAGE,
+        "src/pages/index.html",
+      );
+      expect(result).toBe("<nav>\n  \n</nav>");
+      expect(mockExecFile).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0][0])).toContain(
+        'Cannot read build script src "./scripts/nav-missing.ts"',
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it.each(["data-bascik-build", "data-bascik-build-once"])(
+    "rejects a %s tag with both src= and an inline body, naming both",
+    async (directive) => {
+      resolveWith("<p>ran</p>");
+      await expect(
+        executeBuildScripts(
+          `<main>\n<script ${directive} src="./nav.ts">\n  export default () => "<p>inline</p>";\n</script></main>`,
+          "src/pages/index.html",
+        ),
+      ).rejects.toThrow(
+        /<script> tag has both src="\.\/nav\.ts" and an inline body in "src\/pages\/index\.html" at \(line 2, column 1\)\. A script with src= runs only that file, as in a browser: move the body into "\.\/nav\.ts" or remove src=\./,
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts a src= tag whose body is only whitespace", async () => {
+    mockReadFile.mockResolvedValueOnce('export default () => "<p>file</p>";');
+    resolveWith("<p>file</p>");
+    expect(
+      await executeBuildScripts(
+        '<script data-bascik-build src="./nav.ts">\n  \n</script>',
+        "src/pages/index.html",
+      ),
+    ).toBe("<p>file</p>");
+  });
+});

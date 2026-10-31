@@ -61,7 +61,7 @@ export default async function (request, context, { signal });
 
 ### TypeScript
 
-Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`. Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript.
+Write a server script in TypeScript with a `src=` `.ts` or `.mts` module, or mark an inline block `type="text/typescript"`. Bascik strips the types before the script runs, on Node in dev and production and in the [Cloudflare adapter](/deployment/cloudflare)'s Worker bundle. Stripping keeps every line and column, so a stack trace names the page's own lines. A `src=` module is imported as a file and Node strips its types; a [`scripts.typescript`](/configuration#scriptstypescript) function compiles both forms instead. An unmarked inline block is JavaScript. A tag with both `src=` and an inline body is rejected: move the body into the file or remove `src=`.
 
 Both forms are compiled and parsed when the page is built, in dev and by `bascik --build`, so a syntax error, an `enum`, or a redeclared variable fails the build naming the file, line, and column, not the first request. The Node build and the Cloudflare build print the same message.
 
@@ -875,7 +875,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 
 ## Rules and Behavior
 
-- A server script must `export default` a function. A script without one is a located build error naming the file and line.
+- A server script must `export default` a function. Any ES module form counts: `export default handler`, `export { handler as default }`, `export { default } from "./helper.ts"`. A script without one is a located build error naming the file and line.
 - Scripts run on **every request** and are **never cached:** the output is always fresh.
 - During `bascik --build`, server script tags are stripped and stored in `.bascik/dist/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
 - Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as the [Cloudflare Adapter](/deployment/cloudflare). A static-only host leaves the placeholders inert.

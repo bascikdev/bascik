@@ -436,8 +436,16 @@ export const executeRoutesScript = async (
   // The module keeps the script untrimmed, so its lines and columns stay where they are in the file.
   let moduleSource = scriptContent;
   let moduleFilePath: string | undefined;
+  const srcAttribute = getHtmlAttributeValue(openTag, "src");
+  // Browsers run only the file when a script has src=; build and server
+  // scripts reject the same ambiguous tag.
+  if (srcAttribute && trimmedScript) {
+    throw new Error(
+      `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${tagLocation(index, openTag)}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`,
+    );
+  }
   if (!trimmedScript) {
-    const srcPath = getHtmlAttributeValue(openTag, "src");
+    const srcPath = srcAttribute;
     if (srcPath) {
       const containingDir = filePath
         ? dirname(resolve(process.cwd(), filePath))
@@ -453,11 +461,22 @@ export const executeRoutesScript = async (
         trimmedScript = await readFile(resolvedPath, "utf8");
         moduleSource = trimmedScript;
       } catch (err) {
+        // The missing file is the failure, not the empty module that would
+        // otherwise run and report a missing default export.
+        if (
+          (BascikConfig.scripts?.onRoutesScriptError ?? "error") === "error"
+        ) {
+          const reason = err instanceof Error ? err.message : String(err);
+          const errorMsg = `[bascik] routes script error${tagLocation(index, openTag)}:\nCannot read routes script src "${srcPath}" (${getProjectPath(resolvedPath)}): ${reason}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg, { cause: err });
+        }
         console.warn(
           '[bascik] warning: Failed to read routes script src "%s":',
           srcPath,
           err,
         );
+        return { routes: [], cleanedHtml };
       }
     }
   }

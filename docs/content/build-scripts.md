@@ -56,7 +56,7 @@ A build script defines its output through a callable default export:
 - **Return value:** The function must return a string, an [`html`](/html-helpers#html) value from `@bascik/bascik/html`, or a promise resolving to either. Returning `undefined`, `null`, numbers, or other objects throws an error.
 - **Empty output:** To render nothing, return an explicit empty string `return ''`.
 - **Console logging:** `console.log()` and `console.error()` output is printed to the terminal for diagnostic logging when the script finishes. Bascik transfers returned HTML through a separate isolated transport, so logs never leak into generated markup.
-- **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup.
+- **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup. A `src=` file that cannot be read is the script's error, reported at the tag like any other failure (`Cannot read build script src "./nav.ts" (...)`). A tag with both `src=` and an inline body is rejected, for build, routes, server and stream scripts alike: as in a browser, `src=` means the file, so move the body into it or remove `src=`.
 - **Cached execution:** When a script's output is cached, neither the module initialization nor the default export runs on a cache hit, so logs do not replay.
 
 ### TypeScript

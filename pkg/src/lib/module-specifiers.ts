@@ -449,6 +449,47 @@ export const hasStaticModuleSyntax = (source: string): boolean => {
 };
 
 /**
+ * True when `source` declares a default export in any ES module form:
+ * `export default ...` (anywhere on a line), `export { handler as default }`,
+ * `export { default } from "..."`, `export { a, b as default } from "..."`,
+ * and `export * as default from "..."`. Text in comments, strings, template
+ * literals and regex literals never counts; the tokenizer skips them.
+ * `export { default as name }` re-exports under another name, so it does not
+ * count either. Matches the language server's missing-default-export rule.
+ */
+export const hasDefaultExport = (source: string): boolean => {
+  const tokens = tokenizeJavaScript(source);
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.type !== "identifier" || token.value !== "export") continue;
+    if (tokens[index - 1]?.value === ".") continue;
+    const next = tokens[index + 1];
+    if (next?.type === "identifier" && next.value === "default") return true;
+    if (
+      next?.value === "*" &&
+      tokens[index + 2]?.value === "as" &&
+      tokens[index + 3]?.value === "default"
+    )
+      return true;
+    if (next?.type !== "punctuation" || next.value !== "{") continue;
+    for (let inner = index + 2; inner < tokens.length; inner++) {
+      const part = tokens[inner];
+      if (part.type === "punctuation" && part.value === "}") break;
+      if (part.type !== "identifier" || part.value !== "default") continue;
+      const before = tokens[inner - 1];
+      const after = tokens[inner + 1];
+      if (before?.type === "identifier" && before.value === "as") return true;
+      if (
+        (before?.value === "{" || before?.value === ",") &&
+        (after?.value === "," || after?.value === "}")
+      )
+        return true;
+    }
+  }
+  return false;
+};
+
+/**
  * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
  *
  * - `relative`: `./` or `../`, resolved against the containing file's directory.

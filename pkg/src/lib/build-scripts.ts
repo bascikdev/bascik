@@ -717,6 +717,28 @@ export interface ExecuteBuildScriptOptions {
 }
 
 /**
+ * Report one failed build script under `scripts.onBuildScriptError`: throw
+ * under `'error'` (the default), log under `'warn'`. The caller gives the
+ * script an empty slot when this returns.
+ */
+const reportBuildScriptFailure = (
+  header: string,
+  detail: string,
+  location: BuildScriptLocation | undefined,
+): void => {
+  const message = `${header}:\n${detail}`;
+  const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+  if (behavior === "error") {
+    console.error(message);
+    // The location travels as data so the dev overlay can name the file. Without a source
+    // file there is nothing to point at, so the failure stays a plain Error.
+    if (location) throw new BuildScriptError(message, location);
+    throw new Error(message);
+  }
+  console.warn(message);
+};
+
+/**
  * Find every `<script data-bascik-build>` block in `html`, execute each as a
  * Node.js ESM module, and replace the tag with the script's stdout output.
  */
@@ -804,6 +826,8 @@ export const executeBuildScripts = async (
     output?: string;
     /** Whether the run (or its cache record) read the page context. */
     readsPageContext?: boolean;
+    /** Already reported and given its output (an unreadable `src=`): never looked up or run. */
+    settled?: boolean;
   }
 
   const tasks: ScriptTask[] = [];
@@ -875,8 +899,17 @@ export const executeBuildScripts = async (
     let moduleSource = scriptContent;
     let fromSrcFile = false;
     let trimmedScript = scriptContent.trim();
+    const srcAttribute = getHtmlAttributeValue(openTag, "src");
+    // Browsers run only the file when a script has src=; a body next to it
+    // is ignored there. Running either one here would hide the other, so
+    // the tag is ambiguous and rejected, the same way for every directive.
+    if (srcAttribute && trimmedScript) {
+      throw new Error(
+        `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${where}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`,
+      );
+    }
     if (!trimmedScript) {
-      const srcPath = getHtmlAttributeValue(openTag, "src");
+      const srcPath = srcAttribute;
       if (srcPath) {
         // `src=` follows the same rules as ESM specifiers: relative and bare
         // paths resolve against the containing file, `@/` against the import
@@ -899,11 +932,32 @@ export const executeBuildScripts = async (
           moduleSourcePath = getProjectPath(resolvedPath);
           fromSrcFile = true;
         } catch (err) {
-          console.warn(
-            '[bascik] warning: Failed to read build script src "%s":',
-            srcPath,
-            err,
+          // A missing src= file is the failure to report, located at the
+          // tag. Running the empty body instead would report a missing
+          // default export the author never wrote.
+          const reason = err instanceof Error ? err.message : String(err);
+          reportBuildScriptFailure(
+            `[bascik] build script error${where}`,
+            `Cannot read build script src "${srcPath}" (${getProjectPath(resolvedPath)}): ${reason}`,
+            location,
           );
+          tasks.push({
+            fullTag,
+            index,
+            openTag,
+            preparedScript: "",
+            cacheKey: null,
+            sharedKey: null,
+            tmpPath: "",
+            moduleSourcePath,
+            location,
+            specifierEdits: [],
+            outputScope: null,
+            sourceFile,
+            output: "",
+            settled: true,
+          });
+          continue;
         }
       }
     }
@@ -1055,6 +1109,7 @@ export const executeBuildScripts = async (
   // Check cache for all tasks
   const uncachedTasks: ScriptTask[] = [];
   for (const task of tasks) {
+    if (task.settled) continue;
     const cached = await readCachedOutput(task);
     if (cached !== null) {
       task.output = cached.output;
@@ -1067,7 +1122,8 @@ export const executeBuildScripts = async (
   // page's build-once scripts are counted as the page's too.
   const stats = options?.stats;
   if (stats) {
-    stats.cached += tasks.length - uncachedTasks.length;
+    stats.cached +=
+      tasks.filter((task) => !task.settled).length - uncachedTasks.length;
     stats.ran += uncachedTasks.length;
   }
 
@@ -1173,17 +1229,7 @@ export const executeBuildScripts = async (
         // so a failing script cannot accumulate index state across edits.
         if (task.cacheKey !== null)
           dependenciesByOutputKey.delete(task.cacheKey);
-        const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-        if (behavior === "error") {
-          console.error(`${errorMsg}:\n${cleanedMsg}`);
-          // The location travels as data so the dev overlay can name the file. Without a source
-          // file there is nothing to point at, so the failure stays a plain Error.
-          if (location)
-            throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
-          throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-        } else {
-          console.warn(`${errorMsg}:\n${cleanedMsg}`);
-        }
+        reportBuildScriptFailure(errorMsg, cleanedMsg, location);
         task.output = "";
       } finally {
         await unlink(task.tmpPath).catch(() => {});
