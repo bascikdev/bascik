@@ -427,3 +427,34 @@ describe("rewriteIdReferencesInCss", () => {
     );
   });
 });
+
+describe("rewriteIdReferencesInHtml – attribute-like text inside another value", () => {
+  const ids = new Map([
+    ["x", "X"],
+    ["y", "Y"],
+  ]);
+  const resolve = (id: string) => ids.get(id) ?? null;
+
+  it.each([
+    [
+      '<a title="see href=#x here" href="#y">',
+      '<a title="see href=#x here" href="#Y">',
+    ],
+    [
+      "<a data-note='href=\"#x\"' href='#y'>",
+      "<a data-note='href=\"#x\"' href='#Y'>",
+    ],
+    ['<label title="a for=x b" for="y">', '<label title="a for=x b" for="Y">'],
+    [
+      '<input aria-label="the form=x field" form=y>',
+      '<input aria-label="the form=x field" form="Y">',
+    ],
+  ])("rewrites only the real attribute of %s", (tag, expected) => {
+    expect(rewriteIdReferencesInHtml(tag, resolve)).toBe(expected);
+  });
+
+  it("leaves a tag whose only match is inside another value alone", () => {
+    const tag = '<a title="see href=#x here">';
+    expect(rewriteIdReferencesInHtml(tag, resolve)).toBe(tag);
+  });
+});
