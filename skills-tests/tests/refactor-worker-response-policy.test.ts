@@ -315,21 +315,30 @@ const wellFormedPage = (random: () => number) => {
 };
 
 describe("scanning for inline code without regular-expression backtracking", () => {
-  it("finds the same scripts and styles as the regex scan it replaced on 50,000 well-formed pages", () => {
-    const differences: string[] = [];
-    for (let seed = 1; seed <= 50_000; seed++) {
-      const html = wellFormedPage(prng(seed));
-      const scripts = executableInlineScripts(html);
-      const styles = inlineStyles(html);
-      if (
-        JSON.stringify(scripts) !==
-          JSON.stringify(oldExecutableInlineScripts(html)) ||
-        JSON.stringify(styles) !== JSON.stringify(oldInlineStyles(html))
-      )
-        differences.push(`seed ${seed}: ${JSON.stringify(html)}`);
-    }
-    expect(differences.slice(0, 5)).toEqual([]);
-  });
+  // About 1 s on a quiet machine, past Vitest's default 5 s under coverage
+  // instrumentation on a loaded one (R3-19). The count stays at 50,000: fewer
+  // pages would compare fewer of the generator's shapes.
+  const FIFTY_THOUSAND_PAGES_TIMEOUT_MS = 60_000;
+
+  it(
+    "finds the same scripts and styles as the regex scan it replaced on 50,000 well-formed pages",
+    () => {
+      const differences: string[] = [];
+      for (let seed = 1; seed <= 50_000; seed++) {
+        const html = wellFormedPage(prng(seed));
+        const scripts = executableInlineScripts(html);
+        const styles = inlineStyles(html);
+        if (
+          JSON.stringify(scripts) !==
+            JSON.stringify(oldExecutableInlineScripts(html)) ||
+          JSON.stringify(styles) !== JSON.stringify(oldInlineStyles(html))
+        )
+          differences.push(`seed ${seed}: ${JSON.stringify(html)}`);
+      }
+      expect(differences.slice(0, 5)).toEqual([]);
+    },
+    FIFTY_THOUSAND_PAGES_TIMEOUT_MS,
+  );
 
   it("finds something on most generated pages, so the fuzz above compares real matches", () => {
     let withScripts = 0;

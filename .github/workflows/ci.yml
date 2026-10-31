@@ -586,7 +586,7 @@ jobs:
       - name: Agent skills unit tests
         run: yarn skills:unit
 
-  # Linear-time scaling checks (pkg and the language server): CPU-growth measurements on hostile input. They are
+  # Linear-time scaling checks (pkg, the language server, and the agent skills' scripts): CPU-growth measurements on hostile input. They are
   # slow and platform-independent (an algorithm is linear or not on every OS), so they run once, on Linux, here
   # instead of in the unit jobs, where Windows' coarse CPU clock made them take most of the Windows job.
   linear-time:
