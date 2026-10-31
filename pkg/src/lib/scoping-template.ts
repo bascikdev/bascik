@@ -31,13 +31,20 @@
  * see one either consumes the whole name with a character class that covers
  * all name characters (`[\w-]`, `[a-zA-Z0-9_-]`, `[^"']`, `[^\s]`), compares
  * against the component's own authored text, or acts only on exact delimited
- * matches (`id="…"`, `getElementById("…")`, `#…`, `.…`). Instance IDs are
- * lowercase hex and hashes are Base62, so no name contains a quote, space,
- * `<`, `>`, `#`, `.`, `@`, `\x00`, or `__` beyond the delimiters it was built
- * with. `scoping-parametricity.test.ts` checks this property directly against
- * the real pipeline on random and adversarial components, and the full test
- * suites run with `BASCIK_VERIFY_SCOPING_TEMPLATES=1`, which recomputes every
- * reused result with the real pipeline and throws on any difference.
+ * matches (`id="…"`, `getElementById("…")`, `#…`, `.…`). A check that reads
+ * generated names by pattern (the descendant-element pass matching
+ * `.bascik__…` or a 12-character hash, CSS escapes in a scoped class name)
+ * keys on the delimiters and the authored tail, never on the instance part.
+ * Instance IDs are lowercase hex and hashes are Base62, so the instance part
+ * of a name never contains a quote, space, backslash, `<`, `>`, `#`, `.`,
+ * `@`, `\x00`, or `__` beyond the delimiters it was built with (an escape
+ * such as `\:` or `\1 ` comes from the authored name and is the same for
+ * every instance). `scoping-parametricity.test.ts` checks this property
+ * directly against the real pipeline on random and adversarial components,
+ * `scoping-template-adversarial.test.ts` on every construct the October 2026
+ * fixes read by pattern, and the test suites run with
+ * `BASCIK_VERIFY_SCOPING_TEMPLATES=1`, which recomputes every reused result
+ * with the real pipeline and throws on any difference.
  *
  * Safety rules (each one falls back to the real pipeline)
  * -------------------------------------------------------
