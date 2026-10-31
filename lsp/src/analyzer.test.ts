@@ -171,6 +171,35 @@ describe("Bascik Language Server Analyzer", () => {
     );
   });
 
+  it("says stream scripts run on the dev server too, as server scripts do and the docs say", () => {
+    const docOf = (text: string, label: string) => {
+      const items =
+        createCompletions(
+          TextDocument.create(
+            "file:///test-project/src/pages/index.html",
+            "html",
+            1,
+            text,
+          ),
+          { line: 0, character: text.length },
+          mockSnapshot,
+        ) ?? [];
+      const item = items.find((c) => c.label === label);
+      const documentation = item?.documentation;
+      return typeof documentation === "string"
+        ? documentation
+        : (documentation?.value ?? "");
+    };
+    for (const documentation of [
+      docOf("<script ", "data-bascik-stream"),
+      docOf("<bascik-", "bascik-stream"),
+    ]) {
+      expect(documentation).toContain(
+        "per request on production and dev servers",
+      );
+    }
+  });
+
   it("provides script shorthand completions (<bascik-...) expanding to script blocks", () => {
     const doc = TextDocument.create(
       "file:///test-project/src/pages/index.html",

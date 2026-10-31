@@ -193,7 +193,7 @@ export const SCRIPT_DIRECTIVES = [
     name: "data-bascik-stream",
     detail: "Bascik server-side streaming script",
     documentation:
-      "Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.",
+      "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available.",
   },
 ];
 
@@ -1728,7 +1728,7 @@ export function createCompletions(
       label: "bascik-stream",
       detail: "Bascik server-side streaming script block",
       documentation:
-        "Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.",
+        "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available.",
       insertText: `<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
     },
   ];
