@@ -458,7 +458,7 @@ export const build = defineConfig({
 
 ### `minify.identifiers`
 
-Hash generated class, ID, and name attributes to short alphanumeric strings instead of the verbose `bascik__component__id__name` format. Enabled by default in builds.
+Hash generated class, ID, and name attributes to short alphanumeric strings instead of the readable `bascik__<component>__<name>`, `bascik__<component>__<instance>__<name>`, `b_el_<component>_<tag>`, and `b_id_<component>_<id>` forms. Enabled by default in builds.
 
 ### `assets`
 

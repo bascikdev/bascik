@@ -45,6 +45,35 @@ const elementOpenTags = (
   });
 import type { BascikComponent } from "./types.ts";
 
+/**
+ * The class Bascik generates for an element selector: `p { }` in component
+ * `card` becomes `.b_el_card_p`, and the class is added to every `<p>` in the
+ * template. Components have no shadow DOM, so a bare `p { }` would style
+ * every paragraph on the page; a class keeps the rule inside the component.
+ *
+ * The head `b_el_` differs from the authored head on purpose: an authored
+ * class `.el__p` becomes `bascik__card__el__p`, which an element rule can
+ * never produce, so the two rules never merge. `scopeKey` is the component
+ * name, or `<name>__<instanceId>` when the component needs per-instance CSS.
+ * Under `minify.identifiers` the name is hashed to `b` plus 11 Base62
+ * characters, which cannot contain `_`, so a hash never equals a readable
+ * generated name.
+ */
+export const elementSelectorClassName = (
+  scopeKey: string,
+  tagName: string,
+): string => minifyAttributeName(`b_el_${scopeKey}_${tagName}`);
+
+/**
+ * The class Bascik generates for an `#id` selector: `#btn { }` in component
+ * `card` becomes `.b_id_card_btn`, added to the element whose `id` is `btn`.
+ * The `id` itself is scoped per instance (`bascik__card__<instanceId>__btn`),
+ * so a selector naming it could only style one instance; a class shared by
+ * every instance styles them all. See `elementSelectorClassName` for the head.
+ */
+export const idSelectorClassName = (scopeKey: string, idName: string): string =>
+  minifyAttributeName(`b_id_${scopeKey}_${idName}`);
+
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
 // error (e.g. breaking `0.7rem 1em` across two lines) can place a unit
 // keyword at column 0 where the element-selector regex would otherwise
@@ -185,7 +214,7 @@ export const convertCssElementSelectorsToClasses = (
       seen.add(elementName);
       elementsConvertedClasses.push(elementName);
     }
-    return `.${minifyAttributeName(`bascik__${componentName}__el__${elementName}`)}`;
+    return `.${elementSelectorClassName(componentName, elementName)}`;
   };
 
   // Shield strings and url() contents so braces or commas inside string
@@ -261,7 +290,8 @@ export const convertCssElementSelectorsToClasses = (
   // Handles `.foo p {}`, `.foo > h2 {}`, `.foo>h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
   // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
-  // After Pass 1 (class scoping), class names become `bascik__…__foo` or a
+  // After class scoping, class names become `bascik__…__foo`, the classes
+  // generated for `#id` and element selectors `b_id_…` and `b_el_…`, or a
   // 12-character hash when identifier minification is enabled. Matching the
   // class selector itself keeps the anchor in selector position. The negative
   // lookahead `(?![\w-])` prevents
@@ -293,7 +323,7 @@ export const convertCssElementSelectorsToClasses = (
     // a descendant combinator.
     result = replaceInSelectorPosition(
       result,
-      /((?:\.(?:bascik__(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
+      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
       false,
       prefixed,
     );
@@ -428,7 +458,7 @@ export const addElementClassesInHtml = (
     if (!elementClassMap.has(lower)) {
       elementClassMap.set(
         lower,
-        minifyAttributeName(`bascik__${componentName}__el__${element}`),
+        elementSelectorClassName(componentName, element),
       );
       escapedElements.push(element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     }
@@ -807,7 +837,7 @@ export const removeIdSelectors = (css: string): string => {
  * In valid component CSS this does not occur.
  *
  * @example
- *   #btn { color: red }  →  .bascik__my-comp__id__btn { color: red }
+ *   #btn { color: red }  →  .b_id_my-comp_btn { color: red }
  */
 export const convertCssIdSelectorsToClasses = (
   css: string,
@@ -827,9 +857,7 @@ export const convertCssIdSelectorsToClasses = (
     /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g,
     (_: string, idName: string) => {
       if (!seen.has(idName)) {
-        const className = minifyAttributeName(
-          `bascik__${componentName}__id__${idName}`,
-        );
+        const className = idSelectorClassName(componentName, idName);
         seen.set(idName, className);
         idsConverted.push({ idName, className });
       }

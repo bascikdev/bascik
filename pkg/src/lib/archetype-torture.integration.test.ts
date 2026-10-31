@@ -902,8 +902,8 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       expect(articleHtml).toContain("Large payload");
       // Page-aware component build script output must be scoped with the component's classes and element classes!
       expect(articleHtml).toContain('class="bascik__breadcrumbs__crumb-list"');
-      expect(articleHtml).toContain('class="bascik__breadcrumbs__el__li"');
-      expect(articleHtml).toContain('class="bascik__breadcrumbs__el__a"');
+      expect(articleHtml).toContain('class="b_el_breadcrumbs_li"');
+      expect(articleHtml).toContain('class="b_el_breadcrumbs_a"');
       expect(articleHtml).toContain("Current: /articles/deep-dive");
       expect(existsSync(join(dir, "dist/feed.xml"))).toBe(true);
     } finally {

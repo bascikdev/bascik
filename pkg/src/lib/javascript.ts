@@ -60,7 +60,8 @@
  * CSS pass  (class attribute only) — rewrites the component's .css file AND
  * any inline <style> tags in the HTML:
  *   .className       →  .bascik__...__className      (class prefixing)
- *   p { }            →  .bascik__...__el__p { }       (element → class)
+ *   p { }            →  .b_el_..._p { }               (element → class)
+ *   #btn { }         →  .b_id_..._btn { }             (#id → class)
  *   @keyframes name  →  @keyframes bascik__...__keyframe__name
  *   animation: name  →  animation: bascik__...__keyframe__name
  *   @layer name      →  @layer bascik__...__layer__name
@@ -162,6 +163,7 @@ import {
   addIdClassesInHtml,
   convertCssElementSelectorsToClasses,
   convertCssIdSelectorsToClasses,
+  elementSelectorClassName,
   prefixKeyframes,
   removeIdSelectors,
   scopeCssCustomProperties,
@@ -1211,9 +1213,7 @@ export const prefixElementAttribute = (
         );
       }
       for (const element of new Set(allElementClasses)) {
-        scope.elements[element] = minifyAttributeName(
-          `bascik__${scopeKey}__el__${element}`,
-        );
+        scope.elements[element] = elementSelectorClassName(scopeKey, element);
       }
       component.fileContent = annotateOutputScopedScripts(
         component.fileContent,

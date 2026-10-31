@@ -76,10 +76,14 @@ Class names are scoped to the **component type** so every instance of the same c
 ID attributes are scoped per **component instance** so multiple instances on the same page always have distinct DOM identifiers. `name` attributes ship as written: a `name` is the key a form field is submitted under and the group a radio or `<details>` belongs to, a contract with the rest of the page rather than a private identifier. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups), which also covers the `scoping.attributes.name` opt-in that scopes `name` per instance.
 
 ```text
-class  →  bascik__<componentName>__<originalName>
-id     →  bascik__<componentName>__<instanceId>__<originalName>
-name   →  bascik__<componentName>__<instanceId>__<originalName>   (only with scoping.attributes.name: true)
+class      →  bascik__<componentName>__<originalName>
+id         →  bascik__<componentName>__<instanceId>__<originalName>
+name       →  bascik__<componentName>__<instanceId>__<originalName>   (only with scoping.attributes.name: true)
+p { }      →  .b_el_<componentName>_p      (class added to every <p> in the template)
+#btn { }   →  .b_id_<componentName>_btn    (class added to the element with id="btn")
 ```
+
+Element and `#id` rules become classes because components have no shadow DOM: a bare `p { }` would style every paragraph on the page, and the scoped `id` differs per instance, so one rule could not match them all. Their names start with `b_el_` and `b_id_` so they never equal a class you write (`.el__p` becomes `bascik__<componentName>__el__p`). [The Scoping System](/internals/scoping-system#the-naming-scheme) explains the scheme in full.
 
 In production builds (`minify.identifiers: true`, the default), these verbose names are hashed to short alphanumeric strings such as `b2Y4G9eD1K8b` for name compression. The HTML, CSS, and JavaScript are all rewritten with the same hashed names so they stay in sync. This is entirely a build-time transformation with no runtime overhead.
 
@@ -157,14 +161,14 @@ p {
 ```html
 <section class="bascik__scope-lab__scope-lab">
   <div>
-    <h3 class="bascik__scope-lab__el__h3">Scoped selectors are active</h3>
-    <p class="bascik__scope-lab__el__p">
+    <h3 class="b_el_scope-lab_h3">Scoped selectors are active</h3>
+    <p class="b_el_scope-lab_p">
       Bare element selectors, keyframes, and custom properties stay inside this
       component.
     </p>
   </div>
   <span
-    class="bascik__scope-lab__scope-lab-meter bascik__scope-lab__id__signal"
+    class="bascik__scope-lab__scope-lab-meter b_id_scope-lab_signal"
     id="bascik__scope-lab__a1b2__signal"
     aria-hidden="true"
   ></span>
@@ -184,14 +188,14 @@ p {
     alternate;
 }
 
-.bascik__scope-lab__id__signal {
+.b_id_scope-lab_signal {
   border-radius: 999px;
 }
 
-.bascik__scope-lab__el__h3 {
+.b_el_scope-lab_h3 {
   color: #f0f1f2;
 }
-.bascik__scope-lab__el__p {
+.b_el_scope-lab_p {
   color: #8d929e;
 }
 
@@ -673,15 +677,13 @@ p {
 <article class="bascik__plan-card__card">
   <span class="bascik__plan-card__tag">plan-card</span>
   <h3 class="bascik__plan-card__title">Pro plan</h3>
-  <p class="bascik__plan-card__el__p">
-    Same class names as the card beside it.
-  </p>
+  <p class="b_el_plan-card_p">Same class names as the card beside it.</p>
 </article>
 
 <article class="bascik__alert-card__card">
   <span class="bascik__alert-card__tag">alert-card</span>
   <h3 class="bascik__alert-card__title">Disk almost full</h3>
-  <p class="bascik__alert-card__el__p">Same class names, its own styles.</p>
+  <p class="b_el_alert-card_p">Same class names, its own styles.</p>
 </article>
 ```
 
@@ -712,7 +714,7 @@ p {
   color: #d3ff8d;
 }
 
-.bascik__plan-card__el__p {
+.b_el_plan-card_p {
   margin: 0;
   color: #c9d6b5;
 }
@@ -741,7 +743,7 @@ p {
   color: #ff8a5c;
 }
 
-.bascik__alert-card__el__p {
+.b_el_alert-card_p {
   margin: 0;
   color: #e6c4b8;
   font-style: italic;

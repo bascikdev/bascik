@@ -84,6 +84,8 @@ const scope = (attr: string, id = "test1234"): string =>
 
 // Classes use component name only (no instanceId) so CSS can be deduplicated.
 const scopeClass = (attr: string): string => `bascik__my-comp__${attr}`;
+// The class an element selector such as `p { }` generates in my-comp.
+const elementClass = (tag: string): string => `b_el_my-comp_${tag}`;
 
 // With deduplicateCss:false classes use instanceId just like id/name attributes.
 const scopeClassPerInstance = (attr: string, id = "test1234"): string =>
@@ -1204,11 +1206,9 @@ describe("prefixElementAttribute – inline <style> tag scoping", () => {
   it("scopes element selectors in an inline <style> tag and injects class", () => {
     const c = makeComponent("<style>p { color: red; }</style><p>hello</p>");
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.cssFileContent).toContain("bascik__my-comp__el__p");
+    expect(result.cssFileContent).toContain("b_el_my-comp_p");
     // Class should be injected into the <p> element
-    expect(result.fileContent).toMatch(
-      /<p\s[^>]*class="[^"]*bascik__my-comp__el__p/,
-    );
+    expect(result.fileContent).toMatch(/<p\s[^>]*class="[^"]*b_el_my-comp_p/);
   });
 
   it("scopes indented element selectors in an inline <style> tag", () => {
@@ -1216,10 +1216,8 @@ describe("prefixElementAttribute – inline <style> tag scoping", () => {
       "<style>\n  p { color: red; }\n</style><p>hello</p>",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.cssFileContent).toContain("bascik__my-comp__el__p");
-    expect(result.fileContent).toMatch(
-      /<p\s[^>]*class="[^"]*bascik__my-comp__el__p/,
-    );
+    expect(result.cssFileContent).toContain("b_el_my-comp_p");
+    expect(result.fileContent).toMatch(/<p\s[^>]*class="[^"]*b_el_my-comp_p/);
   });
 });
 
@@ -1234,7 +1232,7 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
       "#btn { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.cssFileContent).toContain(".bascik__my-comp__id__btn");
+    expect(result.cssFileContent).toContain(".b_id_my-comp_btn");
     expect(result.cssFileContent).not.toContain("#btn");
   });
 
@@ -1244,7 +1242,7 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
       "#btn { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain("bascik__my-comp__id__btn");
+    expect(result.fileContent).toContain("b_id_my-comp_btn");
   });
 
   it("does NOT mangle hex color values: color: #abc;", () => {
@@ -1303,8 +1301,8 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
       '<style>#panel { display: none; }</style><div id="panel"></div>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.cssFileContent).toContain(".bascik__my-comp__id__panel");
-    expect(result.fileContent).toContain("bascik__my-comp__id__panel");
+    expect(result.cssFileContent).toContain(".b_id_my-comp_panel");
+    expect(result.fileContent).toContain("b_id_my-comp_panel");
   });
 
   it("converts #id and injects class onto element when minify.identifiers is enabled across both id and class passes", () => {
@@ -2365,8 +2363,8 @@ describe("prefixElementAttribute – component build script output scope", () =>
         item: "bascik__my-comp__item",
       },
       elements: {
-        h2: "bascik__my-comp__el__h2",
-        a: "bascik__my-comp__el__a",
+        h2: "b_el_my-comp_h2",
+        a: "b_el_my-comp_a",
       },
     });
   });
@@ -2425,7 +2423,7 @@ describe("prefixElementAttribute – component server and stream script output s
         wrap: "bascik__my-comp__wrap",
         item: "bascik__my-comp__item",
       },
-      elements: { h2: "bascik__my-comp__el__h2" },
+      elements: { h2: "b_el_my-comp_h2" },
     };
     for (const tag of tags) {
       expect(tag, tag).toContain("data-bascik-output-scope");
@@ -2614,8 +2612,8 @@ describe("prefixElementAttribute – backslash before a closing quote", () => {
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toBe(
-      `<span data-sep="\\" class="${scopeClass("tag")} ${scopeClass("el__span")}">x</span>` +
-        `<span class="${scopeClass("tag")} ${scopeClass("el__span")}">y</span>`,
+      `<span data-sep="\\" class="${scopeClass("tag")} ${elementClass("span")}">x</span>` +
+        `<span class="${scopeClass("tag")} ${elementClass("span")}">y</span>`,
     );
   });
 
@@ -2729,7 +2727,7 @@ describe("prefixElementAttribute – escaped class selectors", () => {
       "test1234",
     );
     expect(result.cssFileContent).toBe(
-      `.${scopeClass("md\\:flex")} .${scopeClass("el__p")} { display: flex }`,
+      `.${scopeClass("md\\:flex")} .${elementClass("p")} { display: flex }`,
     );
   });
 
@@ -2744,10 +2742,50 @@ describe("prefixElementAttribute – escaped class selectors", () => {
       "test1234",
     );
     expect(result.cssFileContent).toBe(
-      `.${scopeClass("a\\1 b")} { color: red } .${scopeClass("c\\1 ")} .${scopeClass("el__p")} { margin: 0 }`,
+      `.${scopeClass("a\\1 b")} { color: red } .${scopeClass("c\\1 ")} .${elementClass("p")} { margin: 0 }`,
     );
     expect(result.fileContent).toBe(
-      `<p class="${scopeClass("a\u0001b")} ${scopeClass("el__p")}">x</p><div class="${scopeClass("c\u0001")}"><p class="${scopeClass("el__p")}">y</p></div>`,
+      `<p class="${scopeClass("a\u0001b")} ${elementClass("p")}">x</p><div class="${scopeClass("c\u0001")}"><p class="${elementClass("p")}">y</p></div>`,
+    );
+  });
+});
+
+describe("prefixElementAttribute – generated element and id classes never equal an authored class", () => {
+  // An authored class is `bascik__<component>__<class>`; the classes made for
+  // element and #id rules start with `b_el_` and `b_id_`, so `.el__p` and `p`
+  // (or `.id__btn` and `#btn`) stay two rules instead of styling each other.
+  it('keeps .el__p and p as two classes, and a <p class="el__p"> gets both', () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="el__p">x</p><p>y</p>',
+        ".el__p { color: blue } p { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(scopeClass("el__p")).not.toBe(elementClass("p"));
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("el__p")} { color: blue } .${elementClass("p")} { color: red }`,
+    );
+    expect(result.fileContent).toBe(
+      `<p class="${scopeClass("el__p")} ${elementClass("p")}">x</p><p class="${elementClass("p")}">y</p>`,
+    );
+  });
+
+  it("keeps .id__btn and #btn as two classes, and the element gets both", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<button id="btn" class="id__btn">x</button><span class="id__btn">y</span>',
+        ".id__btn { color: blue } #btn { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("id__btn")} { color: blue } .b_id_my-comp_btn { color: red }`,
+    );
+    expect(result.fileContent).toBe(
+      `<button id="btn" class="${scopeClass("id__btn")} b_id_my-comp_btn">x</button><span class="${scopeClass("id__btn")}">y</span>`,
     );
   });
 });

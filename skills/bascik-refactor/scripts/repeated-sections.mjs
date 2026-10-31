@@ -336,8 +336,23 @@ export function diffInstances(key, instances, ignore = new Set()) {
   return findings;
 }
 
+/**
+ * A class Bascik scoped to a component, capturing the component name: an authored class (`bascik__plan-card__title`)
+ * or a class generated from an element or `#id` selector (`b_el_plan-card_p`, `b_id_plan-card_buy`). A component root
+ * styled only by an element rule carries just the generated class. Hashed names (`minify.identifiers`) carry no name.
+ */
+export const SCOPED_CLASS_PATTERN =
+  /^(?:bascik__([a-z][a-z0-9-]*)__|b_(?:el|id)_([a-z][a-z0-9-]*)_)/;
+
+/** The component a scoped class belongs to, or undefined for any other class. */
+export const scopedComponentOf = (className) => {
+  const m = SCOPED_CLASS_PATTERN.exec(className);
+  return m ? (m[1] ?? m[2]) : undefined;
+};
+
 /** In the page: every section with its tree, key, signature and component hints. */
 function collectSections(arg) {
+  const scopedClass = new RegExp(arg.scopedClass);
   const SKIP = new Set([
     "SCRIPT",
     "STYLE",
@@ -388,15 +403,18 @@ function collectSections(arg) {
     const classes = new Set();
     for (const node of [el, ...el.querySelectorAll("*")])
       for (const c of node.classList ?? []) {
-        const m = /^bascik__([a-z][a-z0-9-]*)__/.exec(c);
-        if (m) classes.add(m[1]);
+        const m = scopedClass.exec(c);
+        if (m) classes.add(m[1] ?? m[2]);
       }
     // The component that renders the section: one whose scoped class is on the section itself, on a wrapper around
     // nothing but the section (a component root), or on the one element inside it that holds all its content. A
     // layout component around a page's slot holds more than the section, so it is not the section's owner.
     const scoped = (n) =>
       [...(n.classList ?? [])]
-        .map((c) => /^bascik__([a-z][a-z0-9-]*)__/.exec(c)?.[1])
+        .map((c) => {
+          const m = scopedClass.exec(c);
+          return m ? (m[1] ?? m[2]) : undefined;
+        })
         .find(Boolean);
     const text = norm(el.textContent);
     let owner = null;
@@ -443,6 +461,7 @@ async function sections(browser, origin, route, c, options) {
       inPage(page, collectSections, {
         selector: SECTION_SELECTOR,
         props: SIGNATURE_PROPS,
+        scopedClass: SCOPED_CLASS_PATTERN.source,
         masks,
       }),
     masks,
@@ -473,7 +492,7 @@ function sourceTexts(root, usage) {
 
 /**
  * The component that renders a target instance, or null when its page pastes the markup. In order: its scoped class
- * name (bascik__<name>__), its data-testid, then the source: a page whose own source holds the section's heading text
+ * name (bascik__<name>__, or b_el_<name>_ and b_id_<name>_ for element and #id rules), its data-testid, then the source: a page whose own source holds the section's heading text
  * pastes it; a component the page renders that holds the text renders it. Only when the text is in no source (it
  * comes from data or props) does the one component every page shares get the credit, and only if the section sits
  * inside it or nothing says which component it sits in.

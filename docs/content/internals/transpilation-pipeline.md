@@ -317,6 +317,12 @@ bascik__my-nav__a1b2c3d4__search-input
 
 # class attributes use component name only (no instanceId):
 bascik__my-nav__toggle-btn
+
+# classes generated for element and #id selectors (p { }, #btn { }):
+b_el_my-nav_p
+b_id_my-nav_btn
 ```
 
-When `minify.identifiers` is enabled (the default for builds), each full scoped name is hashed to a short alphanumeric string using SHA-256 with Base62 encoding before being written to the output, e.g. `b2Y4G9eD1K8b`. See [Scoping System](/internals/scoping-system) for full details.
+The generated classes start with `b_el_` and `b_id_` so they never equal an authored class, which always starts with `bascik__`.
+
+When `minify.identifiers` is enabled (the default for builds), each full scoped or generated name is hashed to a short alphanumeric string using SHA-256 with Base62 encoding before being written to the output, e.g. `b2Y4G9eD1K8b`. See [Scoping System](/internals/scoping-system#the-naming-scheme) for full details.

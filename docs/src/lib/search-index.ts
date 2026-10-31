@@ -46,9 +46,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * Upper bound on the index file. It was 1.43 MB with the text indented as in the Markdown and each page's
  * fields repeated on every section. Raise it only for new content, never to fit a format that wastes space.
  * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
- * index until the content lookup learned folder index.md files.
+ * index until the content lookup learned folder index.md files. 1.335 MB: the full naming scheme for generated
+ * element and #id classes on the internals scoping page (prompt 158 R3-03).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_330_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_335_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

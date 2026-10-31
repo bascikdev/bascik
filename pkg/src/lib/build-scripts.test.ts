@@ -1145,7 +1145,7 @@ describe("executeBuildScripts – component build output scope", () => {
   const scope = (value: unknown) => encodeURIComponent(JSON.stringify(value));
   const SCOPE = scope({
     classes: { item: "bascik__my-comp__item", wrap: "bascik__my-comp__wrap" },
-    elements: { h2: "bascik__my-comp__el__h2", a: "bascik__my-comp__el__a" },
+    elements: { h2: "b_el_my-comp_h2", a: "b_el_my-comp_a" },
   });
 
   it("scopes classes and elements in the output of a script carrying an output scope", async () => {
@@ -1160,7 +1160,7 @@ describe("executeBuildScripts – component build output scope", () => {
     );
     expect(result).toBe(
       '<div><p class="bascik__my-comp__item global-only">x</p>' +
-        '<h2 class="bascik__my-comp__el__h2"><a class="bascik__my-comp__el__a" href="/">y</a></h2>' +
+        '<h2 class="b_el_my-comp_h2"><a class="b_el_my-comp_a" href="/">y</a></h2>' +
         '<section class="bascik__my-comp__wrap"></section></div>',
     );
   });
