@@ -1152,6 +1152,49 @@ describe("audit-components: semantic HTML", () => {
     ).toEqual([]);
   });
 
+  it("forwards the page's default slot through a named wrapper a component passes to a child", async () => {
+    // A valueless marker inside a child's usage content is the outer template's own default slot, even inside a
+    // named wrapper: the build fills it with the page's default content (component-expansion-core forwards it).
+    const root = project({
+      ...clean,
+      "src/components/inner-frame/inner-frame.html": `<article class="frame" data-testid="inner-frame">
+  <div data-bascik-slot="body"></div>
+</article>
+`,
+      "src/components/outer-frame/outer-frame.html": `<section class="outer" data-testid="outer-frame">
+  <inner-frame>
+    <div data-bascik-slot="body"><div data-bascik-slot></div></div>
+  </inner-frame>
+</section>
+`,
+      "src/pages/forwarded-main.html": `<!doctype html>
+<html lang="en">
+  <head><site-head /></head>
+  <body>
+    <outer-frame>
+      <main id="main"><h1>Forwarded</h1></main>
+    </outer-frame>
+  </body>
+</html>
+`,
+      "src/pages/forwarded-heading.html": page(`      <h1>Forwarded</h1>
+      <outer-frame>
+        <h3>Skip</h3>
+      </outer-frame>`),
+    });
+    const { findings } = await audit(root);
+    expect(
+      only(findings, "missing-main").filter(
+        (f) => f.file === "src/pages/forwarded-main.html",
+      ),
+    ).toEqual([]);
+    const skipped = only(findings, "skipped-heading").filter(
+      (f) => f.file === "src/pages/forwarded-heading.html",
+    );
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].message).toMatch(/<h1>.*to <h3>/);
+  });
+
   it("misuse: does not guess past headings a build script prints, and skips missing-main when a script may print <main>", async () => {
     const root = project({
       ...clean,
