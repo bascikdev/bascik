@@ -67,6 +67,14 @@ describe("compatibility lookup", () => {
     expect(rows[3].section).toBe("Server & API Features");
   });
 
+  it("survives a character reference past U+10FFFF and remaps the C1 range, as the browser does (R2-05)", () => {
+    const rows = parseMatrix(
+      `<main><h2>Edge &#x110000; cases</h2><table><tr><th>Pattern</th></tr><tr><td>a &#150; b &#0; c</td></tr></table></main>`,
+    );
+    expect(rows[0].section).toBe("Edge \ufffd cases");
+    expect(rows[0].cells.Pattern).toBe("a \u2013 b \ufffd c");
+  });
+
   it("requires every word and ranks first-column matches first", () => {
     const rows = parseMatrix(page);
     expect(
