@@ -273,6 +273,17 @@ describe("scanHtml", () => {
       ["a trailing </", "<p>a</p></", 8],
       ["a trailing <!", "<p>a</p><!", 8],
       ["a closed template and svg", "<template></template><svg></svg>", 32],
+      // A breakout start tag (p, div, span, b, ...) pops an unclosed <svg> or
+      // <math> off the stack, so what follows is ordinary content again.
+      ["svg left by a breakout tag", "<svg><p>x</p><script>a()</script>", 33],
+      [
+        "math left by a breakout tag",
+        "<math><mi>x</mi><div>y</div><script>a()</script>",
+        48,
+      ],
+      ["svg left by a void breakout tag", "<p>a</p><svg><path/><br>b", 25],
+      ["svg reopened after a breakout tag", "<svg><p>x</p><svg><g>", 13],
+      ["a breakout tag inside a template's svg", "<template><svg><p>x", 0],
     ])(
       "is the start of trailing markup an appended script would not run after: %s",
       (_case, html, point) => {

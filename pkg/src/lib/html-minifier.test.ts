@@ -16,10 +16,25 @@ const parsedAsBrowser = (html: string) =>
     collectScript: (_script, inTemplate) => !inTemplate,
   });
 
-/** Minifying must not change what the browser builds or which scripts run. */
+/**
+ * Minifying must not change what the browser builds or which scripts run, and
+ * a moved script must still run after every element it ran after before (the
+ * k-th copy of a script in the output is matched with the k-th in the input).
+ */
 const expectSameParse = (html: string): string => {
   const minified = minifyHtml(html);
-  expect(parsedAsBrowser(minified)).toEqual(parsedAsBrowser(html));
+  const { scriptPositions: after, ...output } = parsedAsBrowser(minified);
+  const { scriptPositions: before, ...input } = parsedAsBrowser(html);
+  expect(output).toEqual(input);
+  const remaining = [...before];
+  for (const position of after) {
+    const index = remaining.findIndex((s) => s.script === position.script);
+    const original = remaining.splice(index, 1)[0]!;
+    expect(
+      position.elementsBefore,
+      `${position.script} runs before elements it followed`,
+    ).toBeGreaterThanOrEqual(original.elementsBefore);
+  }
   return minified;
 };
 
@@ -185,6 +200,29 @@ describe("extractScriptTags", () => {
     }
   });
 
+  it.each([
+    [
+      "an unclosed <svg> left by a breakout tag",
+      '<svg><p>oops</p>\n<div id="x"></div>\n<script>document.getElementById("x").textContent="hi"</script>\n<p>after</p>',
+      '<svg><p>oops</p><div id="x"></div><p>after</p>\n<script>document.getElementById("x").textContent="hi"</script>',
+    ],
+    [
+      "an unclosed inline icon followed by a <span>",
+      '<p>a</p><svg><path d="M0 0"/><span>b</span><div id="x"></div><script>a()</script>',
+      '<p>a</p><svg><path d="M0 0"/><span>b</span><div id="x"></div>\n<script>a()</script>',
+    ],
+    [
+      "an unclosed <math> left by a breakout tag",
+      "<math><mi>x</mi><div>y</div><script>a()</script>",
+      "<math><mi>x</mi><div>y</div>\n<script>a()</script>",
+    ],
+  ])(
+    "keeps a hoisted script after the content it follows, after %s",
+    (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    },
+  );
+
   it("keeps execution order around a script that must run in place", () => {
     // The SVG script and the import map stay put, so scripts before them stay
     // before them; only scripts after the last such script move.
@@ -327,6 +365,9 @@ describe("extractScriptTags", () => {
       "</pre x>",
       "<svg><script>",
       "<svg><style>",
+      // Breakout tags, which leave unclosed SVG or MathML.
+      "<span>",
+      "<br>",
     );
     fc.assert(
       fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {

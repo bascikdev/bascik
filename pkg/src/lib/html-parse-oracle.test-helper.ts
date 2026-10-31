@@ -119,6 +119,14 @@ export interface DomSnapshot {
   structure: string;
   /** Collected scripts as `namespace:attributes:text`, sorted. */
   scripts: string[];
+  /**
+   * Collected scripts in tree order, each with the number of elements written
+   * in the source before it (formatting elements left out, since the parser
+   * re-creates them around whitespace; implied `<html>`, `<head>`, `<body>`
+   * too). A script runs once those elements exist, wherever the parser put
+   * them, so a step that moves scripts must never lower this count.
+   */
+  scriptPositions: { script: string; elementsBefore: number }[];
 }
 
 const ASCII_WHITESPACE_RE = /[\t\n\f\r ]+/g;
@@ -143,6 +151,8 @@ export const domSnapshot = (
   const cleanAttribute = (value: string) =>
     options.renderedWhitespace ? value : clean(value);
   const scripts: string[] = [];
+  const scriptStarts: { script: string; start: number }[] = [];
+  const elementStarts: number[] = [];
   const out: string[] = [];
   const textOf = (element: Element): string =>
     element.childNodes
@@ -184,9 +194,12 @@ export const domSnapshot = (
         node.tagName === "script" &&
         options.collectScript?.(node, inTemplate)
       ) {
-        scripts.push(
-          `${namespace}:${attributesOf(node)}:${cleanText(textOf(node), true)}`,
-        );
+        const script = `${namespace}:${attributesOf(node)}:${cleanText(textOf(node), true)}`;
+        scripts.push(script);
+        scriptStarts.push({
+          script,
+          start: node.sourceCodeLocation?.startOffset ?? -1,
+        });
         continue;
       }
       const keepsWhitespace =
@@ -194,6 +207,11 @@ export const domSnapshot = (
         (namespace === "html"
           ? VERBATIM_ELEMENTS.has(node.tagName)
           : node.tagName === "script" || node.tagName === "style");
+      if (
+        node.sourceCodeLocation &&
+        !(namespace === "html" && FORMATTING_ELEMENTS.has(node.tagName))
+      )
+        elementStarts.push(node.sourceCodeLocation.startOffset);
       const openIndex = out.length;
       out.push(`<${namespace}:${node.tagName} ${attributesOf(node)}>`);
       if (isTemplate(node)) visit(node.content, true, keepsWhitespace);
@@ -211,6 +229,13 @@ export const domSnapshot = (
       out.push(`</${node.tagName}>`);
     }
   };
-  visit(parse(html), false, false);
-  return { structure: out.join(""), scripts: scripts.sort() };
+  visit(parse(html, { sourceCodeLocationInfo: true }), false, false);
+  return {
+    structure: out.join(""),
+    scripts: scripts.sort(),
+    scriptPositions: scriptStarts.map(({ script, start }) => ({
+      script,
+      elementsBefore: elementStarts.filter((offset) => offset < start).length,
+    })),
+  };
 };

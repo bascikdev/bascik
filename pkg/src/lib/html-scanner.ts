@@ -1266,7 +1266,11 @@ export const scanHtml = (
         emitMarkup("raw", tag.end, close, name);
         emitMarkup("tag", close, end, name, true);
       }
-      if (wasInsertable && !isInsertable()) notInsertableSince = start;
+      // A breakout tag (`<p>`, `<div>`, ...) in unclosed SVG or MathML pops
+      // the foreign stack, which makes what follows ordinary content again.
+      const nowInsertable = isInsertable();
+      if (wasInsertable && !nowInsertable) notInsertableSince = start;
+      else if (!wasInsertable && nowInsertable) notInsertableSince = -1;
       i = html.indexOf("<", resume);
       continue;
     }
