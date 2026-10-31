@@ -45,6 +45,8 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 
 Scoping rules (`css-*`, `js-*`) apply to component files only. Pages, API routes, and scripts outside the component folders are not scoped, so they are not checked.
 
+Highlighting is a TextMate injection into `text.html`, the prefix of `text.html.derivative`, the root grammar of the `html` language (`text.html.basic` has no language, so an injection there never loads). Its rule is a begin/end that includes `text.html.basic#attribute-interior`, so the value keeps HTML string scopes. The real-editor suite reads scopes with `_workbench.captureSyntaxTokens`.
+
 ---
 
 ## 3. Server behavior the extension relies on

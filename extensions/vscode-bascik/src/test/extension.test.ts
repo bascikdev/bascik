@@ -2819,6 +2819,75 @@ suite("Extension Integration Suite", () => {
     });
   });
 
+  // Highlighting comes from a TextMate grammar injected into the `html` language, whose root grammar is
+  // `text.html.derivative`, not `text.html.basic`. VS Code has no public token API; `_workbench.captureSyntaxTokens`
+  // is the command its own colorization tests use. Each token is `{ c: text, t: space-separated scopes }`.
+  suite("Bascik attribute highlighting", () => {
+    interface CapturedToken {
+      c: string;
+      t: string;
+    }
+
+    async function tokensOf(content: string): Promise<CapturedToken[]> {
+      const document = await openWorkspaceDocument({
+        language: "html",
+        content,
+        directory: "src/components",
+      });
+      return vscode.commands.executeCommand<CapturedToken[]>(
+        "_workbench.captureSyntaxTokens",
+        document.uri,
+      );
+    }
+
+    function scopesOf(tokens: CapturedToken[], text: string): string[] {
+      const token = tokens.find((candidate) => candidate.c === text);
+      assert.ok(
+        token,
+        `Expected a token "${text}" in ${JSON.stringify(tokens.map((t) => t.c))}`,
+      );
+      return token.t.split(" ");
+    }
+
+    test("scopes Bascik attribute names in an .html document and keeps their values", async () => {
+      const tokens = await tokensOf(
+        '<user-card data-bascik-prop-role="Admin" data-bascik-slot>\n<script data-bascik-build>export default () => 1;</script>\n</user-card>\n',
+      );
+      for (const name of [
+        "data-bascik-prop-role",
+        "data-bascik-slot",
+        "data-bascik-build",
+      ]) {
+        assert.ok(
+          scopesOf(tokens, name).includes("entity.other.attribute-name.bascik"),
+          `${name} should be scoped as a Bascik attribute name`,
+        );
+      }
+      const valueScopes = scopesOf(tokens, "Admin");
+      assert.ok(
+        valueScopes.includes("string.quoted.double.html"),
+        `The attribute value should stay an HTML string, got ${valueScopes.join(" ")}`,
+      );
+      assert.ok(
+        tokens.every((token) => !token.t.includes("invalid.illegal")),
+        `No token should be marked illegal: ${JSON.stringify(tokens)}`,
+      );
+    });
+
+    test("leaves Bascik names in text, comments and unknown attributes alone", async () => {
+      const tokens = await tokensOf(
+        "<p data-bascik-slotted>data-bascik-slot</p>\n<!-- data-bascik-build -->\n",
+      );
+      assert.ok(tokens.length > 0, "The document should be tokenized");
+      assert.ok(
+        tokens.every(
+          (token) => !token.t.includes("entity.other.attribute-name.bascik"),
+        ),
+        `Nothing here is a Bascik attribute: ${JSON.stringify(tokens)}`,
+      );
+    });
+  });
+
   // VS Code's built-in HTML server joins every <script> without type="module" into one JavaScript file, so two
   // Bascik scripts that each `export default` show "A module cannot have multiple default exports". The extension
   // never changes the setting on its own: in a Bascik workspace it asks once, and only a click writes the

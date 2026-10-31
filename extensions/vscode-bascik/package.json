@@ -27,7 +27,7 @@
         "scopeName": "bascik.html.injection",
         "path": "./syntaxes/bascik-html.tmLanguage.json",
         "injectTo": [
-          "text.html.basic"
+          "text.html"
         ]
       }
     ],
