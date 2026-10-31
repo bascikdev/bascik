@@ -186,7 +186,7 @@ describe("id-references reads attributes as the tokenizer does", () => {
   });
 
   it("leaves a tag alone when the attribute is missing, empty or misspelled", () => {
-    for (const tag of [`<label>`, `<label for="">`, `<label fro="x">`])
+    for (const tag of [`<label>`, `<label for="">`, `<label htmlFor="x">`])
       expect(rewriteIdReferencesInHtml(tag, scoped)).toBe(tag);
     expect([...collectDeclaredIds(`<div id="">`)]).toEqual([]);
   });
