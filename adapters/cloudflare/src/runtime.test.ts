@@ -230,12 +230,8 @@ describe("createCloudflareWorker: API routes", () => {
 
   it("returns a WebSocket upgrade (status 101 or a webSocket) as the handler made it", async () => {
     // Node's Response refuses 101; the Workers one takes it with a socket.
-    class Upgrade extends Response {
-      override get status() {
-        return 101;
-      }
-    }
-    const upgrade = new Upgrade(null);
+    const upgrade = new Response(null);
+    Object.defineProperty(upgrade, "status", { value: 101 });
     const socketed = Object.assign(new Response(null), { webSocket: {} });
     const w = worker(
       graphOf({
