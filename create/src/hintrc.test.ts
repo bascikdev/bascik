@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   DEFAULT_SOURCE_DIRECTORIES,
   HINT_SOURCE_ONLY,
+  hintDistCommand,
   hintDistJson,
   hintReportLines,
   hintrcJson,
@@ -37,12 +38,36 @@ const DEFAULT_PATTERN = sourceUrlPattern(DEFAULT_SOURCE_DIRECTORIES)!;
 const created = parseJsonc(hintrcJson(DEFAULT_SOURCE_DIRECTORIES)) as Hintrc;
 
 describe("the .hintrc a Bascik project ships with", () => {
-  it("extends webhint's development config and explains itself in a comment", () => {
-    const text = hintrcJson(DEFAULT_SOURCE_DIRECTORIES);
+  it("extends webhint's development config", () => {
     expect(created.extends).toEqual(["development"]);
-    expect(text).toContain("//");
-    expect(text).toContain("https://bascik.dev/testing/linting");
-    expect(text).toContain(".hintrc.dist.json");
+  });
+
+  it("misuse: is strict JSON with no comments, which the webhint extension's quick fixes read with JSON.parse", () => {
+    // vscode-webhint's "Ignore hint in this project" and "Edit .hintrc"
+    // commands JSON.parse the file and write it back with JSON.stringify.
+    const text = hintrcJson(DEFAULT_SOURCE_DIRECTORIES);
+    expect(JSON.parse(text)).toEqual(created);
+    expect(text).not.toContain("//");
+    const custom = hintrcJson({
+      pages: "site pages",
+      components: ["src/(ui)+"],
+      out: "site out",
+    });
+    expect(() => JSON.parse(custom)).not.toThrow();
+  });
+
+  it("skips the apple-touch-icons hint on source files, where a head component fragment has no <head>", () => {
+    expect(HINT_SOURCE_ONLY).toContain("apple-touch-icons");
+    expect(
+      ignores(
+        created,
+        "apple-touch-icons",
+        "file:///home/me/site/src/components/site-meta/site-meta.html",
+      ),
+    ).toBe(true);
+    expect(
+      ignores(created, "apple-touch-icons", "file:///home/me/site/dist/a.html"),
+    ).toBe(false);
   });
 
   it("turns off the document title and image alt checks a build script or prop fills in", () => {
@@ -114,29 +139,23 @@ describe("the .hintrc a Bascik project ships with", () => {
   it("is valid JSON once its comments are removed, as webhint's jsonc reader sees it", () => {
     expect(created).toBeTypeOf("object");
   });
+});
 
-  it("says plainly that the editor no longer flags an <img> with no alt, and where it is caught", () => {
-    const text = hintrcJson(DEFAULT_SOURCE_DIRECTORIES);
-    expect(text).toContain("<img> with no alt");
-    expect(text).toContain(".hintrc.dist.json");
-  });
-
+describe("hintDistCommand", () => {
   it("builds the built-site command from the output folder", () => {
-    expect(hintrcJson(DEFAULT_SOURCE_DIRECTORIES)).toContain(
+    expect(hintDistCommand()).toBe(
       "npx hint -c .hintrc.dist.json $(find dist -name '*.html')",
     );
-    const custom = hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "build" });
-    expect(custom).toContain("$(find build -name '*.html')");
-    expect(custom).not.toContain("find dist");
+    expect(hintDistCommand("build")).toContain("$(find build -name '*.html')");
   });
 
   it("misuse: tidies an output folder written with ./, a trailing slash or a space", () => {
-    expect(
-      hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "./public/" }),
-    ).toContain("$(find public -name '*.html')");
-    expect(
-      hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "site out" }),
-    ).toContain("$(find 'site out' -name '*.html')");
+    expect(hintDistCommand("./public/")).toContain(
+      "$(find public -name '*.html')",
+    );
+    expect(hintDistCommand("site out")).toContain(
+      "$(find 'site out' -name '*.html')",
+    );
   });
 });
 
@@ -165,6 +184,25 @@ describe("sourceUrlPattern", () => {
     expect(re.test("file:///p/site.v2/pages/a.html")).toBe(true);
     expect(re.test("file:///p/siteXv2/pages/a.html")).toBe(false);
     expect(re.test("file:///p/src/(ui)+/a/a.html")).toBe(true);
+  });
+
+  it("misuse: matches a folder with a space or non-ASCII name in the percent-encoded URL webhint tests", () => {
+    const dirs = {
+      pages: "site pages",
+      components: ["src/composants é", "src/50%#ui"],
+    };
+    const re = new RegExp(sourceUrlPattern(dirs)!, "i");
+    for (const path of [
+      "/p/site site/site pages/index.html",
+      "/p/x/src/composants é/card/card.html",
+      "/p/x/src/50%#ui/card/card.html",
+    ]) {
+      // The URL webhint builds for the file, and the folder name as written.
+      expect(re.test(pathToFileURL(path).href), path).toBe(true);
+      expect(re.test(`file://${path}`), path).toBe(true);
+    }
+    expect(re.test(pathToFileURL("/p/sitexpages/a.html").href)).toBe(false);
+    expect(re.test(pathToFileURL("/p/site/dist/index.html").href)).toBe(false);
   });
 
   it("misuse: drops a trailing slash and a leading ./", () => {
@@ -234,6 +272,81 @@ describe("mergeHintrc", () => {
     ]);
   });
 
+  it("misuse: says what to add when the user's own axe/text-alternatives value still checks the title and alt", () => {
+    const result = mergeHintrc(
+      '{ "hints": { "axe/text-alternatives": "error" } }',
+      DEFAULT_SOURCE_DIRECTORIES,
+    );
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes![0]).toContain("axe/text-alternatives");
+    expect(result.notes![0]).toContain(
+      '{ "document-title": "off", "image-alt": "off" }',
+    );
+    expect(result.notes![0]).toContain("#editor-linters-read-source");
+    // One option still on is enough for the note.
+    expect(
+      mergeHintrc(
+        '{ "hints": { "axe/text-alternatives": ["warning", { "image-alt": "off" }] } }',
+        DEFAULT_SOURCE_DIRECTORIES,
+      ).notes,
+    ).toHaveLength(1);
+    // Both options off, or the whole hint off: nothing to add.
+    for (const value of [
+      '["error", { "document-title": "off", "image-alt": "off" }]',
+      '"off"',
+      "0",
+      '["off"]',
+    ]) {
+      expect(
+        mergeHintrc(
+          `{ "hints": { "axe/text-alternatives": ${value} } }`,
+          DEFAULT_SOURCE_DIRECTORIES,
+        ).notes,
+        value,
+      ).toBeUndefined();
+    }
+  });
+
+  it("misuse: adds no comment to a comment-free file, so the webhint extension's quick fixes keep working", () => {
+    for (const existing of [
+      '{ "extends": ["development"] }',
+      '{\n  "hints": { "button-type": "off" },\n  "ignoredUrls": [{ "domain": "/e2e/", "hints": ["*"] }]\n}\n',
+      "{}",
+    ]) {
+      const result = mergeHintrc(existing, DEFAULT_SOURCE_DIRECTORIES);
+      expect(result.status).toBe("updated");
+      expect(result.text).not.toContain("//");
+      expect(() => JSON.parse(result.text), existing).not.toThrow();
+      expect(result.notes).toBeUndefined();
+    }
+  });
+
+  it("misuse: notes that a .hintrc with comments breaks the webhint extension's quick fixes", () => {
+    const result = mergeHintrc(
+      '{\n  // mine\n  "extends": ["development"]\n}\n',
+      DEFAULT_SOURCE_DIRECTORIES,
+    );
+    expect(result.status).toBe("updated");
+    expect(result.text).toContain("// mine");
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes![0]).toContain("comments");
+    expect(result.notes![0]).toContain("quick fixes");
+    // Trailing commas fail JSON.parse the same way.
+    expect(
+      mergeHintrc('{ "extends": ["development"], }', DEFAULT_SOURCE_DIRECTORIES)
+        .notes![0],
+    ).toContain("quick fixes");
+  });
+
+  it("misuse: does not note apple-touch-icons turned off for every file, a common project choice", () => {
+    expect(
+      mergeHintrc(
+        '{ "hints": { "apple-touch-icons": "off" } }',
+        DEFAULT_SOURCE_DIRECTORIES,
+      ).notes,
+    ).toBeUndefined();
+  });
+
   it("adds hints and ignoredUrls to an empty object", () => {
     const parsed = parseJsonc(
       mergeHintrc("{}", DEFAULT_SOURCE_DIRECTORIES).text,
@@ -279,6 +392,7 @@ describe("mergeHintrc", () => {
     const result = mergeHintrc("// later\n", DEFAULT_SOURCE_DIRECTORIES);
     expect(result.status).toBe("updated");
     expect(result.text.startsWith("// later\n")).toBe(true);
+    expect(result.notes![0]).toContain("quick fixes");
     expect((parseJsonc(result.text) as Hintrc).extends).toEqual([
       "development",
     ]);
@@ -396,7 +510,11 @@ describe("hintDistJson", () => {
     expect(dist.hints).toBeUndefined();
     // The development config adds the html formatter, which writes hint-report/.
     expect(dist.formatters).toEqual(["stylish"]);
-    expect(hintDistJson()).toContain("//");
+  });
+
+  it("misuse: is strict JSON with no comments, so VS Code, which opens a .json file as plain JSON, shows no errors", () => {
+    expect(JSON.parse(hintDistJson())).toEqual(dist);
+    expect(hintDistJson()).not.toContain("//");
   });
 
   it("misuse: a built route named after a custom source folder is still checked", () => {
@@ -471,7 +589,7 @@ describe("writeHintFiles", () => {
       join(root, ".hintrc.dist.json"),
       '{ "extends": ["web-recommended"] }\n',
     );
-    expect(await writeHintFiles(root)).toEqual({
+    expect(await writeHintFiles(root)).toMatchObject({
       file: ".hintrc",
       config: "updated",
       dist: "unchanged",

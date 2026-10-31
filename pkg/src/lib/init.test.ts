@@ -405,9 +405,12 @@ describe("initProject", () => {
       await init({
         readConfig: async () => ({ directory: { out: "build" } }),
       });
-      const text = writtenTo("/.hintrc")!;
-      expect(text).toContain("$(find build -name '*.html')");
-      expect(text).not.toContain("find dist");
+      // .hintrc stays strict JSON, so the command is printed, not written.
+      expect(() => JSON.parse(writtenTo("/.hintrc")!)).not.toThrow();
+      expect(logged()).toContain(
+        "npx hint -c .hintrc.dist.json $(find build -name '*.html')",
+      );
+      expect(logged()).not.toContain("find dist");
       expect(sourceDirectoriesOf({ directory: { out: 7 } }).out).toBe("dist");
     });
 
@@ -419,6 +422,16 @@ describe("initProject", () => {
       await init({ readConfig: async () => undefined });
       expect(logged()).toContain("updated: .hintrc");
       expect(logged()).toMatch(/\.hintrc: .*meta-viewport/);
+    });
+
+    it("misuse: prints what to add when an existing .hintrc sets axe/text-alternatives itself", async () => {
+      files({
+        ".hintrc": '{ "hints": { "axe/text-alternatives": "error" } }',
+      });
+      await init({ readConfig: async () => undefined });
+      expect(logged()).toMatch(
+        /\.hintrc: .*axe\/text-alternatives.*"document-title": "off", "image-alt": "off"/,
+      );
     });
 
     it("reads the folders from a real bascik.config on disk", async () => {

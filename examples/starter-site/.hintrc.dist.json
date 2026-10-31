@@ -1,7 +1,4 @@
 {
-  // The built pages with every hint on. This file does not extend .hintrc:
-  // webhint would add that file's ignoredUrls, which skip source folders.
-  // https://bascik.dev/testing/linting#editor-linters-read-source
   "extends": ["development"],
   "formatters": ["stylish"]
 }

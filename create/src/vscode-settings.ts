@@ -12,14 +12,16 @@
  *    on its own.
  *  - `.vscode/extensions.json` recommends the Bascik extension.
  *  - `.hintrc` (or an existing `.hintrc.json`) scopes webhint for source
- *    files. Bascik composes a page's `<head>` (charset, viewport, title) at
+ *    files. It holds no comments: the webhint extension's quick fixes read it
+ *    with `JSON.parse` and write it back with `JSON.stringify`. Bascik composes a page's `<head>` (charset, viewport, title) at
  *    build time from a component and a build script, and an `<img>` can get
  *    its `alt` from a prop, so editor linters that read `src/` report tags the
  *    built page in `dist/` has. `.hintrc.dist.json` checks the built pages
  *    with every hint on (`npx hint -c .hintrc.dist.json <built files>`). It
  *    does not extend `.hintrc`: webhint joins the `ignoredUrls` lists of an
  *    `extends` chain, so the source pattern, or an old entry that skips
- *    `dist/`, would reach the built pages.
+ *    `dist/`, would reach the built pages. It holds no comments either: VS
+ *    Code opens a `.json` file as plain JSON and reports them as errors.
  *
  * Existing files are merged, never replaced: comments, other settings and
  * other recommendations stay, a value the user already set is kept, and a file
@@ -284,12 +286,24 @@ export function mergeExtensionsJson(existing: string | undefined): MergeResult {
 export const EDITOR_LINTERS_URL =
   "https://bascik.dev/testing/linting#editor-linters-read-source";
 
-/** Hints that are false on source files only: the built page has these tags. */
-export const HINT_SOURCE_ONLY = ["meta-viewport", "meta-charset-utf-8"];
+/**
+ * Hints that are false on source files only: the built page has these tags,
+ * and a head component that holds the touch icons is a fragment with no
+ * `<head>` for `apple-touch-icons` to find them in.
+ */
+export const HINT_SOURCE_ONLY = [
+  "meta-viewport",
+  "meta-charset-utf-8",
+  "apple-touch-icons",
+];
+
+/** The hints the earlier recommended `.hintrc` turned off for every file. */
+const HINT_OLD_GLOBAL_OFF = ["meta-viewport", "meta-charset-utf-8"];
 
 const AXE_TEXT_ALTERNATIVES = "axe/text-alternatives";
-const AXE_TEXT_ALTERNATIVES_VALUE =
-  '["default", { "document-title": "off", "image-alt": "off" }]';
+const AXE_TEXT_ALTERNATIVES_OPTIONS =
+  '{ "document-title": "off", "image-alt": "off" }';
+const AXE_TEXT_ALTERNATIVES_VALUE = `["default", ${AXE_TEXT_ALTERNATIVES_OPTIONS}]`;
 
 /** Where a project keeps the files Bascik reads and writes, relative to its root. */
 export interface SourceDirectories {
@@ -319,11 +333,33 @@ function urlFragment(dir: string): string {
 }
 
 /**
+ * One folder name as a regex that matches it in a `file:///` URL: a letter,
+ * digit or `.`, `_`, `~`, `-`, `/` as is, and any other character either as
+ * written or percent-encoded, since webhint tests the encoded URL
+ * (`site%20pages`) and a path written by hand is not.
+ */
+function urlRegex(fragment: string): string {
+  let out = "";
+  for (const char of fragment) {
+    if (/[A-Za-z0-9._~/-]/.test(char)) {
+      out += char === "." ? "\\." : char;
+      continue;
+    }
+    const raw = char.replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`);
+    const encoded = [...new TextEncoder().encode(char)]
+      .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`)
+      .join("");
+    out += `(?:${raw}|${encoded})`;
+  }
+  return out;
+}
+
+/**
  * The `ignoredUrls` pattern for HTML files in the pages and components
  * folders. webhint tests it, without regard to case, against the file's
- * absolute `file:///` URL, so it starts at a `/` and cannot be anchored to
- * the project root. Undefined when the pages folder is the project root, so
- * no pattern could leave `dist/` out.
+ * absolute, percent-encoded `file:///` URL, so it starts at a `/` and cannot
+ * be anchored to the project root. Undefined when the pages folder is the
+ * project root, so no pattern could leave `dist/` out.
  */
 export function sourceUrlPattern(dirs: SourceDirectories): string | undefined {
   const pages = urlFragment(dirs.pages);
@@ -332,10 +368,7 @@ export function sourceUrlPattern(dirs: SourceDirectories): string | undefined {
     (fragment, index, all) =>
       fragment !== "" && all.indexOf(fragment) === index,
   );
-  const escaped = fragments.map((fragment) =>
-    fragment.replace(/[.*+?^${}()|[\]\\]/g, (char) => `\\${char}`),
-  );
-  return `/(?:${escaped.join("|")})/[^?#]*\\.html$`;
+  return `/(?:${fragments.map(urlRegex).join("|")})/[^?#]*\\.html$`;
 }
 
 /**
@@ -357,30 +390,19 @@ export function hintDistCommand(out = "dist"): string {
   return `npx hint -c .hintrc.dist.json $(find ${shellFolder(out)} -name '*.html')`;
 }
 
-function hintrcComment(out: string): string[] {
-  return [
-    "// Bascik builds each page's <head> (charset, viewport, title) from a",
-    "// component and a build script, and an <img> can get its alt from a prop,",
-    "// so a source file lacks tags the built page has. These entries turn off",
-    "// only those checks, and the charset and viewport ones only for source",
-    "// files. So the editor does not flag an <img> with no alt, even a literal",
-    "// one; the bascik skill's audit-components.mjs and this check of the",
-    "// built site do (webhint skips hints when given a folder, so pass files):",
-    `//   ${hintDistCommand(out)}`,
-    `// ${EDITOR_LINTERS_URL}`,
-  ];
-}
-
 function ignoredUrlEntry(pattern: string): string {
   return `{ "domain": ${JSON.stringify(pattern)}, "hints": ${JSON.stringify(HINT_SOURCE_ONLY).replace(/,/g, ", ")} }`;
 }
 
-/** The `.hintrc` a new project gets. */
+/**
+ * The `.hintrc` a new project gets. Strict JSON with no comments: the webhint
+ * extension's quick fixes ("Ignore hint in this project" and the rest) read it
+ * with `JSON.parse`. The docs at {@link EDITOR_LINTERS_URL} explain each entry.
+ */
 export function hintrcJson(dirs: SourceDirectories): string {
   const pattern = sourceUrlPattern(dirs);
   const lines = [
     "{",
-    ...hintrcComment(dirs.out ?? "dist").map((line) => `  ${line}`),
     '  "extends": ["development"],',
     '  "hints": {',
     `    "${AXE_TEXT_ALTERNATIVES}": ${AXE_TEXT_ALTERNATIVES_VALUE}`,
@@ -397,13 +419,11 @@ export function hintrcJson(dirs: SourceDirectories): string {
  * hint on. It does not extend the editor config, because webhint joins the
  * `ignoredUrls` lists of an `extends` chain. The stylish formatter replaces
  * the development config's html one, which writes a `hint-report/` folder.
+ * No comments: VS Code opens a `.json` file as plain JSON.
  */
 export function hintDistJson(): string {
   return [
     "{",
-    "  // The built pages with every hint on. This file does not extend .hintrc:",
-    "  // webhint would add that file's ignoredUrls, which skip source folders.",
-    `  // ${EDITOR_LINTERS_URL}`,
     '  "extends": ["development"],',
     '  "formatters": ["stylish"]',
     "}",
@@ -439,6 +459,22 @@ function isOff(value: unknown): boolean {
   return severity === "off" || severity === 0;
 }
 
+/** Whether an `axe/text-alternatives` value still checks the title or image alt. */
+function checksTitleOrAlt(value: unknown): boolean {
+  if (isOff(value)) return false;
+  const options = Array.isArray(value) ? value[1] : undefined;
+  return !(
+    isObject(options) &&
+    isOff(options["document-title"]) &&
+    isOff(options["image-alt"])
+  );
+}
+
+/** The note for a file webhint reads but the extension's quick fixes cannot. */
+const COMMENTS_NOTE =
+  "has comments or trailing commas. The webhint extension's quick fixes, such as " +
+  '"Ignore hint in this project", read it as strict JSON and fail, so remove them to use those';
+
 /**
  * Add the Bascik source-file exceptions to a webhint config, keeping the
  * rest: the `axe/text-alternatives` options unless the user set that hint, and
@@ -453,7 +489,10 @@ export function mergeHintrc(
   }
   if (blankJsonc(existing).trim() === "") {
     // webhint refuses a file of only comments; keep them and add the config.
-    return afterComments(existing, hintrcJson(dirs));
+    return {
+      ...afterComments(existing, hintrcJson(dirs)),
+      notes: [COMMENTS_NOTE],
+    };
   }
   const parsed = parseJsonc(existing);
   if (!isObject(parsed)) return { status: "invalid", text: existing };
@@ -464,6 +503,7 @@ export function mergeHintrc(
   const topLevel: string[] = [];
 
   const notes: string[] = [];
+  if (blanked !== existing.replace(/^\uFEFF/, " ")) notes.push(COMMENTS_NOTE);
   const axeEntry = `"${AXE_TEXT_ALTERNATIVES}": ${AXE_TEXT_ALTERNATIVES_VALUE}`;
   const { hints, ignoredUrls } = parsed;
   if (hints !== undefined && !isObject(hints)) {
@@ -472,7 +512,7 @@ export function mergeHintrc(
     );
   }
   if (isObject(hints)) {
-    const off = HINT_SOURCE_ONLY.filter((name) => isOff(hints[name]));
+    const off = HINT_OLD_GLOBAL_OFF.filter((name) => isOff(hints[name]));
     if (off.length > 0) {
       notes.push(
         `${off.join(" and ")} ${off.length === 1 ? "is" : "are"} off for every file. ` +
@@ -497,6 +537,14 @@ export function mergeHintrc(
     const at = locate(blanked, "hints", "{").arrayOpen!;
     const empty = Object.keys(hints).length === 0;
     inserts.push([at, firstItem(blanked, at, axeEntry, empty, nl)]);
+  } else if (
+    isObject(hints) &&
+    checksTitleOrAlt(hints[AXE_TEXT_ALTERNATIVES])
+  ) {
+    notes.push(
+      `"${AXE_TEXT_ALTERNATIVES}" is kept as you set it, so webhint still reports a missing <title> or image alt ` +
+        `that the build adds. Add ${AXE_TEXT_ALTERNATIVES_OPTIONS} as its options (${EDITOR_LINTERS_URL})`,
+    );
   }
 
   if (pattern !== undefined) {
@@ -519,9 +567,7 @@ export function mergeHintrc(
     const { objectOpen } = locate(blanked);
     const empty = Object.keys(parsed).length === 0;
     const insert =
-      `${nl}  // Bascik source-file exceptions: ${EDITOR_LINTERS_URL}` +
-      topLevel.map((entry) => `${nl}  ${entry}`).join(",") +
-      (empty ? nl : ",");
+      topLevel.map((entry) => `${nl}  ${entry}`).join(",") + (empty ? nl : ",");
     inserts.push([objectOpen, insert]);
   }
   const withNotes = notes.length > 0 ? { notes } : {};

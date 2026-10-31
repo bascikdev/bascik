@@ -50,6 +50,7 @@ import {
   DEFAULT_SOURCE_DIRECTORIES,
   HTML_VALIDATE_SCRIPTS,
   BASCIK_EXTENSION_ID,
+  hintDistCommand,
   hintReportLines,
   vscodeReportLines,
   writeHintFiles,
@@ -436,7 +437,7 @@ async function setUpWebhint(
   } catch {
     console.log(
       "  note: could not load bascik.config, so .hintrc assumes src/pages, src/components and dist. " +
-        "Edit its ignoredUrls pattern and dist command if your folders differ.",
+        "Edit its ignoredUrls pattern if your folders differ.",
     );
   }
   const report = await writeHintFiles(cwd, dirs);
@@ -458,6 +459,11 @@ async function setUpWebhint(
   const lines = hintReportLines(report);
   for (const line of report.config === "updated" ? lines.slice(1) : lines) {
     console.log(`  ${line}`);
+  }
+  // .hintrc holds no comments, so a custom output folder's command is printed.
+  const out = dirs.out ?? "dist";
+  if (report.dist === "created" && hintDistCommand(out) !== hintDistCommand()) {
+    console.log(`  check the built site with: ${hintDistCommand(out)}`);
   }
 }
 

@@ -1,18 +1,9 @@
 {
-  // Bascik builds each page's <head> (charset, viewport, title) from a
-  // component and a build script, and an <img> can get its alt from a prop,
-  // so a source file lacks tags the built page has. These entries turn off
-  // only those checks, and the charset and viewport ones only for source
-  // files. So the editor does not flag an <img> with no alt, even a literal
-  // one; the bascik skill's audit-components.mjs and this check of the
-  // built site do (webhint skips hints when given a folder, so pass files):
-  //   npx hint -c .hintrc.dist.json $(find dist -name '*.html')
-  // https://bascik.dev/testing/linting#editor-linters-read-source
   "extends": ["development"],
   "hints": {
     "axe/text-alternatives": ["default", { "document-title": "off", "image-alt": "off" }]
   },
   "ignoredUrls": [
-    { "domain": "/(?:src/pages|src/components)/[^?#]*\\.html$", "hints": ["meta-viewport", "meta-charset-utf-8"] }
+    { "domain": "/(?:src/pages|src/components)/[^?#]*\\.html$", "hints": ["meta-viewport", "meta-charset-utf-8", "apple-touch-icons"] }
   ]
 }
