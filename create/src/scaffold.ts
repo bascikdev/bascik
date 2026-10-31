@@ -8,7 +8,12 @@
 import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
-import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
+import {
+  hintReportLines,
+  vscodeReportLines,
+  writeHintFiles,
+  writeVscodeFiles,
+} from "./vscode-settings.js";
 
 /**
  * The `@bascik/bascik` release a new project depends on. The agent skills are
@@ -1212,6 +1217,11 @@ export async function scaffold(
       }
     }),
 
+    // webhint: scoped to what Bascik builds, merged into a config the folder already has
+    writeHintFiles(root).then((report) => {
+      notes.push(...hintReportLines(report));
+    }),
+
     // Everything else is the starter's own and is new.
     ...files.map(([path, data]) =>
       typeof data === "string"
@@ -1239,7 +1249,7 @@ const starterDirectories = (template: Template): string[] => [
 
 /**
  * The files the starter writes as its own, relative to the project root. AGENTS.md,
- * CLAUDE.md and the .vscode files are not here: they are merged into what the folder has.
+ * CLAUDE.md, the .vscode files and .hintrc are not here: they are merged into what the folder has.
  */
 const starterFiles = (
   siteName: string,
@@ -1330,7 +1340,7 @@ const entryAt = async (path: string): Promise<"directory" | "other" | null> => {
  * Refuse a target that cannot take the starter without losing something: a file
  * where the project folder goes, or a project folder that already has one of the
  * starter's own files (or a file where one of its folders goes). A folder that
- * holds only files the starter merges into, such as AGENTS.md or .vscode/, is fine.
+ * holds only files the starter merges into, such as AGENTS.md, .hintrc or .vscode/, is fine.
  */
 async function assertScaffoldTarget(
   projectName: string,

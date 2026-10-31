@@ -6,10 +6,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { TEMPLATES, VSCODE_LAUNCH_JSON, scaffold } from "./scaffold.ts";
 import {
   BASCIK_EXTENSION_ID,
+  DEFAULT_SOURCE_DIRECTORIES,
+  EDITOR_LINTERS_URL,
   VSCODE_SETTINGS_JSON,
+  hintDistJson,
+  hintrcJson,
   parseJsonc,
 } from "./vscode-settings.ts";
 
@@ -95,5 +100,97 @@ describe("scaffold writes VS Code settings on disk", () => {
     expect(text).toContain('"html.validate.scripts": false');
     expect(text).toContain(BASCIK_EXTENSION_ID);
     expect(text).toContain("launch.json");
+  });
+});
+
+describe("scaffold writes the webhint config on disk", () => {
+  for (const template of TEMPLATES) {
+    it(`${template} template: .hintrc for the editor and .hintrc.dist.json for dist/`, async () => {
+      const parent = await createTempDir();
+      const result = await scaffold("site", parent, { template });
+      const root = join(parent, "site");
+      expect(await read(join(root, ".hintrc"))).toBe(
+        hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
+      );
+      expect(await read(join(root, ".hintrc.dist.json"))).toBe(
+        hintDistJson(".hintrc"),
+      );
+      // The starter's pages get charset and viewport from <site-meta />, which
+      // webhint cannot see in the source: the pattern must cover them.
+      const config = parseJsonc(await read(join(root, ".hintrc"))) as {
+        ignoredUrls: Array<{ domain: string }>;
+      };
+      const pattern = new RegExp(config.ignoredUrls[0].domain, "i");
+      // webhint tests the pattern against the file:/// URL, forward slashes on Windows too.
+      const page = pathToFileURL(join(root, "src", "pages", "index.html"));
+      expect(pattern.test(page.href)).toBe(true);
+      const built = pathToFileURL(join(root, "dist", "index.html"));
+      expect(pattern.test(built.href)).toBe(false);
+      expect(result.notes).toEqual([]);
+    });
+  }
+
+  it("misuse: merges into a .hintrc with comments instead of replacing it", async () => {
+    const parent = await createTempDir();
+    const root = join(parent, "site");
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, ".hintrc"),
+      '{\n  // team config\n  "extends": ["web-recommended"],\n  "hints": { "button-type": "off" },\n}\n',
+    );
+    const result = await scaffold("site", parent);
+    const text = await read(join(root, ".hintrc"));
+    expect(text).toContain("// team config");
+    const config = parseJsonc(text) as {
+      extends: string[];
+      hints: Record<string, unknown>;
+      ignoredUrls: unknown[];
+    };
+    expect(config.extends).toEqual(["web-recommended"]);
+    expect(config.hints["button-type"]).toBe("off");
+    expect(config.hints["axe/text-alternatives"]).toBeDefined();
+    expect(config.ignoredUrls).toHaveLength(1);
+    expect(result.notes).toEqual([
+      `.hintrc: added the Bascik source-file exceptions (${EDITOR_LINTERS_URL})`,
+    ]);
+  });
+
+  it("misuse: merges into an existing .hintrc.json and writes no .hintrc that would hide it", async () => {
+    const parent = await createTempDir();
+    const root = join(parent, "site");
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, ".hintrc.json"),
+      '{ "extends": ["development"] }',
+    );
+    await scaffold("site", parent);
+    await expect(read(join(root, ".hintrc"))).rejects.toThrow();
+    expect(
+      parseJsonc(await read(join(root, ".hintrc.json"))) as object,
+    ).toHaveProperty("ignoredUrls");
+    expect(JSON.parse(await read(join(root, ".hintrc.dist.json")))).toEqual(
+      JSON.parse(hintDistJson(".hintrc.json")),
+    );
+  });
+
+  it("misuse: leaves a .hintrc.js alone and tells the user what to add", async () => {
+    const parent = await createTempDir();
+    const root = join(parent, "site");
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, ".hintrc.js"), "module.exports = {};\n");
+    const result = await scaffold("site", parent);
+    expect(await read(join(root, ".hintrc.js"))).toBe("module.exports = {};\n");
+    await expect(read(join(root, ".hintrc"))).rejects.toThrow();
+    expect(result.notes.join("\n")).toContain(EDITOR_LINTERS_URL);
+  });
+
+  it("misuse: a broken .hintrc stays as it is and is reported", async () => {
+    const parent = await createTempDir();
+    const root = join(parent, "site");
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, ".hintrc"), "{ oops");
+    const result = await scaffold("site", parent);
+    expect(await read(join(root, ".hintrc"))).toBe("{ oops");
+    expect(result.notes.join("\n")).toContain("not valid JSON");
   });
 });

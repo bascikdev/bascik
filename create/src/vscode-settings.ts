@@ -1,14 +1,22 @@
 /**
  * @module vscode-settings
  *
- * Writes or merges the two VS Code files a Bascik project ships with:
+ * Writes or merges the editor files a Bascik project ships with:
  *
  *  - `.vscode/settings.json` turns off `html.validate.scripts`. VS Code's
  *    built-in HTML checker joins every `<script>` in a file that has no
  *    `type="module"` into one JavaScript file, so two Bascik scripts that each
  *    `export default` show the false error "A module cannot have multiple
- *    default exports". Bascik compiles each script on its own.
+ *    default exports". It also checks `type="text/typescript"` blocks as
+ *    TypeScript without Bascik's `@/` import root. Bascik compiles each script
+ *    on its own.
  *  - `.vscode/extensions.json` recommends the Bascik extension.
+ *  - `.hintrc` (or an existing `.hintrc.json`) scopes webhint for source
+ *    files. Bascik composes a page's `<head>` (charset, viewport, title) at
+ *    build time from a component and a build script, and an `<img>` can get
+ *    its `alt` from a prop, so editor linters that read `src/` report tags the
+ *    built page in `dist/` has. `.hintrc.dist.json` extends it and turns those
+ *    checks back on for `npx hint -c .hintrc.dist.json <built files>`.
  *
  * Existing files are merged, never replaced: comments, other settings and
  * other recommendations stay, a value the user already set is kept, and a file
@@ -28,8 +36,10 @@ export const BASCIK_EXTENSION_ID = "bascik.bascik-vscode";
 const SETTINGS_COMMENT = [
   "// Bascik pages can hold several <script> blocks. VS Code's HTML checker",
   "// joins them into one file and reports errors Bascik never hits, such as",
-  '// "A module cannot have multiple default exports". Bascik compiles each',
-  "// script on its own. This turns off only VS Code's inline script check.",
+  '// "A module cannot have multiple default exports". It also checks',
+  '// type="text/typescript" blocks without Bascik\'s @/ import root. Bascik',
+  "// compiles each script on its own. This turns off only VS Code's inline",
+  "// script check.",
   "// https://bascik.dev/tools/vscode-extension#several-scripts-in-one-file",
 ];
 
@@ -129,11 +139,13 @@ function newlineOf(text: string): string {
 
 /**
  * Position just past the top-level object's `{`, and, when `key` is given,
- * just past the `[` that opens that top-level key's array value.
+ * just past the `opener` (`[` by default) that opens that top-level key's
+ * value.
  */
 function locate(
   blanked: string,
   key?: string,
+  opener: "[" | "{" = "[",
 ): { objectOpen: number; arrayOpen?: number } {
   const objectOpen = blanked.indexOf("{") + 1;
   let depth = 0;
@@ -143,7 +155,7 @@ function locate(
       const end = stringEnd(blanked, i);
       if (depth === 1 && key !== undefined) {
         const rest = blanked.slice(end);
-        const colon = /^\s*:\s*\[/.exec(rest);
+        const colon = (opener === "[" ? /^\s*:\s*\[/ : /^\s*:\s*\{/).exec(rest);
         if (colon && JSON.parse(blanked.slice(i, end)) === key) {
           return { objectOpen, arrayOpen: end + colon[0].length };
         }
@@ -259,6 +271,295 @@ export function mergeExtensionsJson(existing: string | undefined): MergeResult {
     status: "updated",
     text: existing.slice(0, objectOpen) + insert + existing.slice(objectOpen),
   };
+}
+
+// ─── webhint ──────────────────────────────────────────────────────────────────
+
+/** The docs section that explains every exception below. */
+export const EDITOR_LINTERS_URL =
+  "https://bascik.dev/testing/linting#editor-linters-read-source";
+
+/** Hints that are false on source files only: the built page has these tags. */
+export const HINT_SOURCE_ONLY = ["meta-viewport", "meta-charset-utf-8"];
+
+const AXE_TEXT_ALTERNATIVES = "axe/text-alternatives";
+const AXE_TEXT_ALTERNATIVES_VALUE =
+  '["default", { "document-title": "off", "image-alt": "off" }]';
+
+/** Where a project keeps the files Bascik reads, relative to its root. */
+export interface SourceDirectories {
+  pages: string;
+  components: string[];
+}
+
+/** Bascik's defaults (`directory.pages` and `directory.components`). */
+export const DEFAULT_SOURCE_DIRECTORIES: SourceDirectories = {
+  pages: "src/pages",
+  components: ["src/components"],
+};
+
+/**
+ * The folder as it appears in a `file:///` URL, with `/` separators and no
+ * leading `./`, `../` or drive letter. Empty when the folder is the root.
+ */
+function urlFragment(dir: string): string {
+  const segments = dir.replace(/\\/g, "/").split("/");
+  while (segments.length > 0 && /^(\.{0,2}|[A-Za-z]:)$/.test(segments[0])) {
+    segments.shift();
+  }
+  return segments.filter((part) => part !== "" && part !== ".").join("/");
+}
+
+/**
+ * The `ignoredUrls` pattern for HTML files in the pages and components
+ * folders. webhint tests it, without regard to case, against the file's
+ * absolute `file:///` URL, so it starts at a `/` and cannot be anchored to
+ * the project root. Undefined when the pages folder is the project root, so
+ * no pattern could leave `dist/` out.
+ */
+export function sourceUrlPattern(dirs: SourceDirectories): string | undefined {
+  const pages = urlFragment(dirs.pages);
+  if (pages === "") return undefined;
+  const fragments = [pages, ...dirs.components.map(urlFragment)].filter(
+    (fragment, index, all) =>
+      fragment !== "" && all.indexOf(fragment) === index,
+  );
+  const escaped = fragments.map((fragment) =>
+    fragment.replace(/[.*+?^${}()|[\]\\]/g, (char) => `\\${char}`),
+  );
+  return `/(?:${escaped.join("|")})/[^?#]*\\.html$`;
+}
+
+const HINTRC_COMMENT = [
+  "// Bascik builds each page's <head> (charset, viewport, title) from a",
+  "// component and a build script, and an <img> can get its alt from a prop,",
+  "// so a source file lacks tags the built page in dist/ has. These entries",
+  "// turn off only those checks, and the charset and viewport ones only for",
+  "// source files. Check the built site (webhint skips hints when given a",
+  "// folder, so pass the files):",
+  "//   npx hint -c .hintrc.dist.json $(find dist -name '*.html')",
+  `// ${EDITOR_LINTERS_URL}`,
+];
+
+function ignoredUrlEntry(pattern: string): string {
+  return `{ "domain": ${JSON.stringify(pattern)}, "hints": ${JSON.stringify(HINT_SOURCE_ONLY).replace(/,/g, ", ")} }`;
+}
+
+/** The `.hintrc` a new project gets. */
+export function hintrcJson(dirs: SourceDirectories): string {
+  const pattern = sourceUrlPattern(dirs);
+  const lines = [
+    "{",
+    ...HINTRC_COMMENT.map((line) => `  ${line}`),
+    '  "extends": ["development"],',
+    '  "hints": {',
+    `    "${AXE_TEXT_ALTERNATIVES}": ${AXE_TEXT_ALTERNATIVES_VALUE}`,
+    pattern === undefined ? "  }" : "  },",
+  ];
+  if (pattern !== undefined) {
+    lines.push('  "ignoredUrls": [', `    ${ignoredUrlEntry(pattern)}`, "  ]");
+  }
+  return lines.join("\n") + "\n}\n";
+}
+
+/** The config for the built site: the editor config with every check on. */
+export function hintDistJson(configFile: string): string {
+  return (
+    "{\n" +
+    `  "extends": [${JSON.stringify(`./${configFile}`)}],\n` +
+    `  "hints": { "${AXE_TEXT_ALTERNATIVES}": "default" }\n` +
+    "}\n"
+  );
+}
+
+/**
+ * Text to insert at `open` (just past a `{` or `[`) to add `entry` as the
+ * first item: on its own line, indented like the next one, in a container that
+ * spans lines; inline in a one-line container.
+ */
+function firstItem(
+  blanked: string,
+  open: number,
+  entry: string,
+  empty: boolean,
+  nl: string,
+): string {
+  if (empty) return entry;
+  const before = /^\s*/.exec(blanked.slice(open))![0];
+  const lineBreak = Math.max(
+    before.lastIndexOf("\n"),
+    before.lastIndexOf("\r"),
+  );
+  return lineBreak === -1
+    ? `${entry}, `
+    : `${nl}${before.slice(lineBreak + 1)}${entry},`;
+}
+
+/**
+ * Add the Bascik source-file exceptions to a webhint config, keeping the
+ * rest: the `axe/text-alternatives` options unless the user set that hint, and
+ * the `ignoredUrls` entry unless the file has one with the same pattern.
+ */
+export function mergeHintrc(
+  existing: string | undefined,
+  dirs: SourceDirectories,
+): MergeResult {
+  if (existing === undefined || existing.trim() === "") {
+    return { status: "created", text: hintrcJson(dirs) };
+  }
+  if (blankJsonc(existing).trim() === "") {
+    // webhint refuses a file of only comments; keep them and add the config.
+    return afterComments(existing, hintrcJson(dirs));
+  }
+  const parsed = parseJsonc(existing);
+  if (!isObject(parsed)) return { status: "invalid", text: existing };
+  const blanked = blankJsonc(existing);
+  const nl = newlineOf(existing);
+  const pattern = sourceUrlPattern(dirs);
+  const inserts: Array<[at: number, text: string]> = [];
+  const topLevel: string[] = [];
+
+  const { hints, ignoredUrls } = parsed;
+  if (hints === undefined) {
+    topLevel.push(
+      `"hints": { "${AXE_TEXT_ALTERNATIVES}": ${AXE_TEXT_ALTERNATIVES_VALUE} }`,
+    );
+  } else if (isObject(hints) && !(AXE_TEXT_ALTERNATIVES in hints)) {
+    const at = locate(blanked, "hints", "{").arrayOpen!;
+    const entry = `"${AXE_TEXT_ALTERNATIVES}": ${AXE_TEXT_ALTERNATIVES_VALUE}`;
+    const empty = Object.keys(hints).length === 0;
+    inserts.push([at, firstItem(blanked, at, entry, empty, nl)]);
+  }
+
+  if (pattern !== undefined) {
+    if (ignoredUrls === undefined) {
+      topLevel.push(`"ignoredUrls": [${ignoredUrlEntry(pattern)}]`);
+    } else if (
+      Array.isArray(ignoredUrls) &&
+      !ignoredUrls.some((entry) => isObject(entry) && entry.domain === pattern)
+    ) {
+      const at = locate(blanked, "ignoredUrls").arrayOpen!;
+      const empty = ignoredUrls.length === 0;
+      inserts.push([
+        at,
+        firstItem(blanked, at, ignoredUrlEntry(pattern), empty, nl),
+      ]);
+    }
+  }
+
+  if (topLevel.length > 0) {
+    const { objectOpen } = locate(blanked);
+    const empty = Object.keys(parsed).length === 0;
+    const insert =
+      `${nl}  // Bascik source-file exceptions: ${EDITOR_LINTERS_URL}` +
+      topLevel.map((entry) => `${nl}  ${entry}`).join(",") +
+      (empty ? nl : ",");
+    inserts.push([objectOpen, insert]);
+  }
+  if (inserts.length === 0) return { status: "unchanged", text: existing };
+
+  let text = existing;
+  for (const [at, insert] of inserts.sort((a, b) => b[0] - a[0])) {
+    text = text.slice(0, at) + insert + text.slice(at);
+  }
+  return { status: "updated", text };
+}
+
+/** What happened to the webhint files. */
+export interface HintReport {
+  /** The config file webhint reads in this folder. */
+  file: string;
+  /** `elsewhere`: the config is a `.hintrc.js` or package.json `hintConfig`, left alone. */
+  config: VscodeFileStatus | "elsewhere";
+  dist: VscodeFileStatus | "skipped";
+}
+
+/** Read a file, or undefined when it does not exist. Throws on other errors. */
+async function readIfPresent(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
+/** Whether package.json holds a `hintConfig`, which webhint reads last. */
+async function packageHintConfig(root: string): Promise<boolean> {
+  try {
+    const pkg = parseJsonc(
+      (await readIfPresent(join(root, "package.json"))) ?? "",
+    );
+    return isObject(pkg) && pkg.hintConfig !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The webhint config file in `root`, in the order webhint looks: `.hintrc`,
+ * `.hintrc.js`, `.hintrc.json`, then package.json `hintConfig`. A new
+ * `.hintrc` would hide the other three, so an existing one is used instead.
+ */
+async function hintConfigFile(root: string): Promise<string> {
+  for (const file of [".hintrc", ".hintrc.js", ".hintrc.json"]) {
+    try {
+      if ((await readIfPresent(join(root, file))) !== undefined) return file;
+    } catch {
+      return file;
+    }
+  }
+  return (await packageHintConfig(root)) ? "package.json" : ".hintrc";
+}
+
+/**
+ * Write or merge the webhint config (`.hintrc`, or an existing `.hintrc.json`)
+ * and write `.hintrc.dist.json` when absent. A `.hintrc.js` or package.json
+ * `hintConfig` is left alone. Never throws; the report says what happened.
+ */
+export async function writeHintFiles(
+  root: string,
+  dirs: SourceDirectories = DEFAULT_SOURCE_DIRECTORIES,
+): Promise<HintReport> {
+  const file = await hintConfigFile(root);
+  if (file === ".hintrc.js" || file === "package.json") {
+    return { file, config: "elsewhere", dist: "skipped" };
+  }
+  const config = await mergeFile(join(root, file), (existing) =>
+    mergeHintrc(existing, dirs),
+  );
+  if (config === "invalid" || config === "failed") {
+    return { file, config, dist: "skipped" };
+  }
+  const dist = await mergeFile(join(root, ".hintrc.dist.json"), (existing) =>
+    existing === undefined
+      ? { status: "created", text: hintDistJson(file) }
+      : { status: "unchanged", text: existing },
+  );
+  return { file, config, dist };
+}
+
+/** Lines worth showing the user: what was added, and what to fix by hand. */
+export function hintReportLines(report: HintReport): string[] {
+  const { file, config } = report;
+  if (config === "updated") {
+    return [
+      `${file}: added the Bascik source-file exceptions (${EDITOR_LINTERS_URL})`,
+    ];
+  }
+  if (config === "elsewhere") {
+    const where = file === "package.json" ? 'package.json "hintConfig"' : file;
+    return [
+      `${where}: left as is. Add the Bascik source-file exceptions for webhint by hand: ${EDITOR_LINTERS_URL}`,
+    ];
+  }
+  if (config === "invalid" || config === "failed") {
+    return [
+      `${file}: ${config === "invalid" ? "left as is because it is not valid JSON" : "could not be written"}. ` +
+        `Add the Bascik source-file exceptions for webhint by hand: ${EDITOR_LINTERS_URL}`,
+    ];
+  }
+  return [];
 }
 
 async function mergeFile(

@@ -1,0 +1,17 @@
+{
+  // Bascik builds each page's <head> (charset, viewport, title) from a
+  // component and a build script, and an <img> can get its alt from a prop,
+  // so a source file lacks tags the built page in dist/ has. These entries
+  // turn off only those checks, and the charset and viewport ones only for
+  // source files. Check the built site (webhint skips hints when given a
+  // folder, so pass the files):
+  //   npx hint -c .hintrc.dist.json $(find dist -name '*.html')
+  // https://bascik.dev/testing/linting#editor-linters-read-source
+  "extends": ["development"],
+  "hints": {
+    "axe/text-alternatives": ["default", { "document-title": "off", "image-alt": "off" }]
+  },
+  "ignoredUrls": [
+    { "domain": "/(?:src/pages|src/components)/[^?#]*\\.html$", "hints": ["meta-viewport", "meta-charset-utf-8"] }
+  ]
+}
