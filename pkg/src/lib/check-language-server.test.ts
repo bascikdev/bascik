@@ -8,6 +8,8 @@ import {
   languageServerHint,
   languageServerTargets,
   loadLanguageServerCheck,
+  runLanguageServerCheck,
+  TYPESCRIPT_NEEDS_NEWER_LANGUAGE_SERVER,
 } from "./check-language-server.ts";
 
 // The real config module is frozen. The targets depend on `directory`, so give this test a copy it may change.
@@ -24,6 +26,7 @@ describe("languageServerHint", () => {
         filesChecked: 1,
         fixedFiles: [],
         diagnostics: [],
+        notes: [],
         formatDiagnostic: () => "",
       }),
     ).toBeUndefined();
@@ -119,6 +122,33 @@ describe("loadLanguageServerCheck", () => {
 
   it("reports nothing installed as missing", async () => {
     expect(await loadLanguageServerCheck(root, null)).toBeNull();
+  });
+
+  /** A language server that echoes the options it was given into its notes. */
+  const echoingCheck = (supportsTypeScript: boolean) =>
+    `export const checkFiles = async (options) => ({ filesChecked: 0, fixedFiles: [], diagnostics: [], notes: ["typescript=" + options.typescript] });
+export const formatDiagnostic = () => "";
+${supportsTypeScript ? "export const supportsTypeScript = true;" : ""}`;
+
+  it("asks for TypeScript checks only with --typescript, and passes the language server's notes on", async () => {
+    await installFake(echoingCheck(true));
+    const off = await runLanguageServerCheck({ cwd: root });
+    expect(off).toMatchObject({ status: "ran", notes: ["typescript=false"] });
+    const on = await runLanguageServerCheck({ cwd: root, typescript: true });
+    expect(on).toMatchObject({ status: "ran", notes: ["typescript=true"] });
+  });
+
+  it("misuse: --typescript with a language server from before TypeScript checks says so, not silence", async () => {
+    await installFake(
+      "export const checkFiles = async () => ({ filesChecked: 0, fixedFiles: [], diagnostics: [] }); export const formatDiagnostic = () => '';",
+    );
+    const on = await runLanguageServerCheck({ cwd: root, typescript: true });
+    expect(on).toMatchObject({
+      status: "ran",
+      notes: [TYPESCRIPT_NEEDS_NEWER_LANGUAGE_SERVER],
+    });
+    const off = await runLanguageServerCheck({ cwd: root });
+    expect(off).toMatchObject({ status: "ran", notes: [] });
   });
 
   it("falls back to the copy next to this package, which is how a workspace checkout finds it", async () => {

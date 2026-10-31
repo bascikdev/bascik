@@ -22,6 +22,23 @@ describe("cli helper tests", () => {
       expect(fixDecision.flags.fix).toBe(true);
     });
 
+    it("resolves --check --typescript, and rejects --typescript without --check or misspelled", () => {
+      const decision = resolveCliAction(["--check", "--typescript"]);
+      expect(decision.action).toBe("check");
+      expect(decision.flags.typescript).toBe(true);
+      expect(resolveCliAction(["--check"]).flags.typescript).toBeUndefined();
+      for (const args of [["--typescript"], ["--build", "--typescript"]]) {
+        const wrong = resolveCliAction(args);
+        expect(wrong.action).toBe("error");
+        expect(wrong.errorMessage).toBe(
+          "Error: --typescript only applies to --check.",
+        );
+      }
+      const typo = resolveCliAction(["--check", "--typscript"]);
+      expect(typo.action).toBe("error");
+      expect(typo.errorMessage).toContain('Did you mean "--typescript"');
+    });
+
     it("rejects --lint and bare lint without suggesting anything: it is not an alias for --check", () => {
       for (const args of [["--lint"], ["lint"]]) {
         const decision = resolveCliAction(args);
