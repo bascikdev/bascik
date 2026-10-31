@@ -1891,6 +1891,99 @@ export default { sitemap: { exclude: value } };
     expect(moduleFindings((await audit(root)).findings)).toEqual([]);
   });
 
+  it("warns about data that one component renders and a page also reads for JSON-LD, and says the page imports it from the component's folder", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+  </script>
+`),
+      "src/pages/help.html": page(
+        `      <faq-list />`,
+        `    <script data-bascik-build type="text/typescript">
+      import { faqs } from "@/lib/faqs.ts";
+      export default () => JSON.stringify(faqs.length);
+    </script>
+`,
+      ),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].message).toContain("<faq-list>");
+    expect(found[0].message).toContain("src/pages/help.html");
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toContain('"./faqs.ts"');
+    expect(found[0].suggestion).toContain('"@/components/faq-list/faqs.ts"');
+  });
+
+  it("stays quiet when one component and a page share a helper with functions, or two components share data a page also reads", async () => {
+    const use = (
+      spec: string,
+    ) => `  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => String(value);
+  </script>
+`;
+    const root = withFiles({
+      "src/lib/format.ts": `export const value = (n: number) => n.toFixed(2);\n`,
+      "src/lib/slugs.ts": `export function value() {\n  return "milk-frother";\n}\n`,
+      "src/lib/plans.ts": `export const value = ["Basic", "Barista"];\n`,
+      "src/components/price-tag/price-tag.html": `<p data-testid="price-tag">
+${use("@/lib/format.ts")}${use("@/lib/slugs.ts")}${use("@/lib/plans.ts")}</p>
+`,
+      "src/components/plan-list/plan-list.html": `<p data-testid="plan-list">
+${use("@/lib/plans.ts")}</p>
+`,
+      "src/pages/help.html": page(`      <price-tag />
+      <plan-list />
+${use("@/lib/format.ts")}${use("@/lib/slugs.ts")}${use("@/lib/plans.ts")}`),
+    });
+    expect(moduleFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("counts a page and the src= module beside it as one user", async () => {
+    const root = withFiles({
+      "src/lib/pricing.ts": `export const plans = ["Basic", "Barista"];\n`,
+      "src/pages/about/index.html": page(
+        `      <h1>About</h1>
+      <script data-bascik-build src="./pricing.ts"></script>
+      <script data-bascik-build type="text/typescript">
+        import { plans } from "@/lib/pricing.ts";
+        export default () => String(plans.length);
+      </script>`,
+      ),
+      "src/pages/about/pricing.ts": `import { html } from "@bascik/bascik/html";
+import { plans } from "../../lib/pricing.ts";
+export default () => html\`<p>\${plans.join(", ")}</p>\`;
+`,
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/pricing.ts"]);
+    expect(found[0].message).toContain("src/pages/about/index.html");
+    expect(found[0].suggestion).toContain("src/pages/about/");
+  });
+
+  it("tells a component written straight into the components root to get a folder of its own first", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toMatch(/folder of its own/);
+    expect(found[0].suggestion).not.toMatch(/into src\/components\/[,. ]/);
+  });
+
   it("does not flag the starter site's shared seo and posts helpers", async () => {
     const { findings } = await audit(starterSite);
     expect(moduleFindings(findings)).toEqual([]);

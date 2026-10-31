@@ -75,9 +75,12 @@ Rules:
                        feed or sitemap) are skipped
   single-use-module    A module in src/lib/ (data, helper, types) that one component or one page uses, followed
                        through @/ and relative imports in inline scripts, src= files, .ts companions, and other
-                       src/lib modules: move it into that component's folder (or beside that page, as a .ts file)
-                       and import it with ./. A module that config, an exec script, an API route, or a second
-                       component or page also imports is shared and stays. Test files do not count as users
+                       src/lib modules (a page and the modules in its folder count as one user): move it into that
+                       component's folder (or beside that page, as a .ts file) and import it with ./. Data only
+                       (no functions) that one component renders and pages also read, for JSON-LD say, moves into
+                       the component's folder too, and the pages import it from there. A module that config, an
+                       exec script, an API route, or a second component also imports stays, and so does a helper
+                       with functions that a component and a page share. Test files do not count as users
 
 Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
 checked by the bascik-seo audit):
@@ -610,7 +613,9 @@ const srcSpecifier = (src) =>
 
 /**
  * single-use-module: a src/lib module (data, helper, types) that exactly one component or one page uses belongs in
- * that component's folder, or beside that page, imported with ./. Users are found through @/ and relative imports
+ * that component's folder, or beside that page, imported with ./. A data-only module that one component renders and
+ * pages also read belongs in the component's folder, and the pages import it from there. A page and the modules in
+ * the pages folder that only it reaches are one user. Users are found through @/ and relative imports
  * in every page and component script (inline or src=), every script file of the project, and src/lib modules that
  * import each other (a module a lib module imports serves that module's users). Config, exec scripts, API routes,
  * and other code outside the pages and component folders make a module shared. Test files are not users.
@@ -646,8 +651,61 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
       doc.local &&
       layout.componentRoots.some((r) => resolve(r) === dirname(doc.path)),
   );
+  // A module in the pages folder that one page reaches (through its src= or imports, and the modules those import)
+  // is part of that page, so the page and its own modules count as one user.
+  const pageModuleEdges = new Map(); // pages-folder file -> pages-folder files it imports
+  const isPageModule = (file) =>
+    insideDir(file, layout.pagesDir) && !inLib(file) && !isSkipped(file);
+  for (const path of walkFiles(layout.pagesDir, SCRIPT_FILE_EXTENSIONS)) {
+    if (isSkipped(path)) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const edges = new Set();
+    for (const specifier of importSpecifiers(code)) {
+      const target = resolveLocalImport(specifier, dirname(path), importRoot);
+      if (target?.found && isPageModule(target.file))
+        edges.add(resolve(target.file));
+    }
+    pageModuleEdges.set(resolve(path), edges);
+  }
+  const pageOwners = new Map(); // pages-folder file -> Set of page docs that reach it
+  for (const doc of docs) {
+    if (doc.kind !== "page") continue;
+    const queue = [];
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const dir = dirname(doc.path);
+      const specifiers = importSpecifiers(node.body ?? "");
+      const src = node.attrs.src?.trim();
+      if (src && !/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src))
+        specifiers.push(srcSpecifier(src));
+      for (const specifier of specifiers) {
+        const target = resolveLocalImport(specifier, dir, importRoot);
+        if (target?.found && isPageModule(target.file))
+          queue.push(resolve(target.file));
+      }
+      return false;
+    });
+    const seen = new Set();
+    while (queue.length) {
+      const file = queue.pop();
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const owners = pageOwners.get(file) ?? new Set();
+      owners.add(doc);
+      pageOwners.set(file, owners);
+      queue.push(...(pageModuleEdges.get(file) ?? []));
+    }
+  }
+
   const ownerOfFile = (file) => {
     if (inLib(file)) return undefined;
+    const pages = pageOwners.get(resolve(file));
+    if (pages?.size === 1) return [...pages][0];
     const folder = folders.find(({ dir }) => insideDir(file, dir));
     if (folder) return folder.doc;
     const companion = flat.find(
@@ -739,13 +797,26 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
     }
 
   for (const [file, users] of usersOf) {
-    if (users.size !== 1) continue;
-    const [only] = users;
-    if (only === SHARED) continue;
-    const user = keyOf.get(only);
+    if (users.size === 0 || users.has(SHARED)) continue;
+    const all = [...users].map((key) => keyOf.get(key));
+    const components = all.filter((u) => u.kind === "component");
+    let user;
+    let pages = [];
+    if (all.length === 1) user = all[0];
+    else if (components.length === 1 && exportsDataOnly(file)) {
+      // Content lives with the component that renders it; a page that also reads it (for JSON-LD, say) imports it
+      // from the component's folder. A helper with functions that a page also calls is left alone.
+      user = components[0];
+      pages = all.filter((u) => u !== user);
+    } else continue;
     const rel = (path) => relative(root, path).replace(/\\/g, "/");
     const name = basename(file);
-    const destination = dirname(user.path);
+    const flatComponent =
+      user.kind === "component" &&
+      layout.componentRoots.some((r) => resolve(r) === dirname(user.path));
+    const destination = flatComponent
+      ? join(dirname(user.path), user.tag)
+      : dirname(user.path);
     const intoPages = insideDir(destination, layout.pagesDir);
     const tsName = name.replace(/\.[^.]+$/, ".ts");
     const target =
@@ -754,14 +825,27 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
     const tests = readdirSafe(dirname(file)).filter(
       (entry) => entry.startsWith(`${stem}.`) && isTestFile(entry),
     );
-    const who =
+    const owner =
       user.kind === "component"
         ? `<${user.tag}> (${rel(user.path)})`
         : rel(user.path);
-    const where =
-      user.kind === "component"
+    const who = pages.length
+      ? `${owner}, which renders it, and ${pages.map((p) => rel(p.path)).join(", ")}`
+      : owner;
+    const where = flatComponent
+      ? `give <${user.tag}> a folder of its own first (${rel(destination)}/, with ${user.tag}.html and its companions), then move it into ${rel(destination)}/`
+      : user.kind === "component"
         ? `into ${rel(destination)}/`
         : `beside ${rel(user.path)}, into ${rel(destination)}/`;
+    const moved = join(destination, target);
+    const fromPages = insideDir(moved, importRoot)
+      ? `@/${relative(importRoot, moved).replace(/\\/g, "/")}`
+      : rel(moved);
+    const pageNote = pages.length
+      ? `${pages.map((p) => rel(p.path)).join(", ")} then import${pages.length === 1 ? "s" : ""} it as "${fromPages}". `
+      : user.kind === "component"
+        ? "A page that also needs it (for JSON-LD, say) imports it from the component's folder. "
+        : "";
     const withTests = tests.length ? ` with ${tests.join(", ")}` : "";
     const asTs =
       target !== name
@@ -773,9 +857,25 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
       file: rel(file),
       line: 1,
       message: `${rel(file)} is used only by ${who}, so it belongs with that ${user.kind === "module" ? "file" : user.kind}, not in ${rel(dirname(file))}/.`,
-      suggestion: `Move it ${where}${withTests}${asTs}, and import it as "./${target}". ${user.kind === "component" ? "A page that also needs it (for JSON-LD, say) imports it from the component's folder. " : ""}Keep src/lib/ for modules several components or pages share.`,
+      suggestion: `${flatComponent ? `G${where.slice(1)}` : `Move it ${where}`}${withTests}${asTs}, and import it as "./${target}". ${pageNote}Keep src/lib/ for modules several components or pages share.`,
     });
   }
+}
+
+/**
+ * Whether a module only holds data: a .json file, or a script file with no function, arrow function, or class (types
+ * and constants only). Comments are ignored. A module that cannot be read is not data-only.
+ */
+function exportsDataOnly(file) {
+  if (/\.json$/i.test(file)) return true;
+  let code;
+  try {
+    code = readFileSync(file, "utf8");
+  } catch {
+    return false;
+  }
+  const bare = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return !/\bfunction\b|=>|\bclass\b/.test(bare);
 }
 
 /** The names in `dir`, or none when it cannot be read. */
