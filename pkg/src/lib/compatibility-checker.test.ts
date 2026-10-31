@@ -17,12 +17,42 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[id] { color: red; }",
         '[id="hero"] { color: blue; }',
         ".card, [id^='panel'] { margin: 0; }",
+        // Every form the compiler strips is reported, not only a leading one.
+        ".a:not([id]) { color: red; }",
+        ".a:is([id]) { color: red; }",
+        '.a:where([id="x"]) { color: red; }',
+        ".a:has([id]) { color: red; }",
+        ".a[id] { color: red; }",
+        'div[id="x"] { color: red; }',
+        "[ID] { color: red; }",
+        "[ id ] { color: red; }",
       ],
       negative: [
         "#hero { color: red; }",
+        ".card[id-ref] { color: red; }",
+        ".card[idx] { color: red; }",
+        ".card { content: '[id]'; }",
         ".card[data-id='hero'] { color: blue; }",
         "/* [id] { color: red; } */",
         '.card::before { content: "[id]"; }',
+        // The compiler keeps an @supports selector() test, so lint does too.
+        "@supports selector([id]) { .a { color: red; } }",
+        "@supports not SELECTOR( [id] ) { .a { color: red; } }",
+      ],
+    },
+    "css-reserved-class-prefix": {
+      kind: "css",
+      positive: [
+        ".el__p { color: blue; }",
+        ".card .id__btn { color: blue; }",
+        ".card, .el__item:hover { color: blue; }",
+      ],
+      negative: [
+        ".block__el { color: blue; }",
+        ".model__p { color: blue; }",
+        ".el-p, .id-btn, .el_p { color: blue; }",
+        '.card::before { content: ".el__p"; }',
+        "/* .el__p { color: blue; } */",
       ],
     },
     "css-attribute-selector": {
@@ -35,6 +65,7 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[data-state]:is(.disabled, button) { color: red; }",
         '[data-open="true"] { display: block; }',
         ".ok, [aria-expanded='true'] { opacity: 1; }",
+        '[id-test="x"] { color: red; }',
       ],
       negative: [
         ".card[data-state] { color: red; }",

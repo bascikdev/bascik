@@ -2603,3 +2603,266 @@ describe("prefixElementAttribute – component server and stream script output s
     serverSidecarRegistry.clear();
   });
 });
+
+describe("prefixElementAttribute – backslash before a closing quote", () => {
+  // HTML attribute values have no backslash escapes, so `data-sep="\"` ends
+  // at its second quote and the attributes after it are real attributes.
+  it("scopes a class attribute after a value ending in a backslash", () => {
+    const c = makeComponent(
+      '<span data-sep="\\" class="tag">x</span><span class="tag">y</span>',
+      "span {} .tag { color: red; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toBe(
+      `<span data-sep="\\" class="${scopeClass("tag")} ${scopeClass("el__span")}">x</span>` +
+        `<span class="${scopeClass("tag")} ${scopeClass("el__span")}">y</span>`,
+    );
+  });
+
+  it("scopes id and name attributes after a Windows path value", () => {
+    let c = makeComponent(
+      '<input data-path="C:\\Users\\" id="field" name="field">',
+    );
+    c = prefixElementAttribute(c, "id", "test1234");
+    c = prefixElementAttribute(c, "name", "test1234");
+    expect(c.fileContent).toBe(
+      `<input data-path="C:\\Users\\" id="${scope("field")}" name="${scope("field")}">`,
+    );
+  });
+});
+
+describe("prefixElementAttribute – escaped class selectors", () => {
+  it("scopes the attribute token an escaped class selector names", () => {
+    const c = makeComponent(
+      '<div class="md:flex w-1/2 plain md">x</div>',
+      ".md\\:flex { display: flex } .w-1\\/2 { width: 50% } .plain { color: red }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("md:flex")} ${scopeClass("w-1/2")} ${scopeClass("plain")} md">x</div>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("md\\:flex")} { display: flex } .${scopeClass("w-1\\/2")} { width: 50% } .${scopeClass("plain")} { color: red }`,
+    );
+  });
+
+  it("matches a hex escape to its character", () => {
+    const c = makeComponent(
+      '<p class="10 a+b">x</p>',
+      ".\\31 0 { color: red } .a\\2b b { color: blue }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `class="${scopeClass("10")} ${scopeClass("a+b")}"`,
+    );
+    expect(result.cssFileContent).toContain(`.${scopeClass("10")} {`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("a\\+b")} {`);
+  });
+
+  it("gives the selector and the attribute the same hash when identifiers are minified", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<div class="md:flex">x</div>',
+          ".md\\:flex { display: flex }",
+        ),
+        "class",
+        "test1234",
+      );
+      const token = result.fileContent.match(/class="([^"]+)"/)?.[1];
+      expect(token).toMatch(/^b[0-9a-zA-Z]{11}$/);
+      expect(result.cssFileContent).toBe(`.${token} { display: flex }`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("scopes a non-ASCII class name as one token", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<p class="naïve na">x</p>', ".naïve { color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<p class="${scopeClass("naïve")} na">x</p>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("naïve")} { color: red }`,
+    );
+  });
+
+  it("reads an escaped space as part of the name, as browsers do", () => {
+    // `.foo\ {` names the class "foo " (a typo for `.foo {`): neither the
+    // browser nor Bascik matches it to `class="foo"`, so the rule stays dead
+    // rather than silently styling something else.
+    const result = prefixElementAttribute(
+      makeComponent('<p class="foo">x</p>', ".foo\\ { color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("foo\\ ")}{ color: red }`,
+    );
+    expect(result.fileContent).toBe('<p class="foo">x</p>');
+  });
+
+  it("leaves a backslash before a newline (not an escape) where it was", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<p class="foo">x</p>', ".foo\\\n{ color: red }"),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("foo")}\\\n{ color: red }`,
+    );
+    expect(result.fileContent).toBe(`<p class="${scopeClass("foo")}">x</p>`);
+  });
+
+  it("converts an element after an escaped class like any scoped class", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="md:flex"><p>x</p></div>',
+        ".md\\:flex p { display: flex }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("md\\:flex")} .${scopeClass("el__p")} { display: flex }`,
+    );
+  });
+});
+
+describe("prefixElementAttribute – custom properties in style attributes", () => {
+  const css = (name: string) => `--${scopeClass(name)}`;
+
+  it("renames a declaration the stylesheet also declares", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="card" style="--size: 2rem">x</div>',
+        ".card { --size: 1rem; width: var(--size) }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("card")}" style="${css("size")}: 2rem">x</div>`,
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("card")} { ${css("size")}: 1rem; width: var(${css("size")}) }`,
+    );
+  });
+
+  it("renames var() references and @property names", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        `<div style="width: var(--size, 1px); --angle:45deg" data-x="--size: 1"></div><p style='rotate: var( --angle )'></p>`,
+        `@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; } .a { --size: 1rem }`,
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div style="width: var(${css("size")}, 1px); ${css("angle")}:45deg" data-x="--size: 1"></div><p style='rotate: var( ${css("angle")} )'></p>`,
+    );
+  });
+
+  it("scopes names an inline <style> declares", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<style>.card { --gap: 1rem; gap: var(--gap) }</style><div class="card" style="--gap: 2rem"></div>',
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toContain(`style="${css("gap")}: 2rem"`);
+    expect(`${result.fileContent}${result.cssFileContent ?? ""}`).toContain(
+      `gap: var(${css("gap")})`,
+    );
+  });
+
+  it("leaves names the stylesheet does not declare, and other values, alone", () => {
+    const source =
+      "<div style=\"--theme: dark; color: var(--brand); content: '--size: x'\"></div>";
+    const result = prefixElementAttribute(
+      makeComponent(source, ".a { --size: 1rem; --sizes: 2rem }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(source);
+  });
+
+  it("does not rename a longer name that starts with a declared one", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div style="--size-lg: 3rem; --size: 1rem"></div>',
+        ".a { --size: 1rem }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div style="--size-lg: 3rem; ${css("size")}: 1rem"></div>`,
+    );
+  });
+
+  it("uses the minified name the stylesheet uses", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const result = prefixElementAttribute(
+        makeComponent(
+          '<div style="--size: 2rem"></div>',
+          ".a { width: var(--size); --size: 1rem }",
+        ),
+        "class",
+        "test1234",
+      );
+      const name = result.cssFileContent?.match(/var\((--[^)]+)\)/)?.[1];
+      expect(name).toMatch(/^--b[0-9a-zA-Z]{11}$/);
+      expect(result.fileContent).toBe(`<div style="${name}: 2rem"></div>`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("uses the per-instance name when CSS is not deduplicated", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div style="--size: 2rem"></div>', ".a { --size: 1rem }"),
+      "class",
+      "test1234",
+      false,
+    );
+    const name = `--${scopeClassPerInstance("size")}`;
+    expect(result.cssFileContent).toBe(
+      `.${scopeClassPerInstance("a")} { ${name}: 1rem }`,
+    );
+    expect(result.fileContent).toBe(`<div style="${name}: 2rem"></div>`);
+  });
+
+  it("leaves style attributes in comments and textarea content alone", () => {
+    const source =
+      '<!-- <div style="--size: 2rem"></div> --><textarea><b style="--size: 1px"></b></textarea>';
+    const result = prefixElementAttribute(
+      makeComponent(source, ".a { --size: 1rem }"),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(source);
+  });
+
+  it("passes a style on a nested component tag through as written", () => {
+    // The child component reads the global name, as it does from a page.
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="card" style="--accent: green"><child-btn style="--accent: blue"></child-btn><x-y\nstyle="color: var(--accent)"></x-y></div>',
+        ".card { --accent: red; border-color: var(--accent) }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("card")}" style="${css("accent")}: green"><child-btn style="--accent: blue"></child-btn><x-y\nstyle="color: var(--accent)"></x-y></div>`,
+    );
+  });
+});

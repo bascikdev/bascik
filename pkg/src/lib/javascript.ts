@@ -171,6 +171,11 @@ import {
   extractInlineStyles,
   resolveCssImportsSync,
   shieldCssStrings,
+  quotedAttributeValueRanges,
+  declaredCssClassNames,
+  scopeCssClassSelectors,
+  declaredCustomPropertyNames,
+  scopeCustomPropertiesInStyleValue,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -239,10 +244,12 @@ interface ScopedCssCacheEntry {
 
 const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
 const cssDeclaredClassesCache = new Map<string, Set<string>>();
+const cssDeclaredCustomPropertiesCache = new Map<string, Set<string>>();
 
 export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
   cssDeclaredClassesCache.clear();
+  cssDeclaredCustomPropertiesCache.clear();
 };
 
 export const __scopedCssCacheStatsForTests = {
@@ -382,7 +389,12 @@ const replaceBalancedCall = (
 const replaceSafeAttr = (
   html: string,
   attrName: string,
-  replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
+  replacer: (
+    fullMatch: string,
+    prefix: string,
+    quotedVal: string,
+    tag: string,
+  ) => string,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attrRegex = new RegExp(
@@ -410,23 +422,7 @@ const replaceSafeAttr = (
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
-      const stringRanges: Array<{ start: number; end: number }> = [];
-      let j = 0;
-      let strChar = null;
-      let strStart = -1;
-      while (j < tagMatch.length) {
-        if (strChar) {
-          if (tagMatch[j] === "\\") j++;
-          else if (tagMatch[j] === strChar) {
-            stringRanges.push({ start: strStart, end: j });
-            strChar = null;
-          }
-        } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
-          strChar = tagMatch[j];
-          strStart = j;
-        }
-        j++;
-      }
+      const stringRanges = quotedAttributeValueRanges(tagMatch);
 
       let finalStr = "";
       let lastIdx = 0;
@@ -441,7 +437,7 @@ const replaceSafeAttr = (
         if (!isInside) {
           finalStr +=
             tagMatch.substring(lastIdx, matchStart) +
-            replacer(match[0], match[1], match[2]);
+            replacer(match[0], match[1], match[2], tagMatch);
           lastIdx = matchStart + match[0].length;
         }
       }
@@ -514,6 +510,9 @@ export const prefixElementAttribute = (
   // `cssFileContent` unset for an empty or comment-only stylesheet, so "no stylesheet"
   // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
+  // Custom property names the component's stylesheets declare, so the same
+  // names are renamed inside the template's `style` attributes.
+  let declaredCustomProperties: Set<string> = new Set();
   if (attribute === "class") {
     const cssSources: string[] = [];
     if (component.cssFileContent) {
@@ -537,12 +536,21 @@ export const prefixElementAttribute = (
       } else {
         scopedClassesSet = new Set<string>();
         const { css: shieldedCss } = shieldCssStrings(combinedCss);
-        for (const m of shieldedCss.matchAll(
-          /(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g,
-        )) {
-          scopedClassesSet.add(m[0]);
+        for (const name of declaredCssClassNames(shieldedCss)) {
+          scopedClassesSet.add(name);
         }
         cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
+      }
+      if (combinedCss.includes("--")) {
+        const cachedProperties =
+          cssDeclaredCustomPropertiesCache.get(combinedCss);
+        declaredCustomProperties =
+          cachedProperties ?? declaredCustomPropertyNames(combinedCss);
+        if (!cachedProperties)
+          cssDeclaredCustomPropertiesCache.set(
+            combinedCss,
+            declaredCustomProperties,
+          );
       }
     } else {
       scopedClassesSet = new Set<string>();
@@ -628,6 +636,48 @@ export const prefixElementAttribute = (
       },
     ),
   );
+
+  if (
+    attribute === "class" &&
+    declaredCustomProperties.size > 0 &&
+    /\sstyle\s*=/i.test(scopedAttrsHtml)
+  ) {
+    const styleShield = (() => {
+      const commentShield = createContentShield(scopedAttrsHtml);
+      const withoutComments = scopedAttrsHtml.includes("<!--")
+        ? scopedAttrsHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+            commentShield.hide(comment),
+          )
+        : scopedAttrsHtml;
+      const rawElements = shieldElementContents(withoutComments, [
+        "style",
+        "textarea",
+      ]);
+      return {
+        html: rawElements.html,
+        restore: (value: string) =>
+          commentShield.restore(rawElements.restore(value)),
+      };
+    })();
+    scopedAttrsHtml = styleShield.restore(
+      replaceSafeAttr(
+        styleShield.html,
+        "style",
+        (fullMatch, prefix, quotedVal, tag) => {
+          // A custom element tag, such as a nested component, takes the
+          // value as written: it reads the global name, as it does on a page.
+          if (/^<[a-zA-Z0-9]*-/.test(tag)) return fullMatch;
+          const quote = quotedVal[0] === '"' || quotedVal[0] === "'" ? 1 : 0;
+          const value = quotedVal.slice(quote, quotedVal.length - quote);
+          return `${prefix}${quotedVal.slice(0, quote)}${scopeCustomPropertiesInStyleValue(
+            value,
+            declaredCustomProperties,
+            scopeKey,
+          )}${quotedVal.slice(quotedVal.length - quote)}`;
+        },
+      ),
+    );
+  }
 
   if (attribute === "id" && declaredIds.size > 0) {
     const scopedIds = new Map(
@@ -962,9 +1012,7 @@ export const prefixElementAttribute = (
         const { css: shieldedCss, restore: restoreCssStrings } =
           shieldCssStrings(component.cssFileContent);
         component.cssFileContent = restoreCssStrings(
-          shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
-            return minifyAttributeName(`bascik__${scopeKey}__${className}`);
-          }),
+          scopeCssClassSelectors(shieldedCss, scopeKey),
         );
 
         // Convert CSS hash-ID selectors (#id) to component-scoped class selectors

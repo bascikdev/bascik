@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
+  injectClassIntoTag,
+  quotedAttributeValueRanges,
   getKeyframeNames,
   prefixKeyframes,
   removeIdSelectors,
@@ -2782,4 +2784,491 @@ describe("CSS @import resolution and hoisting", () => {
       expect(resolved).toBe(css);
     });
   });
+});
+
+describe("convertCssElementSelectorsToClasses – at-rule preludes", () => {
+  const convert = (input: string) =>
+    convertCssElementSelectorsToClasses(input, "card");
+
+  it("leaves a bare media type after a comma in a media list alone", () => {
+    const { css, elementsConvertedClasses } = convert(
+      "@media screen, print { .bascik__card__card { color: red } }",
+    );
+    expect(css).toBe(
+      "@media screen, print { .bascik__card__card { color: red } }",
+    );
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("leaves a mixed media list alone", () => {
+    const input =
+      "@media (min-width: 1px), print and (color) { p { color: red } }";
+    expect(convert(input).css).toBe(
+      "@media (min-width: 1px), print and (color) { .bascik__card__el__p { color: red } }",
+    );
+  });
+
+  it("leaves keywords at the start of a continuation line of a wrapped prelude alone", () => {
+    const input =
+      "@media (min-width: 100px)\n  and (max-width: 200px) {\n  p { color: red }\n}\n" +
+      "@media not\n  screen { p { color: blue } }\n" +
+      "@supports (display: grid)\n  and (gap: 1rem) { p { gap: 1rem } }\n" +
+      "@media\nprint,\nscreen { p { color: green } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toContain(
+      "@media (min-width: 100px)\n  and (max-width: 200px) {",
+    );
+    expect(css).toContain("@media not\n  screen {");
+    expect(css).toContain("@supports (display: grid)\n  and (gap: 1rem) {");
+    expect(css).toContain("@media\nprint,\nscreen {");
+    expect(css).not.toMatch(/__el__(?:and|not|screen|print)\b/);
+    // The rules inside the blocks are still scoped.
+    expect(css.match(/\.bascik__card__el__p /g)).toHaveLength(4);
+    expect(elementsConvertedClasses).toEqual(["p"]);
+  });
+
+  it("leaves a wrapped @container and @keyframes prelude alone", () => {
+    const input =
+      "@container\n  sidebar (min-width: 1px) { p { color: red } }\n" +
+      "@keyframes\nfade { from { opacity: 0 } to { opacity: 1 } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toContain("@container\n  sidebar (min-width: 1px) {");
+    expect(css).toContain("@keyframes\nfade {");
+    expect(elementsConvertedClasses).toEqual(["p"]);
+  });
+
+  it("still scopes element selectors in an @scope prelude after a scoped class", () => {
+    const input = "@scope (.bascik__card__a p) { span { color: red } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toBe(
+      "@scope (.bascik__card__a .bascik__card__el__p) { .bascik__card__el__span { color: red } }",
+    );
+    expect(elementsConvertedClasses).toEqual(["span", "p"]);
+  });
+
+  it("leaves a typo'd at-rule prelude alone instead of scoping its words", () => {
+    // `@mediaquery` is not a real at-rule; the browser drops the block, and Bascik
+    // must not turn `print` into a class and make the output differ.
+    const input = "@mediaquery screen, print { p { color: red } }";
+    const { css } = convert(input);
+    expect(css).toBe(
+      "@mediaquery screen, print { .bascik__card__el__p { color: red } }",
+    );
+  });
+
+  it("is not confused by an at-rule keyword inside a string or url", () => {
+    const input = `p::before { content: "@media screen, print {" } .x { background: url(a@b.png) }\nh2 { color: red }`;
+    const { css } = convert(input);
+    expect(css).toContain(`content: "@media screen, print {"`);
+    expect(css).toContain(".bascik__card__el__h2 { color: red }");
+    expect(css).toContain(".bascik__card__el__p::before");
+  });
+});
+
+describe("convertCssElementSelectorsToClasses – & with a pseudo-class or attribute", () => {
+  const convert = (input: string) =>
+    convertCssElementSelectorsToClasses(input, "card");
+
+  it.each([
+    ["&:hover p", "&:hover .bascik__card__el__p", "p"],
+    ["&:focus-within span", "&:focus-within .bascik__card__el__span", "span"],
+    ["&:hover > img", "&:hover > .bascik__card__el__img", "img"],
+    ["&[open] summary", "&[open] .bascik__card__el__summary", "summary"],
+    ["&::after + p", "&::after + .bascik__card__el__p", "p"],
+    [
+      "&:not(.bascik__card__x):hover ~ li",
+      "&:not(.bascik__card__x):hover ~ .bascik__card__el__li",
+      "li",
+    ],
+    [
+      '&[data-state="open"]:hover h2',
+      '&[data-state="open"]:hover .bascik__card__el__h2',
+      "h2",
+    ],
+  ])("converts the element in %s", (selector, expected, element) => {
+    const { css, elementsConvertedClasses } = convert(
+      `.bascik__card__card { ${selector} { color: red } }`,
+    );
+    expect(css).toBe(`.bascik__card__card { ${expected} { color: red } }`);
+    expect(elementsConvertedClasses).toEqual([element]);
+  });
+
+  it("matches the flat form's output", () => {
+    const nested = convert(".bascik__card__card { &:hover p { color: red } }");
+    const flat = convert(".bascik__card__card:hover p { color: red }");
+    expect(nested.css).toContain(".bascik__card__el__p");
+    expect(flat.css).toContain(".bascik__card__el__p");
+  });
+
+  it("leaves a pseudo-class with no element after it alone", () => {
+    const input =
+      ".bascik__card__card { &:hover { color: red } &[open] { color: blue } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toBe(input);
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("does not convert a declaration value after a stray & chain", () => {
+    // A forgotten `{` after `&:hover` puts the declaration in the prelude of
+    // the next rule; values after `:` are not element selectors.
+    const input = ".bascik__card__card { &:hover color: red; }";
+    expect(convert(input).css).toBe(input);
+  });
+});
+
+describe("injectClassIntoTag – backslashes in attribute values", () => {
+  // HTML attribute values have no backslash escapes: a quoted value ends at
+  // the next matching quote, whatever comes before it.
+  it.each([
+    ['<span data-sep="\\" class="tag">', '<span data-sep="\\" class="tag X">'],
+    [
+      '<a data-path="C:\\Users\\" class="tag">',
+      '<a data-path="C:\\Users\\" class="tag X">',
+    ],
+    ["<span data-sep='\\' class='tag'>", "<span data-sep='\\' class='tag X'>"],
+    // A backslash before a quote mid-value: the value still ends there, and
+    // `b"` is a separate (malformed) attribute; the class after it is real.
+    [
+      '<span data-re="a\\"b" class="tag">',
+      '<span data-re="a\\"b" class="tag X">',
+    ],
+  ])("appends to the real class attribute of %s", (tag, expected) => {
+    const out = injectClassIntoTag(tag, "X");
+    expect(out).toBe(expected);
+    expect(out.match(/\sclass=/g)).toHaveLength(1);
+  });
+
+  it("still ignores class text inside another attribute's value", () => {
+    expect(
+      injectClassIntoTag('<span data-x="a\\ class=nope" class="tag">', "X"),
+    ).toBe('<span data-x="a\\ class=nope" class="tag X">');
+  });
+
+  it("injects element classes on a tag whose earlier value ends in a backslash", () => {
+    const html = '<span data-sep="\\" class="tag">x</span>';
+    expect(addElementClassesInHtml(html, "card", ["span"])).toBe(
+      '<span data-sep="\\" class="tag bascik__card__el__span">x</span>',
+    );
+  });
+});
+
+describe("quotedAttributeValueRanges", () => {
+  it("opens a value only after = and ends it at the next matching quote", () => {
+    const tag = `<a b"="x" c = 'y\\' d=z"w e="">`;
+    const ranges = quotedAttributeValueRanges(tag).map(({ start, end }) =>
+      tag.slice(start, end + 1),
+    );
+    expect(ranges).toEqual([`"x"`, `'y\\'`, `""`]);
+  });
+
+  it("treats an unclosed value as running to the end of the tag", () => {
+    const tag = `<a title='never closed class="x"`;
+    expect(quotedAttributeValueRanges(tag)).toEqual([
+      { start: 9, end: tag.length },
+    ]);
+  });
+});
+
+describe("scopeInlineStyleTags – escaped class selectors", () => {
+  it("keeps the escape in the scoped selector", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>.md\\:flex{display:flex}.w-1\\/2{width:50%}.\\31 0{color:red}</style>",
+      "card",
+    );
+    expect(html).toBe(
+      "<style>.bascik__card__md\\:flex{display:flex}.bascik__card__w-1\\/2{width:50%}.bascik__card__10{color:red}</style>",
+    );
+  });
+});
+
+describe("removeIdSelectors – only the [id] attribute, whole blocks, paren-aware lists", () => {
+  it.each([
+    '[id-test="x"] { color: red }',
+    "[idx] { color: red }",
+    "[data-id] { color: red }",
+    ".a[id-ref] > p { color: red }",
+  ])("keeps %s, which is not an [id] selector", (input) => {
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it.each([
+    "[ID] { color: red }",
+    "[ id ] { color: red }",
+    "[id ~= x] { color: red }",
+    '.a[id="x"] { color: red }',
+    ".a:not([id]) { color: red }",
+  ])("strips %s", (input) => {
+    expect(removeIdSelectors(input)).toBe("");
+  });
+
+  it("removes a nested block with the [id] rule and keeps the next rule", () => {
+    expect(
+      removeIdSelectors(
+        '[id="x"] { color: red; &:hover { color: blue } }\n.b { color: green }',
+      ),
+    ).toBe("\n.b { color: green }");
+  });
+
+  it("keeps the enclosing @media block intact around a nested [id] rule", () => {
+    const input =
+      "@media (min-width: 600px) {\n  [id] { color: red; @media print { color: blue } }\n  .b { color: green }\n}\n.c { color: gray }";
+    expect(removeIdSelectors(input)).toBe(
+      "@media (min-width: 600px) {\n  \n  .b { color: green }\n}\n.c { color: gray }",
+    );
+  });
+
+  it("splits a selector list only at top-level commas", () => {
+    expect(removeIdSelectors(':is(.a, [id="x"]) { color: red }')).toBe("");
+    expect(removeIdSelectors('.k, .a:not([id="x"], .c) { color: red }')).toBe(
+      ".k { color: red }",
+    );
+    expect(
+      removeIdSelectors(
+        ".k:is(.x, .y), [id] { color: red }\n.z { color: blue }",
+      ),
+    ).toBe(".k:is(.x, .y) { color: red }\n.z { color: blue }");
+  });
+
+  it("leaves an @supports selector() test alone", () => {
+    const input = "@supports selector([id]) { .a { color: red } }";
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it("does not treat [id] in a declaration value as a selector", () => {
+    const input = ".grid { grid-template-columns: [id] 1fr [end]; }";
+    expect(removeIdSelectors(input)).toBe(input);
+  });
+
+  it("removes an unclosed [id] rule to the end instead of leaving half of it (a typo)", () => {
+    expect(removeIdSelectors(".a { color: red }\n[id] { color: blue")).toBe(
+      ".a { color: red }\n",
+    );
+  });
+});
+
+describe("prefixKeyframes – animation after a nested block", () => {
+  const keyframes = "@keyframes fade { to { opacity: 1 } }";
+  const scoped = "bascik__card__keyframe__fade";
+
+  it.each([
+    [".card { i { color: red } animation: fade 1s }", "animation: "],
+    [".card { i { color: red } animation-name: fade }", "animation-name: "],
+    [
+      ".card { @media print { color: red } -webkit-animation: fade 1s }",
+      "-webkit-animation: ",
+    ],
+    [
+      ".card {\n  i {\n    color: red;\n  }\n  animation: fade 1s;\n}",
+      "animation: ",
+    ],
+  ])("renames the keyframes in %j", (rule, property) => {
+    const out = prefixKeyframes(`${keyframes} ${rule}`, "card");
+    expect(out).toContain(`@keyframes ${scoped} {`);
+    expect(out).toContain(`${property}${scoped}`);
+    expect(out).not.toMatch(/animation(?:-name)?: fade/);
+  });
+
+  it("leaves a selector that only looks like an animation declaration alone", () => {
+    // `animation:hover` is a (typo'd) selector, not a declaration: no `;` or
+    // value follows it before the `{`.
+    const input = `${keyframes} .a { } animation:hover { color: red }`;
+    expect(prefixKeyframes(input, "card")).toBe(
+      `@keyframes ${scoped} { to { opacity: 1 } } .a { } animation:hover { color: red }`,
+    );
+  });
+});
+
+describe("scopeContainerNames – several names in one declaration", () => {
+  const s = (name: string) => `bascik__card__container__${name}`;
+
+  it("scopes every name of container-name and its @container queries", () => {
+    const css =
+      ".card { container-name: a b } @container b (min-width: 1px) { .inner {} } @container a (width > 1px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toBe(
+      `.card { container-name: ${s("a")} ${s("b")} } @container ${s("b")} (min-width: 1px) { .inner {} } @container ${s("a")} (width > 1px) { .x {} }`,
+    );
+  });
+
+  it("scopes every name of the container shorthand", () => {
+    expect(
+      scopeContainerNames(".w { container: side main / inline-size; }", "card"),
+    ).toBe(`.w { container: ${s("side")} ${s("main")} / inline-size; }`);
+  });
+
+  it("scopes each name of an @container query list", () => {
+    const css =
+      ".a { container-name: side } .b { container-name: main } @container side (width > 1px), main (width > 2px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toContain(
+      `@container ${s("side")} (width > 1px), ${s("main")} (width > 2px) {`,
+    );
+  });
+
+  it("leaves keywords, features and var() alone", () => {
+    const css =
+      ".a { container-name: none; } .b { container-name: inherit } .c { container-name: var(--n) side !important } @container side not (width > 1px) { .x {} }";
+    expect(scopeContainerNames(css, "card")).toBe(
+      `.a { container-name: none; } .b { container-name: inherit } .c { container-name: var(--n) ${s("side")} !important } @container ${s("side")} not (width > 1px) { .x {} }`,
+    );
+  });
+});
+
+describe("remote @import with layer()", () => {
+  const s = (name: string) => `bascik__c__layer__${name}`;
+
+  it("scopes the layer() name of an @import like the component's @layer names", () => {
+    const css =
+      "@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n@import 'https://x.test/b.css' layer( base ) supports(display: grid) screen;\n@import url(https://x.test/c.css) layer;\n.a {}";
+    expect(scopeLayerNames(css, "c")).toBe(
+      `@layer ${s("base")}, ${s("theme")};\n@import url(https://x.test/a.css) layer(${s("theme")});\n@import 'https://x.test/b.css' layer( ${s("base")} ) supports(display: grid) screen;\n@import url(https://x.test/c.css) layer;\n.a {}`,
+    );
+  });
+
+  it("scopes a layer only an @import names", () => {
+    expect(
+      scopeLayerNames("@import url(https://x.test/a.css) layer(vendor);", "c"),
+    ).toBe(`@import url(https://x.test/a.css) layer(${s("vendor")});`);
+  });
+
+  it("does not touch layer() text inside a string or url", () => {
+    const css = `@import url("https://x.test/layer(theme).css");\n.a::before { content: "layer(theme)" }\n@layer theme { .a {} }`;
+    expect(scopeLayerNames(css, "c")).toBe(
+      `@import url("https://x.test/layer(theme).css");\n.a::before { content: "layer(theme)" }\n@layer ${s("theme")} { .a {} }`,
+    );
+  });
+
+  it("keeps @layer statements that come before an @import ahead of it when hoisting", () => {
+    const css =
+      ".x { color: red }\n@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n.a {}\n@layer late;";
+    expect(hoistCssImports(css)).toBe(
+      "@layer base, theme;\n@import url(https://x.test/a.css) layer(theme);\n.x { color: red }\n\n\n.a {}\n@layer late;",
+    );
+  });
+
+  it("does not hoist an @layer block, only statements", () => {
+    const css =
+      "@layer base { .a {} }\n@import url(https://x.test/a.css);\n.b {}";
+    expect(hoistCssImports(css)).toBe(
+      "@import url(https://x.test/a.css);\n@layer base { .a {} }\n\n.b {}",
+    );
+  });
+});
+
+describe("hoistCssImports – nested @layer statements", () => {
+  it("leaves an @layer statement inside a block where it is", () => {
+    const css =
+      '@media print { @layer a, b; .p::before { content: "}" } }\n@import url(https://x.test/a.css);\n.b {}';
+    expect(hoistCssImports(css)).toBe(
+      '@import url(https://x.test/a.css);\n@media print { @layer a, b; .p::before { content: "}" } }\n\n.b {}',
+    );
+  });
+
+  it("leaves an @layer statement after an @layer block in place, keeping the layer order", () => {
+    const css =
+      '@layer theme { .a {} }\n@layer reset, base;\n@import url("https://x.test/r.css") layer(reset);\n.b {}';
+    // Source order: theme, reset, base. The import may only define reset
+    // first, as it did before @layer statements were hoisted.
+    expect(hoistCssImports(css)).toBe(
+      '@import url("https://x.test/r.css") layer(reset);\n@layer theme { .a {} }\n@layer reset, base;\n\n.b {}',
+    );
+  });
+
+  it("leaves a top-level @layer statement after a nested one in place", () => {
+    const css =
+      "@media screen { @layer x; }\n@layer y, z;\n@import url(https://x.test/a.css) layer(y);";
+    expect(hoistCssImports(css)).toBe(
+      "@import url(https://x.test/a.css) layer(y);\n@media screen { @layer x; }\n@layer y, z;",
+    );
+  });
+
+  it("still hoists the leading @layer statements before a later @layer block", () => {
+    const css =
+      "@layer a, b;\n@layer c { .c {} }\n@layer d;\n@import url(https://x.test/a.css) layer(b);";
+    expect(hoistCssImports(css)).toBe(
+      "@layer a, b;\n@import url(https://x.test/a.css) layer(b);\n@layer c { .c {} }\n@layer d;",
+    );
+  });
+
+  it("returns the CSS unchanged when only @layer statements are present", () => {
+    const css = "/* @import x; */ @layer a, b;\n.a {}";
+    expect(hoistCssImports(css)).toBe(css);
+  });
+});
+
+describe("dotted @layer names", () => {
+  const s = (name: string) => `bascik__c__layer__${name}`;
+
+  it("scopes every segment of a dotted layer name", () => {
+    expect(scopeLayerNames("@layer base.theme { .a {} }", "c")).toBe(
+      `@layer ${s("base")}.${s("theme")} { .a {} }`,
+    );
+  });
+
+  it("names the same sublayer as nested @layer blocks", () => {
+    const out = scopeLayerNames(
+      "@layer base.theme { .a {} }\n@layer base { @layer theme { .b {} } }",
+      "c",
+    );
+    expect(out).toBe(
+      `@layer ${s("base")}.${s("theme")} { .a {} }\n@layer ${s("base")} { @layer ${s("theme")} { .b {} } }`,
+    );
+  });
+
+  it("scopes each dotted name of an ordering statement and an import", () => {
+    expect(
+      scopeLayerNames(
+        "@layer base.theme, base.reset;\n@import url(https://x.test/a.css) layer(base.vendor);",
+        "c",
+      ),
+    ).toBe(
+      `@layer ${s("base")}.${s("theme")}, ${s("base")}.${s("reset")};\n@import url(https://x.test/a.css) layer(${s("base")}.${s("vendor")});`,
+    );
+  });
+
+  it("keeps the class pass away from layer names in both scoping paths", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>@layer base.theme { .a { color: red } }</style>",
+      "c",
+    );
+    expect(html).toBe(
+      `<style>@layer ${s("base")}.${s("theme")} { .bascik__c__a { color: red } }</style>`,
+    );
+    const component = prefixElementAttribute(
+      {
+        name: "c",
+        fileContent: '<p class="a">x</p>',
+        cssFileContent:
+          "@layer base.theme { .a { color: red } }\n@import url(https://x.test/a.css) layer(base.vendor);",
+      },
+      "class",
+      "inst1234",
+    );
+    expect(component.cssFileContent).toContain(
+      `@layer ${s("base")}.${s("theme")} { .bascik__c__a { color: red } }`,
+    );
+    expect(component.cssFileContent).toContain(
+      `layer(${s("base")}.${s("vendor")})`,
+    );
+  });
+});
+
+describe("extractInlineStyles – media attribute values", () => {
+  it.each(["screen", "SCREEN", "screen and (min-width: 1px)"])(
+    "wraps media=%j in an @media rule so it does not apply when printing",
+    (media) => {
+      const { css } = extractInlineStyles(
+        `<style media="${media}">.card { color: red }</style>`,
+      );
+      expect(css).toBe(`@media ${media} {\n.card { color: red }\n}`);
+    },
+  );
+
+  it.each(["all", "ALL", " all ", ""])(
+    "emits media=%j unconditionally",
+    (media) => {
+      const { css } = extractInlineStyles(
+        `<style media="${media}">.card { color: red }</style>`,
+      );
+      expect(css).toBe(".card { color: red }");
+    },
+  );
 });
