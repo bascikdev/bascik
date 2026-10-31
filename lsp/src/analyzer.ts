@@ -687,11 +687,10 @@ export function createDiagnostics(
     }
   }
 
-  if (languageId === "html" && fsPath.startsWith("/")) {
-    if (
-      snapshot &&
-      isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots)
-    ) {
+  // isComponentDocument needs the file inside a resolved (absolute) component root, so an unsaved
+  // buffer never matches; no POSIX-only `startsWith("/")` gate, which skipped every Windows path.
+  if (languageId === "html") {
+    if (isComponentDocument) {
       const fileName = path.basename(normalizedDocumentPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, "").toLowerCase();
       if (

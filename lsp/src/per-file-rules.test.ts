@@ -613,3 +613,53 @@ describe("every diagnostic can be named", () => {
     expect(found.severity).toBe(3);
   });
 });
+
+describe("component-name-not-hyphenated", () => {
+  // Windows paths start with a drive letter. resolveComponentRoots stores roots with forward
+  // slashes, and the editor and --check pass the file's native path.
+  const windowsProject = snapshot({
+    projectRoot: "C:/site",
+    componentRoots: ["C:/site/src/components"],
+    importRoot: "C:/site/src",
+    apiRoot: "C:/site/src/api",
+  });
+
+  it("warns for an unhyphenated component on a Windows path", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).toContain("component-name-not-hyphenated");
+  });
+
+  it("stays quiet for a hyphenated component and for a page, on either path style", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\demo-card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor(
+        "C:\\site\\src\\pages\\card.html",
+        "html",
+        "<p>hi</p>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor("/site/src/pages/card.html", "html", "<p>hi</p>"),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+
+  it("does not fire for a document with no file path, such as an unsaved buffer", () => {
+    expect(
+      codesFor("Untitled-1", "html", "<p>hi</p>", windowsProject),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+});
