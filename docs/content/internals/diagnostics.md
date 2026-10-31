@@ -163,22 +163,22 @@ First decide where it belongs, using the test above: one file, or the whole proj
 
 `bascik --check` produces categorized diagnostic reporting:
 
-| Diagnostic Type              | Category                       | Severity      | Exit Code | Description                                                                                                                                                      |
-| ---------------------------- | ------------------------------ | ------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unknown Component Tag        | `unmatched-tag`                | Warning       | 0         | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged.                                                            |
-| Unused Component File        | `unused-component`             | Warning       | 0         | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal.                                           |
-| Config Validation            | `config-validation`            | Error/Warning | Depends   | Configuration validation results projected into findings with key-based severity mapping.                                                                        |
-| Missing Site URL             | `missing-site-url`             | Warning       | 0         | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. `bascik --build` fails on it.                                               |
-| Pages Directory Issue        | `pages-directory`              | Error         | 1         | Configured pages directory cannot be read or contains no page HTML files.                                                                                        |
-| Duplicate Component Name     | `duplicate-component-name`     | Error         | 1         | Multiple component files define the same custom tag name.                                                                                                        |
-| Component Scan Failure       | `component-list`               | Error         | 1         | Component discovery failed (other than a duplicate tag name), so the check cannot rely on the component list.                                                    |
-| Circular Component Reference | `circular-component-reference` | Error         | 1         | Direct or indirect component graph cycle detected (full cycle path included).                                                                                    |
-| Duplicate Route Resolution   | `duplicate-route-resolution`   | Error         | 1         | Multiple pages resolve to the same route path.                                                                                                                   |
-| API Route Collision          | `route-collision`              | Error         | 1         | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests.                                                 |
-| API Invalid Catch-All        | `invalid-catch-all`            | Error         | 1         | A `[...name]` segment is unnamed, partial, repeated, or not the final segment.                                                                                   |
-| dist/ HTML Spec Violation    | `dist-html-spec`               | Error         | 1         | A compiled `dist/` page does not parse cleanly (needs the optional parse5).                                                                                      |
-| Request-time Unsupported     | `request-render-unsupported`   | Warning       | 0         | Components a server or stream script cannot return, read from the last build's component manifest, each with its reason.                                         |
-| Request-time CSP Unstable    | `request-render-csp-unstable`  | Warning       | 0         | With `generate.cspHashes` on, components whose stylesheet or client scripts embed the instance id, so a script that returns them cannot satisfy a hash-only CSP. |
+| Diagnostic Type              | Category                       | Severity | Exit Code | Description                                                                                                                                                      |
+| ---------------------------- | ------------------------------ | -------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown Component Tag        | `unmatched-tag`                | Warning  | 0         | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged.                                                            |
+| Unused Component File        | `unused-component`             | Warning  | 0         | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal.                                           |
+| Config Validation            | `config-validation`            | Error    | 1         | Configuration validation results projected into findings; each one also stops `bascik` and `bascik --build` at startup.                                          |
+| Missing Site URL             | `missing-site-url`             | Warning  | 0         | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. `bascik --build` fails on it.                                               |
+| Pages Directory Issue        | `pages-directory`              | Error    | 1         | Configured pages directory cannot be read or contains no page HTML files.                                                                                        |
+| Duplicate Component Name     | `duplicate-component-name`     | Error    | 1         | Multiple component files define the same custom tag name.                                                                                                        |
+| Component Scan Failure       | `component-list`               | Error    | 1         | Component discovery failed (other than a duplicate tag name), so the check cannot rely on the component list.                                                    |
+| Circular Component Reference | `circular-component-reference` | Error    | 1         | Direct or indirect component graph cycle detected (full cycle path included).                                                                                    |
+| Duplicate Route Resolution   | `duplicate-route-resolution`   | Error    | 1         | Multiple pages resolve to the same route path.                                                                                                                   |
+| API Route Collision          | `route-collision`              | Error    | 1         | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests.                                                 |
+| API Invalid Catch-All        | `invalid-catch-all`            | Error    | 1         | A `[...name]` segment is unnamed, partial, repeated, or not the final segment.                                                                                   |
+| dist/ HTML Spec Violation    | `dist-html-spec`               | Error    | 1         | A compiled `dist/` page does not parse cleanly (needs the optional parse5).                                                                                      |
+| Request-time Unsupported     | `request-render-unsupported`   | Warning  | 0         | Components a server or stream script cannot return, read from the last build's component manifest, each with its reason.                                         |
+| Request-time CSP Unstable    | `request-render-csp-unstable`  | Warning  | 0         | With `generate.cspHashes` on, components whose stylesheet or client scripts embed the instance id, so a script that returns them cannot satisfy a hash-only CSP. |
 
 The per-file rules that `bascik --check` reports through the language server, with the same severities:
 
@@ -200,7 +200,7 @@ The per-file rules that `bascik --check` reports through the language server, wi
 
 - **Unknown directive checks** (per file, language server): scan open tags for `data-bascik-*`, compare against the known attribute set, and emit `unknown-bascik-attribute` warnings positioned on the attribute name.
 - **Cycle checks**: build a component dependency graph from custom-tag occurrences, then DFS for back-edges and report each full cycle path.
-- **Config reuse checks**: call `validateUserConfig(...)`, map each returned key to check-level severity, and emit `config-validation` findings instead of writing directly to stderr.
+- **Config reuse checks**: call `validateUserConfig(...)` and emit each returned error as an error-severity `config-validation` finding instead of writing directly to stderr.
 
 ## Aggregated Build Errors
 

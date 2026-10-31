@@ -398,21 +398,21 @@ Per-file checks (2)
 
 `bascik --check` runs the following validations. The first table is the project checks, which `bascik` runs itself. The second is the per-file checks, which come from the language server:
 
-| Check                                                                                                  | Category                       | Severity                |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------- |
-| Configuration key and value validation                                                                 | `config-validation`            | Error or warning by key |
-| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning                 |
-| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error                   |
-| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error                   |
-| Circular component references                                                                          | `circular-component-reference` | Error                   |
-| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error                   |
-| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error                   |
-| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error                   |
-| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning                 |
-| Unused component file                                                                                  | `unused-component`             | Warning                 |
-| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error                   |
-| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning                 |
-| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning                 |
+| Check                                                                                                  | Category                       | Severity |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------ | -------- |
+| Configuration key and value validation                                                                 | `config-validation`            | Error    |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled (the build fails)    | `missing-site-url`             | Warning  |
+| Pages directory unreadable or empty                                                                    | `pages-directory`              | Error    |
+| Duplicate component tag names                                                                          | `duplicate-component-name`     | Error    |
+| Circular component references                                                                          | `circular-component-reference` | Error    |
+| Duplicate route resolution from page paths                                                             | `duplicate-route-resolution`   | Error    |
+| Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error    |
+| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error    |
+| Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning  |
+| Unused component file                                                                                  | `unused-component`             | Warning  |
+| WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error    |
+| Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning  |
+| Components whose request-time CSS or scripts `csp-hashes.json` cannot cover, with `generate.cspHashes` | `request-render-csp-unstable`  | Warning  |
 
 The per-file checks, from `@bascik/language-server`:
 
@@ -449,12 +449,7 @@ npm install --save-dev parse5
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
 
-Key severity mapping details for configuration validation:
-
-- `pipeline.exec[].script` missing path: Error
-- `http.tls.keyFile`/`http.tls.certFile` unreadable: Error
-- `pipeline.watchPaths[]` missing path: Warning
-- `assets.inlineStyles[]` missing path: Warning
+Every configuration validation finding is an error, because each one also stops `bascik` and `bascik --build` at startup: a missing `pipeline.exec[].script`, an unreadable `http.tls.keyFile` or `http.tls.certFile`, and a missing `pipeline.watchPaths[]` or `assets.inlineStyles[]` path alike. A project that passes `bascik --check` starts without a configuration error.
 
 The rest of the check runs with the configuration minus the rejected settings: a mistyped `http.port` leaves `directory.pages` and every other valid setting in place, so pages and components are checked in the folders you configured. A rejected `directory.pages` is reported once, as a configuration error.
 

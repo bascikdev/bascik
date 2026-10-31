@@ -45,7 +45,6 @@ import { config as userConfig, modeOverrides } from "./userConfig.ts";
 import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
 import {
   validateUserConfig,
-  type ConfigValidationError,
   PLAUSIBLE_TAG_NAME,
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
@@ -628,14 +627,6 @@ const BUILD_DIRECTIVE_RE = new RegExp(
   "i",
 );
 
-const mapConfigErrorSeverity = (
-  error: ConfigValidationError,
-): FindingSeverity => {
-  if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
-  if (error.key.startsWith("assets.inlineStyles[")) return "warning";
-  return "error";
-};
-
 const resolveConfigSourcePath = (): string => {
   const { path } = findConfigFile();
   if (!path) return CONFIG_FILE_NAMES[0];
@@ -721,7 +712,9 @@ export const checkProject = async (
         : ` (received ${formatConfigValue(error.value)})`;
     items.push({
       category: "config-validation",
-      severity: mapConfigErrorSeverity(error),
+      // Every one of these stops `bascik` and `bascik --build` at startup
+      // (config.ts), so the check fails on it too.
+      severity: "error",
       message: `${error.key}: ${error.message}${valueSuffix}`,
       locations: [{ filePath: configSource }],
     });
