@@ -423,6 +423,27 @@ describe("dispatchApiHandler", () => {
     expect(res.headers.has("connection")).toBe(false);
   });
 
+  it("misuse: an export named after a method outside the allowlist is never dispatched; the request is a 405 with the route's Allow (F086)", async () => {
+    const PURGE = vi.fn(async () => new Response("purged"));
+    // A helper whose name merely looks like a method.
+    const SEARCH = vi.fn((q: unknown) => String(q));
+    const onError = vi.fn();
+    const custom = { GET: mod.GET, PURGE, SEARCH, QUERY: "not a function" };
+    for (const method of ["PURGE", "SEARCH", "purge", "QUERY", "REPORT"]) {
+      const res = await dispatchApiHandler(
+        custom,
+        new Request("http://x/api/u/7", { method }),
+        ctx,
+        { onError },
+      );
+      expect(res.status, method).toBe(405);
+      expect(res.headers.get("allow"), method).toBe("GET, HEAD, OPTIONS");
+    }
+    expect(PURGE).not.toHaveBeenCalled();
+    expect(SEARCH).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("auto-OPTIONS is 204 with Allow and no CORS", async () => {
     const res = await dispatchApiHandler(
       mod,

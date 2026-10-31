@@ -555,6 +555,20 @@ describe("over-limit request bodies (lingering close)", () => {
     expect(out.calls).not.toContain("lingerClose");
   });
 
+  it("misuse: a declared Content-Length over the limit to an exported method outside the allowlist gets 405, not 413 (F086)", async () => {
+    const purge = vi.fn(async () => new Response("purged"));
+    routeModule = { GET: vi.fn(async () => new Response("ok")), PURGE: purge };
+    const out = await post(
+      { "content-length": String(LIMIT * 2) },
+      [Buffer.alloc(10)],
+      "PURGE",
+    );
+    expect(out.status).toBe(405);
+    expect(out.headers["allow"]).toBe("GET, HEAD, OPTIONS");
+    expect(purge).not.toHaveBeenCalled();
+    expect(out.calls).not.toContain("lingerClose");
+  });
+
   it("an auto OPTIONS with a declared Content-Length over the limit still gets 204", async () => {
     const out = await post(
       { "content-length": String(LIMIT * 2) },

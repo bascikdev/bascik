@@ -615,8 +615,13 @@ export const dispatchApiHandler = async (
   context: ApiHandlerContext,
   options: DispatchOptions = {},
 ): Promise<Response> => {
-  const method = request.method.toUpperCase() as HttpMethod;
+  const requested = request.method.toUpperCase();
   const allow = allowHeaderFor(mod);
+  // The allowlist comes first: an export named PURGE, or a helper that only
+  // looks like a method, is never dispatched, so `Allow` stays accurate.
+  if (!(ALLOWED_METHODS as readonly string[]).includes(requested))
+    return text("Method Not Allowed", 405, { Allow: allow });
+  const method = requested as HttpMethod;
   const isAllowed =
     typeof mod[method] === "function" ||
     (method === "HEAD" && typeof mod.GET === "function") ||

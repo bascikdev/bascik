@@ -399,6 +399,7 @@ export const executeApiRoute = async (
     // a handler that would run is replaced by the 413, and it never runs.
     if (
       onDeclaredBodyTooLarge &&
+      (ALLOWED_METHODS as readonly string[]).includes(method) &&
       typeof loadedModule?.[method] === "function"
     ) {
       onDeclaredBodyTooLarge();
