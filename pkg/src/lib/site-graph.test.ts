@@ -840,14 +840,24 @@ describe("SiteGraph.components and the serverless artifacts (prompt 157)", () =>
         const projectRoot = join(testDir, "site");
         await mkdir(join(projectRoot, "src/api"), { recursive: true });
         const log = vi.fn();
-        await emitServerlessArtifacts(
-          resolve(import.meta.dirname, "__fixtures__/reference-adapter.ts"),
-          { version: "1.0.0", projectRoot, distDir, log },
-        );
+        // The message repeats --target as the author typed it. Spelled with
+        // forward slashes (a valid absolute path on Windows too), so any
+        // backslash below comes from the manifest path Bascik built.
+        const target = resolve(
+          import.meta.dirname,
+          "__fixtures__/reference-adapter.ts",
+        ).replace(/\\/g, "/");
+        await emitServerlessArtifacts(target, {
+          version: "1.0.0",
+          projectRoot,
+          distDir,
+          log,
+        });
         const about = log.mock.calls
           .map((call) => call.join(" "))
           .filter((line) => /does not declare components/.test(line));
         expect(about).toHaveLength(1);
+        expect(about[0]).toContain(`[bascik] --target ${target}: `);
         const absolute = `${privateDirFor(distDir).replace(/\\/g, "/")}/components.json`;
         expect(about[0]).toContain(`(${absolute} lists <srv-card>)`);
         expect(about[0]).not.toContain("\\");

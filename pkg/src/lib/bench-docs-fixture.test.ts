@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -22,7 +22,10 @@ const docsConfigSiblingPaths = (): string[] => {
   );
   const paths = new Set<string>();
   for (const match of source.matchAll(/["'](\.\.\/[^"'\n]+)["']/g)) {
-    paths.add(normalize(match[1]).replace(/^\.\.\//, ""));
+    // The config spells these with forward slashes on every host, as does
+    // the fixture list, so compare them as posix paths (host normalize turns
+    // them into ..\CHANGELOG.md on Windows, which matches nothing).
+    paths.add(posix.normalize(match[1]).replace(/^\.\.\//, ""));
   }
   return [...paths].sort();
 };
@@ -36,6 +39,8 @@ describe("docs benchmark fixture sibling files", () => {
       );
     const paths = docsConfigSiblingPaths();
     expect(paths.length).toBeGreaterThan(0);
+    // Repository-relative and posix on every host, like the fixture list.
+    for (const path of paths) expect(path, path).toMatch(/^(?!\.\.\/)[^\\]+$/);
     const missing = paths.filter((path) => !covered(path));
     expect(
       missing,

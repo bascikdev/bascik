@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveAdapterTarget } from "./adapter-resolution.ts";
-import { join } from "node:path";
+import {
+  isLocalAdapterPath,
+  resolveAdapterTarget,
+} from "./adapter-resolution.ts";
+import { join, posix, win32 } from "node:path";
 import { writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
@@ -333,5 +336,41 @@ describe("resolveAdapterTarget", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+// docs/content/cli.md: --target takes "a local path". PowerShell and cmd
+// complete a relative file as .\my-adapter.ts, which was read as a package
+// name on Windows ("could not resolve adapter package").
+describe("isLocalAdapterPath", () => {
+  it.each([
+    ["./my-adapter.ts", true],
+    ["../shared/adapter.ts", true],
+    ["/abs/adapter.ts", true],
+    ["@acme/adapter-foo", false],
+    ["adapter-foo", false],
+    ["cloudflare", false],
+    // A backslash is a filename character on posix, never a separator.
+    [".\\my-adapter.ts", false],
+    ["..\\shared\\adapter.ts", false],
+  ])("posix %s -> %s", (target, expected) => {
+    expect(isLocalAdapterPath(target, posix)).toBe(expected);
+  });
+
+  it.each([
+    ["./my-adapter.ts", true],
+    ["../shared/adapter.ts", true],
+    [".\\my-adapter.ts", true],
+    ["..\\shared\\adapter.ts", true],
+    ["C:\\site\\adapter.ts", true],
+    ["C:/site/adapter.ts", true],
+    ["\\\\srv\\share\\adapter.ts", true],
+    ["@acme/adapter-foo", false],
+    ["adapter-foo", false],
+    // misuse: a dot-prefixed name that is not a relative path stays a package.
+    [".adapter", false],
+    ["..adapter", false],
+  ])("win32 %s -> %s", (target, expected) => {
+    expect(isLocalAdapterPath(target, win32)).toBe(expected);
   });
 });

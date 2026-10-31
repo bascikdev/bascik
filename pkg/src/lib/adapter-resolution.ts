@@ -6,6 +6,7 @@
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
+import * as nodePath from "node:path";
 import { dirname, join, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { HostingAdapter } from "./adapter-contract.ts";
@@ -188,6 +189,23 @@ const resolveAdapterPackage = (
   );
 };
 
+/**
+ * True when `--target` names a local adapter file rather than an official
+ * target or a package: an absolute path, or one starting with `./` or
+ * `../`. On Windows `.\` and `..\` count too, the form PowerShell and cmd
+ * complete a relative file to; on posix a backslash is a filename
+ * character, so there they stay a (failing) package name.
+ */
+export const isLocalAdapterPath = (
+  target: string,
+  path: Pick<typeof nodePath, "isAbsolute" | "sep"> = nodePath,
+): boolean =>
+  target.startsWith("./") ||
+  target.startsWith("../") ||
+  (path.sep === "\\" &&
+    (target.startsWith(".\\") || target.startsWith("..\\"))) ||
+  path.isAbsolute(target);
+
 export const resolveAdapterTarget = async (
   target: string,
   projectRoot = process.cwd(),
@@ -221,11 +239,7 @@ export const resolveAdapterTarget = async (
             `  Install it as a dev dependency: npm install --save-dev ${officialPackage}`,
         ),
     );
-  } else if (
-    target.startsWith("./") ||
-    target.startsWith("../") ||
-    isAbsolute(target)
-  ) {
+  } else if (isLocalAdapterPath(target)) {
     localPath = isAbsolute(target) ? target : join(projectRoot, target);
     specifier = localPath;
     if (options.load === false) {
