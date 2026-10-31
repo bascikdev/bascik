@@ -66,11 +66,12 @@ Rules:
                        on every page, so use <script data-bascik-build-once>
   once-reads-page      A <script data-bascik-build-once> that reads page context, which is empty there: use
                        <script data-bascik-build>, which runs per page
-  hand-written-escaper A function that replaces & and < with entities, in a .ts or .js file (helpers, companions,
-                       exec scripts) or an inline script: build markup with html from @bascik/bascik/html, which
-                       escapes for where each value lands and blocks javascript: URLs; a browser script sets
-                       textContent instead. Test files, decoders, and an escaper whose comment says it writes XML
-                       (a feed, a sitemap) are skipped
+  hand-written-escaper Code that replaces & and < with entities (named or numeric), or deletes them, in a .ts or
+                       .js file (helpers, companions, exec scripts) or an inline script: build markup with html
+                       from @bascik/bascik/html, which escapes for where each value lands and blocks javascript:
+                       URLs; a browser script sets textContent instead. Test files, decoders, and an XML escaper
+                       (named escapeXml or the like, or with a comment directly above saying it writes XML for a
+                       feed or sitemap) are skipped
 
 Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
 checked by the bascik-seo audit):
@@ -511,18 +512,22 @@ function checkJsFiles(root, layout, options, findings) {
 const SCRIPT_FILE_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 
 const NODE_ESCAPER_FIX =
-  'Build the markup with html: import { html } from "@bascik/bascik/html" and return html`<p>${value}</p>`, passing each value as it is. It escapes for where the value lands, turns javascript: URLs into about:invalid, and throws where escaping cannot help (an event handler, a <script> body). Use raw() only for markup the project wrote or sanitized, json() for JSON-LD, and esc() or safeUrl() for a string built without html. Delete the escaper and keep its tests, now checking String(output). If it writes XML (a feed, a sitemap), keep it and say so in a comment above it.';
+  'Build the markup with html: import { html } from "@bascik/bascik/html" and return html`<p>${value}</p>`, passing each value as it is. It escapes for where the value lands, turns javascript: URLs into about:invalid, and throws where escaping cannot help (an event handler, a <script> body). Use raw() only for markup the project wrote or sanitized, json() for JSON-LD, and esc() or safeUrl() for a string built without html. Delete the escaper and keep its tests, now checking String(output). If it writes XML (a feed, a sitemap, SVG), keep it and name it for XML (escapeXml) or say so in a comment directly above it.';
 const BROWSER_ESCAPER_FIX =
   "Build the elements with document.createElement and set textContent (or clone a <template> and fill its text), so no value is parsed as HTML. A client script cannot import @bascik/bascik/html, because Bascik does not bundle client scripts; if the markup does not change in the browser, render it at build time with html in a build script instead.";
 
-function escaperFinding(file, line, name, browser) {
-  const what = name ? `${name}() is` : "This is";
+function escaperFinding(file, { line, name, kind }, browser) {
+  const where = browser ? " in a browser script" : "";
+  const message =
+    kind === "strip"
+      ? `${name ? `${name}() strips` : "This code strips"} HTML characters by hand${where}: it deletes < > & and quotes from the value instead of escaping them, so the text changes ("Fish & Chips" becomes "Fish  Chips") and URLs and script contexts stay unchecked.`
+      : `${name ? `${name}() is` : "This is"} a hand-written HTML escaper${where}. It escapes text but not URLs or script contexts, and every site that copies it carries its own.`;
   return {
     rule: "hand-written-escaper",
     level: "warn",
     file,
     line,
-    message: `${what} a hand-written HTML escaper${browser ? " in a browser script" : ""}. It escapes text but not URLs or script contexts, and every site that copies it carries its own.`,
+    message,
     suggestion: browser ? BROWSER_ESCAPER_FIX : NODE_ESCAPER_FIX,
   };
 }
@@ -561,8 +566,7 @@ function checkEscapers(root, docs, layout, importRoot, findings) {
         findings.push(
           escaperFinding(
             doc.file,
-            firstLine + escaper.line - 1,
-            escaper.name,
+            { ...escaper, line: firstLine + escaper.line - 1 },
             browser,
           ),
         );
@@ -585,7 +589,7 @@ function checkEscapers(root, docs, layout, importRoot, findings) {
     const file = relative(root, path).replace(/\\/g, "/");
     const browser = browserFiles.has(resolve(path));
     for (const escaper of handWrittenEscapers(code))
-      findings.push(escaperFinding(file, escaper.line, escaper.name, browser));
+      findings.push(escaperFinding(file, escaper, browser));
   }
 }
 

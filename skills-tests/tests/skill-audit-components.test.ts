@@ -1466,6 +1466,75 @@ const escapeHtml = (value: string): string =>
     ).toEqual([1]);
   });
 
+  it("finds numeric-entity, negative-lookahead, and split/join escapers", () => {
+    expect(
+      lines(
+        `const enc = (s: string) => s.replace(/&/g, "&#38;").replace(/</g, "&#60;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.replaceAll("&", "&#x26;");`),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const enc = (s: string) => s.replace(/&(?!amp;)/g, "&amp;").replace(/</g, "&lt;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.replace(/&(?!#?\\w+;)/g, "&amp;");`),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.split("&").join("&amp;");`),
+    ).toEqual([1]);
+    expect(lines(`const MAP = { "&": "&#38;", "<": "&#60;" };`)).toEqual([1]);
+    // Splitting on & for a query string is not an escaper.
+    expect(lines(`const pairs = query.split("&").join("\\n");`)).toEqual([]);
+  });
+
+  it("calls code that deletes the characters a stripper, and names only a function, never the variable a result lands in", () => {
+    const strip = handWrittenEscapers(`export default function (request) {
+  const user = url.searchParams.get("user") ?? "Developer";
+  const role = url.searchParams.get("role") ?? "Admin";
+  return (
+    "Hello, <strong>" +
+    user.replace(/[<>&"']/g, "") +
+    "</strong>"
+  );
+}`);
+    expect(strip).toEqual([{ line: 6, name: undefined, kind: "strip" }]);
+    const named = handWrittenEscapers(`const clean = (s: string) =>
+  s.replace(/[&<>]/g, '');`);
+    expect(named).toEqual([{ line: 1, name: "clean", kind: "strip" }]);
+    expect(
+      handWrittenEscapers(`const role = "Admin";
+const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([{ line: 2, name: "escapeHtml", kind: "escape" }]);
+  });
+
+  it("takes an XML name as the explanation, but not a nearby comment that is not about the escaper", () => {
+    expect(
+      lines(`function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`),
+    ).toEqual([]);
+    expect(
+      lines(
+        `const svgText = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);`,
+      ),
+    ).toEqual([]);
+    // A comment that also speaks of HTML is not an XML explanation.
+    expect(
+      lines(`// Builds the sitemap link and the html card.
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([2]);
+    // A comment separated from the escaper by code explains that code, not the escaper.
+    expect(
+      lines(`// Writes sitemap.xml.
+const out = "sitemap.xml";
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([3]);
+  });
+
   it("names the escaper when it can", () => {
     expect(
       handWrittenEscapers(`const escapeAttr = (v: string) =>
@@ -1591,6 +1660,24 @@ export const links = () => \`<a href="/about">\${esc("About")}</a>\`;
     expect(found).toHaveLength(1);
     expect(found[0].file).toBe("src/pages/search.html");
     expect(found[0].line).toBe(11);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("says a server script that deletes <, >, & and quotes strips them, without naming the variable it lands in", async () => {
+    const root = withFiles({
+      "src/pages/hello.html": page(`      <h1>Hello</h1>
+      <script data-bascik-server type="text/typescript">
+        export default (request: Request) => {
+          const user = new URL(request.url).searchParams.get("user") ?? "Guest";
+          const role = "Admin";
+          return "<p>" + user.replace(/[<>&"']/g, "") + "</p>";
+        };
+      </script>`),
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/^This code strips/);
+    expect(found[0].message).not.toMatch(/role\(\)/);
     expect(found[0].suggestion).toContain("@bascik/bascik/html");
   });
 
@@ -1821,21 +1908,27 @@ describe("new-component scaffolds TypeScript by default", () => {
   });
 });
 
-describe("the examples build markup with html", () => {
-  it("have no hand-written HTML escaper in any example component, the starter site, or its scripts", () => {
-    const examples = fileURLToPath(new URL("../../examples", import.meta.url));
+describe("the repo's own Bascik code builds markup with html", () => {
+  // Agents read the examples, the docs site, and the Cloudflare demo Worker as reference code, so none of them
+  // may carry the escaper the skills tell agents to delete.
+  const roots = ["examples"];
+  it.each(roots)("%s has no hand-written HTML escaper or stripper", (root) => {
+    const base = fileURLToPath(new URL(`../../${root}`, import.meta.url));
     const found: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.name === "node_modules" || entry.name === "dist") continue;
         const full = join(dir, entry.name);
         if (entry.isDirectory()) walk(full);
-        else if (/\.(?:ts|mts|js|mjs|html)$/.test(entry.name))
+        else if (
+          /\.(?:ts|mts|js|mjs|html)$/.test(entry.name) &&
+          !/\.(?:test|spec)\.[cm]?[jt]s$/.test(entry.name)
+        )
           for (const escaper of handWrittenEscapers(readFileSync(full, "utf8")))
-            found.push(`${relative(examples, full)}:${escaper.line}`);
+            found.push(`${root}/${relative(base, full)}:${escaper.line}`);
       }
     };
-    walk(examples);
+    walk(base);
     expect(found).toEqual([]);
   });
 });
