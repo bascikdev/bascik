@@ -1,0 +1,15 @@
+<!--
+  The build-once twin of <colocated-data>: it reads a module beside it
+  (./notes.ts) from a data-bascik-build-once script, which runs once per
+  component, so an edit to that module must still rebuild the page in dev.
+-->
+<ul class="colocated-once" data-testid="colocated-once">
+  <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { notes } from "./notes.ts";
+    export default () =>
+      html`${notes.map(
+        (note) => html`<li data-testid="colocated-once-note">${note}</li>`,
+      )}`;
+  </script>
+</ul>

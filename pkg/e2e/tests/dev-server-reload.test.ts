@@ -62,6 +62,10 @@ const colocatedEntriesPath = join(
   e2eDir,
   "src/components/colocated-data/entries.ts",
 );
+const colocatedOnceNotesPath = join(
+  e2eDir,
+  "src/components/colocated-once/notes.ts",
+);
 
 /**
  * Resolve once the page has navigated to a document whose inlined <head>
@@ -210,6 +214,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
   let originalMissingHelper: string;
   let originalImportedPartial: string;
   let originalColocatedEntries: string;
+  let originalColocatedOnceNotes: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, "utf8");
@@ -222,6 +227,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     originalMissingHelper = await readFile(missingHelperPath, "utf8");
     originalImportedPartial = await readFile(importedPartialPath, "utf8");
     originalColocatedEntries = await readFile(colocatedEntriesPath, "utf8");
+    originalColocatedOnceNotes = await readFile(colocatedOnceNotesPath, "utf8");
   });
 
   test.afterEach(async () => {
@@ -281,6 +287,11 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     await restoreAndConsumeReload(
       colocatedEntriesPath,
       originalColocatedEntries,
+      "/colocated-data-test",
+    );
+    await restoreAndConsumeReload(
+      colocatedOnceNotesPath,
+      originalColocatedOnceNotes,
       "/colocated-data-test",
     );
     await rm(staticCssPath, { force: true });
@@ -809,6 +820,28 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     await reload;
     // The open tab hears the same reload and shows the rebuilt list.
     await expect(entry).toHaveText("Milk pitcher", { timeout: 15000 });
+  });
+
+  test("rebuilds a component page when a module its build-once script imports from its folder changes", async ({
+    page,
+  }) => {
+    await page.goto("/colocated-data-test");
+    const note = page.getByTestId("colocated-once-note");
+    await expect(note).toHaveText("Froths in 90 seconds");
+
+    // A build-once script runs once per component, not per page, so the edit
+    // must still find the pages that use the component.
+    const { reload } = await subscribeToServerReload("/colocated-data-test");
+    await writeFile(
+      colocatedOnceNotesPath,
+      originalColocatedOnceNotes.replace(
+        "Froths in 90 seconds",
+        "Holds 300 ml",
+      ),
+      "utf8",
+    );
+    await reload;
+    await expect(note).toHaveText("Holds 300 ml", { timeout: 15000 });
   });
 
   test("transpiles and serves newly created page with component tags during dev server session", async ({
