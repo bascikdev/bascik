@@ -154,10 +154,10 @@ nav a {
 
 ```html
 <!-- compiled output (identifier minification off) -->
-<nav class="bascik__site-nav__el__nav">
+<nav class="b_el_site-nav_nav">
   <a class="bascik__site-nav__item" href="/">Home</a>
   <a class="bascik__site-nav__item" href="/blog">Blog</a>
-  <a class="bascik__site-nav__el__a" href="/about">About</a>
+  <a class="b_el_site-nav_a" href="/about">About</a>
 </nav>
 ```
 

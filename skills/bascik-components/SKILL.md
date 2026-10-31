@@ -200,7 +200,8 @@ Docs: `/scoped-javascript#typescript-in-component-scripts`, `/configuration#scri
 class  ->  bascik__<component>__<name>                  shared by every instance
 id     ->  bascik__<component>__<instance>__<name>      unique per instance
 name   ->  name                                          as written (scoping.attributes.name: true scopes it per instance)
-p {}   ->  .bascik__<component>__el__p                  class added to template elements
+p {}   ->  .b_el_<component>_p                          class added to template elements
+#btn {} -> .b_id_<component>_btn                        class added to the element with that id
 --x declared in the component -> --bascik__<component>__x
 data-testid ->  as written                               never scoped or hashed
 ```

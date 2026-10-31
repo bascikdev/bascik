@@ -214,8 +214,8 @@ This example passes values directly into the `feature-card` component via `data-
 
 ```html
 <div class="bascik__feature-card__fcard">
-  <h3 class="bascik__feature-card__el__h3">Component Props</h3>
-  <p class="bascik__feature-card__el__p">
+  <h3 class="b_el_feature-card_h3">Component Props</h3>
+  <p class="b_el_feature-card_p">
     These values are injected into the component template at build time.
   </p>
 </div>

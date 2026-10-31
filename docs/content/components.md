@@ -185,18 +185,18 @@ btn.addEventListener("click", () => {
 
 ```html
 <div class="bascik__comp-toggle__toggle-wrap">
-  <p class="bascik__comp-toggle__el__p">
+  <p class="b_el_comp-toggle_p">
     Bascik assembles components at build time and ships vanilla HTML files with
     no framework runtime.
   </p>
   <div id="bascik__comp-toggle__a1b__detail" hidden>
-    <p class="bascik__comp-toggle__el__p">
+    <p class="b_el_comp-toggle_p">
       No JavaScript is added to the page. Every script in the output was written
       by you.
     </p>
   </div>
   <button
-    class="bascik__comp-toggle__el__button"
+    class="b_el_comp-toggle_button"
     id="bascik__comp-toggle__a1b__btn"
     type="button"
   >
@@ -226,12 +226,12 @@ btn.addEventListener("click", () => {
   max-width: 420px;
 }
 
-.bascik__comp-toggle__toggle-wrap .bascik__comp-toggle__el__p {
+.bascik__comp-toggle__toggle-wrap .b_el_comp-toggle_p {
   color: var(--text-muted);
   margin: 0 0 16px;
 }
 
-.bascik__comp-toggle__toggle-wrap .bascik__comp-toggle__el__button {
+.bascik__comp-toggle__toggle-wrap .b_el_comp-toggle_button {
   display: inline-block;
   padding: 8px 18px;
   background: var(--accent);
@@ -454,8 +454,8 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 
 ```html
 <div class="bascik__feature-card__fcard">
-  <h3 class="bascik__feature-card__el__h3">Build-time Components</h3>
-  <p class="bascik__feature-card__el__p">
+  <h3 class="b_el_feature-card_h3">Build-time Components</h3>
+  <p class="b_el_feature-card_p">
     Bascik resolves tags and ships vanilla HTML.
   </p>
 </div>
@@ -470,10 +470,10 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
   border: 1px solid #3a3d40;
   border-radius: 10px;
 
-  .bascik__feature-card__el__h3 {
+  .b_el_feature-card_h3 {
     color: #f0f1f2;
   }
-  .bascik__feature-card__el__p {
+  .b_el_feature-card_p {
     font-size: 0.875rem;
     color: #8d929e;
   }

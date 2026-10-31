@@ -578,8 +578,8 @@ For per-request server-side rendering, see [Server Scripts](/server-scripts).
 ```html
 <!-- The script tag is replaced by the returned HTML string -->
 <div class="bascik__feature-card__fcard">
-  <h3 class="bascik__feature-card__el__h3">Why Bascik</h3>
-  <p class="bascik__feature-card__el__p">
+  <h3 class="b_el_feature-card_h3">Why Bascik</h3>
+  <p class="b_el_feature-card_p">
     Bascik is a build tool for HTML components with automatically scoped CSS and
     JS. Zero runtime. The code that ships is the code you wrote.
   </p>
