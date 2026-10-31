@@ -349,6 +349,13 @@ const buildTimeCases: HostileCase[] = [
     ],
   })),
   {
+    // Each `<b ` in script code is a tag candidate the code lookup must reject cheaply.
+    site: "javascript: attribute scoping on script code comparisons",
+    input: (size) =>
+      `<div id="i"></div><script>${repeatTo("a<b && id = c; '<p id=\"i\">' ", size)}</script>`,
+    run: (html) => prefixElementAttribute(component(html), "id", "i1"),
+  },
+  {
     site: "site-graph: placeholder script tags",
     input: (size) => repeatTo("<script '", size),
     run: (html) => splitDistPageIntoSegments(html),

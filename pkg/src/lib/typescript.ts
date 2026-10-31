@@ -31,8 +31,11 @@ import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
 import { availableParallelism } from "node:os";
 import { BascikConfig } from "./config.ts";
-import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
-import { getScriptType } from "./script-types.ts";
+import {
+  ANY_DIRECTIVE_ATTR_NAME,
+  removeHtmlAttribute,
+} from "./html-patterns.ts";
+import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import {
   classifySpecifier,
   findModuleSpecifiers,
@@ -56,7 +59,6 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
   "i",
 );
 
-const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
 // A tag and its whole name, as the tokenizer reads one: up to tag whitespace,
 // `/` or `>`, so `<script.x>` and `<style-guide>` are other elements, never a
 // script or a raw-text element. Sticky: it is only asked about one `<`.
@@ -580,19 +582,37 @@ const resolveCompilerOption = (): TypeScriptCompilerOption => {
 export const isBrowserTypeScriptEnabled = (): boolean =>
   resolveCompilerOption() !== false;
 
-/**
- * Parse check for compiler output. `import`/`export` are not allowed in a
- * `Function` body, so module-shaped output is accepted on the strength of the
- * compiler having returned a string at all; everything else must parse.
- */
-const isParseableJavaScript = (code: string): boolean => {
+const AsyncFunction = (async () => {}).constructor as new (
+  body: string,
+) => unknown;
+
+/** Whether `code` parses as the body of `constructor`. */
+const parsesAs = (
+  constructor: new (body: string) => unknown,
+  code: string,
+): boolean => {
   try {
-    new Function(code);
+    new constructor(code);
     return true;
   } catch {
-    return /^\s*(?:import|export)\b/m.test(code);
+    return false;
   }
 };
+
+/**
+ * Parse check for compiler output. Output that parses as a script, or as an
+ * async function body (a module that is one only because of top-level
+ * `await`), is JavaScript. `import`/`export` are not allowed in either, so
+ * output with static module syntax anywhere (esbuild's minified
+ * `const a=1;export default()=>1;` included) is accepted on the strength of
+ * the compiler having returned a string at all; a directive script's output
+ * then gets the real ES module check (`checkDirectiveModuleSyntax`). Module
+ * keywords inside strings and comments do not count.
+ */
+const isParseableJavaScript = (code: string): boolean =>
+  parsesAs(Function, code) ||
+  parsesAs(AsyncFunction, code) ||
+  hasStaticModuleSyntax(code);
 
 /**
  * Transform browser TypeScript according to `scripts.typescript`.
@@ -730,16 +750,19 @@ export const looksLikeTypeScript = (code: string): boolean => {
   try {
     new Function(stripped);
   } catch {
-    // `import`/`export` are not allowed in a Function body; treat the strip
-    // difference alone as sufficient evidence for module-shaped code.
-    return /^\s*(?:import|export)\b/m.test(stripped);
+    // Top-level `await` parses as an async function body; `import`/`export`
+    // parse in neither, so for module-shaped code (anywhere on a line) the
+    // strip difference alone is sufficient evidence.
+    return parsesAs(AsyncFunction, stripped) || hasStaticModuleSyntax(stripped);
   }
   return true;
 };
 
 /** Remove the `type="..."` attribute from a script open tag. */
 const withoutTypeAttribute = (openTag: string): string => {
-  const cleaned = openTag.replace(TYPE_ATTR_RE, "");
+  // The tokenizer that found the type removes it, so ` type=` text inside another
+  // attribute's value is never mistaken for it.
+  const cleaned = removeHtmlAttribute(openTag, "type");
   // `<script  defer>` -> `<script defer>`; `<script>` stays `<script>`.
   return cleaned
     .replace(/<script\s+/i, "<script ")
@@ -836,16 +859,18 @@ export const transformTypeScriptScriptTags = async (
       }
 
       if (!diagnose) continue;
-      const type = getScriptType(open);
-      if (
-        (type === undefined || type === "text/javascript") &&
-        looksLikeTypeScript(body)
-      ) {
+      if (isJavaScriptScript(open) && looksLikeTypeScript(body)) {
+        // A text/typescript block always becomes a classic script, so module
+        // code goes to a companion that keeps type="module".
+        const fix =
+          getScriptType(open) === "module"
+            ? `Move it to a companion .ts file referenced with <script type="module" src="name.ts">, which Bascik strips and keeps a module.`
+            : `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
+              `or move it to a companion .ts file referenced with <script src="name.ts">.`;
         console.warn(
           `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
-            `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
-            `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
-            `or move it to a companion .ts file referenced with <script src="name.ts">.`,
+            `Browsers do not execute TypeScript in a JavaScript <script>, so this block will fail at runtime. ` +
+            fix,
         );
       }
       continue;

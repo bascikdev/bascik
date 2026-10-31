@@ -117,6 +117,27 @@ export const getHtmlAttributeValue = (
   return undefined;
 };
 
+/**
+ * `openTag` without its first `attribute="value"` pair and the whitespace before it, found
+ * the way `getHtmlAttributeValue` finds it: text inside another attribute's quoted value
+ * (`data-x="a type=b"`) is never an attribute. Unchanged when the pair is absent.
+ */
+export const removeHtmlAttribute = (
+  openTag: string,
+  attribute: string,
+): string => {
+  const target = attribute.toLowerCase();
+  for (const match of openTag.matchAll(ATTR_PAIR_REGEX)) {
+    if (match[1]?.toLowerCase() !== target) continue;
+    let start = match.index;
+    while (start > 0 && /\s/.test(openTag[start - 1])) start--;
+    return (
+      openTag.slice(0, start) + openTag.slice(match.index + match[0].length)
+    );
+  }
+  return openTag;
+};
+
 const ATTRIBUTE_VALUE_RE = /\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/g;
 const ATTRIBUTE_NAME_RE = /(?:^|[\s/])([^\s"'=<>`/]+)(?=[\s/>]|$)/g;
 

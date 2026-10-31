@@ -37,7 +37,7 @@
     "const re=/^\\d+$/;const m=s.match(re);"
   ],
   ["return   /x/", "return/x/"],
-  ["return\n/x/", "return/x/"],
+  ["return\n/x/", "return;/x/"],
   ["returnx / y", "returnx / y"],
   ["notreturn / y", "notreturn / y"],
   ["$ / y", "$ / y"],

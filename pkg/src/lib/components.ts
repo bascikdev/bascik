@@ -685,15 +685,24 @@ export const listComponents = async (
         }
       };
       try {
+        const fileContentRead = readFile(fileName);
         [fileContentBuffer, cssFileContent, companionScripts] =
           await Promise.all([
-            readFile(fileName),
+            fileContentRead,
             getComponentCss(
               fileName,
               componentCssFileNames,
               importedStylesheets,
             ),
-            getComponentScripts(fileName, componentScriptFileNames),
+            // The HTML tells which scripts are browser companions and which are
+            // directive `src=` modules; the other components' names keep the
+            // flat-layout prefix rule out of a sibling's scripts.
+            fileContentRead.then((buffer) =>
+              getComponentScripts(fileName, componentScriptFileNames, {
+                html: buffer.toString(),
+                componentFileNames: componentHtmlFileNames,
+              }),
+            ),
           ]);
       } catch (e) {
         // A companion `.ts` that cannot be transformed is an authoring error in

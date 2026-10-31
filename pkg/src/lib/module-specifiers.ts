@@ -520,7 +520,18 @@ export interface RewriteModuleSpecifierOptions {
 }
 
 /**
+ * Where a specifier's URL query or fragment starts (`./a.ts?v=2`, `./a.ts#x`),
+ * or its length when it has none. Node reads a specifier as a URL, so the
+ * suffix names a module instance, not part of the file name.
+ */
+const specifierSuffixStart = (value: string): number => {
+  const index = value.search(/[?#]/);
+  return index === -1 ? value.length : index;
+};
+
+/**
  * Resolve a specifier to an absolute filesystem path using Bascik's rules.
+ * A query or fragment (`./a.ts?v=2`) is not part of the path.
  * Returns `undefined` for external specifiers, which are left to Node.
  * Throws `LeadingSlashSpecifierError` for a leading `/`.
  */
@@ -529,11 +540,12 @@ export const resolveSpecifierPath = (
   baseDir: string,
   importRoot: string,
 ): string | undefined => {
+  const path = value.slice(0, specifierSuffixStart(value));
   switch (classifySpecifier(value)) {
     case "relative":
-      return resolve(baseDir, value);
+      return resolve(baseDir, path);
     case "root":
-      return resolve(importRoot, stripRootPrefix(value));
+      return resolve(importRoot, stripRootPrefix(path));
     case "root-slash":
       throw new LeadingSlashSpecifierError(value);
     default:
@@ -603,8 +615,11 @@ export const rewriteModuleSpecifiersWithEdits = (
 
   const edits: SpecifierEdit[] = [];
   let rewritten = source;
-  for (const { start, end, resolved } of replacements) {
-    const href = pathToFileURL(resolved).href;
+  for (const { start, end, resolved, value } of replacements) {
+    // The query or fragment goes back on the URL as authored: in the path,
+    // pathToFileURL would percent-encode it into a file name that does not exist.
+    const href =
+      pathToFileURL(resolved).href + value.slice(specifierSuffixStart(value));
     const lineStart = source.lastIndexOf("\n", start - 1) + 1;
     let line = 1;
     for (

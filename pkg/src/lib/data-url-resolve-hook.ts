@@ -9,7 +9,11 @@
  * `src=` module or a build script's would (the package's `import` and
  * `default` export conditions, subpath exports, workspaces).
  *
- * Only bare specifiers from a `data:` parent are touched; every other
+ * Package `imports` specifiers (`#lib/format.ts`, from the `imports` field of
+ * the site's package.json) are package-relative in the same way and get the
+ * same parent.
+ *
+ * Only bare and `#` specifiers from a `data:` parent are touched; every other
  * resolution passes through unchanged. Installed once per process, in
  * development and production alike.
  */
@@ -18,18 +22,24 @@ import { pathToFileURL } from "node:url";
 
 let installed = false;
 
-/** Whether `specifier` names a package (not a relative path, an absolute path or a URL). */
-const isBare = (specifier: string): boolean =>
-  !/^(?:\.{0,2}\/|[a-zA-Z][a-zA-Z0-9+.-]*:|#)/.test(specifier);
+/**
+ * Whether `specifier` resolves against a package.json: a package name or a
+ * package `imports` entry (`#...`), not a relative path, an absolute path or a URL.
+ */
+const isPackageRelative = (specifier: string): boolean =>
+  !/^(?:\.{0,2}\/|[a-zA-Z][a-zA-Z0-9+.-]*:)/.test(specifier);
 
-/** Resolve bare imports of `data:` modules from `projectRoot`. Idempotent. */
+/** Resolve bare and `#` imports of `data:` modules from `projectRoot`. Idempotent. */
 export const installDataUrlResolveHook = (projectRoot: string): void => {
   if (installed) return;
   installed = true;
   const parentURL = pathToFileURL(`${projectRoot.replace(/[\\/]$/, "")}/`).href;
   registerHooks({
     resolve(specifier, context, next) {
-      if (context.parentURL?.startsWith("data:") && isBare(specifier))
+      if (
+        context.parentURL?.startsWith("data:") &&
+        isPackageRelative(specifier)
+      )
         return next(specifier, { ...context, parentURL });
       return next(specifier, context);
     },
