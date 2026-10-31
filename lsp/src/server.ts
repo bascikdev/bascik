@@ -328,10 +328,19 @@ export class BascikLanguageServer {
         )
       : WATCHED_FILE_PATTERNS.map((globPattern) => ({ globPattern }));
     if (watchers.length === 0) return;
-    this.watcherRegistration = await this.connection.client.register(
-      DidChangeWatchedFilesNotification.type,
-      { watchers },
-    );
+    // Called with `void`, so a rejection here (an editor refusing the registration, or a connection
+    // closing mid-request) would be unhandled and end the process. Without watchers the server still
+    // works; it only misses changes made outside open documents.
+    try {
+      this.watcherRegistration = await this.connection.client.register(
+        DidChangeWatchedFilesNotification.type,
+        { watchers },
+      );
+    } catch (error) {
+      this.connection.console.error(
+        `Bascik could not ask the editor to watch config and HTML files, so changes made outside open documents are not picked up until a reload: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /** Forgets every project snapshot, so the next request rebuilds them from disk. */

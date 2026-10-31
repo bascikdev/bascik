@@ -35,7 +35,14 @@ function createFakeConnection() {
     onDidSaveTextDocument: register("didSave"),
     sendDiagnostics: vi.fn(),
     listen: vi.fn(),
-    client: { register: vi.fn(async () => ({ dispose() {} })) },
+    client: {
+      register: vi.fn(
+        async (..._args: unknown[]): Promise<{ dispose(): void }> => ({
+          dispose() {},
+        }),
+      ),
+    },
+    console: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), log: vi.fn() },
     workspace: {
       onDidChangeWorkspaceFolders: vi.fn((handler: Handler) => {
         if (!state.clientSendsFolderChanges) {
@@ -160,6 +167,36 @@ describe("BascikLanguageServer", () => {
         baseUri: uri(second),
         pattern: "**/*.html",
       });
+    });
+
+    it("keeps running, and says why, when the editor rejects the watcher registration", async () => {
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on("unhandledRejection", onUnhandled);
+      try {
+        fake.connection.client.register.mockRejectedValue(
+          new Error("Unsupported glob pattern"),
+        );
+        await initialize(true);
+        // A folder change registers again; that rejection must be handled too.
+        fake.handlers.get("workspaceFolders")!({
+          removed: [],
+          added: [{ uri: uri(path.join(root, "second")), name: "second" }],
+        });
+        await settle(20);
+        expect(unhandled).toEqual([]);
+        expect(fake.connection.client.register).toHaveBeenCalledTimes(2);
+        expect(fake.connection.console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Unsupported glob pattern"),
+        );
+        // The server still answers: an open document gets diagnostics.
+        const page = await write("src/pages/index.html", "<p>hi</p>\n");
+        open(page, "<p data-bascik-slott>hi</p>\n");
+        await settle();
+        expect(codes(page)).toContain("unknown-bascik-attribute");
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
     });
 
     it("does not register watchers with an editor that cannot", async () => {
