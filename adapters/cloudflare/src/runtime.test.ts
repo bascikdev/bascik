@@ -228,6 +228,23 @@ describe("createCloudflareWorker: API routes", () => {
     ...extra,
   });
 
+  it("returns a WebSocket upgrade (status 101 or a webSocket) as the handler made it", async () => {
+    // Node's Response refuses 101; the Workers one takes it with a socket.
+    const upgrade = new Response(null);
+    Object.defineProperty(upgrade, "status", { value: 101 });
+    const socketed = Object.assign(new Response(null), { webSocket: {} });
+    const w = worker(
+      graphOf({
+        apiRoutes: [
+          route("/api/live", async () => ({ GET: () => upgrade })),
+          route("/api/socket", async () => ({ GET: () => socketed })),
+        ],
+      }),
+    );
+    expect(await w.fetch(get("/api/live"), {}, ctx())).toBe(upgrade);
+    expect(await w.fetch(get("/api/socket"), {}, ctx())).toBe(socketed);
+  });
+
   it("passes params, the platform (env, waitUntil) and the trusted client IP to the handler; never X-Forwarded-For", async () => {
     const seen: unknown[] = [];
     const waits = ctx();
@@ -628,6 +645,23 @@ describe("createCloudflareWorker: a static 404.html under its own URLs", () => {
     expect(await res.text()).toBe("<h1>Not here</h1>");
   });
 
+  it("when the canonical URL misses (html_handling none), the page is fetched by its file name", async () => {
+    const { env, requests } = assets((request) =>
+      new URL(request.url).pathname.endsWith(".html")
+        ? new Response("<h1>Not here</h1>")
+        : new Response("", { status: 404 }),
+    );
+    const res = await worker(
+      graphOf({ base: "/shop/", staticNotFoundPage: true }),
+    ).fetch(get("/shop/404/"), env, ctx());
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("<h1>Not here</h1>");
+    expect(requests.map((r) => r.url)).toEqual([
+      "https://example.test/shop/404",
+      "https://example.test/shop/404.html",
+    ]);
+  });
+
   it("without staticNotFoundPage, /404 is forwarded as any other asset", async () => {
     const { env, requests } = notFound();
     const res = await worker(graphOf()).fetch(get("/404?x=1"), env, ctx());
@@ -721,6 +755,42 @@ describe("createCloudflareWorker: run_worker_first sends the static files' heade
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("x-frame-options")).toBeNull();
     expect(res.headers.get("strict-transport-security")).toBeNull();
+  });
+
+  it("a miss the asset layer answers with a 404 page carries that page's policy, under the base too", async () => {
+    const notFound = (overrides: Partial<SiteGraph> = {}) =>
+      workerFirst({
+        assetHeaders: { cspRoutes: ["/", "/404", "/docs/404"] },
+        contentSecurityPolicy: {
+          policy,
+          hashes: {
+            "/404": { scripts: [], styles: ["sha256-NF"] },
+            "/docs/404": { scripts: [], styles: ["sha256-DOCSNF"] },
+          },
+        },
+        ...overrides,
+      });
+    const { env } = assets(() => new Response("lost", { status: 404 }));
+    const csp = async (path: string, graph = notFound()) =>
+      (await graph.fetch(get(path), env, ctx())).headers.get(
+        "content-security-policy",
+      );
+    expect(await csp("/nope")).toBe("style-src 'self' 'sha256-NF'");
+    expect(await csp("/docs/a/b")).toBe("style-src 'self' 'sha256-DOCSNF'");
+    expect(await csp("/shop/docs/x", notFound({ base: "/shop/" }))).toBe(
+      "style-src 'self' 'sha256-DOCSNF'",
+    );
+  });
+
+  it("misuse: a 404 with no static 404 page listed, or a 200 at an unlisted URL, gets no policy", async () => {
+    const { env: missEnv } = assets(() => new Response("", { status: 404 }));
+    const miss = await workerFirst().fetch(get("/nope"), missEnv, ctx());
+    expect(miss.headers.get("content-security-policy")).toBeNull();
+    const { env: okEnv } = assets(() => new Response("x", { status: 200 }));
+    const ok = await workerFirst({
+      assetHeaders: { cspRoutes: ["/404"] },
+    }).fetch(get("/logo.txt"), okEnv, ctx());
+    expect(ok.headers.get("content-security-policy")).toBeNull();
   });
 
   it("applies to the static 404 page it fetches too", async () => {

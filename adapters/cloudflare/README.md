@@ -20,7 +20,7 @@ See it live: [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.d
 ## Targets and Variants
 
 - `cloudflare` / `cloudflare-workers` (Default): Outputs `worker.js`, `wrangler.jsonc`, and `public/` for Cloudflare Workers with Static Assets.
-- `cloudflare-pages` (Legacy): Outputs `public/_worker.js` and `public/_routes.json` for Cloudflare Pages.
+- `cloudflare-pages` (Legacy): Outputs `public/_worker.js` and `public/_routes.json` for Cloudflare Pages. Set the Pages project's compatibility date (the pinned one or later) and the `nodejs_compat` flag, for Production and Preview, in the dashboard: `wrangler pages deploy` does not set them.
 
 ## Quickstart
 
@@ -46,7 +46,7 @@ npx wrangler deploy
 
 ## Compatibility Date
 
-The adapter pins a supported Cloudflare compatibility date and `nodejs_compat` compatibility flag to ensure local workerd testing parity.
+The adapter pins a supported Cloudflare compatibility date and `nodejs_compat` compatibility flag to ensure local workerd testing parity. An authored `compatibility_date` in your Wrangler config is kept; request-time `node:*` imports are then checked against it (and each `env.<name>` date), since `node:http`, `node:fs`, `node:os` and `node:perf_hooks` exist only from a date on, and the build notes print the date and flags the Worker deploys with.
 
 ## Your Wrangler Config
 

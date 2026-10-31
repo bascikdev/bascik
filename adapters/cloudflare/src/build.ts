@@ -13,16 +13,24 @@ import {
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
-import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
+import {
+  mkdir,
+  copyFile,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
   PAGES_ROUTES_LIMIT,
   classifyNodeBuiltin,
   formatUnsupportedImport,
+  type CompatSettings,
 } from "./compat.js";
 import {
+  deploymentCompatSettings,
   discoverWranglerConfig,
   generateWranglerConfig,
   resolveWorkerName,
@@ -74,9 +82,16 @@ export const buildInvocationRoutes = (input: {
   return { include: sorted, exclude: [], overflowed: false };
 };
 
+/**
+ * Public paths a deployment reserves. Pages reads `_worker.js` and
+ * `_routes.json` from the public root; the Worker answers 404 for both on
+ * every target (runtime.ts, GENERATED_CONTROL_PATHS), so on Workers an
+ * authored one would deploy and never be served. The Workers variant's
+ * worker.js and wrangler.jsonc sit beside public/, never in it.
+ */
 const CONTROL_FILES: Record<string, string[]> = {
   pages: ["_worker.js", "_routes.json"],
-  workers: ["wrangler.jsonc", "worker.js"],
+  workers: ["_worker.js", "_routes.json"],
 };
 const ASSET_CONTROL_FILES = new Set(["_headers", "_redirects"]);
 
@@ -89,7 +104,9 @@ export const detectControlCollisions = (
   for (const path of [...publicPaths].sort()) {
     if (control.has(path)) {
       problems.push(
-        `[bascik] --target cloudflare-${variant}: authored file "${path}" collides with a generated control file. Rename it or remove it from directory.pages.`,
+        variant === "pages"
+          ? `[bascik] --target cloudflare-${variant}: authored file "${path}" collides with a generated control file. Rename it or remove it from directory.pages.`
+          : `[bascik] --target cloudflare-${variant}: authored file "${path}" would never be served: the Worker answers 404 for it, a Cloudflare control path. Rename it or remove it from directory.pages.`,
       );
     }
   }
@@ -174,14 +191,28 @@ export const build = async (
   const collisions = detectControlCollisions(graph.publicFiles, variant);
   if (collisions.length) throw new Error(collisions.join("\n"));
 
+  // esbuild names importers by their real path: a project reached through
+  // a symlinked folder (macOS tmpdir, a linked workspace) is keyed and
+  // reported by it too, or no import chain would find its owner.
+  const realRoot = await realpath(projectRoot).catch(() => projectRoot);
   const owners = new Map<string, Set<string>>();
-  const addOwner = (file: string, owner: string) => {
+  const addOwnerAt = (file: string, owner: string) => {
     let set = owners.get(file);
     if (!set) {
       set = new Set();
       owners.set(file, set);
     }
     set.add(owner);
+  };
+  const addOwner = (file: string, owner: string) => {
+    addOwnerAt(file, owner);
+    let real = file;
+    try {
+      real = realpathSync(file);
+    } catch {
+      // Not on disk (yet): only the spelling the graph gave is known.
+    }
+    if (real !== file) addOwnerAt(real, owner);
   };
 
   // A dynamic /404 page already answers 404 from the worker. A static one is
@@ -310,6 +341,24 @@ export const build = async (
     lines.push(
       `  assetHeaders: { cspRoutes: ${JSON.stringify(csp ? csp.staticRoutes : [])} },`,
     );
+  // A static 404.html's policy goes into an exact-path _headers rule, which
+  // the asset layer matches on the request path: a miss for any other URL
+  // is answered with the page but without its policy. Only a Worker in front
+  // of every static file can send it there (runtime.ts, withAssetHeaders).
+  const staticNotFoundRoutes = (csp?.staticRoutes ?? []).filter(
+    (route) => route === "/404" || route.endsWith("/404"),
+  );
+  if (csp && !workerFirst && staticNotFoundRoutes.length)
+    context.log(
+      `[bascik] --target cloudflare-${variant}: the Content-Security-Policy of the static 404 page ` +
+        `(${staticNotFoundRoutes.map((route) => withBasePath(route, graph.base)).join(", ")}) is sent at its own URL only. ` +
+        `Cloudflare's _headers rules match the request path, not the response status, so a 404 for any other URL ` +
+        `is served with the page but without its policy. ` +
+        (variant === "workers"
+          ? `Set "assets": { "run_worker_first": true } in your wrangler config to have the Worker send it on every 404.`
+          : `Cloudflare Pages cannot run the Worker before static files: build with --target cloudflare-workers and ` +
+            `"assets": { "run_worker_first": true } to send it on every 404.`),
+    );
   // The build's security headers, dotfile rule, ANSI handling and render
   // limits (Collin 2026-10-29): the Worker has no config of its own, so it
   // applies what the build resolved. A graph without them is today's Worker.
@@ -328,6 +377,48 @@ export const build = async (
     lines.push(`  renderLimits: ${JSON.stringify(graph.renderLimits)},`);
   lines.push(`};`);
   lines.push(`export default createCloudflareWorker(graph);`);
+
+  const invocationRoutes = buildInvocationRoutes({
+    base: graph.base,
+    dynamicPagePaths: Object.keys(graph.pages),
+    hasApiRoutes: graph.apiRoutes.length > 0,
+    hasStaticNotFoundPage,
+  });
+
+  // The Workers variant's config is generated before bundling: node:*
+  // imports are checked against the compatibility date and flags it deploys
+  // with (the authored ones when set), not only the adapter's pinned date.
+  // Pages takes them from the Pages project's settings, which the adapter
+  // cannot read: the pinned ones are what the docs tell you to set there.
+  const pinned: CompatSettings = {
+    compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+    compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+  };
+  let wrangler: Record<string, unknown> | undefined;
+  let deploymentCompat: CompatSettings[] = [pinned];
+  if (variant === "workers") {
+    const { workerName, discoveredConfig } =
+      workerConfig ?? (await resolveWorkerName(projectRoot));
+    // The authored config is carried over whole: the adapter owns only the
+    // keys it must (config.ts, generateWranglerConfig).
+    const generated = generateWranglerConfig({
+      authored: discoveredConfig,
+      projectRoot,
+      outDir,
+      workerName,
+      runWorkerFirst: workerFirst ? true : invocationRoutes.include,
+      schemaPath: wranglerSchemaPath(projectRoot),
+      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
+    });
+    wrangler = generated.config;
+    for (const warning of generated.warnings) context.log(warning);
+    deploymentCompat = deploymentCompatSettings(
+      wrangler,
+      discoveredConfig?.filename,
+      pinned,
+    );
+  }
 
   const stagingDir = join(outDir, ".staging");
   await mkdir(stagingDir, { recursive: true });
@@ -404,7 +495,7 @@ export const build = async (
                 {
                   text:
                     `"${args.path}" cannot be resolved from a module file. The @/ alias is available inside ` +
-                    `<script> blocks only; in ${relative(projectRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
+                    `<script> blocks only; in ${relative(realRoot, args.importer).replace(/\\/g, "/")} use a relative import.`,
                 },
               ],
             }));
@@ -420,12 +511,20 @@ export const build = async (
                 addOwner(resolved, owner);
               return undefined;
             });
+            // Digits too: `node:http2` and `v8` are builtins, and esbuild's
+            // own error for them would suggest `platform: "node"`.
             buildInstance.onResolve(
-              { filter: /^(node:)?[a-z_/]+$/ },
+              { filter: /^(node:)?[a-z0-9_/]+$/ },
               (args) => {
-                const kind = classifyNodeBuiltin(args.path);
-                if (kind === "not-builtin") return undefined;
-                if (kind === "provided")
+                if (classifyNodeBuiltin(args.path) === "not-builtin")
+                  return undefined;
+                // Every deployment of the config (the top level and each
+                // env.<name>) must provide it.
+                const missingIn = deploymentCompat.find(
+                  (compat) =>
+                    classifyNodeBuiltin(args.path, compat) !== "provided",
+                );
+                if (!missingIn)
                   return {
                     path: args.path.startsWith("node:")
                       ? args.path
@@ -437,8 +536,9 @@ export const build = async (
                   formatUnsupportedImport({
                     specifier: args.path,
                     importer: args.importer,
-                    projectRoot,
+                    projectRoot: realRoot,
                     owners: ownerList,
+                    compat: missingIn,
                   }),
                 );
                 return { path: args.path, external: true };
@@ -521,13 +621,6 @@ export const build = async (
       context.log(warning);
   }
 
-  const invocationRoutes = buildInvocationRoutes({
-    base: graph.base,
-    dynamicPagePaths: Object.keys(graph.pages),
-    hasApiRoutes: graph.apiRoutes.length > 0,
-    hasStaticNotFoundPage,
-  });
-
   let workerPath: string;
   if (variant === "pages") {
     workerPath = join(publicDir, "_worker.js");
@@ -548,23 +641,6 @@ export const build = async (
   } else {
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
-
-    const { workerName, discoveredConfig } =
-      workerConfig ?? (await resolveWorkerName(projectRoot));
-
-    // The authored config is carried over whole: the adapter owns only the
-    // keys it must (config.ts, generateWranglerConfig).
-    const { config: wrangler, warnings } = generateWranglerConfig({
-      authored: discoveredConfig,
-      projectRoot,
-      outDir,
-      workerName,
-      runWorkerFirst: workerFirst ? true : invocationRoutes.include,
-      schemaPath: wranglerSchemaPath(projectRoot),
-      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibilityFlags: CLOUDFLARE_COMPATIBILITY_FLAGS,
-    });
-    for (const warning of warnings) context.log(warning);
     await writeFile(
       join(outDir, "wrangler.jsonc"),
       `${JSON.stringify(wrangler, null, 2)}\n`,
@@ -573,13 +649,25 @@ export const build = async (
   }
 
   const bundleBytes = Buffer.byteLength(workerCode, "utf8");
+  // What the Worker deploys with: the generated config's top level for
+  // Workers (tools such as e2e/fixture/serve.ts read these notes), the
+  // pinned settings Pages projects are told to use.
   const notes = [
-    `compatibility date: ${CLOUDFLARE_COMPATIBILITY_DATE}`,
-    `compatibility flags: ${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")}`,
+    `compatibility date: ${deploymentCompat[0].compatibilityDate}`,
+    `compatibility flags: ${deploymentCompat[0].compatibilityFlags.join(", ")}`,
     workerFirst
       ? "invocation routes: every request (run_worker_first: true); the Worker sends the static files' headers"
       : `invocation routes: ${invocationRoutes.include.length} rules`,
   ];
+  // Pages reads the compatibility date and flags from the project, not the
+  // upload, and `wrangler pages deploy` has no option for them: without
+  // nodejs_compat, every page routed to the Worker fails at request time.
+  if (variant === "pages")
+    notes.push(
+      `Pages project settings: compatibility date ${CLOUDFLARE_COMPATIBILITY_DATE} or later and the ` +
+        `${CLOUDFLARE_COMPATIBILITY_FLAGS.join(", ")} flag, for Production and Preview. wrangler pages deploy ` +
+        `does not set them: set them in the Pages project's settings in the Cloudflare dashboard before the first deploy.`,
+    );
   // The manifest is part of the bundle; its share of bundleBytes is shown so
   // a growing component library is visible against the Worker size limit.
   if (components && manifestLiteral !== undefined) {

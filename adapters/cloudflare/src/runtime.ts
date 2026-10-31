@@ -450,6 +450,17 @@ export const createCloudflareWorker = (
     return graph.assetHeaders ? withAssetHeaders(request, response) : response;
   };
 
+  /** The listed static 404 page nearest to `path`, as the asset layer looks one up. */
+  const notFoundRouteFor = (path: string): string | undefined => {
+    const segments = path.split("/").slice(1, -1);
+    for (let depth = segments.length; depth >= 0; depth--) {
+      const dir = segments.slice(0, depth).join("/");
+      const route = dir ? `/${dir}/404` : "/404";
+      if (assetCspRoutes.has(route)) return route;
+    }
+    return undefined;
+  };
+
   /** The headers _headers would have given a static file, sent by the Worker instead. */
   const withAssetHeaders = (request: Request, response: Response): Response => {
     const headers = new Headers(response.headers);
@@ -472,10 +483,21 @@ export const createCloudflareWorker = (
     } catch {
       path = null;
     }
-    if (csp && path !== null && assetCspRoutes.has(path)) {
+    // A miss answered with a 404.html carries that page's policy, as the
+    // Node server sends the 404 page's own: the asset layer serves the
+    // nearest 404.html up the path (`/docs/nope` gets `/docs/404.html`).
+    const route =
+      path === null
+        ? undefined
+        : assetCspRoutes.has(path)
+          ? path
+          : response.status === 404
+            ? notFoundRouteFor(path)
+            : undefined;
+    if (csp && route !== undefined) {
       const { name, value } = contentSecurityPolicyHeader(
         csp.policy,
-        csp.hashes[path],
+        csp.hashes[route],
       );
       if (!headers.has(name)) headers.set(name, value);
     }
@@ -557,6 +579,15 @@ export const createCloudflareWorker = (
             `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
           ),
       });
+      // A WebSocket upgrade (`new Response(null, { status: 101, webSocket })`,
+      // the platform's pattern) goes back as the handler made it: a copy
+      // would lose the socket, and the constructor refuses status 101
+      // without one, so the request would end in an uncaught RangeError.
+      if (
+        response.status === 101 ||
+        (response as Response & { webSocket?: unknown }).webSocket
+      )
+        return response;
       const headers = mergeHandlerHeaders(response.headers, {
         https,
         security,
@@ -588,17 +619,31 @@ export const createCloudflareWorker = (
         }
         // The asset layer serves 404.html at its own URL with 200 (and
         // redirects its aliases). Fetch the canonical asset and answer with
-        // the status the Node server uses for the custom 404 page.
-        const assetUrl = new URL(request.url);
-        assetUrl.pathname = graph.base === "/" ? "/404" : `${graph.base}404`;
-        assetUrl.search = "";
-        const asset = await forwardToAssets(
-          new Request(assetUrl, {
-            method: request.method === "HEAD" ? "HEAD" : "GET",
-            headers: request.headers,
-          }),
-          env,
+        // the status the Node server uses for the custom 404 page. Through
+        // the binding, html_handling resolves `/404` without a redirect,
+        // except `"none"`, where only the file name finds the page.
+        const fetchNotFoundAsset = (pathname: string) => {
+          const assetUrl = new URL(request.url);
+          assetUrl.pathname = pathname;
+          assetUrl.search = "";
+          return forwardToAssets(
+            new Request(assetUrl, {
+              method: request.method === "HEAD" ? "HEAD" : "GET",
+              headers: request.headers,
+            }),
+            env,
+          );
+        };
+        let asset = await fetchNotFoundAsset(
+          graph.base === "/" ? "/404" : `${graph.base}404`,
         );
+        if (asset.status !== 200) {
+          const byFileName = await fetchNotFoundAsset(`${graph.base}404.html`);
+          if (byFileName.status === 200) {
+            asset.body?.cancel().catch(() => {});
+            asset = byFileName;
+          } else byFileName.body?.cancel().catch(() => {});
+        }
         if (asset.status !== 200) return asset;
         return new Response(request.method === "HEAD" ? null : asset.body, {
           status: 404,

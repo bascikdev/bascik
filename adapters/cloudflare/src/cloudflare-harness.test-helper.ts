@@ -88,6 +88,81 @@ export interface StreamedResponse {
   destroy(): void;
 }
 
+/**
+ * The runtime settings a deployment of the bundle runs under, which the
+ * harness hands to workerd. Pages fixes the asset behavior (`/about` serves
+ * `about.html`, a miss gets the nearest 404.html) and takes its compatibility
+ * settings from the project, so the adapter's pinned ones are used. Workers
+ * read them from the generated wrangler.jsonc, top level, exactly as
+ * `wrangler deploy` does: an authored `compatibility_date`, extra flags,
+ * `html_handling` or `not_found_handling` must reach the tests, or a test
+ * passes under settings production never uses.
+ */
+type NotFoundHandling = "none" | "single-page-application" | "404-page";
+type HtmlHandling =
+  | "auto-trailing-slash"
+  | "drop-trailing-slash"
+  | "force-trailing-slash"
+  | "none";
+
+export interface HarnessSettings {
+  compatibilityDate: string;
+  compatibilityFlags: string[];
+  assetConfig: {
+    not_found_handling: NotFoundHandling;
+    html_handling: HtmlHandling;
+  };
+  userWorkerRoutes: string[];
+}
+
+export const readHarnessSettings = async (
+  targetDir: string,
+  target: DeployTarget,
+): Promise<HarnessSettings> => {
+  if (target === "cloudflare-pages") {
+    const routes = JSON.parse(
+      await readFile(join(targetDir, "public", "_routes.json"), "utf8"),
+    ) as {
+      include: string[];
+    };
+    return {
+      compatibilityDate: CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibilityFlags: [...CLOUDFLARE_COMPATIBILITY_FLAGS],
+      assetConfig: {
+        not_found_handling: "404-page",
+        html_handling: "auto-trailing-slash",
+      },
+      userWorkerRoutes: routes.include,
+    };
+  }
+  const wrangler = JSON.parse(
+    await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
+  ) as {
+    compatibility_date?: string;
+    compatibility_flags?: string[];
+    assets?: {
+      run_worker_first?: string[] | boolean;
+      not_found_handling?: NotFoundHandling;
+      html_handling?: HtmlHandling;
+    };
+  };
+  const first = wrangler.assets?.run_worker_first;
+  return {
+    compatibilityDate:
+      wrangler.compatibility_date ?? CLOUDFLARE_COMPATIBILITY_DATE,
+    compatibilityFlags: wrangler.compatibility_flags ?? [
+      ...CLOUDFLARE_COMPATIBILITY_FLAGS,
+    ],
+    assetConfig: {
+      // Cloudflare's own defaults when the key is absent.
+      not_found_handling: wrangler.assets?.not_found_handling ?? "none",
+      html_handling: wrangler.assets?.html_handling ?? "auto-trailing-slash",
+    },
+    // `true` runs the Worker before every asset, as Cloudflare does.
+    userWorkerRoutes: first === true ? ["/*"] : first || ["/*"],
+  };
+};
+
 export const startHarness = async (
   options: HarnessOptions,
 ): Promise<Harness> => {
@@ -101,26 +176,9 @@ export const startHarness = async (
       ? join(targetDir, "public", "_worker.js")
       : join(targetDir, "worker.js");
 
-  let userWorkerRoutes: string[];
-  if (options.invocationRoutes) {
-    userWorkerRoutes = options.invocationRoutes;
-  } else if (options.target === "cloudflare-pages") {
-    const routes = JSON.parse(
-      await readFile(join(targetDir, "public", "_routes.json"), "utf8"),
-    ) as {
-      include: string[];
-    };
-    userWorkerRoutes = routes.include;
-  } else {
-    const wrangler = JSON.parse(
-      await readFile(join(targetDir, "wrangler.jsonc"), "utf8"),
-    ) as {
-      assets?: { run_worker_first?: string[] | boolean };
-    };
-    const first = wrangler.assets?.run_worker_first;
-    // `true` runs the Worker before every asset, as Cloudflare does.
-    userWorkerRoutes = first === true ? ["/*"] : first || ["/*"];
-  }
+  const settings = await readHarnessSettings(targetDir, options.target);
+  const userWorkerRoutes =
+    options.invocationRoutes ?? settings.userWorkerRoutes;
 
   const gate = options.gate;
   const logs: string[] = [];
@@ -137,9 +195,8 @@ export const startHarness = async (
     // outside cwd gets a `../..`-prefixed name that workerd rejects.
     modulesRoot: dirname(scriptPath),
     scriptPath,
-    compatibilityDate:
-      options.compatibilityDate ?? CLOUDFLARE_COMPATIBILITY_DATE,
-    compatibilityFlags: [...CLOUDFLARE_COMPATIBILITY_FLAGS],
+    compatibilityDate: options.compatibilityDate ?? settings.compatibilityDate,
+    compatibilityFlags: settings.compatibilityFlags,
     bindings: options.bindings ?? {},
     serviceBindings: gate
       ? {
@@ -152,12 +209,9 @@ export const startHarness = async (
     assets: {
       directory: join(targetDir, "public"),
       binding: "ASSETS",
-      // Mirrors the platform defaults the generated config asks for: an
+      // What the deployment uses (readHarnessSettings): by default an
       // authored 404.html answers misses, and `/about` serves `about.html`.
-      assetConfig: {
-        not_found_handling: "404-page",
-        html_handling: "auto-trailing-slash",
-      },
+      assetConfig: settings.assetConfig,
       routerConfig: {
         has_user_worker: true,
         invoke_user_worker_ahead_of_assets: false,
