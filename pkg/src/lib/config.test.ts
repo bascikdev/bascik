@@ -22,6 +22,8 @@ import {
   initBascikConfig,
   normalizeScopableOption,
   deepMerge,
+  readServerHostEnv,
+  readServerPortEnv,
 } from "./config.ts";
 
 // Filesystem stub for initBascikConfig calls whose configs reference script
@@ -708,5 +710,68 @@ describe("allowInvalidConfig (bascik --check)", () => {
         { fs: allowAllFs, env: {} },
       ),
     ).toThrow(/http\.port/);
+  });
+});
+
+// F100: BASCIK_SERVER_HOST gets the http.hostname rule, naming the variable.
+describe("readServerHostEnv", () => {
+  it("returns a plausible hostname, trimmed, and undefined when unset or blank", () => {
+    expect(readServerHostEnv(" 0.0.0.0 ")).toBe("0.0.0.0");
+    expect(readServerHostEnv("::1")).toBe("::1");
+    expect(readServerHostEnv(undefined)).toBeUndefined();
+    expect(readServerHostEnv("  ")).toBeUndefined();
+  });
+
+  it.each(["http://localhost", "localhost:3000/", "a b"])(
+    "throws for %s, naming the variable",
+    (value) => {
+      let message = "";
+      try {
+        readServerHostEnv(value);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain(`BASCIK_SERVER_HOST "${value}"`);
+      expect(message).toContain("not a URL or path");
+    },
+  );
+});
+
+// F104: BASCIK_SERVER_PORT gets the --port rule; a malformed value is
+// ignored (with a warning), never partly parsed.
+describe("readServerPortEnv", () => {
+  it("returns a whole port number, trimmed", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv("8080")).toBe(8080);
+      expect(readServerPortEnv(" 3000\n")).toBe(3000);
+      expect(readServerPortEnv(undefined)).toBeUndefined();
+      expect(readServerPortEnv("")).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    "8080abc",
+    "8080;",
+    "3000 4000",
+    "80.5",
+    "0x50",
+    "0",
+    "70000",
+    "-1",
+  ])("ignores %s and warns, naming the variable", (value) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv(value)).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        `BASCIK_SERVER_PORT "${value}"`,
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

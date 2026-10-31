@@ -20,6 +20,7 @@ import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
+import { HOSTNAME_EXPECTATION, isPlausibleHostname } from "./server-address.ts";
 import {
   CSP_DIRECTIVES,
   CSP_KEYWORDS,
@@ -325,7 +326,6 @@ export const PLAUSIBLE_TAG_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/;
  * least one `*`. `*` is the only metacharacter; consecutive `*` behave as one.
  */
 export const PRESERVE_WILDCARD_PATTERN = /^(?=.*\*)[a-zA-Z0-9-*]{1,50}$/;
-const PLAUSIBLE_HOSTNAME = /^[a-zA-Z0-9._:-]+$/;
 
 /** A "valid glob" here: a non-empty string with balanced square brackets. */
 const isPlausibleGlob = (value: unknown): value is string => {
@@ -556,20 +556,8 @@ export const validateConfigShape = (
     }
     if (http.hostname !== undefined) {
       const hostname = http.hostname;
-      if (
-        typeof hostname !== "string" ||
-        hostname.length === 0 ||
-        hostname.includes("://") ||
-        hostname.includes("/") ||
-        hostname.includes("\\") ||
-        /\s/.test(hostname) ||
-        !PLAUSIBLE_HOSTNAME.test(hostname)
-      ) {
-        push(
-          "http.hostname",
-          hostname,
-          'expected a hostname like "localhost" or "example.com", not a URL or path',
-        );
+      if (!isPlausibleHostname(hostname)) {
+        push("http.hostname", hostname, HOSTNAME_EXPECTATION);
       }
     }
     if (http.tls !== undefined && !isPlainObject(http.tls)) {

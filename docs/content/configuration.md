@@ -94,6 +94,8 @@ The flags that override specific config keys:
 | `--log-level <level>` | `BASCIK_LOG_LEVEL`      | `logging.level` |
 | `--quiet`, `-q`       | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
 
+Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0` or a `host:port/path` is an error naming the flag or variable.
+
 One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 
 One setting has an environment variable only: `BASCIK_MAX_CHILD_PROCESSES=<n>` caps how many build-script child processes (`data-bascik-build` and `data-bascik-routes`) run at once. By default the cap comes from the CPU count and the memory available on the machine, and with `pipeline.workers` on it is shared across the page worker threads. Set it when that estimate is wrong for a particular machine or CI runner. It describes the machine the build runs on, not the project, which is why it has no config key.

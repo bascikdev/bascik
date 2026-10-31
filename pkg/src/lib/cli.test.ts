@@ -288,6 +288,33 @@ describe("cli helper tests", () => {
       expect(decision.errorMessage).toContain("--port");
     });
 
+    // F100: --host used to reach server.listen unchecked, which failed with
+    // Node's "getaddrinfo ENOTFOUND http://0.0.0.0" and no hint at the flag.
+    it.each(["http://0.0.0.0", "localhost/", "my host", "[::1]", "a\\b"])(
+      "rejects --host %s with the http.hostname rule",
+      (value) => {
+        for (const args of [
+          ["--server", "--host", value],
+          ["--server", `--host=${value}`],
+        ]) {
+          const decision = resolveCliAction(args);
+          expect(decision.action).toBe("error");
+          expect(decision.errorMessage).toContain("--host");
+          expect(decision.errorMessage).toContain(JSON.stringify(value));
+          expect(decision.errorMessage).toContain("not a URL or path");
+        }
+      },
+    );
+
+    it.each(["localhost", "0.0.0.0", "::1", "example.com", "my-box.local"])(
+      "accepts --host %s",
+      (value) => {
+        const decision = resolveCliAction(["--server", "--host", value]);
+        expect(decision.action).toBe("server");
+        expect(decision.flags.host).toBe(value);
+      },
+    );
+
     it("rejects an unknown --log-level", () => {
       const decision = resolveCliAction(["--build", "--log-level", "bogus"]);
       expect(decision.action).toBe("error");
