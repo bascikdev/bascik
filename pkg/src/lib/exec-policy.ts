@@ -19,8 +19,12 @@ export const getExecErrorAction = (): ExecErrorAction =>
   BascikConfig.pipeline?.onExecError ??
   (BascikConfig.isBuild ? "error" : "warn");
 
+/** The failure's message without its own `[bascik] ` prefix, which the reports add once. */
 const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+  (error instanceof Error ? error.message : String(error)).replace(
+    /^\[bascik\] /,
+    () => "",
+  );
 
 /**
  * Report a failure that the `'warn'` action tolerates. In dev the failure also

@@ -400,6 +400,11 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
       await startExecDev({ parallel: handle });
       await handle.catch(() => {});
       await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+      // One report: the stop message, not a stack-trace line before it.
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(String(errorSpy.mock.calls[0][0])).toContain(
+        "Stopping because pipeline.onExecError is 'error'",
+      );
     } finally {
       delete (cfg.pipeline as any).onExecError;
       exitSpy.mockRestore();

@@ -486,12 +486,14 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
       .catch((err) => {
         // Single stderr report per failure. The `exec-failed` -> `build-error`
         // path only broadcasts an SSE frame to browser overlays (sse.ts); it
-        // does not write to stderr, so this is the one terminal line.
-        console.error("[bascik] exec error:", err);
+        // does not write to stderr. Under `'error'` the stop message is that
+        // one report.
+        const stopping = getExecErrorAction() === "error";
+        if (!stopping) console.error("[bascik] exec error:", err);
         eventEmitter.emit("exec-failed", { entry, paths, error: err });
         // A parallel script has no caller to reject to once boot has moved on,
         // so `pipeline.onExecError: 'error'` ends the dev session here.
-        if (getExecErrorAction() === "error") stopAfterExecFailure(err);
+        if (stopping) stopAfterExecFailure(err);
       });
   }
 };
