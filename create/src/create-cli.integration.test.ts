@@ -163,7 +163,7 @@ describe("npm create bascik and the agent skills", () => {
       hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
     );
     expect(readFileSync(join(site, ".hintrc.dist.json"), "utf8")).toBe(
-      hintDistJson(".hintrc"),
+      hintDistJson(),
     );
   });
 

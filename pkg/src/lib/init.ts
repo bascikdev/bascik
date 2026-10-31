@@ -400,15 +400,15 @@ export async function importConfig(cwd: string): Promise<unknown> {
   return module.default;
 }
 
-/** The pages and components folders a loaded config names, over the defaults. */
+/** The pages, components and output folders a loaded config names, over the defaults. */
 export function sourceDirectoriesOf(config: unknown): SourceDirectories {
   const directory =
     typeof config === "object" && config !== null
       ? (config as { directory?: unknown }).directory
       : undefined;
-  const { pages, components } =
+  const { pages, components, out } =
     typeof directory === "object" && directory !== null
-      ? (directory as { pages?: unknown; components?: unknown })
+      ? (directory as { pages?: unknown; components?: unknown; out?: unknown })
       : {};
   const list = typeof components === "string" ? [components] : components;
   return {
@@ -417,6 +417,7 @@ export function sourceDirectoriesOf(config: unknown): SourceDirectories {
       Array.isArray(list) && list.every((dir) => typeof dir === "string")
         ? list
         : DEFAULT_SOURCE_DIRECTORIES.components,
+    out: typeof out === "string" ? out : DEFAULT_SOURCE_DIRECTORIES.out,
   };
 }
 
@@ -434,8 +435,8 @@ async function setUpWebhint(
     dirs = sourceDirectoriesOf(await readConfig(cwd));
   } catch {
     console.log(
-      "  note: could not load bascik.config, so .hintrc assumes src/pages and src/components. " +
-        "Edit its ignoredUrls pattern if your folders differ.",
+      "  note: could not load bascik.config, so .hintrc assumes src/pages, src/components and dist. " +
+        "Edit its ignoredUrls pattern and dist command if your folders differ.",
     );
   }
   const report = await writeHintFiles(cwd, dirs);
@@ -453,8 +454,10 @@ async function setUpWebhint(
       console.log(`  skipped: ${file} (already set)`);
     }
   }
-  if (report.config !== "updated") {
-    for (const line of hintReportLines(report)) console.log(`  ${line}`);
+  // The "updated" line above already says what was added; print the rest.
+  const lines = hintReportLines(report);
+  for (const line of report.config === "updated" ? lines.slice(1) : lines) {
+    console.log(`  ${line}`);
   }
 }
 

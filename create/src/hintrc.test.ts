@@ -114,6 +114,30 @@ describe("the .hintrc a Bascik project ships with", () => {
   it("is valid JSON once its comments are removed, as webhint's jsonc reader sees it", () => {
     expect(created).toBeTypeOf("object");
   });
+
+  it("says plainly that the editor no longer flags an <img> with no alt, and where it is caught", () => {
+    const text = hintrcJson(DEFAULT_SOURCE_DIRECTORIES);
+    expect(text).toContain("<img> with no alt");
+    expect(text).toContain(".hintrc.dist.json");
+  });
+
+  it("builds the built-site command from the output folder", () => {
+    expect(hintrcJson(DEFAULT_SOURCE_DIRECTORIES)).toContain(
+      "npx hint -c .hintrc.dist.json $(find dist -name '*.html')",
+    );
+    const custom = hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "build" });
+    expect(custom).toContain("$(find build -name '*.html')");
+    expect(custom).not.toContain("find dist");
+  });
+
+  it("misuse: tidies an output folder written with ./, a trailing slash or a space", () => {
+    expect(
+      hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "./public/" }),
+    ).toContain("$(find public -name '*.html')");
+    expect(
+      hintrcJson({ ...DEFAULT_SOURCE_DIRECTORIES, out: "site out" }),
+    ).toContain("$(find 'site out' -name '*.html')");
+  });
 });
 
 describe("sourceUrlPattern", () => {
@@ -269,12 +293,69 @@ describe("mergeHintrc", () => {
     );
   });
 
-  it("misuse: leaves hints or ignoredUrls of the wrong shape as they are", () => {
+  it("misuse: leaves hints or ignoredUrls of the wrong shape as they are and says what to add by hand", () => {
     const existing = '{ "hints": ["a"], "ignoredUrls": "x" }';
-    expect(mergeHintrc(existing, DEFAULT_SOURCE_DIRECTORIES)).toEqual({
-      status: "unchanged",
-      text: existing,
-    });
+    const result = mergeHintrc(existing, DEFAULT_SOURCE_DIRECTORIES);
+    expect(result.status).toBe("unchanged");
+    expect(result.text).toBe(existing);
+    expect(result.notes).toHaveLength(2);
+    expect(result.notes![0]).toContain('"hints"');
+    expect(result.notes![0]).toContain("axe/text-alternatives");
+    expect(result.notes![1]).toContain('"ignoredUrls"');
+    expect(result.notes![1]).toContain(JSON.stringify(DEFAULT_PATTERN));
+  });
+
+  it("misuse: adds the part it can to webhint's list form of hints, and notes the rest", () => {
+    const result = mergeHintrc(
+      '{ "hints": ["button-type"] }',
+      DEFAULT_SOURCE_DIRECTORIES,
+    );
+    expect(result.status).toBe("updated");
+    expect((parseJsonc(result.text) as Hintrc).ignoredUrls).toEqual([
+      { domain: DEFAULT_PATTERN, hints: HINT_SOURCE_ONLY },
+    ]);
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes![0]).toContain("axe/text-alternatives");
+  });
+
+  it("misuse: notes the charset and viewport hints an old config turned off for every file", () => {
+    // The .hintrc the Bascik docs recommended before the scoped exceptions.
+    const old = `{
+  "extends": ["development"],
+  "hints": { "meta-viewport": "off", "meta-charset-utf-8": ["off", {}] },
+  "ignoredUrls": [
+    { "domain": ".*(e2e|dist|test-results|coverage|hint-report).*", "hints": ["*"] }
+  ]
+}
+`;
+    const result = mergeHintrc(old, DEFAULT_SOURCE_DIRECTORIES);
+    expect(result.status).toBe("updated");
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes![0]).toContain("meta-viewport");
+    expect(result.notes![0]).toContain("meta-charset-utf-8");
+    expect(
+      mergeHintrc(
+        '{ "hints": { "meta-viewport": 0 } }',
+        DEFAULT_SOURCE_DIRECTORIES,
+      ).notes![0],
+    ).toContain("meta-viewport");
+    expect(
+      mergeHintrc(
+        '{ "hints": { "meta-viewport": "error" } }',
+        DEFAULT_SOURCE_DIRECTORIES,
+      ).notes,
+    ).toBeUndefined();
+  });
+
+  it("adds to a one-line hints object without a double space", () => {
+    const result = mergeHintrc(
+      '{ "hints": { "button-type": "off" } }',
+      DEFAULT_SOURCE_DIRECTORIES,
+    );
+    expect(result.text).toContain(
+      '"hints": { "axe/text-alternatives": ["default", { "document-title": "off", "image-alt": "off" }], "button-type": "off" }',
+    );
+    expect(result.text).not.toMatch(/,  "/);
   });
 
   it("misuse: adds no ignoredUrls entry when the pages folder is the project root", () => {
@@ -286,15 +367,69 @@ describe("mergeHintrc", () => {
   });
 });
 
+/**
+ * The config webhint ends up with: local `./` parents first, their arrays
+ * joined, the way webhint's composeConfig merges an `extends` chain.
+ */
+function composeLikeWebhint(
+  config: Hintrc,
+  local: Record<string, Hintrc>,
+): Hintrc {
+  const parents = (config.extends ?? [])
+    .filter((name) => name.startsWith("./"))
+    .map((name) => composeLikeWebhint(local[name.slice(2)], local));
+  return [...parents, config].reduce<Hintrc>(
+    (merged, next) => ({
+      hints: { ...merged.hints, ...next.hints },
+      ignoredUrls: [...(merged.ignoredUrls ?? []), ...(next.ignoredUrls ?? [])],
+    }),
+    {},
+  );
+}
+
 describe("hintDistJson", () => {
-  it("extends the editor config and turns the title and alt checks back on", () => {
-    expect(JSON.parse(hintDistJson(".hintrc"))).toEqual({
-      extends: ["./.hintrc"],
-      hints: { "axe/text-alternatives": "default" },
-    });
-    expect(JSON.parse(hintDistJson(".hintrc.json")).extends).toEqual([
-      "./.hintrc.json",
-    ]);
+  const dist = parseJsonc(hintDistJson()) as Hintrc & { formatters?: string[] };
+
+  it("checks the built site on its own, with no source exceptions and no report folder", () => {
+    expect(dist.extends).toEqual(["development"]);
+    expect(dist.ignoredUrls).toBeUndefined();
+    expect(dist.hints).toBeUndefined();
+    // The development config adds the html formatter, which writes hint-report/.
+    expect(dist.formatters).toEqual(["stylish"]);
+    expect(hintDistJson()).toContain("//");
+  });
+
+  it("misuse: a built route named after a custom source folder is still checked", () => {
+    const dirs = { pages: "pages", components: ["../components"] };
+    const editor = parseJsonc(hintrcJson(dirs)) as Hintrc;
+    const card = "file:///p/site/dist/components/card.html";
+    // The editor pattern runs on the absolute URL, so it matches this route...
+    expect(ignores(editor, "meta-viewport", card)).toBe(true);
+    // ...and the dist check must not inherit it.
+    const composed = composeLikeWebhint(dist, { ".hintrc": editor });
+    for (const hint of HINT_SOURCE_ONLY) {
+      expect(ignores(composed, hint, card)).toBe(false);
+      expect(ignores(composed, hint, "file:///p/site/dist/pages/x.html")).toBe(
+        false,
+      );
+    }
+  });
+
+  it("misuse: an old .hintrc that skips every hint in dist/ does not reach the dist check", () => {
+    const old: Hintrc = {
+      hints: { "meta-viewport": "off" },
+      ignoredUrls: [
+        {
+          domain: ".*(e2e|dist|test-results|coverage|hint-report).*",
+          hints: ["*"],
+        },
+      ],
+    };
+    const composed = composeLikeWebhint(dist, { ".hintrc": old });
+    expect(
+      ignores(composed, "button-type", "file:///p/site/dist/index.html"),
+    ).toBe(false);
+    expect(composed.hints).not.toHaveProperty("meta-viewport");
   });
 });
 
@@ -322,7 +457,7 @@ describe("writeHintFiles", () => {
       hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
     );
     expect(await readFile(join(root, ".hintrc.dist.json"), "utf8")).toBe(
-      hintDistJson(".hintrc"),
+      hintDistJson(),
     );
   });
 
@@ -360,20 +495,22 @@ describe("writeHintFiles", () => {
       dist: "created",
     });
     await expect(readFile(join(root, ".hintrc"), "utf8")).rejects.toThrow();
-    expect(
-      JSON.parse(await readFile(join(root, ".hintrc.dist.json"), "utf8"))
-        .extends,
-    ).toEqual(["./.hintrc.json"]);
+    expect(await readFile(join(root, ".hintrc.dist.json"), "utf8")).toBe(
+      hintDistJson(),
+    );
   });
 
-  it("misuse: leaves a .hintrc.js or a package.json hintConfig alone and says so", async () => {
+  it("misuse: leaves a .hintrc.js or a package.json hintConfig alone, says so, and still writes the dist config", async () => {
     const js = await temp();
     await writeFile(join(js, ".hintrc.js"), "module.exports = {};\n");
     expect(await writeHintFiles(js)).toEqual({
       file: ".hintrc.js",
       config: "elsewhere",
-      dist: "skipped",
+      dist: "created",
     });
+    expect(await readFile(join(js, ".hintrc.dist.json"), "utf8")).toBe(
+      hintDistJson(),
+    );
     const pkg = await temp();
     await writeFile(
       join(pkg, "package.json"),
@@ -382,7 +519,7 @@ describe("writeHintFiles", () => {
     expect(await writeHintFiles(pkg)).toEqual({
       file: "package.json",
       config: "elsewhere",
-      dist: "skipped",
+      dist: "created",
     });
     await expect(readFile(join(pkg, ".hintrc"), "utf8")).rejects.toThrow();
   });
@@ -419,6 +556,15 @@ describe("writeHintFiles", () => {
     expect(ignores(config, "meta-viewport", "file:///p/src/pages/a.html")).toBe(
       false,
     );
+  });
+
+  it("misuse: passes on what the merge could not add", async () => {
+    const root = await temp();
+    await writeFile(join(root, ".hintrc"), '{ "hints": ["button-type"] }');
+    const report = await writeHintFiles(root);
+    expect(report.config).toBe("updated");
+    expect(report.notes).toHaveLength(1);
+    expect(hintReportLines(report)).toHaveLength(2);
   });
 
   it("misuse: reports, rather than throws, when .hintrc is a folder", async () => {
@@ -472,6 +618,30 @@ describe("hintReportLines", () => {
   });
 });
 
+describe("hintReportLines notes", () => {
+  it("adds each note after the status line, and shows notes for an unchanged file too", () => {
+    expect(
+      hintReportLines({
+        file: ".hintrc",
+        config: "updated",
+        dist: "created",
+        notes: ["note a"],
+      }),
+    ).toEqual([
+      ".hintrc: added the Bascik source-file exceptions (https://bascik.dev/testing/linting#editor-linters-read-source)",
+      ".hintrc: note a",
+    ]);
+    expect(
+      hintReportLines({
+        file: ".hintrc",
+        config: "unchanged",
+        dist: "unchanged",
+        notes: ["note b"],
+      }),
+    ).toEqual([".hintrc: note b"]);
+  });
+});
+
 describe("the starter site example", () => {
   it("ships the .hintrc and .hintrc.dist.json npm create bascik writes", () => {
     const starter = resolve(HERE, "../../examples/starter-site");
@@ -479,8 +649,8 @@ describe("the starter site example", () => {
       readFileSync(join(starter, ".hintrc"), "utf8"),
     ) as Hintrc;
     expect(config).toEqual(created);
-    expect(
-      JSON.parse(readFileSync(join(starter, ".hintrc.dist.json"), "utf8")),
-    ).toEqual(JSON.parse(hintDistJson(".hintrc")));
+    expect(readFileSync(join(starter, ".hintrc.dist.json"), "utf8")).toBe(
+      hintDistJson(),
+    );
   });
 });

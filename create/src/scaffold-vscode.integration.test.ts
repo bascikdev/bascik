@@ -112,9 +112,7 @@ describe("scaffold writes the webhint config on disk", () => {
       expect(await read(join(root, ".hintrc"))).toBe(
         hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
       );
-      expect(await read(join(root, ".hintrc.dist.json"))).toBe(
-        hintDistJson(".hintrc"),
-      );
+      expect(await read(join(root, ".hintrc.dist.json"))).toBe(hintDistJson());
       // The starter's pages get charset and viewport from <site-meta />, which
       // webhint cannot see in the source: the pattern must cover them.
       const config = parseJsonc(await read(join(root, ".hintrc"))) as {
@@ -168,9 +166,7 @@ describe("scaffold writes the webhint config on disk", () => {
     expect(
       parseJsonc(await read(join(root, ".hintrc.json"))) as object,
     ).toHaveProperty("ignoredUrls");
-    expect(JSON.parse(await read(join(root, ".hintrc.dist.json")))).toEqual(
-      JSON.parse(hintDistJson(".hintrc.json")),
-    );
+    expect(await read(join(root, ".hintrc.dist.json"))).toBe(hintDistJson());
   });
 
   it("misuse: leaves a .hintrc.js alone and tells the user what to add", async () => {
@@ -182,6 +178,35 @@ describe("scaffold writes the webhint config on disk", () => {
     expect(await read(join(root, ".hintrc.js"))).toBe("module.exports = {};\n");
     await expect(read(join(root, ".hintrc"))).rejects.toThrow();
     expect(result.notes.join("\n")).toContain(EDITOR_LINTERS_URL);
+    // The dist config does not extend the editor config, so it is written anyway.
+    expect(await read(join(root, ".hintrc.dist.json"))).toBe(hintDistJson());
+  });
+
+  it("misuse: an old .hintrc that turned the charset and viewport hints off is noted, and the dist config stands alone", async () => {
+    const parent = await createTempDir();
+    const root = join(parent, "site");
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, ".hintrc"),
+      `{
+  "extends": ["development"],
+  "hints": { "meta-viewport": "off", "meta-charset-utf-8": "off" },
+  "ignoredUrls": [
+    { "domain": ".*(e2e|dist|test-results|coverage|hint-report).*", "hints": ["*"] }
+  ]
+}
+`,
+    );
+    const result = await scaffold("site", parent);
+    const notes = result.notes.join("\n");
+    expect(notes).toContain("meta-viewport");
+    expect(notes).toContain("meta-charset-utf-8");
+    const dist = parseJsonc(await read(join(root, ".hintrc.dist.json"))) as {
+      extends: string[];
+      ignoredUrls?: unknown;
+    };
+    expect(dist.extends).toEqual(["development"]);
+    expect(dist.ignoredUrls).toBeUndefined();
   });
 
   it("misuse: a broken .hintrc stays as it is and is reported", async () => {
