@@ -310,6 +310,24 @@ export const build = async (
     lines.push(
       `  assetHeaders: { cspRoutes: ${JSON.stringify(csp ? csp.staticRoutes : [])} },`,
     );
+  // A static 404.html's policy goes into an exact-path _headers rule, which
+  // the asset layer matches on the request path: a miss for any other URL
+  // is answered with the page but without its policy. Only a Worker in front
+  // of every static file can send it there (runtime.ts, withAssetHeaders).
+  const staticNotFoundRoutes = (csp?.staticRoutes ?? []).filter(
+    (route) => route === "/404" || route.endsWith("/404"),
+  );
+  if (csp && !workerFirst && staticNotFoundRoutes.length)
+    context.log(
+      `[bascik] --target cloudflare-${variant}: the Content-Security-Policy of the static 404 page ` +
+        `(${staticNotFoundRoutes.map((route) => withBasePath(route, graph.base)).join(", ")}) is sent at its own URL only. ` +
+        `Cloudflare's _headers rules match the request path, not the response status, so a 404 for any other URL ` +
+        `is served with the page but without its policy. ` +
+        (variant === "workers"
+          ? `Set "assets": { "run_worker_first": true } in your wrangler config to have the Worker send it on every 404.`
+          : `Cloudflare Pages cannot run the Worker before static files: build with --target cloudflare-workers and ` +
+            `"assets": { "run_worker_first": true } to send it on every 404.`),
+    );
   // The build's security headers, dotfile rule, ANSI handling and render
   // limits (Collin 2026-10-29): the Worker has no config of its own, so it
   // applies what the build resolved. A graph without them is today's Worker.

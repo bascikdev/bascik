@@ -139,7 +139,7 @@ It lists every site with its component roots, import root, base, and Bascik vers
 
 ## Content-Security-Policy (opt in)
 
-Bascik sends no CSP by default. `contentSecurityPolicy` makes every HTML response carry one, built from the directives you list plus each route's inline script and style hashes from the build (it turns on `generate.cspHashes`). The dev server and `bascik --server` send it as a header; on Cloudflare the Worker sends it for the pages it renders and the build writes `public/_headers` rules for static pages.
+Bascik sends no CSP by default. `contentSecurityPolicy` makes every HTML response carry one, built from the directives you list plus each route's inline script and style hashes from the build (it turns on `generate.cspHashes`). The dev server and `bascik --server` send it as a header; on Cloudflare the Worker sends it for the pages it renders and the build writes `public/_headers` rules for static pages. A static `404.html` then has its policy at `/404` only, not on a 404 for another URL (`_headers` cannot match a status; the build warns); `assets.run_worker_first: true` in the Wrangler config makes the Worker send it on every 404.
 
 ```ts
 export default defineConfig({

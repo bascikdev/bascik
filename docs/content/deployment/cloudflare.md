@@ -546,6 +546,8 @@ A Pages custom domain is a `CNAME` record, and a Worker custom domain cannot be 
 
 Set [`contentSecurityPolicy`](/configuration#contentsecuritypolicy) and the generated Worker sends the header, with the build's hashes, on every page it renders, while the build writes exact-path `public/_headers` rules for static pages. No wrapper and no `run_worker_first` are needed. Cloudflare reads at most 100 rules from `_headers` and skips any line over 2000 characters with no error, so a site whose rules would not fit, or a static page whose policy line is too long (one hash for each inline script and style), fails the build with a message that names the count or the page. See [Content Security Policy](/how-to/content-security-policy#cloudflare) and [Sending every header from the Worker](#sending-every-header-from-the-worker).
 
+A static `404.html` gets its policy at its own URL (`/404`) only. `_headers` rules match the request path, not the response status, so when the asset layer answers a miss such as `/does-not-exist` with the 404 page, the response has no `Content-Security-Policy`, while `bascik --server` sends the 404 page's policy there. The build prints a warning naming the page. With `run_worker_first: true` (Workers variant), the Worker adds the policy of the 404 page the asset layer served, the nearest `404.html` up the path, to every 404.
+
 ## Security settings on Cloudflare
 
 The Worker has no config file of its own at request time. The build resolves the [`security`](/configuration#security) settings and [`scripts.stripAnsi`](/configuration#scriptsstripansi) and [`scripts.renderLimits`](/configuration#scriptsrenderlimits) from the default export plus the `build` export, and writes them into the Worker, so a `server` export does not reach Cloudflare. Rebuild after changing them.
@@ -582,7 +584,7 @@ The Worker has no config file of its own at request time. The build resolves the
 
 ### Sending every header from the Worker
 
-With `"assets": { "run_worker_first": true }` (or `["/*"]`) in your root `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`, every request reaches the Worker first, and `bascik --build --target cloudflare` keeps that setting in the generated config. The build then writes no `_headers` rules of its own: the Worker adds the security headers, and each static page's Content-Security-Policy, to what the asset layer returns, so the 100-rule and 2000-character limits no longer apply. A header your own `_headers` already set on that file is kept. The cost is a Worker invocation for every static file. Cloudflare Pages cannot run the Worker before static files, so this needs the Workers variant.
+With `"assets": { "run_worker_first": true }` (or `["/*"]`) in your root `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`, every request reaches the Worker first, and `bascik --build --target cloudflare` keeps that setting in the generated config. The build then writes no `_headers` rules of its own: the Worker adds the security headers, and each static page's Content-Security-Policy (on a 404, that of the static 404 page the asset layer served), to what the asset layer returns, so the 100-rule and 2000-character limits no longer apply. A header your own `_headers` already set on that file is kept. The cost is a Worker invocation for every static file. Cloudflare Pages cannot run the Worker before static files, so this needs the Workers variant.
 
 ```jsonc
 // wrangler.jsonc

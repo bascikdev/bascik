@@ -723,6 +723,42 @@ describe("createCloudflareWorker: run_worker_first sends the static files' heade
     expect(res.headers.get("strict-transport-security")).toBeNull();
   });
 
+  it("a miss the asset layer answers with a 404 page carries that page's policy, under the base too", async () => {
+    const notFound = (overrides: Partial<SiteGraph> = {}) =>
+      workerFirst({
+        assetHeaders: { cspRoutes: ["/", "/404", "/docs/404"] },
+        contentSecurityPolicy: {
+          policy,
+          hashes: {
+            "/404": { scripts: [], styles: ["sha256-NF"] },
+            "/docs/404": { scripts: [], styles: ["sha256-DOCSNF"] },
+          },
+        },
+        ...overrides,
+      });
+    const { env } = assets(() => new Response("lost", { status: 404 }));
+    const csp = async (path: string, graph = notFound()) =>
+      (await graph.fetch(get(path), env, ctx())).headers.get(
+        "content-security-policy",
+      );
+    expect(await csp("/nope")).toBe("style-src 'self' 'sha256-NF'");
+    expect(await csp("/docs/a/b")).toBe("style-src 'self' 'sha256-DOCSNF'");
+    expect(await csp("/shop/docs/x", notFound({ base: "/shop/" }))).toBe(
+      "style-src 'self' 'sha256-DOCSNF'",
+    );
+  });
+
+  it("misuse: a 404 with no static 404 page listed, or a 200 at an unlisted URL, gets no policy", async () => {
+    const { env: missEnv } = assets(() => new Response("", { status: 404 }));
+    const miss = await workerFirst().fetch(get("/nope"), missEnv, ctx());
+    expect(miss.headers.get("content-security-policy")).toBeNull();
+    const { env: okEnv } = assets(() => new Response("x", { status: 200 }));
+    const ok = await workerFirst({
+      assetHeaders: { cspRoutes: ["/404"] },
+    }).fetch(get("/logo.txt"), okEnv, ctx());
+    expect(ok.headers.get("content-security-policy")).toBeNull();
+  });
+
   it("applies to the static 404 page it fetches too", async () => {
     const { env } = assets(() => new Response("<h1>nf</h1>"));
     const res = await workerFirst({ staticNotFoundPage: true }).fetch(

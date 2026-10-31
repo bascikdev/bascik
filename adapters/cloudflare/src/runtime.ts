@@ -450,6 +450,17 @@ export const createCloudflareWorker = (
     return graph.assetHeaders ? withAssetHeaders(request, response) : response;
   };
 
+  /** The listed static 404 page nearest to `path`, as the asset layer looks one up. */
+  const notFoundRouteFor = (path: string): string | undefined => {
+    const segments = path.split("/").slice(1, -1);
+    for (let depth = segments.length; depth >= 0; depth--) {
+      const dir = segments.slice(0, depth).join("/");
+      const route = dir ? `/${dir}/404` : "/404";
+      if (assetCspRoutes.has(route)) return route;
+    }
+    return undefined;
+  };
+
   /** The headers _headers would have given a static file, sent by the Worker instead. */
   const withAssetHeaders = (request: Request, response: Response): Response => {
     const headers = new Headers(response.headers);
@@ -472,10 +483,21 @@ export const createCloudflareWorker = (
     } catch {
       path = null;
     }
-    if (csp && path !== null && assetCspRoutes.has(path)) {
+    // A miss answered with a 404.html carries that page's policy, as the
+    // Node server sends the 404 page's own: the asset layer serves the
+    // nearest 404.html up the path (`/docs/nope` gets `/docs/404.html`).
+    const route =
+      path === null
+        ? undefined
+        : assetCspRoutes.has(path)
+          ? path
+          : response.status === 404
+            ? notFoundRouteFor(path)
+            : undefined;
+    if (csp && route !== undefined) {
       const { name, value } = contentSecurityPolicyHeader(
         csp.policy,
-        csp.hashes[path],
+        csp.hashes[route],
       );
       if (!headers.has(name)) headers.set(name, value);
     }

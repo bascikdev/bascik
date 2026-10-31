@@ -162,3 +162,88 @@ describe("the harness runs the Worker under the generated wrangler.jsonc's setti
     expect(await missing.text()).not.toContain("lost");
   }, 60_000);
 });
+
+describe("the static 404 page's Content-Security-Policy on a 404 for any URL", () => {
+  const policy = { directives: { "default-src": ["'self'"] } };
+  const csp = {
+    policy,
+    hashes: {
+      "/404": { scripts: ["'sha256-notfound'"], styles: [] },
+      "/docs/404": { scripts: ["'sha256-docsnotfound'"], styles: [] },
+    },
+    staticRoutes: ["/", "/404", "/docs/404"],
+  };
+  const files = {
+    "404.html": "<p>lost</p><script>1</script>",
+    "docs/404.html": "<p>docs lost</p><script>2</script>",
+  };
+  const cspOf = async (harness: Harness, path: string) => {
+    const res = await harness.mf.dispatchFetch(`https://example.test${path}`);
+    return {
+      status: res.status,
+      body: await res.text(),
+      value: res.headers.get("content-security-policy"),
+    };
+  };
+
+  it("with run_worker_first: true, the Worker sends the policy of the 404 page whose body the asset layer serves", async () => {
+    const site = await buildSite({
+      files,
+      csp,
+      wrangler: JSON.stringify({ assets: { run_worker_first: true } }),
+    });
+    const harness = await serve(site);
+    const missing = await cspOf(harness, "/does-not-exist");
+    expect(missing.status).toBe(404);
+    expect(missing.body).toContain("<p>lost</p>");
+    expect(missing.value).toBe(
+      "default-src 'self'; script-src 'self' 'sha256-notfound'",
+    );
+    // Cloudflare serves the nearest 404.html: its own policy goes with it.
+    const nested = await cspOf(harness, "/docs/nope");
+    expect(nested.status).toBe(404);
+    expect(nested.body).toContain("docs lost");
+    expect(nested.value).toBe(
+      "default-src 'self'; script-src 'self' 'sha256-docsnotfound'",
+    );
+    // The 404 page at its own URL keeps answering 404 with its policy.
+    const own = await cspOf(harness, "/404");
+    expect(own.status).toBe(404);
+    expect(own.value).toBe(
+      "default-src 'self'; script-src 'self' 'sha256-notfound'",
+    );
+  }, 60_000);
+
+  it.each(["pages", "workers"] as const)(
+    "misuse: cloudflare-%s without the Worker in front of static files, the build says the policy reaches the 404 page's own URL only",
+    async (variant) => {
+      const logs: string[] = [];
+      await buildSite({ variant, files, csp, logs });
+      const warning = logs.find((l) => l.includes("404"));
+      expect(warning).toMatch(
+        new RegExp(
+          `^\\[bascik\\] --target cloudflare-${variant}: .*Content-Security-Policy.*static 404 page.*/404, /docs/404.*_headers.*status`,
+          "s",
+        ),
+      );
+      expect(warning).toContain(
+        variant === "workers"
+          ? `"run_worker_first": true`
+          : "--target cloudflare-workers",
+      );
+    },
+    60_000,
+  );
+
+  it("no warning when the Worker runs first, or without a policy", async () => {
+    const logs: string[] = [];
+    await buildSite({
+      files,
+      csp,
+      logs,
+      wrangler: JSON.stringify({ assets: { run_worker_first: true } }),
+    });
+    await buildSite({ files, logs });
+    expect(logs.filter((l) => l.includes("404"))).toEqual([]);
+  }, 60_000);
+});
