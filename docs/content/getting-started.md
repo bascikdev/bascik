@@ -44,7 +44,7 @@ To start a site that deploys to Cloudflare Workers, pass `--template cloudflare`
 npm create bascik@rc my-site -- --template cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik@rc my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt.
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik@rc my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt. `--no-skills` and `--no-install` work on either side too, but `--no-dev` has to follow the `--`: npm treats it as one of its own settings and does not pass it on.
 
 ## Manual Setup
 

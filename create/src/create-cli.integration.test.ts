@@ -100,11 +100,13 @@ async function create(
 ): Promise<{ status: number | null; output: string; parent: string }> {
   const parent = await mkdtemp(join(work, "run-"));
   options.setup?.(parent);
-  const env: NodeJS.ProcessEnv = { ...process.env, ...options.env };
+  const env: NodeJS.ProcessEnv = { ...process.env };
   // npm sets these when it runs create-bascik; a leftover one would change the flags.
   delete env.npm_config_yes;
   delete env.npm_config_skills;
+  delete env.npm_config_install;
   delete env.npm_config_template;
+  Object.assign(env, options.env);
   const result = spawnSync(process.execPath, [entry, ...args], {
     cwd: parent,
     env,
@@ -141,6 +143,23 @@ describe("npm create bascik and the agent skills", () => {
       `To install the Bascik agent skills later, run this in my-site:\n${LATER.join("\n")}\n`,
     );
     expect(LATER[0]).toContain(`#v${BASCIK_VERSION}`);
+  });
+
+  it("misuse: --no-skills and --no-install written before --, which npm exports as empty values, are honored", async () => {
+    // What npm 11 hands over for `npm create bascik my-site -y --no-skills --no-install -- --no-dev`.
+    const { status, output, parent } = await create(["my-site", "--no-dev"], {
+      env: {
+        npm_config_yes: "true",
+        npm_config_skills: "",
+        npm_config_install: "",
+      },
+    });
+    expect(status, output).toBe(0);
+    expect(output).not.toContain("Installing the Bascik agent skills");
+    expect(output).not.toContain("Installing dependencies");
+    expect(output).toContain(LATER[0]);
+    expect(existsSync(join(parent, "my-site", ".agents"))).toBe(false);
+    expect(existsSync(join(parent, "my-site", "node_modules"))).toBe(false);
   });
 
   it("-y installs every project skill as real copies in both folders, without bascik-refactor", async () => {

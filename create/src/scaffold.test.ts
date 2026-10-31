@@ -1515,6 +1515,30 @@ describe("parseCliOptions --no-skills", () => {
     ).toBe(false);
   });
 
+  it("misuse: honors --no-skills and --no-install written before --, which npm exports as empty npm_config_* values", () => {
+    // What npm 11 sets for `npm create bascik my-site --no-skills --no-install`.
+    expect(
+      parseCliOptions(["my-site"], {
+        npm_config_skills: "",
+        npm_config_install: "",
+      }),
+    ).toMatchObject({ noSkillsFlag: true, noInstallFlag: true });
+    expect(
+      parseCliOptions(["my-site"], { npm_config_install: "false" })
+        .noInstallFlag,
+    ).toBe(true);
+    expect(
+      parseCliOptions(["my-site"], {
+        npm_config_skills: "true",
+        npm_config_install: "true",
+      }),
+    ).toMatchObject({ noSkillsFlag: false, noInstallFlag: false });
+    expect(parseCliOptions(["my-site"], {})).toMatchObject({
+      noSkillsFlag: false,
+      noInstallFlag: false,
+    });
+  });
+
   it("misuse: a typo'd flag such as --no-skill is refused with the flag it meant, instead of installing the skills", () => {
     expect(() => parseCliOptions(["my-site", "--no-skill"])).toThrow(
       'Unknown option "--no-skill". Did you mean "--no-skills"?',
