@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -283,54 +284,63 @@ describe("scoping templates replay the October 2026 adversarial inputs exactly",
     }
   }
 
-  it("random combinations of the adversarial constructs replay exactly", () => {
-    const hex = "0123456789abcdef".split("");
-    const instanceId = fc.oneof(
-      fc.string({ unit: fc.constantFrom(...hex), minLength: 8, maxLength: 8 }),
-      fc.constantFrom(...ids),
-    );
-    const replayable = [...cases, ...misuseCases].filter(
-      (test) => !REFUSED.has(test.name),
-    );
-    let reusable = 0;
-    let runs = 0;
-    fc.assert(
-      fc.property(
-        fc.array(fc.constantFrom(...replayable), {
-          minLength: 2,
-          maxLength: 5,
+  const COMBINATION_BOUNDS = propertyBounds(80, "SCOPING_PROPERTY_RUNS");
+  it(
+    "random combinations of the adversarial constructs replay exactly",
+    () => {
+      const hex = "0123456789abcdef".split("");
+      const instanceId = fc.oneof(
+        fc.string({
+          unit: fc.constantFrom(...hex),
+          minLength: 8,
+          maxLength: 8,
         }),
-        fc.boolean(),
-        fc.boolean(),
-        fc.boolean(),
-        instanceId,
-        instanceId,
-        (picked, identifiers, deduplicateCss, perInstance, first, next) => {
-          fc.pre(first !== next);
-          runs++;
-          setConfig(identifiers, deduplicateCss);
-          const input = componentFor(
-            {
-              name: "combined",
-              html: picked.map((test) => test.html).join("\n"),
-              css: picked.map((test) => test.css ?? "").join("\n"),
-            },
-            perInstance,
-          );
-          const template = templateFor(input, first);
-          if (!template) return;
-          const predicted = instantiateScopingTemplate(
-            template,
-            next,
-            internals.inputTexts(input),
-          );
-          if (!predicted) return;
-          reusable++;
-          expect(predicted).toEqual(real(input, next));
-        },
-      ),
-      { numRuns: Number(process.env.SCOPING_PROPERTY_RUNS ?? 200) },
-    );
-    expect(reusable).toBeGreaterThan(runs * 0.8);
-  });
+        fc.constantFrom(...ids),
+      );
+      const replayable = [...cases, ...misuseCases].filter(
+        (test) => !REFUSED.has(test.name),
+      );
+      let reusable = 0;
+      let runs = 0;
+      fc.assert(
+        fc.property(
+          fc.array(fc.constantFrom(...replayable), {
+            minLength: 2,
+            maxLength: 5,
+          }),
+          fc.boolean(),
+          fc.boolean(),
+          fc.boolean(),
+          instanceId,
+          instanceId,
+          (picked, identifiers, deduplicateCss, perInstance, first, next) => {
+            fc.pre(first !== next);
+            runs++;
+            setConfig(identifiers, deduplicateCss);
+            const input = componentFor(
+              {
+                name: "combined",
+                html: picked.map((test) => test.html).join("\n"),
+                css: picked.map((test) => test.css ?? "").join("\n"),
+              },
+              perInstance,
+            );
+            const template = templateFor(input, first);
+            if (!template) return;
+            const predicted = instantiateScopingTemplate(
+              template,
+              next,
+              internals.inputTexts(input),
+            );
+            if (!predicted) return;
+            reusable++;
+            expect(predicted).toEqual(real(input, next));
+          },
+        ),
+        COMBINATION_BOUNDS.options,
+      );
+      expect(reusable).toBeGreaterThan(runs * 0.8);
+    },
+    COMBINATION_BOUNDS.timeoutMs,
+  );
 });

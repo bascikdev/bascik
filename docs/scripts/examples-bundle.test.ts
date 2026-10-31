@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import {
   BUNDLE_VERSION,
   DOCUMENTED_WITH,
@@ -152,6 +153,25 @@ describe("every example component is documented and exercised", () => {
   });
 });
 
+type ParsedElement = DefaultTreeAdapterTypes.Element;
+const isParsedElement = (
+  node: DefaultTreeAdapterTypes.ChildNode,
+): node is ParsedElement => "tagName" in node;
+/** Every element under `parent` in document order, `<template>` contents included. */
+const parsedElementsOf = (
+  parent: DefaultTreeAdapterTypes.ParentNode,
+): ParsedElement[] =>
+  parent.childNodes
+    .filter(isParsedElement)
+    .flatMap((element) => [
+      element,
+      ...parsedElementsOf(
+        element.tagName === "template"
+          ? (element as DefaultTreeAdapterTypes.Template).content
+          : element,
+      ),
+    ]);
+
 // The house rule for examples (.github/copilot-instructions.md): a data-testid on every component root and
 // interactive part, named after the component, and a root that is the element the HTML standard defines for the job.
 describe("example components follow the test id and semantic root rules", () => {
@@ -162,13 +182,14 @@ describe("example components follow the test id and semantic root rules", () => 
   };
   const componentFile = (name: string) =>
     readFileSync(join(examplesDir, `components/${name}/${name}.html`), "utf8");
-  /** The first element of a component that is not a style, script, link, meta, or template tag, or a comment. */
+  /** Tags that are never a component's root: head content and inert or raw-text elements. */
+  const NOT_ROOTS = new Set(["style", "script", "template", "link", "meta"]);
+  /** The first element of a component that is not a style, script, link, meta, or template tag, as the parser reads it. */
   const rootTagOf = (source: string) =>
-    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: finds the root tag of a committed example component; the stripped text is only searched, never rendered.
-    source
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<(style|script|template)\b[\s\S]*?<\/\1>/g, "")
-      .match(/<(?!\/|link\b|meta\b)([a-z][a-z0-9-]*)/)?.[1];
+    parseFragment(source).childNodes.find(
+      (node): node is ParsedElement =>
+        isParsedElement(node) && !NOT_ROOTS.has(node.tagName),
+    )?.tagName;
 
   it("has a data-testid on every component root, interactive part, form, dialog, and landmark, and on every starter page's <main>", () => {
     const gaps = testIdAdvisory(starterSite, config).map(
@@ -222,6 +243,17 @@ describe("example components follow the test id and semantic root rules", () => 
     ).toBe("nav");
     expect(rootTagOf("<link rel=icon />\n<script>x</script>")).toBe(undefined);
   });
+
+  it("misuse: a comment opener inside a script does not hide the root after it", () => {
+    expect(
+      rootTagOf(
+        '<script>const open = "<!--";</script>\n<nav data-testid="x"></nav>\n<!-- note -->',
+      ),
+    ).toBe("nav");
+    expect(rootTagOf("<template><div></div></template>\n<form></form>")).toBe(
+      "form",
+    );
+  });
 });
 
 // TypeScript by default (.github/copilot-instructions.md): every script in the examples, browser or build time,
@@ -236,17 +268,23 @@ describe("example scripts are TypeScript", () => {
           !/[\\/](node_modules|dist)([\\/]|$)/.test(entry.parentPath),
       )
       .map((entry) => join(entry.parentPath, entry.name));
-  /** Inline script open tags that would run as JavaScript: no TypeScript type, no .ts src, and not a data block. */
+  /** Script open tags, as written, that would run as JavaScript: no TypeScript type, no .ts src, and not a data block. */
   const javaScriptTags = (source: string): string[] =>
-    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: skips commented-out tags in committed example pages; the stripped text is only searched, never rendered.
-    [...source.replace(/<!--[\s\S]*?-->/g, "").matchAll(/<script\b[^>]*>/gi)]
-      .map((match) => match[0])
-      .filter((tag) => {
-        const type = /\btype="([^"]*)"/i.exec(tag)?.[1].toLowerCase();
+    parsedElementsOf(parse(source, { sourceCodeLocationInfo: true }))
+      .filter((element) => {
+        if (element.tagName !== "script") return false;
+        const attribute = (name: string) =>
+          element.attrs.find((attr) => attr.name === name)?.value;
+        const type = attribute("type")?.toLowerCase();
         if (type === "text/typescript") return false;
         if (type && type !== "module" && !type.includes("javascript"))
           return false;
-        return !/\bsrc="[^"]*\.m?ts"/i.test(tag);
+        return !/\.m?ts$/i.test(attribute("src") ?? "");
+      })
+      .map((element) => {
+        const { startOffset, endOffset } =
+          element.sourceCodeLocation!.startTag!;
+        return source.slice(startOffset, endOffset);
       });
 
   it("marks every inline script in the example components and the starter site as TypeScript", () => {
@@ -276,5 +314,18 @@ describe("example scripts are TypeScript", () => {
       '<script type="module">',
       '<script src="/app.js">',
     ]);
+  });
+
+  it("misuse: finds a script after a comment opener written inside another script, and one inside a template", () => {
+    expect(
+      javaScriptTags(
+        [
+          '<script type="text/typescript">document.write("<!--");</script>',
+          '<script src="/app.js"></script>',
+          "<!-- note -->",
+          "<template><script>inTemplate()</script></template>",
+        ].join("\n"),
+      ),
+    ).toEqual(['<script src="/app.js">', "<script>"]);
   });
 });

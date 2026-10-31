@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import { findJsLiteralSpans } from "./js-literal-spans.ts";
 
 const literals = (js: string): string[] =>
@@ -88,18 +89,23 @@ describe("findJsLiteralSpans", () => {
     expect(literals("x = (if_(a)) / 2 + 'q' / 3")).toEqual(["'q'"]);
   });
 
-  it("returns ordered, non-overlapping, in-range spans for any input", () => {
-    fc.assert(
-      fc.property(fc.string(), (js) => {
-        let previousEnd = 0;
-        for (const { start, end } of findJsLiteralSpans(js)) {
-          expect(start).toBeGreaterThanOrEqual(previousEnd);
-          expect(end).toBeGreaterThan(start);
-          expect(end).toBeLessThanOrEqual(js.length);
-          previousEnd = end;
-        }
-      }),
-      { numRuns: 300 },
-    );
-  });
+  const SPAN_BOUNDS = propertyBounds(300);
+  it(
+    "returns ordered, non-overlapping, in-range spans for any input",
+    () => {
+      fc.assert(
+        fc.property(fc.string(), (js) => {
+          let previousEnd = 0;
+          for (const { start, end } of findJsLiteralSpans(js)) {
+            expect(start).toBeGreaterThanOrEqual(previousEnd);
+            expect(end).toBeGreaterThan(start);
+            expect(end).toBeLessThanOrEqual(js.length);
+            previousEnd = end;
+          }
+        }),
+        SPAN_BOUNDS.options,
+      );
+    },
+    SPAN_BOUNDS.timeoutMs,
+  );
 });

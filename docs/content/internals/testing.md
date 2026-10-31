@@ -365,6 +365,25 @@ describe("prefixElementAttribute", () => {
 
 > **Important.** Always import the module under test _after_ calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
+### Bounding Property Tests
+
+A fast-check property with no explicit bounds draws a new random seed on every run and runs under Vitest's 5 s default timeout, so its cost changes from run to run and a slow CI runner can time it out. Pass each `fc.assert` the options from `propertyBounds(ciRuns, runsVariable?)` in `pkg/src/lib/property-runs.test-helper.ts`, and its `timeoutMs` to `it`:
+
+```ts
+import { propertyBounds } from "./property-runs.test-helper.ts";
+
+const BOUNDS = propertyBounds(100, "MASK_ORACLE_RUNS");
+it(
+  "keeps the mask equal to a whole re-read",
+  () => {
+    fc.assert(fc.property(pageArb, checkPage), BOUNDS.options);
+  },
+  BOUNDS.timeoutMs,
+);
+```
+
+The property then runs `ciRuns` cases from a fixed seed with a 30 s timeout. Size `ciRuns` so the test takes well under a second on a developer machine; the timeout is the margin for a slow runner, such as the Node 22.22 floor job. The optional variable raises the count for a deeper local run (`MASK_ORACLE_RUNS=20000 yarn pkg:unit`), and the timeout grows with it. `PROPERTY_SEED` starts every bounded property from another seed. A variable that is empty or not a positive whole number throws with its name and value, because fast-check runs no case at all for a `numRuns` of `NaN` or 0 and passes.
+
 ## Boundary Test Patterns
 
 ### Real-Filesystem Watch Testing

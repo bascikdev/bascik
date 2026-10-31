@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import { parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import {
   decodeCharacterReferences,
@@ -80,23 +81,31 @@ describe("decodeCharacterReferences", () => {
     expect(decodeCharacterReferences(clean)).toBe(clean);
   });
 
-  it("agrees with the tokenizer on generated mixes of known references and text", () => {
-    const names = [...namedCharacterReferences().keys()];
-    const piece = fc.oneof(
-      fc.constantFrom(...names).map((name) => `&${name};`),
-      fc.integer({ min: 1, max: 0x10ffff }).map((code) => `&#${code};`),
-      fc
-        .integer({ min: 1, max: 0x10ffff })
-        .map((code) => `&#x${code.toString(16)};`),
-      fc.constantFrom("a", " ", "1", ";", "#", "x", "é", "<", ">", "'"),
-    );
-    fc.assert(
-      fc.property(fc.array(piece, { maxLength: 12 }), (pieces) => {
-        const written = pieces.join("");
-        expect(decodeCharacterReferences(written)).toBe(browserDecode(written));
-      }),
-    );
-  });
+  const MIX_BOUNDS = propertyBounds(100);
+  it(
+    "agrees with the tokenizer on generated mixes of known references and text",
+    () => {
+      const names = [...namedCharacterReferences().keys()];
+      const piece = fc.oneof(
+        fc.constantFrom(...names).map((name) => `&${name};`),
+        fc.integer({ min: 1, max: 0x10ffff }).map((code) => `&#${code};`),
+        fc
+          .integer({ min: 1, max: 0x10ffff })
+          .map((code) => `&#x${code.toString(16)};`),
+        fc.constantFrom("a", " ", "1", ";", "#", "x", "é", "<", ">", "'"),
+      );
+      fc.assert(
+        fc.property(fc.array(piece, { maxLength: 12 }), (pieces) => {
+          const written = pieces.join("");
+          expect(decodeCharacterReferences(written)).toBe(
+            browserDecode(written),
+          );
+        }),
+        MIX_BOUNDS.options,
+      );
+    },
+    MIX_BOUNDS.timeoutMs,
+  );
 });
 
 describe("decodeAttributeEntities and decodeCharacterReferences agree (R2-03)", () => {

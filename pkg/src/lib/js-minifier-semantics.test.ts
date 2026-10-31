@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 import { minifyJs } from "./js-minifier.ts";
 
 type Run = { syntaxError?: string; threw?: string; log: unknown[] };
@@ -188,21 +189,26 @@ describe("minifyJs – semicolon-free statement sequences (property)", () => {
     "x = arr\n[0]",
   );
 
-  it("runs the same program minified as unminified", () => {
-    fc.assert(
-      fc.property(
-        fc.array(statement, { minLength: 1, maxLength: 6 }),
-        (lines) => {
-          const source = `let n = 1, x, o = {}, arr = [0]\n${lines.join("\n")}\nlog.push(n, x)`;
-          const dev = run(source);
-          // Some sequences are invalid or throw as written (`f\n(n)` calls the arrow); parity
-          // still holds for those, so only an invalid source is skipped.
-          fc.pre(dev.syntaxError === undefined);
-          const prod = run(minifyJs(source));
-          expect(prod, minifyJs(source)).toEqual(dev);
-        },
-      ),
-      { numRuns: 500 },
-    );
-  });
+  const PARITY_BOUNDS = propertyBounds(500);
+  it(
+    "runs the same program minified as unminified",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.array(statement, { minLength: 1, maxLength: 6 }),
+          (lines) => {
+            const source = `let n = 1, x, o = {}, arr = [0]\n${lines.join("\n")}\nlog.push(n, x)`;
+            const dev = run(source);
+            // Some sequences are invalid or throw as written (`f\n(n)` calls the arrow); parity
+            // still holds for those, so only an invalid source is skipped.
+            fc.pre(dev.syntaxError === undefined);
+            const prod = run(minifyJs(source));
+            expect(prod, minifyJs(source)).toEqual(dev);
+          },
+        ),
+        PARITY_BOUNDS.options,
+      );
+    },
+    PARITY_BOUNDS.timeoutMs,
+  );
 });
