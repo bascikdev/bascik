@@ -925,7 +925,8 @@ describe("expanded instances do not pin the page (F025)", () => {
 describe("a component with an empty template (F026)", () => {
   /** The page without script text, where inner-box's template names itself. */
   const markup = (html: string): string =>
-    html.replace(/<script\b[\s\S]*?<\/script>/g, "");
+    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: drops the compiler's own script elements so the assertions read only markup; nothing is rendered.
+    html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, () => "");
 
   beforeEach(() => {
     (BascikConfig.minify as { identifiers: boolean }).identifiers = false;

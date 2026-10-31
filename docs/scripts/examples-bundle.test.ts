@@ -164,6 +164,7 @@ describe("example components follow the test id and semantic root rules", () => 
     readFileSync(join(examplesDir, `components/${name}/${name}.html`), "utf8");
   /** The first element of a component that is not a style, script, link, meta, or template tag, or a comment. */
   const rootTagOf = (source: string) =>
+    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: finds the root tag of a committed example component; the stripped text is only searched, never rendered.
     source
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/<(style|script|template)\b[\s\S]*?<\/\1>/g, "")
@@ -237,6 +238,7 @@ describe("example scripts are TypeScript", () => {
       .map((entry) => join(entry.parentPath, entry.name));
   /** Inline script open tags that would run as JavaScript: no TypeScript type, no .ts src, and not a data block. */
   const javaScriptTags = (source: string): string[] =>
+    // codeql[js/incomplete-multi-character-sanitization] Not a sanitizer: skips commented-out tags in committed example pages; the stripped text is only searched, never rendered.
     [...source.replace(/<!--[\s\S]*?-->/g, "").matchAll(/<script\b[^>]*>/gi)]
       .map((match) => match[0])
       .filter((tag) => {

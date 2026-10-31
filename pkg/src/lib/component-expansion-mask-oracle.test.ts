@@ -278,7 +278,7 @@ const pageArb = fc.array(node, { maxLength: 6 }).map((parts) => parts.join(""));
 /** Where the last `</name` before tag whitespace, `/` or `>` starts, any case. */
 const lastCloseIn = (masked: string, name: string): number => {
   const pattern = new RegExp(
-    `</${name.replace(/[-]/g, "\\-")}(?=[\\t\\n\\f\\r />])`,
+    `</${name.replace(/[\\^$.*+?()[\]{}|-]/g, (char) => `\\${char}`)}(?=[\\t\\n\\f\\r />])`,
     "gi",
   );
   let last = -1;
