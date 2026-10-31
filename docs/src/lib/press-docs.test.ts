@@ -4,8 +4,10 @@ import { join } from "node:path";
 import {
   CANVASES,
   MARK_PNG_SIZES,
+  PRESS_EMAIL,
   WORDMARK_PNG_WIDTHS,
 } from "../../scripts/generate-press-kit.ts";
+import { renderMd } from "./md-renderer.ts";
 import { CLEAR_SPACE_RATIO, readLogo } from "./press-logo.ts";
 
 const docsDir = join(import.meta.dirname, "../..");
@@ -91,5 +93,46 @@ describe("press page: spacing and minimum size", () => {
     expect(between).toContain("<diagram-figure");
     expect(between).toContain('clearSpaceSvg("wordmark")');
     expect(between).toContain('clearSpaceSvg("mark")');
+  });
+});
+
+describe("press page: contact", () => {
+  let md: string;
+  beforeAll(async () => {
+    md = await readFile(join(docsDir, "content/press.md"), "utf8");
+  });
+
+  it("has one Contact section that leads with the press email", () => {
+    expect(md.match(/^## Contact$/gm)).toHaveLength(1);
+    const contact = section(md, "## Contact");
+    const firstLine = contact
+      .split("\n")
+      .slice(1)
+      .find((line) => line.trim() !== "");
+    expect(firstLine).toContain(`<${PRESS_EMAIL}>`);
+    expect(contact).toMatch(/interviews/);
+    expect(contact).toMatch(/quotes/);
+    expect(contact).toMatch(/logo/);
+    expect(contact).toContain("https://github.com/bascikdev/bascik/issues");
+  });
+
+  it("renders the press email as a mailto link exactly once", async () => {
+    expect(md.split(PRESS_EMAIL)).toHaveLength(2);
+    const html = await renderMd(join(docsDir, "content/press.md"));
+    expect(html.split(`href="mailto:${PRESS_EMAIL}"`)).toHaveLength(2);
+  });
+
+  it("no longer hides the address under the official links", () => {
+    const naming = section(md, "## Naming and Description");
+    const links = naming.slice(naming.indexOf("Official links:"));
+    expect(links).toMatch(/^- Website: /m);
+    expect(links).toMatch(/^- Source and issues: /m);
+    expect(links).not.toMatch(/Press and media/);
+    expect(links).not.toContain(PRESS_EMAIL);
+  });
+
+  it("points permission questions at the Contact section", () => {
+    const usage = section(md, "## Using the Logo");
+    expect(usage).toContain("(#contact)");
   });
 });

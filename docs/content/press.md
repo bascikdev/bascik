@@ -14,6 +14,12 @@ The brand kit is a single zip containing a `bascik-press-kit/` folder. Every ras
 | `social`     | Link preview image and profile banners                                                                     | Article headers, repository previews, and social profiles |
 | `README.txt` | One-page summary of the rules on this page                                                                 | Sharing the rules with collaborators                      |
 
+## Contact
+
+Press and media: <press@bascik.dev>
+
+Write to this address for interviews, quotes, and questions about the logo or these guidelines, including permission for a use this page does not cover. You can also ask about logo use in an issue on [GitHub](https://github.com/bascikdev/bascik/issues). Bug reports and questions about using Bascik belong there too, not in email.
+
 ## Brand Guidelines
 
 The sections below cover logos, colors, naming, image sizes, and usage. Following them keeps Bascik recognizable and accurately represented wherever it appears.
@@ -75,7 +81,6 @@ Official links:
 
 - Website: <https://bascik.dev>
 - Source and issues: <https://github.com/bascikdev/bascik>
-- Press and media: <press@bascik.dev>
 
 ## Image Sizes and Resolutions
 
@@ -120,6 +125,6 @@ These uses are fine without asking, as long as you follow the rules on this page
 - Do not use the logo in a way that suggests Bascik, or anyone who contributes to it, sponsors or endorses your product, service, event, or organization.
 - Do not sell products that feature the logo, such as stickers or shirts, without permission.
 
-If you want to do something this page does not cover, open an issue on [GitHub](https://github.com/bascikdev/bascik/issues) and ask first.
+If you want to do something this page does not cover, ask first: see [Contact](#contact).
 
 The Bascik software is licensed under the [MIT License](/license). The license does not grant rights to use Bascik's names, logos, or trademarks.
