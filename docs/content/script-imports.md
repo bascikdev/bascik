@@ -32,6 +32,10 @@ export async function renderCards(jsonPath: string): Promise<SafeHtml> {
 
 Static imports, bare imports, `export ... from`, and dynamic `import()` all work. An inline `data-bascik-server` or `data-bascik-stream` block resolves bare packages and package `imports` (`#lib/format.ts`, from the `imports` field of your `package.json`) from the project, as a `src=` file does. Bascik rewrites genuine `./` and `../` specifiers relative to the containing page, component, or external script file. A query or fragment on one (`./render.ts?v=2`) stays on the rewritten URL, as Node reads it: it names a separate module instance, not part of the file name.
 
+### Where Modules Live
+
+Put a module where its users are. One that a single component uses goes in that component's folder and is imported with `./` (`import { faqs } from "./faqs.ts"` in `src/components/faq-list/faq-list.html`); one that a single page uses sits beside the page as a `.ts` file. `src/lib/` is for modules several components or pages share. See [Keep Data with Its Component](/component-best-practices#keep-data-with-its-component).
+
 ## Import Root Aliases (`@/`)
 
 Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
@@ -57,7 +61,7 @@ Set `scripts.importRoot` in `bascik.config.ts` to point the alias at a different
 
 How an edit to an alias-imported helper takes effect depends on the script kind:
 
-- **Build scripts:** A helper rebuilds the pages that depend on it only when its path is covered by `directory.*` or `pipeline.watchPaths`. The import-root watcher invalidates request-time modules but does not trigger compilation, so add build helper directories such as `src/lib/` to `pipeline.watchPaths`. See [Watch Paths](/watch-paths).
+- **Build scripts:** A helper rebuilds the pages that depend on it only when its path is covered by `directory.*` or `pipeline.watchPaths`. A module in a component's folder or in the pages folder is covered already. The import-root watcher invalidates request-time modules but does not trigger compilation, so add build helper directories such as `src/lib/` to `pipeline.watchPaths`. See [Watch Paths](/watch-paths).
 - **Server scripts and API routes:** A helper imported at request time by a `src=` script or API route is reloaded on the next request, together with every module that imports it. See [Server Scripts](/server-scripts#shared-helper-modules) for the inline-script exception.
 
 ## npm Packages

@@ -36,7 +36,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 
-Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`. A function or handler that returns `html` from `@bascik/bascik/html` returns an object, not a string: assert on `String(output)` (`expect(String(output)).toContain("Seattle")`), and type a helper's return as `SafeHtml`, not `string`.
+Server, stream, and API logic: put it in a `.ts` module (beside the one page or component that uses it, or in `src/lib/` when several do or an API route calls it, since every file in `src/api/` is a route), keep its `*.test.ts` beside it, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`. A function or handler that returns `html` from `@bascik/bascik/html` returns an object, not a string: assert on `String(output)` (`expect(String(output)).toContain("Seattle")`), and type a helper's return as `SafeHtml`, not `string`.
 
 ## E2E tests: locators that survive production
 

@@ -30,7 +30,7 @@ The page says what it is in a dozen lines, and each tag opens a small file with 
 
 - **Split** a section into a component when it has a job you can name (`<pricing-section>`, `<signup-form>`), when its markup repeats, or when it owns behavior.
 - **Keep it whole** when a piece only makes sense inside its parent, when it would be a one-element wrapper used once, or when splitting would pass a prop through a component that does not use it. Let the page place the child in the parent's [slot](/slots) instead.
-- **Write each fact once.** An address, a price, or a phone number lives in one component or in one data file under `src/lib/` that build scripts read. A value every page passes the same way belongs inside the component, not in a prop.
+- **Write each fact once.** An address, a price, or a phone number lives in one component or in one data file that build scripts read: in the component's folder when only that component shows it, in `src/lib/` when several do (see [Keep Data with Its Component](#keep-data-with-its-component)). A value every page passes the same way belongs inside the component, not in a prop.
 
 Pages keep their own `<html>`, `<head>`, and `<body>`. The shared `<head>` tags, the header, and the footer are components.
 
@@ -44,8 +44,27 @@ src/components/plan-card/
 ```
 
 - **Name it with a hyphen, after what it is:** `plan-card`, not `card` or `box-2`. Bascik warns about a name with no hyphen or the name of a native element.
-- **Write TypeScript.** Component scripts, build and server scripts, `src/lib/` helpers, and `bascik.config.ts` all take TypeScript with no setup. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+- **Write TypeScript.** Component scripts, build and server scripts, helper and data modules, and `bascik.config.ts` all take TypeScript with no setup. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 - **Self-close** a component that takes no slot content: `<site-footer />`.
+
+## Keep Data with Its Component
+
+A module (data, a helper, types) that one component uses lives in that component's folder, with its tests, and the component imports it with `./`:
+
+```text
+src/components/faq-list/
+  faq-list.html    <script data-bascik-build-once> imports ./faqs.ts
+  faq-list.css
+  faqs.ts          the questions and answers only faq-list renders
+  faqs.test.ts
+```
+
+- **Content lives with the component that renders it.** A page that also needs the data, for JSON-LD say, imports it from the component's folder: `import { faqs } from "@/components/faq-list/faqs.ts"`.
+- **A module one page uses sits beside that page** as a `.ts` file (`src/pages/pricing/plans.ts` for `src/pages/pricing/index.html`). The pages folder publishes every other file, so a `.json` or `.js` data file there would be copied to the site as a public file; a `.ts` file never is.
+- **Only shared modules go in `src/lib/`:** a helper several components or pages call, such as an SEO helper or a collection reader, or a module that `bascik.config.ts`, an [exec script](/exec-scripts), or an [API route](/api-routes) also imports. Import those with `@/lib/...` ([Script Imports](/script-imports)).
+- **No watch entry needed.** The dev server watches component folders and the pages folder already, and an edit to a module there rebuilds every page whose scripts import it. Only `src/lib/` and other folders outside them need [`pipeline.watchPaths`](/watch-paths).
+
+The `bascik` agent skill's `audit-components.mjs` reports a `src/lib/` module that exactly one component or page imports (`single-use-module`) and names the folder to move it to.
 
 ## Props for Text, Slots for Markup
 
