@@ -263,6 +263,32 @@ describe("Bascik Language Server Analyzer", () => {
     expect(unclosed).toBeDefined();
   });
 
+  it("attributes each data-bascik-slot to its own nearest component", () => {
+    const text = [
+      '<site-nav><p data-bascik-slot="actions">ok</p></site-nav>',
+      '<p data-bascik-slot="actions">outside</p>',
+      '<site-nav><div><p data-bascik-slot="actoins">typo</p></div></site-nav>',
+      '<site-nav><p data-bascik-slot="actions">ok again</p></site-nav>',
+    ].join("\n");
+    const doc = TextDocument.create(
+      "file:///test-project/src/pages/index.html",
+      "html",
+      1,
+      text,
+    );
+    const slotDiagnostics = createDiagnostics(
+      doc,
+      "/test-project/src/pages/index.html",
+      mockSnapshot,
+    )
+      .filter((d) => /slot/.test(String(d.code)))
+      .map((d) => [d.code, d.range.start.line]);
+    expect(slotDiagnostics).toEqual([
+      ["slot-outside-component", 1],
+      ["undeclared-slot", 2],
+    ]);
+  });
+
   it("diagnoses paired tag on zero-slot component", () => {
     const doc = TextDocument.create(
       "file:///test-project/src/pages/index.html",

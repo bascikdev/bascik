@@ -287,7 +287,14 @@ const isTagNameChar = (code: number): boolean =>
  */
 function* scanTags(
   source: string,
-): Generator<{ name: string; closing: boolean; text: string }> {
+  from = 0,
+): Generator<{
+  name: string;
+  closing: boolean;
+  text: string;
+  start: number;
+  end: number;
+}> {
   const length = source.length;
   // 0 = not scanned yet, -1 = no closing `>`, otherwise the index after `>`.
   const tagEndFrom = new Int32Array(length + 1);
@@ -320,7 +327,7 @@ function* scanTags(
     return end;
   };
 
-  let cursor = 0;
+  let cursor = from;
   while (cursor < length) {
     const open = source.indexOf("<", cursor);
     if (open < 0) return;
@@ -342,6 +349,8 @@ function* scanTags(
       name: source.slice(nameStart, nameEnd),
       closing,
       text: source.slice(open, end),
+      start: open,
+      end,
     };
     cursor = end;
   }
@@ -351,17 +360,65 @@ export function findNearestParentComponent(
   source: string,
   componentMap: Map<string, string>,
 ): string | undefined {
-  const stack: string[] = [];
-  for (const tag of scanTags(source)) {
+  return findNearestParentComponents(source, [source.length], componentMap)[0];
+}
+
+/**
+ * For each offset (ascending), the component that `findNearestParentComponent(source.slice(0, offset))`
+ * finds, from one scan of `source`. Rescanning the prefix for every offset was quadratic in the number of
+ * offsets (one per `data-bascik-slot` tag).
+ *
+ * The open-element stack carries, per entry, the nearest component at or below it, so each answer is
+ * read in constant time. A tag that starts before an offset but ends after it is not a tag in that prefix
+ * (its `>` is cut off), so for that offset the prefix scan is continued from just after its `<`, exactly
+ * as the prefix scan would, on a copy of the stack.
+ */
+export function findNearestParentComponents(
+  source: string,
+  offsets: readonly number[],
+  componentMap: Map<string, string>,
+): (string | undefined)[] {
+  const apply = (
+    stack: string[],
+    nearest: (string | undefined)[],
+    tag: { name: string; closing: boolean; text: string },
+  ): void => {
     const name = tag.name.toLowerCase();
     if (tag.closing) {
       const matchingIndex = stack.lastIndexOf(name);
-      if (matchingIndex >= 0) stack.splice(matchingIndex);
+      if (matchingIndex >= 0) {
+        stack.length = matchingIndex;
+        nearest.length = matchingIndex;
+      }
     } else if (!/\/\s*>$/.test(tag.text)) {
       stack.push(name);
+      nearest.push(componentMap.has(name) ? name : nearest.at(-1));
+    }
+  };
+  const stack: string[] = [];
+  const nearest: (string | undefined)[] = [];
+  const tags = scanTags(source);
+  let pending = tags.next();
+  const results: (string | undefined)[] = [];
+  for (const offset of offsets) {
+    while (!pending.done && pending.value.end <= offset) {
+      apply(stack, nearest, pending.value);
+      pending = tags.next();
+    }
+    if (!pending.done && pending.value.start < offset) {
+      const prefixStack = stack.slice();
+      const prefixNearest = nearest.slice();
+      for (const tag of scanTags(
+        source.slice(0, offset),
+        pending.value.start + 1,
+      ))
+        apply(prefixStack, prefixNearest, tag);
+      results.push(prefixNearest.at(-1));
+    } else {
+      results.push(nearest.at(-1));
     }
   }
-  return stack.reverse().find((name) => componentMap.has(name));
+  return results;
 }
 
 export function parseScriptOpenTagAttributes(
@@ -1218,6 +1275,11 @@ export function createDiagnostics(
     const slotTagRe =
       /<([A-Za-z][\w-]*)(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?\/?>/gi;
     let slotMatch: RegExpExecArray | null;
+    const slotTags: {
+      matchStart: number;
+      baseOffset: number;
+      slotAttr: { name: string; value?: string; index: number };
+    }[] = [];
     while ((slotMatch = slotTagRe.exec(maskedText)) !== null) {
       const openTag = slotMatch[0];
       const matchStart = slotMatch.index;
@@ -1241,14 +1303,18 @@ export function createDiagnostics(
           break;
         }
       }
-      if (!slotAttr) continue;
-
-      const tagOffset = slotMatch.index;
+      if (slotAttr) slotTags.push({ matchStart, baseOffset, slotAttr });
+    }
+    // One scan finds every slot tag's parent; a prefix rescan per tag was quadratic.
+    const slotParents = findNearestParentComponents(
+      maskedText,
+      slotTags.map(({ matchStart }) => matchStart),
+      componentMap,
+    );
+    for (const [slotIndex, slotTag] of slotTags.entries()) {
+      const { matchStart, baseOffset, slotAttr } = slotTag;
       const slotName = slotAttr.value;
-      const parentName = findNearestParentComponent(
-        maskedText.slice(0, tagOffset),
-        componentMap,
-      );
+      const parentName = slotParents[slotIndex];
 
       const isInsideComponentDefinition = isComponentDocument;
       if (!parentName && !isInsideComponentDefinition) {
