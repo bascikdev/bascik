@@ -411,6 +411,10 @@ export function findNearestParentComponents(
       pending = tags.next();
     }
     if (!pending.done && pending.value.start < offset) {
+      // The offset sits inside what the full scan reads as one tag (an unclosed quote can make it long),
+      // so the tags before it are read from the source cut at the offset. Each such offset rescans from
+      // that tag's start: quadratic only when many slot tags hide inside one long run-on tag, which
+      // markup does not do, so the cost is accepted rather than memoized.
       const prefixStack = stack.slice();
       const prefixNearest = nearest.slice();
       for (const tag of scanTags(

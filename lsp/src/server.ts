@@ -257,11 +257,6 @@ export class BascikLanguageServer {
   }
 
   /**
-   * The text of every HTML file in a project that can use a component: pages and other HTML under `src` and
-   * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
-   * A buffer left open for a deleted file is not a source.
-   */
-  /**
    * A buffer the editor keeps open for a file deleted on disk (VS Code keeps the model of a file it showed
    * in Peek or References), unedited since. It is not a source of usages for references or diagnostics.
    */
@@ -276,6 +271,11 @@ export class BascikLanguageServer {
       .filter((document) => !this.isOrphanedBuffer(document));
   }
 
+  /**
+   * The text of every HTML file in a project that can use a component: pages and other HTML under `src` and
+   * the pages folder, and every component file, with open buffers' unsaved text in place of what is on disk.
+   * A buffer left open for a deleted file is not a source.
+   */
   private referenceSources(snapshot: ProjectSnapshot): Map<string, string> {
     const sources = new Map<string, string>(snapshot.componentSourceByFile);
     for (const [file, text] of snapshot.htmlUsageByFile)
