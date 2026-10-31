@@ -249,7 +249,7 @@ Production mode enables `http.httpCache: true` by default:
 
 ### Production rate limiting
 
-Production mode enforces a sliding-window rate limit per IP address (by default **500 requests per 10-second window**). Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header.
+Production mode enforces a sliding-window rate limit per IP address (by default **500 requests per 10-second window**). Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header naming the configured `http.rateLimit.window` in whole seconds (`10` by default), by which time every request counted against the client has left the window.
 
 - **Sliding Sub-Windows:** Uses a ring of 10 sub-buckets per window to smooth boundary bursts and prevent double-budget attacks at window edges.
 - **Trust Proxy Support:** When `http.trustProxy: true` is configured, client IP derivation reads the rightmost entry of `X-Forwarded-For` (the address appended by the immediate trusted proxy), request URL origin reconstruction reads the rightmost entries of `X-Forwarded-Proto` and `X-Forwarded-Host` (safely validating syntax and falling back to local transport parameters), and HSTS checks the rightmost `X-Forwarded-Proto`. When `false` (default), forwarded headers are strictly ignored to prevent spoofing.

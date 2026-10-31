@@ -580,7 +580,12 @@ export const createRequestHandler = () => {
       ) {
         responseStatus = 429;
         res.respond(429, {
-          "retry-after": String(RATE_WINDOW_MS / 1000),
+          // The configured window, in whole seconds (delay-seconds, RFC 9110
+          // 10.2.3): by then every request counted against the client has
+          // left the sliding window.
+          "retry-after": String(
+            Math.ceil(getActiveRateLimiter().windowMs / 1000),
+          ),
           "content-type": "text/plain; charset=utf-8",
           ...secHeaders,
         });

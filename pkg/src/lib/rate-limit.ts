@@ -58,7 +58,8 @@ export interface RateLimiterOptions {
 }
 
 export class RateLimiter {
-  private windowMs: number;
+  /** The sliding window, so a 429 can name how long to wait. */
+  public readonly windowMs: number;
   private max: number;
   private maxTrackedIps: number;
   private bucketDurationMs: number;
