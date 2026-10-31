@@ -517,7 +517,11 @@ Each `origins` entry is a scheme, a host and an optional port, with no path. The
 
 ### `server-script-unescaped-markup`: This markup template interpolates a value without html
 
-The linter found a template literal with tags in a server or stream script, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
+The linter found a template literal with tags in a directive script (server, stream, build or routes) or in a module one imports, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
+
+### `hand-written-html-escaper`: NAME() is a hand-written HTML escaper
+
+The linter found a function that turns `&` and `<` into entities with a `.replace()` chain, a lookup object or a `switch`. Build the markup with `html` from `@bascik/bascik/html`, or call `esc()` for a plain string; for a one-return escaper, the editor's quick fix makes it call `esc()`. An escaper that is for XML on purpose, such as an RSS feed's, needs a comment above it that says so. See the [Linter](/tools/linter#hand-written-html-escaper).
 
 When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
 

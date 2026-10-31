@@ -8,7 +8,7 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 - **Complete component usage in context.** Suggest project component tags, inferred prop attributes, and named slots, with paired tag snippets for components that accept default content.
 - **Document component contracts.** Add an optional leading `@bascik` comment to describe a component and the props and slots inferred from its markup.
 - **Catch scoping leaks early.** Get focused CSS and JavaScript warnings for patterns Bascik cannot safely rewrite.
-- **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server and stream scripts.
+- **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server, stream and build scripts and the modules they import, and for hand-written HTML escapers.
 - **Validate component contracts.** Find unclosed tags, conflicting directives, invalid preserve values, broken ID references, and unsupplied prop bindings as you type.
 - **Check API routes before runtime.** Catch unrecognized method exports, incompatible return annotations, missing handlers, and unguarded JSON parsing.
 - **Start with zero configuration.** Standard Bascik projects work immediately, while custom paths, nested projects, and multi-root workspaces are detected automatically.
@@ -131,7 +131,7 @@ The extension reports high-signal problems in the editor and Problems panel:
 - standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
 - runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold route handlers with `request` and `context` arguments, typed in TypeScript (`params` is `Record<string, string | string[]>`, since a `[...name]` catch-all is a `string[]`) and without annotations in JavaScript. `bascik-post` parses the body in a `try` block and answers `400` on malformed JSON, so it passes the `api-unguarded-json` check.
+Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. Build and routes scripts, and the `.ts` and `.js` files directive scripts and API routes import, get that rule too, and a function that escapes HTML by hand gets `hand-written-html-escaper`. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold route handlers with `request` and `context` arguments, typed in TypeScript (`params` is `Record<string, string | string[]>`, since a `[...name]` catch-all is a `string[]`) and without annotations in JavaScript. `bascik-post` parses the body in a `try` block and answers `400` on malformed JSON, so it passes the `api-unguarded-json` check.
 
 ## Nested Projects and Custom Configuration
 

@@ -173,13 +173,14 @@ These checks apply to component files only: the component's `.html` file and the
 
 ### Audit Server and Stream Scripts
 
-Server and stream script diagnostics enforce the runtime contract and flag output contexts that need special handling:
+Server and stream script diagnostics enforce the runtime contract and flag output contexts that need special handling. The markup rules below also run in build and routes scripts, and in the `.ts` and `.js` files those scripts and API routes import (a build script's `src/lib/` helper, for example), as soon as you open the file: see [the Linter](/tools/linter#server-script-unescaped-markup) for which files count.
 
 - An inline server or stream script must `export default` a handler function.
 - Server and stream scripts may import `@bascik/bascik/html`, and nothing else from `@bascik/bascik`, which is build tooling.
 - A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)` or holds a joined string, because wrapping would escape the value twice.
 - Template substitutions in URL attributes, event handlers, unquoted attributes, inline scripts, and CSS contexts receive targeted warnings because normal HTML escaping is not sufficient there. Inside an `html` template, the ones `html` refuses are errors.
 - `esc()` inside an `html` template is reported as `html-escaped-twice`, and a `.join("")` of `html` values inside one as `html-joined-string`. Both would show escaped tags as text on the page.
+- A function that turns `&` and `<` into entities by hand gets `hand-written-html-escaper` on its name. When it is one `return` with one parameter, the quick fix **Make escapeHtml() call esc() from @bascik/bascik/html** replaces its body with a call to `esc()` and adds the import.
 
 ![VS Code: the hole in a server script's template is underlined, the hover names server-script-unescaped-markup, and the Quick Fix wraps the template in html and adds the import from @bascik/bascik/html](/assets/vscode/unescaped-markup@2x.webp)
 

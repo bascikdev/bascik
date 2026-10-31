@@ -85,11 +85,19 @@ In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on th
 
 ### `server-script-unescaped-markup`
 
-In a `data-bascik-server` or `data-bascik-stream` script, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:
+In any directive script (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once` or `data-bascik-routes`), and in the `.ts` and `.js` modules those scripts run in Node, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:
 
 ```text
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
 ```
+
+A module runs in Node when it is a directive script's `src=` file, a module that a directive script or an API route imports with a `./`, `../` or `@/` specifier (and the modules those import in turn), or an API route itself. That covers a build script's helpers in `src/lib/`. A component's plain `<script src>` file runs in the browser, so it and the modules only it imports are left out, and keep the [scoping rules](#compatibility-rules) instead. `bascik --check` checks these modules along with the pages that import them, wherever they live, and reports each finding with its file and line:
+
+```text
+src/lib/posts.ts:8:15 - warning: (server-script-unescaped-markup) This markup template (line 6) interpolates ${post.title} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
+```
+
+Every markup template in such a module counts, not only one that is returned: a fragment kept in a variable, added with `+=` or passed to a function ends up in the page all the same. Messages to `console.*()`, `new Error()` and `throw` are skipped there too.
 
 A value is fine without `html` when it is:
 
@@ -118,7 +126,9 @@ The fix is also not offered when a hole of the template sits where `html` would 
 
 `bascik --check --fix` does not apply the quick fix: wrapping changes the template's value from a string to an `html` value, which can break code that calls `.replace()` or `.length` on it, so the change needs your eyes.
 
-Inside `html` templates the sink rules become errors (`html` throws there), and two more rules catch values that would show as escaped markup:
+In build and routes scripts and in modules, the values are the site's own data, read at build time, so the request-time sink rules are narrower. A hole in an unquoted attribute or a `<script>` body still warns unless the value is fine as above, because a space or a `</script>` in the data breaks the markup whoever wrote it. A hole in an `on*` or `style` value is not reported (a CSS custom property set from data, `style="--fill: ${pct}%"`, is common), and neither is a URL attribute's value or a request value in text. Those holes get no quick fix either, since `html` would throw there.
+
+Inside `html` templates the sink rules become errors (`html` throws there, at build time too), and two more rules catch values that would show as escaped markup:
 
 - `html-escaped-twice` (info) reports `esc()` inside `html`, which shows `&amp;lt;` on the page.
 - `html-joined-string` (warning) reports a `.join(...)` of `html` values, or a name bound to one, in a text hole: `This hole joins its items into one string, which html escapes, so the page shows &lt;li&gt; as text.` Pass the array without `.join("")`.
@@ -126,6 +136,24 @@ Inside `html` templates the sink rules become errors (`html` throws there), and 
 To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence a rule, put `// bascik-ignore server-script-unescaped-markup` on the line above the template's first line; it covers every hole in that template, including holes on later lines of a multi-line template. `bascik-disable` and `bascik-enable` comments silence a range, and `diagnostics.disabledRules` turns a rule off for the project. See [Security](/security#the-linter).
 
 ![VS Code: a server script returns a template that interpolates a query parameter, the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup@2x.webp)
+
+### `hand-written-html-escaper`
+
+A function in a directive script or a module that runs in Node (see above), that turns `&` and `<` into `&amp;` and `&lt;`, is a warning on its name. `html` and `esc` from [`@bascik/bascik/html`](/html-helpers) already do that job, and `html` also knows where each value lands:
+
+```text
+src/lib/escape.ts:1:17 - warning: (hand-written-html-escaper) escapeHtml() is a hand-written HTML escaper: it turns & and < into entities. Build markup with html`...` from @bascik/bascik/html, which escapes each value for where it lands, or call esc() from the same module for a plain string. If it escapes XML on purpose, say so in a comment above it.
+```
+
+It finds a `.replace()` or `.replaceAll()` chain, a lookup object (`{ "<": "&lt;" }`, reported on the object's name), a `switch` over characters, and `[char, entity]` pairs, in a function declaration, a method, an arrow or function bound to a name, or an object property. An escaper must produce both `&amp;` and `&lt;`, so a URL helper that only writes `&amp;` is not one. These are not reported:
+
+- a decoder, which reads entities instead of writing them (`.replace(/&lt;/g, "<")`, `.replaceAll("&lt;", "<")`, `{ "&lt;": "<" }`);
+- an escaper with a comment that says it is for XML, RSS, Atom, a sitemap or SVG, inside it or right above it. `html` builds HTML, so an RSS feed may keep its own escaper. Its calls also count as escaped in that file's markup templates, so its holes are not reported as `server-script-unescaped-markup`;
+- test files (`*.test.ts`, `*.spec.ts`).
+
+The quick fix **Make escapeHtml() call esc() from @bascik/bascik/html** is offered when the escaper is one `return` (or an arrow's expression) with one plain parameter: the body becomes `return esc(value);` and `esc` is imported, as `escapeValue` when the escaper itself is called `esc`. Its callers keep working, since `esc` escapes the same characters, and quotes too. The fix does not rewrite the callers to `html`, because a template's value then changes from a string to an `html` value. Other escapers (a lookup object, a longer body) get **Import html from @bascik/bascik/html to build markup safely**, which only adds the import, until you rewrite the templates by hand.
+
+A template that calls the escaper is reported by `server-script-unescaped-markup` with the longer hand-written escaper message, so the two rules point at both ends: build the template with `html` and pass the value as it is.
 
 ### `shared-name-group`
 
@@ -279,7 +307,7 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 
 A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
 
-`serverScriptRules: false` turns off every rule for server and stream scripts. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`.
+`serverScriptRules: false` turns off every rule for directive scripts and the modules they run in Node, `hand-written-html-escaper` included. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`; their definitions are still reported by `hand-written-html-escaper` (add it to `disabledRules`, or a `bascik-ignore` comment above the function, to keep one).
 
 ---
 
