@@ -18,6 +18,18 @@ type Segment = {
    */
   controlHeaderCloses?: Set<number>;
   postfixUpdateEnds?: Set<number>;
+  /**
+   * Offsets in `text` of each `}` that closes an arrow function body (`=> {...}`). An arrow
+   * function cannot be called, indexed or tagged, so a line break after its `}` ends the
+   * statement, unlike the `}` of an object literal or function expression.
+   */
+  arrowBodyCloses?: Set<number>;
+  /**
+   * Literal segments only: the source has a line break before this literal that JavaScript's
+   * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
+   * The minified output must keep that boundary as a `;`.
+   */
+  asiBefore?: boolean;
 };
 
 /**
@@ -59,6 +71,35 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
  * closes on the same line.
  */
 const REGEX_CANNOT_PRECEDE = new Set(["]", "'", '"', "`"]);
+
+/**
+ * Keywords after which a line break does not end the statement: each takes an expression (or a
+ * module specifier) next, so `typeof\n"x"` or `import\n"./a.js"` keep going. `return` and
+ * `yield` are restricted productions (a line break after them ends the statement) and so are
+ * absent, as are value keywords such as `this` or `null`.
+ */
+const EXPRESSION_CONTINUING_KEYWORDS = new Set(
+  [...REGEX_PRECEDING_KEYWORDS, "else", "extends", "import", "from"].filter(
+    (keyword) => keyword !== "return" && keyword !== "yield",
+  ),
+);
+
+/**
+ * A processed line ending in one of these reserved words continues on the next line:
+ * `else`/`do`/`try`/`finally` take a body, the rest take an operand (`typeof\nx`, `a in\nb`).
+ * Contextual words (`of`, `await`, `from`) are left out because they are also valid
+ * identifiers that can end a statement. The character class keeps `x.case` a property.
+ */
+const LINE_END_CONTINUING_KEYWORD =
+  /(?:^|[^.\w$])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import)\s*$/;
+
+/**
+ * A line ending in a restricted production: ECMAScript ends the statement at the line break
+ * after `return`, `throw`, `yield`, `debugger` and `break`/`continue` (with or without a
+ * label), so a following `(` or `[` line is a new statement.
+ */
+const RESTRICTED_PRODUCTION_END =
+  /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
 
 /** Keywords whose parenthesized header is followed by a statement, not an operator. */
 const CONTROL_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
@@ -297,9 +338,18 @@ const scanSegments = (js: string): Segment[] => {
   // Lives outside flushCode because literals never contain code parens.
   const parenIsControlHeader: boolean[] = [];
   let lastParenClosedControlHeader = false;
+  // One entry per open `{`: true when it opens an arrow function body (`=> {`).
+  const braceIsArrowBody: boolean[] = [];
+  let lastBraceClosedArrowBody = false;
   let controlHeaderCloses: Set<number> | undefined;
   let postfixUpdateEnds: Set<number> | undefined;
+  let arrowBodyCloses: Set<number> | undefined;
   let lineBreakSinceSignificant = false;
+  // The significant character before `lastSig`, to recognize `=>` when `{` follows it.
+  let prevSig = "";
+  // `lastSig` is the second character of a postfix `++`/`--`: the expression has ended, so a
+  // following `/` is division (`count++ / 2`), never the start of a regex literal.
+  let lastSigIsPostfixUpdate = false;
   let wordIsProperty = false;
   let i = 0;
   const len = js.length;
@@ -311,14 +361,45 @@ const scanSegments = (js: string): Segment[] => {
         text: codeAccum,
         controlHeaderCloses,
         postfixUpdateEnds,
+        arrowBodyCloses,
       });
       codeAccum = "";
     }
     controlHeaderCloses = undefined;
     postfixUpdateEnds = undefined;
+    arrowBodyCloses = undefined;
     lastRaw = "";
     lastSig = "";
+    prevSig = "";
+    lastSigIsPostfixUpdate = false;
     wordRun = "";
+  };
+
+  /**
+   * Whether the line break(s) between the previous token and a literal starting here end the
+   * statement under automatic semicolon insertion. Called before `flushCode`, while the
+   * previous token's state is still live. A string can never continue a value, a template
+   * after a value is a tagged template, and a regex after a value is division (the scanner
+   * already reads it that way), so only the token kinds that cannot take one count.
+   */
+  const asiBeforeLiteral = (kind: "string" | "template" | "regex"): boolean => {
+    if (!lineBreakSinceSignificant) return false;
+    if (!lastSig) {
+      // Only whitespace since the previous segment: a literal (`"a"\n"b"`) or nothing.
+      return kind === "string" && segments.at(-1)?.literal === true;
+    }
+    // Neither an arrow function nor a postfix update can be called, indexed or tagged.
+    if (lastSigIsPostfixUpdate) return true;
+    if (lastSig === "}") return lastBraceClosedArrowBody || kind === "string";
+    if (kind === "template") return false;
+    if (lastSig === "]") return true;
+    if (lastSig === ")") return !lastParenClosedControlHeader;
+    if (isWordChar(lastSig)) {
+      if (wordIsProperty) return true;
+      const word = lastWordBeforeSlash(wordRun);
+      return word === undefined || !EXPRESSION_CONTINUING_KEYWORDS.has(word);
+    }
+    return false;
   };
 
   const appendCode = (c: string): void => {
@@ -333,6 +414,13 @@ const scanSegments = (js: string): Segment[] => {
       lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
       if (lastParenClosedControlHeader) {
         (controlHeaderCloses ??= new Set()).add(codeAccum.length);
+      }
+    } else if (c === "{") {
+      braceIsArrowBody.push(lastSig === ">" && prevSig === "=");
+    } else if (c === "}") {
+      lastBraceClosedArrowBody = braceIsArrowBody.pop() ?? false;
+      if (lastBraceClosedArrowBody) {
+        (arrowBodyCloses ??= new Set()).add(codeAccum.length);
       }
     }
     codeAccum += c;
@@ -349,7 +437,21 @@ const scanSegments = (js: string): Segment[] => {
       wordRun = "";
     }
     lastRaw = c;
+    prevSig = lastSig;
     lastSig = c;
+    lastSigIsPostfixUpdate = false;
+    lineBreakSinceSignificant = false;
+  };
+
+  const pushLiteral = (
+    text: string,
+    kind: "string" | "template" | "regex",
+  ): void => {
+    const asiBefore = asiBeforeLiteral(kind);
+    flushCode();
+    segments.push(
+      asiBefore ? { literal: true, text, asiBefore } : { literal: true, text },
+    );
     lineBreakSinceSignificant = false;
   };
 
@@ -370,14 +472,16 @@ const scanSegments = (js: string): Segment[] => {
                 wordRun !== "else"))));
       appendCode(ch);
       appendCode(ch);
-      if (postfix) (postfixUpdateEnds ??= new Set()).add(codeAccum.length - 1);
+      if (postfix) {
+        (postfixUpdateEnds ??= new Set()).add(codeAccum.length - 1);
+        lastSigIsPostfixUpdate = true;
+      }
       i += 2;
       continue;
     }
 
     // Quoted string literals ("...", '...') — preserve verbatim
     if (ch === '"' || ch === "'") {
-      flushCode();
       const quote = ch;
       let lit = ch;
       i++;
@@ -393,15 +497,14 @@ const scanSegments = (js: string): Segment[] => {
         i++;
         if (c === quote) break;
       }
-      segments.push({ literal: true, text: lit });
+      pushLiteral(lit, "string");
       continue;
     }
 
     // Template literals (`...`) — preserve verbatim
     if (ch === "`") {
-      flushCode();
       const end = findTemplateLiteralEnd(js, i);
-      segments.push({ literal: true, text: js.slice(i, end) });
+      pushLiteral(js.slice(i, end), "template");
       i = end;
       continue;
     }
@@ -432,6 +535,9 @@ const scanSegments = (js: string): Segment[] => {
         } else if (lastSig === ")") {
           // `if (x) /re/.test(y)` is a regex statement; `f(x) / 2` is division.
           couldBeRegex = lastParenClosedControlHeader;
+        } else if (lastSigIsPostfixUpdate) {
+          // `count++ / 2` is division: a postfix update ends the expression.
+          couldBeRegex = false;
         } else if (!REGEX_CANNOT_PRECEDE.has(lastSig)) {
           // Preceded by operators/punctuation like '=', '(', '[', ':', ',', '!', '?', '&', '|', '+', '-', '*', ';'
           couldBeRegex = true;
@@ -461,8 +567,7 @@ const scanSegments = (js: string): Segment[] => {
         if (closed) {
           // Consume regex flags (e.g., /abc/gi)
           while (j < len && /[a-z]/i.test(js[j])) j++;
-          flushCode();
-          segments.push({ literal: true, text: js.slice(i, j) });
+          pushLiteral(js.slice(i, j), "regex");
           i = j;
           continue;
         }
@@ -542,8 +647,11 @@ export const minifyJs = (js: string): string => {
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const seg = segments[sIdx];
     if (seg.literal) {
-      // Ensure space between preceding keyword/identifier and literal if needed
-      if (result && isWordChar(resultLast) && isWordChar(seg.text[0])) {
+      if (seg.asiBefore && result && resultLast !== ";") {
+        // The source's line break ended the statement (`const a = 1\n"use strict"`).
+        result += ";";
+      } else if (result && isWordChar(resultLast) && isWordChar(seg.text[0])) {
+        // Ensure space between preceding keyword/identifier and literal if needed
         result += " ";
       }
       result += seg.text;
@@ -556,7 +664,7 @@ export const minifyJs = (js: string): string => {
       if (
         resultLast &&
         firstLine &&
-        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
           firstLine,
         )
       ) {
@@ -576,7 +684,8 @@ export const minifyJs = (js: string): string => {
     // former whole-prefix trimEnd + regex scans:
     //   - `ptLast`: last character of processedText
     //   - `ptTail`: last TAIL_WINDOW characters (enough for every bounded
-    //     pattern; the longest is `\bfinally$` which needs 7 + 1 for `\b`)
+    //     pattern; the longest is `instanceof$` which needs 10 + 1 for the
+    //     character before it)
     //   - the paren region: when prevLine ends with `)`, the one unbounded
     //     pattern `\b(if|while|for|switch)\s*\([^)]*\)\s*$` must use that
     //     final `)` as its `\)`, and `[^)]*` cannot cross the previous `)`,
@@ -584,7 +693,7 @@ export const minifyJs = (js: string): string => {
     //     is located lazily with one backward `lastIndexOf` and only when the
     //     line actually ends with `)`. Regions for successive `)`-terminated
     //     lines are disjoint, so total work stays linear.
-    const TAIL_WINDOW = 8;
+    const TAIL_WINDOW = 12;
     const lines = text.split("\n");
     let processedText = "";
     let ptLast = "";
@@ -592,6 +701,8 @@ export const minifyJs = (js: string): string => {
     // Offset in `text` of the last character of the most recently appended line.
     let lineOffset = 0;
     let prevLineEnd = -1;
+    // The most recently appended (trimmed) line, for the restricted-production check.
+    let prevLine = "";
 
     const appendProcessed = (s: string): void => {
       processedText += s;
@@ -613,6 +724,7 @@ export const minifyJs = (js: string): string => {
       if (!processedText) {
         appendProcessed(line);
         prevLineEnd = lineEnd;
+        prevLine = line;
         continue;
       }
 
@@ -643,7 +755,7 @@ export const minifyJs = (js: string): string => {
         }
         endsWithOpenControl =
           endsWithOpenControl ||
-          /\b(else|do|try|finally)\s*$/.test(ptTail) ||
+          LINE_END_CONTINUING_KEYWORD.test(ptTail) ||
           /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail);
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures.
@@ -651,10 +763,17 @@ export const minifyJs = (js: string): string => {
         // across a newline; after a value token `else`, `while`, `catch` and
         // `finally` start a new statement, so they must get a semicolon
         // (`do step()\nwhile(c)`, `if(a) step()\nelse other()`).
+        //
+        // A line starting with `(` or `[` continues a value as a call or an index
+        // (`getEl("x")\n(fn)()` is `getEl("x")(fn)()`), unless the previous line
+        // ends in a restricted production (`return`, `break label`, ...) where the
+        // line break itself ends the statement.
         const startsWithContinuation =
           /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
-          );
+          ) ||
+          ((firstChar === "(" || firstChar === "[") &&
+            !RESTRICTED_PRODUCTION_END.test(prevLine));
 
         if (
           !endsWithOpenControl &&
@@ -665,10 +784,15 @@ export const minifyJs = (js: string): string => {
         }
       } else if (lastChar === "}") {
         // After }, insert semicolon unless followed by control continuation (else, catch, finally, while, etc.)
+        // A `(` or `[` line continues the `}` of an object literal or function expression
+        // (and starts a new statement after a block or declaration either way), but not the
+        // `}` of an arrow function body, which cannot be called or indexed.
         if (
           !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
             line,
-          )
+          ) &&
+          ((firstChar !== "(" && firstChar !== "[") ||
+            seg.arrowBodyCloses?.has(prevLineEnd) === true)
         ) {
           needsSemicolon = true;
         }
@@ -683,6 +807,7 @@ export const minifyJs = (js: string): string => {
       }
 
       prevLineEnd = lineEnd;
+      prevLine = line;
       if (needsSemicolon) {
         appendProcessed(";" + line);
       } else if (isWordChar(lastChar) && isWordChar(firstChar)) {
