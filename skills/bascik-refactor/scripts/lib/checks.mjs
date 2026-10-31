@@ -7,7 +7,16 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { openPage, routeUrl, settle } from "./capture.mjs";
+import {
+  openPage,
+  POLITE_HELP,
+  POLITE_OPTIONS,
+  politeBrowser,
+  politeFlags,
+  politeSummary,
+  routeUrl,
+  settle,
+} from "./capture.mjs";
 import { gateLine, gateRecord, loadMatrix, selectCases } from "./matrix.mjs";
 import { loadPlaywright } from "./project-deps.mjs";
 import {
@@ -363,8 +372,9 @@ export function caseIdsFrom(values) {
 }
 
 /**
- * Parses the flags every check shares (--prod, --target, --route, --matrix, --cases, --out, --json, --help, and the
- * production cache flags --refresh-prod, --no-prod-cache and --prod-cache) plus `extra` parseArgs options. `need`
+ * Parses the flags every check shares (--prod, --target, --route, --matrix, --cases, --out, --json, --help, the
+ * production cache flags --refresh-prod, --no-prod-cache and --prod-cache, and the polite production flags --block,
+ * --no-default-block and --min-interval-ms, returned as `polite`) plus `extra` parseArgs options. `need`
  * lists the flags that must be present (a production-only check leaves "target" out); a --target that is production
  * is always refused (validateTarget). `defaultOut` is the --out default.
  */
@@ -388,6 +398,7 @@ export function parseArgsFor(
       mask: { type: "string", multiple: true },
       "settle-ms": { type: "string" },
       ...PROD_CACHE_OPTIONS,
+      ...POLITE_OPTIONS,
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       ...extra,
@@ -405,17 +416,22 @@ export function parseArgsFor(
   for (const route of values.route ?? []) validateRoute(route);
   validateRouteSet(values.route);
   const cache = prodCacheFlags(values);
+  const polite = politeFlags(values, values);
   const {
     "settle-ms": settle,
     cases,
     "refresh-prod": _refresh,
     "no-prod-cache": _off,
     "prod-cache": _dir,
+    block: _block,
+    "no-default-block": _noDefaultBlock,
+    "min-interval-ms": _minInterval,
     ...rest
   } = values;
   return {
     ...rest,
     ...cache,
+    polite,
     caseIds: caseIdsFrom(cases),
     settleMs: pixels("--settle-ms", settle, DEFAULT_SETTLE_MS, "milliseconds"),
     route: values.route ?? [],
@@ -471,14 +487,34 @@ export const SHARED_HELP = `Every check also takes:
                       next run reads production from there unless anything that changes what it measures changed
   --refresh-prod      Measure production again and overwrite the cache (after production changes, and at the start
                       of every check stage and review round)
-  --no-prod-cache     Neither read nor write the cache`;
+  --no-prod-cache     Neither read nor write the cache
+Every page load, on both sides, skips the analytics and tracking hosts and sends no request other than GET or HEAD
+outside the target, so production stays read-only:
+${POLITE_HELP}`;
 
-/** The lines a run prints after its results: the production cache numbers and, for a partial run, PARTIAL. */
-export function runFooter(prodCache, gate) {
+/**
+ * The lines a run prints after its results: the production cache numbers, what the polite policy blocked (when
+ * `browser` is a politeBrowser) and, for a partial run, PARTIAL.
+ */
+export function runFooter(prodCache, gate, browser, polite) {
+  const politeLine = politeSummary(browser?.politeStats, polite?.minIntervalMs);
   return [
     ...(prodCache ? [prodCacheSummary(prodCache.stats)] : []),
+    ...(politeLine ? [politeLine] : []),
     ...(gateLine(gate) ? [gateLine(gate)] : []),
   ];
+}
+
+/**
+ * Launches the browser of a run, wrapped so every context follows the production read-only rule (politeBrowser):
+ * `args` are parsed flags holding prod, target and polite.
+ */
+export async function launchPolite(chromium, args) {
+  return politeBrowser(await chromium.launch(), {
+    prod: args.prod,
+    target: args.target,
+    ...(args.polite ?? {}),
+  });
 }
 
 /**
@@ -494,7 +530,7 @@ export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   }
   const { cases, gate } = runMatrix(args);
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchPolite(chromium, args);
   let report;
   let prodCache = null;
   try {
@@ -525,6 +561,7 @@ export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
     for (const f of report.findings) console.log(`      ${formatFinding(f)}`);
   }
   for (const line of summary?.(report, args) ?? []) console.log(line);
-  for (const line of runFooter(prodCache, gate)) console.log(line);
+  for (const line of runFooter(prodCache, gate, browser, args.polite))
+    console.log(line);
   if (!report.ok) process.exitCode = 1;
 }

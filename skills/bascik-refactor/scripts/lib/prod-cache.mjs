@@ -7,6 +7,7 @@
 // - the check, CACHE_FORMAT, and a hash of every script of this skill (a skill update invalidates every entry);
 // - the browser version, the production origin, the route (or routes) and the full matrix case object;
 // - the anchor or item where a check measures one element, and any other part the check passes;
+// - the polite block patterns (a blocked tag can change production's markup);
 // - settleMs, the sorted masks and skip-controls (presence-by-route adds its dismiss selectors as a part: no other check
 //   dismisses anything, so --dismiss on run-checks never misses another check's entries).
 // An entry is <dir>/<check>/<sha256 of the key>.json ({ format, hash, key, capturedAt, value }); a Buffer in the
@@ -143,7 +144,7 @@ function stable(value) {
 
 /**
  * The full key of one production measurement and its hash. `options` are the runCheck options (prod, settleMs, masks
- * or mask, skipControls or skip-control); `parts` come from the check (check, route or routes, case, anchor, the
+ * or mask, skipControls or skip-control, polite.block); `parts` come from the check (check, route or routes, case, anchor, the
  * dismiss selectors of presence-by-route, and anything else that changes what it measures).
  */
 export function cacheKey(state, options, parts) {
@@ -158,6 +159,7 @@ export function cacheKey(state, options, parts) {
       options.skipControls ?? [],
       options["skip-control"] ?? [],
     ),
+    block: options.polite ? sorted(options.polite.block ?? []) : undefined,
     ...parts,
   });
   const hash = createHash("sha256").update(JSON.stringify(key)).digest("hex");

@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   hideMasks,
+  launchPolite,
   masksOf,
   parseArgsFor,
   routeSlug,
@@ -30,6 +31,7 @@ import {
   openProdCache,
   prodCacheSummary,
 } from "./lib/prod-cache.mjs";
+import { politeSummary } from "./lib/capture.mjs";
 import { collectNodes } from "./geometry-diff.mjs";
 import { productionStates } from "./state-capture.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
@@ -260,7 +262,7 @@ async function main() {
   // An index of another production origin fails here, before any browser starts.
   mergeIndex(existing, { prod: args.prod, baselines: [] });
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchPolite(chromium, args);
   let entries;
   let prodCache = null;
   try {
@@ -304,6 +306,11 @@ async function main() {
         `warning: ${e.id} answered HTTP ${e.status}; check the route, or keep it if it is an error page on purpose\n`,
       );
   if (prodCache) console.log(prodCacheSummary(prodCache.stats));
+  const politeLine = politeSummary(
+    browser.politeStats,
+    args.polite.minIntervalMs,
+  );
+  if (politeLine) console.log(politeLine);
 }
 
 if (isMain(import.meta.url)) {

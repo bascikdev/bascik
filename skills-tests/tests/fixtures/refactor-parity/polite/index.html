@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+  </head>
+  <body>
+    <main>
+      <h1>Milk frother</h1>
+      <p>Froths milk in 30 seconds.</p>
+    </main>
+    <script>
+      // Each probe records "ok" when the request got an answer and "blocked" when it failed. The analytics probe is
+      // Vercel Web Analytics, on the default block list; the tracker is another host on this server's port, which
+      // the browser test maps to 127.0.0.1.
+      const port = location.port;
+      const probe = async (name, url, init) => {
+        try {
+          await fetch(url, init);
+          return [name, "ok"];
+        } catch {
+          return [name, "blocked"];
+        }
+      };
+      Promise.all([
+        probe("analytics", "/_vercel/insights/view"),
+        probe("tracker", `http://tracker.test:${port}/polite/collect`, {
+          mode: "no-cors",
+        }),
+        probe("post", "/polite/form", { method: "POST", body: "email=a" }),
+        probe("get", "/polite/data.json"),
+      ]).then((results) => {
+        document.body.dataset.results = JSON.stringify(
+          Object.fromEntries(results),
+        );
+      });
+    </script>
+  </body>
+</html>

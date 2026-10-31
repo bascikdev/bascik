@@ -89,6 +89,25 @@ Identical on both sides: width and height, browser version, device scale factor 
 scheme, reduced motion, scroll position 0, the same cookie notice state. Before measuring, wait for
 `document.fonts.ready`, complete eager images and finished finite animations. `scripts/lib/capture.mjs` does this.
 
+Production stays read-only, and every script that loads it (every check, `run-checks.mjs`, `capture-baselines.mjs`,
+`compare-route.mjs` and `geometry-diff.mjs`) enforces it in the browser, on both sides alike:
+
+- Analytics and tracking requests are blocked: Google Tag Manager, Analytics and ads, Vercel insights,
+  Plausible, Segment, Hotjar, the Facebook pixel, Clarity and Cloudflare insights (`DEFAULT_BLOCK` in
+  `scripts/lib/capture.mjs`). Without it every load is a synthetic page view in the owner's analytics, and one route
+  run is hundreds of them. Add a site's own tracker with `--block <pattern>` (repeatable): a host, such as
+  `stats.example.net`, also blocks its subdomains; a value with a `/`, such as `*/api/track`, matches anywhere in the
+  URL, with `*` as a wildcard. A pattern that matches `--prod` or `--target` itself is refused. `--no-default-block`
+  drops the default list, for a site whose consent layer or content needs one of those hosts; log that in the
+  decisions ledger. The target blocks the same requests, so a tag that adds markup is missing from both sides.
+- A request other than GET or HEAD (a form post, a beacon, an API write, its CORS preflight) is refused unless it
+  goes to the target's own origin. With no `--target`, every one is refused.
+- `--min-interval-ms <n>` holds production page loads at least that far apart (default 0). Pass 1000 or more for a
+  site you do not run, or one behind a rate limit.
+
+Each run prints what it blocked (`polite: ...`). Routing turns off the browser's HTTP cache on both sides; the block
+list is part of the production cache key, the interval is not.
+
 ## The breakpoint matrix rule
 
 1. Discover the real thresholds: CSS, Sass and Less media queries, breakpoint variables and theme tokens,

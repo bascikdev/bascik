@@ -7,7 +7,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { loadMatrix } from "./lib/matrix.mjs";
-import { openPage, routeUrl } from "./lib/capture.mjs";
+import {
+  openPage,
+  POLITE_HELP,
+  POLITE_OPTIONS,
+  politeBrowser,
+  politeFlags,
+  routeUrl,
+} from "./lib/capture.mjs";
 import { loadPlaywright } from "./lib/project-deps.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
@@ -28,6 +35,7 @@ Options:
   --thresholds <list>  dx,dy,dw in CSS pixels (default 6,12,12)
   --out <dir>          Write geometry.json there
   --json               Print the full report as JSON
+${POLITE_HELP}
   --help               Show this message`;
 
 export const DEFAULT_THRESHOLDS = Object.freeze({ dx: 6, dy: 12, dw: 12 });
@@ -109,12 +117,14 @@ export function parseCliArgs(argv) {
       thresholds: { type: "string" },
       out: { type: "string" },
       json: { type: "boolean", default: false },
+      ...POLITE_OPTIONS,
       help: { type: "boolean", short: "h", default: false },
     },
   });
   if (values.help) return { help: true };
   if (!values.prod) throw new Error("--prod <url> is required");
   if (!values.target) throw new Error("--target <url> is required");
+  const polite = politeFlags(values, values);
   let thresholds = { ...DEFAULT_THRESHOLDS };
   if (values.thresholds !== undefined) {
     const parts = values.thresholds.split(",").map((s) => Number(s.trim()));
@@ -132,6 +142,7 @@ export function parseCliArgs(argv) {
     thresholds,
     out: values.out,
     json: values.json,
+    polite,
   };
 }
 
@@ -140,7 +151,11 @@ async function main() {
   if (args.help) return console.log(HELP);
   const cases = loadMatrix(args.matrix);
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = politeBrowser(await chromium.launch(), {
+    prod: args.prod,
+    target: args.target,
+    ...args.polite,
+  });
   const results = [];
   try {
     for (const route of args.route) {

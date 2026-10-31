@@ -16,6 +16,7 @@ import {
   DEFAULT_OUT,
   DEFAULT_SETTLE_MS,
   formatFinding,
+  launchPolite,
   pixels,
   routeSlug,
   runFooter,
@@ -45,6 +46,7 @@ import * as testidCarryover from "./testid-carryover.mjs";
 import * as testidCoverage from "./testid-coverage.mjs";
 import * as presenceByRoute from "./presence-by-route.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { POLITE_HELP, POLITE_OPTIONS, politeFlags } from "./lib/capture.mjs";
 
 const MODULES = [
   productionDefects,
@@ -81,7 +83,7 @@ loaded host, a slow network) is run once more, and the report notes the retry; a
 
 Production is measured once and kept in --prod-cache (default ${DEFAULT_PROD_CACHE}): the next run reads production's side
 from there and loads only the target, as long as nothing that changes what production measures changed (the case,
-the masks, skip-controls, dismiss selectors, settle time, the browser and the skill's scripts are all in the key).
+the masks, skip-controls, dismiss selectors, block list, settle time, the browser and the skill's scripts are in the key).
 Pass --refresh-prod at the start of every check stage and review round, and whenever production changed.
 
 Iteration loop: while fixing a route, run a few cases (--cases 360x812,768,1280x900: ids from the matrix, or a bare
@@ -120,6 +122,9 @@ Options:
   --prod-cache <dir>          Production cache folder (default ${DEFAULT_PROD_CACHE})
   --refresh-prod              Measure production again and overwrite the cache
   --no-prod-cache             Neither read nor write the cache
+Every page load, on both sides, skips the analytics and tracking hosts and sends no request other than GET or HEAD
+outside the target (production stays read-only):
+${POLITE_HELP}
   --help                      Show this message`;
 
 function checkList(flag, values) {
@@ -147,6 +152,7 @@ export function parseCliArgs(argv) {
       matrix: { type: "string" },
       cases: { type: "string", multiple: true },
       ...PROD_CACHE_OPTIONS,
+      ...POLITE_OPTIONS,
       "target-src": { type: "string" },
       "legacy-src": { type: "string" },
       "spacing-tolerance": { type: "string" },
@@ -173,6 +179,7 @@ export function parseCliArgs(argv) {
   validateRouteSet(values.route);
   for (const selector of values.mask ?? []) validateMask(selector);
   const cache = prodCacheFlags(values);
+  const polite = politeFlags(values, values);
   const only = checkList("--only", values.only);
   const skip = checkList("--skip", values.skip);
   const noLegacyRepo = values["no-legacy-repo"];
@@ -196,6 +203,7 @@ export function parseCliArgs(argv) {
     matrix: values.matrix ?? DEFAULT_MATRIX,
     caseIds: caseIdsFrom(values.cases),
     ...cache,
+    polite,
     targetSrc: values["target-src"] ?? ".",
     legacySrc: values["legacy-src"],
     spacingTolerance: pixels(
@@ -393,7 +401,7 @@ async function main() {
   if (args.help) return console.log(HELP);
   const { cases, gate } = runChecksMatrix(args);
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchPolite(chromium, args);
   const results = [];
   let prodCache = null;
   try {
@@ -413,6 +421,7 @@ async function main() {
       skipControls: args.skipControls,
       settleMs: args.settleMs,
       dismiss: args.dismiss,
+      polite: args.polite,
       prodCache,
     };
     for (const name of args.only) {
@@ -453,7 +462,8 @@ async function main() {
       );
     allOk &&= report.ok;
   }
-  for (const line of runFooter(prodCache, gate)) console.log(line);
+  for (const line of runFooter(prodCache, gate, browser, args.polite))
+    console.log(line);
   if (!allOk) process.exitCode = 1;
 }
 

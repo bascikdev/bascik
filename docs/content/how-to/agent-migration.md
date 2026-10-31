@@ -222,7 +222,7 @@ It writes `{ thresholds, sources, cases }`, where `sources` names the file each 
 
 One route at a time, one section at a time:
 
-1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, complete images and finished animations.
+1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, complete images and finished animations. Keep production read-only: every script blocks the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
 2. **Find the owning production subtree from stable anchors.** Use visible heading text, `href`, `src`, `alt`, landmarks and test ids, never generated class names. Climb to the smallest ancestor that owns one coherent section, and stop there.
 3. **Extract structure, geometry and computed styles.** Use a fixed property list: display, position, box sizing, sizes, margins, paddings, gap, alignment, overflow, colors, backgrounds, border, radius, shadow, font family, size and weight, line height, letter spacing, text alignment, white-space, transform and z-index. Add `::before` and `::after`, child order, line counts, image `currentSrc`, intrinsic size and `object-fit`.
 4. **Read the legacy owner of that subtree only.** Translate the resolved behavior. Do not copy React or Sass wholesale.
@@ -466,7 +466,7 @@ node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
 
 A full run over a 25-case matrix takes 20 to 50 minutes per route, too slow to repeat after every fix. Two things make the loop fast without lowering the bar for done.
 
-Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, and the `--mask` and `--skip-control` selectors; presence-by-route also keys on every route in order and on its `--dismiss` selectors, which no other check uses. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
+Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, the `--mask` and `--skip-control` selectors, and the block list; presence-by-route also keys on every route in order and on its `--dismiss` selectors, which no other check uses. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
 
 While a route is being built, run a few cases and the checks the last fix can affect:
 
@@ -482,6 +482,21 @@ A case id is `<width>x<height>`, with a suffix for each variant (`1408x900-dark`
 Such a run prints `PARTIAL (3 of 25 cases; 2 of 11 checks, without ...): iteration result, not a gate`, and its report records `partial: true` with the checks that ran and the ones left out. A run of every case that leaves out one check is partial too, as is a run of any matrix file other than `docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check. Run it once at the end of each route, and in every check and review round: "done" is decided only there. A site with no legacy repository passes `--no-legacy-repo` instead of `--legacy-src`; the report records why the test hook carryover check did not run, and the run can still be the gate.
 
 The cache trades freshness for speed: a cached measurement shows production as it was when it was taken. A gate run reads the cache like any other, so sign-off refuses a report built from cached production more than a day old. Pass `--refresh-prod` on the gate run when the cache is older, and raise `--max-prod-age` only for a production site you know has not changed.
+
+### Keep Production Read-Only
+
+Every page load is a page view on the live site. The checks load production once per route, matrix case and check, and the crawl reloads it once per control, so one route run would put hundreds of synthetic visits in the owner's analytics. Every script that loads production (each check, `run-checks.mjs`, `capture-baselines.mjs`, `compare-route.mjs` and `geometry-diff.mjs`) applies the same rules in the browser, on both sides:
+
+- **Analytics and tracking requests are blocked.** The default list covers Google Tag Manager, Analytics and ads, Vercel insights, Plausible, Segment, Hotjar, the Facebook pixel, Clarity and Cloudflare insights. Add a site's own tracker with `--block` (repeatable): a host such as `stats.example.net` also blocks its subdomains, and a value with a `/` such as `*/api/track` matches anywhere in the URL, with `*` as a wildcard. A pattern that matches `--prod` or `--target` itself is refused. `--no-default-block` drops the list when the page needs one of those hosts; log that in the ledger. The target blocks the same requests, so a tag that adds markup is missing on both sides, never on one.
+- **Nothing but GET and HEAD leaves for production or a third party.** A form post, a beacon or an API write is refused unless it goes to the target's own origin; with no `--target`, every one is refused.
+- **`--min-interval-ms` spaces production page loads.** The default is 0. Pass 1000 or more for a site you do not run or one behind a rate limit.
+
+```sh
+node "$REFACTOR/run-checks.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route / --legacy-src ../legacy \
+  --block stats.example.net --min-interval-ms 1000
+```
+
+Each run prints what it blocked. The block list is part of the production cache key; the interval is not.
 
 ### Why a Human Signs Off Every Route
 
@@ -524,7 +539,7 @@ Every prompt reads the [execution contract](https://github.com/bascikdev/bascik/
 1. **Locations and environment.** The live URL, the read-only legacy repository, the target repository, and the `PROD_URL`, `TARGET_URL`, `BASCIK_SITE_URL` and `REFACTOR` values.
 2. **Non-negotiables.** Match production. 100 in all five Lighthouse categories on every page. Clean Bascik and TypeScript. No framework runtime carried over.
 3. **No Lighthouse gaming.** No audit detection, no vendor-free mode for audits, no hidden content and no timers that outlast the audit.
-4. **Safety.** Browse production read-only. Never submit a real form or send synthetic analytics. No secrets in files.
+4. **Safety.** Browse production read-only. Never submit a real form or send synthetic analytics: the scripts block analytics hosts, and `--block` and `--min-interval-ms` cover the rest. No secrets in files.
 5. **Working method.** Inspect, make the smallest change, run a focused check, format, hand off.
 6. **Handoff.** Status, revisions, changed files, the exact commands and their results, and what is not verified.
 

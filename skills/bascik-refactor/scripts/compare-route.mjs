@@ -8,7 +8,16 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { contextOptions, openPage, routeUrl } from "./lib/capture.mjs";
+import {
+  contextOptions,
+  openPage,
+  POLITE_HELP,
+  POLITE_OPTIONS,
+  politeBrowser,
+  politeFlags,
+  politeSummary,
+  routeUrl,
+} from "./lib/capture.mjs";
 import { loadMatrix } from "./lib/matrix.mjs";
 import { loadPlaywright, loadSharp } from "./lib/project-deps.mjs";
 import { collectNodes, diffGeometry } from "./geometry-diff.mjs";
@@ -35,6 +44,7 @@ Options:
   --max-ratio <r>         Share of differing pixels a case may have (default 0.001)
   --accepted <file>       Accepted differences: decisions ledger rows turned into masks or budgets (see below)
   --out <dir>             Report folder (default artifacts/compare)
+${POLITE_HELP}
   --help                  Show this message
 
 interactions.json is an array of steps run in order on one page per matrix case:
@@ -323,6 +333,7 @@ export function parseCliArgs(argv) {
       tolerance: { type: "string" },
       "max-ratio": { type: "string" },
       out: { type: "string" },
+      ...POLITE_OPTIONS,
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -331,6 +342,7 @@ export function parseCliArgs(argv) {
   if (!values.target) throw new Error("--target <url> is required");
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
+  const polite = politeFlags(values, values);
   const seen = new Set();
   for (const route of values.route) {
     validateRoute(route);
@@ -364,6 +376,7 @@ export function parseCliArgs(argv) {
     tolerance,
     maxRatio,
     out: values.out ?? "artifacts/compare",
+    polite,
   };
 }
 
@@ -548,7 +561,11 @@ async function main() {
   const accepted = args.accepted ? loadAccepted(args.accepted) : [];
   const { chromium } = await loadPlaywright();
   const sharp = await loadSharp();
-  const browser = await chromium.launch();
+  const browser = politeBrowser(await chromium.launch(), {
+    prod: args.prod,
+    target: args.target,
+    ...args.polite,
+  });
   let allOk = true;
   try {
     for (const route of args.route) {
@@ -675,6 +692,11 @@ async function main() {
   } finally {
     await browser.close();
   }
+  const politeLine = politeSummary(
+    browser.politeStats,
+    args.polite.minIntervalMs,
+  );
+  if (politeLine) console.log(politeLine);
   if (!allOk) process.exitCode = 1;
 }
 
