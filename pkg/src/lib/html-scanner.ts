@@ -409,6 +409,26 @@ const UNCERTAIN_IN_SELECT = new Set([
 ]);
 
 /**
+ * Table-structure tags. In SVG or MathML that opened while a table may be open,
+ * the parser handles these (and the end tags) with the table's insertion mode,
+ * which can pop it out of the foreign content and past the table. Whether it
+ * does depends on that mode (a `<table>` in a cell does not), which the scan
+ * does not track, so it stops at such a tag instead.
+ */
+const TABLE_STRUCTURE_ELEMENTS = new Set([
+  "caption",
+  "col",
+  "colgroup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+]);
+
+/**
  * Deepest foreign-content nesting the scan tracks. End tags walk the tracked
  * elements, so a bound keeps hostile input linear; real SVG and MathML stay
  * far below it. Deeper nesting stops the scan.
@@ -769,6 +789,8 @@ export const scanHtml = (
    */
   const preformattedFrames = [{ pre: 0, listing: 0, sticky: false, tables: 0 }];
   let openTables = 0;
+  /** The SVG or MathML currently open began while a table may have been open (see TABLE_STRUCTURE_ELEMENTS). */
+  let foreignStartedInTable = false;
   let openPreformatted = 0;
   const isPreformatted = (name: string): name is "pre" | "listing" =>
     name === "pre" || name === "listing";
@@ -1021,6 +1043,7 @@ export const scanHtml = (
     }
     if (name === "svg" || name === "math") {
       if (!tag.selfClosing) {
+        if (stack.length === 0) foreignStartedInTable = openTables > 0;
         push({
           name,
           namespace: name,
@@ -1226,6 +1249,12 @@ export const scanHtml = (
       // Text before the tag carries the context it was parsed in.
       flushText(start);
       rawElement = null;
+      if (
+        stack.length > 0 &&
+        foreignStartedInTable &&
+        TABLE_STRUCTURE_ELEMENTS.has(tag.name)
+      )
+        return giveUpAt(start);
       const resume = startTagUsesHtmlRules(tag.name)
         ? startHtmlElement(start, tag)
         : startForeignElement(start, tag);
@@ -1249,6 +1278,12 @@ export const scanHtml = (
         if (tag.end === -1) return endAt(start);
         const wasInsertable = isInsertable();
         flushText(start);
+        if (
+          stack.length > 0 &&
+          foreignStartedInTable &&
+          TABLE_STRUCTURE_ELEMENTS.has(tag.name)
+        )
+          return giveUpAt(start);
         endElement(tag.name, start, tag.end);
         if (lost) return giveUpAt(start);
         emitMarkup("tag", start, tag.end, tag.name, true);

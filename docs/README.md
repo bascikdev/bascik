@@ -112,7 +112,7 @@ yarn workspace bascik-docs pkg-dev   # watches pkg source directly via --watch-p
 
 ## Deployment
 
-bascik.dev is the assets-only Cloudflare Worker `bascik`, defined in [`wrangler.jsonc`](wrangler.jsonc). CI deploys it after every other stage passes: a push to `main` deploys to production, and a push to any other branch uploads a preview, whose URL is in the run summary and in a comment on the branch's pull request, if it has one. Nobody deploys by hand. To check the Worker locally, from the repo root:
+bascik.dev is the assets-only Cloudflare Worker `bascik`, defined in [`wrangler.jsonc`](wrangler.jsonc). CI deploys it: a push to `main` (a merged pull request, already tested on its branch) deploys straight to production, and a push to any other branch uploads a preview once every test stage passes, whose URL is in the run summary and in a comment on the branch's pull request, if it has one. Nobody deploys by hand. To check the Worker locally, from the repo root:
 
 ```sh
 yarn pkg:build && yarn docs:build
