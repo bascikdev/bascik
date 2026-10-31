@@ -491,30 +491,30 @@ export const initBascikConfig = (
         ? serverDefaultConfig
         : devDefaultConfig;
 
+  // `minify: true | false` is shorthand for all four minifiers. Expanding it
+  // in each layer before the merge keeps the layer order: a boolean in the
+  // default export is refined by an object in the mode export, and a boolean
+  // in the mode export replaces an object in the default export.
+  const expandMinify = (layer: UserConfig): UserConfig =>
+    typeof layer.minify === "boolean"
+      ? {
+          ...layer,
+          minify: {
+            html: layer.minify,
+            css: layer.minify,
+            js: layer.minify,
+            identifiers: layer.minify,
+          },
+        }
+      : layer;
+
   const merged = deepMerge<BascikConfigOptions>(
     {} as BascikConfigOptions,
     defaultConfig as unknown as BascikConfigOptions,
     activeModeDefaultConfig as unknown as BascikConfigOptions,
-    effectiveUserConfig as unknown as BascikConfigOptions,
-    activeOverride as unknown as BascikConfigOptions,
+    expandMinify(effectiveUserConfig) as unknown as BascikConfigOptions,
+    expandMinify(activeOverride) as unknown as BascikConfigOptions,
   );
-
-  if (typeof effectiveUserConfig.minify === "boolean") {
-    merged.minify = {
-      html: effectiveUserConfig.minify,
-      css: effectiveUserConfig.minify,
-      js: effectiveUserConfig.minify,
-      identifiers: effectiveUserConfig.minify,
-    };
-  }
-  if (typeof activeOverride.minify === "boolean") {
-    merged.minify = {
-      html: activeOverride.minify,
-      css: activeOverride.minify,
-      js: activeOverride.minify,
-      identifiers: activeOverride.minify,
-    };
-  }
 
   // CLI flag / env var overrides beat every config-file layer
   // (flag > env var > config file).

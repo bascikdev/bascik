@@ -423,6 +423,8 @@ For one element rather than every matching tag, use `data-bascik-preserve` or a 
 
 Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
 
+`minify: true` or `minify: false` sets all four (`html`, `css`, `js`, `identifiers`) at once. It is shorthand for that object, so a mode export can refine it: `export default { minify: false }` with `export const build = { minify: { identifiers: true } }` builds with only identifier minification on.
+
 `minify.html: false` disables HTML minification for both page templates and component templates. Component whitespace and script placement remain as authored when it is off.
 
 Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, or terser. A `minify.js` function always receives valid JavaScript: browser TypeScript on the supported paths (`.ts` companions, `type="text/typescript"` blocks) is stripped before this hook runs, and Bascik holds back its `//# sourceURL` directive and re-attaches it on its own line after the function returns.

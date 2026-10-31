@@ -448,6 +448,62 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     expect(serverCfg.http.tls.enabled).toBe(true);
   });
 
+  // F095: a boolean minify in the default export used to be applied after
+  // the merge and overwrite the mode export's object.
+  it("lets an object minify in the mode export refine a boolean minify in the default export", () => {
+    const cfg = initBascikConfig(
+      { minify: false },
+      { build: { minify: { identifiers: true } } },
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: false,
+      css: false,
+      js: false,
+      identifiers: true,
+    });
+  });
+
+  it("lets a boolean minify in the mode export replace an object in the default export", () => {
+    const cfg = initBascikConfig(
+      { minify: { css: false } },
+      { server: { minify: true } },
+      { isProdServer: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: true,
+      css: true,
+      js: true,
+      identifiers: true,
+    });
+  });
+
+  it("applies a boolean minify in the default export to every minifier when no mode export sets one", () => {
+    const cfg = initBascikConfig(
+      { minify: false },
+      {},
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: false,
+      css: false,
+      js: false,
+      identifiers: false,
+    });
+  });
+
+  it("keeps a minify function from the default export when the mode export sets other keys", () => {
+    const js = (code: string) => code;
+    const cfg = initBascikConfig(
+      { minify: { js } },
+      { build: { minify: { identifiers: false } } },
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify.js).toBe(js);
+    expect(cfg.minify.identifiers).toBe(false);
+    expect(cfg.minify.css).toBe(true);
+  });
+
   it("uses the dev asset symlink override only in development mode", () => {
     const overrides = { dev: { assets: { symlink: true } } };
 
