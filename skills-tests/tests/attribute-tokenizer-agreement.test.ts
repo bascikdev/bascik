@@ -170,11 +170,10 @@ describe("fixed inputs", () => {
     ]);
   });
 
-  it("markup.mjs reads a tag of unquoted values full of = and quotes that never closes in linear time", () => {
+  // Its growth is checked in attribute-tokenizer-agreement.linear-time.test.ts.
+  it("markup.mjs reads a tag of unquoted values full of = and quotes that never closes, without throwing", () => {
     const html = `<p${" a=b\"c='d=e".repeat(20_000)}`;
-    const started = performance.now();
     expect(() => parseMarkup(html)).not.toThrow();
-    expect(performance.now() - started).toBeLessThan(2_000);
   });
 
   it("markup.mjs reads a tag that never closes in linear time, without throwing", () => {
@@ -230,51 +229,5 @@ describe("fixed inputs", () => {
   });
 });
 
-/**
- * R3-18: many tags that never close. Each `<` used to start a scan to the
- * end of the input (the attribute text read through `<`, and a raw-text or
- * comment body looked for its end from every opening), so the work grew
- * with the square of the input. skills-tests has no linear-time project,
- * so this is a wall-clock growth ratio: the fastest of several samples at
- * 1,000 and 4,000 fragments, each sample repeated to at least 20 ms, the
- * small input four times as often so both read as many characters. Linear
- * work then reads about 1 (1.0 to 1.2 measured), quadratic work about 4
- * (3.1 to 4.1 measured on the regex scan this replaced).
- */
-describe("markup.mjs reads many unclosed tags in linear time (R3-18)", () => {
-  const sampleMs = (html: string, runs: number): number => {
-    const started = performance.now();
-    for (let i = 0; i < runs; i++) parseMarkup(html);
-    return performance.now() - started;
-  };
-  const runsFor = (html: string): number => {
-    let runs = 1;
-    while (runs < 4_096 && sampleMs(html, runs) < 20) runs *= 2;
-    return runs;
-  };
-  const growth = (fragment: string): number => {
-    const small = fragment.repeat(1_000);
-    const large = fragment.repeat(4_000);
-    const runs = runsFor(small);
-    let fastestSmall = Infinity;
-    let fastestLarge = Infinity;
-    for (let sample = 0; sample < 5; sample++) {
-      fastestSmall = Math.min(fastestSmall, sampleMs(small, runs * 4));
-      fastestLarge = Math.min(fastestLarge, sampleMs(large, runs));
-    }
-    // Both read the same number of characters per sample.
-    return fastestLarge / fastestSmall;
-  };
-
-  it.each([
-    ["an element name", "<x "],
-    ["unquoted values", "<x a=b "],
-    ["values with no whitespace", "<xa="],
-    ["quoted values that never close", '<x a="'],
-    ["a script open tag", "<script "],
-    ["script elements with no end tag", "<script>"],
-    ["comments with no end", "<!--"],
-  ])("%s", (_name, fragment) => {
-    expect(growth(fragment)).toBeLessThan(2.5);
-  });
-});
+// The R3-18 growth checks (many unclosed tags) are in
+// attribute-tokenizer-agreement.linear-time.test.ts.

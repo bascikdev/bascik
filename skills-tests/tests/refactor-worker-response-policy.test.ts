@@ -315,21 +315,30 @@ const wellFormedPage = (random: () => number) => {
 };
 
 describe("scanning for inline code without regular-expression backtracking", () => {
-  it("finds the same scripts and styles as the regex scan it replaced on 50,000 well-formed pages", () => {
-    const differences: string[] = [];
-    for (let seed = 1; seed <= 50_000; seed++) {
-      const html = wellFormedPage(prng(seed));
-      const scripts = executableInlineScripts(html);
-      const styles = inlineStyles(html);
-      if (
-        JSON.stringify(scripts) !==
-          JSON.stringify(oldExecutableInlineScripts(html)) ||
-        JSON.stringify(styles) !== JSON.stringify(oldInlineStyles(html))
-      )
-        differences.push(`seed ${seed}: ${JSON.stringify(html)}`);
-    }
-    expect(differences.slice(0, 5)).toEqual([]);
-  });
+  // About 1 s on a quiet machine, past Vitest's default 5 s under coverage
+  // instrumentation on a loaded one (R3-19). The count stays at 50,000: fewer
+  // pages would compare fewer of the generator's shapes.
+  const FIFTY_THOUSAND_PAGES_TIMEOUT_MS = 60_000;
+
+  it(
+    "finds the same scripts and styles as the regex scan it replaced on 50,000 well-formed pages",
+    () => {
+      const differences: string[] = [];
+      for (let seed = 1; seed <= 50_000; seed++) {
+        const html = wellFormedPage(prng(seed));
+        const scripts = executableInlineScripts(html);
+        const styles = inlineStyles(html);
+        if (
+          JSON.stringify(scripts) !==
+            JSON.stringify(oldExecutableInlineScripts(html)) ||
+          JSON.stringify(styles) !== JSON.stringify(oldInlineStyles(html))
+        )
+          differences.push(`seed ${seed}: ${JSON.stringify(html)}`);
+      }
+      expect(differences.slice(0, 5)).toEqual([]);
+    },
+    FIFTY_THOUSAND_PAGES_TIMEOUT_MS,
+  );
 
   it("finds something on most generated pages, so the fuzz above compares real matches", () => {
     let withScripts = 0;
@@ -373,152 +382,8 @@ describe("scanning for inline code without regular-expression backtracking", () 
   });
 });
 
-/**
- * Linear-time check, after pkg/src/lib/linear-time.test-helper.ts (kept local so this workspace does not import pkg test helpers):
- * times a quarter-size and a full-size input in this thread's CPU time, repeated until a sample takes `MIN_SAMPLE_MS`
- * or `TICKS_PER_SAMPLE` steps of the clock (Windows counts CPU time in ticks of about 15.6 ms, and a sample one tick
- * long reads 0), keeps the fastest of `SAMPLES` interleaved samples of each, plus up to `EXTRA_SAMPLES` more while the
- * growth is in the band load reaches on linear work, and requires the growth to stay under `MAX_GROWTH`. Linear work
- * grows about 4 times; quadratic about 16. Growth does not depend on the machine's speed, so a loaded runner does not
- * flake it. Linear work reads up to twice 4 where the CPU cache holds the quarter size but not the full size (CI read
- * 9.2), so the bar is 12.
- */
-const MAX_GROWTH = 12;
-const MIN_SAMPLE_MS = 25;
-const TICKS_PER_SAMPLE = 16;
-const MAX_RUNS = 2_000;
-const NOISE_FLOOR_MS = 5;
-const CEILING_MS = 2_000;
-const SAMPLES = 3;
-const EXTRA_SAMPLES = 6;
-const RESAMPLE_ABOVE = 5;
-const RESAMPLE_BELOW = 14;
-const LINEAR_TIME_TIMEOUT_MS = 60_000;
-
-// This thread's CPU time (Node 23.9 and later), else the process's: the process's also counts V8's GC threads.
-const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage =
-  process.threadCpuUsage?.bind(process) ?? process.cpuUsage.bind(process);
-const msOf = ({ user, system }: NodeJS.CpuUsage) => (user + system) / 1000;
-const cpuMs = (run: () => unknown) => {
-  const start = threadCpuUsage();
-  run();
-  return msOf(threadCpuUsage(start));
-};
-// The smallest step the clock moves by: microseconds on macOS and Linux, a scheduler tick on Windows.
-const clockResolutionMs = (() => {
-  const deadline = performance.now() + 250;
-  let smallest = Infinity;
-  let last = msOf(threadCpuUsage());
-  for (let steps = 0; steps < 5 && performance.now() < deadline;) {
-    const now = msOf(threadCpuUsage());
-    if (now === last) continue;
-    smallest = Math.min(smallest, now - last);
-    last = now;
-    steps++;
-  }
-  return Number.isFinite(smallest) ? smallest : 0;
-})();
-const TARGET_MS = Math.max(MIN_SAMPLE_MS, TICKS_PER_SAMPLE * clockResolutionMs);
-const FLOOR_MS = Math.max(NOISE_FLOOR_MS, clockResolutionMs);
-
-const expectLinearTime = (
-  input: (size: number) => string,
-  size: number,
-  run: (html: string) => unknown,
-  label: string,
-) => {
-  const small = input(size / 4);
-  const large = input(size);
-  const sample = (html: string, runs: number) =>
-    cpuMs(() => {
-      for (let i = 0; i < runs; i++) run(html);
-    });
-  sample(small, 1);
-  let runs = 1;
-  let ms = sample(small, runs);
-  // On a coarse clock the cap rises with the target, so a run of microseconds still spans its ticks.
-  const maxRuns = Math.ceil((MAX_RUNS * TARGET_MS) / MIN_SAMPLE_MS);
-  while (ms < TARGET_MS && runs < maxRuns) {
-    runs = Math.min(
-      maxRuns,
-      // A step that read nothing says nothing about how short the run is: double rather than jump to MAX_RUNS.
-      ms <= 0
-        ? runs * 2
-        : Math.max(runs * 2, Math.ceil((runs * TARGET_MS * 1.5) / ms)),
-    );
-    ms = sample(small, runs);
-  }
-  let smallMs = ms;
-  let largeMs = Infinity;
-  const growth = () => largeMs / Math.max(smallMs, FLOOR_MS);
-  for (let i = 0; i < SAMPLES + EXTRA_SAMPLES; i++) {
-    if (
-      i >= SAMPLES &&
-      !(growth() > RESAMPLE_ABOVE && growth() < RESAMPLE_BELOW)
-    )
-      break;
-    if (i > 0) smallMs = Math.min(smallMs, sample(small, runs));
-    largeMs = Math.min(largeMs, sample(large, runs));
-  }
-  const what = `${label}: ${(smallMs / runs).toFixed(2)} ms at a quarter size, ${(largeMs / runs).toFixed(2)} ms at full size, ${runs} runs per sample`;
-  expect(growth(), `${what} (growth)`).toBeLessThan(MAX_GROWTH);
-  expect(largeMs / runs, `${what} (ceiling)`).toBeLessThan(CEILING_MS);
-};
-
-const repeatTo = (unit: string, size: number) =>
-  unit.repeat(Math.ceil(size / unit.length));
-
-describe("hostile response bodies take linear time", () => {
-  // A server or stream script can reflect visitor input into the body, and with hashResponseBodies: true every HTML
-  // response is scanned on the request path: super-linear work here is a per-request denial of service.
-  const HOSTILE: [string, (size: number) => string][] = [
-    ["start tags that never close", (n) => repeatTo("<script ", n)],
-    ["style start tags that never close", (n) => repeatTo("<style ", n)],
-    ["an attribute list with no >", (n) => `<script${repeatTo(' a="b"', n)}`],
-    ["quote-opening attribute values", (n) => repeatTo('<script a="', n)],
-    ["single quotes after =", (n) => repeatTo("<script a='", n)],
-    ["quotes in attribute names", (n) => repeatTo(`<script "'`, n)],
-    ["start tags with no end tag", (n) => repeatTo("<script>", n)],
-    ["style start tags with no end tag", (n) => repeatTo("<style>", n)],
-    [
-      "end-tag look-alikes with no >",
-      (n) => `<script>${repeatTo("</script ", n)}`,
-    ],
-    [
-      "style end-tag look-alikes with no >",
-      (n) => `<style>${repeatTo("</style\t", n)}`,
-    ],
-    ["near-miss end tags", (n) => `<script>${repeatTo("</scrip</scripts", n)}`],
-    ["a flood of <", (n) => repeatTo("<", n)],
-    ["a flood of </", (n) => `<script>${repeatTo("</", n)}`],
-    [
-      "one closed tag with a long attribute list",
-      (n) => `<script${repeatTo(' a="b" c=d e', n)}>x()</script>`,
-    ],
-    [
-      "one closed tag with long runs of = and whitespace",
-      (n) => `<script a${repeatTo("= \t=", n)}>x()</script>`,
-    ],
-    ["many small scripts", (n) => repeatTo("<script>a()</script>", n)],
-    ["many small styles", (n) => repeatTo("<style>.a{}</style>", n)],
-    ["nested quoted start tags", (n) => repeatTo(`<script a="<script b='`, n)],
-  ];
-  it.each(HOSTILE)(
-    "%s",
-    (label, input) => {
-      expectLinearTime(
-        input,
-        200_000,
-        (html) => {
-          executableInlineScripts(html);
-          inlineStyles(html);
-        },
-        label,
-      );
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-});
+// The hostile-body growth checks are in
+// refactor-worker-response-policy.linear-time.test.ts.
 
 describe("sha256Base64 and buildCsp", () => {
   it("matches node:crypto's base64 SHA-256 for ASCII and non-ASCII text", async () => {

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "unit": "yarn workspace @bascik/bascik build && vitest run --project unit",
     "integration": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run --project integration",
+    "linear-time": "vitest run --project linear-time",
     "test": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run",
     "coverage": "yarn workspace @bascik/bascik build && vitest run --project unit --coverage.enabled && node update-coverage.ts",
     "cover": "yarn coverage"

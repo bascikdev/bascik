@@ -85,14 +85,16 @@ yarn pkg:test:all
 
 ## Running Linear-Time Checks
 
-The checks that guard against super-linear work (see [Time-Boundary Testing Model](#time-boundary-testing-model)) live in `*.linear-time.test.ts` files next to the module's other tests, and run in their own Vitest project. Each check times several samples in CPU time, which Windows counts in ticks of about 15.6 ms, so a check takes seconds there and milliseconds on Linux and macOS. Keeping them out of the `unit` project keeps the unit suite fast on every operating system. CI runs them once, on Linux, in the integration stage.
+The checks that guard against super-linear work (see [Time-Boundary Testing Model](#time-boundary-testing-model)) live in `*.linear-time.test.ts` files next to the module's other tests, and run in their own Vitest project. Each check times several samples in CPU time, which Windows counts in ticks of about 15.6 ms, so a check takes seconds there and milliseconds on Linux and macOS. Keeping them out of the `unit` project keeps the unit suite fast on every operating system, and keeps them out of coverage runs, whose instrumentation skews a growth ratio. `pkg`, `lsp`, and `skills-tests` each have a `linear-time` project. CI runs them once, on Linux, in the integration stage.
 
 ```sh
 # Workspace-wide linear-time checks
 yarn linear-time:all
 
-# @bascik/bascik only
+# One workspace
 yarn pkg:linear-time
+yarn lsp:linear-time
+yarn skills:linear-time
 ```
 
 ## Running E2E Tests
@@ -400,7 +402,7 @@ Bascik uses five test mechanics for time-sensitive behavior. This keeps framewor
 4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
 5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
 
-Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth goes in a `*.linear-time.test.ts` file and sets `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there. The helper throws in a test of the `unit` project, and in a test with a shorter timeout. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`).
+Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth goes in a `*.linear-time.test.ts` file and sets `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there. The helper throws in a test of the `unit` project, and in a test with a shorter timeout. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`), and so do the agent skills' tests (`skills-tests/tests/linear-time.test-helper.ts`, which also throws in the `unit` project).
 
 For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
@@ -456,7 +458,7 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn check:all`: runs formatting (`check:format`), spelling (`check:spelling`), and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
-- `yarn linear-time:all`: runs the linear-time checks (`pkg` and `lsp`)
+- `yarn linear-time:all`: runs the linear-time checks (`pkg`, `lsp`, and `skills-tests`)
 - `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)
 - `yarn coverage:all`: generates and updates coverage reports across all packages
 - `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, linear-time checks, and E2E suites in sequence (coverage excluded)
