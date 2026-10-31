@@ -1229,6 +1229,99 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       expect(stream.cf.body).not.toContain("SECRET_DETAIL");
     });
 
+    // Prompt 158 R3-04 (F060): what a script's return value prints, and how
+    // a return that is not markup is reported, in production on both hosts.
+    it("return values: an array is joined with no separator and its component tags render, the same bytes on both hosts", async () => {
+      for (const path of ["/returns-array", "/returns-array-stream"]) {
+        const r = await both(path);
+        expect(r.node.status, path).toBe(200);
+        expect(r.cf.status, path).toBe(200);
+        expect(r.cf.body, path).toBe(r.node.body);
+        expect(r.cf.body, path).toContain(
+          "<li>Milk frother</li><li>Kettle</li>",
+        );
+        expect(r.cf.body, path).not.toContain("</li>,");
+      }
+      expect((await both("/returns-array")).cf.body).toContain(
+        'data-testid="product-card"',
+      );
+    });
+
+    const refusedReturns: Array<{ path: string; received: string }> = [
+      {
+        path: "/returns-object",
+        received: "returned an object ([object Object])",
+      },
+      { path: "/returns-response", received: "returned a Response" },
+      {
+        path: "/returns-async-map",
+        received: "returned an array holding a Promise at [0]",
+      },
+      {
+        path: "/returns-component",
+        received: "returned an object ([object Object])",
+      },
+    ];
+    for (const refused of refusedReturns) {
+      it(`misuse: ${refused.path} is an empty slot under "${policy}", never a 500 or [object ...], with ${policy === "ignore" ? "no log" : "one located warning per script"}, the same on both hosts`, async () => {
+        const escaped = refused.received.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          (c) => `\\${c}`,
+        );
+        for (let i = 0; i < 2; i++) {
+          const logged = policy !== "ignore" && i === 0;
+          const r = await bothWithLogs(
+            refused.path,
+            logged ? new RegExp(escaped) : null,
+          );
+          expect(r.node.status, `node ${refused.path}`).toBe(200);
+          expect(r.cf.status, `cf ${refused.path}`).toBe(200);
+          expect(r.cf.body, refused.path).toBe(r.node.body);
+          expect(r.cf.body, refused.path).not.toContain("[object");
+          expect(r.cf.body, refused.path).not.toContain("api habit");
+          expect(r.cf.body, refused.path).toContain('data-testid="shell"');
+          expect(r.cf.body, refused.path).toContain('data-testid="tail"');
+          if (refused.path === "/returns-component")
+            expect(r.cf.body).toContain('data-testid="object-card"');
+          if (!logged) {
+            expect(r.nodeLog, `node log ${refused.path} #${i}`).toBe("");
+            expect(r.cfLog, `cf log ${refused.path} #${i}`).toBe("");
+            continue;
+          }
+          expect(r.nodeLog, refused.path).toContain(
+            `[bascik] server script error at "${refused.path}":\n`,
+          );
+          expect(r.nodeLog, refused.path).toContain(refused.received);
+          expect(r.nodeLog, refused.path).toContain("The slot is empty");
+          // A component job carries its owner on both hosts, so the logs
+          // are identical. A page job has no owner in the Worker's graph (the
+          // bundle entry is unchanged for page jobs): Node names the page
+          // file and line where the Worker names the script's kind, and
+          // the route names the page on both.
+          const unlocated = (log: string) =>
+            log.replace(
+              /The (server|stream) script in \S+:\d+ returned/,
+              (_, mode: string) => `The ${mode} script returned`,
+            );
+          if (refused.path === "/returns-component") {
+            expect(r.cfLog, `cf log ${refused.path}`).toBe(r.nodeLog);
+            expect(r.nodeLog).toMatch(
+              /The server script in \S*components\/object-card\/object-card\.html:\d+ returned/,
+            );
+          } else {
+            expect(r.nodeLog).toMatch(
+              new RegExp(
+                `The (server|stream) script in src/pages${refused.path}\\.html:\\d+ returned`,
+              ),
+            );
+            expect(r.cfLog, `cf log ${refused.path}`).toBe(
+              unlocated(r.nodeLog),
+            );
+          }
+        }
+      }, 60_000);
+    }
+
     // D4.6: every kind of request-time render failure (the instance,
     // nested-job, depth and size budgets, and a "failed during <stage>")
     // follows the policy like any other script failure, with the same bytes

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Server Script Return Values</title>
+  </head>
+
+  <body>
+    <p data-testid="returns-before">before</p>
+
+    <!-- An array from .map is joined with no separator (prompt 158 R3-04). -->
+    <ul data-testid="returns-list">
+      <script data-bascik-server>
+        export default function () {
+          return ["Milk frother", "Kettle"].map(
+            (name) => `<li data-testid="returns-item">${name}</li>`,
+          );
+        }
+      </script>
+    </ul>
+
+    <!-- A stream script's array is joined the same way. -->
+    <ul data-testid="returns-stream-list">
+      <script data-bascik-stream>
+        export default async function () {
+          return [["<li>a</li>", null], ["<li>b</li>"]];
+        }
+      </script>
+    </ul>
+
+    <!-- Misuse: an object is an empty slot with a warning in the terminal, never its String() text. -->
+    <section data-testid="returns-object">
+      <script data-bascik-server>
+        export default function () {
+          return { name: "Milk frother" };
+        }
+      </script>
+    </section>
+
+    <!-- Misuse: the API-route habit; a Response is an empty slot too. -->
+    <section data-testid="returns-response">
+      <script data-bascik-stream>
+        export default function () {
+          return new Response("<p>api habit</p>");
+        }
+      </script>
+    </section>
+
+    <p data-testid="returns-after">after</p>
+  </body>
+</html>

@@ -3,6 +3,7 @@ import {
   executeServerScripts,
   pageHasServerScripts,
   planServerScripts,
+  streamServerScripts,
 } from "./server-scripts.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry } from "./script-registry.ts";
@@ -339,6 +340,248 @@ describe("executeServerScripts in-process execution", () => {
       executeServerScripts(html, req, context, 30000, "src/pages/test.html"),
     ).rejects.toThrow(
       /must export default a function.*src\/pages\/test\.html/s,
+    );
+  });
+});
+
+describe("return values (prompt 158 R3-04, F060): arrays join like html, mistakes are located", () => {
+  const page = (body: string, mode = "data-bascik-server") =>
+    `<p>before</p>\n<script ${mode}>\n${body}\n</script>\n<p>after</p>`;
+  const run = (body: string, url = "http://localhost/catalog") =>
+    executeServerScripts(
+      page(body),
+      new Request(url),
+      baseContext,
+      30000,
+      "src/pages/catalog.html",
+    );
+
+  beforeEach(() => {
+    (BascikConfig as any).isProdServer = false;
+    (BascikConfig as any).isBuild = false;
+  });
+
+  it("an array of strings from .map is joined with no separator, not with commas", async () => {
+    const result = await run(
+      `export default () => ["Milk frother", "Kettle"].map((name) => "<li>" + name + "</li>");`,
+    );
+    expect(result).toBe(
+      "<p>before</p>\n<li>Milk frother</li><li>Kettle</li>\n<p>after</p>",
+    );
+    expect(result).not.toContain("</li>,<li>");
+  });
+
+  it("an array of html values is joined with no separator, nested arrays flattened and null holes empty", async () => {
+    const result = await run(`import { html } from "@bascik/bascik/html";
+export default () => [html\`<li>\${"a<"}</li>\`, null, [html\`<li>b</li>\`, ["<li>c</li>"]], undefined];`);
+    expect(result).toBe(
+      "<p>before</p>\n<li>a&lt;</li><li>b</li><li>c</li>\n<p>after</p>",
+    );
+  });
+
+  it("an empty array prints nothing; a number prints its digits", async () => {
+    expect(await run(`export default () => [];`)).toBe(
+      "<p>before</p>\n\n<p>after</p>",
+    );
+    expect(await run(`export default () => 42;`)).toBe(
+      "<p>before</p>\n42\n<p>after</p>",
+    );
+  });
+
+  it("ANSI escapes inside array items are stripped like a string's", async () => {
+    const result = await run(
+      `export default () => ["\\u001b[31m<b>red</b>\\u001b[0m", "<i>x</i>"];`,
+    );
+    expect(result).toBe("<p>before</p>\n<b>red</b><i>x</i>\n<p>after</p>");
+  });
+
+  for (const [label, body, received] of [
+    // A returned Promise is awaited (the handler's result is), so a forgotten
+    // await reaches the page only inside an array.
+    [
+      "a forgotten await inside an array",
+      `const loadList = async () => "<ul></ul>";\nexport default () => ["<h2>Items</h2>", loadList()];`,
+      "returned an array holding a Promise at [1]",
+    ],
+    [
+      "an async .map",
+      `export default () => ["a", "b"].map(async (n) => "<li>" + n + "</li>");`,
+      "returned an array holding a Promise at [0]",
+    ],
+    [
+      "a Response",
+      `export default () => new Response("<p>x</p>");`,
+      "returned a Response",
+    ],
+    [
+      "a plain object",
+      `export default () => ({ name: "Milk frother" });`,
+      "returned an object ([object Object])",
+    ],
+    [
+      "a function",
+      `export default () => () => "<p>x</p>";`,
+      "returned a function",
+    ],
+    ["a symbol", `export default () => Symbol("x");`, "returned a symbol"],
+  ] as const) {
+    it(`misuse: ${label} is a located error in dev under "error", naming the route, the script and the received type`, async () => {
+      const failure = run(body).then(
+        () => null,
+        (error: Error) => error,
+      );
+      const error = await failure;
+      expect(error).toBeInstanceOf(Error);
+      expect(error!.name).toBe("ServerScriptError");
+      expect(error!.message).toMatch(
+        /^\[bascik\] server script error at "\/catalog":\n/,
+      );
+      expect(error!.message).toMatch(
+        /The server script in src\/pages\/catalog\.html:\d+ /,
+      );
+      expect(error!.message).toContain(received);
+      expect(error!.message).not.toMatch(/\[object (Promise|Response)\]/);
+    });
+  }
+
+  it('misuse: dev under "warn" logs the located message on every request and leaves the slot empty', async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = `export default () => ({ name: "dev-warn" });`;
+    for (let i = 0; i < 2; i++) {
+      const result = await run(body);
+      expect(result).toBe("<p>before</p>\n\n<p>after</p>");
+      expect(result).not.toContain("[object");
+    }
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy.mock.calls[0]![0]).toContain(
+      "returned an object ([object Object])",
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('misuse: dev under "ignore" leaves the slot empty and logs nothing', async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "ignore" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await run(
+      `export default () => new Response("dev-ignore");`,
+    );
+    expect(result).toBe("<p>before</p>\n\n<p>after</p>");
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('misuse: production under "error" never fails the page: the slot is empty and the warning is logged once per script', async () => {
+    (BascikConfig as any).isProdServer = true;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = `export default () => ({ name: "prod-once" });`;
+    for (let i = 0; i < 3; i++) {
+      const result = await run(body, `http://localhost/catalog?i=${i}`);
+      expect(result).toBe("<p>before</p>\n\n<p>after</p>");
+    }
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = String(warnSpy.mock.calls[0]![0]);
+    expect(message).toMatch(
+      /^\[bascik\] server script error at "\/catalog":\n/,
+    );
+    expect(message).toMatch(
+      /The server script in src\/pages\/catalog\.html:\d+ returned an object/,
+    );
+    expect(message).toContain("The slot is empty");
+    // A script in another file is its own warning.
+    await executeServerScripts(
+      page(`export default () => ({ name: "prod-other" });`),
+      new Request("http://localhost/other"),
+      baseContext,
+      30000,
+      "src/pages/other.html",
+    );
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(String(warnSpy.mock.calls[1]![0])).toContain(
+      "The server script in src/pages/other.html:",
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("misuse: a returned object whose own toString throws fails like a throw from the script, under the policy and located", async () => {
+    const body = `export default () => ({ toString() { throw new Error("toString SECRET_DETAIL"); } });`;
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await run(body);
+    expect(result).toBe("<p>before</p>\n\n<p>after</p>");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0]![0])).toMatch(
+      /^\[bascik\] server script error at "\/catalog":\n[\s\S]*toString SECRET_DETAIL/,
+    );
+    warnSpy.mockRestore();
+    (BascikConfig as any).scripts = { onServerScriptError: "error" };
+    await expect(run(body)).rejects.toMatchObject({
+      name: "ServerScriptError",
+      message: expect.stringContaining("toString SECRET_DETAIL"),
+    });
+  });
+
+  it('misuse: production under "ignore" leaves the slot empty and logs nothing', async () => {
+    (BascikConfig as any).isProdServer = true;
+    (BascikConfig as any).scripts = { onServerScriptError: "ignore" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await run(`export default () => Symbol("prod-ignore");`);
+    expect(result).toBe("<p>before</p>\n\n<p>after</p>");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('misuse: a stream script that returns a Promise in dev under "error" is logged at error severity and its slot is empty, never a 500', async () => {
+    const html = page(
+      `export default async () => ["<li>a</li>"].map(async (x) => x);`,
+      "data-bascik-stream",
+    );
+    const plan = planServerScripts(html, "src/pages/catalog.html");
+    const chunks: Buffer[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const streamer = streamServerScripts(
+      plan,
+      new Request("http://localhost/catalog"),
+      baseContext,
+      30000,
+      "src/pages/catalog.html",
+      { write: async (chunk) => void chunks.push(Buffer.from(chunk)) },
+    );
+    await expect(streamer.ready).resolves.toBeUndefined();
+    streamer.commit();
+    await streamer.done;
+    const body = Buffer.concat(chunks).toString("utf8");
+    expect(body).toBe("<p>before</p>\n\n<p>after</p>");
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0]![0])).toMatch(
+      /The stream script in src\/pages\/catalog\.html:\d+ returned an array holding a Promise at \[0\]/,
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("a stream script that returns an array is joined like a server script's", async () => {
+    const html = page(
+      `export default async () => ["<li>a</li>", ["<li>b</li>"]];`,
+      "data-bascik-stream",
+    );
+    const plan = planServerScripts(html, "src/pages/catalog.html");
+    const chunks: Buffer[] = [];
+    const streamer = streamServerScripts(
+      plan,
+      new Request("http://localhost/catalog"),
+      baseContext,
+      30000,
+      "src/pages/catalog.html",
+      { write: async (chunk) => void chunks.push(Buffer.from(chunk)) },
+    );
+    await streamer.ready;
+    streamer.commit();
+    await streamer.done;
+    expect(Buffer.concat(chunks).toString("utf8")).toBe(
+      "<p>before</p>\n<li>a</li><li>b</li>\n<p>after</p>",
     );
   });
 });
