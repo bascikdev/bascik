@@ -186,6 +186,36 @@ describe("resolveAdapterTarget", () => {
     });
   });
 
+  it("misuse: an installed official adapter whose own import fails names the missing module, not a missing adapter (F090)", async () => {
+    const root = await project({
+      "package.json": JSON.stringify({ name: "site" }),
+      "node_modules/@bascik/adapter-cloudflare/package.json": JSON.stringify({
+        name: "@bascik/adapter-cloudflare",
+        type: "module",
+        exports: { ".": { default: "./index.js" } },
+      }),
+      "node_modules/@bascik/adapter-cloudflare/index.js":
+        'import "pruned-bundler-dependency";\n' + ADAPTER_SOURCE("cloudflare"),
+    });
+    try {
+      const error = await resolveAdapterTarget("cloudflare", root).then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error?.message).toMatch(
+        /--target cloudflare: "@bascik\/adapter-cloudflare" is installed but failed to load/,
+      );
+      expect(error?.message).toContain("pruned-bundler-dependency");
+      expect(error?.message).not.toMatch(/is not installed in this project/);
+      // The original error stays reachable for a stack trace.
+      expect((error?.cause as NodeJS.ErrnoException)?.code).toBe(
+        "ERR_MODULE_NOT_FOUND",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("adapter export lacking name or build fails with contract violation error", async () => {
     const tempDir = join(tmpdir(), `bascik-test-res-invalid-${Date.now()}`);
     await mkdir(tempDir, { recursive: true });

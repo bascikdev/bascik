@@ -229,13 +229,17 @@ export const resolveAdapterTarget = async (
     const importUrl = pathToFileURL(specifier).href;
     importedModule = await import(importUrl);
   } catch (err) {
+    // The package resolved above, so it is installed: a missing module here
+    // is one it imports (a pruned dependency, a broken install), and its
+    // name is the one the author needs.
     if (
       official &&
       (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND"
     ) {
       throw new Error(
-        `[bascik] --target ${target}: required package "${pkgName}" is not installed in this project.\n` +
-          `  Install it as a dev dependency: npm install --save-dev ${pkgName}`,
+        `[bascik] --target ${target}: "${pkgName}" is installed but failed to load: ${(err as Error).message.split("\n")[0]}\n` +
+          `  Reinstall the project's dependencies (npm install) so the adapter's own dependencies are present.`,
+        { cause: err },
       );
     }
     throw err;
