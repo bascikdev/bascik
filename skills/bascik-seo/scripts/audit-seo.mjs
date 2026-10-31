@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Audit built pages in dist/ for the head tags and structure that search engines, social cards, and Lighthouse
 // SEO check. Dependency-free; Node.js 22.22+. Run from the project root after `bascik --build`.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HELP = `Usage: node audit-seo.mjs [--dist dist] [--site-url https://example.com] [--strict] [--json]
 
@@ -385,9 +385,20 @@ async function main() {
   process.exitCode = failed ? 1 : 0;
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+// Compare real paths: Node resolves symlinks in the main module's path before it sets import.meta.url, so comparing it
+// with argv[1] as typed made the script a silent no-op (exit 0, no output) whenever a folder on the path was a symlink
+// or junction, such as the skills CLI's install into .claude/skills.
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+  }
+})();
 if (invokedDirectly) await main();
 
 /**

@@ -2,7 +2,8 @@
 // Search Bascik's live compatibility matrix (https://bascik.dev/compatibility) for an HTML, CSS, JavaScript, server,
 // or HTTP pattern and print whether Bascik supports it. Dependency-free; Node.js 22.22+.
 import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
 const HELP = `Usage: node lookup.mjs <query...> [--section <name>] [--limit 15] [--json]
@@ -242,9 +243,20 @@ async function main() {
     );
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+// Compare real paths: Node resolves symlinks in the main module's path before it sets import.meta.url, so comparing it
+// with argv[1] as typed made the script a silent no-op (exit 0, no output) whenever a folder on the path was a symlink
+// or junction, such as the skills CLI's install into .claude/skills.
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+  }
+})();
 if (invokedDirectly) await main();
 
 /**

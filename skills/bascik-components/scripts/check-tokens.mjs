@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 // Check that components only use CSS custom properties (design tokens) that are declared somewhere.
 // Dependency-free; Node.js 22.22+. Run from the project root.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HELP = `Usage: node check-tokens.mjs [--json] [--unused] [--root <dir>]
 
@@ -176,9 +182,20 @@ async function main() {
   process.exitCode = result.findings.some((f) => f.level === "error") ? 1 : 0;
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+// Compare real paths: Node resolves symlinks in the main module's path before it sets import.meta.url, so comparing it
+// with argv[1] as typed made the script a silent no-op (exit 0, no output) whenever a folder on the path was a symlink
+// or junction, such as the skills CLI's install into .claude/skills.
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+  }
+})();
 if (invokedDirectly) await main();
 
 /**
