@@ -10,7 +10,7 @@ The test suite for the public [Bascik agent skills](../skills/README.md): the wo
 
 - **Unit tests** (`tests/*.test.ts`): each script in `skills/*/scripts/` (`verify.mjs`, `audit-components.mjs`, `check-tokens.mjs`, the `bascik-refactor` parity checks, and the rest), the links and rules inside each `SKILL.md`, and that the lint rule table in `bascik-compatibility` matches the compiler's rules.
 - **Integration tests** (`tests/*.integration.test.ts`): runs that need the real compiler, the real language server, or a real browser, such as checking a monorepo of sites and the refactor parity checks against fixture pages.
-- **Linear-time checks** (`tests/*.linear-time.test.ts`): CPU-time growth on hostile input, such as tags that never close in `markup.mjs`, measured with `tests/linear-time.test-helper.ts` (`growthOf`, `LINEAR_TIME_TIMEOUT_MS`). They run in their own project, outside the unit project and coverage; the helper throws in a unit test.
+- **Linear-time checks** (`tests/*.linear-time.test.ts`): CPU-time growth on hostile input, such as tags that never close in `markup.mjs` and hostile response bodies in `worker-response-policy.mjs`, measured with `tests/linear-time.test-helper.ts` (`growthOf`, `LINEAR_TIME_TIMEOUT_MS`). They run in their own project, outside the unit project and coverage; the helper throws in a unit test.
 - **Fixtures** live in `tests/fixtures/`.
 
 Coverage counts the skills' `.mjs` scripts (`../skills/**/*.mjs`), not the test files.

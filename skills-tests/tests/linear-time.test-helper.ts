@@ -80,19 +80,31 @@ const clockStepMs = (): number => {
   return Number.isFinite(smallest) ? smallest : 0;
 };
 
+/** A growth measurement: the fastest sample at each size, in ms. */
+export interface Growth {
+  growth: number;
+  smallMs: number;
+  largeMs: number;
+  runs: number;
+}
+
 /**
  * CPU-time growth from `small()` to `large()`, where the large input is
  * four times the small one. Linear work reads about 4, quadratic about 16.
+ * A growth between 5 and `maxGrowth` plus a margin is sampled again, up to
+ * nine pairs, since load raises a single pair.
  */
-export const growthOf = (
+export const measureGrowth = (
   small: () => unknown,
   large: () => unknown,
-): number => {
+  { maxGrowth = MAX_GROWTH }: { maxGrowth?: number } = {},
+): Growth => {
   requireLinearTimeTest();
   const stepMs = clockStepMs();
   const targetMs = Math.max(MIN_SAMPLE_MS, TICKS_PER_SAMPLE * stepMs);
   const maxRuns = Math.ceil((MAX_RUNS * targetMs) / MIN_SAMPLE_MS);
   const floorMs = Math.max(NOISE_FLOOR_MS, stepMs);
+  const resampleBelow = Math.max(12, maxGrowth + 2);
   small();
   large();
   const sample = (run: () => unknown, count: number) =>
@@ -104,6 +116,8 @@ export const growthOf = (
   while (smallMs < targetMs && runs < maxRuns) {
     runs = Math.min(
       maxRuns,
+      // A step that read nothing says nothing about how short the run is:
+      // double rather than jump to the cap.
       smallMs <= 0
         ? runs * 2
         : Math.max(runs * 2, Math.ceil((runs * targetMs * 1.5) / smallMs)),
@@ -113,9 +127,16 @@ export const growthOf = (
   let largeMs = Infinity;
   const growth = () => largeMs / Math.max(smallMs, floorMs);
   for (let i = 0; i < 9; i++) {
-    if (i >= 3 && !(growth() > 5 && growth() < 12)) break;
+    if (i >= 3 && !(growth() > 5 && growth() < resampleBelow)) break;
     if (i > 0) smallMs = Math.min(smallMs, sample(small, runs));
     largeMs = Math.min(largeMs, sample(large, runs));
   }
-  return growth();
+  return { growth: growth(), smallMs, largeMs, runs };
 };
+
+/**
+ * CPU-time growth from `small()` to `large()`, where the large input is
+ * four times the small one. Linear work reads about 4, quadratic about 16.
+ */
+export const growthOf = (small: () => unknown, large: () => unknown): number =>
+  measureGrowth(small, large).growth;
