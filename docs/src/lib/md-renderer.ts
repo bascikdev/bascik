@@ -368,7 +368,15 @@ export async function extractDemoBlock(
   markerId: string,
 ): Promise<string> {
   const block = await readDemoBlock(filePath, markerId);
-  if (block.code === undefined) return block.problem;
+  if (block.code === undefined) {
+    // readDemoBlock already warned about an unreadable file. A missing marker or fence would otherwise ship an
+    // empty code block with only an HTML comment to show for it (demo-markers.test.ts fails on one in the docs).
+    if (block.reason !== "file")
+      console.warn(
+        `[md-renderer] Warning: ${block.problem.replace(/^<!--\s*|\s*-->$/g, () => "")}; the code block is empty.`,
+      );
+    return block.problem;
+  }
   return highlightCode(block.code, block.lang);
 }
 
@@ -383,8 +391,8 @@ export async function readDemoBlock(
   filePath: string,
   markerId: string,
 ): Promise<
-  | { code: string; lang: string; problem?: undefined }
-  | { code?: undefined; problem: string }
+  | { code: string; lang: string; problem?: undefined; reason?: undefined }
+  | { code?: undefined; problem: string; reason: "file" | "marker" | "fence" }
 > {
   let md: string;
   try {
@@ -393,19 +401,28 @@ export async function readDemoBlock(
     console.warn(
       `[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`,
     );
-    return { problem: `<!-- [md-renderer] File not found: ${filePath} -->` };
+    return {
+      problem: `<!-- [md-renderer] File not found: ${filePath} -->`,
+      reason: "file",
+    };
   }
   const markerRe = new RegExp(`<!--\\s*demo:${markerId}\\s*-->`, "i");
   const markerMatch = markerRe.exec(md);
   if (!markerMatch)
-    return { problem: `<!-- demo:${markerId} not found in ${filePath} -->` };
+    return {
+      problem: `<!-- demo:${markerId} not found in ${filePath} -->`,
+      reason: "marker",
+    };
 
   const rest = md.slice(markerMatch.index + markerMatch[0].length);
   // Match the next fenced code block (``` ... ```)
   const codeRe = /^```(\w*)\n([\s\S]*?)\n^```/m;
   const codeMatch = codeRe.exec(rest);
   if (!codeMatch)
-    return { problem: `<!-- no code block after demo:${markerId} -->` };
+    return {
+      problem: `<!-- no code block after demo:${markerId} in ${filePath} -->`,
+      reason: "fence",
+    };
   return { code: codeMatch[2], lang: codeMatch[1] || "text" };
 }
 
