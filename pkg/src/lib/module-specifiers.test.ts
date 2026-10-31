@@ -216,6 +216,49 @@ describe("rewriteModuleSpecifiers with an import root", () => {
   });
 });
 
+describe("specifiers with a query or fragment (F043)", () => {
+  it.each([
+    ["./render.ts?v=2", baseUrl("render.ts") + "?v=2"],
+    ["./render.ts#frag", baseUrl("render.ts") + "#frag"],
+    ["@/lib/c.ts?x=1#y", rootUrl("lib/c.ts") + "?x=1#y"],
+    [
+      "../up.ts?a=b?c",
+      pathToFileURL(resolve(baseDir, "../up.ts")).href + "?a=b?c",
+    ],
+  ])(
+    "keeps the suffix of %s on the file URL, not in the path",
+    (specifier, href) => {
+      expect(rewrite(`import { render } from "${specifier}";`)).toBe(
+        `import { render } from "${href}";`,
+      );
+      expect(rewrite(`const m = await import("${specifier}");`)).toBe(
+        `const m = await import("${href}");`,
+      );
+    },
+  );
+
+  it("resolves the filesystem path without the suffix, so dependencies name the real file", () => {
+    expect(resolveSpecifierPath("./render.ts?v=2", baseDir, importRoot)).toBe(
+      resolve(baseDir, "render.ts"),
+    );
+    expect(resolveSpecifierPath("@/lib/c.ts#frag", baseDir, importRoot)).toBe(
+      resolve(importRoot, "lib/c.ts"),
+    );
+  });
+
+  it("still percent-encodes characters in the path part", () => {
+    expect(rewrite('import a from "./my file.ts?v=1";')).toBe(
+      `import a from "${baseUrl("my file.ts")}?v=1";`,
+    );
+  });
+
+  it("still rejects a leading slash with a query", () => {
+    expect(() => rewrite("import a from '/lib/a.ts?v=1';")).toThrow(
+      LeadingSlashSpecifierError,
+    );
+  });
+});
+
 describe("resolveScriptSrcPath", () => {
   const containingDir = resolve(process.cwd(), "src/pages/nested");
 
