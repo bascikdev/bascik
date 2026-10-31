@@ -161,6 +161,42 @@ describe("API Route Rules", () => {
       ),
     ).toEqual(["missing-method-handler"]);
   });
+
+  it.each([
+    [
+      'const clean = (p: string) => p.replace(/^\\/*/, "");\nexport const GET = () => new Response("x");',
+    ],
+    [
+      'const RE = /[`]/g;\nexport async function POST() { return new Response("x"); }',
+    ],
+    ['const quote = /["\']/;\nexport const GET = () => new Response("x");'],
+    ['const slash = /[/]/;\nexport const GET = () => new Response("x");'],
+    [
+      'function f(s: string) { return /\\/*$/.test(s); }\nexport const GET = () => new Response("x");',
+    ],
+  ])("reads a regex literal as code, not a comment or string: %s", (ts) => {
+    expect(codesOf(ts)).toEqual([]);
+  });
+
+  it("still reads a slash after a value as division", () => {
+    // `a / b` then a later `/` must not swallow the export between them as one regex.
+    expect(
+      codesOf(
+        "const half = total / 2;\nexport const GET = () => new Response(String(half / 1));",
+      ),
+    ).toEqual([]);
+    expect(
+      codesOf("const x = (a) / 2; // export const GET = 1\nconst y = 1 / 2;"),
+    ).toEqual(["missing-method-handler"]);
+  });
+
+  it("reads a slash whose line ends before a closing slash as division", () => {
+    expect(
+      codesOf(
+        'const q = (/[(/[ 2;\nexport const GET = () => new Response("x");',
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("api-unguarded-json", () => {

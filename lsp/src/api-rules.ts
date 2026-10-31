@@ -34,7 +34,8 @@ const STAR_EXPORT_REGEX = /\bexport\s*\*\s*from\b/;
 /**
  * `text` with comments and the contents of strings and template text blanked to spaces, keeping every
  * offset and line break, so keywords and calls are only found in code. A template's `${...}` stays code.
- * One pass; regex literals are not recognized, and a quote in one masks at most the rest of its line.
+ * One pass. A `/` starts a regex literal (whose body is blanked too) where an expression may begin: at
+ * the start, after an operator or punctuator other than `)` and `]`, or after a keyword such as `return`.
  */
 function maskCommentsAndStrings(text: string): string {
   const out = text.split("");
@@ -44,6 +45,45 @@ function maskCommentsAndStrings(text: string): string {
   const templateBraceDepths: number[] = [];
   let braceDepth = 0;
   let i = 0;
+  // The last character of code before `i` that is not whitespace or a comment, and where it is.
+  let lastSignificant = "";
+  let lastSignificantAt = -1;
+  // A regex scan that met the end of its line marks the rest of that line as no place for one, so a
+  // line of unclosed `/[` is scanned once, not once per slash.
+  let noRegexBefore = -1;
+  const regexMayStart = (): boolean => {
+    if (i < noRegexBefore) return false;
+    if (lastSignificantAt < 0 || REGEX_PRECEDERS.has(lastSignificant))
+      return true;
+    if (!/[\w$]/.test(lastSignificant)) return false;
+    let start = lastSignificantAt;
+    while (start > 0 && /[\w$]/.test(text[start - 1])) start--;
+    return REGEX_KEYWORDS.has(text.slice(start, lastSignificantAt + 1));
+  };
+  // Scans a regex literal from its opening `/`; returns the index after its flags, or -1 when the
+  // line ends first (then the `/` was division after all).
+  const scanRegex = (from: number): number => {
+    let j = from + 1;
+    let inClass = false;
+    while (j < text.length && text[j] !== "\n") {
+      const ch = text[j];
+      if (ch === "\\") {
+        j += 2;
+        continue;
+      }
+      if (ch === "/" && !inClass) {
+        blank(from + 1, j);
+        j++;
+        while (j < text.length && /[a-z]/i.test(text[j])) j++;
+        return j;
+      }
+      if (ch === "[") inClass = true;
+      else if (ch === "]") inClass = false;
+      j++;
+    }
+    noRegexBefore = j;
+    return -1;
+  };
   // Scans template text from `from`; returns the index after its closing backtick or `${`.
   const scanTemplate = (from: number): number => {
     let j = from;
@@ -63,7 +103,14 @@ function maskCommentsAndStrings(text: string): string {
   };
   while (i < text.length) {
     const c = text[i];
-    if (c === "/" && text[i + 1] === "/") {
+    const at = i;
+    const regexEnd =
+      c === "/" && text[i + 1] !== "/" && text[i + 1] !== "*" && regexMayStart()
+        ? scanRegex(i)
+        : -1;
+    if (regexEnd > 0) {
+      i = regexEnd;
+    } else if (c === "/" && text[i + 1] === "/") {
       let end = text.indexOf("\n", i);
       if (end < 0) end = text.length;
       blank(i, end);
@@ -93,9 +140,35 @@ function maskCommentsAndStrings(text: string): string {
         i++;
       }
     } else i++;
+    const commented =
+      c === "/" && (text[at + 1] === "/" || text[at + 1] === "*");
+    if (!commented && !/\s/.test(c)) {
+      lastSignificant = text[i - 1] ?? c;
+      lastSignificantAt = i - 1;
+    }
   }
   return out.join("");
 }
+
+/** Characters after which a `/` begins a regex literal rather than dividing. */
+const REGEX_PRECEDERS = new Set("(,=:[!&|?{};+-*%<>~^".split(""));
+/** Keywords after which a `/` begins a regex literal. */
+const REGEX_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "case",
+  "do",
+  "else",
+  "in",
+  "instanceof",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "yield",
+  "await",
+  "of",
+]);
 
 /**
  * For each offset (ascending), whether it sits inside the block of a `try` statement in `code` (already
