@@ -471,11 +471,11 @@ describe("production-defects", () => {
     const ids = ledgerRows(defects).map((r: string) => r.split("|")[1].trim());
     expect(new Set(ids).size).toBe(ids.length);
     const file = join(dir, "ledger", "decisions.md");
-    expect(appendLedger(file, defects)).toBe(3);
+    expect(appendLedger(file, defects).added).toBe(3);
     const ledger = readFileSync(file, "utf8");
     expect(ledger).toMatch(/^# /);
     expect(ledger).toMatch(/\| id\s+\| route/);
-    expect(appendLedger(file, defects)).toBe(0);
+    expect(appendLedger(file, defects)).toMatchObject({ added: 0, updated: 0 });
   });
 });
 

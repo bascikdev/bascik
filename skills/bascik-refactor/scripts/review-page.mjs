@@ -47,7 +47,8 @@ subset, another --matrix file, or a run that left out a check with --only or --s
 from --matrix (docs/migration/breakpoints.json now), and one that used cached production measurements older than
 --max-prod-age (default 24h). Production can change after it was measured, so a gate run older cache entries would
 pass needs run-checks --refresh-prod; raise --max-prod-age only for a production site you know has not changed, and
-log it in the decisions ledger.
+log it in the decisions ledger. They also refuse a report that rejected a production defect with a bare --reject, or
+by an accepted.json entry with no decisions ledger row: only a recorded, reviewed rejection decides "done".
 
 Options:
   --route <path>       Route (repeatable; one with --sign)
@@ -117,6 +118,8 @@ export function renderReviewPage({
   states = [],
   findings = [],
   productionDefects = [],
+  rejectedDefects = [],
+  rejections = [],
   base = ".",
   reviewed,
   checksOk,
@@ -165,6 +168,30 @@ export function renderReviewPage({
     .join("")}</ul>
 </section>`
     : "";
+  const sourceText = (r) =>
+    r.source === "--reject"
+      ? "a bare --reject (one run only; not accepted in a gate run)"
+      : `accepted.json entry ${r.source}${r.ledgerRow === false ? " (no decisions ledger row: not accepted in a gate run)" : ""}`;
+  const rejectedHtml =
+    rejectedDefects.length || rejections.length
+      ? `<section data-testid="review-rejected-defects">
+  <h2>Production defects rejected as false positives</h2>
+  <p>A reviewer found these are not defects, so they are neither fix targets nor copied defects. Check each one: an id covers every element with the same text and kind.</p>
+  <ul>${rejectedDefects
+    .map(
+      (d) =>
+        `<li data-testid="review-rejected-defect"><code>${esc(d.id)}</code> <code>${esc(d.kind)}</code> ${esc(d.route)} at ${esc(d.width)} px, <code>${esc(d.selector)}</code>: ${esc(d.message)} (rejected by ${esc((d.sources ?? []).join(", "))})</li>`,
+    )
+    .join("")}</ul>
+  <h3>Rejections this run used</h3>
+  <ul>${rejections
+    .map(
+      (r) =>
+        `<li data-testid="review-rejection"><code>${esc(r.id)}</code> by ${esc(sourceText(r))}: ${r.matched ? `${esc(r.matched)} defect(s) across the run` : "matches no defect"}</li>`,
+    )
+    .join("")}</ul>
+</section>`
+      : "";
   const file = `docs/migration/review/${slug}.json`;
   return `<!doctype html>
 <html lang="en">
@@ -206,6 +233,7 @@ export function renderReviewPage({
   <ol>${CHECKLIST.map((item) => `<li>${esc(item)}</li>`).join("")}</ol>
 </section>
 ${defectsHtml}
+${rejectedHtml}
 ${general.length ? `<section data-testid="review-findings"><h2>Findings for the route</h2><ul>${general.map(findingItem).join("")}</ul></section>` : ""}
 ${caseHtml}
 ${stateHtml}
@@ -382,7 +410,8 @@ export const DEFAULT_MAX_PROD_AGE = 86_400_000;
  * Why a run-checks report is not a gate, or []: it records no matrix or no list of the checks it ran, it is partial (a
  * --cases subset or another matrix file), it left out a check (--only, --skip; only testid-carryover may be waived, by
  * --no-legacy-repo), its matrix differs from `matrix` (the gate matrix as it is now), it records no production
- * measurement, or it used cached production measurements older than `maxProdAge` (ms, default DEFAULT_MAX_PROD_AGE).
+ * measurement, it used cached production measurements older than `maxProdAge` (ms, default DEFAULT_MAX_PROD_AGE), or it
+ * rejected a production defect by a bare --reject or by an accepted.json entry with no decisions ledger row.
  */
 export function gateProblems(
   report,
@@ -431,6 +460,16 @@ export function gateProblems(
     if (sha && sha !== gate.sha256)
       problems.push(
         `${file}: ran another matrix than ${matrix} (${matrix} changed since this run, or the run used a copy); run run-checks.mjs on it again`,
+      );
+  }
+  for (const r of report.rejections ?? []) {
+    if (r.source === "--reject")
+      problems.push(
+        `${file}: rejected ${r.id} with a bare --reject, which leaves no reviewed record; list it in an accepted.json "defect" entry with a decisions ledger row saying why, and run run-checks.mjs again`,
+      );
+    else if (r.ledgerRow === false)
+      problems.push(
+        `${file}: rejected ${r.id} by accepted.json entry ${r.source}, which has no row in the decisions ledger; add the ${r.source} row saying why, and run run-checks.mjs again`,
       );
   }
   const production = report.production;
@@ -617,6 +656,8 @@ function build(args) {
       states: checks?.states ?? [],
       findings: checks?.findings ?? [],
       productionDefects: checks?.productionDefects ?? [],
+      rejectedDefects: checks?.rejectedDefects ?? [],
+      rejections: checks?.rejections ?? [],
       base,
       reviewed: reviewFingerprint(route, args),
       checksOk: checks ? checks.ok : false,

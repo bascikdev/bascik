@@ -331,6 +331,32 @@ describe("verifySignOffs: only a full-matrix run-checks report is a gate", () =>
     expect(verify()).toEqual({ ok: true, problems: [] });
   });
 
+  it("refuses a run that rejected a production defect with a bare --reject, or by an accepted.json entry with no ledger row", () => {
+    setup({
+      gate: gate(),
+      rejections: [{ id: "PD-1a2b3c", source: "--reject", matched: 3 }],
+    });
+    expect(verify().problems.join("\n")).toMatch(
+      /rejected PD-1a2b3c with a bare --reject[\s\S]*accepted\.json/,
+    );
+    setup({
+      gate: gate(),
+      rejections: [
+        { id: "PD-1a2b3c", source: "D-07", ledgerRow: false, matched: 1 },
+      ],
+    });
+    expect(verify().problems.join("\n")).toMatch(
+      /PD-1a2b3c[\s\S]*D-07[\s\S]*no row in the decisions ledger/,
+    );
+    setup({
+      gate: gate(),
+      rejections: [
+        { id: "PD-1a2b3c", source: "D-07", ledgerRow: true, matched: 1 },
+      ],
+    });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+  });
+
   it("refuses a partial report (a --cases subset or an iteration matrix)", () => {
     setup({ gate: gate({ partial: true, cases: ["360x812"] }) });
     const result = verify();

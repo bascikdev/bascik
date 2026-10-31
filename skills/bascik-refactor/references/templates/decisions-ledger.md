@@ -33,7 +33,8 @@ focus ring that only shows on keyboard focus, needs no entry.
 heading, overflowing text, sideways scroll) with "production defect: fix in target" as the new behavior: one row per
 element and kind, with its routes, its width range (`320-414, 1280 px wide`) and its selectors. Those rows need no
 `accepted.json` entry: run-checks.mjs compares the target with the corrected expectation at those routes and widths
-and lists them for the reviewer. Fill in the approved by column when you accept the fix.
+and lists them for the reviewer. Fill in the approved by column when you accept the fix. Their evidence column is
+`production-defects.mjs, one row per element`.
 
 A `PD-` row a reviewer finds is not a defect (nothing is cut off or covered for a visitor) is rejected, not fixed: add
 a row saying why and an `accepted.json` entry that lists the `PD-` id, so production-defects.mjs and run-checks.mjs
@@ -49,7 +50,11 @@ neither ask the target to fix it nor fail it as `copied-defect`:
 ]
 ```
 
-`--reject PD-1a2b3c` on either script does the same for one run.
+`--reject PD-1a2b3c` on either script does the same for one run, while iterating: review-page.mjs refuses a gate
+run that used it, or an `accepted.json` entry with no ledger row of its id. An id is the kind and the element's text,
+so elements with the same text and kind (a `BUTTON:Learn more` on two routes) share it; check each element the run
+lists before rejecting. The script keeps its own rows current (more routes, widths and selectors as later runs find
+them) and removes its old one-row-per-route-and-width rows (evidence `production-defects.mjs`) that nobody approved.
 
 Columns:
 

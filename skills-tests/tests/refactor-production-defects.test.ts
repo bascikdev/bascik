@@ -14,6 +14,7 @@ import {
   ASPECT_TOLERANCE,
   CHECK,
   ICON_CENTER_TOLERANCE,
+  LEDGER_EVIDENCE,
   LEDGER_NOTE,
   appendLedger,
   applyCorrections,
@@ -25,6 +26,7 @@ import {
   parseCliArgs,
   rejectDefects,
   rejectedFrom,
+  rejectionsFrom,
 } from "../../skills/bascik-refactor/scripts/production-defects.mjs";
 import { renderReviewPage } from "../../skills/bascik-refactor/scripts/review-page.mjs";
 
@@ -381,6 +383,43 @@ describe("the review page lists production defects apart from the findings", () 
     expect(html).not.toContain("<b>board</b>");
   });
 
+  it("lists the rejected production defects with their id and source, and every rejection the run used", () => {
+    const html = renderReviewPage({
+      route: "/",
+      productionDefects: [],
+      rejectedDefects: [
+        {
+          check: CHECK,
+          kind: "text-overflow",
+          route: "/",
+          width: 400,
+          selector: "header a > span",
+          message: "SPAN:<i>MILK</i> overflows its box",
+          id: "PD-1a2b3c",
+          sources: ["--reject"],
+        },
+      ],
+      rejections: [
+        { id: "PD-1a2b3c", source: "--reject", matched: 1 },
+        { id: "PD-00ff00", source: "D-07", ledgerRow: true, matched: 0 },
+      ],
+      base: tmpdir(),
+    });
+    const section =
+      html
+        .split('data-testid="review-rejected-defects"')[1]
+        ?.split(/data-testid="review-(?!rejected-defect|rejection)/)[0] ?? "";
+    expect(section, "a review-rejected-defects section").not.toBe("");
+    expect(section).toContain("PD-1a2b3c");
+    expect(section).toContain("--reject");
+    expect(section).toContain("header a &gt; span");
+    expect(section).toContain("&lt;i&gt;MILK&lt;/i&gt;");
+    expect(section).toContain("PD-00ff00");
+    expect(section).toContain("D-07");
+    expect(section).toMatch(/matches no defect/);
+    expect(html).not.toContain("<i>MILK</i>");
+  });
+
   it("has no production-defects section when production had none", () => {
     const html = renderReviewPage({
       route: "/",
@@ -639,8 +678,11 @@ describe("ledger rows collapse the same defect across widths and routes", () => 
     try {
       const file = join(dir, "decisions.md");
       const defects = [overflow("/", 320), overflow("/", 375)];
-      expect(appendLedger(file, defects)).toBe(1);
-      expect(appendLedger(file, [...defects, overflow("/", 414)])).toBe(0);
+      expect(appendLedger(file, defects).added).toBe(1);
+      expect(appendLedger(file, defects)).toMatchObject({
+        added: 0,
+        updated: 0,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -687,5 +729,204 @@ describe("rejecting a reviewed false positive", () => {
       ]),
     ).toEqual([id, "PD-00ff00"]);
     expect(rejectedFrom([])).toEqual([]);
+  });
+});
+
+describe("rejections are recorded with where each came from (review of the reject change)", () => {
+  const logo = {
+    check: CHECK,
+    kind: "text-overflow",
+    route: "/",
+    width: 400,
+    key: "SPAN:MILKFROTHER",
+    selector: "header a > span",
+    message: "SPAN:MILKFROTHER at 400 px overflows its box",
+  };
+  const id = ledgerId(logo);
+  const ledgerText = `| D-07 | / | all | logotype | kept | nothing is cut off | review | Sam Rivera |\n`;
+
+  it("rejectionsFrom names each id's source: --reject, or the accepted.json entry and whether the ledger has its row", () => {
+    expect(
+      rejectionsFrom({
+        reject: ["PD-00aa00"],
+        accepted: [
+          { id: "D-01", mask: ["footer"] },
+          { id: "D-07", defect: [id] },
+          { id: "D-09", defect: ["PD-00ff00"] },
+        ],
+        ledgerText,
+      }),
+    ).toEqual([
+      { id: "PD-00aa00", source: "--reject" },
+      { id, source: "D-07", ledgerRow: true },
+      { id: "PD-00ff00", source: "D-09", ledgerRow: false },
+    ]);
+    expect(rejectionsFrom({})).toEqual([]);
+  });
+
+  it("each rejected defect carries its id and sources, and a run's rejections say how many defects each matched", () => {
+    const rejections = rejectionsFrom({
+      reject: ["PD-000000"],
+      accepted: [{ id: "D-07", defect: [id] }],
+      ledgerText,
+    });
+    const { kept, rejected, unused, applied } = rejectDefects(
+      [logo, { ...logo, width: 1280 }],
+      rejections,
+    );
+    expect(kept).toEqual([]);
+    expect(rejected).toEqual([
+      { ...logo, id, sources: ["D-07"] },
+      { ...logo, width: 1280, id, sources: ["D-07"] },
+    ]);
+    expect(unused).toEqual(["PD-000000"]);
+    expect(applied).toEqual([
+      { id: "PD-000000", source: "--reject", matched: 0 },
+      { id, source: "D-07", ledgerRow: true, matched: 2 },
+    ]);
+  });
+
+  it("warns when one rejected id covers elements at more than one selector (elements with the same text and kind share an id)", () => {
+    const { broad } = rejectDefects(
+      [
+        logo,
+        { ...logo, route: "/shop", selector: "footer a > span" },
+        { ...logo, width: 1280 },
+      ],
+      [id],
+    );
+    expect(broad).toEqual([
+      {
+        id,
+        selectors: ["header a > span", "footer a > span"],
+        routes: ["/", "/shop"],
+      },
+    ]);
+    expect(rejectDefects([logo, { ...logo, width: 1280 }], [id]).broad).toEqual(
+      [],
+    );
+  });
+});
+
+describe("appendLedger keeps its own rows current and migrates old per-case rows", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "bascik-defects-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  const overflow = (route: string, width: number, selector = "header h2") => ({
+    check: CHECK,
+    kind: "text-overflow",
+    route,
+    width,
+    key: "H2:Silky milk in thirty seconds",
+    selector,
+    message: `H2:Silky milk in thirty seconds at ${width} px overflows its box`,
+  });
+
+  it("a row first written by a partial run grows its routes, widths and selectors on a later, wider run", () => {
+    const file = join(dir, "decisions.md");
+    expect(appendLedger(file, [overflow("/", 320)], { widths: [320] })).toEqual(
+      { added: 1, updated: 0, removed: 0, staleKept: [] },
+    );
+    expect(
+      appendLedger(
+        file,
+        [
+          overflow("/", 320),
+          overflow("/", 375),
+          overflow("/shop", 375, "footer h2"),
+        ],
+        { widths: [320, 375, 768] },
+      ),
+    ).toEqual({ added: 0, updated: 1, removed: 0, staleKept: [] });
+    const text = readFileSync(file, "utf8");
+    const rows = text.split("\n").filter((l) => l.includes(LEDGER_NOTE));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatch(/\|\s*\/, \/shop\s*\|/);
+    expect(rows[0]).toContain("320-375 px wide");
+    expect(rows[0]).toContain("`header h2`, `footer h2`");
+    // Nothing new: the row is left as it is.
+    expect(appendLedger(file, [overflow("/", 320)], { widths: [320] })).toEqual(
+      { added: 0, updated: 0, removed: 0, staleKept: [] },
+    );
+  });
+
+  it("keeps what a person wrote in a row it updates (approved by), and never touches a row a person wrote", () => {
+    const file = join(dir, "decisions.md");
+    appendLedger(file, [overflow("/", 320)], { widths: [320] });
+    const id = ledgerId(overflow("/", 320));
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace(/\| \|\n$/, "| Sam Rivera |\n"),
+    );
+    appendLedger(file, [overflow("/", 1280)], { widths: [320, 1280] });
+    const row = readFileSync(file, "utf8")
+      .split("\n")
+      .find((l) => l.startsWith(`| ${id} `));
+    expect(row).toContain("320, 1280 px wide");
+    expect(row).toMatch(/\| Sam Rivera \|$/);
+
+    // Misuse: a person reused a PD- id for a row of their own; it is not the script's row and stays as written.
+    const other = join(dir, "other.md");
+    const human = `| ${id} | /about | all | hand-written | kept | reviewed | notes | Sam Rivera |`;
+    writeFileSync(other, `# Differences and decisions\n\n${human}\n`);
+    expect(
+      appendLedger(other, [overflow("/", 320)], { widths: [320] }),
+    ).toEqual({ added: 0, updated: 0, removed: 0, staleKept: [] });
+    expect(readFileSync(other, "utf8")).toContain(human);
+  });
+
+  it("removes the old one-row-per-case rows nobody approved, keeps an approved one and names it", () => {
+    const file = join(dir, "decisions.md");
+    const old = (pd: string, approved = "") =>
+      `| ${pd} | / | 320 px wide | text-overflow: H2:Silky at 320 px overflows its box (\`header h2\`) | ${LEDGER_NOTE} | the target fixes what production gets wrong | production-defects.mjs | ${approved} |`;
+    const human =
+      "| D-01 | / | all | Footer links at 3.1:1 contrast | 4.6:1 | WCAG AA | report | Sam Rivera |";
+    writeFileSync(
+      file,
+      `# Differences and decisions\n\n${human}\n${old("PD-111111")}\n${old("PD-222222")}\n${old("PD-333333", "Sam Rivera")}\n`,
+    );
+    expect(appendLedger(file, [overflow("/", 320)], { widths: [320] })).toEqual(
+      { added: 1, updated: 0, removed: 2, staleKept: ["PD-333333"] },
+    );
+    const text = readFileSync(file, "utf8");
+    expect(text).toContain(human);
+    expect(text).not.toContain("PD-111111");
+    expect(text).not.toContain("PD-222222");
+    expect(text).toContain("PD-333333");
+    expect(text).toContain(LEDGER_EVIDENCE);
+  });
+});
+
+describe("text covered by an opaque layer painted above it is not text-overlap (a stacked card deck)", () => {
+  const t = (key: string, path: string, r: Rect) => ({
+    key,
+    selector: key,
+    path,
+    rect: r,
+    scrollWidth: r.width,
+    clientWidth: r.width,
+    scrollHeight: r.height,
+    clientHeight: r.height,
+    overflow: "visible",
+  });
+  const texts = [
+    t("P:Froths in 30 seconds", "0.0.0", rect(24, 100, 300, 24)),
+    t("P:Wash the jug by hand", "0.1.0", rect(24, 100, 300, 24)),
+  ];
+
+  it("a pair the page measured as covered is left out; the same pair uncovered is still reported", () => {
+    expect(
+      detectDefects(snapshot({ texts, covered: [["0.0.0", "0.1.0"]] })),
+    ).toEqual([]);
+    expect(
+      detectDefects(snapshot({ texts, covered: [["0.1.0", "0.0.0"]] })),
+    ).toEqual([]);
+    expect(kinds(detectDefects(snapshot({ texts })))).toEqual(["text-overlap"]);
+    // Misuse: a covered pair for other elements does not hide this one.
+    expect(
+      kinds(detectDefects(snapshot({ texts, covered: [["0.0.0", "0.2.0"]] }))),
+    ).toEqual(["text-overlap"]);
   });
 });

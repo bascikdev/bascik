@@ -162,6 +162,30 @@ describe("production-defects in a real browser: the false positives found in tri
     ]);
   }, 60_000);
 
+  const deck = (front: string, top = 0) =>
+    `<style>.deck{position:relative;width:300px;height:120px;margin-top:${top}px}
+     .card{position:absolute;inset:0;padding:12px}.back{top:8px;left:8px}.front{${front}}</style>
+     <main><div class="deck"><div class="card back"><p>Wash the jug by hand</p></div><div class="card front"><p>Froths in 30 seconds</p></div></div></main>`;
+
+  it("the back card of a stacked deck under the front card's opaque background is not text overlap, even below the fold", async () => {
+    expect(kindsOf(await defectsOf(deck("background:#fff")))).toEqual([]);
+    expect(
+      kindsOf(await defectsOf(deck("background:rgb(250 250 250)", 1500))),
+    ).toEqual([]);
+  }, 60_000);
+
+  it("misuse: a translucent or transparent front card leaves both texts visible, so the overlap is still reported", async () => {
+    for (const front of [
+      "background:rgba(255,255,255,.5)",
+      "",
+      "background:#fff;opacity:.6",
+    ])
+      expect(
+        (await defectsOf(deck(front))).map((d: { kind: string }) => d.kind),
+        front || "no background",
+      ).toEqual(["text-overlap"]);
+  }, 60_000);
+
   it("text cut off by overflow hidden is still reported", async () => {
     const defects = await defectsOf(
       `<main><p style="font:20px/24px sans-serif;margin:0;height:24px;width:200px;overflow:hidden">Silky milk in thirty seconds, every morning</p></main>`,

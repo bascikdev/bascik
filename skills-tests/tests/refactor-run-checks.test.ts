@@ -517,6 +517,46 @@ describe("buildRouteReport", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("keeps the rejected production defects of the route and every rejection with its source, so the gate record shows them", () => {
+    const rejectedDefect = {
+      check: "production-defects",
+      kind: "text-overflow",
+      route: "/",
+      width: 400,
+      key: "SPAN:MILKFROTHER",
+      selector: "header a > span",
+      message: "overflows its box",
+      id: "PD-1a2b3c",
+      sources: ["--reject"],
+    };
+    const rejections = [
+      { id: "PD-1a2b3c", source: "--reject", matched: 2 },
+      { id: "PD-00ff00", source: "D-07", ledgerRow: true, matched: 0 },
+    ];
+    const report = buildRouteReport(
+      "/",
+      CHECKS.map((c: string) =>
+        c === "production-defects"
+          ? {
+              ...result(c),
+              defects: [],
+              rejected: [rejectedDefect, { ...rejectedDefect, route: "/shop" }],
+              rejections,
+            }
+          : result(c),
+      ),
+    );
+    expect(report.rejectedDefects).toEqual([rejectedDefect]);
+    expect(report.rejections).toEqual(rejections);
+    // A rejection is not a finding: the route still passes on its findings alone.
+    expect(report.ok).toBe(true);
+    // A run without production-defects records none.
+    expect(buildRouteReport("/", [result("spacing-diff")])).toMatchObject({
+      rejectedDefects: [],
+      rejections: [],
+    });
+  });
+
   it("an empty run never passes", () => {
     expect(buildRouteReport("/", []).ok).toBe(false);
   });

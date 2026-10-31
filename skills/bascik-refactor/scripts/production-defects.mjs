@@ -41,6 +41,15 @@ export const ICON_CENTER_TOLERANCE = 4;
 /** The ledger wording for a defect the target fixes on purpose. */
 export const LEDGER_NOTE = "production defect: fix in target";
 
+/**
+ * The evidence cell of the rows this script writes: one row per element and kind. Rows from before (one per route and
+ * width, evidence "production-defects.mjs") are removed by appendLedger unless someone approved them.
+ */
+export const LEDGER_EVIDENCE = "production-defects.mjs, one row per element";
+
+/** The decisions ledger, read to check that an accepted.json entry rejecting a defect has its row. */
+export const DEFAULT_LEDGER = "docs/migration/decisions.md";
+
 const HELP = `Usage: node production-defects.mjs --prod <url> --route <path>... [--target <url>] [options]
 
 Runs on production at every matrix case, before any parity check, and lists what production gets wrong:
@@ -57,14 +66,17 @@ Runs on production at every matrix case, before any parity check, and lists what
   text-overlap      two text boxes on top of each other (a fixed, sticky or dialog layer such as a cookie banner covers
                     the page by design and is left to presence-by-route)
   horizontal-scroll the page scrolls sideways
-Visually hidden text (an sr-only label clipped to 1 px) and the face of a flip card turned away (backface-visibility
-hidden) are left out. Running animations are finished (infinite ones canceled) before the page is measured, and
+Visually hidden text (an sr-only label clipped to 1 px), the face of a flip card turned away (backface-visibility
+hidden) and text covered by an opaque box painted above it (the back cards of a stacked deck) are left out. Running animations are finished (infinite ones canceled) before the page is measured, and
 overflow that comes only from a --mask region is not blamed on its parent.
 Each defect is appended once to the decisions ledger as "${LEDGER_NOTE}": one row per element and kind, with its
 routes and width range, and the parity checks (run-checks.mjs) compare the target with the corrected expectation for
 that element at each of those cases. A row a reviewer finds is not a defect is rejected by its id: --reject PD-xxxxxx,
-or a "defect" list in accepted.json ({ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "..." }). A rejected defect is
-neither a fix target nor a copied-defect.
+or a "defect" list in accepted.json ({ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "..." }) with a ledger row
+of the entry's id. A rejected defect is neither a fix target nor a copied-defect. --reject is for one iteration run:
+review-page.mjs refuses a gate run that used it. An id is the kind and the element's text, so elements with the same
+text and kind share it; the run warns when a rejected id covers more than one selector. Rows the script wrote grow
+their routes, widths and selectors on later runs, and its old one-row-per-width rows nobody approved are removed.
 With --target, the target is measured too: a copied defect or a defect only the target has is a finding.
 Without --target, exits 0 after writing the ledger rows; with it, exits 1 on any finding.
 
@@ -185,11 +197,17 @@ export function detectDefects(snapshot) {
       `${t.key} at ${width} px ${clipped ? "is cut off by its box" : "overflows its box"}: content ${t.scrollWidth}x${t.scrollHeight}, box ${t.clientWidth}x${t.clientHeight}`,
     );
   }
+  // Pairs the page measured with one text covered by an opaque layer painted above it (the back cards of a stacked
+  // deck under the front card's background): a visitor sees one text, not two on top of each other.
+  const covered = new Set(
+    (snapshot.covered ?? []).flatMap(([a, b]) => [`${a}|${b}`, `${b}|${a}`]),
+  );
   for (let i = 0; i < texts.length; i++)
     for (let j = i + 1; j < texts.length; j++) {
       const a = texts[i];
       const b = texts[j];
       if (isAncestor(a.path, b.path) || isAncestor(b.path, a.path)) continue;
+      if (covered.has(`${a.path}|${b.path}`)) continue;
       // A fixed, sticky or dialog layer (a cookie banner, a sticky bar) covers the page by design.
       if (a.layer || b.layer) continue;
       const w =
@@ -259,27 +277,84 @@ export function ledgerId(d) {
 }
 
 /**
- * Splits defects by the ids a reviewer rejected as false positives: { kept, rejected, unused }, where unused lists the
- * ids that matched no defect (a typo, or a defect production no longer has).
+ * Every rejection a run uses, with where it came from: { id, source: "--reject" } for a one-run flag, and
+ * { id, source: <accepted.json entry id>, ledgerRow } for an accepted.json "defect" list, where ledgerRow says whether
+ * the decisions ledger (ledgerText) has a row with the entry's id. Only an accepted.json entry with its ledger row
+ * may decide a gate run (review-page.mjs refuses the others).
  */
-export function rejectDefects(defects, ids = []) {
-  const wanted = new Set(ids);
-  const hit = new Set();
-  const kept = [];
-  const rejected = [];
-  for (const d of defects) {
-    const id = ledgerId(d);
-    if (wanted.has(id)) {
-      hit.add(id);
-      rejected.push(d);
-    } else kept.push(d);
-  }
-  return { kept, rejected, unused: [...wanted].filter((id) => !hit.has(id)) };
+export function rejectionsFrom({
+  reject = [],
+  accepted = [],
+  ledgerText = "",
+} = {}) {
+  const rows = new Set(
+    [...ledgerText.matchAll(/^\|\s*([^|\s]+)\s*\|/gm)].map((m) => m[1]),
+  );
+  const out = [];
+  const seen = new Set();
+  const push = (r) => {
+    const k = `${r.id}|${r.source}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(r);
+  };
+  for (const id of reject) push({ id, source: "--reject" });
+  for (const entry of accepted)
+    for (const id of entry.defect ?? [])
+      push({ id, source: entry.id, ledgerRow: rows.has(entry.id) });
+  return out;
 }
 
 /** The production-defects ids rejected in accepted.json entries ({ "id": "D-07", "defect": ["PD-1a2b3c"] }). */
 export function rejectedFrom(accepted) {
   return [...new Set(accepted.flatMap((entry) => entry.defect ?? []))];
+}
+
+/**
+ * Splits defects by the rejections a reviewer made (rejectionsFrom, or bare ids): { kept, rejected, unused, applied,
+ * broad }. Each rejected defect carries its `id` and `sources`; unused lists the ids that matched no defect (a typo,
+ * a defect production no longer has, or an id from before rows were one per element); applied is every rejection with
+ * the number of defects it `matched`. An id names the kind and the element's text, so elements with the same text and
+ * kind share one: broad lists each rejected id that covered more than one selector, with its selectors and routes, so
+ * a reviewer checks each one is a false positive too.
+ */
+export function rejectDefects(defects, rejections = []) {
+  const list = rejections.map((r) =>
+    typeof r === "string" ? { id: r, source: "--reject" } : r,
+  );
+  const sourcesOf = new Map();
+  for (const r of list) {
+    if (!sourcesOf.has(r.id)) sourcesOf.set(r.id, []);
+    sourcesOf.get(r.id).push(r.source);
+  }
+  const matched = new Map();
+  const kept = [];
+  const rejected = [];
+  for (const d of defects) {
+    const id = ledgerId(d);
+    if (sourcesOf.has(id)) {
+      matched.set(id, (matched.get(id) ?? 0) + 1);
+      rejected.push({ ...d, id, sources: sourcesOf.get(id) });
+    } else kept.push(d);
+  }
+  const broad = [];
+  for (const id of matched.keys()) {
+    const own = rejected.filter((d) => d.id === id);
+    const selectors = [...new Set(own.map((d) => d.selector))];
+    if (selectors.length > 1)
+      broad.push({
+        id,
+        selectors,
+        routes: [...new Set(own.map((d) => d.route))],
+      });
+  }
+  return {
+    kept,
+    rejected,
+    unused: [...sourcesOf.keys()].filter((id) => !matched.has(id)),
+    applied: list.map((r) => ({ ...r, matched: matched.get(r.id) ?? 0 })),
+    broad,
+  };
 }
 
 /**
@@ -366,7 +441,7 @@ export function ledgerRows(defects, { widths = [] } = {}) {
       widths,
     );
     const first = list[0];
-    return `| ${id} | ${cell(routes.join(", "))} | ${range} px wide | ${cell(first.kind)}: ${cell(first.message)} (${selectors.map((sel) => `\`${cell(sel)}\``).join(", ")}) | ${LEDGER_NOTE} | the target fixes what production gets wrong | ${CHECK}.mjs | |`;
+    return `| ${id} | ${cell(routes.join(", "))} | ${range} px wide | ${cell(first.kind)}: ${cell(first.message)} (${selectors.map((sel) => `\`${cell(sel)}\``).join(", ")}) | ${LEDGER_NOTE} | the target fixes what production gets wrong | ${LEDGER_EVIDENCE} | |`;
   });
 }
 
@@ -380,31 +455,128 @@ template for the columns and for docs/migration/accepted.json.
 | -- | ----- | ----------- | --------------- | ------------ | ------ | -------- | ----------- |
 `;
 
+/** A table row's cells, split at the pipes cell() leaves unescaped, with each cell's escapes undone. */
+function cellsOf(line) {
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "\\" && i + 1 < line.length) {
+      cur += line[++i];
+      continue;
+    }
+    if (ch === "|") {
+      cells.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells.slice(1, -1);
+}
+
+const rowLine = (cells) => `| ${cells.map((c) => cell(c)).join(" | ")} |`;
+
+/** "320-375, 1280 px wide" as [[320, 375], [1280, 1280]]. */
+function rangesOf(text) {
+  return String(text)
+    .replace(/\s*px wide\s*$/, "")
+    .split(",")
+    .map((part) => part.trim().split("-").map(Number))
+    .filter((r) => r.every((n) => Number.isFinite(n)) && r.length <= 2)
+    .map((r) => [r[0], r[r.length - 1]]);
+}
+
+/** Two width-range texts as one, merging ranges that overlap. */
+function mergeRanges(a, b) {
+  const all = [...rangesOf(a), ...rangesOf(b)].sort((x, y) => x[0] - y[0]);
+  const out = [];
+  for (const r of all) {
+    const last = out[out.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else out.push([...r]);
+  }
+  return `${out.map(([s, e]) => (s === e ? `${s}` : `${s}-${e}`)).join(", ")} px wide`;
+}
+
+const SELECTORS = /\s*\(((?:`[^`]*`(?:, )?)+)\)$/;
+
+/** The legacy-behavior cell with the selectors of `extra` added to its trailing list. */
+function mergeSelectors(text, extra) {
+  const m = SELECTORS.exec(text);
+  const have = m ? [...m[1].matchAll(/`([^`]*)`/g)].map((x) => x[1]) : [];
+  const add = [...extra.matchAll(/`([^`]*)`/g)].map((x) => x[1]);
+  const all = [...new Set([...have, ...add])];
+  const head = m ? text.slice(0, m.index) : text;
+  return `${head} (${all.map((sel) => `\`${sel}\``).join(", ")})`;
+}
+
 /**
- * Appends each defect's row to the ledger once, and returns how many rows it wrote; rows already there, and rows
- * people wrote, are left alone. A ledger that does not exist yet starts with LEDGER_HEADER.
+ * Writes the defects' rows into the ledger and returns { added, updated, removed, staleKept }:
+ * - a new element and kind gets a row (LEDGER_HEADER first when the file does not exist yet);
+ * - a row this script wrote before (its note and evidence) grows its routes, width ranges and selectors when this run
+ *   found the element at more of them, keeping every other cell (approved by) as it is, so a row first written by a
+ *   partial or one-route run does not understate the defect;
+ * - an old row from when rows were one per route and width (evidence "production-defects.mjs") that nobody approved is
+ *   removed, since the new rows replace it; an approved one is kept and named in staleKept for a person to remove.
+ * Rows people wrote are never touched, even one that reuses a PD- id.
  */
 export function appendLedger(file, defects, { widths = [] } = {}) {
   const text = existsSync(file) ? readFileSync(file, "utf8") : "";
-  const ids = new Set(
-    [...text.matchAll(/^\|\s*(PD-[0-9a-f]+)\s*\|/gm)].map((m) => m[1]),
+  const lines = text ? text.replace(/\n$/, "").split("\n") : [];
+  const fresh = new Map(
+    ledgerRows(defects, { widths }).map((row) => [cellsOf(row)[0], row]),
   );
-  const rows = [];
-  for (const row of ledgerRows(defects, { widths })) {
-    const id = /^\|\s*(PD-[0-9a-f]+)/.exec(row)[1];
-    if (ids.has(id)) continue;
-    ids.add(id);
-    rows.push(row);
+  const out = [];
+  const taken = new Set();
+  let updated = 0;
+  let removed = 0;
+  const staleKept = [];
+  for (const line of lines) {
+    const cells = /^\|\s*PD-[0-9a-f]+\s*\|/.test(line) ? cellsOf(line) : null;
+    if (!cells || cells[4] !== LEDGER_NOTE) {
+      if (cells) taken.add(cells[0]);
+      out.push(line);
+      continue;
+    }
+    const [id] = cells;
+    if (cells[6] === `${CHECK}.mjs`) {
+      if (cells[7]) {
+        staleKept.push(id);
+        taken.add(id);
+        out.push(line);
+      } else removed++;
+      continue;
+    }
+    taken.add(id);
+    const row = fresh.get(id);
+    if (!row || cells[6] !== LEDGER_EVIDENCE) {
+      out.push(line);
+      continue;
+    }
+    const next = cellsOf(row);
+    const merged = [...cells];
+    merged[1] = [
+      ...new Set(
+        [...cells[1].split(","), ...next[1].split(",")]
+          .map((r) => r.trim())
+          .filter(Boolean),
+      ),
+    ].join(", ");
+    merged[2] = mergeRanges(cells[2], next[2]);
+    merged[3] = mergeSelectors(cells[3], next[3]);
+    const line2 = rowLine(merged);
+    if (line2 !== rowLine(cells)) updated++;
+    out.push(line2 === rowLine(cells) ? line : line2);
   }
-  if (!rows.length) return 0;
+  const added = [...fresh].filter(([id]) => !taken.has(id)).map(([, r]) => r);
+  if (!added.length && !updated && !removed)
+    return { added: 0, updated: 0, removed: 0, staleKept };
   mkdirSync(dirname(file), { recursive: true });
-  const base = !text.trim()
-    ? LEDGER_HEADER
-    : text.endsWith("\n")
-      ? text
-      : `${text}\n`;
-  writeFileSync(file, `${base}${rows.join("\n")}\n`);
-  return rows.length;
+  const base = out.join("\n").trim() ? `${out.join("\n")}\n` : LEDGER_HEADER;
+  writeFileSync(file, `${base}${added.map((r) => `${r}\n`).join("")}`);
+  return { added: added.length, updated, removed, staleKept };
 }
 
 /**
@@ -705,6 +877,7 @@ export function measureDefects(arg) {
     return { width: Math.round(right), height: Math.round(bottom) };
   };
   const texts = [];
+  const textEls = [];
   for (const el of document.body.querySelectorAll("*")) {
     if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(tagOf(el)))
       continue;
@@ -762,11 +935,58 @@ export function measureDefects(arg) {
       visuallyHidden: visuallyHidden(el),
       facingAway: facingAway(el),
     });
+    textEls.push(el);
   }
+  // Overlapping text where one text is covered, at the middle of the overlap, by an opaque box painted above it (the
+  // back cards of a stacked deck under the front card's background): [path, path] pairs detectDefects leaves out.
+  const opaque = (n) => {
+    for (let p = n; p; p = p.parentElement)
+      if (parseFloat(getComputedStyle(p).opacity) < 0.99) return false;
+    if (["IMG", "VIDEO", "CANVAS"].includes(tagOf(n))) return true;
+    const s = getComputedStyle(n);
+    if (s.backgroundImage !== "none") return true;
+    const m = /rgba?\(([^)]+)\)/.exec(s.backgroundColor);
+    if (!m) return false;
+    const parts = m[1].split(/[\s,/]+/).filter(Boolean);
+    return parts.length < 4 || parseFloat(parts[3]) >= 0.99;
+  };
+  const coveredAt = (el, x, y) => {
+    for (const n of document.elementsFromPoint(x, y)) {
+      if (n === el || el.contains(n)) return false;
+      if (n.contains(el)) continue;
+      if (opaque(n)) return true;
+    }
+    return false;
+  };
+  const covered = [];
+  const drawn = texts
+    .map((t, i) => ({ t, el: textEls[i] }))
+    .filter(({ t }) => !t.visuallyHidden && !t.facingAway && !t.layer);
+  for (let i = 0; i < drawn.length; i++)
+    for (let j = i + 1; j < drawn.length; j++) {
+      const a = drawn[i];
+      const b = drawn[j];
+      if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+      const ra = a.t.rect;
+      const rb = b.t.rect;
+      const left = Math.max(ra.x, rb.x);
+      const top = Math.max(ra.y, rb.y);
+      const w = Math.min(ra.x + ra.width, rb.x + rb.width) - left;
+      const h = Math.min(ra.y + ra.height, rb.y + rb.height) - top;
+      if (!(w > 1 && h > 1)) continue;
+      const cx = left + w / 2;
+      const cy = top + h / 2;
+      scrollTo(0, Math.max(0, cy - innerHeight / 2));
+      const vy = cy - scrollY;
+      if (coveredAt(a.el, cx, vy) || coveredAt(b.el, cx, vy))
+        covered.push([a.t.path, b.t.path]);
+    }
+  scrollTo(0, 0);
   return {
     images,
     iconRows,
     texts,
+    covered,
     page: {
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -802,12 +1022,14 @@ async function measure(browser, origin, route, c, masks, settleMs) {
  */
 export async function runCheck(browser, options) {
   const masks = masksOf(options);
-  const rejectIds = [
-    ...new Set([
-      ...(options.reject ?? []),
-      ...(options.accepted ? rejectedFrom(loadAccepted(options.accepted)) : []),
-    ]),
-  ];
+  // The ledger an accepted.json entry's row is looked up in: the one written to, else the default.
+  const ledgerFile = options.ledger ?? DEFAULT_LEDGER;
+  const rejections = rejectionsFrom({
+    reject: options.reject ?? [],
+    accepted: options.accepted ? loadAccepted(options.accepted) : [],
+    ledgerText: existsSync(ledgerFile) ? readFileSync(ledgerFile, "utf8") : "",
+  });
+  const rejectIds = [...new Set(rejections.map((r) => r.id))];
   const prodSnaps = [];
   const targetSnaps = [];
   const cases = casesOf(options);
@@ -828,21 +1050,28 @@ export async function runCheck(browser, options) {
     kept: defects,
     rejected,
     unused,
-  } = rejectDefects(detectAcross(prodSnaps), rejectIds);
+    applied,
+    broad,
+  } = rejectDefects(detectAcross(prodSnaps), rejections);
   const findings = options.target
     ? diffDefects(defects, detectAcross(targetSnaps), { rejected: rejectIds })
     : [];
   const widths = [...new Set(cases.map((c) => c.width))];
-  const written = options.ledger
+  const ledger = options.ledger
     ? appendLedger(options.ledger, defects, { widths })
-    : 0;
+    : { added: 0, updated: 0, removed: 0, staleKept: [] };
   return result(CHECK, findings, {
     defects,
     rejected,
+    rejections: applied,
     unusedRejects: unused,
+    broadRejects: broad,
     ledger: ledgerRows(defects, { widths }),
     ledgerFile: options.ledger,
-    written,
+    written: ledger.added,
+    ledgerUpdated: ledger.updated,
+    ledgerRemoved: ledger.removed,
+    ledgerStale: ledger.staleKept,
   });
 }
 
@@ -871,7 +1100,7 @@ export function parseCliArgs(argv) {
   if (args.help) return args;
   return {
     ...args,
-    ledger: args.ledger ?? "docs/migration/decisions.md",
+    ledger: args.ledger ?? DEFAULT_LEDGER,
     reject: rejectIdsFrom(args.reject),
     accepted:
       args.accepted ??
@@ -894,14 +1123,47 @@ if (isMain(import.meta.url)) {
         report.defects.length
           ? `      ${report.defects.length} production defect(s) in ${report.ledger.length} ledger row(s); ${report.written} new row(s) written to ${report.ledgerFile} as "${LEDGER_NOTE}". The target must fix each one; the parity checks compare it with the corrected expectation there. A row that is not a defect: --reject its id, or list it in an accepted.json "defect" entry.`
           : "      no production defects found",
-        ...(report.rejected.length
+        ...(report.ledgerUpdated
           ? [
-              `      ${report.rejected.length} defect(s) left out as rejected (reviewed false positives)`,
+              `      ${report.ledgerUpdated} ledger row(s) updated with the routes, widths or selectors this run found too`,
             ]
           : []),
+        ...(report.ledgerRemoved
+          ? [
+              `      ${report.ledgerRemoved} old ledger row(s) removed (one row per route and width, from before rows were one per element)`,
+            ]
+          : []),
+        ...report.ledgerStale.map(
+          (id) =>
+            `      warning: ${id} is an old one-row-per-case ledger row someone approved; it is kept, but its id no longer matches any defect: approve the element's new row and remove it`,
+        ),
+        ...(report.rejected.length
+          ? [
+              `      ${report.rejected.length} defect(s) left out as rejected (reviewed false positives): ${report.rejections
+                .filter((r) => r.matched)
+                .map((r) => `${r.id} by ${r.source}`)
+                .join(", ")}`,
+            ]
+          : []),
+        ...report.rejections
+          .filter((r) => r.source === "--reject" && r.matched)
+          .map(
+            (r) =>
+              `      warning: ${r.id} was rejected with a bare --reject: fine for one run, but review-page.mjs refuses it in a gate run; list it in an accepted.json "defect" entry with a ledger row`,
+          ),
+        ...report.rejections
+          .filter((r) => r.ledgerRow === false)
+          .map(
+            (r) =>
+              `      warning: accepted.json entry ${r.source} rejects ${r.id} but the decisions ledger has no ${r.source} row; review-page.mjs refuses it in a gate run`,
+          ),
+        ...report.broadRejects.map(
+          (b) =>
+            `      warning: rejecting ${b.id} also rejects the same text at ${b.selectors.join(", ")} (on ${b.routes.join(", ")}); elements with the same text and kind share an id, so check each one is a false positive`,
+        ),
         ...report.unusedRejects.map(
           (id) =>
-            `      warning: rejected id ${id} matches no defect (a typo, or production no longer has it)`,
+            `      warning: rejected id ${id} matches no defect (a typo, production no longer has it, or an id from before ledger rows were one per element: reject the element's new row instead)`,
         ),
       ],
     });

@@ -305,6 +305,10 @@ What it leaves out, because nothing is wrong for a visitor:
   still reported.
 - Visually hidden text: an `sr-only` label clipped to 1 px, or `clip-path: inset(50%)`.
 - The face of a flip card turned away (`backface-visibility: hidden` with a transform that faces it backward).
+- Text covered by an opaque box painted above it, such as the back cards of a stacked deck under the front card's
+  background: at the middle of the overlap, a visitor sees one text, not two. A translucent or transparent card, or
+  one with `opacity` below 1, still reports the overlap. A text that should show but sits fully under an opaque box is
+  left out too; the visual review catches it.
 - Motion: running animations are finished, and infinite ones canceled, before the page is measured, so a word rising
   into place on a loop is measured settled. Overflow that comes only from a `--mask` region (a script-driven ticker)
   is not blamed on its unmasked parent.
@@ -312,10 +316,25 @@ What it leaves out, because nothing is wrong for a visitor:
   widths where the icon drops away from a heading it sits beside at other widths.
 
 When a reviewer finds a row is still not a defect, reject it by its id instead of changing the design to satisfy the
-check: pass `--reject PD-xxxxxx` to `production-defects.mjs` and `run-checks.mjs`, or add an `accepted.json` entry
-`{ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "a logotype, nothing is cut off" }` with a ledger row of the same
-id. A rejected defect is neither a fix target nor a `copied-defect`, on every route and width. A rejected id that
-matches no defect is printed as a warning (a typo, or production no longer has it).
+check: add an `accepted.json` entry `{ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "a logotype, nothing is cut
+off" }` with a ledger row of the same id. A rejected defect is neither a fix target nor a `copied-defect`, on every
+route and width. `--reject PD-xxxxxx` on `production-defects.mjs` and `run-checks.mjs` does the same for one run, for
+the iteration loop only: `review-page.mjs` refuses to sign or verify a run that used it, or an `accepted.json` entry
+whose id has no ledger row, so only a reviewed, recorded rejection decides "done". Each route report keeps the
+rejected defects (`rejectedDefects`, with id and source) and every rejection the run used (`rejections`), and the
+review page lists them.
+
+An id is the kind plus the element's text (or its selector when it has no text), so it does not change between
+production and the target. Elements with the same text and kind share one id, such as a `BUTTON:Learn more` that
+overflows on two routes: rejecting it rejects both. The run prints a warning when a rejected id covers more than one
+selector, and the review page lists each element; check every one is a false positive. A rejected id that matches no
+defect is printed as a warning (a typo, production no longer has it, or an old id).
+
+The ledger rows stay current: a row the script wrote grows its routes, width ranges and selectors when a later run
+(a full matrix after a `--cases` subset, more routes) finds the element in more places, and keeps the approved by
+column. Rows from before ledger rows were one per element (one per route and width, evidence `production-defects.mjs`)
+are removed on the next run unless someone filled in approved by; an approved old row is kept and named in a warning.
+An old `PD-` id in `accepted.json` or `--reject` matches nothing: reject the element's new row instead.
 
 ### Presence by route
 

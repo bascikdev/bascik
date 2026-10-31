@@ -117,7 +117,8 @@ Options:
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
   --ledger <file>             Append production defects to this decisions ledger
   --reject <id>               A production-defects ledger row a reviewer found is not a defect, such as PD-1a2b3c
-                              (repeatable): neither a fix target nor a copied-defect
+                              (repeatable): neither a fix target nor a copied-defect. For the iteration loop only:
+                              review-page.mjs refuses a gate run that used it; put the id in accepted.json instead
   --accepted <file>           accepted.json whose "defect" lists are rejected too (default
                               docs/migration/accepted.json when it exists)
   --only <check>              Run only these checks (repeatable or comma separated; makes the run partial)
@@ -270,7 +271,10 @@ const onRoute = (f, route) =>
 /**
  * One route's report from the check results ([{ check, ok, findings, ... } or { check, error }]). It passes only when
  * every expected check ran and none has a finding. A crashed or missing check is an "error" finding. A parity finding
- * on an element production-defects found wrong at that route and width moves to `corrected`. `gate` (gateRecord: the
+ * on an element production-defects found wrong at that route and width moves to `corrected`. The production defects
+ * a reviewer rejected on this route (`rejectedDefects`, each with its id and sources) and every rejection the run used
+ * (`rejections`: id, source "--reject" or an accepted.json entry id, ledgerRow, matched) are kept, so the gate record
+ * and the review page show them; review-page.mjs refuses a gate run with a bare --reject. `gate` (gateRecord: the
  * matrix, its hash, the cases run, partial) and `production` (prodCacheRecord) are recorded as they are: review-page.mjs
  * refuses a partial report or one of another matrix.
  */
@@ -283,6 +287,8 @@ export function buildRouteReport(
   const checks = {};
   const byName = new Map(results.map((r) => [r.check, r]));
   const defects = [];
+  const rejectedDefects = [];
+  const rejections = [];
   for (const name of [...expected, ...results.map((r) => r.check)]) {
     if (name in checks) continue;
     const r = byName.get(name);
@@ -305,6 +311,9 @@ export function buildRouteReport(
       .filter((f) => onRoute(f, route))
       .map((f) => ({ ...f, route: f.route ?? route }));
     for (const d of r.defects ?? []) if (d.route === route) defects.push(d);
+    for (const d of r.rejected ?? [])
+      if (d.route === route) rejectedDefects.push(d);
+    rejections.push(...(r.rejections ?? []));
     checks[name] = {
       ok: own.length === 0,
       findings: own.length,
@@ -319,6 +328,8 @@ export function buildRouteReport(
     findings: kept,
     corrected,
     productionDefects: defects,
+    rejectedDefects,
+    rejections,
     checks,
     states: results
       .flatMap((r) => r.states ?? [])
@@ -471,6 +482,16 @@ async function main() {
     console.log(`${report.ok ? "ok  " : "FAIL"}  ${route}  (${file})`);
     for (const line of formatFindings(report.findings))
       console.log(`        ${line}`);
+    if (report.rejectedDefects.length)
+      console.log(
+        `        ${report.rejectedDefects.length} production defect(s) rejected as reviewed false positives (see rejectedDefects)`,
+      );
+    for (const r of report.rejections.filter(
+      (r) => r.source === "--reject" || r.ledgerRow === false,
+    ))
+      console.log(
+        `        warning: ${r.id} rejected by ${r.source}${r.source === "--reject" ? "" : " (no ledger row)"}: review-page.mjs refuses this run as a gate`,
+      );
     if (report.corrected.length)
       console.log(
         `        ${report.corrected.length} finding(s) on production defects the target fixes (see productionDefects)`,
