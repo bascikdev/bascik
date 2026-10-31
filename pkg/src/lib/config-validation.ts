@@ -17,7 +17,7 @@
  */
 
 import { existsSync, statSync, accessSync, constants } from "node:fs";
-import { resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
 import {
@@ -75,6 +75,24 @@ const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
 
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === "object" && !Array.isArray(val);
+
+/** True when `child` is `parent` or a path inside it (both absolute, resolved). */
+export const isSameOrInside = (child: string, parent: string): boolean =>
+  child === parent ||
+  child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+
+/**
+ * The built-in source and output folders. config.ts builds its defaults from
+ * these, and the output-directory overlap check falls back to them for a
+ * folder the config leaves unset.
+ */
+export const DEFAULT_DIRECTORY = {
+  pages: "src/pages",
+  components: "src/components",
+  out: "dist",
+  api: "src/api",
+} as const;
+export const DEFAULT_IMPORT_ROOT = "src";
 
 /* ── Known key schema ─────────────────────────────────────────────────── */
 
@@ -447,7 +465,15 @@ export const validateConfigShape = (
     if (typeof dir.out === "string") {
       const root = resolve(cwd);
       const resolvedOut = resolve(cwd, dir.out);
-      if (resolvedOut !== root && !resolvedOut.startsWith(root + sep)) {
+      if (resolvedOut === root) {
+        // The output directory is emptied at the start of every build and
+        // dev session; the project root holds the sources and the config.
+        push(
+          "directory.out",
+          dir.out,
+          'is the project root; the output directory is emptied at the start of every build and dev session, so it must be a folder of its own such as "dist"',
+        );
+      } else if (!isSameOrInside(resolvedOut, root)) {
         push(
           "directory.out",
           dir.out,
@@ -1491,6 +1517,115 @@ const checkHttpTimeoutOrder = (
   };
 };
 
+/**
+ * The folders the output directory must never hold or be, as the merged
+ * config for one mode sees them: the layers' values over the defaults.
+ * Wrong-typed values are skipped (the shape pass reports them).
+ */
+const sourceFoldersFor = (
+  layers: unknown[],
+): { out: string | undefined; sources: [string, string][] } => {
+  let out: string | undefined = DEFAULT_DIRECTORY.out;
+  let pages: string = DEFAULT_DIRECTORY.pages;
+  let api: string = DEFAULT_DIRECTORY.api;
+  let components: string[] = [DEFAULT_DIRECTORY.components];
+  let importRoot: string = DEFAULT_IMPORT_ROOT;
+  for (const layer of layers) {
+    if (!isPlainObject(layer)) continue;
+    if (isPlainObject(layer.directory)) {
+      const dir = layer.directory;
+      if (dir.out !== undefined)
+        out = typeof dir.out === "string" ? dir.out : undefined;
+      if (typeof dir.pages === "string") pages = dir.pages;
+      if (typeof dir.api === "string") api = dir.api;
+      if (typeof dir.components === "string") components = [dir.components];
+      else if (Array.isArray(dir.components))
+        components = dir.components.filter(
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim() !== "",
+        );
+    }
+    if (
+      isPlainObject(layer.scripts) &&
+      typeof layer.scripts.importRoot === "string" &&
+      layer.scripts.importRoot.length > 0
+    )
+      importRoot = layer.scripts.importRoot;
+  }
+  return {
+    out,
+    sources: [
+      ["directory.pages", pages],
+      ...components.map((root): [string, string] => [
+        "directory.components",
+        root,
+      ]),
+      ["directory.api", api],
+      ["scripts.importRoot", importRoot],
+    ],
+  };
+};
+
+/**
+ * `directory.out` is emptied at the start of every build and dev session
+ * (transpile.ts), so an output directory that is or holds a source folder
+ * deletes that source before a page is read. An output directory inside the
+ * pages, components or API folder is rejected too: what the build writes
+ * would be read back as source. Inside the import root is fine (nothing is
+ * deleted, and scripts only import what they name).
+ */
+const checkOutputDirectoryOverlap = (
+  userConfig: unknown,
+  modeOverrides: unknown,
+  cwd: string,
+): ConfigValidationError[] => {
+  const root = resolve(cwd);
+  const perMode =
+    isPlainObject(modeOverrides) &&
+    ("dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides);
+  const errors: ConfigValidationError[] = [];
+  for (const mode of ["dev", "build", "server"] as const) {
+    const override = perMode
+      ? (modeOverrides as Record<string, unknown>)[mode]
+      : mode === "dev"
+        ? undefined
+        : modeOverrides;
+    const { out, sources } = sourceFoldersFor([userConfig, override]);
+    if (out === undefined) continue;
+    const resolvedOut = resolve(cwd, out);
+    // The project root and an escaping out report in the shape pass.
+    if (resolvedOut === root || !isSameOrInside(resolvedOut, root)) continue;
+    const display = (path: string): string =>
+      relative(root, resolve(cwd, path)).replace(/\\/g, "/") || ".";
+    const deleted = sources.filter(([, path]) =>
+      isSameOrInside(resolve(cwd, path), resolvedOut),
+    );
+    if (deleted.length > 0) {
+      errors.push({
+        key: "directory.out",
+        value: out,
+        message: `would delete ${deleted.map(([key, path]) => `${key} "${display(path)}"`).join(", ")}: the output directory is emptied at the start of every build and dev session, so it must be a folder of its own that holds no source, such as "dist"`,
+      });
+      continue;
+    }
+    const readBack = sources.find(
+      ([key, path]) =>
+        key !== "scripts.importRoot" &&
+        isSameOrInside(resolvedOut, resolve(cwd, path)),
+    );
+    if (readBack) {
+      errors.push({
+        key: "directory.out",
+        value: out,
+        message: `is inside ${readBack[0]} "${display(readBack[1])}": what the build writes there would be read back as source. Use a folder outside it, such as "dist"`,
+      });
+    }
+  }
+  return errors;
+};
+
 const errorSignature = (error: ConfigValidationError): string =>
   `${error.key}${error.message}${String(error.value)}`;
 
@@ -1543,6 +1678,14 @@ export const validateUserConfig = (
     const error = checkHttpTimeoutOrder(userConfig, override);
     if (error) errors.push(error);
   }
+
+  errors.push(
+    ...checkOutputDirectoryOverlap(
+      userConfig,
+      modeOverrides,
+      deps.cwd ?? process.cwd(),
+    ),
+  );
 
   // Site URL: owned by environment.ts, validated here so an invalid value
   // reports together with every other configuration error.

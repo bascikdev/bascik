@@ -779,6 +779,131 @@ describe("directory.out escape check", () => {
   });
 });
 
+// F092 / F047: the output directory is emptied at the start of every build
+// and dev session, so an out that holds (or is) a source folder deletes it.
+describe("directory.out overlap with source folders", () => {
+  const overlapErrors = (userConfig: unknown, modeOverrides: unknown = {}) =>
+    validateUserConfig(userConfig, modeOverrides, {
+      fs: allowAllFs,
+      cwd: "/project",
+      env: {},
+    }).filter((error) => error.key === "directory.out");
+
+  it("rejects an out that contains the default source folders", () => {
+    const errors = overlapErrors({ directory: { out: "src" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("src");
+    expect(errors[0].message).toContain('directory.pages "src/pages"');
+    expect(errors[0].message).toContain(
+      'directory.components "src/components"',
+    );
+    expect(errors[0].message).toContain('directory.api "src/api"');
+    expect(errors[0].message).toContain('scripts.importRoot "src"');
+    expect(errors[0].message).toContain("emptied at the start of every build");
+  });
+
+  it("rejects an out equal to the pages folder", () => {
+    const errors = overlapErrors({
+      directory: { pages: "site", out: "site" },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('directory.pages "site"');
+  });
+
+  it("rejects an out that contains a pages folder set alone (out left at its default)", () => {
+    const errors = overlapErrors({ directory: { pages: "dist/pages" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("dist");
+    expect(errors[0].message).toContain('directory.pages "dist/pages"');
+  });
+
+  it("rejects an out that contains one of several component roots", () => {
+    const errors = overlapErrors({
+      directory: {
+        components: ["src/components", "build/shared"],
+        out: "build",
+      },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('directory.components "build/shared"');
+  });
+
+  it("rejects an out inside the pages folder: built pages would be read back as source", () => {
+    const errors = overlapErrors({ directory: { out: "src/pages/dist" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain(
+      'is inside directory.pages "src/pages"',
+    );
+  });
+
+  it("rejects an out set only in a mode export", () => {
+    const errors = overlapErrors({}, { build: { directory: { out: "src" } } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("src");
+  });
+
+  it("rejects an absolute out that resolves to a source folder", () => {
+    const errors = overlapErrors({ directory: { out: "/project/src/" } });
+    expect(errors).toHaveLength(1);
+  });
+
+  it("rejects an out that is the project root", () => {
+    for (const out of [".", "./", "/project"]) {
+      const errors = validateConfigShape(
+        { directory: { out } },
+        { cwd: "/project" },
+      );
+      expect(errors, out).toHaveLength(1);
+      expect(errors[0].key).toBe("directory.out");
+      expect(errors[0].message).toContain("is the project root");
+    }
+  });
+
+  it("accepts the default layout and separate output folders", () => {
+    expect(overlapErrors({})).toEqual([]);
+    expect(overlapErrors({ directory: { out: "dist" } })).toEqual([]);
+    expect(overlapErrors({ directory: { out: "build/site" } })).toEqual([]);
+    // Inside the import root but outside every source folder: nothing is
+    // deleted and nothing is read back.
+    expect(overlapErrors({ directory: { out: "src/dist" } })).toEqual([]);
+    // A sibling whose name starts with the source folder's name.
+    expect(overlapErrors({ directory: { out: "src/pages-dist" } })).toEqual([]);
+    expect(
+      overlapErrors({
+        directory: {
+          pages: "pages",
+          components: "components",
+          api: "api",
+          out: "src",
+        },
+        scripts: { importRoot: "lib" },
+      }),
+    ).toEqual([]);
+  });
+
+  it("leaves wrong-typed directory values to their own type errors", () => {
+    const errors = validateUserConfig(
+      { directory: { out: 7, pages: ["src"] } },
+      {},
+      { fs: allowAllFs, cwd: "/project", env: {} },
+    );
+    expect(errors.map((error) => error.message)).not.toContain(
+      expect.stringContaining("emptied"),
+    );
+  });
+
+  it("initBascikConfig refuses the config before anything is deleted", () => {
+    expect(() =>
+      initBascikConfig(
+        { directory: { out: "src" } },
+        {},
+        { isBuild: true },
+        { fs: allowAllFs, cwd: process.cwd(), env: {} },
+      ),
+    ).toThrow(/directory\.out[\s\S]*emptied at the start of every build/);
+  });
+});
+
 describe("referenced files (fs half)", () => {
   const missingFs = {
     existsSync: () => false,

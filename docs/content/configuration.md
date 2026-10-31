@@ -295,6 +295,8 @@ Rules that apply across all roots:
 - **A listed root must exist.** A missing root fails the build and `bascik --check` with a message that names it, since a missing root is usually a typo. Only the default, `src/components`, may be absent: the project then has no components.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
+`directory.out` is emptied at the start of every build and dev session, so it must be a folder of its own inside the project. A value that is the project root, resolves outside it, or holds a source folder (`directory.pages`, a `directory.components` root, `directory.api`, or `scripts.importRoot`) is a config error that names the folder it would delete, and so is an output directory inside the pages, components, or API folder, where the build output would be read back as source. `out: "src"` with the default layout is rejected before anything is deleted; `out: "build"` or `out: "src/dist"` is fine.
+
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.
 
 The following built-in exclusions always apply:

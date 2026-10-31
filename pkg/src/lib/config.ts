@@ -9,7 +9,9 @@ import { stderr as colorErr } from "./colors.ts";
 import {
   collectConfigWarnings,
   collectModeOverrideWarnings,
+  DEFAULT_DIRECTORY,
   DEFAULT_HTTP_TIMEOUTS,
+  DEFAULT_IMPORT_ROOT,
   defaultHeadersTimeout,
   formatConfigErrors,
   normalizeBasePath,
@@ -134,10 +136,10 @@ export const defaultConfig: Omit<
   "isBuild" | "isProdServer"
 > = {
   directory: {
-    pages: "src/pages",
-    components: ["src/components"],
-    out: "dist",
-    api: "src/api",
+    pages: DEFAULT_DIRECTORY.pages,
+    components: [DEFAULT_DIRECTORY.components],
+    out: DEFAULT_DIRECTORY.out,
+    api: DEFAULT_DIRECTORY.api,
   },
   components: {
     external: [],
@@ -193,7 +195,7 @@ export const defaultConfig: Omit<
     timeout: 30000,
     // Kept relative (not resolved here) so worker threads and the main thread
     // resolve it identically against process.cwd() at use sites.
-    importRoot: "src",
+    importRoot: DEFAULT_IMPORT_ROOT,
     stripAnsi: true,
     // Equal to REQUEST_RENDER_LIMITS in request-render.ts (a unit test pins
     // them).
