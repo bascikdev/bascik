@@ -803,8 +803,29 @@ export function isTlsCleanupRuntimeSupported(
 /** Parent-side gate for the http2 retention lanes (see the predicate above). */
 export const tlsCleanupRuntimeSupported = isTlsCleanupRuntimeSupported();
 
-/** Skip reason for the http2 retention lanes on runtimes other than Node 24. */
-export const tlsCleanupRuntimeSkipReason = `http2 retention evidence needs Node 24's verified TLS cleanup callback ordering; running ${process.version}`;
+const tlsCleanupRuntimeSkipReasonFor = (version: string) =>
+  `http2 retention evidence needs Node 24's verified TLS cleanup callback ordering; running ${version}`;
+
+/**
+ * Lane gate for the retention rows: skips an http2 row off Node 24 and writes
+ * the reason straight to stderr, because Vitest's default reporter prints a
+ * skipped count but neither the note passed to `skip()` nor console output
+ * from a skipped test (on the Node 22.22 floor lane the skip would otherwise
+ * be silent). Only http2 is gated: the dev and http1 rows run, and assert, on
+ * every supported runtime.
+ */
+export function skipUnsupportedRetentionLane(
+  mode: "dev" | "http1" | "http2",
+  skip: (note: string) => void,
+  version: string = process.version,
+  log: (message: string) => void = (message) =>
+    process.stderr.write(`${message}\n`),
+): void {
+  if (mode !== "http2" || isTlsCleanupRuntimeSupported(version)) return;
+  const reason = tlsCleanupRuntimeSkipReasonFor(version);
+  log(`[retention] skipped: ${reason}`);
+  skip(reason);
+}
 
 /**
  * Validates that an unsupported Node runtime environment or missing _destroySSL prototype throws.
