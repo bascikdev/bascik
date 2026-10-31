@@ -48,7 +48,7 @@ Integration tests spawn real processes, servers, browsers, and worker threads, s
 
 ### Stage 4: End-to-End Test Matrix
 
-Runs after every Stage 3 job passes. Installs Chromium via `playwright install chromium` and executes:
+Runs after every Stage 3 job passes. The Playwright jobs install Chromium via `playwright install chromium`; the extension job downloads VS Code itself. The jobs execute:
 
 - **Framework E2E (Static)**: `yarn pkg:e2e`
 - **Framework E2E (Dev Server)**: `yarn pkg:e2e:dev`, `yarn pkg:e2e:dev:exec` (dev exec lifecycle), `yarn pkg:e2e:exec:policy` (exec failure policy), and `yarn pkg:e2e:exec:build` (build exec lifecycle)
@@ -57,8 +57,9 @@ Runs after every Stage 3 job passes. Installs Chromium via `playwright install c
 - **Cloudflare Adapter E2E (local workerd)**: `yarn adapter:cf:e2e`
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
+- **VS Code Extension E2E (real editor)** (`e2e-extension`): `xvfb-run -a yarn ext:e2e`, both configurations in `extensions/vscode-bascik/.vscode-test.cjs` in a real VS Code. `@vscode/test-cli` downloads the newest stable VS Code into `extensions/vscode-bascik/.vscode-test/`, which the job caches under a key that changes every ISO week; `xvfb-run` gives the Electron app a virtual display on Linux.
 
-Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on.
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on, and `pkg/e2e/scripts/ci-deploy.test.ts` fails when a workspace's root `<prefix>:e2e` script (such as `ext:e2e`) is run by no CI job.
 
 ### Stage 5: Deploy to Cloudflare
 

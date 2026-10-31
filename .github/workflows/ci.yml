@@ -885,6 +885,51 @@ jobs:
       - name: Run create-bascik scaffold generation test
         run: yarn create:test-site
 
+  e2e-extension:
+    name: VS Code Extension E2E (real editor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # @vscode/test-cli downloads the newest stable VS Code into extensions/vscode-bascik/.vscode-test/. The key
+      # changes every ISO week, so CI downloads it about once a week and still picks up a new release within one.
+      - name: Compute the VS Code cache key
+        id: vscode-week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the VS Code download
+        uses: actions/cache@v6
+        with:
+          path: extensions/vscode-bascik/.vscode-test/vscode-*
+          key: vscode-test-${{ runner.os }}-${{ steps.vscode-week.outputs.week }}
+
+      # Compiles the extension and bundles the language server from lsp/src, then runs both configurations in
+      # .vscode-test.cjs. VS Code is an Electron app, so on Linux xvfb-run gives it a virtual display.
+      - name: Run the extension tests in VS Code
+        run: xvfb-run -a yarn ext:e2e
+
   # ── Stage 5: Deploy to Cloudflare (after every stage 4 job passes) ──────────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
   # deploys both Workers to production. A push to any other branch uploads a Preview version of each under one alias
@@ -910,6 +955,7 @@ jobs:
         e2e-adapter-cloudflare,
         e2e-docs,
         e2e-create,
+        e2e-extension,
       ]
     # No job-level concurrency group, on purpose. The workflow's group already cancels an older run of a branch, so a
     # branch has one run in stage 5 at a time. On main a shared job group would hold one pending deploy and let an older
@@ -1022,6 +1068,7 @@ jobs:
         e2e-adapter-cloudflare,
         e2e-docs,
         e2e-create,
+        e2e-extension,
       ]
     # No job-level concurrency group: see deploy-docs.
     outputs:

@@ -971,6 +971,46 @@ describe("CI stages and the deploy stage", () => {
     expect(missing).toEqual([]);
   });
 
+  it("runs the VS Code extension's real-editor suite in stage 4, under a virtual display, before anything deploys", () => {
+    const job = jobs.get("e2e-extension");
+    expect(job, "e2e-extension job").toBeDefined();
+    expect(job!.stage).toBe(4);
+    // Same gate as the other stage 4 jobs: every stage 3 job.
+    expect(job!.needs).toEqual(jobs.get("e2e-create")!.needs);
+    expect(job!.if).toBeUndefined();
+    const body = job!.body.join("\n");
+    expect(body).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
+    // VS Code is an Electron app: on Linux it needs a display, so xvfb-run gives it a virtual one.
+    expect(body).toMatch(/^ {8}run: xvfb-run -a yarn ext:e2e$/m);
+    // The downloaded VS Code is cached; the user-data folder a run writes is not.
+    const cache = job!.steps.find((step) =>
+      /uses: actions\/cache@/.test(step.text),
+    );
+    expect(cache?.text).toMatch(
+      /path: extensions\/vscode-bascik\/\.vscode-test\/vscode-\*/,
+    );
+    for (const id of ["deploy-docs", "deploy-demo"])
+      expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
+  });
+
+  it("misuse: runs every workspace's root e2e script in some CI job, so a suite cannot silently drop out of CI", () => {
+    const scripts = Object.keys(
+      JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8"))
+        .scripts as Record<string, string>,
+    ).filter((name) =>
+      /^(?:pkg|create|docs|ext|adapter:cf|lsp|skills):e2e$/.test(name),
+    );
+    expect(scripts).toContain("ext:e2e");
+    const runs = [...jobs.values()].flatMap((job) => job.body);
+    const missing = scripts.filter(
+      (script) =>
+        !runs.some((line) =>
+          new RegExp(`^ {8}run: .*\\byarn ${script}(?![\\w:-])`).test(line),
+        ),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it("runs on every branch push and on pull requests, never on tags", () => {
     const on = topLevelBlock(workflow, "on");
     expect(on).toMatch(/^ {2}push:\n {4}branches: \["\*\*"\]$/m);
