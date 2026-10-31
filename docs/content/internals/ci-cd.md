@@ -22,6 +22,7 @@ concurrency:
 - **Each commit is tested once.** A pull request from a branch of this repository is already tested by that branch's push run. The four Stage 1 jobs skip on such a `pull_request` event (`if: (github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)`), and every later job needs them directly or through another stage, so the rest of that run skips as well: a job whose `needs` was skipped is skipped, not failed. The push run's checks are on the branch's head commit, the same commit the pull request points at, so they show on the pull request. Its Checks list also shows the skipped `pull_request` jobs under the same names, and GitHub reports a skipped job as successful, so a required status check should be one the push run reports. A same-repo branch is tested as its own commit, not merged with `main`.
 - **A fork's pull request** gets Stages 1 to 4 on the merge commit (`refs/pull/<n>/merge`) and never Stage 5.
 - **A push to `main` only deploys.** It is a merged pull request whose branch already passed every stage, so the Stage 1 jobs skip on `main` and every test job after them skips too. The two deploy jobs still run: their `if` starts with GitHub's not-canceled status check, and a job whose `if` has a status check is evaluated even when the jobs it needs were skipped. On any other branch the same condition still requires every Stage 4 job to have succeeded.
+- **Only a merged pull request deploys.** Since `main` runs no tests, each deploy job on `main` fails before Wrangler unless `github.sha` came from a pull request merged into `main`, so a commit pushed straight to `main` deploys nothing. The manual emergency deploy in `DEPLOYMENT.md` is the bypass.
 - **A newer push to a branch cancels the older run**, its Preview upload included. Runs on `main` each get their own concurrency group, so none is canceled or left pending behind another. No job has a group of its own: a shared group holds only one pending job, so on `main` an older commit's deploy that queued later would cancel the newer commit's pending deploy.
 
 It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a Node 22.22 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
@@ -48,7 +49,7 @@ Integration tests spawn real processes, servers, browsers, and worker threads, s
 
 ### Stage 4: End-to-End Test Matrix
 
-Runs after every Stage 3 job passes. Installs Chromium via `playwright install chromium` and executes:
+Runs after every Stage 3 job passes. The Playwright jobs install Chromium via `playwright install chromium`; the extension job downloads VS Code itself. The jobs execute:
 
 - **Framework E2E (Static)**: `yarn pkg:e2e`
 - **Framework E2E (Dev Server)**: `yarn pkg:e2e:dev`, `yarn pkg:e2e:dev:exec` (dev exec lifecycle), `yarn pkg:e2e:exec:policy` (exec failure policy), and `yarn pkg:e2e:exec:build` (build exec lifecycle)
@@ -57,8 +58,9 @@ Runs after every Stage 3 job passes. Installs Chromium via `playwright install c
 - **Cloudflare Adapter E2E (local workerd)**: `yarn adapter:cf:e2e`
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
+- **VS Code Extension E2E (real editor)** (`e2e-extension`): `xvfb-run -a yarn ext:e2e`, both configurations in `extensions/vscode-bascik/.vscode-test.cjs` in a real VS Code. `@vscode/test-cli` downloads the newest stable VS Code into `extensions/vscode-bascik/.vscode-test/`, which the job caches under the newest stable version from VS Code's update API (the ISO week when the API does not answer), so each release downloads once; `xvfb-run` gives the Electron app a virtual display on Linux.
 
-Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on.
+Each `pkg` lane runs as its own job, so CI does not use the local `yarn pkg:e2e:all` runner, which starts the same four lanes in parallel on one machine. Each lane uses its own ports and its own output directory (`BASCIK_E2E_OUT`, such as `pkg/e2e/dist-dev`), so the two setups behave the same. `pkg/e2e/scripts/run-lanes.test.ts` fails when a Playwright config in `pkg/e2e/` has no package script that a CI job runs, or when a published workspace's unit tests leave the Linux jobs that the end-to-end stage waits on, and `pkg/e2e/scripts/ci-deploy.test.ts` fails when a workspace's root `<prefix>:e2e` script (such as `ext:e2e`) is run by no CI job.
 
 ### Stage 5: Deploy to Cloudflare
 
@@ -66,21 +68,23 @@ Runs after every Stage 4 job passes, only for a branch push in this repository (
 
 - **Deploy Docs (`deploy-docs`)**: checks out the full git history (`docs/scripts/generate-git-dates.ts` reads it for sitemap `lastmod` and article dates), runs `yarn pkg:build && yarn docs:build`, then runs Wrangler from `docs/`.
 - **Deploy Adapter Demo (`deploy-demo`)**: runs `yarn adapter:cf:demo:build`, which builds the fixture in `adapters/cloudflare/e2e/fixture` with `--target cloudflare`, then runs Wrangler with `--config e2e/fixture/dist/.bascik/cloudflare/wrangler.jsonc` from `adapters/cloudflare`.
+- **Merged pull request check** (both deploy jobs, on `main` only): after the build and before the newest-commit check, runs `gh api repos/<owner>/<repo>/commits/<sha>/pulls` with `GH_TOKEN: ${{ github.token }}` and passes the answer to `.github/scripts/merged-pull-request.mjs`, which fails the job, naming the commit and the pull requests it found, unless one was merged into `main`. GitHub can take a few seconds to link a fresh merge commit to its pull request, so while the answer is an empty list the step asks up to three times, 10 s apart. An API error body is reported as an error, not read as "no pull request".
 - **Publish Preview URLs (`preview-comment`)**: on a branch other than `main`, waits for both deploy jobs, writes both Preview URLs to the run's job summary, and, when the branch has an open pull request in this repository, creates or updates one comment on it that lists both URLs and the commit they were built from (`github.sha`, the branch commit the run tested). A branch without a pull request gets the summary only. The job is skipped when a deploy job uploaded nothing because its commit was no longer the newest.
 
 What each event does:
 
-| Event                                   | Stage 5                                                                                                                                                                                                                            |
-| :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Push to `main`                          | No tests. `wrangler deploy` for both Workers, then a check of `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview.                                                                          |
-| Push to any other branch                | `wrangler versions upload --preview-alias <alias>` for both Workers: a Preview version that does not touch production. The alias comes from the branch name, so each branch keeps the same two URLs. Each Preview is then checked. |
-| Pull request from a branch of this repo | Skipped with the rest of the run; the branch's push run deploys its Previews.                                                                                                                                                      |
-| Pull request from a fork                | Skipped. Stage 5 runs only on push, and a fork's pull request gets no secrets.                                                                                                                                                     |
-| Tag                                     | CI does not run.                                                                                                                                                                                                                   |
+| Event                                   | Stage 5                                                                                                                                                                                                                             |
+| :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to `main`                          | No tests. Fails unless the commit came from a pull request merged into `main`; then `wrangler deploy` for both Workers, then a check of `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview. |
+| Push to any other branch                | `wrangler versions upload --preview-alias <alias>` for both Workers: a Preview version that does not touch production. The alias comes from the branch name, so each branch keeps the same two URLs. Each Preview is then checked.  |
+| Pull request from a branch of this repo | Skipped with the rest of the run; the branch's push run deploys its Previews.                                                                                                                                                       |
+| Pull request from a fork                | Skipped. Stage 5 runs only on push, and a fork's pull request gets no secrets.                                                                                                                                                      |
+| Tag                                     | CI does not run.                                                                                                                                                                                                                    |
 
 The helpers live in `.github/scripts/` and are tested by `pkg/e2e/scripts/ci-deploy.test.ts` in the framework unit tests:
 
 - `preview-alias.mjs` turns the branch name (`github.ref_name`) into the alias. A name that is already a valid alias (lowercase `a-z`, `0-9` and `-`, starting with a letter, short enough) is used as is. Any other name is lowercased, every run of other characters becomes one `-`, a leading digit gets a `b-` prefix, and a hash of the full branch name is appended, so `feature/x` and `feature-x` do not share an alias and overwrite each other's Preview. A name too long for `<alias>-cloudflare-adapter` to fit in one 63-character DNS label is shortened before the hash.
+- `merged-pull-request.mjs` reads the `gh api` list of the commit's pull requests and fails unless one has `merged_at` set and `base.ref` `main`, so a commit pushed straight to `main` never deploys.
 - `newest-commit.mjs` compares the commit a run built with the branch tip from `git ls-remote`, so a deploy job skips Wrangler when the branch has moved on.
 - `wrangler-preview-url.mjs` reads the Preview alias URL from Wrangler's machine-readable output (`WRANGLER_OUTPUT_FILE_PATH`, one JSON object per line), so no step parses Wrangler's log text.
 - `smoke-test.mjs` requests each path without following redirects and fails the job unless every one answers with the expected status, retrying for about a minute while a new version propagates. The docs check includes the `301` redirects from `_redirects` and the `404` page.
@@ -90,9 +94,9 @@ On a branch a newer push cancels the running upload along with the rest of the o
 
 On `main`, `wrangler deploy` also attaches the custom domains in each config's `routes`. Wrangler runs without a terminal in CI and then replaces a conflicting custom domain or DNS record without asking, so a hostname goes into `routes` only once it is meant to move to that Worker.
 
-The test also reads `ci.yml` and fails when a job is outside the five stages, when a job does not wait on every job of the stage before it, when an upload, deploy or smoke step is not gated on the newest-commit check, when a job has its own concurrency group, or when the Cloudflare token reaches anything but a Stage 5 Wrangler step. It evaluates the workflow's own `if:` conditions for a push to `main`, a branch push, a tag, a same-repo pull request, a fork's pull request and a push in a fork, and fails when `main` would get only a Preview, a branch push would not preview both Workers, a pull request or a tag would deploy, or a same-repo pull request would be tested twice.
+The test also reads `ci.yml` and fails when a job is outside the five stages, when a job does not wait on every job of the stage before it, when an upload, deploy or smoke step is not gated on the newest-commit check, when a deploy job on `main` does not check for a merged pull request before Wrangler, when a job has its own concurrency group, or when the Cloudflare token reaches anything but a Stage 5 Wrangler step. It evaluates the workflow's own `if:` conditions for a push to `main`, a branch push, a tag, a same-repo pull request, a fork's pull request and a push in a fork, and fails when `main` would get only a Preview, a branch push would not preview both Workers, a pull request or a tag would deploy, or a same-repo pull request would be tested twice.
 
-All jobs enforce least-privilege with `permissions: contents: read`. The Preview URL job adds `pull-requests: write`. The Cloudflare credentials (secret `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`) are set only on the Wrangler steps, not on the builds.
+All jobs enforce least-privilege with `permissions: contents: read`. The two deploy jobs add `pull-requests: read` for the merged pull request check, and the Preview URL job adds `pull-requests: write`. The Cloudflare credentials (secret `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`) are set only on the Wrangler steps, not on the builds.
 
 ## Release Workflow
 
@@ -131,7 +135,9 @@ jobs:
     # publishes the VS Code extension with vsce (Microsoft Entra ID credentials)
 ```
 
-All jobs follow the same steps: install dependencies, build, run tests, then publish.
+All jobs follow the same steps: check out the full history, check that the tagged commit is on `main`, install dependencies, build, run tests, then publish.
+
+**Releases come only from `main`.** The step right after checkout runs `node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"`. It dereferences the tag to its commit and fails the job, naming the tag and the commit, unless that commit is an ancestor of `origin/main` (`git merge-base --is-ancestor`), so a tag pushed on an unmerged branch publishes nothing. The checkout uses `fetch-depth: 0`, because `actions/checkout` otherwise fetches only the tagged commit and `origin/main` would be missing; the script reports that case as a checkout error, not as "not on main". `pkg/e2e/scripts/release-on-main.test.ts` runs the script against a real throwaway repository and fails when a publish job in `release.yml` lacks the check right after a full-history checkout.
 
 ## Publishing to npm
 
@@ -155,34 +161,37 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 
 ### `@bascik/bascik`
 
+Tag the commit on `main`, after the release pull request is merged:
+
 ```sh
-# 1. Bump version in pkg/package.json
-# 2. Update CHANGELOG.md
-git add pkg/package.json CHANGELOG.md
-git commit -m "chore: release v1.2.0"
-git tag v1.2.0
-git push origin main v1.2.0
+# 1. On a branch: bump the version in pkg/package.json, update CHANGELOG.md, commit
+# 2. Merge the branch into main through a pull request
+git fetch origin main
+git tag v1.2.0 origin/main
+git push origin v1.2.0
 ```
 
 ### `create-bascik`
 
 ```sh
-# 1. Bump version in create/package.json
-git add create/package.json
-git commit -m "chore: release create-bascik v1.0.3"
-git tag create-v1.0.3
-git push origin main create-v1.0.3
+# 1. On a branch: bump the version in create/package.json, commit
+# 2. Merge the branch into main through a pull request
+git fetch origin main
+git tag create-v1.0.3 origin/main
+git push origin create-v1.0.3
 ```
 
 ### `@bascik/adapter-cloudflare` and `@bascik/language-server`
 
 ```sh
-# Bump version in lsp/package.json, then:
-git tag lsp-v0.1.0
-git push origin main lsp-v0.1.0
-# After @bascik/bascik is on npm, bump version in adapters/cloudflare/package.json, then:
-git tag adapter-cloudflare-v1.0.0
-git push origin main adapter-cloudflare-v1.0.0
+# Bump the version in lsp/package.json and merge it into main through a pull request, then:
+git fetch origin main
+git tag lsp-v0.1.0 origin/main
+git push origin lsp-v0.1.0
+# After @bascik/bascik is on npm, bump the version in adapters/cloudflare/package.json and merge it, then:
+git fetch origin main
+git tag adapter-cloudflare-v1.0.0 origin/main
+git push origin adapter-cloudflare-v1.0.0
 ```
 
 Push each tag by name, never with `git push --tags`, which pushes every local tag (stale ones from a dry run included) and can start a publish job out of the order in `RELEASING.md`.

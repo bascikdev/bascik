@@ -80,6 +80,7 @@ Yarn 4 does not run npm's implicit `pre<name>`/`post<name>` scripts, so the exte
 - Definition results can be a `Location` or a `LocationLink`. Use `firstLocationPath()` or `locationUri()`.
 - Scoping-rule fixtures go in `src/components/`, via `openWorkspaceDocument({ directory: 'src/components', ... })`.
 - A bug that only shows in the bundle (a missing data file, a startup crash) is caught by `server-bundle.test.ts`. A bug that only shows against a real editor (late file events) is caught by `ext:e2e`. Run both when you change `lsp/src/server.ts`.
+- CI runs both: `ext:unit` in the stage 2 job `unit-extension`, and `ext:e2e` in the stage 4 job `e2e-extension` (`xvfb-run -a yarn ext:e2e` on Ubuntu, with the VS Code download cached weekly). Both deploy jobs wait on `e2e-extension`. Run `ext:e2e` locally anyway when you change `lsp/src/server.ts`, so a real-editor failure shows before you push.
 
 ---
 

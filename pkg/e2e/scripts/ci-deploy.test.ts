@@ -8,7 +8,9 @@
  * Cloudflare token reaching only the stage 5 Wrangler steps.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -26,6 +28,7 @@ import {
   newestCommit,
   tipOf,
 } from "../../../.github/scripts/newest-commit.mjs";
+import { mergedPullRequest } from "../../../.github/scripts/merged-pull-request.mjs";
 import {
   BOT_LOGIN,
   MARKER,
@@ -175,6 +178,74 @@ describe("newest-commit", () => {
     expect(() =>
       newestCommit(lsRemote, "refs/heads/main", Y.slice(0, 12)),
     ).toThrow(/full commit SHA/);
+  });
+});
+
+describe("merged-pull-request", () => {
+  const SHA = "3".repeat(40);
+  const pull = (number: number, merged: boolean, base = "main") => ({
+    number,
+    state: merged ? "closed" : "open",
+    merged_at: merged ? "2026-10-31T12:00:00Z" : null,
+    base: { ref: base },
+  });
+
+  it("finds the pull request merged into main that the commit came from", () => {
+    expect(mergedPullRequest([pull(7, false), pull(12, true)], SHA)).toBe(12);
+    expect(mergedPullRequest([pull(12, true)], SHA.toUpperCase())).toBe(12);
+  });
+
+  it("refuses a commit no merged pull request put on main, naming the commit and the emergency path", () => {
+    for (const pulls of [
+      [],
+      [pull(7, false)],
+      [pull(8, true, "pre-release-20261030")],
+    ])
+      expect(() => mergedPullRequest(pulls, SHA)).toThrow(
+        /333333333333 did not come from a pull request merged into main.*DEPLOYMENT\.md, "Manual Deploy in an Emergency"/s,
+      );
+    expect(() => mergedPullRequest([pull(7, false)], SHA)).toThrow(
+      /#7 \(open\)/,
+    );
+    expect(() =>
+      mergedPullRequest([pull(8, true, "pre-release-20261030")], SHA),
+    ).toThrow(/#8 \(merged into pre-release-20261030\)/);
+  });
+
+  it("misuse: rejects an API error body or a bad SHA instead of reading it as no pull request", () => {
+    expect(() =>
+      mergedPullRequest({ message: "Bad credentials", status: "401" }, SHA),
+    ).toThrow(/did not return a list of pull requests.*Bad credentials/);
+    expect(() => mergedPullRequest([pull(12, true)], "")).toThrow(
+      /full commit SHA/,
+    );
+    expect(() => mergedPullRequest([pull(12, true)], SHA.slice(0, 7))).toThrow(
+      /full commit SHA/,
+    );
+  });
+
+  it("reads the gh api output from a file and fails the step with an ::error:: line", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-merged-pr-"));
+    try {
+      const script = join(repoDir, ".github/scripts/merged-pull-request.mjs");
+      const file = join(dir, "pulls.json");
+      const run = () =>
+        spawnSync(process.execPath, [script, SHA, file], { encoding: "utf8" });
+      writeFileSync(file, JSON.stringify([pull(12, true)]));
+      const merged = run();
+      expect(merged.status).toBe(0);
+      expect(merged.stdout).toMatch(/pull request #12/);
+      writeFileSync(file, JSON.stringify([pull(7, false)]));
+      const direct = run();
+      expect(direct.status).toBe(1);
+      expect(direct.stderr).toMatch(/^::error::.*333333333333/m);
+      writeFileSync(file, "");
+      const empty = run();
+      expect(empty.status).toBe(1);
+      expect(empty.stderr).toMatch(/::error::.*not JSON/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -971,6 +1042,56 @@ describe("CI stages and the deploy stage", () => {
     expect(missing).toEqual([]);
   });
 
+  it("runs the VS Code extension's real-editor suite in stage 4, under a virtual display, before anything deploys", () => {
+    const job = jobs.get("e2e-extension");
+    expect(job, "e2e-extension job").toBeDefined();
+    expect(job!.stage).toBe(4);
+    // Same gate as the other stage 4 jobs: every stage 3 job.
+    expect(job!.needs).toEqual(jobs.get("e2e-create")!.needs);
+    expect(job!.if).toBeUndefined();
+    const body = job!.body.join("\n");
+    expect(body).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
+    // VS Code is an Electron app: on Linux it needs a display, so xvfb-run gives it a virtual one.
+    expect(body).toMatch(/^ {8}run: xvfb-run -a yarn ext:e2e$/m);
+    // The downloaded VS Code is cached; the user-data folder a run writes is not.
+    const cache = job!.steps.find((step) =>
+      /uses: actions\/cache@/.test(step.text),
+    );
+    expect(cache?.text).toMatch(
+      /path: extensions\/vscode-bascik\/\.vscode-test\/vscode-\*/,
+    );
+    // Keyed on the VS Code version the download resolves to, so a mid-week
+    // release is saved once instead of downloaded again on every run.
+    expect(cache?.text).toMatch(
+      /^ {10}key: vscode-test-\$\{\{ runner\.os \}\}-\$\{\{ steps\.vscode-version\.outputs\.version \}\}$/m,
+    );
+    const keyStep = job!.steps.findIndex((step) =>
+      /^ {8}id: vscode-version$/m.test(step.text),
+    );
+    expect(keyStep).toBeGreaterThan(-1);
+    expect(keyStep).toBeLessThan(job!.steps.indexOf(cache!));
+    for (const id of ["deploy-docs", "deploy-demo"])
+      expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
+  });
+
+  it("misuse: runs every workspace's root e2e script in some CI job, so a suite cannot silently drop out of CI", () => {
+    const scripts = Object.keys(
+      JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8"))
+        .scripts as Record<string, string>,
+    ).filter((name) =>
+      /^(?:pkg|create|docs|ext|adapter:cf|lsp|skills):e2e$/.test(name),
+    );
+    expect(scripts).toContain("ext:e2e");
+    const runs = [...jobs.values()].flatMap((job) => job.body);
+    const missing = scripts.filter(
+      (script) =>
+        !runs.some((line) =>
+          new RegExp(`^ {8}run: .*\\byarn ${script}(?![\\w:-])`).test(line),
+        ),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it("runs on every branch push and on pull requests, never on tags", () => {
     const on = topLevelBlock(workflow, "on");
     expect(on).toMatch(/^ {2}push:\n {4}branches: \["\*\*"\]$/m);
@@ -1114,6 +1235,199 @@ describe("CI stages and the deploy stage", () => {
     }
     expect(jobs.get("deploy-docs")!.body.join("\n")).toMatch(/fetch-depth: 0/);
   });
+
+  it("deploys main only from a commit a merged pull request put there, checked before any Wrangler step", () => {
+    const NAME = "Check the commit came from a merged pull request";
+    const main = simulate(jobs, runContext("push", "refs/heads/main"));
+    const branch = simulate(jobs, runContext("push", "refs/heads/feature/x"));
+    for (const id of ["deploy-docs", "deploy-demo"]) {
+      const job = jobs.get(id)!;
+      const at = job.steps.findIndex((step) => step.name === NAME);
+      expect(at, id).toBeGreaterThan(0);
+      const step = job.steps[at];
+      expect(step.if, id).toBe("github.ref == 'refs/heads/main'");
+      expect(step.text, id).toContain("GH_TOKEN: ${{ github.token }}");
+      expect(step.text, id).toContain("REPO: ${{ github.repository }}");
+      expect(step.text, id).toContain("SHA: ${{ github.sha }}");
+      expect(step.text, id).toMatch(
+        /gh api "repos\/\$REPO\/commits\/\$SHA\/pulls" > "\$PULLS"/,
+      );
+      expect(step.text, id).toMatch(
+        /node \.github\/scripts\/merged-pull-request\.mjs "\$SHA" "\$PULLS"/,
+      );
+      // Before the newest-commit check and every upload, deploy and smoke step.
+      const newest = job.steps.findIndex((s) =>
+        s.text.includes("newest-commit.mjs"),
+      );
+      expect(at, id).toBeLessThan(newest);
+      for (const [index, other] of job.steps.entries())
+        if (WRANGLER_STEPS.includes(other.name))
+          expect(at, `${id}: ${other.name}`).toBeLessThan(index);
+      // The only permission it adds is reading pull requests.
+      expect(job.body.join("\n"), id).toMatch(
+        /^ {4}permissions:\n {6}contents: read\n {6}pull-requests: read\n {4}\S/m,
+      );
+      expect(main.steps.get(id), id).toContain(NAME);
+      // Branch Previews are not gated on a pull request.
+      expect(branch.steps.get(id), id).not.toContain(NAME);
+    }
+  });
+
+  /** A step's `run: |` block as the shell receives it. */
+  const runBlock = (text: string) => {
+    const lines = text.split("\n");
+    const start = lines.findIndex((line) => /^ {8}run: \|$/.test(line));
+    expect(start, "run: | block").toBeGreaterThan(-1);
+    const body: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (line.trim() && !line.startsWith(" ".repeat(10))) break;
+      body.push(line.slice(10));
+    }
+    return body.join("\n");
+  };
+
+  it.skipIf(process.platform === "win32")(
+    "asks GitHub again while no pull request lists a fresh merge commit, then fails with the merged-pull-request error",
+    () => {
+      const SHA = "4".repeat(40);
+      const merged = JSON.stringify([
+        {
+          number: 12,
+          merged_at: "2026-10-31T12:00:00Z",
+          base: { ref: "main" },
+        },
+      ]);
+      for (const id of ["deploy-docs", "deploy-demo"]) {
+        const step = jobs
+          .get(id)!
+          .steps.find(
+            (s) =>
+              s.name === "Check the commit came from a merged pull request",
+          )!;
+        const script = runBlock(step.text);
+        const dir = mkdtempSync(join(tmpdir(), "bascik-merged-pr-retry-"));
+        try {
+          // Fake gh answers with the next line of answers.txt (the last one
+          // repeats); fake sleep only records that it was called.
+          writeFileSync(
+            join(dir, "gh"),
+            [
+              "#!/bin/sh",
+              `n=$(cat "${dir}/calls" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "${dir}/calls"`,
+              `line=$(sed -n "\${n}p" "${dir}/answers.txt"); [ -n "$line" ] || line=$(tail -n 1 "${dir}/answers.txt")`,
+              'printf "%s\n" "$line"',
+            ].join("\n"),
+            { mode: 0o755 },
+          );
+          writeFileSync(
+            join(dir, "sleep"),
+            `#!/bin/sh\necho "$1" >> "${dir}/sleeps"\n`,
+            { mode: 0o755 },
+          );
+          const run = (answers: string[]) => {
+            writeFileSync(join(dir, "answers.txt"), `${answers.join("\n")}\n`);
+            rmSync(join(dir, "calls"), { force: true });
+            rmSync(join(dir, "sleeps"), { force: true });
+            const result = spawnSync(
+              "bash",
+              ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+              {
+                cwd: repoDir,
+                encoding: "utf8",
+                env: {
+                  ...process.env,
+                  PATH: `${dir}:${process.env.PATH}`,
+                  REPO: "bascikdev/bascik",
+                  SHA,
+                  PULLS: join(dir, "pulls.json"),
+                },
+              },
+            );
+            const read = (name: string) => {
+              try {
+                return readFileSync(join(dir, name), "utf8").trim().split("\n");
+              } catch {
+                return [];
+              }
+            };
+            return {
+              ...result,
+              calls: read("calls")[0],
+              sleeps: read("sleeps"),
+            };
+          };
+
+          const late = run(["[]", "[]", merged]);
+          expect(late.stderr, id).toBe("");
+          expect(late.status, id).toBe(0);
+          expect(late.stdout, id).toMatch(/pull request #12; deploying/);
+          expect(late.calls, id).toBe("3");
+          expect(late.sleeps, id).toEqual(["10", "10"]);
+
+          const never = run(["[]"]);
+          expect(never.status, id).toBe(1);
+          expect(never.stderr, id).toMatch(
+            /::error::444444444444 did not come from a pull request merged into main/,
+          );
+          expect(never.calls, id).toBe("3");
+          expect(never.sleeps, id).toEqual(["10", "10"]);
+
+          // A pull request that is listed but not merged is an answer, not a delay.
+          const open = run([JSON.stringify([{ number: 7, state: "open" }])]);
+          expect(open.status, id).toBe(1);
+          expect(open.stderr, id).toMatch(/#7 \(open\)/);
+          expect(open.calls, id).toBe("1");
+          expect(open.sleeps, id).toEqual([]);
+
+          const prompt = run([merged]);
+          expect(prompt.status, id).toBe(0);
+          expect(prompt.calls, id).toBe("1");
+          expect(prompt.sleeps, id).toEqual([]);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
+  const hasJq = spawnSync("jq", ["--version"]).status === 0;
+  it.skipIf(process.platform === "win32" || !hasJq)(
+    "keys the VS Code cache on the newest stable version, or the ISO week when the update API does not answer",
+    () => {
+      const step = jobs
+        .get("e2e-extension")!
+        .steps.find((s) => /^ {8}id: vscode-version$/m.test(s.text))!;
+      const script = runBlock(step.text);
+      const dir = mkdtempSync(join(tmpdir(), "bascik-vscode-key-"));
+      try {
+        const key = (curl: string) => {
+          writeFileSync(join(dir, "curl"), `#!/bin/sh\n${curl}\n`, {
+            mode: 0o755,
+          });
+          const output = join(dir, "output");
+          writeFileSync(output, "");
+          const result = spawnSync("bash", ["-e", "-c", script], {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              PATH: `${dir}:${process.env.PATH}`,
+              GITHUB_OUTPUT: output,
+            },
+          });
+          expect(result.status, result.stderr).toBe(0);
+          return readFileSync(output, "utf8");
+        };
+        expect(key(`echo '["1.144.0","1.143.2"]'`)).toBe("version=1.144.0\n");
+        expect(key("exit 22")).toMatch(/^version=week-\d{4}-\d{2}\n$/);
+        expect(key(`echo '{"message":"rate limited"}'`)).toMatch(
+          /^version=week-\d{4}-\d{2}\n$/,
+        );
+        expect(key("echo '[]'")).toMatch(/^version=week-\d{4}-\d{2}\n$/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("names github.sha, the commit the push run built, in the Preview comment", () => {
     const comment = jobs.get("preview-comment")!.body.join("\n");
