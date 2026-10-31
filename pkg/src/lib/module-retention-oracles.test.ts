@@ -8,6 +8,7 @@ import {
 } from "./module-retention.test-helper.ts";
 import {
   analyzeRetentionHeap,
+  NODE_HTTP_DATE_CACHE_TIMEOUT,
   type HeapSnapshot,
 } from "./module-retention-heap.test-helper.ts";
 import { ScriptRegistry } from "./script-registry.ts";
@@ -87,7 +88,58 @@ describe("settled heap invariants", () => {
   it("fails on a timer left running that getActiveResourcesInfo cannot see", () => {
     expect(() =>
       assertSettledHeaps([heap("baseline", 2), heap("batch-2", 7)]),
-    ).toThrow(/batch-2: 7 Timeout objects, baseline 2/);
+    ).toThrow(
+      /batch-2: 7 Timeout objects besides Node.s HTTP Date cache, baseline 2/,
+    );
+  });
+
+  // WHY: Node's HTTP Date header cache (node:internal/http utcDate) arms one
+  // unref'd timer per second after a response. A snapshot taken within that
+  // second holds it and one taken later does not, so on a loaded runner the
+  // baseline missed it and batch-2 failed with "2 Timeout objects, baseline 1".
+  const withDateCache = (
+    phase: string,
+    Timeout: number,
+    dateCache: number,
+  ) => ({
+    phase,
+    registries: 1,
+    classes: { Timeout, [NODE_HTTP_DATE_CACHE_TIMEOUT]: dateCache },
+  });
+
+  it("does not count Node's HTTP Date-cache timer against the baseline", () => {
+    expect(() =>
+      assertSettledHeaps([
+        withDateCache("baseline", 1, 0),
+        withDateCache("batch-2", 2, 1),
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertSettledHeaps([
+        withDateCache("baseline", 2, 1),
+        withDateCache("batch-2", 1, 0),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("still fails on a leaked timer next to the Date-cache timer", () => {
+    expect(() =>
+      assertSettledHeaps([
+        withDateCache("baseline", 2, 1),
+        withDateCache("batch-2", 3, 1),
+      ]),
+    ).toThrow(
+      /batch-2: 2 Timeout objects besides Node's HTTP Date cache, baseline 1/,
+    );
+  });
+
+  it("fails when more than one timer claims to be the Date-cache timer", () => {
+    expect(() =>
+      assertSettledHeaps([
+        withDateCache("baseline", 1, 0),
+        withDateCache("batch-2", 3, 2),
+      ]),
+    ).toThrow(/batch-2: 2 Node HTTP Date-cache timers/);
   });
 
   it("fails when the framework registry is missing or doubled", () => {
@@ -140,6 +192,51 @@ describe("private-state observation guards", () => {
     expect(() =>
       analyzeRetentionHeap(registryHeap("moduleCache"), "/fixture"),
     ).toThrow(/ScriptRegistry heap node has no cache property/);
+  });
+
+  // One Timeout per [callback name, script name] pair, each with the edges V8
+  // writes: Timeout -_onTimeout-> closure -shared-> code -script-> code.
+  const timerHeap = (timers: [string, string][]): HeapSnapshot => {
+    const strings = ["Timeout", "_onTimeout", "shared", "script"];
+    const nodes: number[] = [];
+    const edges: number[] = [];
+    for (const [callback, script] of timers) {
+      const base = nodes.length;
+      strings.push(callback, script);
+      const callbackName = strings.length - 2;
+      nodes.push(0, 0, base + 1, 24, 1);
+      nodes.push(1, callbackName, base + 2, 24, 1);
+      nodes.push(2, callbackName, base + 3, 24, 1);
+      nodes.push(2, callbackName + 1, base + 4, 24, 0);
+      edges.push(0, 1, base + 5, 1, 2, base + 10, 1, 3, base + 15);
+    }
+    return {
+      snapshot: {
+        meta: {
+          node_fields: ["type", "name", "id", "self_size", "edge_count"],
+          node_types: [["object", "closure", "code"]],
+          edge_fields: ["type", "name_or_index", "to_node"],
+          edge_types: [["property", "internal"]],
+        },
+      },
+      strings,
+      nodes,
+      edges,
+    };
+  };
+
+  it("tells Node's HTTP Date-cache timer from other timers by its script", () => {
+    const { classes } = analyzeRetentionHeap(
+      timerHeap([
+        ["native_bind", ""],
+        ["resetCache", "node:internal/http"],
+        ["resetCache", "file:///fixture/api/probe.mjs"],
+        ["refresh", "node:internal/http"],
+      ]),
+      "/fixture",
+    );
+    expect(classes.Timeout).toBe(4);
+    expect(classes[NODE_HTTP_DATE_CACHE_TIMEOUT]).toBe(1);
   });
 
   it("counts Timeout objects in the heap", () => {
