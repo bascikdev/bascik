@@ -1235,12 +1235,24 @@ export const getComponentScripts = async (
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
   const referenced =
     options.html === undefined ? undefined : scriptSrcBasenames(options.html);
-  // Longer component names this one's prefix rule would otherwise reach into.
-  const siblingNames = (options.componentFileNames ?? [])
-    .map((fileName) => basename(fileName, ".html").toLowerCase())
-    .filter(
-      (name) =>
-        name !== componentBaseName && isNamedFor(name, componentBaseName),
+  // Components with longer names that this one's prefix rule would otherwise reach into. Each
+  // keeps the claim rule it applies to itself: a flat one claims its name in any folder, a
+  // subfolder one only the scripts inside its own folder.
+  const siblings = (options.componentFileNames ?? []).flatMap((fileName) => {
+    const name = basename(fileName, ".html").toLowerCase();
+    if (name === componentBaseName || !isNamedFor(name, componentBaseName))
+      return [];
+    const dir = dirname(fileName).replace(/\\/g, "/");
+    const root = findComponentRoot(fileName);
+    const subfolder =
+      root !== undefined && dir !== root && dir.startsWith(`${root}/`);
+    return [{ name, dir: subfolder ? dir : undefined }];
+  });
+  const siblingClaims = (scriptDir: string, nameWithoutExt: string) =>
+    siblings.some(({ name, dir }) =>
+      dir === undefined
+        ? isNamedFor(nameWithoutExt, name)
+        : scriptDir === dir || scriptDir.startsWith(`${dir}/`),
     );
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
@@ -1261,7 +1273,7 @@ export const getComponentScripts = async (
       .toLowerCase();
     if (!isNamedFor(nameWithoutExt, componentBaseName)) return false;
     if (referenced?.browser.has(scriptBaseName)) return true;
-    return !siblingNames.some((sibling) => isNamedFor(nameWithoutExt, sibling));
+    return !siblingClaims(scriptDir, nameWithoutExt);
   });
 
   matchingScriptFiles.sort((a, b) => {

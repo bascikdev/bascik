@@ -182,6 +182,53 @@ describe("F042: flat-layout matching leaves a sibling component's scripts alone"
     expect(forHeader.scriptMap.has("card-header.extra.js")).toBe(true);
   });
 
+  it("claims a flat card-header.ts when card-header is a subfolder component", async () => {
+    // A subfolder component claims only the scripts in its own folder, so it does not own
+    // the flat card-header.ts: card is the only component whose name rule reaches it.
+    const card = write("card.html", "<p>card</p>");
+    mkdirSync(join(root, "card-header"));
+    const header = write("card-header/card-header.html", "<p>header</p>");
+    const flatScript = write("card-header.ts", "console.log('flat');\n");
+    const folderScript = write(
+      "card-header/card-header.ts",
+      "console.log('folder');\n",
+    );
+    const componentFileNames = [card, header];
+    const scripts = [flatScript, folderScript];
+
+    const relPaths = async (htmlPath: string) => [
+      ...new Set(
+        [
+          ...(
+            await getComponentScripts(htmlPath, scripts, { componentFileNames })
+          ).scriptMap.values(),
+        ].map((s) => s.relPath),
+      ),
+    ];
+    expect(await relPaths(card)).toEqual([
+      expect.stringMatching(/components\/card-header\.ts$/),
+    ]);
+    expect(await relPaths(header)).toEqual([
+      expect.stringMatching(/card-header\/card-header\.ts$/),
+    ]);
+  });
+
+  it("leaves card-header.ts to a flat card-header in another components root", async () => {
+    const otherRoot = join(base, "src/shared");
+    mkdirSync(otherRoot, { recursive: true });
+    configState.directory.components = [root, otherRoot];
+    invalidateComponentListCache();
+    const card = write("card.html", "<p>card</p>");
+    const header = join(otherRoot, "card-header.html");
+    writeFileSync(header, "<p>header</p>");
+    const headerScript = join(otherRoot, "card-header.ts");
+    writeFileSync(headerScript, "console.log('header');\n");
+    const res = await getComponentScripts(card, [headerScript], {
+      componentFileNames: [card, header],
+    });
+    expect(res.scriptMap.size).toBe(0);
+  });
+
   it("still claims a sibling's script that the component references by src", async () => {
     const html = '<script src="./card-header.ts"></script>';
     const card = write("card.html", html);
