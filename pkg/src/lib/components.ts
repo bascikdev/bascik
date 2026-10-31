@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, relative, resolve } from "node:path";
+import { dirname, posix, relative, resolve } from "node:path";
 import {
   getComponentCss,
   extractInlineStyles,
@@ -495,6 +495,31 @@ const warnComponentCompatibility = async (
 };
 
 /**
+ * The companion script a component's `<script src>` names, if any. Only a
+ * relative reference can: a URL (`https:`, `//host/`) or a root-absolute
+ * path (`/vendor/x.js`) is another file the browser loads, even when its
+ * last segment is a companion's file name, and stays as written. A relative
+ * reference is resolved against the component's folder; a bare file name
+ * (`nav-bar.js`, `./nav-bar.js`) matches a companion anywhere in the
+ * component's folder, as the companion lookup lists them.
+ */
+const companionScriptFor = <Info>(
+  scriptMap: Map<string, Info>,
+  src: string,
+  componentFileName: string,
+): Info | undefined => {
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(src) || /^[/\\]/.test(src))
+    return undefined;
+  const direct = scriptMap.get(src);
+  if (direct) return direct;
+  const componentDir = relative(
+    process.cwd(),
+    dirname(resolve(process.cwd(), componentFileName)),
+  ).replace(/\\/g, "/");
+  return scriptMap.get(posix.join(componentDir, src.replace(/\\/g, "/")));
+};
+
+/**
  * Derives the component tag name from a file path.
  * Lowercases the base name without the file extension.
  */
@@ -696,10 +721,11 @@ export const listComponents = async (
             if (isDirectiveScriptOpenTag(`<script${preSrc} ${postSrc}>`)) {
               return match;
             }
-            const baseSrc = basename(srcVal);
-            const scriptInfo =
-              companionScripts!.scriptMap.get(baseSrc) ??
-              companionScripts!.scriptMap.get(srcVal);
+            const scriptInfo = companionScriptFor(
+              companionScripts!.scriptMap,
+              srcVal,
+              fileName,
+            );
             if (scriptInfo) {
               if (ignoredBody.trim()) {
                 console.warn(

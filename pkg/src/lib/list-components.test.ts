@@ -481,6 +481,67 @@ describe("listComponents – companion scripts", () => {
     },
   );
 
+  it("never inlines a companion for a URL or root-absolute src that shares its file name (F029)", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/nav-bar/nav-bar.html",
+      "src/components/nav-bar/nav-bar.js",
+    ]);
+    const remote = [
+      "https://cdn.example.com/widgets/nav-bar.js",
+      "HTTP://cdn.example.com/nav-bar.js",
+      "//cdn.jsdelivr.net/npm/nav-bar.js",
+      "/vendor/nav-bar.js",
+      "\\vendor\\nav-bar.js",
+      "data:text/javascript,nav-bar.js",
+    ];
+    mockReadFile.mockImplementation(async (path: string) =>
+      Buffer.from(
+        path.endsWith(".js")
+          ? 'console.log("local companion");'
+          : remote
+              .map((src) => `<script src="${src}" defer></script>`)
+              .join("") + '<script src="nav-bar.js"></script>',
+      ),
+    );
+
+    const html = (await listComponents())["nav-bar"].fileContent;
+
+    for (const src of remote) expect(html).toContain(`src="${src}"`);
+    expect(html.match(/local companion/g)).toHaveLength(1);
+  });
+
+  it("resolves a relative src with folders against the component's folder (F029)", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/nav-bar/nav-bar.html",
+      "src/components/nav-bar/lib/helper.js",
+    ]);
+    mockReadFile.mockImplementation(async (path: string) =>
+      Buffer.from(
+        path.endsWith(".js")
+          ? 'console.log("helper");'
+          : [
+              "./lib/helper.js",
+              "lib/helper.js",
+              "lib/../lib/helper.js",
+              "helper.js",
+              "./helper.js",
+              "../other/helper.js",
+              "vendor/helper.js",
+            ]
+              .map((src) => `<script src="${src}"></script>`)
+              .join(""),
+      ),
+    );
+
+    const html = (await listComponents())["nav-bar"].fileContent;
+
+    // The first five name the companion (a bare name keeps matching it
+    // anywhere in the component's folder); the last two are other files.
+    expect(html.match(/console\.log\("helper"\)/g)).toHaveLength(5);
+    expect(html).toContain('src="../other/helper.js"');
+    expect(html).toContain('src="vendor/helper.js"');
+  });
+
   it('does not auto-inline companion scripts unless explicitly referenced with <script src="...">', async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/my-counter/my-counter.html",
