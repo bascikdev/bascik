@@ -942,7 +942,19 @@ export const declaredCssClassNames = (shieldedCss: string): string[] =>
 export const scopeCssClassSelectors = (
   shieldedCss: string,
   scopeKey: string,
-): string =>
+): string => {
+  // A dotted layer name (`@layer base.theme`, `layer(base.theme)`) is not a
+  // class selector; scopeLayerNames scopes it.
+  const layerShield = createContentShield(shieldedCss);
+  const css = shieldedCss.includes("layer")
+    ? shieldedCss.replace(/@layer\b[^{};]*|\blayer\([^()]*\)/gi, (layer) =>
+        layerShield.hide(layer),
+      )
+    : shieldedCss;
+  return layerShield.restore(scopeClassNames(css, scopeKey));
+};
+
+const scopeClassNames = (shieldedCss: string, scopeKey: string): string =>
   shieldedCss.replace(cssClassSelectorNames(), (raw) => {
     if (!raw.includes("\\"))
       return minifyAttributeName(`bascik__${scopeKey}__${raw}`);
@@ -1567,23 +1579,26 @@ export const scopeCustomPropertiesInStyleValue = (
  */
 // The name in an `@import … layer(name)` statement (strings and `url()`
 // contents shielded first).
-const IMPORT_LAYER_NAME = /(@import\b[^;{}]*?\blayer\(\s*)([\w-]+)(?=\s*\))/gi;
+const IMPORT_LAYER_NAME =
+  /(@import\b[^;{}]*?\blayer\(\s*)([\w-]+(?:\.[\w-]+)*)(?=\s*\))/gi;
+// The (dotted) names of an `@layer` block or ordering statement.
+const LAYER_NAME_LIST =
+  /@layer\s+([\w-]+(?:\.[\w-]+)*(?:\s*,\s*[\w-]+(?:\.[\w-]+)*)*)/g;
 
 export const scopeLayerNames = (css: string, componentName: string): string => {
   if (!css.includes("@layer") && !css.includes("layer(")) return css;
   const layerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
-  shielded.replace(
-    /@layer\s+([\w-]+(?:\s*,\s*[\w-]+)*)/g,
-    (_: string, nameList: string) => {
-      nameList.split(",").forEach((n) => layerNames.add(n.trim()));
-      return "";
-    },
-  );
+  // Each segment of a dotted name (`base.theme`) is a layer name of its own,
+  // so `@layer base.theme` and `@layer base { @layer theme }` stay the same
+  // sublayer.
+  for (const [, nameList] of shielded.matchAll(LAYER_NAME_LIST))
+    for (const [segment] of nameList.matchAll(/[\w-]+/g))
+      layerNames.add(segment);
   // A preserved remote `@import url(…) layer(name)` puts its rules in a layer
   // of this component too.
   for (const [, , name] of shielded.matchAll(IMPORT_LAYER_NAME))
-    layerNames.add(name);
+    for (const [segment] of name.matchAll(/[\w-]+/g)) layerNames.add(segment);
   if (layerNames.size === 0) return css;
   const scopedNames = new Map<string, string>();
   layerNames.forEach((name) => {
@@ -1592,16 +1607,18 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
       minifyAttributeName(`bascik__${componentName}__layer__${name}`),
     );
   });
+  const scopeSegments = (names: string): string =>
+    names.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name);
   const replaced = shielded
     .replace(
-      /(@layer\s+)([\w-]+(?:\s*,\s*[\w-]+)*)/g,
-      (_: string, prefix: string, nameList: string) =>
-        `${prefix}${nameList.replace(/[\w-]+/g, (name) => scopedNames.get(name) ?? name)}`,
+      LAYER_NAME_LIST,
+      (match: string, nameList: string) =>
+        `${match.slice(0, match.length - nameList.length)}${scopeSegments(nameList)}`,
     )
     .replace(
       IMPORT_LAYER_NAME,
       (_: string, prefix: string, name: string) =>
-        `${prefix}${scopedNames.get(name) ?? name}`,
+        `${prefix}${scopeSegments(name)}`,
     );
   return restore(replaced);
 };

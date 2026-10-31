@@ -3167,3 +3167,60 @@ describe("hoistCssImports – nested @layer statements", () => {
     expect(hoistCssImports(css)).toBe(css);
   });
 });
+
+describe("dotted @layer names", () => {
+  const s = (name: string) => `bascik__c__layer__${name}`;
+
+  it("scopes every segment of a dotted layer name", () => {
+    expect(scopeLayerNames("@layer base.theme { .a {} }", "c")).toBe(
+      `@layer ${s("base")}.${s("theme")} { .a {} }`,
+    );
+  });
+
+  it("names the same sublayer as nested @layer blocks", () => {
+    const out = scopeLayerNames(
+      "@layer base.theme { .a {} }\n@layer base { @layer theme { .b {} } }",
+      "c",
+    );
+    expect(out).toBe(
+      `@layer ${s("base")}.${s("theme")} { .a {} }\n@layer ${s("base")} { @layer ${s("theme")} { .b {} } }`,
+    );
+  });
+
+  it("scopes each dotted name of an ordering statement and an import", () => {
+    expect(
+      scopeLayerNames(
+        "@layer base.theme, base.reset;\n@import url(https://x.test/a.css) layer(base.vendor);",
+        "c",
+      ),
+    ).toBe(
+      `@layer ${s("base")}.${s("theme")}, ${s("base")}.${s("reset")};\n@import url(https://x.test/a.css) layer(${s("base")}.${s("vendor")});`,
+    );
+  });
+
+  it("keeps the class pass away from layer names in both scoping paths", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>@layer base.theme { .a { color: red } }</style>",
+      "c",
+    );
+    expect(html).toBe(
+      `<style>@layer ${s("base")}.${s("theme")} { .bascik__c__a { color: red } }</style>`,
+    );
+    const component = prefixElementAttribute(
+      {
+        name: "c",
+        fileContent: '<p class="a">x</p>',
+        cssFileContent:
+          "@layer base.theme { .a { color: red } }\n@import url(https://x.test/a.css) layer(base.vendor);",
+      },
+      "class",
+      "inst1234",
+    );
+    expect(component.cssFileContent).toContain(
+      `@layer ${s("base")}.${s("theme")} { .bascik__c__a { color: red } }`,
+    );
+    expect(component.cssFileContent).toContain(
+      `layer(${s("base")}.${s("vendor")})`,
+    );
+  });
+});
