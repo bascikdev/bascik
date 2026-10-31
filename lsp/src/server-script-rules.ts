@@ -678,9 +678,10 @@ function projectImportNames(body: string): Set<string> {
 }
 
 /**
- * The first project-imported name a hole uses (not as a member, `x.name`),
- * looking one step through a name bound in the script (`const first =
- * card(p)`), or undefined.
+ * The first project-imported function a hole calls or passes as a
+ * callback (`card(p)`, `items.map(card)`; not a member, `x.card`), looking
+ * one step through a name bound in the script (`const first = card(p)`),
+ * or undefined.
  */
 function projectHelperIn(
   expr: string,
@@ -689,8 +690,17 @@ function projectHelperIn(
 ): string | undefined {
   if (names.size === 0) return undefined;
   const find = (text: string): string | undefined => {
-    for (const m of text.matchAll(/(?<![\w$.])([\w$]+)(?:\.[\w$]+)*/g))
-      if (names.has(m[1])) return m[0];
+    for (const m of text.matchAll(/(?<![\w$.])([\w$]+)(?:\.[\w$]+)*/g)) {
+      if (!names.has(m[1])) continue;
+      const after = text.slice(
+        m.index + m[0].length,
+        m.index + m[0].length + 16,
+      );
+      // Called (`card(p)`), or passed as a callback (`.map(card)`).
+      if (/^\s*\(/.test(after)) return m[0];
+      const before = text.slice(Math.max(0, m.index - 16), m.index);
+      if (/[(,]\s*$/.test(before) && /^\s*[,)]/.test(after)) return m[0];
+    }
     return undefined;
   };
   const direct = find(expr);

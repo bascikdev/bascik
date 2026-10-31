@@ -1247,6 +1247,18 @@ describe("a hole that calls a project module's function gets no wrap fix (review
     expect(diags[0].template?.fixable).toBe(false);
   });
 
+  it("a function passed as a callback counts; an imported value that is not called keeps the fix", () => {
+    const callback = diagsOf(
+      'import { productCard } from "@/lib/cards.ts";\nexport default () => `<main>${products.map(productCard)}</main>`;',
+    );
+    expect(callback[0].template?.fixable).toBe(false);
+    expect(callback[0].message).toContain("productCard() comes from");
+    const value = diagsOf(
+      'import { siteName, NOTE } from "@/lib/site.ts";\nexport default () => `<h1>${siteName}</h1><p>${[NOTE, siteName].join(" ")}</p>`;',
+    );
+    expect(value.every((d) => !d.message.includes("comes from"))).toBe(true);
+  });
+
   it("a package's function and a local function keep the fix", () => {
     expect(
       diagsOf(
