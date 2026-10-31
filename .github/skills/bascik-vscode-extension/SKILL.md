@@ -19,7 +19,8 @@ extensions/vscode-bascik/
 │   ├── extension.ts            # activate(): starts the language client and waits for the server's initialize
 │   ├── client-options.ts       # Document selector and the server bundle path (no vscode import, so it is unit-testable)
 │   ├── server-bundle.test.ts   # Vitest: starts the bundled server and talks to it over the protocol
-│   └── test/extension.test.ts  # VS Code integration suite (Mocha, runs in a real editor)
+│   ├── test/extension.test.ts  # VS Code integration suite (Mocha, runs in a real editor)
+│   └── test-no-html/           # The same, in an editor with the built-in HTML language features disabled
 ├── build.mjs                   # tsc (typecheck, tests into out/), then esbuild bundles dist/extension.js and dist/server.js
 ├── syntaxes/, snippets/        # TextMate injection grammar and API route snippets
 └── package.json                # Manifest with contribution points
@@ -68,7 +69,8 @@ Highlighting is a TextMate injection into `text.html`, the prefix of `text.html.
 yarn ext:compile       # regenerate compatibility rules, then build.mjs: tsc, bundle dist/extension.js and dist/server.js
 yarn ext:typecheck
 yarn ext:unit          # includes server-bundle.test.ts, which builds and starts the real server bundle
-yarn ext:e2e           # compiles, then runs the integration suite in a real VS Code
+yarn ext:e2e           # compiles, then runs both real-editor configurations in .vscode-test.cjs (out/test, and
+                       # out/test-no-html with the built-in HTML language features disabled)
 yarn lsp:unit          # the analysis itself
 ```
 

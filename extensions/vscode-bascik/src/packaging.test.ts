@@ -46,11 +46,17 @@ describe("extension packaging", () => {
     expect(outDir === "dist" || outDir.startsWith("dist/")).toBe(false);
   });
 
-  it("runs the real-editor suite from the tests tsc emits", () => {
-    const config = createRequire(__filename)(
+  it("runs every real-editor configuration from the tests tsc emits", () => {
+    const loaded = createRequire(__filename)(
       join(extensionRoot, ".vscode-test.cjs"),
-    ) as { files: string };
-    expect(config.files.startsWith(`${tscOutDir()}/`)).toBe(true);
+    ) as { files: string } | { files: string }[];
+    const configs = Array.isArray(loaded) ? loaded : [loaded];
+    expect(configs.length).toBeGreaterThan(0);
+    for (const config of configs) {
+      expect(config.files.startsWith(`${tscOutDir()}/`), config.files).toBe(
+        true,
+      );
+    }
   });
 
   it("ships the two bundles from dist/ and nothing else built", () => {
