@@ -20,6 +20,7 @@ import {
   resolveLocalImport,
 } from "./lib/build-scripts.mjs";
 import { listComponents, tagNameProblem } from "./lib/components.mjs";
+import { handWrittenEscapers, isTestFile } from "./lib/escapers.mjs";
 import {
   checkAlt,
   checkClickable,
@@ -65,6 +66,11 @@ Rules:
                        on every page, so use <script data-bascik-build-once>
   once-reads-page      A <script data-bascik-build-once> that reads page context, which is empty there: use
                        <script data-bascik-build>, which runs per page
+  hand-written-escaper A function that replaces & and < with entities, in a .ts or .js file (helpers, companions,
+                       exec scripts) or an inline script: build markup with html from @bascik/bascik/html, which
+                       escapes for where each value lands and blocks javascript: URLs; a browser script sets
+                       textContent instead. Test files, decoders, and an escaper whose comment says it writes XML
+                       (a feed, a sitemap) are skipped
 
 Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
 checked by the bascik-seo audit):
@@ -499,6 +505,87 @@ function checkJsFiles(root, layout, options, findings) {
         ? `Use ${tsName} if the tool reads TypeScript config.`
         : `Rename it to ${tsName}, add types, and update its imports (with the .ts extension). Node runs it directly; keep to erasable syntax (no enum or namespace).`,
     });
+  }
+}
+
+const SCRIPT_FILE_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+
+const NODE_ESCAPER_FIX =
+  'Build the markup with html: import { html } from "@bascik/bascik/html" and return html`<p>${value}</p>`, passing each value as it is. It escapes for where the value lands, turns javascript: URLs into about:invalid, and throws where escaping cannot help (an event handler, a <script> body). Use raw() only for markup the project wrote or sanitized, json() for JSON-LD, and esc() or safeUrl() for a string built without html. Delete the escaper and keep its tests, now checking String(output). If it writes XML (a feed, a sitemap), keep it and say so in a comment above it.';
+const BROWSER_ESCAPER_FIX =
+  "Build the elements with document.createElement and set textContent (or clone a <template> and fill its text), so no value is parsed as HTML. A client script cannot import @bascik/bascik/html, because Bascik does not bundle client scripts; if the markup does not change in the browser, render it at build time with html in a build script instead.";
+
+function escaperFinding(file, line, name, browser) {
+  const what = name ? `${name}() is` : "This is";
+  return {
+    rule: "hand-written-escaper",
+    level: "warn",
+    file,
+    line,
+    message: `${what} a hand-written HTML escaper${browser ? " in a browser script" : ""}. It escapes text but not URLs or script contexts, and every site that copies it carries its own.`,
+    suggestion: browser ? BROWSER_ESCAPER_FIX : NODE_ESCAPER_FIX,
+  };
+}
+
+/**
+ * hand-written-escaper: in every script file of the project (helpers, component companions, API routes, exec
+ * scripts) and every inline script of a page or component. A file a plain <script src> loads is browser code.
+ */
+function checkEscapers(root, docs, layout, importRoot, findings) {
+  const browserFiles = new Set();
+  for (const doc of docs) {
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const type = (node.attrs.type ?? "").trim().toLowerCase();
+      const browser =
+        !isNodeScript(node) &&
+        (BROWSER_SCRIPT_TYPES.has(type) || type === "text/typescript");
+      if (node.attrs.src !== undefined) {
+        if (!browser) return false;
+        // A client src is a URL relative to the file: "name.ts" means "./name.ts".
+        const src = node.attrs.src.trim();
+        if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src) || src.startsWith("/"))
+          return false;
+        const target = resolveLocalImport(
+          /^(?:\.{1,2}\/|@\/)/.test(src) ? src : `./${src}`,
+          dirname(doc.path),
+          importRoot,
+        );
+        if (target?.found) browserFiles.add(resolve(target.file));
+        return false;
+      }
+      if (!browser && !isNodeScript(node)) return false;
+      const raw = doc.source.slice(node.openEnd, node.end);
+      const firstLine = doc.source.slice(0, node.openEnd).split("\n").length;
+      for (const escaper of handWrittenEscapers(raw))
+        findings.push(
+          escaperFinding(
+            doc.file,
+            firstLine + escaper.line - 1,
+            escaper.name,
+            browser,
+          ),
+        );
+      return false;
+    });
+  }
+  const skipped = [
+    layout.outDir,
+    ...SKIPPED_DIRS.map((dir) => join(root, dir)),
+  ];
+  for (const path of walkFiles(root, SCRIPT_FILE_EXTENSIONS)) {
+    if (/\.d\.[cm]?ts$|\.min\.js$/i.test(path) || isTestFile(path)) continue;
+    if (skipped.some((dir) => insideDir(path, dir))) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const file = relative(root, path).replace(/\\/g, "/");
+    const browser = browserFiles.has(resolve(path));
+    for (const escaper of handWrittenEscapers(code))
+      findings.push(escaperFinding(file, escaper.line, escaper.name, browser));
   }
 }
 
@@ -957,6 +1044,9 @@ export async function auditProject(root, options = {}) {
     configModule?.default?.scripts?.importRoot ?? "src",
   );
   for (const doc of docs) checkBuildScripts(doc, root, importRoot, findings);
+
+  // hand-written-escaper
+  checkEscapers(root, docs, { outDir }, importRoot, findings);
 
   // js-not-ts
   for (const doc of docs) checkScripts(doc, options, findings, stats);

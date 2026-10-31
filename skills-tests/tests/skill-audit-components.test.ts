@@ -2,14 +2,22 @@
 // report nothing, the misuse cases (typo'd flags, a root that is not a project), and the repository's starter site.
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   auditProject,
   suggestTagName,
 } from "../../skills/bascik/scripts/audit-components.mjs";
+import { handWrittenEscapers } from "../../skills/bascik/scripts/lib/escapers.mjs";
 import { parseMarkup } from "../../skills/bascik/scripts/lib/markup.mjs";
 import { buildComponentFiles } from "../../skills/bascik/scripts/new-component.mjs";
 
@@ -1420,6 +1428,218 @@ describe("audit-components: semantic HTML", () => {
   });
 });
 
+describe("handWrittenEscapers", () => {
+  const lines = (code: string) =>
+    handWrittenEscapers(code).map((e: { line: number }) => e.line);
+
+  it("finds a character-class escaper, a replace chain, an entity map, and a replaceAll chain, once each", () => {
+    expect(
+      lines(`const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (ch) => ENTITIES[ch]);`),
+    ).toEqual([1]);
+    expect(
+      lines(`export function esc2(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}`),
+    ).toEqual([1]);
+    expect(
+      lines(`const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>]/g, (ch) => ENTITIES[ch]);`),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const clean = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const escape = (s) => String(s).replace(/[<&]/g, (c) => \`&#\${c.charCodeAt(0)};\`);`,
+      ),
+    ).toEqual([1]);
+  });
+
+  it("names the escaper when it can", () => {
+    expect(
+      handWrittenEscapers(`const escapeAttr = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");`)[0].name,
+    ).toBe("escapeAttr");
+  });
+
+  it("reports two escapers far apart in one file separately", () => {
+    const filler = "const x = 1;\n".repeat(20);
+    expect(
+      lines(
+        `const a = (s: string) => s.replace(/[&<]/g, "");\n${filler}const b = (s: string) => s.replace(/&/g, "&amp;");`,
+      ),
+    ).toEqual([1, 22]);
+  });
+
+  it("leaves decoders, slug helpers, html, esc, and plain & alone", () => {
+    expect(
+      lines(`const decode = (text: string) =>
+  text
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");`),
+    ).toEqual([]);
+    expect(lines(`const ENTITIES = { "&amp;": "&", "&lt;": "<" };`)).toEqual(
+      [],
+    );
+    expect(
+      lines(`export const slugify = (t: string) => t.replace(/&/g, " and ");`),
+    ).toEqual([]);
+    expect(
+      lines(`import { esc, html } from "@bascik/bascik/html";
+export const card = (t: string) => html\`<p>\${t}</p>\`;
+export const label = (t: string) => esc(t);`),
+    ).toEqual([]);
+    expect(lines(`const a = b && c < d;`)).toEqual([]);
+  });
+
+  it("keeps an escaper whose comment says it writes XML, and only then", () => {
+    expect(
+      lines(`// Atom is XML, not HTML: html's URL and context rules do not apply, so escape the five XML characters here.
+const xml = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);`),
+    ).toEqual([]);
+    expect(
+      lines(`/**
+ * Escape text for the RSS feed.
+ */
+function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`),
+    ).toEqual([]);
+    // "xml" in code, not in a comment, is not an explanation.
+    expect(
+      lines(`const out = "feed.xml";
+const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([2]);
+  });
+});
+
+describe("audit-components: hand-written-escaper", () => {
+  const withFiles = (extra: Record<string, string>) =>
+    project({ ...clean, ...extra });
+  const escaperFindings = (findings: Finding[]) =>
+    findings.filter((f) => f.rule === "hand-written-escaper");
+
+  it("warns about an escaper in a src/lib helper, at its file:line, and points to @bascik/bascik/html", async () => {
+    const root = withFiles({
+      "src/lib/cards.ts": `export interface Card { title: string }
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+export const card = (c: Card) => \`<h2>\${escapeHtml(c.title)}</h2>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      rule: "hand-written-escaper",
+      level: "warn",
+      file: "src/lib/cards.ts",
+      line: 2,
+    });
+    expect(found[0].message).toMatch(
+      /escapeHtml\(\) is a hand-written HTML escaper/,
+    );
+    expect(found[0].suggestion).toContain(
+      'import { html } from "@bascik/bascik/html"',
+    );
+    expect(found[0].suggestion).toMatch(/raw\(\)/);
+    expect(found[0].suggestion).toMatch(/json\(\)/);
+  });
+
+  it("warns about an escaper in a component's .ts companion that a build script imports", async () => {
+    const root = withFiles({
+      "src/components/site-footer/site-footer.html": `<footer data-testid="site-footer">
+  <script data-bascik-build-once type="text/typescript">
+    import { links } from "./links.ts";
+    export default () => links();
+  </script>
+</footer>
+`,
+      "src/components/site-footer/links.ts": `const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+export const links = () => \`<a href="/about">\${esc("About")}</a>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/site-footer/links.ts:1",
+    ]);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("warns about an escaper in an inline build or server script, at the page line", async () => {
+    const root = withFiles({
+      "src/pages/search.html": page(`      <h1>Search</h1>
+      <script data-bascik-server type="text/typescript">
+        const escape = (s: string) => s.replace(/[&<>]/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+        export default (request: Request) =>
+          \`<p>\${escape(new URL(request.url).searchParams.get("q") ?? "")}</p>\`;
+      </script>`),
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0].file).toBe("src/pages/search.html");
+    expect(found[0].line).toBe(11);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("tells a browser script to use textContent, since a client script cannot import @bascik/bascik/html", async () => {
+    const root = withFiles({
+      "src/components/signup-form/signup-form.ts": `const status = document.getElementById("status") as HTMLElement;
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+status.innerHTML = \`<b>\${escapeHtml(location.hash)}</b>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/signup-form/signup-form.ts:2",
+    ]);
+    expect(found[0].message).toMatch(/browser script/);
+    expect(found[0].suggestion).toMatch(/textContent/);
+    expect(found[0].suggestion).not.toContain("import { html }");
+  });
+
+  it("leaves an XML escaper with a comment, a test file, a decoder, and code that uses html alone", async () => {
+    const root = withFiles({
+      "scripts/feed.ts": `// Atom is XML, not HTML, so html does not apply: escape the five XML characters by hand.
+const xml = (s: string) => s.replace(/[&<>"']/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+export const entry = (t: string) => \`<title>\${xml(t)}</title>\`;
+`,
+      "src/lib/cards.test.ts": `const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+export const expected = escapeHtml("<b>");
+`,
+      "src/lib/decode.ts": `export const decode = (t: string) => t.replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+`,
+      "src/lib/card.ts": `import { html, type SafeHtml } from "@bascik/bascik/html";
+export const card = (t: string): SafeHtml => html\`<h2>\${t}</h2>\`;
+`,
+    });
+    expect(escaperFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("does not read dist/ or node_modules", async () => {
+    const escaper = `export const e = (s) => s.replace(/[&<>]/g, (c) => "&#" + c.charCodeAt(0) + ";");\n`;
+    const root = withFiles({
+      "dist/js/app.js": escaper,
+      "node_modules/some-lib/index.js": escaper,
+    });
+    expect(
+      escaperFindings((await audit(root, { allowJs: true })).findings),
+    ).toEqual([]);
+  });
+});
+
 describe("audit-components CLI", () => {
   const cli = (args: string[], cwd?: string) =>
     spawnSync(process.execPath, [script, ...args], {
@@ -1496,6 +1716,7 @@ describe("audit-components CLI", () => {
       "missing-alt",
       "unlabeled-control",
       "missing-main",
+      "hand-written-escaper",
     ])
       expect(run.stdout).toContain(rule);
   });
@@ -1597,6 +1818,25 @@ describe("new-component scaffolds TypeScript by default", () => {
     expect(findings.map((f) => `${f.rule} ${f.file}`)).toEqual([
       "js-not-ts src/components/old-toggle/old-toggle.html",
     ]);
+  });
+});
+
+describe("the examples build markup with html", () => {
+  it("have no hand-written HTML escaper in any example component, the starter site, or its scripts", () => {
+    const examples = fileURLToPath(new URL("../../examples", import.meta.url));
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "dist") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(?:ts|mts|js|mjs|html)$/.test(entry.name))
+          for (const escaper of handWrittenEscapers(readFileSync(full, "utf8")))
+            found.push(`${relative(examples, full)}:${escaper.line}`);
+      }
+    };
+    walk(examples);
+    expect(found).toEqual([]);
   });
 });
 
