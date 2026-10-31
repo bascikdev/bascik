@@ -346,13 +346,16 @@ export function analyzeServerScriptSource(
       markupLike &&
       !isMessageArgument(body, literal.start);
     const pending: ServerScriptDiagnostic[] = [];
+    // An XML document or fragment (a sitemap, an RSS or Atom feed): html
+    // builds HTML, so it gets esc() advice and no fix.
+    const xml = markup && XML_TEMPLATE.test(literal.parts[0]);
     // Where each hole lands, read once for the whole template.
     const scanned = scanTemplateHtml(literal.parts);
     // The fix puts html before the backtick, so a tagged template and one
     // where html would throw (a tag name, an attribute name, a comment) get
     // no fix.
     const throwsAt = scanned.throwsAt;
-    let fixable = markup && !plainTag && throwsAt === -1;
+    let fixable = markup && !plainTag && !xml && throwsAt === -1;
     for (const hole of literal.holes) {
       const context = scanned.holes[hole.index - 1];
       // A placeholder inside a <!-- --> comment within the literal is skipped.
@@ -486,8 +489,19 @@ export function analyzeServerScriptSource(
 
       const exempt = isExempt(hole.expr, ctx);
       if (markup && !exempt) {
-        const head = `This markup template (line ${lineOf(literal.start)}) interpolates \${${hole.expr.trim()}} (hole ${hole.index}) without html.`;
         const escaper = handEscaper(hole.expr);
+        if (xml) {
+          // Any entity escaper is right for XML text and quoted values.
+          if (escaper !== undefined) continue;
+          pending.push({
+            code: UNESCAPED_MARKUP_RULE,
+            message: `This XML template (line ${lineOf(literal.start)}) interpolates \${${hole.expr.trim()}} (hole ${hole.index}) without escaping. html\`...\` builds HTML, not XML, so escape the value with esc() from @bascik/bascik/html (its entities are valid XML too), or with an XML escaper that has a comment saying it is for XML.`,
+            severity: "warning",
+            ...at,
+          });
+          continue;
+        }
+        const head = `This markup template (line ${lineOf(literal.start)}) interpolates \${${hole.expr.trim()}} (hole ${hole.index}) without html.`;
         // The quick fix would escape twice: the escaper's output, or the
         // markup in a joined string, would show as text.
         if (escaper !== undefined || isJoined(hole.expr, joined))
@@ -574,6 +588,10 @@ export function analyzeServerScriptSource(
 
   return diagnostics;
 }
+
+/** A template whose first tag is an XML prolog or the root of a sitemap or a feed. */
+const XML_TEMPLATE =
+  /^\s*<(?:\?xml\b|(?:rss|feed|urlset|sitemapindex|url|loc|channel|item|entry)(?=[\s/>]))/;
 
 /** A .join() of html values inside html: the joined string is escaped. */
 export const JOINED_RULE = "html-joined-string";

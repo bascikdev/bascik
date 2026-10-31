@@ -853,9 +853,9 @@ describe("hand-written-html-escaper in scripts", () => {
 
 describe("server-script-unescaped-markup: an XML escaper that says so is trusted in its own file", () => {
   it("calls of a commented XML escaper are exempt; an uncommented one gets the escaper message", () => {
-    const fn = `function escapeXml(s) {\n  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n}\n`;
+    const fn = `function escapeText(s) {\n  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n}\n`;
     const use =
-      "export const item = (t) => `<item><title>${escapeXml(t)}</title></item>`;\n";
+      "export const item = (t) => `<li><b>${escapeText(t)}</b></li>`;\n";
     const commented = `// RSS is XML, so the feed keeps its own escaper.\n${fn}${use}`;
     expect(analyze(commented, { directive: "module" })).toEqual([]);
     const codes = analyze(fn + use, { directive: "module" }).map((d) => d.code);
@@ -1164,5 +1164,40 @@ describe("plain text and generated code in build-time code are not markup (revie
     expect(
       module("export const c = (t) => `<td colspan=${t}>x</td>`;"),
     ).toEqual(["server-script-sink-unquoted-attribute"]);
+  });
+});
+
+describe("XML templates get XML advice and no html fix (review round 2)", () => {
+  const module = (body: string) =>
+    analyze(body, { directive: "module" }).filter((d) => d.code === RULE);
+
+  it.each([
+    'export const sitemap = (x: string) => `<?xml version="1.0"?><urlset><url><loc>${x}</loc></url></urlset>`;',
+    "export const entry = (x: string) => `<url><loc>${x}</loc></url>`;",
+    "export const item = (x: string) => `\n  <item>\n    <title>${x}</title>\n  </item>`;",
+    'export const feed = (x: string) => `<feed xmlns="http://www.w3.org/2005/Atom"><title>${x}</title></feed>`;',
+    'export const rss = (x: string) => `<rss version="2.0"><channel><title>${x}</title></channel></rss>`;',
+  ])("%s", (body) => {
+    const diags = module(body);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].template?.fixable).toBe(false);
+    expect(diags[0].message).toContain("XML");
+    expect(diags[0].message).toContain("esc()");
+    expect(diags[0].message).not.toContain("Wrap the template");
+  });
+
+  it("an escaper call in an XML template is escaped already", () => {
+    expect(
+      module(
+        "export const entry = (x: string) => `<url><loc>${escapeHtml(x)}</loc></url>`;",
+      ),
+    ).toEqual([]);
+  });
+
+  it("an HTML template that mentions an item is still HTML", () => {
+    const diags = module(
+      'export const c = (x: string) => `<li class="item">${x}</li>`;',
+    );
+    expect(diags[0].template?.fixable).toBe(true);
   });
 });
