@@ -88,6 +88,52 @@ describe("collectSourceHooks", () => {
     ]);
   });
 
+  it("keeps Vue, Angular and Svelte bindings and template values as dynamic, not as static hooks", () => {
+    const text = [
+      '<button :data-testid="`row-${id}`">Row</button>',
+      '<span v-bind:data-testid="label">Label</span>',
+      '<i [attr.data-testid]="hookId"></i>',
+      '<b data-testid="{{ id }}"></b>',
+      '<li data-testid="plan-{plan.id}"></li>',
+      '<p data-cy="<%= user.id %>"></p>',
+      '<em data-testid="static">Static</em>',
+    ].join("\n");
+    const hooks = collectSourceHooks(text, "src/Row.vue");
+    expect(
+      hooks.map(
+        (h: { value: string | null; dynamic: boolean; line: number }) => [
+          h.value,
+          h.dynamic,
+          h.line,
+        ],
+      ),
+    ).toEqual([
+      [null, true, 1],
+      [null, true, 2],
+      [null, true, 3],
+      [null, true, 4],
+      [null, true, 5],
+      [null, true, 6],
+      ["static", false, 7],
+    ]);
+    expect(
+      diffSourceHooks(hooks, [{ attr: "data-testid", value: "static" }]),
+    ).toEqual([]);
+  });
+
+  it("still reads a CSS attribute selector in source as a static hook", () => {
+    // A legacy test or querySelector call that names a hook is a static use of it, not a binding.
+    expect(
+      collectSourceHooks(
+        "document.querySelector('[data-testid=\"hero-cta\"]');",
+        "src/main.js",
+      ).map((h: { value: string | null; dynamic: boolean }) => [
+        h.value,
+        h.dynamic,
+      ]),
+    ).toEqual([["hero-cta", false]]);
+  });
+
   it("does not read look-alike attributes", () => {
     expect(
       collectSourceHooks(

@@ -12,10 +12,13 @@
  * the side whose fade started after the crawl's first look, so "See how it works" scrolled to the next heading there.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { loadPlaywright } from "../../skills/bascik-refactor/scripts/lib/project-deps.mjs";
 import {
   activate,
   diffEffects,
+  discover,
   observeVolatile,
 } from "../../skills/bascik-refactor/scripts/interaction-crawl.mjs";
 import { packageDir } from "./refactor-parity-fixtures.ts";
@@ -227,6 +230,183 @@ describe("what a page changes by itself, with the timing forced", () => {
       expect(effect?.scrollTarget).toBe("H2:Why it works");
     } finally {
       await context.close();
+    }
+  }, 60_000);
+});
+
+/**
+ * A menu button (and, with `twins`, a second look-alike) whose id a script randomizes on every load, so the selector
+ * recorded at discovery finds nothing after activate()'s reload.
+ */
+const randomIds = (twins: boolean) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>Menu · Milk frother</title></head>
+<body>
+<header>
+  <button type="button" aria-expanded="false" data-role="menu">Menu</button>
+  ${twins ? '<button type="button" aria-expanded="false" data-role="menu">Menu</button>' : ""}
+</header>
+<script>
+for (const button of document.querySelectorAll("[data-role=menu]")) {
+  button.id = "menu-" + Math.random().toString(16).slice(2, 6);
+  button.addEventListener("click", () => button.setAttribute("aria-expanded", "true"));
+}
+</script>
+</body></html>`;
+
+describe("an element whose selector changes between loads", () => {
+  const menu = {
+    selector: "#menu-3f9a",
+    anchor: {
+      mode: "click",
+      tag: "BUTTON",
+      role: "button",
+      name: "Menu",
+      text: "Menu",
+      href: null,
+      testId: null,
+    },
+  };
+  const effectOnMenu = async (twins: boolean) => {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      await tab.route(
+        "http://crawl.test/**",
+        (route: { fulfill: (o: object) => Promise<void> }) =>
+          route.fulfill({ contentType: "text/html", body: randomIds(twins) }),
+      );
+      return await activate(tab, "http://crawl.test/", "/", menu, {
+        masks: [],
+        volatile: {},
+        settleMs: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  };
+
+  it("is found again by its role and name, so its effect is still measured", async () => {
+    const effect = await effectOnMenu(false);
+    expect(effect?.changed.join("\n")).toContain(
+      "aria-expanded: false -> true",
+    );
+  }, 60_000);
+
+  it("is left unmeasured, not guessed, when look-alikes share its anchor", async () => {
+    // Two "Menu" buttons with fresh ids: picking either could measure the wrong one. diffEffects reports it.
+    expect(await effectOnMenu(true)).toBeNull();
+  }, 60_000);
+});
+
+/** A product page whose Add to cart button posts to the live site's cart API through fetch, next to a harmless menu. */
+const CART = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>Milk frother</title></head>
+<body>
+<header><button type="button" aria-expanded="false" data-testid="site-menu">Menu</button></header>
+<main>
+  <h1>Milk frother</h1>
+  <button type="button" data-testid="add-to-cart">Add to cart</button>
+  <div class="vote" style="cursor: pointer" data-testid="vote">Like</div>
+</main>
+<script>
+document.querySelector("[data-testid=site-menu]").addEventListener("click", (e) =>
+  e.currentTarget.setAttribute("aria-expanded", "true"),
+);
+document.querySelector("[data-testid=add-to-cart]").addEventListener("click", () =>
+  fetch("/api/cart", { method: "POST" }),
+);
+document.querySelector("[data-testid=vote]").addEventListener("click", () =>
+  fetch("/api/vote", { method: "POST" }),
+);
+</script>
+</body></html>`;
+
+describe("controls with side effects on the live site", () => {
+  const discovered = async (skip: string[]) => {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      await tab.route(
+        "http://crawl.test/**",
+        (route: { fulfill: (o: object) => Promise<void> }) =>
+          route.fulfill({ contentType: "text/html", body: CART }),
+      );
+      await tab.goto("http://crawl.test/");
+      const items = await discover(tab, [], skip);
+      return items.map(
+        (i: { anchor: { testId: string | null } }) => i.anchor.testId,
+      );
+    } finally {
+      await context.close();
+    }
+  };
+
+  it("a JS-handled button that posts is crawled like any other: the crawl is not read-only", async () => {
+    const ids = await discovered([]);
+    expect(ids).toContain("add-to-cart");
+    expect(ids).toContain("vote");
+  }, 60_000);
+
+  it("--skip-control keeps the crawl off the controls it names, button or listener-only element", async () => {
+    const ids = await discovered([
+      '[data-testid="add-to-cart"]',
+      '[data-testid="vote"]',
+    ]);
+    expect(ids).not.toContain("add-to-cart");
+    expect(ids).not.toContain("vote");
+    expect(ids).toContain("site-menu");
+  }, 60_000);
+});
+
+describe("a production origin that redirects to another origin", () => {
+  const ABOUT = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>About · Milk frother</title></head>
+<body><main><h1>About</h1><button type="button" aria-expanded="false" data-testid="about-more">More</button></main>
+<script>
+document.querySelector("[data-testid=about-more]").addEventListener("click", (e) =>
+  e.currentTarget.setAttribute("aria-expanded", "true"),
+);
+</script>
+</body></html>`;
+
+  it("records the URL as a path, as on the target, instead of a 'leaves the page' finding on every control", async () => {
+    // --prod http://localhost:<port> while production answers from http://127.0.0.1:<port> (a 301, like http to
+    // https or a bare domain to www).
+    const server = createServer((req, res) => {
+      if (String(req.headers.host).startsWith("localhost")) {
+        res.writeHead(301, {
+          location: `http://127.0.0.1:${port}${req.url}`,
+        });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end(ABOUT);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      const tab = await context.newPage();
+      const effect = await activate(
+        tab,
+        `http://localhost:${port}/`,
+        "/about",
+        '[data-testid="about-more"]',
+        { masks: [], volatile: {}, settleMs: 0 },
+      );
+      expect(tab.url()).toBe(`http://127.0.0.1:${port}/about`);
+      expect(effect?.url).toBe("/about");
+      expect(effect?.changed).toContain("aria-expanded: false -> true");
+    } finally {
+      await context.close();
+      await new Promise((r) => server.close(r));
     }
   }, 60_000);
 });

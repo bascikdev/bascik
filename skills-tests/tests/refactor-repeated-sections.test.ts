@@ -186,4 +186,23 @@ describe("parseCliArgs", () => {
     expect(args.targetSrc).toBe(".");
     expect(args.route).toEqual(["/", "/about"]);
   });
+
+  it("takes --mask like every other check, and rejects one that is not a selector", () => {
+    const base = [
+      "--prod",
+      "https://example.com",
+      "--target",
+      "http://localhost:8080",
+      "--route",
+      "/",
+      "--route",
+      "/about",
+    ];
+    expect(
+      parseCliArgs([...base, "--mask", '[data-testid="hero-carousel"]']).mask,
+    ).toEqual(['[data-testid="hero-carousel"]']);
+    expect(() =>
+      parseCliArgs([...base, "--mask", '[data-testid="hero-carousel"']),
+    ).toThrow(/--mask/);
+  });
 });

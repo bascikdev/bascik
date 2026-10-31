@@ -13,6 +13,7 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  masksOf,
   parseArgsFor,
   result,
   routesOf,
@@ -39,6 +40,8 @@ Options:
   --target <url>       Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>       Route to fingerprint (repeatable; two or more)
   --target-src <dir>   The Bascik project, holding src/pages and src/components (default .)
+  --mask <selector>    A documented dynamic region to leave out of fingerprints and signatures, such as a carousel
+                       (repeatable)
   --settle-ms <ms>     Least time after navigation before measuring (default 5000)
   --matrix <file>      Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>          Report folder (default artifacts/checks)
@@ -342,10 +345,13 @@ function collectSections(arg) {
     "LINK",
     "META",
   ]);
+  // A masked region (an autoplay carousel, a ticker) is left out of the fingerprint and the signature, and a section
+  // inside one is not collected at all.
+  const masked = (el) => isMasked(el, arg.masks);
   const tree = (el) => ({
     tag: tagOf(el),
     children: [...el.children]
-      .filter((c) => !SKIP.has(tagOf(c)))
+      .filter((c) => !SKIP.has(tagOf(c)) && !masked(c))
       .map((c) => tree(c)),
   });
   const pick = (el) => {
@@ -356,8 +362,10 @@ function collectSections(arg) {
   };
   const out = [];
   for (const el of document.querySelectorAll(arg.selector)) {
-    if (!isRendered(el)) continue;
-    const heading = el.querySelector("h1, h2, h3, h4, h5, h6");
+    if (!isRendered(el) || masked(el)) continue;
+    const heading = [...el.querySelectorAll("h1, h2, h3, h4, h5, h6")].find(
+      (h) => !masked(h),
+    );
     const label = norm(heading?.textContent) || accName(el);
     const signature = {};
     for (const [p, v] of Object.entries(pick(el))) signature[p] = v;
@@ -365,7 +373,8 @@ function collectSections(arg) {
     const visit = (node, path) => {
       const seen = new Map();
       for (const child of node.children) {
-        if (SKIP.has(tagOf(child)) || !isRendered(child)) continue;
+        if (SKIP.has(tagOf(child)) || !isRendered(child) || masked(child))
+          continue;
         const n = (seen.get(tagOf(child)) ?? 0) + 1;
         seen.set(tagOf(child), n);
         const sub = `${path}${path ? " " : ""}${tagOf(child)}${n > 1 ? `:${n}` : ""}`;
@@ -423,6 +432,7 @@ function collectSections(arg) {
 }
 
 async function sections(browser, origin, route, c, options) {
+  const masks = masksOf(options);
   return withPage(
     browser,
     origin,
@@ -432,8 +442,9 @@ async function sections(browser, origin, route, c, options) {
       inPage(page, collectSections, {
         selector: SECTION_SELECTOR,
         props: SIGNATURE_PROPS,
+        masks,
       }),
-    [],
+    masks,
     settleOf(options),
   );
 }

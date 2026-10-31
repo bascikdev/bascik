@@ -939,6 +939,42 @@ describe("withResponsePolicy with the build's csp-hashes.json", () => {
     );
   });
 
+  it("a 500 gets the 500 page's hashes, not the requested route's", async () => {
+    // A server script on /search threw: the Worker answers with src/pages/500.html, whose inline script wires Retry.
+    const failing = {
+      fetch: async () =>
+        page("<button>Retry</button><script>retry()</script>", {
+          status: 500,
+        }),
+    };
+    const csp = (
+      await withResponsePolicy(failing, {
+        cspHashes: {
+          ...MANIFEST,
+          "/500": { scripts: [sha("retry()")], styles: [] },
+        },
+      }).fetch(get("/search"), env, ctx)
+    ).headers.get("content-security-policy")!;
+    expect(csp).toContain(`'${sha("retry()")}'`);
+    expect(csp).not.toContain(`'${sha("app()")}'`);
+  });
+
+  it("misuse: a 500 with no 500 page in the build fails closed, with no hashes (the generic page has no inline code)", async () => {
+    const failing = {
+      fetch: async () =>
+        page("<h1>Internal Server Error</h1>", { status: 500 }),
+    };
+    const csp = (
+      await withResponsePolicy(failing, { cspHashes: MANIFEST }).fetch(
+        get("/search"),
+        env,
+        ctx,
+      )
+    ).headers.get("content-security-policy")!;
+    expect(csp).toMatch(/script-src 'self';/);
+    expect(csp).not.toMatch(/sha256-/);
+  });
+
   it("misuse: a route the build never recorded fails closed, with no hashes", async () => {
     const worker = { fetch: async () => page("<script>who()</script>") };
     const csp = (

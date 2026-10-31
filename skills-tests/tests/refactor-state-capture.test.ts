@@ -153,5 +153,20 @@ describe("parseCliArgs", () => {
       "/",
     ]);
     expect(args.out).toBe("artifacts/checks");
+    expect(args.skipControls).toEqual([]);
+  });
+
+  it("takes --skip-control like the interaction crawl, since it activates the same controls", () => {
+    const args = parseCliArgs([
+      "--prod",
+      "https://example.com",
+      "--target",
+      "http://localhost:8080",
+      "--route",
+      "/",
+      "--skip-control",
+      "[data-add-to-cart]",
+    ]);
+    expect(args.skipControls).toEqual(["[data-add-to-cart]"]);
   });
 });

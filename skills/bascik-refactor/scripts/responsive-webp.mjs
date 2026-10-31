@@ -16,7 +16,8 @@ const HELP = `Usage: node responsive-webp.mjs --src <image>... --out <dir> [--wi
 Writes <name>-<width>.webp for every width up to the source width and a manifest.json:
 { "sources": { "hero.png": { "width", "height" } },
   "images": { "hero.png": [{ "width", "path", "url", "bytes", "sha256" }] } }
-"url" is the root-relative address of each file, so a srcset built from it works on nested routes. Run it once and
+"url" is the root-relative address of each file, so a srcset built from it works on nested routes. A photo with an
+EXIF orientation (a phone photo) is written upright, and its width and height are the upright ones. Run it once and
 commit the output (or register it as a pre exec script); then print <img srcset> from the manifest.
 
 Options:
@@ -121,13 +122,21 @@ export async function generateResponsive({
       throw new Error(`cannot read ${file}: ${error.code ?? error.message}`);
     }
     const name = basename(file);
+    // A photo with an EXIF orientation of 5 to 8 (a phone held upright) is stored on its side: plan and record its
+    // displayed size, and rotate it upright before encoding, since the encoded WebP keeps no orientation tag.
     const meta = await sharp(input).metadata();
-    result.sources[name] = { width: meta.width, height: meta.height };
+    const turned = (meta.orientation ?? 1) >= 5;
+    const size = {
+      width: turned ? meta.height : meta.width,
+      height: turned ? meta.width : meta.height,
+    };
+    result.sources[name] = size;
     mkdirSync(out, { recursive: true });
     const stem = basename(file, extname(file));
     result.images[name] = [];
-    for (const width of planWidths(meta.width, widths)) {
+    for (const width of planWidths(size.width, widths)) {
       const buffer = await sharp(input)
+        .rotate()
         .resize({ width })
         .webp({ quality })
         .toBuffer();
