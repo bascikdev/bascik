@@ -313,7 +313,7 @@ describe.each([true, false])(
       expect(actual[1].transpiledHtmlBody).toContain("?instance=2");
     });
 
-    it("leaves an unknown tag and a component without content alone, like the wrapper", () => {
+    it("leaves an unknown tag alone and removes a component without content, like the wrapper", () => {
       const list: ComponentList = {
         ...componentList(),
         "empty-box": {
@@ -326,11 +326,16 @@ describe.each([true, false])(
       const viaC = viaCore(html, list, PAGE_PATH);
       expect(viaC.transpiledHtmlBody).toBe(viaW.transpiledHtmlBody);
       expect(instanceSummary(viaC)).toEqual(instanceSummary(viaW));
-      // A component without content ends the pass after its usage is
-      // stripped; what follows it on the page is left for a later pass.
-      expect(viaW.transpiledHtmlBody).toBe(
-        "<unknown-tag>x</unknown-tag><inner-box>kept</inner-box>",
+      // A component without content renders nothing, and the pass goes on
+      // to expand what follows it (F026: it used to end the pass there,
+      // leaving `<inner-box>kept</inner-box>` unexpanded).
+      expect(viaW.transpiledHtmlBody).toMatch(
+        /^<unknown-tag>x<\/unknown-tag><article class="[^"]+">kept<script>/,
       );
+      expect(viaW.transpiledHtmlBody).not.toMatch(/empty-box|gone/);
+      expect(instanceSummary(viaW).map(([name]) => name)).toEqual([
+        "inner-box",
+      ]);
     });
 
     it("reports a failed stage through onError, strips the tag and continues, like the wrapper logs and strips", () => {
@@ -878,5 +883,168 @@ describe("binding toggles at build time", () => {
     } as Partial<ExpandOptions>).transpiledHtmlBody;
     expect(html).toContain(`href="javascript:x"`);
     expect(html).toContain(`onclick="go()"`);
+  });
+});
+
+describe("expanded instances do not pin the page (F025)", () => {
+  beforeEach(() => {
+    (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+
+  it("drops each instance's usage slices before recording it", () => {
+    // `content` and `innerContent` are slices of the page string; kept on every
+    // recorded instance, each one pins a flat copy of the whole page, so memory
+    // grows as instances x page size until the page is done.
+    const html = `<p>${"x".repeat(1_000)}</p>${`<inner-box>slot</inner-box>`.repeat(20)}`;
+    const result = viaCore(html, componentList(), PAGE_PATH);
+    expect(result.usedComponents).toHaveLength(20);
+    for (const instance of result.usedComponents) {
+      expect(instance.content).toBeUndefined();
+      expect(instance.innerContent).toBeUndefined();
+      // Everything downstream reads is still there.
+      expect(instance.name).toBe("inner-box");
+      expect(instance.cssFileContent).toContain("{e:f}");
+    }
+  });
+
+  it("the wrapper's instances drop them too", () => {
+    const result = viaWrapper(
+      `<outer-box>a</outer-box><mid-box>b</mid-box>`,
+      componentList(),
+      PAGE_PATH,
+    );
+    expect(result.usedComponents.length).toBeGreaterThan(2);
+    expect(
+      result.usedComponents.filter(
+        (c) => c.content !== undefined || c.innerContent !== undefined,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("a component with an empty template (F026)", () => {
+  /** The page without script text, where inner-box's template names itself. */
+  const markup = (html: string): string =>
+    html.replace(/<script\b[\s\S]*?<\/script>/g, "");
+
+  beforeEach(() => {
+    (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+
+  const withStub = (): ComponentList => ({
+    ...componentList(),
+    "stub-card": {
+      fileName: "src/components/stub-card.html",
+      fileContent: "",
+    },
+  });
+
+  it("renders nothing for its usage and expands every component after it", () => {
+    const html = `<inner-box>1</inner-box><stub-card>gone</stub-card><inner-box>2</inner-box><glow-card></glow-card><inner-box>3</inner-box>`;
+    for (const result of [
+      viaCore(html, withStub(), PAGE_PATH),
+      viaWrapper(html, withStub(), PAGE_PATH),
+    ]) {
+      expect(result.transpiledHtmlBody).not.toContain("stub-card");
+      expect(result.transpiledHtmlBody).not.toContain("gone");
+      expect(markup(result.transpiledHtmlBody)).not.toMatch(
+        /<inner-box|<glow-card/,
+      );
+      expect(result.usedComponents.map((c) => c.name)).toEqual([
+        "inner-box",
+        "inner-box",
+        "glow-card",
+        "inner-box",
+      ]);
+      // The slot text of each instance landed in order.
+      const body = result.transpiledHtmlBody;
+      expect(body.indexOf(">1<")).toBeLessThan(body.indexOf(">2<"));
+      expect(body.indexOf(">2<")).toBeLessThan(body.indexOf(">3<"));
+    }
+  });
+
+  it("handles self-closing, unclosed, repeated and nested empty usages", () => {
+    const html =
+      `<stub-card /><inner-box>a</inner-box><stub-card></stub-card><stub-card></stub-card>` +
+      `<inner-box>b <stub-card>x</stub-card> c</inner-box><stub-card><inner-box>dropped</inner-box></stub-card>` +
+      `<inner-box>d</inner-box><stub-card>`;
+    const result = viaCore(html, withStub(), PAGE_PATH);
+    expect(markup(result.transpiledHtmlBody)).not.toMatch(
+      /<stub-card|<inner-box/,
+    );
+    // The usage's own content goes with it, nested usages included.
+    expect(result.transpiledHtmlBody).not.toContain("dropped");
+    expect(result.transpiledHtmlBody).toContain("b  c");
+    expect(result.usedComponents.map((c) => c.name)).toEqual([
+      "inner-box",
+      "inner-box",
+      "inner-box",
+    ]);
+  });
+
+  it("an empty component inside a template is removed and its siblings still expand", () => {
+    const list: ComponentList = {
+      ...withStub(),
+      "host-box": {
+        fileName: "src/components/host-box.html",
+        fileContent: `<div class="host"><stub-card></stub-card><inner-box>in host</inner-box></div>`,
+      },
+    };
+    const result = viaCore(
+      `<host-box></host-box><inner-box>after</inner-box>`,
+      list,
+      PAGE_PATH,
+    );
+    expect(markup(result.transpiledHtmlBody)).not.toMatch(
+      /<stub-card|<inner-box/,
+    );
+    expect(result.transpiledHtmlBody).toContain("in host");
+    expect(result.transpiledHtmlBody).toContain("after");
+  });
+
+  it("counts empty usages toward maxSubstitutions", () => {
+    expect(() =>
+      viaCore(
+        `<stub-card></stub-card>`.repeat(4),
+        withStub(),
+        PAGE_PATH,
+        freshState(),
+        {
+          limits: {
+            maxSubstitutions: 3,
+            maxOutputBytes: BUILD_EXPANSION_LIMITS.maxOutputBytes,
+          },
+        },
+      ),
+    ).toThrow(/\(3 substitutions\)/);
+  });
+});
+
+describe("usage attributes outside [\\w:-] reach the root (F027)", () => {
+  beforeEach(() => {
+    (BascikConfig.minify as { identifiers: boolean }).identifiers = false;
+  });
+
+  it("inherits @click, x-on:click.prevent, :class and hx-on::after-request whole", () => {
+    const list: ComponentList = {
+      "my-card": {
+        fileName: "src/components/my-card.html",
+        fileContent: `<div class="card"><span data-bascik-prop-title>t</span></div>`,
+      },
+    };
+    const html = `<main><my-card @click="open()" x-on:click.prevent="go()" :class="{a:1}" hx-on::after-request="done()" class="x" data-bascik-prop-title="Hi"></my-card></main>`;
+    for (const result of [
+      viaCore(html, list, PAGE_PATH),
+      viaWrapper(html, list, PAGE_PATH),
+    ]) {
+      const root = /<div [^>]*>/.exec(result.transpiledHtmlBody)?.[0] ?? "";
+      expect(root).toContain('@click="open()"');
+      expect(root).toContain('x-on:click.prevent="go()"');
+      expect(root).toContain(':class="{a:1}"');
+      expect(root).toContain('hx-on::after-request="done()"');
+      expect(root).not.toMatch(/x-on:click=""/);
+      expect(root).toMatch(/class="[^"]*card x"/);
+      expect(result.transpiledHtmlBody).toContain("<span>Hi</span>");
+    }
   });
 });

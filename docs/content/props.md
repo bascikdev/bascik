@@ -8,9 +8,13 @@ Props in Bascik borrow the same basic idea as props in React: pass values into a
 
 Add a `data-bascik-prop-{name}` attribute (no value) to any element in the component template. The element's inner content will be replaced with the prop value at build time.
 
+The receiver needs an end tag, since the value becomes its content. On a void element such as `<meta>` or `<img>`, or on an element the template leaves unclosed, the value is not written and Bascik warns, naming the component file; bind the value to an attribute instead (see [Put a prop in an attribute](#put-a-prop-in-an-attribute)). An end tag with attributes or a slash, such as `</p class="x">`, still closes the element, as it does in a browser.
+
 Set `data-bascik-prop-{name}="value"` on the component tag. The value is injected into the matching template element.
 
 Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostrophes render as text rather than markup. Use entity-encoded quotes such as `&quot;` or `&#39;` inside the usage attribute. Use a [slot](/slots) when the value should be interpreted as HTML.
+
+Character references in a prop value are decoded the way the browser decodes an attribute value, then the character is escaped once where it lands, so `data-bascik-prop-title="Milk &mdash; frother"` shows an em dash. Bascik decodes every numeric reference (`&#8212;`, `&#x2014;`), the named references whose character is ASCII (`&amp;`, `&quot;`, `&apos;`, `&colon;`), and the 252 named references of HTML 4, which cover Latin-1 letters and symbols (`&eacute;`, `&nbsp;`, `&copy;`), Greek letters, math symbols, arrows and typographic punctuation (`&mdash;`, `&hellip;`, `&rsquo;`, `&euro;`, `&trade;`). A named reference outside that set, or one without its closing `;`, stays as written and shows as text: write the character itself instead, or its numeric reference.
 
 A receiver on a `<script>` or `<style>` element is never filled: escaping cannot keep a value from running as code there. The element keeps the template's own text and Bascik warns. To hand a value to a script, bind it to a `data-*` attribute (see below) and read it from the element's `dataset`.
 

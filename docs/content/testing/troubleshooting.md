@@ -93,6 +93,10 @@ Same cause as the previous entry: Bascik has no allowlist of custom element name
 
 The full message is `warning: Component "nav" has the same name as a native HTML element. This may cause unexpected behavior — consider a hyphenated name like "my-nav".` Bascik prints it when the dev server starts or a build runs, and still loads the component. The VS Code extension does not flag native names; only the CLI does. A file such as `nav.html` or `div.html` then replaces every `<nav>` or `<div>` on your pages with the component, most likely breaking the site. Rename it to a hyphenated name like `site-nav.html`: a hyphen is how browsers and Bascik tell a custom element from a built-in one. The sibling warning `Component "card" is not hyphenated.` means the same thing one step earlier: custom elements need a hyphen. See [Component Naming and Hyphens](/components#component-naming-and-hyphens).
 
+### `warning: Component "stub-card" (src/components/stub-card.html) is empty`
+
+The full message ends `so every <stub-card> renders nothing until the file has markup.` Bascik prints it when the dev server starts or a build runs, for a component file that is empty or holds only whitespace, which is usually a file just created in the editor. Each usage of the tag, and whatever it wraps, is removed from the output; the rest of the page builds as usual. Add the component's markup, or delete the file if the tag belongs to a third-party web component (see [`components.external`](/configuration#componentsexternal)).
+
 ### Two component files define the same tag name
 
 The build fails with `error: two component files both define the tag <card>`, both file paths, and the note that "Component names come from the filename, so neither subfolders nor the roots listed in directory.components create separate namespaces." The tag is the filename up to its first dot, lowercased: `marketing/card.html` and `admin/card.html` are both `<card>`, and so are `card.html` and `card.v2.html`. Rename one, for example `marketing-card.html`. See [Subfolder Layout](/components#subfolder-layout).

@@ -250,7 +250,7 @@ export const blockedUrlKind = (
  * that can spell a scheme, a colon, or CSS syntax. Any other reference is
  * left as written, which a URL or CSS check reads as harmless text.
  */
-const ASCII_NAMED_REFERENCES: Readonly<Record<string, string>> = {
+export const ASCII_NAMED_REFERENCES: Readonly<Record<string, string>> = {
   Tab: "\t",
   NewLine: "\n",
   excl: "!",

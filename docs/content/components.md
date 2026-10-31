@@ -402,6 +402,8 @@ Components do not need literal HTML markup. A component can consist entirely of 
 Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. A companion `.css` file with the same base name (`feature-card.css` beside `feature-card.html`) is merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A directive script with `src=` (`data-bascik-build`, `data-bascik-server`, and the others) is never inlined: Bascik runs that file as a Node.js module. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
 > **Directory Isolation Rule:** Path resolution for companion files is strictly scoped to the component's directory or base filename. A component inside `src/components/demo-counter/` can only reference script or style files located inside its own folder. It cannot access files across other component directories.
+>
+> Only a relative `src` names a companion: `nav-bar.js`, `./nav-bar.js`, or `lib/helper.js`, resolved against the component's folder (a bare file name matches a companion anywhere in that folder). A URL such as `https://cdn.example.com/widgets/nav-bar.js` or `//cdn.example.com/nav-bar.js`, or a root-absolute path such as `/vendor/nav-bar.js`, is left as written for the browser to load, even when its file name matches a companion, so a wrapper component can share its name with the library it loads.
 
 <!-- demo:source-usage-card -->
 
@@ -531,6 +533,7 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 - If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), the CLI warns `Component "header" has the same name as a native HTML element.` but still loads the component, which then replaces every `<header>` on your pages and most likely breaks the site. The editor does not flag native names; only the CLI does.
 - If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
+- If a component file is empty (such as one just created in the editor), the CLI warns `Component "stub-card" (src/components/stub-card.html) is empty, so every <stub-card> renders nothing until the file has markup.` Each `<stub-card>` usage, and whatever it wraps, is removed from the output, and every other component on the page still expands.
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
