@@ -215,9 +215,9 @@ webhint, axe, html-validate, HTMLHint, and VS Code's HTML checker read `src/`. B
 Rules:
 
 - **Never "fix" one of these by adding the tag to a source page.** Open the built page in `dist/` first. If the tag is there, the warning is false and a second copy would ship twice; if it is missing there too, fix the head component or build script.
-- **Everything else is real:** a `<button>` with no `type`, `<html>` with no `lang`, a literal `<img>` with no `alt`.
-- **Scope the exceptions to source files; keep `dist/` strict.** `npm create bascik` and `bascik init` write `.hintrc` (the webhint extension reads it only at the workspace root) and `.hintrc.dist.json`. Other linters go in `src/` config files.
-- **The checks that decide run on built output:** `bascik --check` for Bascik syntax and WHATWG parsing, then `bascik --build` and `npx hint -c .hintrc.dist.json $(find dist -name '*.html')` (files, not the folder) or Lighthouse on `bascik --server`.
+- **Everything else is real:** a `<button>` with no `type`, `<html>` with no `lang`, a literal `<img>` with no `alt`. The scoped `.hintrc` turns `image-alt` off in the editor, so a literal missing `alt` shows only in `audit-components.mjs` and the built-site check: run them.
+- **Scope the exceptions to source files; keep `dist/` strict.** `npm create bascik` and `bascik init` write `.hintrc` (the webhint extension reads it only at the workspace root) and `.hintrc.dist.json`, which must not extend `.hintrc` (webhint joins `ignoredUrls` lists, so source patterns would skip built pages). Other linters get a `src/` config file; HTMLHint's must list its default rules with the exceptions set to `false`, because a file that names only two rules turns the rest off.
+- **The checks that decide run on built output:** `bascik --check` for Bascik syntax and WHATWG parsing, then `bascik --build` and `npx hint -c .hintrc.dist.json $(find dist -name '*.html')` (files, not the folder; the `directory.out` folder if it is not `dist`) or Lighthouse on `bascik --server`. webhint does not check local links: run `check-links.mjs`.
 - **cSpell `Unknown word` on a brand or product name is real:** add the name to the project's `cspell.json` `"words"`, not to a user setting.
 
 Every warning, its setting, and the config files: `read-doc.mjs /testing/linting#editor-linters-read-source`.
