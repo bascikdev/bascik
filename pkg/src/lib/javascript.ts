@@ -866,20 +866,28 @@ export const prefixElementAttribute = (
                 /[.*+?^${}()|[\]\\]/g,
                 "\\$&",
               );
+              // Every `.class` / `#id` token, including the later tokens of a compound
+              // (`.card.active`, `button.btn`, `div#panel`): only an escaped prefix
+              // (`.a\\.b`) is not a token. Attribute selectors (`[data-x=a.b]`) are
+              // matched first and kept whole so a dot in their value is never a class.
               // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
               const tokenRegex = new RegExp(
-                `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+                `\\[[^\\]]*\\]|(?<!\\\\)${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
                 "g",
               );
               updatedBody = updatedBody.replace(
                 /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
                 (call) =>
-                  call.replace(tokenRegex, (tokenMatch, name: string) => {
-                    const scoped = seenAttrMap.get(name);
-                    return scoped === undefined
-                      ? tokenMatch
-                      : `${prefix}${scoped}`;
-                  }),
+                  call.replace(
+                    tokenRegex,
+                    (tokenMatch, name: string | undefined) => {
+                      if (name === undefined) return tokenMatch;
+                      const scoped = seenAttrMap.get(name);
+                      return scoped === undefined
+                        ? tokenMatch
+                        : `${prefix}${scoped}`;
+                    },
+                  ),
               );
             };
 
