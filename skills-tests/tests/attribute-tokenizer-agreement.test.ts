@@ -74,6 +74,11 @@ const TOKENIZERS: Record<string, (attrs: string) => boolean> = {
  *   slash to them, as to pkg's prop reader.
  * - Names stop at a quote, `<` or backtick in all four; the tokenizer keeps
  *   those in the name (a parse error no formatter writes).
+ * - parseMarkup ends an open tag at a `<` outside a quoted value and reads
+ *   the tag as unclosed (R3-18), where the tokenizer reads the `<` into an
+ *   unquoted value or a name: that keeps the elements after a forgotten `>`
+ *   in the audit, and keeps the scan linear when many tags never close.
+ *   parseAttributes, given the attribute text alone, still reads `a=<b`.
  */
 const KNOWN_DISAGREEMENTS: Record<string, string[]> = {
   "lsp readOpenTagAttributes": [
@@ -95,6 +100,7 @@ const KNOWN_DISAGREEMENTS: Record<string, string[]> = {
   "markup.mjs parseMarkup": [
     "unquoted value then /> keeps the slash",
     "unquoted value ending in a slash",
+    "< in an unquoted value",
     "no-break space in an unquoted value",
     "no-break space inside a name",
   ],
@@ -178,6 +184,34 @@ describe("fixed inputs", () => {
     expect(performance.now() - started).toBeLessThan(2_000);
   });
 
+  it("markup.mjs reads a tag that stops at a < before its > as unclosed, and keeps the elements after it (R3-18)", () => {
+    // A forgotten `>`: the browser reads `<h1` as an attribute of the
+    // paragraph; the skill ends the paragraph's tag at the `<` instead, so
+    // the heading after it is still audited, on its own line.
+    const root = parseMarkup(
+      `<p class="lead"\n<h1 class="title">Milk frother</h1>\n<p title="a<b">Steam</p>`,
+    ) as MarkupNode;
+    const children = root.children as Array<MarkupNode & { line: number }>;
+    expect(children.map((node) => [node.tag, node.line, node.attrs])).toEqual([
+      ["h1", 2, { class: "title" }],
+      ["p", 3, { title: "a<b" }],
+    ]);
+  });
+
+  it("markup.mjs keeps offsets after text whose lower case is longer, and matches raw-text tags in any case (R3-18)", () => {
+    // `İ` lower-cases to two code units: a scan of a lower-cased copy
+    // would blank the wrong span.
+    const root = parseMarkup(
+      `<p title="İİİ">İİ</p><SCRIPT>const s = "<h2>";</Script ><h1>Milk frother</h1>`,
+    ) as MarkupNode & { children: Array<MarkupNode & { body?: string }> };
+    expect(root.children.map((node) => node.tag)).toEqual([
+      "p",
+      "script",
+      "h1",
+    ]);
+    expect(root.children[1].body).toBe(`const s = "<h2>";`);
+  });
+
   it("the language server reads the first of two src attributes, as the browser runs it", () => {
     expect(
       parseScriptOpenTagAttributes(`<script src="./a.ts" src="./b.ts">`).get(
@@ -193,5 +227,54 @@ describe("fixed inputs", () => {
     expect(
       readOpenTagAttributes(`<form action=/send?a=b title=it's>`).get("title"),
     ).toBe("it's");
+  });
+});
+
+/**
+ * R3-18: many tags that never close. Each `<` used to start a scan to the
+ * end of the input (the attribute text read through `<`, and a raw-text or
+ * comment body looked for its end from every opening), so the work grew
+ * with the square of the input. skills-tests has no linear-time project,
+ * so this is a wall-clock growth ratio: the fastest of several samples at
+ * 1,000 and 4,000 fragments, each sample repeated to at least 20 ms, the
+ * small input four times as often so both read as many characters. Linear
+ * work then reads about 1 (1.0 to 1.2 measured), quadratic work about 4
+ * (3.1 to 4.1 measured on the regex scan this replaced).
+ */
+describe("markup.mjs reads many unclosed tags in linear time (R3-18)", () => {
+  const sampleMs = (html: string, runs: number): number => {
+    const started = performance.now();
+    for (let i = 0; i < runs; i++) parseMarkup(html);
+    return performance.now() - started;
+  };
+  const runsFor = (html: string): number => {
+    let runs = 1;
+    while (runs < 4_096 && sampleMs(html, runs) < 20) runs *= 2;
+    return runs;
+  };
+  const growth = (fragment: string): number => {
+    const small = fragment.repeat(1_000);
+    const large = fragment.repeat(4_000);
+    const runs = runsFor(small);
+    let fastestSmall = Infinity;
+    let fastestLarge = Infinity;
+    for (let sample = 0; sample < 5; sample++) {
+      fastestSmall = Math.min(fastestSmall, sampleMs(small, runs * 4));
+      fastestLarge = Math.min(fastestLarge, sampleMs(large, runs));
+    }
+    // Both read the same number of characters per sample.
+    return fastestLarge / fastestSmall;
+  };
+
+  it.each([
+    ["an element name", "<x "],
+    ["unquoted values", "<x a=b "],
+    ["values with no whitespace", "<xa="],
+    ["quoted values that never close", '<x a="'],
+    ["a script open tag", "<script "],
+    ["script elements with no end tag", "<script>"],
+    ["comments with no end", "<!--"],
+  ])("%s", (_name, fragment) => {
+    expect(growth(fragment)).toBeLessThan(2.5);
   });
 });
