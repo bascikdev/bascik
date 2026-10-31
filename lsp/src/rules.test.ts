@@ -120,4 +120,91 @@ describe("API Route Rules", () => {
     const diags = analyzeApiRouteSource(ts);
     expect(diags.length).toBe(0);
   });
+
+  const codesOf = (ts: string) =>
+    analyzeApiRouteSource(ts)
+      .map((d) => d.code)
+      .sort();
+
+  it.each([
+    ['export { GET, POST } from "./handlers.ts";'],
+    ['const GET = () => new Response("ok");\nexport { GET };'],
+    ['const handler = () => new Response("ok");\nexport { handler as GET };'],
+    ['export {\n  helper,\n  handler as DELETE,\n} from "./handlers.ts";'],
+    ['export * from "./handlers.ts";'],
+  ])("finds a method exported by an export clause: %s", (ts) => {
+    expect(codesOf(ts)).toEqual([]);
+  });
+
+  it("reports what a misspelled or renamed export clause really exports", () => {
+    // `get` is not a method the dispatcher finds, and `GET as handler` exports `handler`.
+    expect(codesOf("const get = () => 1;\nexport { get };")).toEqual([
+      "invalid-method-case",
+      "missing-method-handler",
+    ]);
+    expect(codesOf("const GET = () => 1;\nexport { GET as handler };")).toEqual(
+      ["missing-method-handler"],
+    );
+    // Types do not exist at run time, and a namespace re-export is one name.
+    expect(codesOf('export type { GET } from "./types.ts";')).toEqual([
+      "missing-method-handler",
+    ]);
+    expect(codesOf('export * as handlers from "./handlers.ts";')).toEqual([
+      "missing-method-handler",
+    ]);
+  });
+
+  it("does not count a method export in a comment or a string", () => {
+    expect(
+      codesOf(
+        '// export const GET = () => new Response("x");\nconst s = "export function POST() {}";',
+      ),
+    ).toEqual(["missing-method-handler"]);
+  });
+});
+
+describe("api-unguarded-json", () => {
+  const unguarded = (body: string) =>
+    analyzeApiRouteSource(
+      `export const POST = async (request: Request) => {\n${body}\n};`,
+    ).filter((d) => d.code === "api-unguarded-json").length;
+
+  it("is not silenced by identifiers or words that contain try or catch", () => {
+    expect(unguarded("const entry = await request.json();")).toBe(1);
+    expect(
+      unguarded("const country = retry(registry);\nawait request.json();"),
+    ).toBe(1);
+    expect(
+      unguarded('// try this\nconst s = "try {";\nawait req.json();'),
+    ).toBe(1);
+  });
+
+  it("is silent inside a try block, whatever the block holds", () => {
+    expect(
+      unguarded(
+        "try {\n  const catchAll = 1;\n  if (catchAll) { }\n  await request.json();\n} catch {}",
+      ),
+    ).toBe(0);
+    expect(
+      unguarded("try {\n  const body = `${await request.json()}`;\n} catch {}"),
+    ).toBe(0);
+  });
+
+  it("reports a call after a closed try block, or in its catch or finally", () => {
+    expect(unguarded("try { setup(); } catch {}\nawait request.json();")).toBe(
+      1,
+    );
+    expect(
+      unguarded("try { setup(); } catch (e) { await request.json(); }"),
+    ).toBe(1);
+    expect(
+      unguarded("try { setup(); } finally { await request.json(); }"),
+    ).toBe(1);
+  });
+
+  it("ignores a call written in a comment or a string", () => {
+    expect(
+      unguarded('// await request.json()\nconst doc = "request.json()";'),
+    ).toBe(0);
+  });
 });

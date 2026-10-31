@@ -26,19 +26,118 @@ const VALID_METHODS = new Set([
 ]);
 const METHOD_LIKE_REGEX =
   /\bexport\s+(?:async\s+)?(?:const|function|let|var)\s+([a-zA-Z0-9_$]+)\b/g;
+/** `export { a, b as GET }` and `export { ... } from "..."`; `export type { ... }` exports no value. */
+const EXPORT_CLAUSE_REGEX = /\bexport\s*(type\s*)?\{([^{}]*)\}/g;
+/** `export * from "..."` may re-export any method; `export * as ns` exports one name. */
+const STAR_EXPORT_REGEX = /\bexport\s*\*\s*from\b/;
+
+/**
+ * `text` with comments and the contents of strings and template text blanked to spaces, keeping every
+ * offset and line break, so keywords and calls are only found in code. A template's `${...}` stays code.
+ * One pass; regex literals are not recognized, and a quote in one masks at most the rest of its line.
+ */
+function maskCommentsAndStrings(text: string): string {
+  const out = text.split("");
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
+  };
+  const templateBraceDepths: number[] = [];
+  let braceDepth = 0;
+  let i = 0;
+  // Scans template text from `from`; returns the index after its closing backtick or `${`.
+  const scanTemplate = (from: number): number => {
+    let j = from;
+    while (j < text.length) {
+      if (text[j] === "\\") j += 2;
+      else if (text[j] === "`") {
+        blank(from, j);
+        return j + 1;
+      } else if (text[j] === "$" && text[j + 1] === "{") {
+        blank(from, j);
+        templateBraceDepths.push(braceDepth);
+        return j + 2;
+      } else j++;
+    }
+    blank(from, text.length);
+    return text.length;
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "/" && text[i + 1] === "/") {
+      let end = text.indexOf("\n", i);
+      if (end < 0) end = text.length;
+      blank(i, end);
+      i = end;
+    } else if (c === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2);
+      const end = close < 0 ? text.length : close + 2;
+      blank(i, end);
+      i = end;
+    } else if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c && text[j] !== "\n")
+        j += text[j] === "\\" ? 2 : 1;
+      blank(i + 1, Math.min(j, text.length));
+      i = j + 1;
+    } else if (c === "`") {
+      i = scanTemplate(i + 1);
+    } else if (c === "{") {
+      braceDepth++;
+      i++;
+    } else if (c === "}") {
+      if (templateBraceDepths.at(-1) === braceDepth) {
+        templateBraceDepths.pop();
+        i = scanTemplate(i + 1);
+      } else {
+        braceDepth--;
+        i++;
+      }
+    } else i++;
+  }
+  return out.join("");
+}
+
+/**
+ * For each offset (ascending), whether it sits inside the block of a `try` statement in `code` (already
+ * masked), from one pass that tracks which open braces belong to a `try`. A `catch` or `finally` block
+ * does not guard, and neither does a `try` block that has closed.
+ */
+function insideTryBlocks(code: string, offsets: readonly number[]): boolean[] {
+  const results: boolean[] = [];
+  const frames: boolean[] = [];
+  let tryFrames = 0;
+  let next = 0;
+  const tokenRe = /\btry\s*\{|[{}]/g;
+  let token: RegExpExecArray | null;
+  while (next < offsets.length) {
+    token = tokenRe.exec(code);
+    const at = token ? token.index : code.length;
+    while (next < offsets.length && offsets[next] < at) {
+      results.push(tryFrames > 0);
+      next++;
+    }
+    if (!token) break;
+    if (token[0] === "}") {
+      if (frames.pop()) tryFrames--;
+    } else {
+      const isTry = token[0] !== "{";
+      frames.push(isTry);
+      if (isTry) tryFrames++;
+    }
+  }
+  return results;
+}
 
 export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
   const diagnostics: ApiRouteDiagnostic[] = [];
+  const code = maskCommentsAndStrings(text);
   METHOD_LIKE_REGEX.lastIndex = 0;
 
   const exportedNames: string[] = [];
   let match: RegExpExecArray | null;
 
-  while ((match = METHOD_LIKE_REGEX.exec(text)) !== null) {
-    const name = match[1];
-    exportedNames.push(name);
-
-    // Warning: lowercase or mixed-case export that looks like a method (e.g. `post`, `Get`, `pOST`)
+  // Warning: lowercase or mixed-case export that looks like a method (e.g. `post`, `Get`, `pOST`)
+  const checkMethodCase = (name: string) => {
     const upper = name.toUpperCase();
     if (VALID_METHODS.has(upper) && name !== upper) {
       diagnostics.push({
@@ -47,6 +146,26 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
         severity: "warning",
       });
     }
+  };
+
+  EXPORT_CLAUSE_REGEX.lastIndex = 0;
+  while ((match = EXPORT_CLAUSE_REGEX.exec(code)) !== null) {
+    if (match[1]) continue;
+    for (const specifier of match[2].split(",")) {
+      const parts = specifier.trim().split(/\s+/);
+      if (parts[0] === "type" && parts.length > 1) continue;
+      const name =
+        parts.length === 3 && parts[1] === "as" ? parts[2] : parts[0];
+      if (!name || !/^[A-Za-z_$][\w$]*$/.test(name)) continue;
+      exportedNames.push(name);
+      checkMethodCase(name);
+    }
+  }
+
+  while ((match = METHOD_LIKE_REGEX.exec(code)) !== null) {
+    const name = match[1];
+    exportedNames.push(name);
+    checkMethodCase(name);
 
     // Warning: handler whose return type is annotated and not Response / Promise<Response>
     // Check for pattern like: `export const GET = async (...): Promise<string> =>` or `export function GET(...): string`
@@ -77,7 +196,9 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
     }
   }
 
-  const hasRecognizedMethod = exportedNames.some((n) => VALID_METHODS.has(n));
+  const hasRecognizedMethod =
+    exportedNames.some((n) => VALID_METHODS.has(n)) ||
+    STAR_EXPORT_REGEX.test(code);
   if (!hasRecognizedMethod) {
     diagnostics.push({
       code: "missing-method-handler",
@@ -86,19 +207,14 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
     });
   }
 
-  // Info diagnostic: request.json() or req.json() called without surrounding try/catch
-  // Matches \b(?:request|req)\.json\(\)
-  const jsonCallRegex = /\b(?:request|req)\.json\s*\(/g;
-  let jsonMatch: RegExpExecArray | null;
-  while ((jsonMatch = jsonCallRegex.exec(text)) !== null) {
-    // Check if there is a surrounding try block before this index in the function scope
-    // Simple heuristic: check if `try {` appears before jsonMatch.index without a closing `}` before it
-    const prefix = text.slice(0, jsonMatch.index);
-    const lastTry = prefix.lastIndexOf("try");
-    const lastCatch = prefix.lastIndexOf("catch");
-    const insideTry =
-      lastTry !== -1 && (lastCatch === -1 || lastTry > lastCatch);
-
+  // Info diagnostic: request.json() or req.json() called outside a try block. Whole keywords and
+  // braces in code only (comments and strings masked), so `entry` or a "try" string decides nothing.
+  const jsonCalls = Array.from(
+    code.matchAll(/\b(?:request|req)\.json\s*\(/g),
+    (m) => m.index,
+  );
+  const guarded = insideTryBlocks(code, jsonCalls);
+  for (const insideTry of guarded) {
     if (!insideTry) {
       diagnostics.push({
         code: "api-unguarded-json",
