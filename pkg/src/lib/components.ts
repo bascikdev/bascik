@@ -646,6 +646,19 @@ export const listComponents = async (
       }
 
       const rawContent = fileContentBuffer.toString();
+      if (!rawContent.trim()) {
+        // Often a file just created in the editor: say why its usages vanish.
+        const absolute = resolve(fileName);
+        const displayPath = (
+          absolute.startsWith(process.cwd())
+            ? relative(process.cwd(), absolute)
+            : fileName
+        ).replace(/\\/g, "/");
+        console.warn(
+          `warning: Component "${componentName}" (${displayPath}) is empty, ` +
+            `so every <${componentName}> renders nothing until the file has markup.`,
+        );
+      }
       await warnComponentCompatibility(
         rawContent,
         fileName,

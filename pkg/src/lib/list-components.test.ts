@@ -296,6 +296,44 @@ describe("listComponents – native HTML element name warning", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// listComponents – empty component file warning (F026)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("listComponents – empty component file warning", () => {
+  it.each([
+    ["an empty file", ""],
+    ["a whitespace-only file", " \n\t\n"],
+  ])(
+    "warns, naming the file, for %s and still lists it",
+    async (_label, body) => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockDeepReadDirFlat.mockResolvedValue(["src/components/stub-card.html"]);
+      mockReadFile.mockResolvedValue(Buffer.from(body));
+
+      const result = await listComponents();
+
+      expect(result["stub-card"]).toBeDefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toMatch(
+        /^warning: Component "stub-card" \(src\/components\/stub-card\.html\) is empty, so every <stub-card> renders nothing/,
+      );
+      warnSpy.mockRestore();
+    },
+  );
+
+  it("does not warn for a file with markup", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/stub-card.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from("<p>x</p>"));
+
+    await listComponents();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // listComponents – companion scripts
 // ─────────────────────────────────────────────────────────────────────────────
 

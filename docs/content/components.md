@@ -531,6 +531,7 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 - If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), the CLI warns `Component "header" has the same name as a native HTML element.` but still loads the component, which then replaces every `<header>` on your pages and most likely breaks the site. The editor does not flag native names; only the CLI does.
 - If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
+- If a component file is empty (such as one just created in the editor), the CLI warns `Component "stub-card" (src/components/stub-card.html) is empty, so every <stub-card> renders nothing until the file has markup.` Each `<stub-card>` usage, and whatever it wraps, is removed from the output, and every other component on the page still expands.
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
