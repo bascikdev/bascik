@@ -21,6 +21,7 @@ import {
   skipControlsFrom,
   validateMask,
   validateRoute,
+  validateRouteSet,
 } from "./lib/checks.mjs";
 import * as productionDefects from "./production-defects.mjs";
 import * as interactionCrawl from "./interaction-crawl.mjs";
@@ -136,12 +137,8 @@ export function parseCliArgs(argv) {
   if (!values.target) throw new Error("--target <url> is required");
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
-  const seen = new Set();
-  for (const route of values.route) {
-    validateRoute(route);
-    if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
-    seen.add(route);
-  }
+  for (const route of values.route) validateRoute(route);
+  validateRouteSet(values.route);
   for (const selector of values.mask ?? []) validateMask(selector);
   const only = checkList("--only", values.only);
   const skip = checkList("--skip", values.skip);

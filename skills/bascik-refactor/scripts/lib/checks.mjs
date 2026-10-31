@@ -33,8 +33,9 @@ export const normalize = (value) =>
 /**
  * The file and folder name of a route under --out and in docs/migration/review: "/" -> "index", "/pricing/team/" ->
  * "pricing_team". A route the readable name cannot tell apart from another ("/index", "/docs/a_b" next to
- * "/docs/a/b", upper case, non-ASCII) gets a hash of the route appended, as compare-route.mjs does for every folder,
- * so two routes never share a report, a review page or a sign-off.
+ * "/docs/a/b", upper case, non-ASCII) gets a hash of the route appended, as compare-route.mjs does for every folder.
+ * A route and the same route with a trailing slash ("/pricing", "/pricing/") share the name: validateRouteSet rejects
+ * the pair, so two routes of one run never share a report, a review page or a sign-off.
  */
 export function routeSlug(route) {
   const value = String(route);
@@ -50,6 +51,26 @@ export function routeSlug(route) {
     value.length <= 61;
   if (plain) return slug;
   return `${slug}-${createHash("sha256").update(value).digest("hex").slice(0, 8)}`;
+}
+
+/**
+ * Rejects a list of routes that names one route twice, or two routes whose routeSlug is the same ("/pricing" and
+ * "/pricing/"): their reports, crops, review pages and sign-offs would overwrite each other.
+ */
+export function validateRouteSet(routes) {
+  const bySlug = new Map();
+  const seen = new Set();
+  for (const route of routes ?? []) {
+    if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
+    seen.add(route);
+    const slug = routeSlug(route);
+    const other = bySlug.get(slug);
+    if (other !== undefined)
+      throw new Error(
+        `--route ${other} and --route ${route} would share the report name "${slug}", so one would overwrite the other; they are usually one page (one redirects to the other), so pass one`,
+      );
+    bySlug.set(slug, route);
+  }
 }
 
 /** Rejects a route that is not a path on the site, as compare-route.mjs does. */
@@ -317,12 +338,8 @@ export function parseArgsFor(
     } else if (!values[flag]) throw new Error(`--${flag} <url> is required`);
   }
   for (const selector of values.mask ?? []) validateMask(selector);
-  const seen = new Set();
-  for (const route of values.route ?? []) {
-    validateRoute(route);
-    if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
-    seen.add(route);
-  }
+  for (const route of values.route ?? []) validateRoute(route);
+  validateRouteSet(values.route);
   const { "settle-ms": settle, ...rest } = values;
   return {
     ...rest,
