@@ -15,31 +15,67 @@ const repoDir = fileURLToPath(new URL("../../../", import.meta.url));
 
 /**
  * Reads the two age-gate settings from .yarnrc.yml. Only the shapes the file
- * uses are read: `key: value` on one line, and `key:` followed by `  - item`
- * lines. Quotes around a value are removed.
+ * uses are read: `key: value` at column 0, and `npmPreapprovedPackages:`
+ * followed by indented `  - item` lines. Quotes around a value are removed.
+ *
+ * Yarn reads full YAML, so the reader fails closed: any other shape that could
+ * set these two keys is returned in `problems` instead of being skipped. That
+ * covers a flow list (`npmPreapprovedPackages: ["*"]`, which turns the gate off
+ * for every package), column-0 list items, quoted or spaced keys, repeated
+ * keys, anchors, a second document, and the per-scope and per-registry
+ * settings (`npmScopes`, `npmRegistries`) that can carry their own gate.
  */
 function readAgeGate(yarnrc: string): {
   gate: string | undefined;
   preapproved: string[];
+  problems: string[];
 } {
   const unquote = (value: string) => value.trim().replace(/^"(.*)"$/, "$1");
+  const ageGateKeys = /npmMinimalAgeGate|npmPreapprovedPackages/;
   let gate: string | undefined;
   const preapproved: string[] = [];
+  const problems: string[] = [];
+  const seenKeys = new Set<string>();
   let inList = false;
-  for (const line of yarnrc.split(/\r?\n/)) {
+  for (const [index, line] of yarnrc.split(/\r?\n|\r/).entries()) {
+    const where = `line ${index + 1} (${line.trim()})`;
     if (/^\s*(#|$)/.test(line)) continue;
-    const item = /^\s+-\s+(.+)$/.exec(line);
-    if (item) {
-      if (inList) preapproved.push(unquote(item[1]));
+    if (/^\s/.test(line)) {
+      if (inList) {
+        const item = /^\s+-\s+(.+)$/.exec(line);
+        if (item) preapproved.push(unquote(item[1]));
+        else problems.push(`${where}: expected "  - name@x.y.z"`);
+      } else if (ageGateKeys.test(line)) {
+        problems.push(`${where}: an age-gate setting nested under another key`);
+      }
       continue;
     }
     inList = false;
-    const entry = /^([A-Za-z]+):\s*(.*)$/.exec(line);
-    if (!entry) continue;
-    if (entry[1] === "npmMinimalAgeGate") gate = unquote(entry[2]);
-    if (entry[1] === "npmPreapprovedPackages") inList = entry[2] === "";
+    const entry = /^([A-Za-z]+):(?:\s+(.*))?$/.exec(line);
+    if (!entry) {
+      problems.push(`${where}: not a plain "key: value" line`);
+      continue;
+    }
+    const [, key, value = ""] = entry;
+    if (seenKeys.has(key)) problems.push(`${where}: ${key} is set twice`);
+    seenKeys.add(key);
+    if (key === "npmScopes" || key === "npmRegistries") {
+      problems.push(
+        `${where}: ${key} can set its own age gate; check it here before adding it`,
+      );
+    }
+    if (key === "npmMinimalAgeGate") {
+      if (!/^("[^"]*"|[A-Za-z0-9]+)$/.test(value)) {
+        problems.push(`${where}: write the gate as a plain or quoted value`);
+      }
+      gate = unquote(value);
+    }
+    if (key === "npmPreapprovedPackages") {
+      if (value === "") inList = true;
+      else problems.push(`${where}: write the list as indented "  - " items`);
+    }
   }
-  return { gate, preapproved };
+  return { gate, preapproved, problems };
 }
 
 /** Returns why a preapproved entry is unsafe or stale, or `undefined`. */
@@ -63,6 +99,10 @@ function preapprovalProblem(
 describe(".yarnrc.yml age gate", () => {
   const yarnrc = readFileSync(join(repoDir, ".yarnrc.yml"), "utf8");
   const lockfile = readFileSync(join(repoDir, "yarn.lock"), "utf8");
+
+  it("uses only the shapes the reader checks", () => {
+    expect(readAgeGate(yarnrc).problems).toEqual([]);
+  });
 
   it("keeps the 7-day gate for every package", () => {
     expect(readAgeGate(yarnrc).gate).toBe("7d");
@@ -90,11 +130,45 @@ describe("readAgeGate", () => {
     expect(readAgeGate(text)).toEqual({
       gate: "7d",
       preapproved: ["glob@14.0.3", "@isaacs/nonrecursive-glob-match@1.0.3"],
+      problems: [],
     });
   });
 
   it("reports a missing gate as undefined, so the gate test fails", () => {
     expect(readAgeGate("nodeLinker: node-modules\n").gate).toBeUndefined();
+  });
+
+  it("reads the file's own shapes with no problems", () => {
+    const text = [
+      'npmMinimalAgeGate: "7d"',
+      "npmPreapprovedPackages:",
+      "  - glob@14.0.3",
+    ].join("\n");
+    expect(readAgeGate(text).problems).toEqual([]);
+  });
+
+  it.each([
+    ["a flow list", 'npmPreapprovedPackages: ["glob", "*"]'],
+    ["an inline value", 'npmPreapprovedPackages: "*"'],
+    ["column-0 list items", 'npmPreapprovedPackages:\n- glob\n- "*"'],
+    ["a quoted key", '"npmPreapprovedPackages":\n  - "*"'],
+    ["a key spaced from its colon", "npmPreapprovedPackages :\n  - '*'"],
+    ["a flow mapping", '{npmPreapprovedPackages: ["*"]}'],
+    ["a repeated key", "npmPreapprovedPackages:\nnpmPreapprovedPackages:"],
+    [
+      "an indented line that is not an item",
+      "npmPreapprovedPackages:\n  glob: '*'",
+    ],
+    ["a per-scope gate", "npmScopes:\n  isaacs:\n    npmMinimalAgeGate: 0"],
+    ["an inline per-scope gate", "npmScopes: {isaacs: {npmMinimalAgeGate: 0}}"],
+    [
+      "a per-registry setting",
+      "npmRegistries:\n  //registry.npmjs.org:\n    npmAuthToken: x",
+    ],
+    ["a gate behind an anchor", "npmMinimalAgeGate: &gate 0"],
+    ["a second document", 'npmMinimalAgeGate: "7d"\n---\nnpmMinimalAgeGate: 0'],
+  ])("reports %s as a problem instead of skipping it", (_shape, text) => {
+    expect(readAgeGate(text).problems.length).toBeGreaterThan(0);
   });
 });
 
