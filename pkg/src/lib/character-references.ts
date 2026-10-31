@@ -15,13 +15,15 @@
  * typographic punctuation such as `&nbsp;`, `&eacute;`, `&copy;`, `&mdash;`,
  * `&hellip;`, `&rsquo;`, `&euro;`, `&trade;`). Any other name, and a name
  * without its semicolon, stays as written, so it reaches the page as text.
- * The table is checked against parse5's tokenizer in the tests.
+ * The table is checked against parse5's tokenizer in the tests. The scan
+ * itself is url-safety.ts's decodeCharacterReferencesWith, shared with the
+ * URL check's decoder; its comment lists what neither decodes.
  *
  * Portable: no `node:*` imports (component-expansion-core.ts uses it).
  */
 import {
   ASCII_NAMED_REFERENCES,
-  numericCharacterReference,
+  decodeCharacterReferencesWith,
 } from "./url-safety.ts";
 
 /** HTML 4's Latin-1 names, for U+00A0 to U+00FF in order. */
@@ -89,16 +91,4 @@ export const namedCharacterReferences = (): ReadonlyMap<string, string> =>
  * dash. A value without `&` is returned as it is.
  */
 export const decodeCharacterReferences = (value: string): string =>
-  value.includes("&")
-    ? value.replace(
-        /&(?:#[xX]([0-9a-fA-F]+);?|#([0-9]+);?|([A-Za-z][A-Za-z0-9]*);)/g,
-        (match, hex?: string, dec?: string, name?: string) => {
-          if (name !== undefined) return named().get(name) ?? match;
-          const code =
-            hex !== undefined
-              ? Number.parseInt(hex, 16)
-              : Number.parseInt(dec!, 10);
-          return numericCharacterReference(code);
-        },
-      )
-    : value;
+  decodeCharacterReferencesWith(value, (name) => named().get(name));

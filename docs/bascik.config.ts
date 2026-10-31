@@ -49,6 +49,7 @@ export default defineConfig({
           "src/lib/content-path.ts",
           "src/lib/meta-tags.ts",
           "src/lib/heading-slug.ts",
+          "src/lib/html-entities.ts",
         ],
         // Fetched by the browser. Completion does not trigger compilation.
       },

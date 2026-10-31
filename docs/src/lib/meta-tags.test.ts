@@ -2,12 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DOCS_DIR } from "./content-path.ts";
-import {
-  decodeHtmlText,
-  metaDescription,
-  pageDescription,
-  pageTitle,
-} from "./meta-tags.ts";
+import { decodeHtmlText } from "./html-entities.ts";
+import { metaDescription, pageDescription, pageTitle } from "./meta-tags.ts";
 
 describe("meta-tags", () => {
   it("decodes entities once, so an escaped entity stays an entity", () => {
@@ -64,7 +60,7 @@ const pageShells = (dir = join(DOCS_DIR, "src", "pages")): string[] =>
   );
 
 describe("meta-tags on the docs page shells (R2-03)", () => {
-  // decodeHtmlText decodes the seven entities page shells use. One it does
+  // decodeHtmlText decodes the entities page shells use (html-entities.ts). One it does
   // not know, such as `&mdash;` in a title, would reach the Open Graph tags,
   // the search index and the TechArticle schema as the text `&mdash;`, so a
   // page that adds one fails here and either writes the character itself or

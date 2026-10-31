@@ -6,25 +6,7 @@
  * must derive the id from the same input: the heading's rendered inline HTML.
  */
 
-const ENTITIES: Record<string, string> = {
-  "&#39;": "'",
-  "&apos;": "'",
-  "&quot;": '"',
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-};
-
-/**
- * Decodes the entities marked emits inside heading text in one pass, so a
- * decoded `&` never starts another entity (`&amp;lt;` reads as `&lt;`).
- */
-function decodeEntities(text: string): string {
-  return text.replace(
-    /&(?:#39|apos|quot|amp|lt|gt);/g,
-    (entity) => ENTITIES[entity],
-  );
-}
+import { decodeHtmlText } from "./html-entities.ts";
 
 /** Plain text of a heading's rendered inline HTML (tags removed, entities decoded). */
 export function headingPlainText(headingHtml: string): string {
@@ -34,7 +16,7 @@ export function headingPlainText(headingHtml: string): string {
     previous = stripped;
     stripped = stripped.replace(/<[^>]+>/g, "");
   } while (stripped !== previous);
-  return decodeEntities(stripped);
+  return decodeHtmlText(stripped);
 }
 
 /** The id for a heading, from its rendered inline HTML. */
