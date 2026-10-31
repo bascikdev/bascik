@@ -1,25 +1,38 @@
 // Unit tests for the pure functions in the public agent skills' scripts and the starter site's helpers.
 // The end-to-end checks (copy, build, lint, audit) are in examples.integration.test.ts.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  componentTagOf,
   destinationFor,
   loadBundle,
   selectFiles,
 } from "../../skills/bascik/scripts/add-example.mjs";
 import { auditConfig } from "../../skills/bascik-config/scripts/audit-config.mjs";
+import { analyzeTemplate } from "../../skills/bascik/scripts/lib/components.mjs";
 import {
   auditPages,
   inspectPage,
   pagePathOf,
+  siteUrlFromEnv,
 } from "../../skills/bascik-seo/scripts/audit-seo.mjs";
 import {
   checkSite,
   extractLinks,
   fileFor,
   resolveLink,
+  siteOriginOf,
 } from "../../skills/bascik/scripts/check-links.mjs";
 import { analyzeTokens } from "../../skills/bascik-components/scripts/check-tokens.mjs";
 import {
@@ -97,6 +110,28 @@ describe("add-example", () => {
     );
   });
 
+  it("names the component an .html destination under the component root defines, in either layout", () => {
+    const root = layout.componentRoot;
+    expect(
+      componentTagOf(join(root, "site-header/site-header.html"), root),
+    ).toBe("site-header");
+    expect(componentTagOf(join(root, "site-header.html"), root)).toBe(
+      "site-header",
+    );
+    expect(componentTagOf(join(root, "ui/Tab-Group.HTML"), root)).toBe(
+      "tab-group",
+    );
+    expect(
+      componentTagOf(join(root, "site-header/links.ts"), root),
+    ).toBeUndefined();
+    expect(
+      componentTagOf(join("/p/src/pages", "index.html"), root),
+    ).toBeUndefined();
+    expect(
+      componentTagOf(join("/p/src", "..components/x.html"), root),
+    ).toBeUndefined();
+  });
+
   it("prints the config, package.json, and README instead of copying them", () => {
     for (const file of [
       "bascik.config.ts",
@@ -165,6 +200,145 @@ describe("add-example", () => {
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  describe("the CLI with a site whose component already exists elsewhere", () => {
+    const header = `<header data-testid="site-header"><a href="/">Milk frother</a></header>\n`;
+    const siteBundle = {
+      version: 1,
+      examples: [
+        {
+          name: "mini-site",
+          kind: "site",
+          docs: "https://github.com/bascikdev/bascik",
+          description: "A one-page site.",
+          files: [
+            {
+              path: "src/pages/index.html",
+              content: "<site-header />\n",
+              uses: ["site-header"],
+            },
+            {
+              path: "src/components/site-header/site-header.html",
+              content: header,
+              uses: [],
+            },
+          ],
+        },
+      ],
+    };
+    const addSite = (existing: string) => {
+      const root = mkdtempSync(join(tmpdir(), "bascik-add-example-"));
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ dependencies: { "@bascik/bascik": "*" } }),
+      );
+      writeFileSync(join(root, "bundle.json"), JSON.stringify(siteBundle));
+      // The flat layout new-component.mjs --flat writes: src/components/<name>.html.
+      mkdirSync(join(root, "src/components"), { recursive: true });
+      writeFileSync(join(root, "src/components/site-header.html"), existing);
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik/scripts/add-example.mjs",
+              import.meta.url,
+            ),
+          ),
+          "mini-site",
+          "--source",
+          join(root, "bundle.json"),
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      const written = (path: string) => existsSync(join(root, path));
+      rmLater.push(root);
+      return { result, written };
+    };
+    const rmLater: string[] = [];
+    afterAll(() => {
+      for (const dir of rmLater) rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("misuse: refuses to write a second <site-header> next to a different flat one, naming it, and writes nothing", () => {
+      const { result, written } = addSite("<header>Mine</header>\n");
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stderr).toContain(
+        "a component named <site-header> already exists at src/components/site-header.html",
+      );
+      expect(written("src/components/site-header/site-header.html")).toBe(
+        false,
+      );
+      expect(written("src/pages/index.html")).toBe(false);
+    });
+
+    it("keeps an identical existing component and adds the rest of the site", () => {
+      const { result, written } = addSite(header);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        "same  src/components/site-header.html  (already in the project)",
+      );
+      expect(written("src/components/site-header/site-header.html")).toBe(
+        false,
+      );
+      expect(written("src/pages/index.html")).toBe(true);
+    });
+  });
+});
+
+describe("list-components", () => {
+  it("names each script directive, telling data-bascik-build-once from data-bascik-build", () => {
+    const directives = (html: string) => analyzeTemplate(html).directives;
+    expect(directives("<script data-bascik-build-once>x</script>")).toEqual([
+      "build-once",
+    ]);
+    expect(directives("<script data-bascik-build>x</script>")).toEqual([
+      "build",
+    ]);
+    expect(
+      directives(
+        '<script type="text/typescript" data-bascik-build-once="">a</script>\n<script data-bascik-routes>b</script>\n<script data-bascik-server src="s.ts"></script>\n<script data-bascik-stream>c</script>',
+      ).sort(),
+    ).toEqual(["build-once", "routes", "server", "stream"]);
+  });
+
+  it("misuse: a typo'd or made-up directive is not reported as a real one", () => {
+    const directives = (html: string) => analyzeTemplate(html).directives;
+    expect(directives("<script data-bascik-build-onc>x</script>")).toEqual([]);
+    expect(directives("<script data-bascik-builder>x</script>")).toEqual([]);
+    expect(directives("<script data-bascik-dev>x</script>")).toEqual([]);
+  });
+
+  it("the CLI prints the build-once directive by its own name", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-list-components-"));
+    try {
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ dependencies: { "@bascik/bascik": "*" } }),
+      );
+      mkdirSync(join(root, "src/components/site-footer"), { recursive: true });
+      writeFileSync(
+        join(root, "src/components/site-footer/site-footer.html"),
+        '<footer data-testid="site-footer"><script data-bascik-build-once>export default () => "x";</script></footer>\n',
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik/scripts/list-components.mjs",
+              import.meta.url,
+            ),
+          ),
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("  scripts: data-bascik-build-once\n");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
@@ -286,6 +460,66 @@ describe("audit-seo", () => {
     };
     expect(auditPages([notFound])).toEqual([]);
   });
+
+  it("reads BASCIK_SITE_URL from a CRLF .env without the carriage return, as Bascik's parseEnv does", () => {
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=https://example.com\r\n")).toBe(
+      "https://example.com",
+    );
+    expect(
+      siteUrlFromEnv(
+        '# site\r\nOTHER=1\r\nBASCIK_SITE_URL="https://example.com"\r\n',
+      ),
+    ).toBe("https://example.com");
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=https://example.com # prod\n")).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("misuse: an empty or missing BASCIK_SITE_URL in .env reads as unset", () => {
+    expect(siteUrlFromEnv("BASCIK_SITE_URL=\r\n")).toBeUndefined();
+    expect(siteUrlFromEnv("OTHER=1\n")).toBeUndefined();
+    expect(siteUrlFromEnv("")).toBeUndefined();
+  });
+
+  it("the CLI matches canonicals against a site URL read from a CRLF .env", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-audit-seo-"));
+    try {
+      writeFileSync(join(root, "package.json"), "{}");
+      writeFileSync(
+        join(root, ".env"),
+        "BASCIK_SITE_URL=https://example.com\r\n",
+      );
+      mkdirSync(join(root, "dist"));
+      writeFileSync(
+        join(root, "dist/about.html"),
+        good("/about", "About us", "x".repeat(80)).html,
+      );
+      const env = { ...process.env };
+      delete env.BASCIK_SITE_URL;
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL(
+              "../../skills/bascik-seo/scripts/audit-seo.mjs",
+              import.meta.url,
+            ),
+          ),
+          "--json",
+        ],
+        { cwd: root, encoding: "utf8", env },
+      );
+      const report = JSON.parse(result.stdout);
+      expect(report.siteUrl).toBe("https://example.com");
+      expect(
+        report.findings.filter((f: { message: string }) =>
+          /canonical/.test(f.message),
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("check-links", () => {
@@ -380,6 +614,83 @@ describe("check-links", () => {
       "/app.js",
       "/real",
     ]);
+  });
+
+  it("reads the site origin from an absolute http(s) URL", () => {
+    expect(siteOriginOf("https://example.com")).toBe("https://example.com");
+    expect(siteOriginOf("https://example.com/docs/")).toBe(
+      "https://example.com",
+    );
+    expect(siteOriginOf("http://localhost:3000")).toBe("http://localhost:3000");
+  });
+
+  it("misuse: a schemeless or non-http site URL fails once, naming the URL, instead of every link being unparsable", () => {
+    for (const bad of [
+      "example.com",
+      "//example.com",
+      "ftp://example.com",
+      "not a url",
+    ]) {
+      expect(() => siteOriginOf(bad)).toThrow(
+        `must be an absolute http(s) URL such as https://example.com, got "${bad}"`,
+      );
+    }
+    const pages = [
+      { file: "index.html", html: '<a href="https://github.com/x">x</a>' },
+    ];
+    expect(() =>
+      checkSite(pages, { exists: () => true, origin: "example.com" }),
+    ).toThrow('got "example.com"');
+  });
+
+  it("misuse: the CLI exits 2 on a schemeless --site-url or BASCIK_SITE_URL, naming where it came from", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-check-links-"));
+    try {
+      writeFileSync(join(root, "package.json"), "{}");
+      mkdirSync(join(root, "dist"));
+      writeFileSync(
+        join(root, "dist/index.html"),
+        '<a href="https://github.com/x">x</a>',
+      );
+      const script = fileURLToPath(
+        new URL("../../skills/bascik/scripts/check-links.mjs", import.meta.url),
+      );
+      const env = { ...process.env };
+      delete env.BASCIK_SITE_URL;
+      const flag = spawnSync(
+        process.execPath,
+        [script, "--site-url", "example.com"],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env,
+        },
+      );
+      expect(flag.status).toBe(2);
+      expect(flag.stdout).not.toContain("unparsable URL");
+      expect(flag.stderr).toContain(
+        'check-links: --site-url must be an absolute http(s) URL such as https://example.com, got "example.com"',
+      );
+      const fromEnv = spawnSync(process.execPath, [script], {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...env, BASCIK_SITE_URL: "example.com" },
+      });
+      expect(fromEnv.status).toBe(2);
+      expect(fromEnv.stderr).toContain("check-links: BASCIK_SITE_URL must be");
+      const good = spawnSync(
+        process.execPath,
+        [script, "--site-url", "https://example.com"],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env,
+        },
+      );
+      expect(good.status, good.stdout).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -612,6 +923,39 @@ describe("contact.ts", () => {
   });
 });
 
+describe("audit-config defaults", () => {
+  const messages = (config: Record<string, unknown>) =>
+    (
+      auditConfig(
+        { default: config },
+        { root: "/project", exists: () => true },
+      ) as { where: string; message: string }[]
+    ).map((finding) => `${finding.where}: ${finding.message}`);
+
+  it("flags restated http.timeouts defaults and says to delete a config that only restates defaults", () => {
+    const found = messages({
+      http: { timeouts: { request: 30000, keepAlive: 5000 } },
+    });
+    expect(found.some((m) => /http\.timeouts\.request.*restates/.test(m))).toBe(
+      true,
+    );
+    expect(
+      found.some((m) => /http\.timeouts\.keepAlive.*restates/.test(m)),
+    ).toBe(true);
+    expect(found.some((m) => /every value equals a default/.test(m))).toBe(
+      true,
+    );
+  });
+
+  it("misuse: keeps a changed timeout as meaningful", () => {
+    const found = messages({ http: { timeouts: { request: 60000 } } });
+    expect(found.some((m) => /restates/.test(m))).toBe(false);
+    expect(found.some((m) => /every value equals a default/.test(m))).toBe(
+      false,
+    );
+  });
+});
+
 describe("audit-config exec entries", () => {
   const root = "/project";
   const execFindings = (entry: Record<string, unknown>, files: string[]) =>
@@ -666,4 +1010,39 @@ describe("audit-config exec entries", () => {
       ),
     ).toEqual([]);
   });
+});
+
+describe("skill scripts that load bascik.config", () => {
+  it.each([
+    ["check-links", "bascik/scripts/check-links.mjs"],
+    ["audit-seo", "bascik-seo/scripts/audit-seo.mjs"],
+    ["check-tokens", "bascik-components/scripts/check-tokens.mjs"],
+  ])(
+    "misuse: %s names the config file and the error when it cannot be loaded, with no stack trace",
+    (name, script) => {
+      const root = mkdtempSync(join(tmpdir(), "bascik-broken-config-"));
+      try {
+        writeFileSync(join(root, "package.json"), "{}");
+        // Non-erasable TypeScript: Node's type stripping refuses it.
+        writeFileSync(
+          join(root, "bascik.config.ts"),
+          "enum Mode { Fast }\nexport default { directory: { out: 'dist' } };\n",
+        );
+        mkdirSync(join(root, "dist"));
+        writeFileSync(join(root, "dist/index.html"), "<h1>x</h1>");
+        const result = spawnSync(
+          process.execPath,
+          [fileURLToPath(new URL(`../../skills/${script}`, import.meta.url))],
+          { cwd: root, encoding: "utf8" },
+        );
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(
+          new RegExp(`^${name}: could not load bascik\\.config\\.ts: \\S`),
+        );
+        expect(result.stderr).not.toMatch(/\n\s+at /);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

@@ -2,7 +2,15 @@
 // Copy an example component or site from https://bascik.dev/example-components into the current Bascik project.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import {
   componentRoots,
   docsBaseUrl,
@@ -115,6 +123,19 @@ export function destinationFor(example, filePath, layout) {
     return join(layout.importRoot, second, tail);
   }
   return join(layout.root, filePath);
+}
+
+/**
+ * The component tag a destination file defines, or undefined: every .html file under a component root is a
+ * component named after the file, in the folder layout (<name>/<name>.html) and the flat one (<name>.html) alike.
+ * Exported for tests.
+ */
+export function componentTagOf(destination, componentRoot) {
+  if (!destination.toLowerCase().endsWith(".html")) return undefined;
+  const rel = relative(componentRoot, destination);
+  if (!rel || rel.split(/[\\/]/)[0] === ".." || isAbsolute(rel))
+    return undefined;
+  return basename(destination, extname(destination)).toLowerCase();
 }
 
 /**
@@ -258,13 +279,10 @@ async function main() {
       if (file.path !== "README.md") printed.push({ example, file });
       continue;
     }
-    if (
-      destination.endsWith(".html") &&
-      example.kind === "component" &&
-      file.path === `${example.name}.html`
-    ) {
+    const tag = componentTagOf(destination, layout.componentRoot);
+    if (tag) {
       const clash = existingComponents.find(
-        (c) => c.tag === example.name && resolve(root, c.file) !== destination,
+        (c) => c.tag === tag && resolve(root, c.file) !== destination,
       );
       if (clash) {
         const same =
@@ -274,7 +292,7 @@ async function main() {
           continue;
         }
         fail(
-          `add-example: a component named <${example.name}> already exists at ${clash.file}. Rename one of them first.`,
+          `add-example: a component named <${tag}> already exists at ${clash.file}. Rename one of them first.`,
         );
       }
     }

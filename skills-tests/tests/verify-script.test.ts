@@ -9,14 +9,26 @@ interface TestIdGap {
   message: string;
 }
 
+interface NpxInvocation {
+  command: string;
+  args: string[];
+  windowsVerbatimArguments?: boolean;
+}
+
 interface VerifyScript {
   integratedPerFileChecksCompleted: (output: string) => boolean;
+  npxInvocation: (
+    args: string[],
+    platform?: NodeJS.Platform,
+    env?: NodeJS.ProcessEnv,
+  ) => NpxInvocation;
   testIdAdvisory: (root: string, configModule?: unknown) => TestIdGap[];
   formatTestIdAdvisory: (gaps: TestIdGap[]) => string;
 }
 
 const {
   integratedPerFileChecksCompleted,
+  npxInvocation,
   testIdAdvisory,
   formatTestIdAdvisory,
 } = (await import(
@@ -178,6 +190,83 @@ One plan.
     expect(gaps.map((gap) => `${gap.file}:${gap.line}`)).toEqual([
       "site/parts/promo-box/promo-box.html:1",
       "site/parts/promo-box/promo-box.html:1",
+    ]);
+  });
+});
+
+describe("verify --npx command line", () => {
+  // cmd.exe /s strips the outer quotes and runs the rest; npx.cmd hands each quoted argument to Node, which splits
+  // them by the MSVCRT rules. A minimal model of that split, enough for paths (no quotes, backslashes kept unless
+  // they come before a quote).
+  const msvcrtSplit = (line: string) => {
+    const out: string[] = [];
+    let i = 0;
+    while (i < line.length) {
+      while (line[i] === " ") i++;
+      if (i >= line.length) break;
+      let arg = "";
+      let quoted = false;
+      for (; i < line.length && (quoted || line[i] !== " "); i++) {
+        if (line[i] === "\\") {
+          let n = 0;
+          while (line[i] === "\\") (n++, i++);
+          if (line[i] === '"') {
+            arg += "\\".repeat(n / 2);
+            if (n % 2) arg += '"';
+            else quoted = !quoted;
+          } else {
+            arg += "\\".repeat(n);
+            i--;
+          }
+        } else if (line[i] === '"') quoted = !quoted;
+        else arg += line[i];
+      }
+      out.push(arg);
+    }
+    return out;
+  };
+
+  const args = [
+    "--yes",
+    "@bascik/language-server",
+    "--check",
+    "--project",
+    "C:\\Users\\John Smith\\site",
+    "C:\\Users\\John Smith\\shared\\components",
+  ];
+
+  it("runs npx directly with the arguments as given outside Windows", () => {
+    expect(npxInvocation(args, "linux", {})).toEqual({ command: "npx", args });
+    expect(npxInvocation(args, "darwin", {})).toEqual({ command: "npx", args });
+  });
+
+  it("misuse: on Windows a project path with spaces reaches the linter as one argument each", () => {
+    const invocation = npxInvocation(args, "win32", {
+      ComSpec: "C:\\Windows\\system32\\cmd.exe",
+    });
+    expect(invocation.command).toBe("C:\\Windows\\system32\\cmd.exe");
+    expect(invocation.windowsVerbatimArguments).toBe(true);
+    expect(invocation.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
+    expect(invocation.args).toHaveLength(4);
+    const line = invocation.args[3];
+    // /s: the first and last quote are stripped, the rest runs as typed.
+    expect(line.startsWith('"') && line.endsWith('"')).toBe(true);
+    expect(msvcrtSplit(line.slice(1, -1))).toEqual(["npx", ...args]);
+  });
+
+  it("misuse: on Windows a drive root's trailing backslash does not swallow the closing quote", () => {
+    const invocation = npxInvocation(
+      ["--check", "--project", "D:\\", "D:\\shared dir\\"],
+      "win32",
+      {},
+    );
+    expect(invocation.command).toBe("cmd.exe");
+    expect(msvcrtSplit(invocation.args[3].slice(1, -1))).toEqual([
+      "npx",
+      "--check",
+      "--project",
+      "D:\\",
+      "D:\\shared dir\\",
     ]);
   });
 });
