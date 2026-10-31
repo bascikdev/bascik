@@ -5,7 +5,11 @@ import {
   type LanguageClientOptions,
   type ServerOptions,
 } from "vscode-languageclient/node";
-import { DOCUMENT_SELECTOR, SERVER_MODULE } from "./client-options";
+import {
+  DOCUMENT_SELECTOR,
+  initializationOptions,
+  SERVER_MODULE,
+} from "./client-options";
 import {
   ScriptCheckPrompt,
   type ScriptCheckResult,
@@ -50,9 +54,28 @@ export async function activate(
     documentSelector: DOCUMENT_SELECTOR,
     diagnosticCollectionName: "bascik",
     outputChannelName: "Bascik",
+    // Read again at every (re)start, so a changed setting applies on the restart below.
+    initializationOptions: () => {
+      const settings = vscode.workspace.getConfiguration("bascik.typescript");
+      return initializationOptions(
+        vscode.env.appRoot,
+        {
+          enabled: settings.get<boolean>("enabled", true),
+          path: settings.get<string>("path", ""),
+        },
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      );
+    },
   };
 
   client = new LanguageClient("bascik", "Bascik", serverOptions, clientOptions);
+  // The server reads the TypeScript settings when it starts, so a change restarts it.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("bascik.typescript"))
+        void client?.restart();
+    }),
+  );
   await client.start();
   return { scriptCheck, firstScriptCheck };
 }

@@ -29,7 +29,8 @@ extensions/vscode-bascik/
 A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dependencies:
 
 - `dist/extension.js` is `src/extension.ts` with `vscode-languageclient` bundled in. `vscode` stays external.
-- `dist/server.js` is the language server from `../../lsp/src` (entry: `startLanguageServer()` in `lsp/src/start.ts`) with `vscode-languageserver` bundled in. It does not need `lsp/dist` to be built first.
+- `dist/server.js` is the language server from `../../lsp/src` (entry: `startLanguageServer()` in `lsp/src/start.ts`) with `vscode-languageserver` bundled in. It does not need `lsp/dist` to be built first. It is also the TypeScript worker's file: started as a worker thread, `typescript-worker.ts` runs and the server does not start.
+- **TypeScript is never bundled.** It is an optional peer of the language server. The extension passes VS Code's own copy (`<appRoot>/extensions/node_modules/typescript`, or the machine-scoped `bascik.typescript.path` setting) in `initializationOptions`, with `editorHasEmbeddedTypeScript: true`. `build.mjs` marks `typescript` external and `src/packaging.test.ts` fails if any TypeScript file reaches the bundle.
 - `build.mjs` deletes `dist/` and `out/` first, so a file removed from `src/` cannot ship. tsc writes to `out/` (the real-editor suite runs `out/test/`), so `dist/` holds only the two bundles and their notices, and `.vscodeignore` ships only those three from it (`src/packaging.test.ts` checks both).
 - Bundling inlines third-party code, so `build.mjs` also writes `dist/THIRD-PARTY-NOTICES.txt`: the license text of every package in either bundle's esbuild metafile. A bundled package with no license file fails the build with its name.
 
@@ -43,6 +44,7 @@ A VSIX ships no `node_modules`, so `build.mjs` bundles both files with their dep
 | Scoping compatibility rules                                               | `docs/content/compatibility.md` is the source; `docs/scripts/generate-compatibility-rules.ts` writes `lsp/src/compatibility-rules.json` and `pkg/src/lib/compatibility-rules.json` |
 | Which files the server is sent, how it is launched                        | `extensions/vscode-bascik/src/client-options.ts`, `extension.ts`                                                                                                                   |
 | Project discovery, file watching, workspace folders, stale results        | `lsp/src/server.ts`, tested in `lsp/src/server.test.ts`                                                                                                                            |
+| TypeScript errors in `type="text/typescript"` blocks                      | `lsp/src/typescript-*.ts` (blocks and offsets, finding TypeScript, the LanguageService engine, the worker); the server merges its diagnostics with Bascik's per document           |
 | Highlighting                                                              | `syntaxes/bascik-html.tmLanguage.json` (attributes), `syntaxes/bascik-typescript-script.tmLanguage.json` (TypeScript in `type="text/typescript"` scripts)                          |
 
 Scoping rules (`css-*`, `js-*`) apply to component files only. Pages, API routes, and scripts outside the component folders are not scoped, so they are not checked.
@@ -62,6 +64,7 @@ The TypeScript script injection embeds VS Code's own `source.ts` and maps it to 
 - **Folders that are not Bascik projects** get no diagnostics either: a workspace folder with no `bascik.config.*` counts as a project only when its root has one of `EXTENSION_CONFIG_FILES` (`bascik.ext.json` and the rest) or its `package.json` lists `@bascik/bascik` or `@bascik/language-server` (`isBascikProject()` in `server.ts`, re-read when the file's size or mtime changes). The linter-only setup in `docs/content/tools/linter.md` relies on the last two. Navigation, hover, and completion still work there. The real-editor `plain` folder is such a folder.
 - **Markdown safety.** Component descriptions are prose. `escapeMarkdownText()` in the analyzer escapes them exactly as VS Code's `MarkdownString.appendText()` does. Do not put a description into markdown unescaped.
 - **Completions** that replace the typed `<` must set `filterText` to start with `<`, or the editor hides every item.
+- **TypeScript diagnostics** are published with Bascik's in one list per document (a publish replaces the list). Bascik's go out first; TypeScript's follow from the worker after `TYPESCRIPT_DELAY_MS`, and every edit makes the project's pending TypeScript requests stale through a shared-memory epoch. With TypeScript checks on, the server also watches `**/*.{ts,mts,cts,js,mjs,cjs}` and `**/{tsconfig,package}.json`.
 
 ---
 
@@ -71,8 +74,9 @@ The TypeScript script injection embeds VS Code's own `source.ts` and maps it to 
 yarn ext:compile       # regenerate compatibility rules, then build.mjs: tsc, bundle dist/extension.js and dist/server.js
 yarn ext:typecheck
 yarn ext:unit          # includes server-bundle.test.ts, which builds and starts the real server bundle
-yarn ext:e2e           # compiles, then runs both real-editor configurations in .vscode-test.cjs (out/test, and
-                       # out/test-no-html with the built-in HTML language features disabled)
+yarn ext:e2e           # compiles, then runs the real-editor configurations in .vscode-test.cjs (out/test,
+                       # out/test-typescript-off with TypeScript checks off, and out/test-no-html with the
+                       # built-in HTML language features disabled)
 yarn lsp:unit          # the analysis itself
 ```
 
@@ -81,6 +85,7 @@ Yarn 4 does not run npm's implicit `pre<name>`/`post<name>` scripts, so the exte
 - Diagnostics are published by a server process after a document opens, not before the call returns. Integration tests that expect a diagnostic use `waitForDiagnostic()`; a test that expects none opens the file with `openWorkspaceDocument()`, which waits for the server.
 - Definition results can be a `Location` or a `LocationLink`. Use `firstLocationPath()` or `locationUri()`.
 - Scoping-rule fixtures go in `src/components/`, via `openWorkspaceDocument({ directory: 'src/components', ... })`.
+- The TypeScript checks have their own real-editor configuration, `typescript-off`, the control run: the same fixture page with `bascik.typescript.enabled` off shows no TypeScript error, so `out/test/typescript.test.js` checks what the feature adds. `server-bundle-typescript.test.ts` runs the bundle's worker with TypeScript 6 (the `typescript-6` dev alias; the repo itself builds with TypeScript 7, which has no language service).
 - A bug that only shows in the bundle (a missing data file, a startup crash) is caught by `server-bundle.test.ts`. A bug that only shows against a real editor (late file events) is caught by `ext:e2e`. Run both when you change `lsp/src/server.ts`.
 
 ---
