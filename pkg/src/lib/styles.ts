@@ -603,7 +603,8 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
   }
   if (scopedNames.size === 0) return css;
   // Scope @keyframes declarations and animation / animation-name property values
-  // so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
+  // (a declaration starts after `{`, `;`, or a nested rule's `}`, and its value
+  // ends at `;` or `}`, never at a `{`) so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
   // property names, unrelated declarations, or selectors.
   const { css: shielded, restore } = shieldCssStrings(css);
   const replaced = shielded
@@ -613,7 +614,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
         `${prefix}${scopedNames.get(name) ?? name}`,
     )
     .replace(
-      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation-name\s*:\s*)([^;{}]+)/gim,
+      /((?:^|[;{}])\s*(?:-[a-z]+-)?animation-name\s*:\s*)([^;{}]+)(?=[;}]|(?![\s\S]))/gi,
       (_match, prefix: string, value: string) =>
         `${prefix}${value.replace(
           /(?<![@.\w#-])([\w-]+)(?![\w(-])/g,
@@ -621,7 +622,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
         )}`,
     )
     .replace(
-      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation\s*:\s*)([^;{}]+)/gim,
+      /((?:^|[;{}])\s*(?:-[a-z]+-)?animation\s*:\s*)([^;{}]+)(?=[;}]|(?![\s\S]))/gi,
       (_match, prefix: string, value: string) =>
         `${prefix}${scopeAnimationShorthandValue(value, scopedNames)}`,
     );

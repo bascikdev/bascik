@@ -3045,3 +3045,35 @@ describe("removeIdSelectors – only the [id] attribute, whole blocks, paren-awa
     );
   });
 });
+
+describe("prefixKeyframes – animation after a nested block", () => {
+  const keyframes = "@keyframes fade { to { opacity: 1 } }";
+  const scoped = "bascik__card__keyframe__fade";
+
+  it.each([
+    [".card { i { color: red } animation: fade 1s }", "animation: "],
+    [".card { i { color: red } animation-name: fade }", "animation-name: "],
+    [
+      ".card { @media print { color: red } -webkit-animation: fade 1s }",
+      "-webkit-animation: ",
+    ],
+    [
+      ".card {\n  i {\n    color: red;\n  }\n  animation: fade 1s;\n}",
+      "animation: ",
+    ],
+  ])("renames the keyframes in %j", (rule, property) => {
+    const out = prefixKeyframes(`${keyframes} ${rule}`, "card");
+    expect(out).toContain(`@keyframes ${scoped} {`);
+    expect(out).toContain(`${property}${scoped}`);
+    expect(out).not.toMatch(/animation(?:-name)?: fade/);
+  });
+
+  it("leaves a selector that only looks like an animation declaration alone", () => {
+    // `animation:hover` is a (typo'd) selector, not a declaration: no `;` or
+    // value follows it before the `{`.
+    const input = `${keyframes} .a { } animation:hover { color: red }`;
+    expect(prefixKeyframes(input, "card")).toBe(
+      `@keyframes ${scoped} { to { opacity: 1 } } .a { } animation:hover { color: red }`,
+    );
+  });
+});
