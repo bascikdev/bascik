@@ -228,6 +228,38 @@ describe("index.ts CLI runner functions", () => {
     );
   });
 
+  it("setupBuildLogging has written a line to the log by the time the call returns, so an exit right after keeps it", async () => {
+    const { setupBuildLogging } = await import("./index.ts");
+    const { readFileSync } = await import("node:fs");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-log-tail-"));
+    const saved = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      env: process.env.BASCIK_BUILD_LOG,
+    };
+    const quiet = () => {};
+    console.log = quiet;
+    console.warn = quiet;
+    console.error = quiet;
+    try {
+      const path = await setupBuildLogging(join(dir, "build.log"));
+      console.error("[bascik] build failed: page error in src/pages/x.html");
+      // No await between the line and the read: exitAfterStopping calls
+      // process.exit synchronously when nothing is left to stop.
+      expect(readFileSync(path, "utf8")).toContain(
+        "[bascik] build failed: page error in src/pages/x.html",
+      );
+    } finally {
+      console.log = saved.log;
+      console.warn = saved.warn;
+      console.error = saved.error;
+      if (saved.env === undefined) delete process.env.BASCIK_BUILD_LOG;
+      else process.env.BASCIK_BUILD_LOG = saved.env;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   // The first runCli call imports index.ts and its whole module graph cold;
   // under load that takes longer than the 5 s default, as the neighbors allow.
   it("runCli executes subcommands init, check, server, and dev/build", async () => {
