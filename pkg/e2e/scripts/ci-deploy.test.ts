@@ -1060,6 +1060,16 @@ describe("CI stages and the deploy stage", () => {
     expect(cache?.text).toMatch(
       /path: extensions\/vscode-bascik\/\.vscode-test\/vscode-\*/,
     );
+    // Keyed on the VS Code version the download resolves to, so a mid-week
+    // release is saved once instead of downloaded again on every run.
+    expect(cache?.text).toMatch(
+      /^ {10}key: vscode-test-\$\{\{ runner\.os \}\}-\$\{\{ steps\.vscode-version\.outputs\.version \}\}$/m,
+    );
+    const keyStep = job!.steps.findIndex((step) =>
+      /^ {8}id: vscode-version$/m.test(step.text),
+    );
+    expect(keyStep).toBeGreaterThan(-1);
+    expect(keyStep).toBeLessThan(job!.steps.indexOf(cache!));
     for (const id of ["deploy-docs", "deploy-demo"])
       expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
   });
@@ -1376,6 +1386,45 @@ describe("CI stages and the deploy stage", () => {
         } finally {
           rmSync(dir, { recursive: true, force: true });
         }
+      }
+    },
+  );
+
+  const hasJq = spawnSync("jq", ["--version"]).status === 0;
+  it.skipIf(process.platform === "win32" || !hasJq)(
+    "keys the VS Code cache on the newest stable version, or the ISO week when the update API does not answer",
+    () => {
+      const step = jobs
+        .get("e2e-extension")!
+        .steps.find((s) => /^ {8}id: vscode-version$/m.test(s.text))!;
+      const script = runBlock(step.text);
+      const dir = mkdtempSync(join(tmpdir(), "bascik-vscode-key-"));
+      try {
+        const key = (curl: string) => {
+          writeFileSync(join(dir, "curl"), `#!/bin/sh\n${curl}\n`, {
+            mode: 0o755,
+          });
+          const output = join(dir, "output");
+          writeFileSync(output, "");
+          const result = spawnSync("bash", ["-e", "-c", script], {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              PATH: `${dir}:${process.env.PATH}`,
+              GITHUB_OUTPUT: output,
+            },
+          });
+          expect(result.status, result.stderr).toBe(0);
+          return readFileSync(output, "utf8");
+        };
+        expect(key(`echo '["1.144.0","1.143.2"]'`)).toBe("version=1.144.0\n");
+        expect(key("exit 22")).toMatch(/^version=week-\d{4}-\d{2}\n$/);
+        expect(key(`echo '{"message":"rate limited"}'`)).toMatch(
+          /^version=week-\d{4}-\d{2}\n$/,
+        );
+        expect(key("echo '[]'")).toMatch(/^version=week-\d{4}-\d{2}\n$/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
     },
   );

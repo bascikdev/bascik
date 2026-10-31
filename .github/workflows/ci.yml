@@ -918,17 +918,21 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      # @vscode/test-cli downloads the newest stable VS Code into extensions/vscode-bascik/.vscode-test/. The key
-      # changes every ISO week, so CI downloads it about once a week and still picks up a new release within one.
+      # @vscode/test-cli downloads the newest stable VS Code into extensions/vscode-bascik/.vscode-test/, asking the
+      # same update API this step asks. Keying the cache on that version downloads each release once and saves it; an
+      # exact-match key never saves again, so a weekly key would re-download a mid-week release on every run. When the
+      # API does not answer, the key falls back to the ISO week.
       - name: Compute the VS Code cache key
-        id: vscode-week
-        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        id: vscode-version
+        run: |
+          version=$(curl -fsS --retry 2 https://update.code.visualstudio.com/api/releases/stable | jq -r '.[0] // empty') || version=""
+          echo "version=${version:-week-$(date -u +%G-%V)}" >> "$GITHUB_OUTPUT"
 
       - name: Cache the VS Code download
         uses: actions/cache@v6
         with:
           path: extensions/vscode-bascik/.vscode-test/vscode-*
-          key: vscode-test-${{ runner.os }}-${{ steps.vscode-week.outputs.week }}
+          key: vscode-test-${{ runner.os }}-${{ steps.vscode-version.outputs.version }}
 
       # Compiles the extension and bundles the language server from lsp/src, then runs both configurations in
       # .vscode-test.cjs. VS Code is an Electron app, so on Linux xvfb-run gives it a virtual display.
