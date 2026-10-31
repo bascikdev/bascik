@@ -125,7 +125,8 @@ export const VSCODE_LAUNCH_JSON =
     2,
   ) + "\n";
 
-export const VITE_CONFIG = `import { defineConfig } from 'vite';
+/** \`vitest/config\`, not \`vite\`: the project depends on vitest, and vite is only vitest's own dependency. */
+export const VITE_CONFIG = `import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -254,10 +255,14 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
   });
 `);
 
+/** \`.env\` files hold the site URL and secrets, and Bascik loads them, so they stay out of git. */
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
 *.pem
+.env
+.env.*
+!.env.example
 `;
 
 /** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */

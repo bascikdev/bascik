@@ -192,6 +192,8 @@ bascik --build --env-file .env.base --env-file .env.staging  # later files win
 
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
 
+Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
+
 The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
 
 ```text

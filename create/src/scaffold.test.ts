@@ -449,6 +449,32 @@ describe("VITE_CONFIG", () => {
     expect(VITE_CONFIG).toContain("src/**/*.test.ts");
     expect(VITE_CONFIG).toContain("provider: 'v8'");
   });
+
+  it("misuse: imports defineConfig from vitest/config, not vite, which the project does not declare", () => {
+    expect(VITE_CONFIG).toContain(
+      "import { defineConfig } from 'vitest/config';",
+    );
+  });
+
+  it("misuse: every package the generated configs import is declared in the generated package.json", () => {
+    for (const template of ["default", "cloudflare"] as const) {
+      const pkg = JSON.parse(PACKAGE_JSON("my-app", template));
+      const declared = new Set([
+        ...Object.keys(pkg.dependencies ?? {}),
+        ...Object.keys(pkg.devDependencies ?? {}),
+      ]);
+      for (const config of [VITE_CONFIG, PLAYWRIGHT_CONFIG]) {
+        for (const [, spec] of config.matchAll(/\bfrom\s+'([^'.][^']*)'/g)) {
+          if (spec.startsWith("node:")) continue;
+          const parts = spec.split("/");
+          const name = spec.startsWith("@")
+            ? parts.slice(0, 2).join("/")
+            : parts[0];
+          expect(declared, `${template}: ${spec}`).toContain(name);
+        }
+      }
+    }
+  });
 });
 
 describe("PLAYWRIGHT_CONFIG", () => {
@@ -573,6 +599,18 @@ describe("GITIGNORE", () => {
     expect(GITIGNORE).toContain("dist/");
     expect(GITIGNORE).toContain("coverage/");
     expect(GITIGNORE).toContain(".pem");
+  });
+
+  it("misuse: ignores the .env files Bascik loads, where secrets go, but keeps an example file", () => {
+    const lines = GITIGNORE.split("\n");
+    expect(lines).toContain(".env");
+    expect(lines).toContain(".env.*");
+    expect(lines).toContain("!.env.example");
+    // A negation only works after the pattern it overrides.
+    expect(lines.indexOf("!.env.example")).toBeGreaterThan(
+      lines.indexOf(".env.*"),
+    );
+    expect(CLOUDFLARE_GITIGNORE.split("\n")).toContain(".env");
   });
 
   it("does not ignore .wrangler/ in the default template", () => {
