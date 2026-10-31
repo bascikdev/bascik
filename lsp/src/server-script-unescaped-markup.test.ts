@@ -1201,3 +1201,16 @@ describe("XML templates get XML advice and no html fix (review round 2)", () => 
     expect(diags[0].template?.fixable).toBe(true);
   });
 });
+
+describe("hand-written-html-escaper on an XML-named escaper (review round 2)", () => {
+  it("the message calls it an XML escaper and asks for the comment", () => {
+    const diags = analyze(
+      `export function escapeXml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`,
+      { directive: "module" },
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain("escapeXml() looks like an XML escaper");
+    expect(diags[0].message).not.toContain("hand-written HTML escaper");
+    expect(diags[0].message).toContain("comment");
+  });
+});

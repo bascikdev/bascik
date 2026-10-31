@@ -24,10 +24,12 @@
  * the escaper's, not the callback's.
  *
  * Not reported: an owner with a comment that says it escapes XML (RSS,
- * Atom, a sitemap, SVG), inside it or on its own lines right above its
- * declaration, since `html` builds HTML. Its calls are trusted in that
- * file's markup templates. Test files never reach this rule
- * (createDiagnostics skips them).
+ * Atom, a sitemap, SVG, and not HTML; see commentSaysXml), inside it or on
+ * its own lines right above its declaration, since `html` builds HTML. Its
+ * calls are trusted in that file's markup templates. One named for XML
+ * with no such comment is reported with `xmlName`, so the message can ask
+ * for the comment. Test files never reach this rule (createDiagnostics
+ * skips them).
  *
  * Linear: one pass over the tokens; each bracket is climbed through once
  * (the owner found for it is cached); comments are found by binary search.
@@ -50,6 +52,8 @@ export interface HandWrittenEscaper {
   end: number;
   /** An unnamed `export default` function or arrow. */
   defaultExport?: boolean;
+  /** Named for XML (`escapeXml`), with no comment that says it is for XML. */
+  xmlName?: boolean;
   /**
    * Where the "call esc()" fix applies: a function with one plain
    * parameter whose body is one `return` (or an arrow's expression) of
@@ -102,7 +106,39 @@ const CONTROL_KEYWORDS = new Set([
 ]);
 
 /** Words of an explanatory comment that make an escaper XML-specific. */
-const XML_COMMENT = /\b(?:xml|rss|atom|sitemap|svg)\b/i;
+const XML_WORD = /\b(?:xml|rss|atom|sitemap|svg)\b/gi;
+/** Right before a word: `not`, `no` or `non-`, which turn it around (`not XML`, `not for HTML`). */
+const NEGATED_BEFORE = /\b(?:not|no|non)[\s-]+(?:for\s+|an?\s+)?$/i;
+/** Right after `html`: what says html is not the target (`html does not build XML`). */
+const NEGATED_AFTER =
+  /^\s+(?:does\s*n[o']t|doesn't|can\s*not|cannot|can't|won't|will\s+not|is\s*n[o']t|isn't)\b/i;
+
+/**
+ * Whether a comment says its escaper is for XML: it names XML, RSS, Atom,
+ * a sitemap or SVG (not `not XML`), and names HTML only to say it is not
+ * the target (`html does not build XML`, `not HTML`). `Escape for HTML (not
+ * XML)` and `for HTML pages and inline SVG icons` are about HTML.
+ */
+function commentSaysXml(text: string): boolean {
+  const near = (at: number): string => text.slice(Math.max(0, at - 12), at);
+  let xml = false;
+  for (const m of text.matchAll(XML_WORD))
+    if (!NEGATED_BEFORE.test(near(m.index))) {
+      xml = true;
+      break;
+    }
+  if (!xml) return false;
+  for (const m of text.matchAll(/\bhtml\b/gi))
+    if (
+      !NEGATED_BEFORE.test(near(m.index)) &&
+      !NEGATED_AFTER.test(text.slice(m.index + 4, m.index + 32))
+    )
+      return false;
+  return true;
+}
+
+/** An escaper named for XML (`escapeXml`, `svgEscape`, `rssText`). */
+const XML_NAME = /xml|svg|rss|sitemap|atom(?![a-z])/i;
 
 const isOpen = (t: Token | undefined): boolean =>
   t?.type === "punctuation" &&
@@ -492,7 +528,7 @@ export function findHandWrittenEscapers(
   for (let k = 0; k < comments.length; k++)
     xmlBefore[k + 1] =
       xmlBefore[k] +
-      (XML_COMMENT.test(source.slice(comments[k].start, comments[k].end))
+      (commentSaysXml(source.slice(comments[k].start, comments[k].end))
         ? 1
         : 0);
   const saysXml = (owner: Owner, positions: number[]): boolean => {
@@ -543,6 +579,7 @@ export function findHandWrittenEscapers(
       isWord(tokens[owner.nameAt - 1], "export")
     )
       escaper.defaultExport = true;
+    else if (XML_NAME.test(nameToken.value)) escaper.xmlName = true;
     if (owner.kind === "function") {
       const delegate = delegateOf(
         tokens,

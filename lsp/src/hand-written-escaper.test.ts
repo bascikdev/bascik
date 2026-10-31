@@ -415,3 +415,42 @@ describe("review 2026-10-31: more escaper shapes", () => {
     ).toEqual(["escapeHtml"]);
   });
 });
+
+describe("review round 2: a comment that names HTML too, and an XML-named escaper", () => {
+  const ESC = `escapeText(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`;
+
+  it.each([
+    "// Escape for HTML (not XML)",
+    "// Escape text for HTML pages and inline SVG icons",
+    "// Not for XML: this escapes page text.",
+  ])(
+    "a comment that says the escaper is for HTML does not count: %s",
+    (comment) => {
+      expect(names(`${comment}\nexport function ${ESC}\n`)).toEqual([
+        "escapeText",
+      ]);
+    },
+  );
+
+  it.each([
+    "// The RSS feed is XML, which html does not build, so it keeps this escaper.",
+    "// Sitemap text: html cannot build XML.",
+    "// For the Atom feed, not HTML.",
+    "/* sitemap.xml text */",
+  ])("a comment that says it is for XML still counts: %s", (comment) => {
+    expect(names(`${comment}\nexport function ${ESC}\n`)).toEqual([]);
+  });
+
+  it("an XML-named escaper with no comment is still reported, and says it looks like an XML escaper", () => {
+    const [escapeXml] = findHandWrittenEscapers(
+      `export function escapeXml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`,
+    );
+    expect(escapeXml.xmlName).toBe(true);
+    const [svg] = findHandWrittenEscapers(
+      `export const svgEscape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");`,
+    );
+    expect(svg.xmlName).toBe(true);
+    const [plain] = findHandWrittenEscapers(`export function ${ESC}`);
+    expect(plain.xmlName).toBeUndefined();
+  });
+});

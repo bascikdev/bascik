@@ -289,6 +289,17 @@ export function analyzeServerScriptSource(
   const xmlEscapers: string[] = [];
   if (!opts.hasSrcAttribute)
     for (const escaper of findHandWrittenEscapers(body, xmlEscapers)) {
+      if (escaper.xmlName) {
+        diagnostics.push({
+          code: HAND_WRITTEN_ESCAPER_RULE,
+          message: `${escaper.name}() looks like an XML escaper: it turns & and < into entities. If it escapes XML on purpose (a feed, a sitemap, an SVG file), say so in a comment above it. If its output goes into an HTML page, use html\`...\` or esc() from @bascik/bascik/html.`,
+          severity: "warning",
+          start: escaper.start,
+          end: escaper.end,
+          ...(escaper.delegate ? { escaper: escaper.delegate } : {}),
+        });
+        continue;
+      }
       const subject =
         escaper.kind === "map"
           ? `${escaper.name} maps & and < to HTML entities, the core of a hand-written HTML escaper.`
