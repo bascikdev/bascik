@@ -58,7 +58,8 @@ Rules:
   prop-drilling        A component that only forwards a prop to a child (data-bascik-attr-data-bascik-prop-*):
                        let the page fill the child through a slot, or give the value to the child directly
   js-not-ts            A browser <script>, .js companion, or .js/.mjs helper where TypeScript is expected, and a
-                       page <script src="x.ts">, which Bascik does not compile (only component companions are)
+                       classic page <script src="x.ts"> with defer or async, which the build refuses (Bascik
+                       compiles and inlines a page's .ts src, and an inline classic script ignores both)
   build-once           A <script data-bascik-build> in a component that reads no page context (BASCIK_PAGE_PATH,
                        BASCIK_PAGE_FILE, BASCIK_ROUTE, here or in a local module it imports): its output is the same
                        on every page, so use <script data-bascik-build-once>
@@ -87,7 +88,7 @@ checked by the bascik-seo audit):
                        server, or stream script could print it)
 
 Options:
-  --allow-js                 Skip js-not-ts (only when the person asked for JavaScript)
+  --allow-js                 Skip js-not-ts for JavaScript (only when the person asked for it)
   --max-page-lines <n>       Markup lines a page may have (default 80)
   --max-component-lines <n>  Markup lines a component may have (default 120)
   --json                     Print JSON: { root, findings, stats }
@@ -341,14 +342,19 @@ function checkScripts(doc, options, findings, stats) {
         return false; // A third-party URL or a bundle written to dist/: not authored here.
       if (/\.m?ts(?:[?#].*)?$/i.test(src)) {
         stats.tsScripts++;
-        if (doc.kind === "page")
+        // Bascik compiles a page's own .ts src and inlines it. An inline classic script ignores defer and async,
+        // so the build refuses a classic tag with either rather than quietly running it at a different time.
+        const timing = module
+          ? undefined
+          : ["defer", "async"].find((name) => name in node.attrs);
+        if (doc.kind === "page" && timing)
           findings.push({
             rule: "js-not-ts",
             level: "warn",
             file: doc.file,
             line: node.line,
-            message: `<script src="${src}"> in a page is not compiled: the browser would receive TypeScript.`,
-            suggestion: `Move the behavior into a component and load ${basename(src)} from the component's folder with <script${module ? ' type="module"' : ""} src="${basename(src)}">, or inline it as <script type="text/typescript">.`,
+            message: `<script src="${src}" ${timing}> fails the build: Bascik inlines a page's .ts script, and an inline classic script ignores ${timing}.`,
+            suggestion: `Drop ${timing}, or mark the tag <script type="module" src="${src}">, which keeps deferred timing inline.`,
           });
         return false;
       }
@@ -364,7 +370,7 @@ function checkScripts(doc, options, findings, stats) {
         suggestion:
           doc.kind === "component"
             ? `Rename ${src} to ${tsName} and point the src at it; Bascik strips the types when it inlines the file (erasable syntax, no setup).`
-            : `Move the behavior into a component with a ${tsName} companion, or inline it as <script type="text/typescript">; a page's own .ts src is not compiled.`,
+            : `Rename ${src} to ${tsName} and point the src at it; Bascik compiles a page's own .ts script and inlines it (erasable syntax, no setup). Or move the behavior into a component with a ${tsName} companion.`,
       });
       return false;
     }
@@ -378,7 +384,7 @@ function checkScripts(doc, options, findings, stats) {
         : `Mark it <script type="text/typescript"> and add types (erasable syntax works with no setup), or move it to ${componentName}.ts beside the template and load it with <script src="${componentName}.ts">.`;
     else
       suggestion = module
-        ? `Move it into a component and load its .ts companion with <script type="module" src="name.ts">; a page's own <script src="x.ts"> is not compiled.`
+        ? `Move it to a .ts file beside the page and load it with <script type="module" src="name.ts">, which Bascik compiles and inlines (inline type="text/typescript" blocks are classic scripts, so they cannot hold import or export), or move the behavior into a component with a .ts companion.`
         : `Mark it <script type="text/typescript"> and add types, or move the behavior into a component with a .ts companion.`;
     findings.push({
       rule: "js-not-ts",

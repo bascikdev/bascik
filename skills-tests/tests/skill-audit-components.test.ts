@@ -599,21 +599,44 @@ describe("audit-components", () => {
     );
   });
 
-  it('misuse: flags a page <script src="x.ts">, which Bascik does not compile, even with allowJs', async () => {
+  it('accepts a page <script src="x.ts">, which Bascik compiles and inlines, and counts it as TypeScript', async () => {
     const root = project({
       ...clean,
       "src/pages/app.ts": `const n: number = 1;\n`,
-      "src/pages/tool.html": page(`      <script src="app.ts"></script>`),
+      "src/pages/tool.html": page(
+        `      <script src="app.ts"></script>\n      <script type="module" src="app.ts" defer></script>`,
+      ),
+    });
+    const before = (await audit(project(clean))).stats;
+    for (const allowJs of [false, true]) {
+      const { findings, stats } = await audit(root, { allowJs });
+      expect(findings).toEqual([]);
+      expect(stats.tsScripts).toBe(before.tsScripts + 2);
+      expect(stats.jsScripts).toBe(before.jsScripts);
+    }
+  });
+
+  it('misuse: flags a classic page <script src="x.ts" defer> or async, which the build refuses, even with allowJs', async () => {
+    const root = project({
+      ...clean,
+      "src/pages/app.ts": `const n: number = 1;\n`,
+      "src/pages/tool.html": page(
+        `      <script src="app.ts" defer></script>\n      <script src="app.ts" async></script>`,
+      ),
     });
     for (const allowJs of [false, true]) {
       const { findings } = await audit(root, { allowJs });
-      expect(findings).toHaveLength(1);
+      expect(findings).toHaveLength(2);
       expect(findings[0]).toMatchObject({
         rule: "js-not-ts",
         file: "src/pages/tool.html",
         line: 9,
       });
-      expect(findings[0].message).toMatch(/not compiled/);
+      expect(findings[1]).toMatchObject({ line: 10 });
+      expect(findings[0].message).toMatch(/defer/);
+      expect(findings[1].message).toMatch(/async/);
+      expect(findings[0].message).toMatch(/fails the build/);
+      expect(findings[0].suggestion).toMatch(/type="module"/);
     }
   });
 
