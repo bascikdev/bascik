@@ -34,6 +34,8 @@ API route files live in `directory.api` (default: `src/api`). The URL path prefi
 | `src/api/[...path].ts`        | `/api/*` (one or more segments)       |
 | `src/api/files/[...path].ts`  | `/api/files/*` (one or more segments) |
 
+Every `.ts`, `.mts`, `.js` and `.mjs` file in `directory.api` is a route, except type declarations (`types.d.ts`) and tests beside a route (`contact.test.ts`, `contact.spec.mts`). Keep shared helpers outside the folder, for example in `src/lib/` imported as `@/lib/db.ts`: a helper inside it, such as `src/api/db.ts`, is served as `/api/db` and answers `405` to every method it does not export.
+
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
 
 Dynamic `[param]` values are percent-decoded once from the raw request path. `/api/users/100%2520` supplies the literal string `100%20`, not `100 `. A `[param]` value is always one path segment: an encoded `/` or `\` (`/api/users/a%2Fb`) never splits it into two and never reaches the handler, the request answers `400`, as it does for a catch-all.

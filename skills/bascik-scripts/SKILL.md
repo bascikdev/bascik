@@ -149,7 +149,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Unexported methods return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/server-scripts`, `/stream-scripts`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
+Every script file in `src/api/` is a route except `*.d.ts` and tests beside a route (`*.test.ts`, `*.spec.ts`), so keep shared helpers in `src/lib/` and import them as `@/lib/<name>.ts`. Unexported methods return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/server-scripts`, `/stream-scripts`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
 
 ## Blogs and Markdown collections
 

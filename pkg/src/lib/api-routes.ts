@@ -150,7 +150,16 @@ export const buildApiRouteTree = (
 export const API_ROUTE_EXTENSIONS = [".ts", ".mts", ".js", ".mjs"] as const;
 
 /**
- * Recursively scans directory for API route source files (.ts, .mts, .js, .mjs).
+ * A script file in the API folder that is never a route: a type declaration
+ * (`types.d.ts`) or a test beside its route (`contact.test.ts`,
+ * `contact.spec.mts`), the same files the page-script watcher skips.
+ */
+const isNonRouteScript = (name: string): boolean =>
+  /\.d\.[cm]?ts$/i.test(name) || /\.(?:test|spec)\.[a-z]+$/i.test(name);
+
+/**
+ * Recursively scans directory for API route source files (.ts, .mts, .js,
+ * .mjs), skipping declaration and test files (`isNonRouteScript`).
  */
 export const scanApiRouteFiles = async (dir: string): Promise<string[]> => {
   if (!existsSync(dir)) {
@@ -166,7 +175,10 @@ export const scanApiRouteFiles = async (dir: string): Promise<string[]> => {
       results.push(...(await scanApiRouteFiles(fullPath)));
     } else if (entry.isFile()) {
       const ext = extname(entry.name).toLowerCase();
-      if ((API_ROUTE_EXTENSIONS as readonly string[]).includes(ext)) {
+      if (
+        (API_ROUTE_EXTENSIONS as readonly string[]).includes(ext) &&
+        !isNonRouteScript(entry.name)
+      ) {
         results.push(fullPath);
       }
     }
