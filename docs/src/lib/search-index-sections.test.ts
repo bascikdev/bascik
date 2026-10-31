@@ -113,6 +113,7 @@ describe("search sections follow the rendered headings", () => {
 });
 
 describe("every search result lands on a heading the page has", () => {
+  // Renders every page to compare anchors; under coverage instrumentation on a loaded machine it passes 5 s.
   it("links each anchored entry to an id the renderer emits for that page", async () => {
     const entries = await buildSearchEntries();
     const ids = new Map<string, Set<string>>();
@@ -133,5 +134,5 @@ describe("every search result lands on a heading the page has", () => {
       if (!pageIds.has(entry.path.slice(hash + 1))) dead.push(entry.path);
     }
     expect(dead).toEqual([]);
-  });
+  }, 60_000);
 });

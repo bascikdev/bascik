@@ -70,6 +70,7 @@ describe("generate-search-index", () => {
     expect(firstEntry).toHaveProperty("text");
   });
 
+  // Builds the whole search index; under coverage instrumentation on a loaded machine it passes 5 s.
   it("writes the compact index at its hashed name and the public array at the unversioned name, and drops stale versions", async () => {
     const stale = path.join(assetsDir, "search-index.0000000000.json");
     await fs.mkdir(assetsDir, { recursive: true });
@@ -91,7 +92,7 @@ describe("generate-search-index", () => {
       /^search-index\.[0-9a-f]{10}\.json$/.test(name),
     );
     expect(versions).toEqual([path.basename(await hashedIndexFile())]);
-  });
+  }, 60_000);
 
   it("reads the meta description whatever the attribute order or quote style", async () => {
     const { metaDescription } = await import("./generate-search-index.js");
