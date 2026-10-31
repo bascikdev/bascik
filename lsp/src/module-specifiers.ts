@@ -4,8 +4,20 @@ export interface ModuleSpecifier {
   value: string;
 }
 
-interface Token extends ModuleSpecifier {
-  type: "identifier" | "string" | "punctuation";
+/**
+ * A token of a script. A `string` token's offsets and value are its text
+ * between the quotes. A `template` is a template literal with no holes
+ * (offsets and value inside the backticks); one with holes gives no token of
+ * its own, only the tokens of the code in its holes.
+ */
+export interface Token extends ModuleSpecifier {
+  type: "identifier" | "string" | "template" | "punctuation";
+}
+
+/** A `//` or `/* *\/` comment, with its delimiters. */
+export interface Comment {
+  start: number;
+  end: number;
 }
 
 const isIdentifierStart = (character: string): boolean =>
@@ -27,8 +39,16 @@ interface DelimiterContext {
   allowsRegexAfterClose: boolean;
 }
 
-const tokenizeJavaScript = (source: string): Token[] => {
+/**
+ * The tokens of a script in source order, and its comments. Strings,
+ * template text and regular expression literals are skipped as units, so a
+ * quote inside `/"/g` opens no string. One linear pass.
+ */
+export const scanJavaScript = (
+  source: string,
+): { tokens: Token[]; comments: Comment[] } => {
   const tokens: Token[] = [];
+  const comments: Comment[] = [];
 
   const scanCode = (start: number, stopAtClosingBrace: boolean): number => {
     let index = start;
@@ -45,11 +65,14 @@ const tokenizeJavaScript = (source: string): Token[] => {
         continue;
       }
       if (character === "/" && next === "/") {
+        const commentStart = index;
         index += 2;
         while (index < source.length && source[index] !== "\n") index++;
+        comments.push({ start: commentStart, end: index });
         continue;
       }
       if (character === "/" && next === "*") {
+        const commentStart = index;
         index += 2;
         while (
           index < source.length &&
@@ -57,6 +80,7 @@ const tokenizeJavaScript = (source: string): Token[] => {
         )
           index++;
         index = Math.min(index + 2, source.length);
+        comments.push({ start: commentStart, end: index });
         continue;
       }
       if (character === "'" || character === '"') {
@@ -80,16 +104,25 @@ const tokenizeJavaScript = (source: string): Token[] => {
         continue;
       }
       if (character === "`") {
-        index++;
+        const tokenStart = index++;
+        let holes = false;
         while (index < source.length) {
           if (source[index] === "\\") index += 2;
           else if (source[index] === "`") {
             index++;
             break;
           } else if (source[index] === "$" && source[index + 1] === "{") {
+            holes = true;
             index = scanCode(index + 2, true);
           } else index++;
         }
+        if (!holes)
+          tokens.push({
+            type: "template",
+            value: source.slice(tokenStart + 1, index - 1),
+            start: tokenStart + 1,
+            end: index - 1,
+          });
         canStartRegex = false;
         statementExpected = false;
         continue;
@@ -199,8 +232,14 @@ const tokenizeJavaScript = (source: string): Token[] => {
   };
 
   scanCode(0, false);
-  return tokens.sort((left, right) => left.start - right.start);
+  return {
+    tokens: tokens.sort((left, right) => left.start - right.start),
+    comments: comments.sort((left, right) => left.start - right.start),
+  };
 };
+
+const tokenizeJavaScript = (source: string): Token[] =>
+  scanJavaScript(source).tokens;
 
 export const findModuleSpecifiers = (source: string): ModuleSpecifier[] => {
   const tokens = tokenizeJavaScript(source);
