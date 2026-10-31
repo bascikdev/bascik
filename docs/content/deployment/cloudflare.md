@@ -620,6 +620,8 @@ export const GET = async (
 
 `context.remoteIp` is derived from Cloudflare's `CF-Connecting-IP` header only. `X-Forwarded-For` is never trusted.
 
+An API route can accept a WebSocket the Workers way: create a `WebSocketPair` and return `new Response(null, { status: 101, webSocket: client })`, or the response of a Durable Object that does. The Worker returns an upgrade (status `101`, or a response with a `webSocket`) exactly as the handler made it, without the security headers it adds to other API responses. `bascik --server` has no `WebSocketPair`, so such a route runs on Cloudflare only.
+
 ## What runs where
 
 | Site shape                 | Any static host | `bascik --server` | Cloudflare (this guide) | Other serverless hosts    |

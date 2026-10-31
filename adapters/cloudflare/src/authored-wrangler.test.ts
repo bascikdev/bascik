@@ -480,3 +480,48 @@ describe("authored files named like the adapter's own", () => {
     );
   }, 60_000);
 });
+
+describe("an API route that upgrades to a WebSocket", () => {
+  const live = {
+    "src/api/live.ts": {
+      path: "/api/live",
+      source: `export const GET = (request: Request) => {
+  if (request.headers.get("upgrade") !== "websocket")
+    return new Response("expected a WebSocket upgrade", { status: 426 });
+  // @ts-expect-error WebSocketPair is a Workers global.
+  const [client, server] = Object.values(new WebSocketPair());
+  server.accept();
+  server.addEventListener("message", (event: MessageEvent) => server.send("echo:" + event.data));
+  return new Response(null, { status: 101, webSocket: client } as ResponseInit);
+};`,
+    },
+  };
+
+  it("returns the handler's 101 with its webSocket, and the socket echoes", async () => {
+    const site = await buildSite({ apiRoutes: live });
+    const harness = await serve(site);
+    const res = await harness.mf.dispatchFetch("http://example.test/api/live", {
+      headers: { upgrade: "websocket" },
+    });
+    expect(res.status).toBe(101);
+    const socket = res.webSocket;
+    expect(socket).toBeTruthy();
+    socket!.accept();
+    const reply = new Promise<string>((resolve) =>
+      socket!.addEventListener("message", (event) =>
+        resolve(String(event.data)),
+      ),
+    );
+    socket!.send("frother");
+    expect(await reply).toBe("echo:frother");
+    socket!.close();
+  }, 60_000);
+
+  it("misuse: the same route without an upgrade keeps the handler's own answer and the security headers", async () => {
+    const site = await buildSite({ apiRoutes: live });
+    const harness = await serve(site);
+    const res = await harness.fetch("/api/live");
+    expect(res.status).toBe(426);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  }, 60_000);
+});

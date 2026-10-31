@@ -579,6 +579,15 @@ export const createCloudflareWorker = (
             `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
           ),
       });
+      // A WebSocket upgrade (`new Response(null, { status: 101, webSocket })`,
+      // the platform's pattern) goes back as the handler made it: a copy
+      // would lose the socket, and the constructor refuses status 101
+      // without one, so the request would end in an uncaught RangeError.
+      if (
+        response.status === 101 ||
+        (response as Response & { webSocket?: unknown }).webSocket
+      )
+        return response;
       const headers = mergeHandlerHeaders(response.headers, {
         https,
         security,

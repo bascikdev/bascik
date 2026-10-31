@@ -228,6 +228,27 @@ describe("createCloudflareWorker: API routes", () => {
     ...extra,
   });
 
+  it("returns a WebSocket upgrade (status 101 or a webSocket) as the handler made it", async () => {
+    // Node's Response refuses 101; the Workers one takes it with a socket.
+    class Upgrade extends Response {
+      override get status() {
+        return 101;
+      }
+    }
+    const upgrade = new Upgrade(null);
+    const socketed = Object.assign(new Response(null), { webSocket: {} });
+    const w = worker(
+      graphOf({
+        apiRoutes: [
+          route("/api/live", async () => ({ GET: () => upgrade })),
+          route("/api/socket", async () => ({ GET: () => socketed })),
+        ],
+      }),
+    );
+    expect(await w.fetch(get("/api/live"), {}, ctx())).toBe(upgrade);
+    expect(await w.fetch(get("/api/socket"), {}, ctx())).toBe(socketed);
+  });
+
   it("passes params, the platform (env, waitUntil) and the trusted client IP to the handler; never X-Forwarded-For", async () => {
     const seen: unknown[] = [];
     const waits = ctx();
