@@ -2227,6 +2227,18 @@ describe("injectProps – end tags the close finder pairs (F032)", () => {
     },
   );
 
+  it("warns once per prop for a template with several receivers lacking an end tag", () => {
+    const warn = vi.fn();
+    injectProps(
+      "<p data-bascik-prop-t>a<p data-bascik-prop-t>b<p data-bascik-prop-u>c",
+      { t: "x", u: "y" },
+      warn,
+    );
+    expect(
+      warn.mock.calls.map(([message]) => message.split(" on ")[0]),
+    ).toEqual(["Ignoring data-bascik-prop-t", "Ignoring data-bascik-prop-u"]);
+  });
+
   it("does not warn for a receiver whose prop is not given", () => {
     const warn = vi.fn();
     expect(injectProps("<p data-bascik-prop-title>old", {}, warn)).toBe(

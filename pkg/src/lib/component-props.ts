@@ -574,6 +574,8 @@ export const injectProps = (
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     const escapedPropValue = escapeHtml(propValue);
+    // Once per prop and template, however many receivers lack an end tag.
+    let warnedNoEndTag = false;
     // Scan whole opening tags and act only on whole attribute names, so a
     // marker token inside another attribute's quoted value is never confused
     // with a receiver.
@@ -666,10 +668,12 @@ export const injectProps = (
       const contentStart = openMatch.index + openTag.length;
       const closeIndex = findClose(tagName, contentStart);
       if (closeIndex === -1) {
-        warn(
-          `Ignoring data-bascik-prop-${propName} on a <${tagName.toLowerCase()}> with no end tag: the value replaces an element's content, so it needs a </${tagName.toLowerCase()}>. ` +
-            `To put the value in an attribute, use data-bascik-attr-{attribute}="${propName}".`,
-        );
+        if (!warnedNoEndTag)
+          warn(
+            `Ignoring data-bascik-prop-${propName} on a <${tagName.toLowerCase()}> with no end tag: the value replaces an element's content, so it needs a </${tagName.toLowerCase()}>. ` +
+              `To put the value in an attribute, use data-bascik-attr-{attribute}="${propName}".`,
+          );
+        warnedNoEndTag = true;
         searchIndex = contentStart;
         continue;
       }
