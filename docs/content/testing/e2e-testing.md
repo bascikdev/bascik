@@ -27,6 +27,9 @@ export default defineConfig({
     // Playwright runs the command beside this config; the site is one up.
     cwd: "..",
     command: "npx bascik --build && npx bascik --server --port 8080",
+    // The sitemap and robots.txt need a site URL; this test build points them
+    // at the server it runs. The real one comes from BASCIK_SITE_URL or .env.
+    env: { BASCIK_SITE_URL: "http://localhost:8080" },
     url: "http://localhost:8080",
     reuseExistingServer: !process.env.CI,
   },

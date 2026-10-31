@@ -588,6 +588,52 @@ describe("scaffold-to-compiler integration", () => {
     90_000,
   );
 
+  it("misuse: the scaffolded e2e lane's build runs as written with no site URL set, for its own localhost server", async () => {
+    const parentDir = await createTempDir("e2e-webserver");
+    const projectDir = join(parentDir, "e2e-site");
+    await scaffold("e2e-site", parentDir);
+    const config = await readFile(
+      join(projectDir, "e2e/playwright.config.ts"),
+      "utf8",
+    );
+    // Read the webServer block as Playwright does: its command, its cwd beside the config, its env.
+    const command = /command:\s*'([^']+)'/.exec(config)?.[1];
+    const cwd = /cwd:\s*'([^']+)'/.exec(config)?.[1];
+    const siteUrl = /env:\s*\{\s*BASCIK_SITE_URL:\s*'([^']+)'/.exec(
+      config,
+    )?.[1];
+    expect(command).toBeDefined();
+    const buildStep = command!.split("&&")[0].trim();
+    expect(buildStep).toBe("npx bascik --build");
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      NO_COLOR: "1",
+      FORCE_COLOR: "0",
+    };
+    delete env.BASCIK_SITE_URL;
+    if (siteUrl !== undefined) env.BASCIK_SITE_URL = siteUrl;
+    const build = await execFileAsync(process.execPath, [PKG_CLI, "--build"], {
+      cwd: resolve(projectDir, "e2e", cwd ?? "."),
+      encoding: "utf8",
+      env,
+      timeout: 60_000,
+    }).then(
+      () => ({ code: 0, output: "" }),
+      (err: { code?: number; stdout?: string; stderr?: string }) => ({
+        code: err.code ?? 1,
+        output: `${err.stdout ?? ""}${err.stderr ?? ""}`,
+      }),
+    );
+    expect(build.code, build.output).toBe(0);
+    const sitemap = await readFile(
+      join(projectDir, "dist/sitemap.xml"),
+      "utf8",
+    );
+    expect(sitemap).toContain("<loc>http://localhost:8080/</loc>");
+    // The URL lives in the e2e config, not in a .env the real build would read.
+    expect(existsSync(join(projectDir, ".env"))).toBe(false);
+  }, 60_000);
+
   it("the scaffolded default and cloudflare starters pass the bascik skill's semantic HTML audit", async () => {
     const audit = join(REPO_ROOT, "skills/bascik/scripts/audit-components.mjs");
     const semantic = new Set([

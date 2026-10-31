@@ -34,7 +34,7 @@ If you omit `-y`, the CLI steps through the setup prompts interactively.
 
 Its component scripts are TypeScript (`<script type="text/typescript">`), and every component root and interactive part carries a `data-testid` for tests. Run `npm create bascik@rc -- --help` to list every option.
 
-It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults. A fresh project passes `npm run lint`; until you set the site's production URL, `bascik --check` warns that `BASCIK_SITE_URL` is not set and `npm run build` fails, because the sitemap and `robots.txt` need it. Set it where the site is built (see [Environment files and the site URL](/cli#environment-files-and-the-site-url)), or turn off `generate.sitemap` and `generate.robots`.
+It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults. A fresh project passes `npm run lint`; until you set the site's production URL, `bascik --check` warns that `BASCIK_SITE_URL` is not set and `npm run build` fails, because the sitemap and `robots.txt` need it. Set it where the site is built (see [Environment files and the site URL](/cli#environment-files-and-the-site-url)), or turn off `generate.sitemap` and `generate.robots`. `npm run e2e` works before that: its Playwright config gives the test build `http://localhost:8080`, the server it runs.
 
 For coding assistants, it writes an `AGENTS.md` brief with the project's commands and house rules, and a `CLAUDE.md` that imports it for Claude Code. It then asks whether to install the [Bascik agent skills](/agent-skills#new-projects) (yes by default, and with `-y`); pass `--no-skills` to skip them. See [Project Brief](/agent-skills#project-brief) for what the brief says.
 

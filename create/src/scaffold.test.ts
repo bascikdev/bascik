@@ -467,6 +467,12 @@ describe("PLAYWRIGHT_CONFIG", () => {
       /webServer:\s*\{[^}]*\bcwd:\s*(['"])\.\.\1/,
     );
   });
+
+  it("misuse: gives the e2e build the URL it serves, so a fresh project without BASCIK_SITE_URL still builds its sitemap", () => {
+    expect(PLAYWRIGHT_CONFIG).toMatch(
+      /webServer:\s*\{[^}]*\benv:\s*\{\s*BASCIK_SITE_URL:\s*'http:\/\/localhost:8080'/,
+    );
+  });
 });
 
 describe("E2E_APP_SPEC", () => {
