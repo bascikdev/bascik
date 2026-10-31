@@ -46,15 +46,15 @@ describe("pageEntry", () => {
   it("decodes references as the browser does, and survives an out-of-range one (R2-05)", () => {
     const entry = pageEntry(
       page(
-        '<title>Caf&eacute; &Eacute;clair &#150; &#x110000;</title><meta name="description" content="&Lt;3 &AMP; &nbsp;more">',
+        '<title>Cr&egrave;me &Eacute;clair &#150; &#x110000;</title><meta name="description" content="&Lt;3 &AMP; &nbsp;more">',
       ),
-      "cafe.html",
+      "creme.html",
       {},
     );
     expect(entry).toMatchObject({
       // &#150; is an en dash (windows-1252), past U+10FFFF is U+FFFD, and
       // names are case-sensitive: &Lt; is no name this table holds.
-      title: "Caf\u00e9 \u00c9clair \u2013 \ufffd",
+      title: "Cr\u00e8me \u00c9clair \u2013 \ufffd",
       description: "&Lt;3 & more",
     });
   });
