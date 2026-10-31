@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { RateLimiter, getClientIp } from "./rate-limit.ts";
+import { RateLimiter, getClientIp, rateLimitKey } from "./rate-limit.ts";
 import { nativeClock } from "./clock.ts";
 
 describe("getClientIp", () => {
@@ -230,5 +230,47 @@ describe("RateLimiter - deterministic clock-driven bucket and sweep boundaries",
     // A fresh entry after destroy proves internal tracking was cleared, not
     // merely that the timer stopped.
     expect(limiter.isRateLimited("7.7.7.7", nativeClock.now())).toBe(false);
+  });
+});
+
+// F075: one host commonly holds a whole IPv6 /64, so counting each address
+// separately let a single sender fill the tracking table (and so lock out
+// every new visitor) by rotating through its own prefix.
+describe("rateLimitKey", () => {
+  it.each([
+    ["2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"],
+    ["2001:DB8:1:2::ffff", "2001:db8:1:2::/64"],
+    ["2001:db8::1", "2001:db8:0:0::/64"],
+    ["::1", "0:0:0:0::/64"],
+    ["fe80::1%eth0", "fe80:0:0:0::/64"],
+    ["64:ff9b::192.0.2.1", "64:ff9b:0:0::/64"],
+    ["::ffff:192.0.2.7", "192.0.2.7"],
+    ["192.0.2.7", "192.0.2.7"],
+    ["unknown", "unknown"],
+    ["", ""],
+  ])("%s counts as %s", (ip, key) => {
+    expect(rateLimitKey(ip)).toBe(key);
+  });
+
+  it("addresses in one IPv6 /64 share a limit; another /64 does not", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 2 });
+    expect(limiter.isRateLimited("2001:db8:1:2::1", 0)).toBe(false);
+    expect(limiter.isRateLimited("2001:db8:1:2::2", 0)).toBe(false);
+    expect(limiter.isRateLimited("2001:db8:1:2::3", 0)).toBe(true);
+    expect(limiter.isRateLimited("2001:db8:1:3::1", 0)).toBe(false);
+    limiter.destroy();
+  });
+
+  it("rotating addresses inside one /64 occupies one tracking slot, so new visitors still get in", () => {
+    const limiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 1_000_000,
+      maxTrackedIps: 3,
+    });
+    for (let i = 1; i <= 50; i++)
+      limiter.isRateLimited(`2001:db8:dead:beef::${i.toString(16)}`, 0);
+    expect(limiter.isRateLimited("198.51.100.1", 0)).toBe(false);
+    expect(limiter.isRateLimited("198.51.100.2", 0)).toBe(false);
+    limiter.destroy();
   });
 });

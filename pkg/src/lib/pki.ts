@@ -1,4 +1,5 @@
-import { access, chmod } from "node:fs/promises";
+import { access, chmod, readFile } from "node:fs/promises";
+import { X509Certificate } from "node:crypto";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
@@ -9,6 +10,27 @@ export interface EnsureCertificatesOptions {
   keyFile?: string;
   certFile?: string;
 }
+
+/**
+ * Why a certificate cannot be used right now (expired, or not valid yet), or
+ * `null` when its dates are fine or the file is not a certificate Node can
+ * parse (the TLS server reports that itself, with the real reason).
+ */
+const certificateDateProblem = async (
+  certPath: string,
+): Promise<string | null> => {
+  let cert: X509Certificate;
+  try {
+    cert = new X509Certificate(await readFile(certPath));
+  } catch {
+    return null;
+  }
+  const now = Date.now();
+  if (Date.parse(cert.validTo) < now) return `expired on ${cert.validTo}`;
+  if (Date.parse(cert.validFrom) > now)
+    return `is not valid until ${cert.validFrom}`;
+  return null;
+};
 
 export const ensureCertificates = async (
   options: EnsureCertificatesOptions = {},
@@ -32,7 +54,21 @@ export const ensureCertificates = async (
   }
 
   if (certsPresent) {
-    return { keyPath, certPath };
+    const problem = await certificateDateProblem(certPath);
+    if (!problem) return { keyPath, certPath };
+    if (usingCustomCerts) {
+      // The user's own files are never replaced.
+      console.warn(
+        `SSL: the certificate ${certPath} ${problem}; browsers will refuse it. ` +
+          "Replace the files named by http.tls.certFile and http.tls.keyFile.",
+      );
+      return { keyPath, certPath };
+    }
+    // The default files are Bascik's own (the openssl fallback issues a
+    // 365-day certificate), so a stale one is replaced, not served.
+    console.warn(
+      `SSL: the generated certificate ${certPath} ${problem}; generating a new one.`,
+    );
   }
 
   if (usingCustomCerts) {

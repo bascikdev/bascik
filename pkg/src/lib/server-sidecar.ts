@@ -181,6 +181,21 @@ class ServerSidecarRegistry {
         `[bascik] --server: Failed to load server scripts sidecar from ${targetPath}: ${(err as Error).message}`,
       );
     }
+    // `null`, an array or a primitive parses fine but is not a sidecar:
+    // without this, `null.scripts` is a raw TypeError and the rest an
+    // empty registry that hides the broken release.
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      this.loadedSidecar = null;
+      this.sidecarPresent = false;
+      throw new Error(
+        `[bascik] --server: server scripts sidecar at ${targetPath} is not a JSON object. ` +
+          `Run \`bascik --build\` to regenerate .bascik/dist/server-scripts.json.`,
+      );
+    }
     const scriptsRaw = parsed.scripts ?? {};
     if (
       typeof scriptsRaw !== "object" ||

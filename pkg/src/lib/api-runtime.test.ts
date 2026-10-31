@@ -1390,6 +1390,26 @@ describe("API runtime execution", () => {
         );
       });
 
+      // F074: the request-target is origin-form; a leading `//` (or `/\\`)
+      // must not be read as a scheme-relative authority.
+      it.each([
+        ["//api/ping", "http://localhost:8080//api/ping"],
+        ["//evil.com/x?y=1", "http://localhost:8080//evil.com/x?y=1"],
+        ["//[::1", "http://localhost:8080//[::1"],
+        ["/\\[::1", "http://localhost:8080//[::1"],
+        ["http://evil.com/x", "http://localhost:8080/http://evil.com/x"],
+        ["/a b?q=1 2#frag", "http://localhost:8080/a%20b?q=1%202#frag"],
+        ["/about?", "http://localhost:8080/about?"],
+        ["*", "http://localhost:8080/*"],
+      ])("createWebRequest keeps the origin's host for %s", (path, href) => {
+        const webReq = createWebRequest(
+          { method: "GET", path, headers: {}, remoteIp: "127.0.0.1" },
+          "http://localhost:8080",
+        );
+        expect(webReq.url).toBe(href);
+        expect(new URL(webReq.url).host).toBe("localhost:8080");
+      });
+
       it("preserves pathname and query-string in createWebRequest", () => {
         const req: BascikRequest = {
           method: "GET",

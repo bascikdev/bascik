@@ -164,6 +164,85 @@ describe("LIVE_RELOAD_SCRIPT", () => {
     expect(reloadCalls).toBe(1);
   });
 
+  // F082: the offline banner promises to reconnect when the server
+  // restarts; a tab that stays focused and visible must keep trying.
+  it("keeps retrying slowly after the fast retries, so a focused tab reconnects after a restart", () => {
+    vi.useFakeTimers();
+    try {
+      let reloadCalls = 0;
+      const instances: any[] = [];
+      class MockEventSource {
+        static CLOSED = 2;
+        url: string;
+        readyState = 0;
+        onmessage: ((e: any) => void) | null = null;
+        onerror: (() => void) | null = null;
+        addEventListener = vi.fn();
+        constructor(url: string) {
+          this.url = url;
+          instances.push(this);
+        }
+        close() {
+          this.readyState = 2;
+        }
+      }
+      const banners: string[] = [];
+      const bannerElement: any = { style: {}, parentNode: null };
+      Object.defineProperty(bannerElement, "innerHTML", {
+        set: (html: string) => banners.push(html),
+      });
+      const mockWindow = {
+        location: { reload: () => reloadCalls++ },
+        addEventListener: () => {},
+      };
+      const mockDocument = {
+        visibilityState: "visible",
+        getElementById: () => null,
+        body: {
+          appendChild: (el: any) => {
+            el.parentNode = mockDocument.body;
+          },
+          removeChild: () => {},
+        },
+        createElement: () => bannerElement,
+        addEventListener: () => {},
+      };
+      const scriptCode = LIVE_RELOAD_SCRIPT.replace(
+        `<script ${LIVE_RELOAD_SCRIPT_ATTR}>`,
+        "",
+      ).replace("</script>", "");
+      new Function("window", "document", "EventSource", scriptCode)(
+        mockWindow,
+        mockDocument,
+        MockEventSource,
+      );
+
+      instances[0].onmessage({ data: "connected" });
+      // The server stops: the first connection and 5 fast retries fail.
+      instances[0].onerror();
+      for (let i = 1; i <= 5; i++) {
+        vi.advanceTimersByTime(1000);
+        expect(instances).toHaveLength(i + 1);
+        instances[i].onerror();
+      }
+      expect(banners.at(-1)).toContain("Dev server offline");
+
+      // Still focused and visible, no focus event: it keeps trying.
+      vi.advanceTimersByTime(5000);
+      expect(instances).toHaveLength(7);
+      instances[6].onerror();
+      expect(banners.at(-1)).toContain("Dev server offline");
+      vi.advanceTimersByTime(5000);
+      expect(instances).toHaveLength(8);
+
+      // The server is back: the tab reloads into the new build.
+      instances[7].onmessage({ data: "connected" });
+      expect(reloadCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("handles monotonic generation counter and ignores stale/older generations", () => {
     let reloadCalls = 0;
     const eventSourceInstances: any[] = [];

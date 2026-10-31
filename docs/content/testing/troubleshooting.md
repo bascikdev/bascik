@@ -616,7 +616,7 @@ Bascik sends a comment heartbeat every 20 seconds so a corporate proxy or VPN do
 
 ### The browser rejects the dev TLS certificate
 
-With `http.tls.enabled: true` and no `keyFile`/`certFile`, Bascik generates a certificate. If `mkcert` is installed, it issues a locally trusted one (covering `localhost`, `127.0.0.1`, and `::1`) once mkcert's local CA is installed with `mkcert -install`. Otherwise Bascik falls back to an openssl self-signed certificate. It carries the SubjectAltName (SAN) entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`), which prevents a name-mismatch error, but browsers still warn because nothing trusts it. Bascik reuses an existing `bascik-privkey.pem` and `bascik-cert.pem` instead of regenerating, so after installing mkcert, delete those two files and restart to get a trusted certificate. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
+With `http.tls.enabled: true` and no `keyFile`/`certFile`, Bascik generates a certificate. If `mkcert` is installed, it issues a locally trusted one (covering `localhost`, `127.0.0.1`, and `::1`) once mkcert's local CA is installed with `mkcert -install`. Otherwise Bascik falls back to an openssl self-signed certificate. It carries the SubjectAltName (SAN) entries modern browsers require (`localhost`, `*.localhost`, `127.0.0.1`, `::1`), which prevents a name-mismatch error, but browsers still warn because nothing trusts it. Bascik reuses an existing `bascik-privkey.pem` and `bascik-cert.pem` instead of regenerating, so after installing mkcert, delete those two files and restart to get a trusted certificate. An expired or not-yet-valid generated certificate is the exception: the console prints `SSL: the generated certificate ... expired on ...; generating a new one.` and Bascik replaces it. See [HTTP/2 & TLS Support](/production-server#http2-tls-support).
 
 ### `could not create static-asset symlinks; copying assets instead.`
 
@@ -652,7 +652,7 @@ Point the orchestrator's readiness probe at `GET /_health`. On `SIGTERM` the ser
 
 ### Requests are missing from the logs
 
-Bascik logs static asset and page requests when the response finishes, with the HTTP status and total transfer time, so a request still in flight has no line yet. `/_health` probes are never logged. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
+Bascik logs static asset and page requests when its request handler returns, with the HTTP status and the time taken. A buffered page or asset logs as soon as its body is handed to the network, so its time does not include a slow client's download; a streamed response logs when the stream ends, so a stream still in flight has no line yet. `/_health` probes are never logged. Set `logging.requests: false` if you prefer to suppress request logs, and check that setting first if requests you expect never appear. See [`logging`](/configuration#logging).
 
 ## Build output and deployment
 

@@ -55,11 +55,7 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import {
-  InvalidApiPathError,
-  isBascikFolderName,
-  isPrivatePathname,
-} from "./route-matching.ts";
+import { InvalidApiPathError, isPrivatePathname } from "./route-matching.ts";
 import {
   resolveResponseSecurity,
   type ResponseSecurity,
@@ -227,6 +223,18 @@ export interface BascikResponse {
   lingerClose?(): void;
 }
 
+/**
+ * A filesystem error that means the request path names no file: it does not
+ * exist (ENOENT), a component of it is a regular file (ENOTDIR, as in
+ * `/robots.txt/x.png`), or a name is over the filesystem limit
+ * (ENAMETOOLONG). The client asked for something that is not there, so it is
+ * a 404, not a server fault. EACCES, EIO and the rest stay 500.
+ */
+export const isNoSuchFileError = (err: unknown): boolean => {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ENAMETOOLONG";
+};
+
 export const isNetworkResetError = (err: unknown): boolean => {
   const code = (err as NodeJS.ErrnoException)?.code;
   return (
@@ -262,7 +270,7 @@ export const onError = (
 
   try {
     if (!res.headersSent) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (isNoSuchFileError(error)) {
         res.respond(404, { ...secHeaders });
         res.end();
         return 404;
@@ -572,7 +580,12 @@ export const createRequestHandler = () => {
       ) {
         responseStatus = 429;
         res.respond(429, {
-          "retry-after": String(RATE_WINDOW_MS / 1000),
+          // The configured window, in whole seconds (delay-seconds, RFC 9110
+          // 10.2.3): by then every request counted against the client has
+          // left the sliding window.
+          "retry-after": String(
+            Math.ceil(getActiveRateLimiter().windowMs / 1000),
+          ),
           "content-type": "text/plain; charset=utf-8",
           ...secHeaders,
         });
@@ -698,12 +711,20 @@ export const createRequestHandler = () => {
           res.end("Bad Request");
           return;
         }
-        // dist/.bascik holds server script source and adapter output. The
-        // path check above already refuses it; this guards the file actually
-        // opened, whatever spelling reached it.
+        // dist/.bascik holds server script source and adapter output, and
+        // with security.hideDotfiles on every dot segment is private. The
+        // request-path check above already refuses both; this applies the
+        // same rule to the file actually opened, whatever spelling reached it
+        // (on Windows `resolve` also splits on `\`).
         if (
-          isBascikFolderName(
-            fullPath.slice(distDir.length + 1).split(sep)[0] ?? "",
+          isPrivatePathname(
+            "/" +
+              fullPath
+                .slice(distDir.length + 1)
+                .split(sep)
+                .join("/"),
+            "/",
+            BascikConfig.security?.hideDotfiles !== false,
           )
         ) {
           responseStatus = 404;
@@ -719,8 +740,7 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
-          responseStatus =
-            (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+          responseStatus = isNoSuchFileError(err) ? 404 : 500;
           res.respond(responseStatus, { ...secHeaders });
           res.end(
             responseStatus === 404 ? "Not Found" : "Internal Server Error",
@@ -866,6 +886,21 @@ export const createRequestHandler = () => {
           new URL(req.path, "http://localhost").searchParams.get("boot") ===
           "1";
 
+        // Refuse over the connection cap before committing the 200: once the
+        // event-stream headers are sent the response can no longer become a
+        // 503, and an accepted-but-unregistered stream would hang open with
+        // no events and no heartbeat.
+        const sseManager = getSseManager();
+        if (sseManager.isAtCapacity) {
+          responseStatus = 503;
+          res.respond(503, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          res.end("Too Many SSE Connections");
+          return;
+        }
+
         responseStatus = 200;
         res.respond(200, {
           "content-type": "text/event-stream",
@@ -886,9 +921,7 @@ export const createRequestHandler = () => {
               openPagePath = getHttpPath(relativeRefererPath);
           }
         } catch {}
-        if (openPagePath) mem.trackOpenPage(openPagePath);
 
-        const sseManager = getSseManager();
         const storedPage = openPagePath
           ? mem.getPageExact(openPagePath)
           : undefined;
@@ -900,8 +933,14 @@ export const createRequestHandler = () => {
             : null,
         );
         if (!client) {
+          // The manager was destroyed (shutdown) or filled between the check
+          // above and here; it has ended the committed stream. Nothing was
+          // tracked yet, so there is nothing to balance.
           return;
         }
+        // Tracked only once the client is registered, so every trackOpenPage
+        // is paired with the untrackOpenPage in the close handler below.
+        if (openPagePath) mem.trackOpenPage(openPagePath);
 
         // Normalize trailing slashes: browsers may omit the trailing slash on index routes.
         const strip = (p: string) => p.replace(/\/$/, "") || "/";

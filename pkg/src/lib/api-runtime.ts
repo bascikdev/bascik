@@ -242,6 +242,18 @@ export const payloadTooLargeResponse = (): Response =>
   });
 
 /**
+ * The absolute URL of an origin-form request-target. The host always comes
+ * from `origin`: resolving the target against it (`new URL(path, origin)`)
+ * would read `//evil.com/x` (or `/\evil.com/x`) as a scheme-relative
+ * reference with its own host, and throw on `//[`. Appending the target to
+ * the origin keeps a leading `//` in the pathname instead, which is how the
+ * router saw it.
+ */
+const requestUrl = (path: string, origin: string): string =>
+  new URL(new URL(origin).origin + (path.startsWith("/") ? path : `/${path}`))
+    .href;
+
+/**
  * Construct a WHATWG Request from a BascikRequest.
  * Excludes HTTP/2 pseudo-headers (headers starting with ':').
  * Enforces streaming byte count up to maxBodySize without buffering;
@@ -255,7 +267,7 @@ export const createWebRequest = (
   onBodyLimitExceeded?: () => void,
 ): Request => {
   const method = rawReq.method ? rawReq.method.toUpperCase() : "GET";
-  const url = new URL(rawReq.path ?? "/", origin).href;
+  const url = requestUrl(rawReq.path ?? "/", origin);
 
   const headers = new Headers();
   if (rawReq.headers) {

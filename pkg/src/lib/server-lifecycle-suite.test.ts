@@ -477,6 +477,38 @@ describe("startHttp2Server – rate limiting", () => {
     }
   });
 
+  // F073: Retry-After names the configured window, in whole seconds.
+  it.each([
+    [undefined, "10"],
+    [{ window: 60_000, max: 2 }, "60"],
+    [{ window: 1_500, max: 2 }, "2"],
+  ])("429 retry-after for rateLimit %o is %s", async (rateLimit, expected) => {
+    const { BascikConfig } = await import("./config.ts");
+    const previous = (BascikConfig as any).http.rateLimit;
+    (BascikConfig as any).http.rateLimit = rateLimit ?? true;
+    resetActiveRateLimiter();
+    try {
+      mockMem.getPage.mockReturnValue(makePage());
+      const handler = getStreamHandler()!;
+      const ip = "10.0.0.101";
+      const limit = rateLimit?.max ?? 500;
+      let last: ReturnType<typeof makeStream> | undefined;
+      for (let i = 0; i <= limit; i++) {
+        last = {
+          ...makeStream(),
+          session: { socket: { remoteAddress: ip } },
+        };
+        await handler(last, makeHeaders("/about", "GET"));
+      }
+      expect(last!.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 429, "retry-after": expected }),
+      );
+    } finally {
+      (BascikConfig as any).http.rateLimit = previous;
+      resetActiveRateLimiter();
+    }
+  });
+
   it("does not throttle requests when rateLimit is disabled", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.rateLimit = false;

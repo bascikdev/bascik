@@ -66,6 +66,10 @@ export default defineConfig({
 });
 ```
 
+### Rate Limiting
+
+`http.rateLimit` counts requests per client in a sliding window (500 per 10 seconds by default) and answers `429 Too Many Requests` with a `Retry-After` of the window in seconds. An IPv4 address is one client; an IPv6 address counts by its `/64` prefix, because one host or network is usually handed a whole `/64`. The limiter tracks at most 10,000 clients at once. When that many are active inside one window, it refuses new clients with `429` rather than grow without bound, so a flood from that many distinct addresses can lock out first-time visitors until it stops. Behind a proxy, set `http.trustProxy` so clients are told apart by `X-Forwarded-For`; for protection against distributed floods, rate limit at the CDN or load balancer as well.
+
 ### Server Configuration Options
 
 | Option                         | Type                | Default                       | Description                                                                                                            |
@@ -128,7 +132,8 @@ When TLS is enabled:
 - ALPN negotiation enables HTTP/2 for modern clients and HTTP/1.1 for legacy agents.
 - `http.timeouts.request` and `http.timeouts.headers` apply to HTTP/1.1 clients. An HTTP/2 connection is closed with `GOAWAY` once it has had no open request for `http.timeouts.keepAlive`; an open request, however quiet, keeps it open. See [`http`](/configuration#http).
 - Without `keyFile` and `certFile`, the server creates a certificate for `localhost` on first start, with `mkcert` when it is installed and `openssl` otherwise, saved as `bascik-privkey.pem` and `bascik-cert.pem` in the directory Bascik runs from (the project folder when you start it there). The mkcert certificate covers `localhost`, `127.0.0.1`, and `::1` and is trusted once mkcert's local CA is installed (`mkcert -install`). The openssl certificate is self-signed, with SubjectAltName (SAN) entries for `localhost`, `*.localhost`, `127.0.0.1`, and `::1`; browsers still warn until you trust it.
-- Existing `bascik-privkey.pem` and `bascik-cert.pem` files are reused, not regenerated. Delete them after installing mkcert to get a trusted certificate.
+- Existing `bascik-privkey.pem` and `bascik-cert.pem` files are reused, not regenerated, while the certificate is valid. Delete them after installing mkcert to get a trusted certificate. When the certificate has expired (the openssl one lasts 365 days) or is not valid yet, the server says so and generates a new pair in their place.
+- A `certFile` you configured is never replaced: when it has expired or is not valid yet, the server warns, naming the file, and starts with it anyway.
 - Keep both files out of version control. `npm create bascik` ignores `*.pem` and `bascik init` adds the two file names to `.gitignore`; a project set up another way needs them added by hand.
 - If `keyFile` or `certFile` is set, Bascik never generates a certificate. A configured path that does not exist fails [configuration validation](/configuration#configuration-validation) at startup (`http.tls.keyFile ... file does not exist or is not readable`). If you set only one of the two, the other falls back to the default `bascik-privkey.pem` or `bascik-cert.pem`, and when that default file is missing the server stops with `Custom TLS certificate files are configured but could not be found.`
 - Development certificates (e.g. generated with `mkcert`) work seamlessly for local HTTPS testing.

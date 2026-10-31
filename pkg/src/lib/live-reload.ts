@@ -105,6 +105,7 @@ export const getLiveReloadScript = (
     var source = null;
     var retryCount = 0;
     var maxRetries = 5;
+    var offlineRetryDelay = 5000;
     var retryTimeout = null;
     var banner = null;
     var errorOverlay = null;
@@ -214,7 +215,11 @@ export const getLiveReloadScript = (
           if (retryTimeout) clearTimeout(retryTimeout);
           retryTimeout = setTimeout(connect, delay);
         } else {
+          // Keep probing slowly so a tab that stays focused and visible still
+          // reconnects when the server comes back, as the banner promises.
           showBanner('Dev server offline. Will reconnect automatically when server restarts.', true);
+          if (retryTimeout) clearTimeout(retryTimeout);
+          retryTimeout = setTimeout(connect, offlineRetryDelay);
         }
       };
     }
