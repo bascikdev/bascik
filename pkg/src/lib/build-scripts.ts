@@ -39,7 +39,7 @@
  *   and never becomes markup.
  * - A failing script follows `scripts.onBuildScriptError`: `'error'` (the
  *   default) fails the page with a located error, `'warn'` logs it and
- *   leaves an empty slot.
+ *   leaves an empty slot, `'ignore'` leaves the empty slot silently.
  * - Scripts run during both `bascik` (dev) and `bascik --build` (production),
  *   and their output is cached by content (`computeScriptCacheKey`).
  */
@@ -221,9 +221,9 @@ const outputKeysByDependency = new Map<string, Set<string>>();
 // The dependencies each key's hash folded in, recorded by
 // `computeScriptCacheKey` and consumed when (if) the output is memoized. Only
 // memoized keys enter `outputKeysByDependency`, so the reverse index never
-// holds a key the memo does not. Bounded: an entry is removed on memoization
-// or eviction, and a key that is never memoized (script failed) is at most one
-// pending list per distinct failing key until the next full clear.
+// holds a key the memo does not. Bounded: an entry is removed on eviction,
+// and every key a run computed but did not memoize (a failed script, a shared
+// key whose run read its page) is dropped when that run finishes.
 const dependenciesByOutputKey = new Map<string, string[]>();
 
 const unindexOutputKey = (key: string): void => {
@@ -236,6 +236,13 @@ const unindexOutputKey = (key: string): void => {
     keys.delete(key);
     if (keys.size === 0) outputKeysByDependency.delete(relKey);
   }
+};
+
+/** Forget the pending dependency list of each key that has no memoized output. */
+const dropUnmemoizedDependencyLists = (...keys: (string | null)[]): void => {
+  for (const key of keys)
+    if (key !== null && !inMemoryScriptOutputCache.has(key))
+      dependenciesByOutputKey.delete(key);
 };
 
 const indexOutputKey = (key: string): void => {
@@ -328,6 +335,13 @@ export const _buildScriptCacheTestHooks = {
   },
   get dependencyScanSize(): number {
     return dependencyScanCache.size;
+  },
+  /** Keys whose dependency list is recorded but not yet indexed (never memoized). */
+  get pendingDependencyListCount(): number {
+    let pending = 0;
+    for (const key of dependenciesByOutputKey.keys())
+      if (!inMemoryScriptOutputCache.has(key)) pending++;
+    return pending;
   },
   /** Number of memo keys the reverse index holds for a dependency. */
   reverseIndexKeyCount(filePath: string): number {
@@ -722,8 +736,8 @@ export interface ExecuteBuildScriptOptions {
 
 /**
  * Report one failed build script under `scripts.onBuildScriptError`: throw
- * under `'error'` (the default), log under `'warn'`. The caller gives the
- * script an empty slot when this returns.
+ * under `'error'` (the default), log under `'warn'`, say nothing under
+ * `'ignore'`. The caller gives the script an empty slot when this returns.
  */
 const reportBuildScriptFailure = (
   header: string,
@@ -739,6 +753,7 @@ const reportBuildScriptFailure = (
     if (location) throw new BuildScriptError(message, location);
     throw new Error(message);
   }
+  if (behavior === "ignore") return;
   console.warn(message);
 };
 
@@ -1241,10 +1256,9 @@ export const executeBuildScripts = async (
         if (location) {
           errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
-        // Nothing was memoized for this key; drop its pending dependency list
-        // so a failing script cannot accumulate index state across edits.
-        if (task.cacheKey !== null)
-          dependenciesByOutputKey.delete(task.cacheKey);
+        // Nothing was memoized for either key; drop their pending dependency
+        // lists so a failing script cannot accumulate index state across edits.
+        dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
         reportBuildScriptFailure(errorMsg, cleanedMsg, location);
         task.output = "";
       } finally {
@@ -1253,6 +1267,12 @@ export const executeBuildScripts = async (
     }
     if (stats) stats.childMs += performance.now() - childrenStarted;
   }
+
+  // A key computed here but never memoized (a shared key whose run read its
+  // page, or the key a cache hit on the other one made unnecessary) keeps no
+  // pending dependency list: only memoized keys are indexed.
+  for (const task of tasks)
+    dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
 
   if (options?.onReadsPageContext && !options.once) {
     for (const task of tasks) {

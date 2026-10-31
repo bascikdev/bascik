@@ -471,11 +471,12 @@ export const executeRoutesScript = async (
           console.error(errorMsg);
           throw new Error(errorMsg, { cause: err });
         }
-        console.warn(
-          '[bascik] warning: Failed to read routes script src "%s":',
-          srcPath,
-          err,
-        );
+        if (BascikConfig.scripts?.onRoutesScriptError !== "ignore")
+          console.warn(
+            '[bascik] warning: Failed to read routes script src "%s":',
+            srcPath,
+            err,
+          );
         return { routes: [], cleanedHtml };
       }
     }
@@ -583,7 +584,7 @@ export const executeRoutesScript = async (
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${cleanedMsg}`);
       throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-    } else {
+    } else if (behavior === "warn") {
       console.warn(`${errorMsg}:\n${cleanedMsg}`);
     }
     return { routes: [], cleanedHtml };
@@ -604,7 +605,7 @@ export const executeRoutesScript = async (
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${parseError}`);
       throw new Error(`${errorMsg}:\n${parseError}`);
-    } else {
+    } else if (behavior === "warn") {
       console.warn(`${errorMsg}:\n${parseError}`);
     }
     return { routes: [], cleanedHtml };

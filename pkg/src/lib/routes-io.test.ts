@@ -368,6 +368,37 @@ describe("executeRoutesScript", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
+  it("returns no routes and logs nothing when onRoutesScriptError is 'ignore'", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    (BascikConfig as any).scripts = { onRoutesScriptError: "ignore" };
+    try {
+      mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+      expect(
+        (
+          await executeRoutesScript(
+            `<script data-bascik-routes src="./missing-routes.ts"></script>`,
+            "src/pages/blog/[slug].html",
+          )
+        ).routes,
+      ).toEqual([]);
+      resolveWith("Invalid String Output");
+      expect(
+        (
+          await executeRoutesScript(
+            `<script data-bascik-routes>export default () => 'not array';</script>`,
+            "src/pages/blog/[slug].html",
+          )
+        ).routes,
+      ).toEqual([]);
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("supports unquoted src attribute in routes script tag", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockReadFile.mockRejectedValueOnce(new Error("File not found"));

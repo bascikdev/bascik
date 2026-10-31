@@ -661,6 +661,35 @@ describe("executeBuildScripts", () => {
     expect(result).not.toContain("data-bascik-build");
   });
 
+  it("replaces a failed script with an empty string and logs nothing when onBuildScriptError is 'ignore'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "ignore",
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      rejectWith("syntax error");
+      const result = await executeBuildScripts(
+        "<p>before</p><script data-bascik-build>bad code</script><p>after</p>",
+        "src/pages/index.html",
+      );
+      expect(result).toBe("<p>before</p><p>after</p>");
+      // An unreadable src= is ignored the same way.
+      expect(
+        await executeBuildScripts(
+          '<p>a</p><script data-bascik-build src="./missing.ts"></script>',
+          "src/pages/index.html",
+        ),
+      ).toBe("<p>a</p>");
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("still removes the temp file when execution fails", async () => {
     (BascikConfig as any).scripts = {
       ...BascikConfig.scripts,
@@ -1851,6 +1880,32 @@ describe("build-script output cache", () => {
 
     beforeEach(() => {
       mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    });
+
+    it("keeps no pending dependency list for a key that was never memoized", async () => {
+      const edit = (n: number) =>
+        `<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fsite-footer.html">year(${n})</script>`;
+      // A failing component script, saved again and again while it is fixed.
+      (BascikConfig as any).scripts = {
+        ...BascikConfig.scripts,
+        onBuildScriptError: "warn",
+      };
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        rejectWith("still broken");
+        for (let n = 0; n < 5; n++)
+          await runForPage("src/pages/a.html", edit(n));
+        expect(cacheHooks.pendingDependencyListCount).toBe(0);
+
+        // A run that read page context never writes the shared record.
+        state.readsPageContext = true;
+        resolveWith("<p>page</p>");
+        await runForPage("src/pages/a.html", edit(99));
+        expect(cacheHooks.pendingDependencyListCount).toBe(0);
+        expect(cacheHooks.outputCacheSize).toBe(1);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
 
     it("reuses a component script's output on other pages when it read no page context", async () => {
