@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -15,6 +17,7 @@ import {
   collectConfigWarnings,
   formatConfigErrors,
   normalizeBasePath,
+  isSameOrInsideOnDisk,
 } from "./config-validation.ts";
 import { initBascikConfig } from "./config.ts";
 import { defineConfig } from "./defineConfig.ts";
@@ -125,6 +128,17 @@ describe("http.hostname", () => {
     ).toHaveLength(1);
   });
 
+  it.each(["localhost:3000", "0.0.0.0:8080"])(
+    "rejects the host:port %s, pointing at http.port",
+    (hostname) => {
+      const errors = validateConfigShape({ http: { hostname } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.hostname");
+      expect(errors[0].message).toContain("without a port");
+      expect(errors[0].message).toContain("http.port");
+    },
+  );
+
   it("accepts plain hostnames", () => {
     expect(
       validateConfigShape({ http: { hostname: "localhost" } }),
@@ -135,6 +149,10 @@ describe("http.hostname", () => {
     expect(validateConfigShape({ http: { hostname: "0.0.0.0" } })).toHaveLength(
       0,
     );
+    // IPv6 addresses have two colons or more; they are not a host:port.
+    for (const hostname of ["::1", "::", "fe80::1"]) {
+      expect(validateConfigShape({ http: { hostname } }), hostname).toEqual([]);
+    }
   });
 });
 
@@ -318,6 +336,232 @@ describe("http.timeouts", () => {
       headers: 10000,
       keepAlive: 2000,
     });
+  });
+});
+
+// F093: a wrong-typed body limit used to reach api-runtime, where
+// `"1mb" > 0` and `"1mb" <= 0` are both false, so no limit applied.
+describe("http.maxBodySize, http.apiTimeout and http.httpCache", () => {
+  const httpErrors = (http: Record<string, unknown>) =>
+    validateConfigShape({ http }, { cwd: "/project" });
+
+  it.each(["1mb", "1048576", -1, 1.5, Number.NaN, Infinity, null, true])(
+    "rejects maxBodySize %s",
+    (value) => {
+      const errors = httpErrors({ maxBodySize: value });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.maxBodySize");
+      expect(errors[0].value).toBe(value);
+      expect(errors[0].message).toContain("whole number of bytes");
+    },
+  );
+
+  it("accepts a byte count, and 0 for no limit", () => {
+    expect(httpErrors({ maxBodySize: 1048576 })).toEqual([]);
+    expect(httpErrors({ maxBodySize: 0 })).toEqual([]);
+  });
+
+  it.each(["10s", -5, Number.NaN, Infinity, 2 ** 31, null, false])(
+    "rejects apiTimeout %s",
+    (value) => {
+      const errors = httpErrors({ apiTimeout: value });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.apiTimeout");
+      expect(errors[0].message).toContain("milliseconds");
+    },
+  );
+
+  it("accepts an apiTimeout in milliseconds, and 0 for no timeout", () => {
+    expect(httpErrors({ apiTimeout: 10000 })).toEqual([]);
+    expect(httpErrors({ apiTimeout: 0 })).toEqual([]);
+    expect(httpErrors({ apiTimeout: 2 ** 31 - 1 })).toEqual([]);
+  });
+
+  it.each(["false", 0, 1, null])("rejects httpCache %s", (value) => {
+    const errors = httpErrors({ httpCache: value });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.httpCache");
+    expect(errors[0].message).toBe("expected true or false");
+  });
+
+  it("reports a wrong type in a mode export too", () => {
+    const errors = validateUserConfig(
+      {},
+      { server: { http: { maxBodySize: "1mb" } } },
+      { fs: allowAllFs, cwd: "/project", env: {} },
+    );
+    expect(errors.map((error) => error.key)).toContain("http.maxBodySize");
+  });
+});
+
+// F094: these keys used to accept any value. A string "false" is truthy, so
+// `generate: { sitemap: "false" }` still generated the sitemap.
+describe("value types of boolean, cache and exec settings", () => {
+  const shape = (raw: unknown) => validateConfigShape(raw, { cwd: "/project" });
+
+  it.each([
+    ["generate", "sitemap"],
+    ["generate", "robots"],
+    ["generate", "sitemapLastmod"],
+    ["generate", "cspHashes"],
+    ["generate", "manifest"],
+    ["scoping", "scriptBlocks"],
+    ["scoping", "inheritAttributes"],
+    ["scoping", "deduplicateCss"],
+    ["logging", "requests"],
+    ["logging", "copies"],
+    ["logging", "deletes"],
+    ["logging", "transpiles"],
+  ])("rejects a non-boolean %s.%s", (section, key) => {
+    for (const value of ["false", 0, null, {}]) {
+      const errors = shape({ [section]: { [key]: value } });
+      expect(errors, String(value)).toHaveLength(1);
+      expect(errors[0].key).toBe(`${section}.${key}`);
+      expect(errors[0].value).toBe(value);
+      expect(errors[0].message).toBe("expected true or false");
+    }
+    expect(shape({ [section]: { [key]: false } })).toEqual([]);
+    expect(shape({ [section]: { [key]: true } })).toEqual([]);
+  });
+
+  it.each(["class", "id", "name"])(
+    "rejects a non-boolean scoping.attributes.%s",
+    (key) => {
+      const errors = shape({ scoping: { attributes: { [key]: "yes" } } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe(`scoping.attributes.${key}`);
+    },
+  );
+
+  it.each([
+    "directory",
+    "components",
+    "scoping",
+    "assets",
+    "generate",
+    "pipeline",
+    "scripts",
+    "http",
+    "logging",
+  ])("rejects a %s section that is not an object", (section) => {
+    for (const value of [false, "x", null, []]) {
+      const errors = shape({ [section]: value });
+      expect(errors, JSON.stringify(value)).toHaveLength(1);
+      expect(errors[0].key).toBe(section);
+      expect(errors[0].message).toBe("expected an object");
+    }
+  });
+
+  it.each([
+    ["scoping.attributes", { scoping: { attributes: true } }],
+    ["http.tls", { http: { tls: "on" } }],
+  ])("rejects a %s that is not an object", (key, raw) => {
+    const errors = shape(raw);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe(key);
+  });
+
+  it("rejects a scripts.cache that is neither a boolean nor an object", () => {
+    for (const value of ["off", 0, null, ["a"]]) {
+      const errors = shape({ scripts: { cache: value } });
+      expect(errors, JSON.stringify(value)).toHaveLength(1);
+      expect(errors[0].key).toBe("scripts.cache");
+      expect(errors[0].message).toContain("true, false, or an object");
+    }
+  });
+
+  it("checks the fields of an object scripts.cache", () => {
+    const errors = shape({
+      scripts: {
+        cache: {
+          enabled: "no",
+          include: "src/**",
+          exclude: [""],
+          environment: ["API_KEY", 7],
+        },
+      },
+    });
+    expect(errors.map((error) => error.key)).toEqual([
+      "scripts.cache.enabled",
+      "scripts.cache.include",
+      "scripts.cache.exclude[0]",
+      "scripts.cache.environment[1]",
+    ]);
+    expect(
+      shape({
+        scripts: {
+          cache: {
+            enabled: false,
+            include: ["src/**"],
+            exclude: [],
+            environment: ["API_KEY"],
+          },
+        },
+      }),
+    ).toEqual([]);
+    expect(shape({ scripts: { cache: false } })).toEqual([]);
+  });
+
+  it("checks the optional fields of an exec entry", () => {
+    const errors = shape({
+      pipeline: {
+        exec: [
+          {
+            script: "scripts/a.ts",
+            watch: 7,
+            cwd: "",
+            env: { A: 1 },
+            args: "--full",
+            timeout: "60s",
+          },
+          { script: "scripts/b.ts", watch: ["content/", ""], env: "A=1" },
+          { script: "scripts/c.ts", args: ["--full", 2], timeout: -1 },
+        ],
+      },
+    });
+    expect(errors.map((error) => error.key)).toEqual([
+      "pipeline.exec[0].watch",
+      "pipeline.exec[0].cwd",
+      'pipeline.exec[0].env["A"]',
+      "pipeline.exec[0].args",
+      "pipeline.exec[0].timeout",
+      "pipeline.exec[1].watch[1]",
+      "pipeline.exec[1].env",
+      "pipeline.exec[2].args[1]",
+      "pipeline.exec[2].timeout",
+    ]);
+  });
+
+  it("accepts every documented exec entry field", () => {
+    expect(
+      shape({
+        pipeline: {
+          exec: [
+            {
+              script: "scripts/a.ts",
+              phase: "parallel",
+              cwd: ".",
+              args: ["--full"],
+              env: { CUSTOM: "1" },
+              timeout: 60000,
+              watch: ["content/"],
+            },
+            { script: "scripts/b.ts", watch: "content/**/*.md", timeout: 0 },
+          ],
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("initBascikConfig refuses a string boolean instead of treating it as true", () => {
+    expect(() =>
+      initBascikConfig(
+        { generate: { sitemap: "false" as unknown as boolean } },
+        {},
+        { isBuild: true },
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toThrow(/generate\.sitemap[\s\S]*expected true or false/);
   });
 });
 
@@ -776,6 +1020,200 @@ describe("directory.out escape check", () => {
         { cwd: "/project" },
       ),
     ).toHaveLength(1);
+  });
+});
+
+// F092 / F047: the output directory is emptied at the start of every build
+// and dev session, so an out that holds (or is) a source folder deletes it.
+describe("directory.out overlap with source folders", () => {
+  const overlapErrors = (userConfig: unknown, modeOverrides: unknown = {}) =>
+    validateUserConfig(userConfig, modeOverrides, {
+      fs: allowAllFs,
+      cwd: "/project",
+      env: {},
+    }).filter((error) => error.key === "directory.out");
+
+  it("rejects an out that contains the default source folders", () => {
+    const errors = overlapErrors({ directory: { out: "src" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("src");
+    expect(errors[0].message).toContain('directory.pages "src/pages"');
+    expect(errors[0].message).toContain(
+      'directory.components "src/components"',
+    );
+    expect(errors[0].message).toContain('directory.api "src/api"');
+    expect(errors[0].message).toContain('scripts.importRoot "src"');
+    expect(errors[0].message).toContain("emptied at the start of every build");
+  });
+
+  it("rejects an out equal to the pages folder", () => {
+    const errors = overlapErrors({
+      directory: { pages: "site", out: "site" },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('directory.pages "site"');
+  });
+
+  it("rejects an out that contains a pages folder set alone (out left at its default)", () => {
+    const errors = overlapErrors({ directory: { pages: "dist/pages" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("dist");
+    expect(errors[0].message).toContain('directory.pages "dist/pages"');
+  });
+
+  it("rejects an out that contains one of several component roots", () => {
+    const errors = overlapErrors({
+      directory: {
+        components: ["src/components", "build/shared"],
+        out: "build",
+      },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('directory.components "build/shared"');
+  });
+
+  it("rejects an out inside the pages folder: built pages would be read back as source", () => {
+    const errors = overlapErrors({ directory: { out: "src/pages/dist" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain(
+      'is inside directory.pages "src/pages"',
+    );
+  });
+
+  it("rejects an out set only in a mode export", () => {
+    const errors = overlapErrors({}, { build: { directory: { out: "src" } } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].value).toBe("src");
+  });
+
+  it("rejects an absolute out that resolves to a source folder", () => {
+    const errors = overlapErrors({ directory: { out: "/project/src/" } });
+    expect(errors).toHaveLength(1);
+  });
+
+  it("rejects an out that is the project root", () => {
+    for (const out of [".", "./", "/project"]) {
+      const errors = validateConfigShape(
+        { directory: { out } },
+        { cwd: "/project" },
+      );
+      expect(errors, out).toHaveLength(1);
+      expect(errors[0].key).toBe("directory.out");
+      expect(errors[0].message).toContain("is the project root");
+    }
+  });
+
+  it("accepts the default layout and separate output folders", () => {
+    expect(overlapErrors({})).toEqual([]);
+    expect(overlapErrors({ directory: { out: "dist" } })).toEqual([]);
+    expect(overlapErrors({ directory: { out: "build/site" } })).toEqual([]);
+    // Inside the import root but outside every source folder: nothing is
+    // deleted and nothing is read back.
+    expect(overlapErrors({ directory: { out: "src/dist" } })).toEqual([]);
+    // A sibling whose name starts with the source folder's name.
+    expect(overlapErrors({ directory: { out: "src/pages-dist" } })).toEqual([]);
+    expect(
+      overlapErrors({
+        directory: {
+          pages: "pages",
+          components: "components",
+          api: "api",
+          out: "src",
+        },
+        scripts: { importRoot: "lib" },
+      }),
+    ).toEqual([]);
+  });
+
+  // The same check with the file system injected, so it also runs on a
+  // case-sensitive file system (Linux CI), where the test below skips.
+  it("compares folders by identity on disk, walking the child's ancestors", () => {
+    // A case-insensitive disk: /p/SRC and /p/src are one entry.
+    const identify = (path: string) =>
+      ({ "/p": "1", "/p/src": "2", "/p/src/pages": "3" })[path.toLowerCase()];
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", identify)).toBe(true);
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/Src/Pages", identify)).toBe(
+      true,
+    );
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages/out", "/p/SRC/PAGES", identify),
+    ).toBe(true);
+    expect(isSameOrInsideOnDisk("/p/src", "/p/SRC/PAGES", identify)).toBe(
+      false,
+    );
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/DIST", identify)).toBe(
+      false,
+    );
+    // No identity (nothing on disk, or no fs given): strings only.
+    expect(
+      isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", () => undefined),
+    ).toBe(false);
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/SRC", undefined)).toBe(
+      false,
+    );
+    expect(isSameOrInsideOnDisk("/p/src/pages", "/p/src", undefined)).toBe(
+      true,
+    );
+  });
+
+  // On a case-insensitive file system (the macOS and Windows default) "SRC"
+  // is the src folder, and emptying it deletes the sources. The check
+  // compares the folders on disk, not only the path strings.
+  it("rejects an out that is a source folder spelled in another case", (ctx) => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-out-case-"));
+    try {
+      mkdirSync(join(root, "src", "pages"), { recursive: true });
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      if (!existsSync(join(root, "SRC"))) {
+        ctx.skip("the file system is case-sensitive");
+        return;
+      }
+      const errorsFor = (out: string) =>
+        validateUserConfig(
+          { directory: { out } },
+          {},
+          { cwd: root, env: {} },
+        ).filter((error) => error.key === "directory.out");
+
+      const deleting = errorsFor("SRC");
+      expect(deleting).toHaveLength(1);
+      expect(deleting[0].message).toContain("would delete");
+      expect(deleting[0].message).toContain('directory.pages "src/pages"');
+
+      expect(errorsFor("Src/Pages")[0]?.message).toContain(
+        'directory.pages "src/pages"',
+      );
+      expect(errorsFor("SRC/PAGES/dist")[0]?.message).toContain(
+        'is inside directory.pages "src/pages"',
+      );
+      // A folder of its own is still fine, whatever its case.
+      expect(errorsFor("DIST")).toEqual([]);
+      expect(errorsFor("src/dist")).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves wrong-typed directory values to their own type errors", () => {
+    const errors = validateUserConfig(
+      { directory: { out: 7, pages: ["src"] } },
+      {},
+      { fs: allowAllFs, cwd: "/project", env: {} },
+    );
+    expect(errors.map((error) => error.message)).not.toContain(
+      expect.stringContaining("emptied"),
+    );
+  });
+
+  it("initBascikConfig refuses the config before anything is deleted", () => {
+    expect(() =>
+      initBascikConfig(
+        { directory: { out: "src" } },
+        {},
+        { isBuild: true },
+        { fs: allowAllFs, cwd: process.cwd(), env: {} },
+      ),
+    ).toThrow(/directory\.out[\s\S]*emptied at the start of every build/);
   });
 });
 

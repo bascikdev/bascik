@@ -43,20 +43,79 @@ describe("loadUserConfig", () => {
 
   it("defaults missing exports to empty objects", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
-    const p = await writeConfig(`export const somethingElse = 1;`);
+    // Named exports Bascik does not read are fine next to one it does (a
+    // config that shares values with another config file).
+    const p = await writeConfig(
+      `export default {}; export const somethingElse = 1;`,
+    );
     const { config, build } = await loadUserConfig(p);
     expect(config).toEqual({});
     expect(build).toEqual({});
   });
 
-  it("handles primitive or null exports cleanly", async () => {
+  // F098: these used to load as an empty config, so every setting in the
+  // file was ignored and none of it was validated.
+  it("rejects a primitive or null export, naming the export and the file", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(
       `export default null; export const build = "invalid";`,
     );
-    const { config, build } = await loadUserConfig(p);
-    expect(config).toEqual({});
-    expect(build).toEqual({});
+    const error = await loadUserConfig(p).then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain(p);
+    expect(error?.message).toContain("the default export must be an object");
+    expect(error?.message).toContain("null");
+    expect(error?.message).toContain("the build export must be an object");
+  });
+
+  it("rejects a function default export instead of ignoring it", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `export default () => ({ http: { port: 1 } });`,
+    );
+    await expect(loadUserConfig(p)).rejects.toThrow(
+      /the default export must be an object, not a function[\s\S]*export default defineConfig/,
+    );
+  });
+
+  it("rejects a config whose only exports are names Bascik does not read", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `export const config = { http: { port: 70000 } };`,
+    );
+    const error = await loadUserConfig(p).then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain(p);
+    // The export name in backticks: the file path alone contains "config".
+    expect(error?.message).toMatch(/exports `config`/);
+    expect(error?.message).toContain("export default defineConfig");
+  });
+
+  it("warns, naming the file, when the config exports nothing", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const p = await writeConfig(`const settings = { minify: false };`);
+      const loaded = await loadUserConfig(p);
+      expect(loaded.config).toEqual({});
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(p);
+      expect(String(warn.mock.calls[0][0])).toContain("exports nothing");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects an array mode export", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(`export const dev = [];`);
+    await expect(loadUserConfig(p)).rejects.toThrow(
+      /the dev export must be an object, not an array/,
+    );
   });
 
   it("returns empty config silently when the file does not exist", async () => {

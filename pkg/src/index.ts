@@ -64,6 +64,13 @@ export const runCli = async (
 
   const decision = resolveCliAction(args);
   const buildLogPath = decision.flags.log;
+  if (decision.ignoredNodeFlags) {
+    const ignored = decision.ignoredNodeFlags.join(" ");
+    console.warn(
+      `[bascik] warning: ignoring ${ignored}: Node reads its own options before the script, so ${decision.ignoredNodeFlags.length > 1 ? "they do" : "it does"} nothing here. ` +
+        `Pass ${decision.ignoredNodeFlags.length > 1 ? "them" : "it"} with NODE_OPTIONS="${ignored}" bascik ...`,
+    );
+  }
 
   if (decision.action === "build" && buildLogPath) {
     await setupBuildLogging(buildLogPath);

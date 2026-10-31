@@ -191,9 +191,18 @@ export const requestOrigin = (
   return `${localScheme}://${fallbackAuthority}`;
 };
 
-/** The effective `http.maxBodySize`; 0 or less means unlimited. */
-export const resolveMaxBodySize = (): number =>
-  BascikConfig.http?.maxBodySize ?? 1048576;
+/**
+ * The effective `http.maxBodySize`; 0 means unlimited. Config validation
+ * rejects anything but a whole number of bytes; a value that reaches here
+ * anyway keeps the 1 MB default, since a string or NaN compares false both
+ * ways and would turn the limit off.
+ */
+export const resolveMaxBodySize = (): number => {
+  const configured: unknown = BascikConfig.http?.maxBodySize;
+  return typeof configured === "number" && !Number.isNaN(configured)
+    ? configured
+    : 1048576;
+};
 
 const PAYLOAD_TOO_LARGE_BODY = "Payload Too Large";
 

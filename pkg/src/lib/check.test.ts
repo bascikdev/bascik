@@ -1063,7 +1063,7 @@ describe("checkProject", () => {
       ).toBe(false);
     });
 
-    it("marks watchPaths as warning and exec script path failures as error for severity parity", async () => {
+    it("marks missing watchPaths and exec script paths as errors, as bascik --build does", async () => {
       Object.assign(userConfigMock, {
         pipeline: {
           watchPaths: ["src/missing"],
@@ -1082,7 +1082,7 @@ describe("checkProject", () => {
         cfg.some(
           (i) =>
             i.message.includes("pipeline.watchPaths[0]") &&
-            i.severity === "warning",
+            i.severity === "error",
         ),
       ).toBe(true);
       expect(
@@ -1094,7 +1094,7 @@ describe("checkProject", () => {
       ).toBe(true);
     });
 
-    it("marks inlineStyles missing paths as warning for severity parity", async () => {
+    it("marks inlineStyles missing paths as errors, as bascik --build does", async () => {
       Object.assign(userConfigMock, {
         assets: {
           inlineStyles: ["src/missing.css"],
@@ -1112,9 +1112,44 @@ describe("checkProject", () => {
         cfg.some(
           (i) =>
             i.message.includes("assets.inlineStyles[0]") &&
-            i.severity === "warning",
+            i.severity === "error",
         ),
       ).toBe(true);
+    });
+
+    // F097: `bascik --check && bascik --build` in CI must not pass the check
+    // and then fail the build on the same configuration problem.
+    it("fails every configuration problem that stops bascik --build", async () => {
+      const userConfig = {
+        pipeline: { watchPaths: ["data"] },
+        assets: { inlineStyles: ["src/missing.css"] },
+        http: { tls: { enabled: true, keyFile: "certs/missing.key" } },
+      };
+      Object.assign(userConfigMock, userConfig);
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.filter(
+        (i) => i.category === "config-validation",
+      );
+      expect(cfg).toHaveLength(3);
+      expect(cfg.map((i) => i.severity)).toEqual(["error", "error", "error"]);
+
+      const { initBascikConfig } =
+        await vi.importActual<typeof import("./config.ts")>("./config.ts");
+      let buildError: unknown;
+      try {
+        initBascikConfig(userConfig, {}, { isBuild: true });
+      } catch (error) {
+        buildError = error;
+      }
+      expect(buildError).toBeInstanceOf(Error);
+      for (const item of cfg)
+        expect((buildError as Error).message).toContain(
+          item.message.split(":")[0],
+        );
     });
 
     it("marks unreadable TLS key/cert paths as error for severity parity", async () => {
@@ -1194,6 +1229,30 @@ describe("checkProject", () => {
       } finally {
         process.argv = originalArgv;
       }
+    });
+
+    // F096: a rejected directory.pages is reported once, as the config error;
+    // the default folder the check falls back to is not reported as well.
+    it("reports a missing directory.pages once, as a config error, not again as an unreadable default folder", async () => {
+      Object.assign(userConfigMock, { directory: { pages: "site-pages" } });
+      listPagesMock.mockRejectedValue(
+        Object.assign(new Error("ENOENT: no such file or directory"), {
+          code: "ENOENT",
+        }),
+      );
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const configItem = findings.items.find(
+        (i) =>
+          i.category === "config-validation" &&
+          i.message.startsWith("directory.pages:"),
+      );
+      expect(configItem?.severity).toBe("error");
+      expect(configItem?.message).toContain('"site-pages"');
+      expect(
+        findings.items.filter((i) => i.category === "pages-directory"),
+      ).toEqual([]);
     });
 
     it("reports directory.pages as an error when it exists but has no html pages", async () => {

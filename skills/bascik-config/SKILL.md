@@ -68,6 +68,7 @@ Merge order is: built-in defaults, then the mode's defaults, then your `default`
 5. **Use `phase: 'pre'`** for output that pages depend on (bundles, copied vendor modules); `'parallel'` for independent artifacts (search index); `'post'` for steps that read or edit the compiled `dist/` (feeds, sitemap post-processing).
 6. **`base` is a literal path prefix** such as `'/docs/'`: no full URL, query, fragment, percent escapes, backslashes, or dot segments. Bascik rewrites root-relative URLs in HTML, CSS, and web manifests, but not URLs built in JavaScript; expose `BASCIK_BASE` from a build script for those.
 7. **Keep scoping defaults** (`deduplicateCss`, `scriptBlocks`, `inheritAttributes`) unless a specific integration requires a change, and do not write them out just to keep them.
+8. **`directory.out` is a folder of its own**, such as `dist` or `build`. It is emptied at the start of every build and dev session, so a value that is the project root, holds `src/` or another source folder, or sits inside the pages, components, or API folder is a config error.
 
 ## Exec scripts
 

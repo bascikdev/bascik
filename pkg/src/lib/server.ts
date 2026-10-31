@@ -7,6 +7,7 @@ import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
+import { parsePort } from "./server-address.ts";
 import {
   eventEmitter,
   registerShutdownHandler,
@@ -1244,8 +1245,11 @@ export const startServerInstance = async (
 ): Promise<string> => {
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
+  // Strict like --port: a malformed value is ignored (config.ts warns about
+  // BASCIK_SERVER_PORT and PORT), never partly parsed, so `8080abc` is not
+  // port 8080.
   const envPortStr = process.env.BASCIK_SERVER_PORT || process.env.PORT;
-  const envPort = envPortStr ? parseInt(envPortStr, 10) : undefined;
+  const envPort = parsePort(envPortStr);
   const rawStartPort =
     envPort && !isNaN(envPort)
       ? envPort

@@ -1140,6 +1140,34 @@ describe("startServerInstance signal handler cleanup", () => {
     }
   });
 
+  // F104: parseInt read "9443abc" as 9443 and "3000 4000" as 3000.
+  it.each(["9443abc", "9443;", "3000 4000", "80.5"])(
+    "ignores a malformed BASCIK_SERVER_PORT %s instead of binding part of it",
+    async (value) => {
+      const original = process.env.BASCIK_SERVER_PORT;
+      process.env.BASCIK_SERVER_PORT = value;
+      try {
+        const mockServer: any = {
+          once: vi.fn().mockReturnThis(),
+          listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
+            const callback =
+              typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+            callback?.();
+            return mockServer;
+          }),
+          on: vi.fn().mockReturnThis(),
+          removeListener: vi.fn().mockReturnThis(),
+        };
+        await startServerInstance(mockServer, "http");
+        const [port] = mockServer.listen.mock.calls[0];
+        expect(port).not.toBe(Number.parseInt(value, 10));
+      } finally {
+        if (original !== undefined) process.env.BASCIK_SERVER_PORT = original;
+        else delete process.env.BASCIK_SERVER_PORT;
+      }
+    },
+  );
+
   it("prioritizes process.env.BASCIK_SERVER_PORT over process.env.PORT when defined", async () => {
     const originalServePort = process.env.BASCIK_SERVER_PORT;
     const originalPort = process.env.PORT;

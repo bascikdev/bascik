@@ -26,6 +26,41 @@ import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
 import { privateDirFor } from "./lib/private-dir.ts";
 import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
+import { isSameOrInsideOnDisk } from "./lib/config-validation.ts";
+import { findConfigFile } from "./lib/config-file-names.ts";
+
+/**
+ * The source folder or config file the output clean would delete, named as a
+ * config key with its path, or undefined when the clean deletes no source.
+ * Both folders the clean removes are checked: the output directory and its
+ * private sibling.
+ */
+const findSourceInsideCleanTargets = (
+  projectRoot: string,
+  outputDirectory: string,
+): string | undefined => {
+  const directory = BascikConfig.directory;
+  const sources: [string, string | undefined][] = [
+    ["directory.pages", directory.pages],
+    ...(directory.components ?? []).map((root): [string, string] => [
+      "directory.components",
+      root,
+    ]),
+    ["directory.api", directory.api],
+    ["scripts.importRoot", BascikConfig.scripts?.importRoot],
+    ["the config file", findConfigFile().path],
+  ];
+  const targets = [outputDirectory, privateDirFor(outputDirectory)];
+  for (const [name, path] of sources) {
+    if (typeof path !== "string" || path === "") continue;
+    const resolved = resolve(projectRoot, path);
+    // On disk, not only by string: on a case-insensitive file system (the
+    // macOS and Windows default) an out of "SRC" is the src folder.
+    if (targets.some((target) => isSameOrInsideOnDisk(resolved, target)))
+      return `${name} ${relative(projectRoot, resolved).replace(/\\/g, "/")}`;
+  }
+  return undefined;
+};
 
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
@@ -43,6 +78,18 @@ export const runTranspile = async (
   ) {
     throw new Error(
       `Refusing to clean output directory outside the project root: ${outputDirectory}`,
+    );
+  }
+  // Config validation rejects an output directory that is or holds a source
+  // folder (config-validation.ts); refuse it again here, right before the
+  // recursive delete, so no caller that skipped validation can remove the
+  // sources.
+  const heldSource = findSourceInsideCleanTargets(projectRoot, outputDirectory);
+  if (heldSource) {
+    throw new Error(
+      `Refusing to clean the output directory ${outputDirectory}: it holds ` +
+        `${heldSource}, which the clean would delete. Set directory.out to a ` +
+        `folder of its own, such as "dist".`,
     );
   }
   // Targeted builds added by prompt 33 must skip this full output clean.

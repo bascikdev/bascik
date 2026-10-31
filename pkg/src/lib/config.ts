@@ -7,9 +7,16 @@ import { resolveCliAction } from "./cli.ts";
 import { LOG_LEVELS, shouldLog, type LogLevel } from "./log-level.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
+  hostnameExpectation,
+  isPlausibleHostname,
+  parsePort,
+} from "./server-address.ts";
+import {
   collectConfigWarnings,
   collectModeOverrideWarnings,
+  DEFAULT_DIRECTORY,
   DEFAULT_HTTP_TIMEOUTS,
+  DEFAULT_IMPORT_ROOT,
   defaultHeadersTimeout,
   formatConfigErrors,
   normalizeBasePath,
@@ -134,10 +141,10 @@ export const defaultConfig: Omit<
   "isBuild" | "isProdServer"
 > = {
   directory: {
-    pages: "src/pages",
-    components: ["src/components"],
-    out: "dist",
-    api: "src/api",
+    pages: DEFAULT_DIRECTORY.pages,
+    components: [DEFAULT_DIRECTORY.components],
+    out: DEFAULT_DIRECTORY.out,
+    api: DEFAULT_DIRECTORY.api,
   },
   components: {
     external: [],
@@ -193,7 +200,7 @@ export const defaultConfig: Omit<
     timeout: 30000,
     // Kept relative (not resolved here) so worker threads and the main thread
     // resolve it identically against process.cwd() at use sites.
-    importRoot: "src",
+    importRoot: DEFAULT_IMPORT_ROOT,
     stripAnsi: true,
     // Equal to REQUEST_RENDER_LIMITS in request-render.ts (a unit test pins
     // them).
@@ -375,6 +382,30 @@ export const normalizeComponentRoots = (
   return canonical;
 };
 
+/**
+ * A copy of one config layer without the settings validation rejected. An
+ * error key such as `pipeline.exec[0].phase` or `http.cacheControl[".css"]`
+ * drops the whole setting it belongs to (`pipeline.exec`,
+ * `http.cacheControl`), so a half-valid list never reaches the merge.
+ */
+const withoutRejectedKeys = (
+  layer: UserConfig | undefined,
+  errors: ConfigValidationError[],
+): UserConfig => {
+  if (!isPlainObject(layer)) return {};
+  const copy = deepClone(layer) as Record<string, unknown>;
+  for (const error of errors) {
+    const setting = error.key.split("[")[0];
+    const path = setting.split(".");
+    let parent: unknown = copy;
+    for (const segment of path.slice(0, -1)) {
+      parent = isPlainObject(parent) ? parent[segment] : undefined;
+    }
+    if (isPlainObject(parent)) delete parent[path[path.length - 1]];
+  }
+  return copy as UserConfig;
+};
+
 const normalizeExec = (
   exec: ExecEntry[] | undefined,
 ): ExecEntry[] | undefined => {
@@ -438,8 +469,25 @@ export const initBascikConfig = (
   );
   if (validationErrors.length > 0) {
     if (flags.allowInvalidConfig === true) {
-      effectiveUserConfig = {};
-      effectiveModeOverrides = {};
+      // `bascik --check` reports these errors itself and checks the rest of
+      // the project with what is left: drop only the rejected settings, so
+      // a valid directory block keeps pointing the check at the right folders.
+      effectiveUserConfig = withoutRejectedKeys(
+        safeUserConfig,
+        validationErrors,
+      );
+      effectiveModeOverrides = isPlainObject(modeOverrides)
+        ? "dev" in modeOverrides ||
+          "build" in modeOverrides ||
+          "server" in modeOverrides
+          ? Object.fromEntries(
+              Object.entries(modeOverrides).map(([mode, layer]) => [
+                mode,
+                withoutRejectedKeys(layer as UserConfig, validationErrors),
+              ]),
+            )
+          : withoutRejectedKeys(modeOverrides as UserConfig, validationErrors)
+        : {};
     } else {
       throw new Error(formatConfigErrors(validationErrors, flags.configFile));
     }
@@ -489,30 +537,30 @@ export const initBascikConfig = (
         ? serverDefaultConfig
         : devDefaultConfig;
 
+  // `minify: true | false` is shorthand for all four minifiers. Expanding it
+  // in each layer before the merge keeps the layer order: a boolean in the
+  // default export is refined by an object in the mode export, and a boolean
+  // in the mode export replaces an object in the default export.
+  const expandMinify = (layer: UserConfig): UserConfig =>
+    typeof layer.minify === "boolean"
+      ? {
+          ...layer,
+          minify: {
+            html: layer.minify,
+            css: layer.minify,
+            js: layer.minify,
+            identifiers: layer.minify,
+          },
+        }
+      : layer;
+
   const merged = deepMerge<BascikConfigOptions>(
     {} as BascikConfigOptions,
     defaultConfig as unknown as BascikConfigOptions,
     activeModeDefaultConfig as unknown as BascikConfigOptions,
-    effectiveUserConfig as unknown as BascikConfigOptions,
-    activeOverride as unknown as BascikConfigOptions,
+    expandMinify(effectiveUserConfig) as unknown as BascikConfigOptions,
+    expandMinify(activeOverride) as unknown as BascikConfigOptions,
   );
-
-  if (typeof effectiveUserConfig.minify === "boolean") {
-    merged.minify = {
-      html: effectiveUserConfig.minify,
-      css: effectiveUserConfig.minify,
-      js: effectiveUserConfig.minify,
-      identifiers: effectiveUserConfig.minify,
-    };
-  }
-  if (typeof activeOverride.minify === "boolean") {
-    merged.minify = {
-      html: activeOverride.minify,
-      css: activeOverride.minify,
-      js: activeOverride.minify,
-      identifiers: activeOverride.minify,
-    };
-  }
 
   // CLI flag / env var overrides beat every config-file layer
   // (flag > env var > config file).
@@ -592,6 +640,43 @@ export const initBascikConfig = (
   return { BascikConfig: deepFreeze(deepClone(BascikConfig)) };
 };
 
+/**
+ * `BASCIK_SERVER_PORT` (or `PORT`, which the server reads when
+ * `BASCIK_SERVER_PORT` is unset), by the `--port` rule: whole digits from 1
+ * to 65535. A malformed value is ignored with a warning naming the
+ * variable, never fatal and never partly parsed (`8080abc` is not port
+ * 8080), so the configured port applies.
+ */
+export const readServerPortEnv = (
+  raw: string | undefined,
+  variable: "BASCIK_SERVER_PORT" | "PORT" = "BASCIK_SERVER_PORT",
+): number | undefined => {
+  if (!raw?.trim()) return undefined;
+  const port = parsePort(raw);
+  if (port !== undefined) return port;
+  console.warn(
+    `${colorErr.tag("warn", "[bascik] warning:")} ignoring ${variable} ${JSON.stringify(raw)}: expected an integer between 1 and 65535.`,
+  );
+  return undefined;
+};
+
+/**
+ * `BASCIK_SERVER_HOST`, by the `http.hostname` rule (`--host` is checked by
+ * the CLI parser before it is written here). A URL or path is fatal, with
+ * the variable named, instead of a getaddrinfo error at listen time.
+ */
+export const readServerHostEnv = (
+  raw: string | undefined,
+): string | undefined => {
+  const value = raw?.trim();
+  if (!value) return undefined;
+  if (!isPlausibleHostname(value))
+    throw new Error(
+      `[bascik] error: invalid BASCIK_SERVER_HOST ${JSON.stringify(raw)}: ${hostnameExpectation(value, "BASCIK_SERVER_PORT")}.`,
+    );
+  return value;
+};
+
 // Flag values were written into the environment by ensureEnvironmentReady
 // above (worker threads do not inherit process.argv), so this one env read
 // covers both the flag and the plain env var, with the flag winning.
@@ -605,17 +690,13 @@ if (
       `  Expected one of: ${LOG_LEVELS.join(", ")}.`,
   );
 }
-// Lenient like server.ts: a malformed port env var is ignored, not fatal.
-const envPortRaw = process.env.BASCIK_SERVER_PORT;
-const envPortParsed = envPortRaw ? Number.parseInt(envPortRaw, 10) : undefined;
-const envPort =
-  envPortParsed !== undefined &&
-  Number.isInteger(envPortParsed) &&
-  envPortParsed >= 1 &&
-  envPortParsed <= 65535
-    ? envPortParsed
-    : undefined;
-const envHost = process.env.BASCIK_SERVER_HOST?.trim() || undefined;
+const envPort = readServerPortEnv(process.env.BASCIK_SERVER_PORT);
+// server.ts falls back to PORT (as hosting platforms set it) only when
+// BASCIK_SERVER_PORT is unset; warn about a malformed one here, once, since
+// the server ignores it. The value itself is still read at listen time.
+if (!process.env.BASCIK_SERVER_PORT)
+  readServerPortEnv(process.env.PORT, "PORT");
+const envHost = readServerHostEnv(process.env.BASCIK_SERVER_HOST);
 // Configuration errors name the file that was loaded (bascik.config.mjs, a
 // --config path), not a bascik.config.ts that may not exist.
 const loadedConfigFile = findConfigFile(process.argv.slice(2)).path;

@@ -22,6 +22,8 @@ import {
   initBascikConfig,
   normalizeScopableOption,
   deepMerge,
+  readServerHostEnv,
+  readServerPortEnv,
 } from "./config.ts";
 
 // Filesystem stub for initBascikConfig calls whose configs reference script
@@ -448,6 +450,62 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     expect(serverCfg.http.tls.enabled).toBe(true);
   });
 
+  // F095: a boolean minify in the default export used to be applied after
+  // the merge and overwrite the mode export's object.
+  it("lets an object minify in the mode export refine a boolean minify in the default export", () => {
+    const cfg = initBascikConfig(
+      { minify: false },
+      { build: { minify: { identifiers: true } } },
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: false,
+      css: false,
+      js: false,
+      identifiers: true,
+    });
+  });
+
+  it("lets a boolean minify in the mode export replace an object in the default export", () => {
+    const cfg = initBascikConfig(
+      { minify: { css: false } },
+      { server: { minify: true } },
+      { isProdServer: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: true,
+      css: true,
+      js: true,
+      identifiers: true,
+    });
+  });
+
+  it("applies a boolean minify in the default export to every minifier when no mode export sets one", () => {
+    const cfg = initBascikConfig(
+      { minify: false },
+      {},
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify).toEqual({
+      html: false,
+      css: false,
+      js: false,
+      identifiers: false,
+    });
+  });
+
+  it("keeps a minify function from the default export when the mode export sets other keys", () => {
+    const js = (code: string) => code;
+    const cfg = initBascikConfig(
+      { minify: { js } },
+      { build: { minify: { identifiers: false } } },
+      { isBuild: true },
+    ).BascikConfig;
+    expect(cfg.minify.js).toBe(js);
+    expect(cfg.minify.identifiers).toBe(false);
+    expect(cfg.minify.css).toBe(true);
+  });
+
   it("uses the dev asset symlink override only in development mode", () => {
     const overrides = { dev: { assets: { symlink: true } } };
 
@@ -584,5 +642,160 @@ describe("exec config normalization and merging", () => {
     expect(cfg.pipeline.exec).toEqual([
       { script: "scripts/build-only.js", phase: "post" },
     ]);
+  });
+});
+
+// F096: `bascik --check` keeps going past configuration errors so it can
+// report them with everything else. It used to drop the whole config to do
+// so, and then checked the default folders instead of the configured ones.
+describe("allowInvalidConfig (bascik --check)", () => {
+  const check = (userConfig: unknown, modeOverrides: unknown = {}) =>
+    initBascikConfig(
+      userConfig as never,
+      modeOverrides as never,
+      { allowInvalidConfig: true },
+      { fs: allowAllFs, env: {} },
+    ).BascikConfig;
+
+  it("keeps the valid settings and drops only the invalid key", () => {
+    const cfg = check({
+      directory: { pages: "pages" },
+      http: { port: 70000, hostname: "example.com" },
+    });
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.http.port).toBeUndefined();
+    expect(cfg.http.hostname).toBe("example.com");
+  });
+
+  it("drops an invalid key from the mode export and keeps the rest of it", () => {
+    const cfg = check(
+      { directory: { pages: "pages" } },
+      { dev: { logging: { copies: false, requests: "no" } } },
+    );
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.logging.copies).toBe(false);
+    expect(cfg.logging.requests).toBe(true);
+  });
+
+  it("drops a bad array entry's whole setting, not the section", () => {
+    const cfg = check({
+      directory: { pages: "pages" },
+      pipeline: {
+        workers: 2,
+        exec: [{ script: "scripts/a.ts", phase: "later" }],
+      },
+    });
+    expect(cfg.pipeline.workers).toBe(2);
+    expect(cfg.pipeline.exec).toBeUndefined();
+  });
+
+  it("falls back to the default output directory when directory.out is rejected", () => {
+    const cfg = check({ directory: { pages: "pages", out: "pages" } });
+    expect(cfg.directory.pages).toBe(resolve(process.cwd(), "pages"));
+    expect(cfg.directory.out).toBe(resolve(process.cwd(), "dist"));
+  });
+
+  it("does not mutate the user's config object", () => {
+    const userConfig = { directory: { pages: "pages" }, http: { port: 0 } };
+    check(userConfig);
+    expect(userConfig.http.port).toBe(0);
+  });
+
+  it("still throws outside check mode", () => {
+    expect(() =>
+      initBascikConfig(
+        { http: { port: 70000 } },
+        {},
+        {},
+        { fs: allowAllFs, env: {} },
+      ),
+    ).toThrow(/http\.port/);
+  });
+});
+
+// F100: BASCIK_SERVER_HOST gets the http.hostname rule, naming the variable.
+describe("readServerHostEnv", () => {
+  it("returns a plausible hostname, trimmed, and undefined when unset or blank", () => {
+    expect(readServerHostEnv(" 0.0.0.0 ")).toBe("0.0.0.0");
+    expect(readServerHostEnv("::1")).toBe("::1");
+    expect(readServerHostEnv(undefined)).toBeUndefined();
+    expect(readServerHostEnv("  ")).toBeUndefined();
+  });
+
+  it.each(["http://localhost", "localhost:3000/", "a b"])(
+    "throws for %s, naming the variable",
+    (value) => {
+      let message = "";
+      try {
+        readServerHostEnv(value);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain(`BASCIK_SERVER_HOST "${value}"`);
+      expect(message).toContain("not a URL or path");
+    },
+  );
+
+  it.each(["localhost:3000", "0.0.0.0:8080"])(
+    "throws for the host:port %s, pointing at BASCIK_SERVER_PORT",
+    (value) => {
+      expect(() => readServerHostEnv(value)).toThrow(
+        `BASCIK_SERVER_HOST "${value}": expected a hostname without a port, like "localhost"; set the port with BASCIK_SERVER_PORT`,
+      );
+    },
+  );
+});
+
+// F104: BASCIK_SERVER_PORT gets the --port rule; a malformed value is
+// ignored (with a warning), never partly parsed.
+describe("readServerPortEnv", () => {
+  it("returns a whole port number, trimmed", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv("8080")).toBe(8080);
+      expect(readServerPortEnv(" 3000\n")).toBe(3000);
+      expect(readServerPortEnv(undefined)).toBeUndefined();
+      expect(readServerPortEnv("")).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    "8080abc",
+    "8080;",
+    "3000 4000",
+    "80.5",
+    "0x50",
+    "0",
+    "70000",
+    "-1",
+  ])("ignores %s and warns, naming the variable", (value) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv(value)).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        `BASCIK_SERVER_PORT "${value}"`,
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("names PORT in the warning when it reads PORT", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(readServerPortEnv("8080abc", "PORT")).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        'ignoring PORT "8080abc"',
+      );
+      expect(readServerPortEnv("3000", "PORT")).toBe(3000);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

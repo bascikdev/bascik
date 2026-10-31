@@ -16,10 +16,17 @@
  * so every problem reports together, and dedupes errors shared by layers.
  */
 
-import { existsSync, statSync, accessSync, constants } from "node:fs";
-import { resolve, sep } from "node:path";
+import {
+  existsSync,
+  statSync,
+  lstatSync,
+  accessSync,
+  constants,
+} from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
 import { LOG_LEVELS } from "./log-level.ts";
+import { hostnameExpectation, isPlausibleHostname } from "./server-address.ts";
 import {
   CSP_DIRECTIVES,
   CSP_KEYWORDS,
@@ -43,6 +50,12 @@ export interface ConfigValidationFs {
   existsSync(path: string): boolean;
   isDirectory(path: string): boolean;
   isReadableFile(path: string): boolean;
+  /**
+   * The identity of the directory entry at a path (device and inode, the
+   * final symlink not followed), or undefined when nothing is there. Absent:
+   * the output-directory overlap check compares path strings only.
+   */
+  entryIdentity?(path: string): string | undefined;
 }
 
 export interface ConfigValidationDeps {
@@ -68,13 +81,71 @@ const defaultFs: ConfigValidationFs = {
       return false;
     }
   },
+  entryIdentity: (path) => entryIdentity(path),
 };
+
+/** The longest delay setTimeout honors; a longer one fires after 1 ms. */
+const MAX_TIMER_DELAY = 2 ** 31 - 1;
 
 /** One extension, dot optional: `.css` or `css`, never `*.css` or `a/b.css`. */
 const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
 
 const isPlainObject = (val: unknown): val is Record<string, unknown> =>
   val !== null && typeof val === "object" && !Array.isArray(val);
+
+/** True when `child` is `parent` or a path inside it (both absolute, resolved). */
+export const isSameOrInside = (child: string, parent: string): boolean =>
+  child === parent ||
+  child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+
+/**
+ * The device and inode of the entry at `path`, without following a final
+ * symlink (a recursive rm removes the link, not its target), or undefined
+ * when nothing is there or the file system reports no inode (0).
+ */
+export const entryIdentity = (path: string): string | undefined => {
+  try {
+    const stats = lstatSync(path, { bigint: true });
+    return stats.ino === 0n ? undefined : `${stats.dev}:${stats.ino}`;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * isSameOrInside, also true when `parent` exists and `child` or one of its
+ * ancestors is that same folder on disk under another spelling. On a
+ * case-insensitive file system (the macOS and Windows default) "SRC" is the
+ * src folder, and a string comparison misses it; so does any other alias
+ * that names the same entry (a bind mount, an 8.3 short name).
+ */
+export const isSameOrInsideOnDisk = (
+  child: string,
+  parent: string,
+  identify: ((path: string) => string | undefined) | undefined = entryIdentity,
+): boolean => {
+  if (isSameOrInside(child, parent)) return true;
+  if (!identify) return false;
+  const parentIdentity = identify(parent);
+  if (parentIdentity === undefined) return false;
+  for (let path = child; ; path = dirname(path)) {
+    if (identify(path) === parentIdentity) return true;
+    if (dirname(path) === path) return false;
+  }
+};
+
+/**
+ * The built-in source and output folders. config.ts builds its defaults from
+ * these, and the output-directory overlap check falls back to them for a
+ * folder the config leaves unset.
+ */
+export const DEFAULT_DIRECTORY = {
+  pages: "src/pages",
+  components: "src/components",
+  out: "dist",
+  api: "src/api",
+} as const;
+export const DEFAULT_IMPORT_ROOT = "src";
 
 /* ── Known key schema ─────────────────────────────────────────────────── */
 
@@ -304,7 +375,6 @@ export const PLAUSIBLE_TAG_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/;
  * least one `*`. `*` is the only metacharacter; consecutive `*` behave as one.
  */
 export const PRESERVE_WILDCARD_PATTERN = /^(?=.*\*)[a-zA-Z0-9-*]{1,50}$/;
-const PLAUSIBLE_HOSTNAME = /^[a-zA-Z0-9._:-]+$/;
 
 /** A "valid glob" here: a non-empty string with balanced square brackets. */
 const isPlausibleGlob = (value: unknown): value is string => {
@@ -396,6 +466,34 @@ export const validateConfigShape = (
   // Protections first: a mistake here changes what the site ships.
   validateSecurity(raw.security, push);
 
+  // A section replaced by a scalar (`generate: false`) would replace the
+  // whole defaults block in the merge, leaving every key in it undefined.
+  for (const section of OBJECT_SECTIONS) {
+    const value = raw[section];
+    if (value !== undefined && !isPlainObject(value))
+      push(section, value, "expected an object");
+  }
+  for (const [section, keys] of BOOLEAN_LEAVES) {
+    const value = raw[section];
+    if (isPlainObject(value)) validateBooleans(value, section, keys, push);
+  }
+  if (isPlainObject(raw.scoping) && raw.scoping.attributes !== undefined) {
+    const attributes = raw.scoping.attributes;
+    if (!isPlainObject(attributes))
+      push(
+        "scoping.attributes",
+        attributes,
+        "expected an object { class?, id?, name? }",
+      );
+    else
+      validateBooleans(
+        attributes,
+        "scoping.attributes",
+        ["class", "id", "name"],
+        push,
+      );
+  }
+
   /* directory */
   if (isPlainObject(raw.directory)) {
     const dir = raw.directory;
@@ -447,7 +545,15 @@ export const validateConfigShape = (
     if (typeof dir.out === "string") {
       const root = resolve(cwd);
       const resolvedOut = resolve(cwd, dir.out);
-      if (resolvedOut !== root && !resolvedOut.startsWith(root + sep)) {
+      if (resolvedOut === root) {
+        // The output directory is emptied at the start of every build and
+        // dev session; the project root holds the sources and the config.
+        push(
+          "directory.out",
+          dir.out,
+          'is the project root; the output directory is emptied at the start of every build and dev session, so it must be a folder of its own such as "dist"',
+        );
+      } else if (!isSameOrInside(resolvedOut, root)) {
         push(
           "directory.out",
           dir.out,
@@ -499,21 +605,20 @@ export const validateConfigShape = (
     }
     if (http.hostname !== undefined) {
       const hostname = http.hostname;
-      if (
-        typeof hostname !== "string" ||
-        hostname.length === 0 ||
-        hostname.includes("://") ||
-        hostname.includes("/") ||
-        hostname.includes("\\") ||
-        /\s/.test(hostname) ||
-        !PLAUSIBLE_HOSTNAME.test(hostname)
-      ) {
+      if (!isPlausibleHostname(hostname)) {
         push(
           "http.hostname",
           hostname,
-          'expected a hostname like "localhost" or "example.com", not a URL or path',
+          hostnameExpectation(hostname, "http.port"),
         );
       }
+    }
+    if (http.tls !== undefined && !isPlainObject(http.tls)) {
+      push(
+        "http.tls",
+        http.tls,
+        "expected an object { enabled?, keyFile?, certFile? }",
+      );
     }
     if (isPlainObject(http.tls)) {
       const tls = http.tls;
@@ -526,6 +631,39 @@ export const validateConfigShape = (
           push(`http.tls.${key}`, value, "expected a string path");
         }
       }
+    }
+    // api-runtime.ts compares these with `> 0`, which is false for a string
+    // or NaN, so a wrong type would silently turn the limit off.
+    const maxBodySize = http.maxBodySize;
+    if (
+      maxBodySize !== undefined &&
+      (typeof maxBodySize !== "number" ||
+        !Number.isSafeInteger(maxBodySize) ||
+        maxBodySize < 0)
+    ) {
+      push(
+        "http.maxBodySize",
+        maxBodySize,
+        "expected a whole number of bytes, such as 1048576 for 1 MB (0 turns the limit off)",
+      );
+    }
+    // setTimeout fires at once for a delay past 2^31 - 1 ms.
+    const apiTimeout = http.apiTimeout;
+    if (
+      apiTimeout !== undefined &&
+      (typeof apiTimeout !== "number" ||
+        !Number.isFinite(apiTimeout) ||
+        apiTimeout < 0 ||
+        apiTimeout > MAX_TIMER_DELAY)
+    ) {
+      push(
+        "http.apiTimeout",
+        apiTimeout,
+        `expected a number of milliseconds from 0 (no timeout) to ${MAX_TIMER_DELAY}`,
+      );
+    }
+    if (http.httpCache !== undefined && typeof http.httpCache !== "boolean") {
+      push("http.httpCache", http.httpCache, "expected true or false");
     }
     if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
       push("http.trustProxy", http.trustProxy, "expected true or false");
@@ -695,6 +833,7 @@ export const validateConfigShape = (
         );
       }
     }
+    validateScriptsCache(scripts.cache, push);
     if (
       scripts.stripAnsi !== undefined &&
       typeof scripts.stripAnsi !== "boolean"
@@ -794,6 +933,7 @@ export const validateConfigShape = (
               'expected "pre", "post", or "parallel"',
             );
           }
+          validateExecEntryFields(entry, `pipeline.exec[${index}]`, push);
         });
       }
     }
@@ -936,6 +1076,143 @@ export const validateConfigShape = (
 };
 
 type Push = (key: string, value: unknown, message: string) => void;
+
+/** Top-level sections that only take an object (minify, security and contentSecurityPolicy check their own forms). */
+const OBJECT_SECTIONS = [
+  "directory",
+  "components",
+  "scoping",
+  "assets",
+  "generate",
+  "pipeline",
+  "scripts",
+  "http",
+  "logging",
+] as const;
+
+/** Settings that take only true or false, by section. */
+const BOOLEAN_LEAVES: readonly (readonly [string, readonly string[]])[] = [
+  [
+    "generate",
+    ["sitemap", "robots", "sitemapLastmod", "cspHashes", "manifest"],
+  ],
+  ["scoping", ["scriptBlocks", "inheritAttributes", "deduplicateCss"]],
+  ["logging", ["requests", "copies", "deletes", "transpiles"]],
+];
+
+const validateBooleans = (
+  section: Record<string, unknown>,
+  prefix: string,
+  keys: readonly string[],
+  push: Push,
+): void => {
+  for (const key of keys) {
+    const value = section[key];
+    if (value !== undefined && typeof value !== "boolean")
+      push(`${prefix}.${key}`, value, "expected true or false");
+  }
+};
+
+/** An optional array of non-empty strings; reports the array or each bad entry. */
+const validateStringList = (
+  value: unknown,
+  key: string,
+  expected: string,
+  push: Push,
+): void => {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    push(key, value, `expected an array of ${expected}`);
+    return;
+  }
+  value.forEach((entry, index) => {
+    if (typeof entry !== "string" || entry.length === 0)
+      push(`${key}[${index}]`, entry, `expected a non-empty string`);
+  });
+};
+
+/** `scripts.cache`: true, false, or { enabled?, include?, exclude?, environment? }. */
+const validateScriptsCache = (cache: unknown, push: Push): void => {
+  if (cache === undefined || typeof cache === "boolean") return;
+  if (!isPlainObject(cache)) {
+    push(
+      "scripts.cache",
+      cache,
+      "expected true, false, or an object { enabled?, include?, exclude?, environment? }",
+    );
+    return;
+  }
+  validateBooleans(cache, "scripts.cache", ["enabled"], push);
+  validateStringList(
+    cache.include,
+    "scripts.cache.include",
+    "glob strings",
+    push,
+  );
+  validateStringList(
+    cache.exclude,
+    "scripts.cache.exclude",
+    "glob strings",
+    push,
+  );
+  validateStringList(
+    cache.environment,
+    "scripts.cache.environment",
+    "environment variable names",
+    push,
+  );
+};
+
+/** The optional fields of one `pipeline.exec` entry (script and phase are checked by the caller). */
+const validateExecEntryFields = (
+  entry: Record<string, unknown>,
+  prefix: string,
+  push: Push,
+): void => {
+  const { watch, cwd, env, args, timeout } = entry;
+  if (watch !== undefined) {
+    if (typeof watch === "string") {
+      if (watch.length === 0)
+        push(`${prefix}.watch`, watch, "expected a non-empty glob string");
+    } else if (Array.isArray(watch)) {
+      validateStringList(watch, `${prefix}.watch`, "glob strings", push);
+    } else {
+      push(
+        `${prefix}.watch`,
+        watch,
+        "expected a glob string or an array of glob strings",
+      );
+    }
+  }
+  if (cwd !== undefined && (typeof cwd !== "string" || cwd.length === 0))
+    push(`${prefix}.cwd`, cwd, "expected a non-empty directory path");
+  if (env !== undefined) {
+    if (!isPlainObject(env)) {
+      push(`${prefix}.env`, env, "expected an object of string values");
+    } else {
+      for (const [name, value] of Object.entries(env))
+        if (typeof value !== "string")
+          push(
+            `${prefix}.env[${JSON.stringify(name)}]`,
+            value,
+            "expected a string",
+          );
+    }
+  }
+  validateStringList(args, `${prefix}.args`, "argument strings", push);
+  if (
+    timeout !== undefined &&
+    (typeof timeout !== "number" ||
+      !Number.isFinite(timeout) ||
+      timeout < 0 ||
+      timeout > MAX_TIMER_DELAY)
+  )
+    push(
+      `${prefix}.timeout`,
+      timeout,
+      `expected a number of milliseconds from 0 (no timeout) to ${MAX_TIMER_DELAY}`,
+    );
+};
 
 /**
  * An optional object of positive whole numbers (the render and expansion
@@ -1491,6 +1768,119 @@ const checkHttpTimeoutOrder = (
   };
 };
 
+/**
+ * The folders the output directory must never hold or be, as the merged
+ * config for one mode sees them: the layers' values over the defaults.
+ * Wrong-typed values are skipped (the shape pass reports them).
+ */
+const sourceFoldersFor = (
+  layers: unknown[],
+): { out: string | undefined; sources: [string, string][] } => {
+  let out: string | undefined = DEFAULT_DIRECTORY.out;
+  let pages: string = DEFAULT_DIRECTORY.pages;
+  let api: string = DEFAULT_DIRECTORY.api;
+  let components: string[] = [DEFAULT_DIRECTORY.components];
+  let importRoot: string = DEFAULT_IMPORT_ROOT;
+  for (const layer of layers) {
+    if (!isPlainObject(layer)) continue;
+    if (isPlainObject(layer.directory)) {
+      const dir = layer.directory;
+      if (dir.out !== undefined)
+        out = typeof dir.out === "string" ? dir.out : undefined;
+      if (typeof dir.pages === "string") pages = dir.pages;
+      if (typeof dir.api === "string") api = dir.api;
+      if (typeof dir.components === "string") components = [dir.components];
+      else if (Array.isArray(dir.components))
+        components = dir.components.filter(
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim() !== "",
+        );
+    }
+    if (
+      isPlainObject(layer.scripts) &&
+      typeof layer.scripts.importRoot === "string" &&
+      layer.scripts.importRoot.length > 0
+    )
+      importRoot = layer.scripts.importRoot;
+  }
+  return {
+    out,
+    sources: [
+      ["directory.pages", pages],
+      ...components.map((root): [string, string] => [
+        "directory.components",
+        root,
+      ]),
+      ["directory.api", api],
+      ["scripts.importRoot", importRoot],
+    ],
+  };
+};
+
+/**
+ * `directory.out` is emptied at the start of every build and dev session
+ * (transpile.ts), so an output directory that is or holds a source folder
+ * deletes that source before a page is read. An output directory inside the
+ * pages, components or API folder is rejected too: what the build writes
+ * would be read back as source. Inside the import root is fine (nothing is
+ * deleted, and scripts only import what they name).
+ */
+const checkOutputDirectoryOverlap = (
+  userConfig: unknown,
+  modeOverrides: unknown,
+  cwd: string,
+  fs: ConfigValidationFs,
+): ConfigValidationError[] => {
+  // Compared on disk too: "SRC" is src on a case-insensitive file system.
+  const overlaps = (child: string, parent: string): boolean =>
+    isSameOrInsideOnDisk(child, parent, fs.entryIdentity?.bind(fs));
+  const root = resolve(cwd);
+  const perMode =
+    isPlainObject(modeOverrides) &&
+    ("dev" in modeOverrides ||
+      "build" in modeOverrides ||
+      "server" in modeOverrides);
+  const errors: ConfigValidationError[] = [];
+  for (const mode of ["dev", "build", "server"] as const) {
+    const override = perMode
+      ? (modeOverrides as Record<string, unknown>)[mode]
+      : mode === "dev"
+        ? undefined
+        : modeOverrides;
+    const { out, sources } = sourceFoldersFor([userConfig, override]);
+    if (out === undefined) continue;
+    const resolvedOut = resolve(cwd, out);
+    // The project root and an escaping out report in the shape pass.
+    if (resolvedOut === root || !isSameOrInside(resolvedOut, root)) continue;
+    const display = (path: string): string =>
+      relative(root, resolve(cwd, path)).replace(/\\/g, "/") || ".";
+    const deleted = sources.filter(([, path]) =>
+      overlaps(resolve(cwd, path), resolvedOut),
+    );
+    if (deleted.length > 0) {
+      errors.push({
+        key: "directory.out",
+        value: out,
+        message: `would delete ${deleted.map(([key, path]) => `${key} "${display(path)}"`).join(", ")}: the output directory is emptied at the start of every build and dev session, so it must be a folder of its own that holds no source, such as "dist"`,
+      });
+      continue;
+    }
+    const readBack = sources.find(
+      ([key, path]) =>
+        key !== "scripts.importRoot" &&
+        overlaps(resolvedOut, resolve(cwd, path)),
+    );
+    if (readBack) {
+      errors.push({
+        key: "directory.out",
+        value: out,
+        message: `is inside ${readBack[0]} "${display(readBack[1])}": what the build writes there would be read back as source. Use a folder outside it, such as "dist"`,
+      });
+    }
+  }
+  return errors;
+};
+
 const errorSignature = (error: ConfigValidationError): string =>
   `${error.key}${error.message}${String(error.value)}`;
 
@@ -1543,6 +1933,15 @@ export const validateUserConfig = (
     const error = checkHttpTimeoutOrder(userConfig, override);
     if (error) errors.push(error);
   }
+
+  errors.push(
+    ...checkOutputDirectoryOverlap(
+      userConfig,
+      modeOverrides,
+      deps.cwd ?? process.cwd(),
+      deps.fs ?? defaultFs,
+    ),
+  );
 
   // Site URL: owned by environment.ts, validated here so an invalid value
   // reports together with every other configuration error.
