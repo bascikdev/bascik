@@ -435,6 +435,31 @@ describe("loadSidecar production readiness distinctions", () => {
     }
   });
 
+  // F076: a document that is not an object (a truncated deploy, a tool that
+  // wrote `null`) gets the same actionable message, never a raw TypeError.
+  it.each(["null", "[]", "5", '"scripts"', "true"])(
+    "rejects a sidecar document that is %s, naming the file and the rebuild",
+    async (content) => {
+      const dir = outDir();
+      await mkdir(join(dir, ".bascik"), { recursive: true });
+      try {
+        const path = join(dir, ".bascik", "server-scripts.json");
+        await writeFile(path, content, "utf8");
+        const load = serverSidecarRegistry.loadSidecar(path);
+        await expect(load).rejects.toThrow(/is not a JSON object/);
+        await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+          path,
+        );
+        await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+          /Run `bascik --build`/,
+        );
+        expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("rejects a malformed scripts member", async () => {
     const dir = outDir();
     await mkdir(join(dir, ".bascik"), { recursive: true });
