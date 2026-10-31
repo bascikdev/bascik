@@ -127,8 +127,15 @@ async function loadConfig(root) {
     "bascik.config.ts",
   ]) {
     const path = join(root, file);
-    if (existsSync(path))
+    if (!existsSync(path)) continue;
+    try {
       return (await import(pathToFileURL(path).href)).default ?? {};
+    } catch (error) {
+      process.stderr.write(
+        `check-tokens: could not load ${file}: ${error.message}\n`,
+      );
+      process.exit(1);
+    }
   }
   return {};
 }

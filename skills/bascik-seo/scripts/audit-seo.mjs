@@ -319,8 +319,15 @@ async function main() {
     "bascik.config.ts",
   ]) {
     if (existsSync(join(root, file))) {
-      config =
-        (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      try {
+        config =
+          (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      } catch (error) {
+        process.stderr.write(
+          `audit-seo: could not load ${file}: ${error.message}\n`,
+        );
+        process.exit(1);
+      }
       break;
     }
   }

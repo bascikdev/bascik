@@ -32,6 +32,7 @@ import {
   extractLinks,
   fileFor,
   resolveLink,
+  siteOriginOf,
 } from "../../skills/bascik/scripts/check-links.mjs";
 import { analyzeTokens } from "../../skills/bascik-components/scripts/check-tokens.mjs";
 import {
@@ -614,6 +615,83 @@ describe("check-links", () => {
       "/real",
     ]);
   });
+
+  it("reads the site origin from an absolute http(s) URL", () => {
+    expect(siteOriginOf("https://example.com")).toBe("https://example.com");
+    expect(siteOriginOf("https://example.com/docs/")).toBe(
+      "https://example.com",
+    );
+    expect(siteOriginOf("http://localhost:3000")).toBe("http://localhost:3000");
+  });
+
+  it("misuse: a schemeless or non-http site URL fails once, naming the URL, instead of every link being unparsable", () => {
+    for (const bad of [
+      "example.com",
+      "//example.com",
+      "ftp://example.com",
+      "not a url",
+    ]) {
+      expect(() => siteOriginOf(bad)).toThrow(
+        `must be an absolute http(s) URL such as https://example.com, got "${bad}"`,
+      );
+    }
+    const pages = [
+      { file: "index.html", html: '<a href="https://github.com/x">x</a>' },
+    ];
+    expect(() =>
+      checkSite(pages, { exists: () => true, origin: "example.com" }),
+    ).toThrow('got "example.com"');
+  });
+
+  it("misuse: the CLI exits 2 on a schemeless --site-url or BASCIK_SITE_URL, naming where it came from", () => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-check-links-"));
+    try {
+      writeFileSync(join(root, "package.json"), "{}");
+      mkdirSync(join(root, "dist"));
+      writeFileSync(
+        join(root, "dist/index.html"),
+        '<a href="https://github.com/x">x</a>',
+      );
+      const script = fileURLToPath(
+        new URL("../../skills/bascik/scripts/check-links.mjs", import.meta.url),
+      );
+      const env = { ...process.env };
+      delete env.BASCIK_SITE_URL;
+      const flag = spawnSync(
+        process.execPath,
+        [script, "--site-url", "example.com"],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env,
+        },
+      );
+      expect(flag.status).toBe(2);
+      expect(flag.stdout).not.toContain("unparsable URL");
+      expect(flag.stderr).toContain(
+        'check-links: --site-url must be an absolute http(s) URL such as https://example.com, got "example.com"',
+      );
+      const fromEnv = spawnSync(process.execPath, [script], {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...env, BASCIK_SITE_URL: "example.com" },
+      });
+      expect(fromEnv.status).toBe(2);
+      expect(fromEnv.stderr).toContain("check-links: BASCIK_SITE_URL must be");
+      const good = spawnSync(
+        process.execPath,
+        [script, "--site-url", "https://example.com"],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env,
+        },
+      );
+      expect(good.status, good.stdout).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("check-tokens", () => {
@@ -899,4 +977,39 @@ describe("audit-config exec entries", () => {
       ),
     ).toEqual([]);
   });
+});
+
+describe("skill scripts that load bascik.config", () => {
+  it.each([
+    ["check-links", "bascik/scripts/check-links.mjs"],
+    ["audit-seo", "bascik-seo/scripts/audit-seo.mjs"],
+    ["check-tokens", "bascik-components/scripts/check-tokens.mjs"],
+  ])(
+    "misuse: %s names the config file and the error when it cannot be loaded, with no stack trace",
+    (name, script) => {
+      const root = mkdtempSync(join(tmpdir(), "bascik-broken-config-"));
+      try {
+        writeFileSync(join(root, "package.json"), "{}");
+        // Non-erasable TypeScript: Node's type stripping refuses it.
+        writeFileSync(
+          join(root, "bascik.config.ts"),
+          "enum Mode { Fast }\nexport default { directory: { out: 'dist' } };\n",
+        );
+        mkdirSync(join(root, "dist"));
+        writeFileSync(join(root, "dist/index.html"), "<h1>x</h1>");
+        const result = spawnSync(
+          process.execPath,
+          [fileURLToPath(new URL(`../../skills/${script}`, import.meta.url))],
+          { cwd: root, encoding: "utf8" },
+        );
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(
+          new RegExp(`^${name}: could not load bascik\\.config\\.ts: \\S`),
+        );
+        expect(result.stderr).not.toMatch(/\n\s+at /);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

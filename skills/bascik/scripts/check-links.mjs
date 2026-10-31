@@ -99,19 +99,39 @@ export function extractAnchors(html) {
 }
 
 /**
+ * The origin of a site URL such as https://example.com/docs/. Throws, naming the value, when it is not an absolute
+ * http(s) URL: a schemeless "example.com" would otherwise make every absolute link look unparsable. Exported for tests.
+ */
+export function siteOriginOf(siteUrl) {
+  let url;
+  try {
+    url = new URL(siteUrl);
+  } catch {
+    url = undefined;
+  }
+  if (!url || !/^https?:$/.test(url.protocol))
+    throw new Error(
+      `must be an absolute http(s) URL such as https://example.com, got "${siteUrl}"`,
+    );
+  return url.origin;
+}
+
+/**
  * Resolve a link to { path, fragment } inside the site, or { skip } for external and non-file links.
  * `pageUrl` is the page's own base-including path, such as "/docs/blog/post/". Exported for tests.
  */
 export function resolveLink(url, pageUrl, { origin, base = "/" } = {}) {
   if (/^(mailto|tel|sms|data|javascript|blob):/i.test(url))
     return { skip: "scheme" };
+  // Outside the try below: a bad site URL is the caller's mistake, not this link's.
+  const siteOrigin = origin ? siteOriginOf(origin) : undefined;
   let target;
   try {
     const page = new URL(pageUrl, "http://site.invalid");
     const resolved = new URL(url, page);
     const sameOrigin =
       resolved.origin === "http://site.invalid" ||
-      (origin && resolved.origin === new URL(origin).origin);
+      resolved.origin === siteOrigin;
     if (!sameOrigin) return { skip: "external" };
     target = resolved;
   } catch {
@@ -147,6 +167,8 @@ export function checkSite(
   pages,
   { exists, origin, base = "/", ignore = [] } = {},
 ) {
+  // Checked once up front, so a bad site URL throws even on a site with no absolute links.
+  const siteOrigin = origin ? siteOriginOf(origin) : undefined;
   const byFile = new Map(pages.map((page) => [page.file, page]));
   const anchors = new Map();
   const anchorsOf = (file) => {
@@ -160,7 +182,10 @@ export function checkSite(
   for (const page of pages) {
     const pageUrl = `${base.replace(/\/$/, "")}${pageUrlOf(page.file)}`;
     for (const link of extractLinks(page.html)) {
-      const result = resolveLink(link.url, pageUrl, { origin, base });
+      const result = resolveLink(link.url, pageUrl, {
+        origin: siteOrigin,
+        base,
+      });
       if (result.skip) continue;
       checked++;
       if (result.error) {
@@ -254,8 +279,15 @@ async function main() {
     "bascik.config.ts",
   ]) {
     if (existsSync(join(root, file))) {
-      config =
-        (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      try {
+        config =
+          (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      } catch (error) {
+        process.stderr.write(
+          `check-links: could not load ${file}: ${error.message}\n`,
+        );
+        process.exit(1);
+      }
       break;
     }
   }
@@ -265,6 +297,17 @@ async function main() {
       `check-links: ${relative(root, dist) || dist} does not exist. Run \`bascik --build\` first.\n`,
     );
     process.exit(1);
+  }
+  const siteUrlSource =
+    values["site-url"] !== undefined ? "--site-url" : "BASCIK_SITE_URL";
+  const siteUrl = values["site-url"] ?? process.env.BASCIK_SITE_URL;
+  if (siteUrl) {
+    try {
+      siteOriginOf(siteUrl);
+    } catch (error) {
+      process.stderr.write(`check-links: ${siteUrlSource} ${error.message}\n`);
+      process.exit(2);
+    }
   }
   const rawBase = typeof config.base === "string" ? config.base : "/";
   const base = `/${rawBase.replace(/^\/+|\/+$/g, "")}/`.replace(/^\/\/$/, "/");
@@ -278,7 +321,7 @@ async function main() {
   };
   const { checked, problems } = checkSite(pages, {
     exists,
-    origin: values["site-url"] ?? process.env.BASCIK_SITE_URL,
+    origin: siteUrl,
     base,
     ignore: values.ignore,
   });
