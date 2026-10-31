@@ -152,6 +152,7 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
   "i",
 );
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
+import { findJsLiteralSpans } from "./js-literal-spans.ts";
 import { sourceLinePadding, takeScriptLine } from "./script-source-lines.ts";
 import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
 import {
@@ -383,6 +384,7 @@ const replaceSafeAttr = (
   html: string,
   attrName: string,
   replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
+  isScriptCodeAt: (index: number) => boolean = () => false,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attrRegex = new RegExp(
@@ -404,8 +406,10 @@ const replaceSafeAttr = (
       while (isTagNameCode(html.charCodeAt(index))) index++;
       if (index === start + 1) return -1;
       const code = html.charCodeAt(index);
-      if (code === 0x3e) return index;
-      return isRegexWhitespace(code) ? index + 1 : -1;
+      if (code !== 0x3e && !isRegexWhitespace(code)) return -1;
+      // `count<max && ok` in script code is a comparison, not a tag.
+      if (isScriptCodeAt(start)) return -1;
+      return code === 0x3e ? index : index + 1;
     }),
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
@@ -450,6 +454,59 @@ const replaceSafeAttr = (
     },
   );
 };
+/**
+ * A lookup of whether an offset of `html` lies in the code of a JavaScript (or TypeScript)
+ * `<script>` body, outside its string and template literals. Markup a script builds sits in
+ * its literals; a `<` in its code is an operator (`count<max`) or a type argument. Script
+ * bodies are scanned on the first lookup, so markup with no tag candidates costs nothing.
+ */
+const createScriptCodeLookup = (html: string): ((index: number) => boolean) => {
+  let codeStarts: number[] | undefined;
+  const codeEnds: number[] = [];
+  const build = (): void => {
+    codeStarts = [];
+    if (!html.includes("<script")) return;
+    for (const match of scanElementContents(
+      html,
+      "script",
+      SCRIPT_ELEMENT_SCAN,
+    )) {
+      const openTag = html.slice(match.start, match.contentStart);
+      if (
+        !isJavaScriptScript(openTag) &&
+        getScriptType(openTag) !== "text/typescript"
+      )
+        continue;
+      const body = html.slice(match.contentStart, match.contentEnd);
+      let cursor = match.contentStart;
+      for (const span of findJsLiteralSpans(body)) {
+        if (match.contentStart + span.start > cursor) {
+          codeStarts.push(cursor);
+          codeEnds.push(match.contentStart + span.start);
+        }
+        cursor = match.contentStart + span.end;
+      }
+      if (match.contentEnd > cursor) {
+        codeStarts.push(cursor);
+        codeEnds.push(match.contentEnd);
+      }
+    }
+  };
+  return (index) => {
+    if (codeStarts === undefined) build();
+    const starts = codeStarts!;
+    let low = 0;
+    let high = starts.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (starts[mid] > index) high = mid - 1;
+      else if (codeEnds[mid] <= index) low = mid + 1;
+      else return true;
+    }
+    return false;
+  };
+};
+
 export const prefixElementAttribute = (
   component: BascikComponent,
   attribute: "id" | "name" | "class",
@@ -588,6 +645,7 @@ export const prefixElementAttribute = (
         commentShield.restore(rawElements.restore(value)),
     };
   })();
+  const isScriptCodeAt = createScriptCodeLookup(nonScriptRawShield.html);
   let scopedAttrsHtml = nonScriptRawShield.restore(
     replaceSafeAttr(
       nonScriptRawShield.html,
@@ -626,6 +684,7 @@ export const prefixElementAttribute = (
           .join(" ");
         return `${prefix}${quote}${newInner}${quote}${trailingSlash}`;
       },
+      isScriptCodeAt,
     ),
   );
 

@@ -294,7 +294,7 @@ const findTemplateExpressionEnd = (js: string, start: number): number => {
   return js.length;
 };
 
-function findTemplateLiteralEnd(js: string, start: number): number {
+export function findTemplateLiteralEnd(js: string, start: number): number {
   let i = start + 1;
   while (i < js.length) {
     __scanStatsForTests.charsExamined++;
