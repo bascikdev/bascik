@@ -1011,6 +1011,69 @@ describe("MY_COUNTER_CSS", () => {
   });
 });
 
+describe("the starter passes the linters the docs give, unchanged", () => {
+  const pages = {
+    index: indexPage("My App"),
+    cloudflareIndex: indexPage("My App", { template: "cloudflare" }),
+    about: aboutPage("My App"),
+    contact: contactPage("My App"),
+    notFound: notFoundPage("My App"),
+    edge: edgePage("My App"),
+  };
+
+  it("has no inline style attributes, which webhint's no-inline-styles reports", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html, name).not.toMatch(/\sstyle=/);
+    }
+  });
+
+  it("writes the doctype in lowercase, as Prettier does and html-validate's doctype-style asks", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html.startsWith("<!doctype html>\n"), name).toBe(true);
+    }
+  });
+
+  it("puts <site-meta />, which starts with the charset, before <title>, so the built charset comes first", () => {
+    expect(SITE_META_HTML.trimStart()).toMatch(/^<meta charset=/);
+    for (const [name, html] of Object.entries(pages)) {
+      const meta = html.indexOf("<site-meta />");
+      expect(meta, name).toBeGreaterThan(-1);
+      expect(meta, name).toBeLessThan(html.indexOf("<title>"));
+    }
+  });
+
+  it("gives every class the pages use for spacing a rule in STYLES_CSS", () => {
+    for (const name of [
+      "counter-row",
+      "mt-28",
+      "mt-32",
+      "mt-40",
+      "not-found",
+      "not-found-code",
+      "edge-greeting",
+    ]) {
+      expect(STYLES_CSS, name).toContain(`.${name} `);
+    }
+  });
+
+  it("lists a vendor-prefixed property before the standard one, as webhint's css-prefix-order asks", () => {
+    const css = [
+      SITE_HEADER_CSS,
+      STYLES_CSS,
+      SITE_FOOTER_CSS,
+      FEAT_CARD_CSS,
+      MY_COUNTER_CSS,
+      CONTACT_FORM_CSS,
+    ].join("\n");
+    for (const match of css.matchAll(/-(?:webkit|moz|ms)-([a-z-]+)\s*:/g)) {
+      const prefixed = match.index!;
+      const standard = css.slice(0, prefixed).lastIndexOf(`\n  ${match[1]}:`);
+      const block = css.lastIndexOf("{", prefixed);
+      expect(standard < block, match[0]).toBe(true);
+    }
+  });
+});
+
 describe("page templates", () => {
   it("indexPage uses feat-card with named slots for the features section", () => {
     const html = indexPage("My App");
