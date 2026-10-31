@@ -43,17 +43,17 @@ A site footer: secondary links and a copyright line. The links live in links.ts 
     margin: 0;
   }
 </style>
-<footer class="footer">
+<footer class="footer" data-testid="site-footer">
   <div class="row">
-    <nav aria-label="Footer">
-      <script data-bascik-build-once>
+    <nav aria-label="Footer" data-testid="site-footer-nav">
+      <script data-bascik-build-once type="text/typescript">
         import { footerLinks } from "./links.ts";
         export default () => footerLinks();
       </script>
     </nav>
     <p class="copyright">
       &copy;
-      <script data-bascik-build-once>
+      <script data-bascik-build-once type="text/typescript">
         export default () => String(new Date().getFullYear());
       </script>
       <span data-bascik-prop-name>Example Site</span>

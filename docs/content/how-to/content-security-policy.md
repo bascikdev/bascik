@@ -169,7 +169,7 @@ Scripts injected by your host after the build are not in the emitted HTML, so th
 
 ## Styles
 
-Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and once a `style-src` lists any hash, the browser blocks every `style` attribute. The starter pages use a few `style` attributes, and so does the development server's error overlay.
+Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and once a `style-src` lists any hash, the browser blocks every `style` attribute. The starter pages use a few `style` attributes. The development server's error overlay and reconnect banner set their styles through `element.style`, which a policy does not block.
 
 Many sites tighten scripts first, where the risk is highest, and allow inline styles for now. With `contentSecurityPolicy`, list `'unsafe-inline'` in `style-src`; Bascik then adds no style hashes to it, so `style` attributes keep working:
 

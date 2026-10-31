@@ -74,14 +74,26 @@ A button that opens a native modal <dialog>. Escape, the close button, and a cli
   type="button"
   aria-haspopup="dialog"
   data-bascik-prop-trigger
+  data-testid="modal-dialog"
 >
   Open
 </button>
-<dialog class="dialog" id="dialog" aria-labelledby="title">
+<dialog
+  class="dialog"
+  id="dialog"
+  aria-labelledby="title"
+  data-testid="modal-dialog-dialog"
+>
   <div class="content">
     <div class="header">
       <h2 class="title" id="title" data-bascik-prop-title>Dialog</h2>
-      <button class="close" id="close" type="button" aria-label="Close">
+      <button
+        class="close"
+        id="close"
+        type="button"
+        aria-label="Close"
+        data-testid="modal-dialog-close"
+      >
         &times;
       </button>
     </div>

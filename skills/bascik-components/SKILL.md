@@ -252,7 +252,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | `modal-dialog`               | `<dialog>` and `showModal()`, backdrop click, `html:has()` scroll lock               |
 | `popover-menu`               | No JavaScript: `popover`, implicit anchor, `position-area` in `@supports`            |
 | `copy-button`                | Prop bound to an attribute with `data-bascik-attr-*`, clipboard, `role="status"`     |
-| `filter-list`                | Slotted `<li>` items reached through a container, `pageshow` re-sync                 |
+| `filter-list`                | Slotted `<li>` items via a container, `pageshow` re-sync, `<search>` hidden until JS |
 | `contact-form`               | Literal field names, validation, JSON `fetch`, the API route behind it               |
 | `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event                          |
 

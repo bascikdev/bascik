@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <site-head />
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { seo } from "@/lib/seo.ts";
       export default () =>
         seo({
@@ -15,7 +15,7 @@
 
   <body>
     <site-header><theme-toggle /></site-header>
-    <main id="main" class="container">
+    <main id="main" class="container" data-testid="contact-main">
       <h1>Contact</h1>
       <p>
         Messages go to <code>src/api/contact.ts</code>, which needs

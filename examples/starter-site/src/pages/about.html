@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <site-head />
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { seo, jsonLd, breadcrumbList } from "@/lib/seo.ts";
       export default () =>
         [
@@ -20,7 +20,7 @@
 
   <body>
     <site-header><theme-toggle /></site-header>
-    <main id="main" class="container">
+    <main id="main" class="container" data-testid="about-main">
       <h1>About</h1>
       <p>
         Tell visitors who you are and why the site exists. Keep each page to one

@@ -100,15 +100,34 @@ export function testIdAdvisory(root, configModule) {
     }
   };
 
-  for (const component of listComponents(
-    componentRoots(root, configModule),
-    root,
-  )) {
-    const tree = read(`${root}/${component.file}`);
+  const components = listComponents(componentRoots(root, configModule), root);
+  const trees = new Map(
+    components.map((component) => [
+      component.tag,
+      read(`${root}/${component.file}`),
+    ]),
+  );
+  /**
+   * Whether a component renders a root a test can find. A component of head tags only (meta, link, script) has
+   * none, and neither has one whose root is the usage tag of such a component, such as a shared <site-head>
+   * that starts with <theme-init />. An unknown tag counts as body markup, so a typo'd name still gets a gap.
+   */
+  const rendersRoot = (tag, seen = new Set()) => {
+    if (!trees.has(tag)) return true;
+    if (seen.has(tag)) return true;
+    seen.add(tag);
+    const tree = trees.get(tag);
+    const top = tree && rootOf(tree);
+    if (!top) return !tree;
+    return top.tag.includes("-") ? rendersRoot(top.tag, seen) : true;
+  };
+
+  for (const component of components) {
+    const tree = trees.get(component.tag);
     if (!tree) continue;
     const name = component.tag;
     const top = rootOf(tree);
-    if (top && !hasTestId(top))
+    if (top && !hasTestId(top) && rendersRoot(name))
       gaps.push({
         file: component.file,
         line: top.line,

@@ -1,6 +1,6 @@
 // src/lib/seo.ts: head tags for every page, generated at build time. Import from a page's <head>:
 //
-//   <script data-bascik-build>
+//   <script data-bascik-build type="text/typescript">
 //     import { seo } from '@/lib/seo.ts';
 //     export default () => seo({ title: 'About - Acme', description: 'Who we are and what we build.' });
 //   </script>
