@@ -139,6 +139,20 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     await watchSourceCycles(invalidateRuntimeModule, options.bootCompile);
   } else {
     let initialScanDone = false;
+    // Chokidar's `ready` fires before the boot compile ends. A page added or
+    // removed in between is missing from (or stale in) the boot compile's
+    // page list, and an inline stylesheet edited in between may have been
+    // read before the edit, so these are recorded and handled once, through
+    // the coalesced rebuild, when the boot compile is done; a rebuild started
+    // alongside the boot compile would race it.
+    let pagesWatcherReady = false;
+    let rebuildAfterBoot = false;
+    const pagesRemovedDuringBoot = new Set<string>();
+    const rebuildAllPagesOnceBooted = (): Promise<void> => {
+      if (initialScanDone) return rebuildAllPages();
+      rebuildAfterBoot = true;
+      return Promise.resolve();
+    };
     const handleUnlinkDir = (path: string): void => {
       deleteDistDir(path)
         .then(async () => {
@@ -188,7 +202,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
               await onPageScriptSource(path);
             } else if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
-                await rebuildAllPages();
+                await rebuildAllPagesOnceBooted();
               }
             } else {
               await copyReplicatePath(path, BascikConfig.directory.out);
@@ -207,7 +221,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
               await onPageScriptSource(path);
             } else if (isInlineStylesheet(path)) {
               if (!BascikConfig.isBuild) {
-                await rebuildAllPages();
+                await rebuildAllPagesOnceBooted();
               }
             } else {
               await copyReplicatePath(path, BascikConfig.directory.out);
@@ -226,7 +240,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           const operation = isUnpublishedScriptSource(path)
             ? onPageScriptSource(path)
             : isInlineStylesheet(path)
-              ? rebuildAllPages()
+              ? rebuildAllPagesOnceBooted()
               : deleteDistFile(path).then(() =>
                   processPagesImportingStylesheet(path),
                 );
@@ -248,6 +262,12 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     compileInitialSources = async (): Promise<void> => {
       await Promise.all([copyStaticAssets(), processAllPages()]);
       initialScanDone = true;
+      if (!rebuildAfterBoot && pagesRemovedDuringBoot.size === 0) return;
+      // The boot compile may have stored a removed page after its removal.
+      for (const path of pagesRemovedDuringBoot) await removePage(path);
+      pagesRemovedDuringBoot.clear();
+      rebuildAfterBoot = false;
+      await rebuildAllPages();
     };
     await new Promise<void>((resolve, reject) => {
       // A failure before `ready` rejects boot; later ones are logged.
@@ -263,11 +283,16 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           })
           .on("add", (_path) => {
             if (initialScanDone) void rebuildAllPages();
+            // Before `ready` an add is the initial scan, which the boot
+            // compile already covers.
+            else if (pagesWatcherReady) rebuildAfterBoot = true;
           })
           .on("change", (path) => pageProcessing(path).catch(onWatchError))
           .on("unlink", (path: string, _stats?: Stats) => {
+            const bootRunning = !initialScanDone;
+            if (bootRunning) pagesRemovedDuringBoot.add(path);
             removePage(path)
-              .then(() => rebuildAllPages())
+              .then(() => (bootRunning ? undefined : rebuildAllPages()))
               .catch(onWatchError);
           })
           .on("unlinkDir", (path: string, _stats?: Stats) =>
@@ -275,6 +300,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           )
           .on("ready", () => {
             ready = true;
+            pagesWatcherReady = true;
             resolve();
           }),
         (error) => {
