@@ -13,6 +13,7 @@ import {
 } from "./server-address.ts";
 import {
   collectConfigWarnings,
+  collectExecCwdWarnings,
   collectModeOverrideWarnings,
   DEFAULT_DIRECTORY,
   DEFAULT_HTTP_TIMEOUTS,
@@ -501,6 +502,10 @@ export const initBascikConfig = (
       cwd: deps.cwd,
     }),
     ...collectModeOverrideWarnings(modeOverrides, safeUserConfig),
+    ...collectExecCwdWarnings(effectiveUserConfig, effectiveModeOverrides, {
+      fs: deps.fs,
+      cwd: deps.cwd,
+    }),
   ]) {
     console.warn(
       `${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`,

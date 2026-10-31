@@ -366,9 +366,9 @@ export interface ScriptsOptions {
   cache: ScopableOptions;
   /** See {@link TypeScriptCompilerOption}. Default `true`. */
   typescript: TypeScriptCompilerOption;
-  onBuildScriptError: "warn" | "error";
-  onRoutesScriptError: "warn" | "error";
-  onServerScriptError: "warn" | "error";
+  onBuildScriptError: "warn" | "error" | "ignore";
+  onRoutesScriptError: "warn" | "error" | "ignore";
+  onServerScriptError: "warn" | "error" | "ignore";
   timeout: number;
   /**
    * Directory that `@/` import specifiers (and script tag `src=` values)

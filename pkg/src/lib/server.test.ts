@@ -264,6 +264,7 @@ const makeStream = () => ({
   write: vi.fn(),
   close: vi.fn(),
   on: vi.fn(),
+  off: vi.fn(),
   destroyed: false,
   pipe: vi.fn(),
   session: { socket: { remoteAddress: "127.0.0.1" } },

@@ -552,3 +552,47 @@ describe("prompt 67: the plan is precomputed, never rebuilt on the request path"
     expect(respondCall(calls)![1]).toBe(500);
   });
 });
+
+describe("buffered data-bascik-server pages: client disconnect", () => {
+  const SERVER_ONLY = `<p>a</p><script data-bascik-server>export default async () => { /*T1*/ return ''; }</script><p>b</p>`;
+
+  it("aborts the script's signal when the client disconnects, and sends nothing", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const t1 = deferred();
+    invokeMock.mockImplementation(
+      async (
+        _spec: string,
+        _ctx: unknown,
+        options: { signal?: AbortSignal },
+      ) => {
+        observedSignal = options.signal;
+        return t1.promise;
+      },
+    );
+    const { res, calls, done } = await serve(SERVER_ONLY, "GET");
+    await tick();
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal!.aborted).toBe(false);
+
+    res.destroyed = true;
+    res.emit("close");
+    await tick();
+    expect(observedSignal!.aborted).toBe(true);
+
+    t1.resolve("<i>late</i>");
+    await done;
+    expect(respondCall(calls)).toBeUndefined();
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it("removes its close listener once the response is sent", async () => {
+    const t1 = deferred();
+    routeInvokes({ "/*T1*/": t1 });
+    const { res, calls, done } = await serve(SERVER_ONLY, "GET");
+    await tick();
+    t1.resolve("<i>1</i>");
+    await done;
+    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p>");
+    expect(res.listenerCount("close")).toBe(0);
+  });
+});

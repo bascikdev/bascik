@@ -55,8 +55,8 @@ A build script defines its output through a callable default export:
 - **Callable default export:** The module must provide a default export that is a callable function (`function`, `async function`, or arrow function). Bascik invokes it with zero arguments.
 - **Return value:** The function must return a string, an [`html`](/html-helpers#html) value from `@bascik/bascik/html`, or a promise resolving to either. Returning `undefined`, `null`, numbers, or other objects throws an error.
 - **Empty output:** To render nothing, return an explicit empty string `return ''`.
-- **Console logging:** `console.log()` and `console.error()` output travels directly to the terminal for diagnostic logging. Bascik transfers returned HTML through a separate isolated transport, so logs never leak into generated markup.
-- **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup.
+- **Console logging:** `console.log()` and `console.error()` output is printed to the terminal for diagnostic logging when the script finishes. Bascik transfers returned HTML through a separate isolated transport, so logs never leak into generated markup.
+- **External scripts:** Scripts using `src="..."` follow the identical contract: the referenced file must have a callable default export returning HTML markup. A `src=` file that cannot be read is the script's error, reported at the tag like any other failure (`Cannot read build script src "./nav.ts" (...)`). A tag with both `src=` and an inline body is rejected, for build, routes, server and stream scripts alike: as in a browser, `src=` means the file, so move the body into it or remove `src=`.
 - **Cached execution:** When a script's output is cached, neither the module initialization nor the default export runs on a cache hit, so logs do not replay.
 
 ### TypeScript
@@ -451,7 +451,7 @@ Every uncached build script on a page is written to its own temporary module and
 
 - Shared helper modules are loaded fresh per script, so a helper's process-local state (counters, singletons) is never shared between siblings.
 - Detached async output (`setImmediate`, `Promise.resolve().then`, timers) is attributed to the script that scheduled it and never captured by a sibling's transport.
-- Returned HTML results travel across an isolated result transport. Child process stdout and stderr streams are streamed directly to terminal logs up to 10 MB per script run.
+- Returned HTML results travel across an isolated result transport. Child process stdout and stderr are captured (up to 10 MB each per script run) and printed to the terminal when the script finishes, not line by line while it runs, so a slow script's progress logs appear together at the end. A script that must show progress live can write it to a file or run as a `pipeline.exec` script, whose output goes straight to the terminal.
 - Avoid calling `process.exit()` inside build scripts, as it terminates the subprocess for that single script.
 - Each script runs from a temporary module in `node_modules/.cache/bascik/` (`build-<time>-<id>.mjs`, `routes-<time>-<id>.mjs`), deleted when it finishes. One left behind by a process that was stopped mid-script (Ctrl-C, a crash, a CI timeout) is deleted by a later build once it is a day old.
 - Children share Node's on-disk compile cache in `node_modules/.cache/bascik/compile-cache/`, so a module one child compiled (a shared helper or a package) is not recompiled by the next. The cache stores compiled code only, never module state, so isolation is unchanged. Bascik keeps your own `NODE_COMPILE_CACHE` value, and `NODE_DISABLE_COMPILE_CACHE=1` turns the cache off.
@@ -463,6 +463,7 @@ When a page needs the same data in several places, read or fetch it **once at pa
 Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`. Subsequent builds skip subprocess execution entirely for unchanged scripts. The cache key is a SHA-256 hash of:
 
 - The authored script body before temporary-module import rewriting
+- Whether the script runs as TypeScript (a `type="text/typescript"` tag or a `.ts` `src=`) and through a `scripts.typescript` compiler, so removing the marker re-runs the same text as JavaScript
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
 - The contents of the source and page files, when the script or a local helper it imports names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`, so a helper that reads its own page re-runs when the page changes

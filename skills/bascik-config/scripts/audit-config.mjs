@@ -283,15 +283,28 @@ export function auditConfig(module, { root, exists = existsSync } = {}) {
         );
         return;
       }
-      const base = entry.cwd ? resolve(root, entry.cwd) : root;
+      // Bascik resolves `script` from the project root; `cwd` only sets the
+      // directory the script starts in.
       const script = isAbsolute(entry.script)
         ? entry.script
-        : resolve(base, entry.script);
-      if (!exists(script) && !exists(resolve(root, entry.script))) {
+        : resolve(root, entry.script);
+      if (!exists(script)) {
         add(
           "error",
           where,
-          `script "${entry.script}" does not exist. Only reference lifecycle scripts that are already in the project.`,
+          `script "${entry.script}" does not exist. Only reference lifecycle scripts that are already in the project (the path is relative to the project root, not to cwd).`,
+        );
+      }
+      // A cwd inside the output directory (a post script in dist/) is made
+      // by the build; any other missing cwd is only a warning, since an
+      // earlier step may create it. Bascik itself warns the same way.
+      const cwd =
+        typeof entry.cwd === "string" ? resolve(root, entry.cwd) : undefined;
+      if (cwd && !inside(cwd, outDir) && !exists(cwd)) {
+        add(
+          "warn",
+          where,
+          `cwd "${entry.cwd}" does not exist. It is the directory the script starts in, relative to the project root; the script fails to start unless an earlier step creates it.`,
         );
       }
       if (

@@ -47,6 +47,7 @@ import {
   resolveScriptSrcPath,
   rewriteModuleSpecifiersWithEdits,
   findModuleSpecifiers,
+  hasDefaultExport,
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
@@ -361,11 +362,17 @@ export const planServerScripts = (
     if (mode === "stream" && firstStreamIndex === -1)
       firstStreamIndex = segments.length;
 
-    if (
-      !placeholderValue &&
-      !srcPath &&
-      !/^\s*export\s+default\b/m.test(scriptContent)
-    ) {
+    // Browsers run only the file when a script has src=; build and routes
+    // scripts reject the same ambiguous tag, so every host agrees on it.
+    if (srcPath && scriptContent.trim()) {
+      const where = filePath ? ` in "${filePath}"` : "";
+      throw new Error(
+        `[bascik] error: <script> tag has both src="${srcPath}" and an inline body${where} at line ${measured.tagLine}. ` +
+          `A script with src= runs only that file, as in a browser: move the body into "${srcPath}" or remove src=.`,
+      );
+    }
+
+    if (!placeholderValue && !srcPath && !hasDefaultExport(scriptContent)) {
       const where = filePath ? ` in "${filePath}"` : "";
       throw new Error(
         `[bascik] error: Inline server script must export default a function${where} at line ${startLine}. ` +
@@ -736,7 +743,8 @@ const toExecution = (
  * behavior every `data-bascik-server` page has always had. `manifest` is the
  * page's component manifest (`StoredPage.componentManifest`, prompt 157):
  * with it, component tags in job output are rendered; without it they are
- * the author's text.
+ * the author's text. `signal` aborts every unfinished job (the host passes
+ * one that fires when the client disconnects).
  */
 export const executeServerScriptPlan = async (
   plan: ServerScriptPlan,
@@ -745,6 +753,7 @@ export const executeServerScriptPlan = async (
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
   manifest?: ComponentManifest | null,
+  signal?: AbortSignal,
 ): Promise<Buffer> => {
   const { execution, run } = toExecution(
     plan,
@@ -752,7 +761,7 @@ export const executeServerScriptPlan = async (
     context,
     timeoutMs,
     filePath,
-    undefined,
+    signal,
     manifest,
   );
   const bytes = await composeBufferedResponse(execution, run);
