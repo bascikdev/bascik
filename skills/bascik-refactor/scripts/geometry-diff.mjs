@@ -8,24 +8,32 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { loadMatrix } from "./lib/matrix.mjs";
 import {
-  openPage,
   POLITE_HELP,
   POLITE_OPTIONS,
   politeBrowser,
   politeFlags,
-  routeUrl,
 } from "./lib/capture.mjs";
+import {
+  DEFAULT_SETTLE_MS,
+  pixels,
+  validateMask,
+  withPage,
+} from "./lib/checks.mjs";
 import { loadPlaywright } from "./lib/project-deps.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
 export { loadMatrix };
 
 const HELP = `Usage: node geometry-diff.mjs --prod <url> --target <url> [--route <path>]... [--matrix <file>]
-                              [--thresholds dx,dy,dw] [--out <dir>] [--json]
+                              [--thresholds dx,dy,dw] [--mask <selector>]... [--settle-ms <n>]
+                              [--out <dir>] [--json]
 
 Compares element boxes (h1-h4, p, button, a) between production and the target at every matrix case.
 A node is flagged when |dx| > 6, |dy| > 12 or |dw| > 12 CSS pixels (change with --thresholds), or when it exists
 on one side only. Exits 1 when anything is flagged.
+
+Each side is captured the way the parity checks capture it: the page is scrolled through and back (lazy images
+load, scroll-triggered reveals run), then waits --settle-ms after navigation and for the DOM to go quiet.
 
 Options:
   --prod <url>         Live production origin, such as https://www.example.com
@@ -33,6 +41,11 @@ Options:
   --route <path>       Route to compare (repeatable, default /)
   --matrix <file>      Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --thresholds <list>  dx,dy,dw in CSS pixels (default 6,12,12)
+  --mask <selector>    Documented dynamic region, such as a rotating carousel: its nodes are left out on both sides
+                       and the settle wait ignores changes inside it (repeatable)
+  --settle-ms <n>      Least time after navigation before the boxes are read, then 0.75 s without a DOM change
+                       outside the masks, as every parity check waits (default ${DEFAULT_SETTLE_MS}; 0 for a site with
+                       no timers)
   --out <dir>          Write geometry.json there
   --json               Print the full report as JSON
 ${POLITE_HELP}
@@ -42,15 +55,25 @@ export const DEFAULT_THRESHOLDS = Object.freeze({ dx: 6, dy: 12, dw: 12 });
 
 /**
  * Every visible h1-h4, p, button and a, keyed by `TAG:normalized text` (cut at 70 characters; the first occurrence
- * wins), with its rounded box. Hidden, transparent, empty and smaller-than-5px nodes are skipped.
+ * wins), with its rounded box. Hidden, transparent, empty and smaller-than-5px nodes are skipped, and so are nodes
+ * inside one of `masks` (CSS selectors of documented dynamic regions).
  *
  * Self-contained so Playwright can serialize it into the page: `page.evaluate(collectNodes)`. Pass a document and
  * a window to run it elsewhere.
  */
-export function collectNodes(doc = document, view = window) {
+export function collectNodes(doc = document, view = window, masks = []) {
   const norm = (s) => s.replace(/\s+/g, " ").trim();
+  const masked = (el) =>
+    masks.some((m) => {
+      try {
+        return Boolean(el.closest(m));
+      } catch {
+        return false;
+      }
+    });
   const map = new Map();
   for (const el of doc.querySelectorAll("h1, h2, h3, h4, p, button, a")) {
+    if (masks.length && masked(el)) continue;
     const cs = view.getComputedStyle(el);
     if (
       cs.display === "none" ||
@@ -115,6 +138,8 @@ export function parseCliArgs(argv) {
       route: { type: "string", multiple: true },
       matrix: { type: "string" },
       thresholds: { type: "string" },
+      mask: { type: "string", multiple: true },
+      "settle-ms": { type: "string" },
       out: { type: "string" },
       json: { type: "boolean", default: false },
       ...POLITE_OPTIONS,
@@ -125,6 +150,13 @@ export function parseCliArgs(argv) {
   if (!values.prod) throw new Error("--prod <url> is required");
   if (!values.target) throw new Error("--target <url> is required");
   const polite = politeFlags(values, values);
+  for (const selector of values.mask ?? []) validateMask(selector);
+  const settleMs = pixels(
+    "--settle-ms",
+    values["settle-ms"],
+    DEFAULT_SETTLE_MS,
+    "milliseconds",
+  );
   let thresholds = { ...DEFAULT_THRESHOLDS };
   if (values.thresholds !== undefined) {
     const parts = values.thresholds.split(",").map((s) => Number(s.trim()));
@@ -140,6 +172,8 @@ export function parseCliArgs(argv) {
     route: values.route ?? ["/"],
     matrix: values.matrix ?? "docs/migration/breakpoints.json",
     thresholds,
+    mask: values.mask ?? [],
+    settleMs,
     out: values.out,
     json: values.json,
     polite,
@@ -160,18 +194,20 @@ async function main() {
   try {
     for (const route of args.route) {
       for (const matrixCase of cases) {
-        const snap = async (origin) => {
-          const { context, page } = await openPage(
+        // Captured like every parity check (withPage): settled, quiet outside the masks, settled again.
+        const snap = (origin) =>
+          withPage(
             browser,
-            routeUrl(origin, route),
+            origin,
+            route,
             matrixCase,
+            (page) =>
+              page.evaluate(
+                `(${collectNodes})(document, window, ${JSON.stringify(args.mask)})`,
+              ),
+            args.mask,
+            args.settleMs,
           );
-          try {
-            return await page.evaluate(collectNodes);
-          } finally {
-            await context.close();
-          }
-        };
         const [prod, target] = [await snap(args.prod), await snap(args.target)];
         const diff = diffGeometry(prod, target, args.thresholds);
         results.push({

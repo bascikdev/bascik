@@ -222,7 +222,7 @@ It writes `{ thresholds, sources, cases }`, where `sources` names the file each 
 
 One route at a time, one section at a time:
 
-1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, scroll the page through and back (lazy images load and scroll-triggered fade-ins run), wait for complete images and finished animations, then wait 5 seconds after navigation (`--settle-ms`) and for the DOM to go quiet. Every script, `compare-route.mjs` included, does this the same way. Keep production read-only: every script blocks service workers and the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
+1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, scroll the page through and back (lazy images load and scroll-triggered fade-ins run), wait for complete images and finished animations, then wait 5 seconds after navigation (`--settle-ms`) and for the DOM to go quiet. Every script, `compare-route.mjs` and `geometry-diff.mjs` included, does this the same way. Keep production read-only: every script blocks service workers and the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
 2. **Find the owning production subtree from stable anchors.** Use visible heading text, `href`, `src`, `alt`, landmarks and test ids, never generated class names. Climb to the smallest ancestor that owns one coherent section, and stop there.
 3. **Extract structure, geometry and computed styles.** Use a fixed property list: display, position, box sizing, sizes, margins, paddings, gap, alignment, overflow, colors, backgrounds, border, radius, shadow, font family, size and weight, line height, letter spacing, text alignment, white-space, transform and z-index. Add `::before` and `::after`, child order, line counts, image `currentSrc`, intrinsic size and `object-fit`.
 4. **Read the legacy owner of that subtree only.** Translate the resolved behavior. Do not copy React or Sass wholesale.
@@ -416,7 +416,7 @@ node "$REFACTOR/geometry-diff.mjs" \
   --matrix docs/migration/breakpoints.json --out artifacts/geometry
 ```
 
-It exits with code 1 when anything is flagged, so an agent can use it as an acceptance check.
+It waits like the checks before it reads the boxes (`--settle-ms`, then a quiet DOM), so a caption that types itself out is finished on both sides. Pass `--mask` for a documented dynamic region, such as a rotating carousel: its nodes are left out on both sides. It exits with code 1 when anything is flagged, so an agent can use it as an acceptance check.
 
 ### Route Comparison
 

@@ -86,8 +86,8 @@ import nothing else.
 ## Capture settings
 
 Identical on both sides: width and height, browser version, device scale factor 1, zoom 100 percent, light color
-scheme, reduced motion, scroll position 0, the same cookie notice state. Every script, `compare-route.mjs` included,
-captures a page the same way (`settle` in `scripts/lib/capture.mjs`, `withPage` in `scripts/lib/checks.mjs`):
+scheme, reduced motion, scroll position 0, the same cookie notice state. Every script, `compare-route.mjs` and
+`geometry-diff.mjs` included, captures a page the same way (`settle` in `scripts/lib/capture.mjs`, `withPage` in `scripts/lib/checks.mjs`):
 
 1. Wait for `document.fonts.ready`.
 2. Scroll the page through in viewport-height steps (at most 40) and back to the top, instantly even under
@@ -174,7 +174,8 @@ Per route and matrix case:
 1. Pixels: per-channel tolerance 10, only documented dynamic regions masked.
 2. Geometry: `scripts/geometry-diff.mjs`. Flag `|dx| > 6`, `|dy| > 12`, `|dw| > 12` CSS pixels, plus nodes missing on
    either side. It catches cumulative drift (a small margin repeated per table row), doubled offsets (a relative top
-   and a margin top from two media queries) and containers off-center at in-between widths.
+   and a margin top from two media queries) and containers off-center at in-between widths. `--mask` leaves a
+   documented dynamic region's nodes out on both sides.
 3. Content and style: text, font metrics, colors, image source and crop, link targets.
 
 `scripts/compare-route.mjs` runs all three and replays `interactions.json` on both sides. Accepted differences come

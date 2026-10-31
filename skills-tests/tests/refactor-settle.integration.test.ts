@@ -7,6 +7,9 @@
  * target on every run, although the finished pages matched to the pixel. The production fixture renders all four
  * late; the target renders the finished page statically, the way a Bascik build does. compare-route must report 0%.
  *
+ * geometry-diff.mjs captures the same way: before it waited, the caption was still typing when it read the boxes, so
+ * its paragraph was missing on one side and extra on the other.
+ *
  * Misuse lens: `scroll-behavior: smooth` on the page (the scroll-through must still end at the top at once), and an
  * infinite-scroll page that grows every time its end scrolls into view (the scroll-through must stop at its cap).
  */
@@ -132,5 +135,58 @@ describe("compare-route waits like the checks", () => {
     const y = rect.y + Math.floor(rect.h / 2);
     const i = (y * info.width + x) * info.channels;
     expect([data[i], data[i + 1], data[i + 2]]).toEqual([0xc0, 0x39, 0x2b]);
+  }, 150_000);
+});
+
+describe("geometry-diff waits like the checks", () => {
+  it("reports no moved, missing or extra node between production that renders late and the static target", () => {
+    const matrix = join(out, "geometry-breakpoints.json");
+    writeFileSync(matrix, JSON.stringify({ cases: [PHONE] }));
+    const run = spawnSync(
+      process.execPath,
+      [
+        join(SCRIPTS, "geometry-diff.mjs"),
+        "--prod",
+        site("prod"),
+        "--target",
+        site("target"),
+        "--route",
+        "/",
+        "--matrix",
+        matrix,
+        "--json",
+      ],
+      { cwd: packageDir, encoding: "utf8", timeout: 120_000 },
+    );
+    const text = `${run.stdout}\n${run.stderr}`;
+    expect(run.status, text).toBe(0);
+    const report = JSON.parse(run.stdout);
+    expect(report.ok, text).toBe(true);
+    const [c] = report.results;
+    expect(c, text).toMatchObject({ moved: [], missing: [], extra: [] });
+  }, 150_000);
+
+  it("misuse: --settle-ms 0 still waits for the DOM to go quiet, so the typing caption is finished", () => {
+    const matrix = join(out, "geometry-breakpoints-0.json");
+    writeFileSync(matrix, JSON.stringify({ cases: [PHONE] }));
+    const run = spawnSync(
+      process.execPath,
+      [
+        join(SCRIPTS, "geometry-diff.mjs"),
+        "--prod",
+        site("prod"),
+        "--target",
+        site("target"),
+        "--matrix",
+        matrix,
+        "--settle-ms",
+        "0",
+        "--json",
+      ],
+      { cwd: packageDir, encoding: "utf8", timeout: 120_000 },
+    );
+    const text = `${run.stdout}\n${run.stderr}`;
+    expect(run.status, text).toBe(0);
+    expect(JSON.parse(run.stdout).ok, text).toBe(true);
   }, 150_000);
 });

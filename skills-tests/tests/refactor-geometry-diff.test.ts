@@ -12,10 +12,13 @@ import {
   parseCliArgs,
   DEFAULT_THRESHOLDS,
 } from "../../skills/bascik-refactor/scripts/geometry-diff.mjs";
+import { DEFAULT_SETTLE_MS } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
 
 type Fake = {
   tag: string;
   text: string;
+  /** The selectors of the masks this element is inside (what closest() matches). */
+  inside?: string[];
   rect?: { x: number; y: number; width: number; height: number };
   style?: Partial<{ display: string; visibility: string; opacity: string }>;
 };
@@ -25,6 +28,8 @@ const fakePage = (els: Fake[]) => {
   const elements = els.map((e) => ({
     tagName: e.tag.toUpperCase(),
     textContent: e.text,
+    closest: (selector: string) =>
+      (e.inside ?? []).includes(selector) ? {} : null,
     getBoundingClientRect: () =>
       e.rect ?? { x: 10, y: 20, width: 100, height: 30 },
     __style: {
@@ -108,6 +113,21 @@ describe("collectNodes", () => {
     const nodes = collectNodes(doc, view);
     expect(nodes["A:Read more"]).toEqual({ x: 1, y: 1, w: 50, h: 10 });
     expect(Object.keys(nodes)).toContain(`P:${"x".repeat(70)}`);
+  });
+
+  it("leaves out nodes inside a --mask region, so a rotating carousel's text is not compared", () => {
+    const { doc, view } = fakePage([
+      { tag: "h2", text: "Slide 3 of 5", inside: ['[data-testid="carousel"]'] },
+      { tag: "h2", text: "Pricing" },
+    ]);
+    expect(
+      Object.keys(collectNodes(doc, view, ['[data-testid="carousel"]'])),
+    ).toEqual(["H2:Pricing"]);
+    // Without masks (page.evaluate(collectNodes) passes none), every node is collected.
+    expect(Object.keys(collectNodes(doc, view))).toEqual([
+      "H2:Slide 3 of 5",
+      "H2:Pricing",
+    ]);
   });
 
   it("is self-contained so page.evaluate can serialize it", () => {
@@ -216,6 +236,36 @@ describe("parseCliArgs and loadMatrix", () => {
     expect(() => parseCliArgs(["--prod", "https://www.example.com"])).toThrow(
       /--target/,
     );
+  });
+
+  const base = ["--prod", "a", "--target", "b"];
+
+  it("waits like the checks: --settle-ms defaults to the checks' settle time and takes 0; --mask is repeatable", () => {
+    expect(parseCliArgs(base)).toMatchObject({
+      settleMs: DEFAULT_SETTLE_MS,
+      mask: [],
+    });
+    expect(parseCliArgs([...base, "--settle-ms", "0"]).settleMs).toBe(0);
+    expect(
+      parseCliArgs([
+        ...base,
+        "--mask",
+        '[data-testid="carousel"]',
+        "--mask",
+        ".ticker",
+      ]).mask,
+    ).toEqual(['[data-testid="carousel"]', ".ticker"]);
+  });
+
+  it("misuse: a --settle-ms that is not a number of milliseconds, or an empty or unbalanced --mask, names the flag", () => {
+    for (const bad of ["abc", "-5", ""])
+      expect(() => parseCliArgs([...base, `--settle-ms=${bad}`])).toThrow(
+        /--settle-ms must be a number of milliseconds/,
+      );
+    expect(() => parseCliArgs([...base, "--mask", " "])).toThrow(/--mask/);
+    expect(() =>
+      parseCliArgs([...base, "--mask", "[data-testid=carousel"]),
+    ).toThrow(/--mask/);
   });
 
   it("misuse: malformed --thresholds is rejected", () => {
