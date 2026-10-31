@@ -1052,7 +1052,15 @@ export const wrapRunner = (
       cursor = site.end;
     }
     spliced += html.slice(cursor);
-    for (const fragment of outputs.values()) used.push(...fragment.used);
+    // In site order, never the Map's insertion order: `outputs` fills as the
+    // nested jobs settle, and `used` decides the order of the style blocks.
+    const collected = new Set<number>();
+    for (const site of sites) {
+      if (collected.has(site.n)) continue;
+      collected.add(site.n);
+      const fragment = outputs.get(site.n);
+      if (fragment) used.push(...fragment.used);
+    }
     checkSize(spliced, used);
     return { html: spliced, used };
   };

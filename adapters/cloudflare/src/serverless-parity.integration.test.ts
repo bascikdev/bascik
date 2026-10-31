@@ -1010,6 +1010,25 @@ for (const config of [
       expect(new Set(inner.map((card) => card.id)).size).toBe(3);
     });
 
+    it("css: sibling nested jobs that return different stylesheets and finish in random order emit them in site order on every request, on both hosts", async () => {
+      const bodies = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const { node: n, cf } = await both("/components-nest-mixed");
+        expect(n.status, `request ${i}`).toBe(200);
+        expect(cf.status, `request ${i}`).toBe(200);
+        expect(cf.body, `request ${i}`).toBe(n.body);
+        bodies.add(n.body);
+      }
+      expect(bodies.size).toBe(1);
+      const [body] = bodies;
+      // link-card (returned by the first site) before product-card (the
+      // second), each found by its color however the CSS minifier spells it.
+      const link = body.search(/#040506|rgb\(4, ?5, ?6\)/);
+      const product = body.search(/#d3ff8d|rgb\(211, ?255, ?141\)/);
+      expect(link).toBeGreaterThan(-1);
+      expect(product).toBeGreaterThan(link);
+    });
+
     it("misuse: ANSI escapes printed by a component script and by a page script are stripped the same way on both hosts", async () => {
       const { node: n, cf } = await both("/components-ansi");
       expect(n.status).toBe(200);
