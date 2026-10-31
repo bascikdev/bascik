@@ -205,6 +205,8 @@ import {
   renderFailureMessage,
   requestRoutePath,
   scriptTimeoutError,
+  serverScriptOutput,
+  serverScriptOutputErrorMessage,
   streamComposedResponse,
   stripAnsiEscapeCodes,
   wrapRunner,
@@ -215,6 +217,9 @@ const publicDir = join(import.meta.dirname, "public");
 const encoder = new TextEncoder();
 const platform = { name: "custom-node" };
 
+/** Scripts whose refused return value was already logged. */
+const warnedRefused = new WeakSet();
+
 /** Run one script job under the deadline and the onServerScriptError policy. */
 const runJob = async (job, load, request, context, signal, timeoutMs) => {
   const result = await invokeLoadedWithDeadline(
@@ -224,7 +229,25 @@ const runJob = async (job, load, request, context, signal, timeoutMs) => {
     { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
   if (result.ok) {
-    const output = stripAnsiEscapeCodes(String(result.value ?? ""));
+    // What the value prints, by the rule every host uses: an array joined
+    // with no separator; an object, a Response or an array of Promises refused.
+    const printed = serverScriptOutput(result.value);
+    if (printed.error) {
+      // Production: an empty slot and one warning per script.
+      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+        warnedRefused.add(job);
+        console.warn(
+          serverScriptOutputErrorMessage(
+            printed.error,
+            request.url,
+            job.owner ?? `${job.mode} script`,
+            { production: true },
+          ),
+        );
+      }
+      return "";
+    }
+    const output = stripAnsiEscapeCodes(printed.text);
     // A component's script gets the component's scoped class names.
     const scope = decodeOutputScope(job.outputScope);
     return scope ? applyOutputScope(output, scope) : output;
@@ -766,7 +789,7 @@ Adapters bundle `@bascik/bascik/runtime` into their function entry points. It us
 | Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `isPrivatePathname(pathname, base, hideDotfiles)`, `GENERATED_CONTROL_PATHS`.                                                                  |
 | Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`. |
 | Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                  |
-| Script output       | `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                                                        |
+| Script output       | `serverScriptOutput(value)` (the text a returned value prints, or why it is refused), `serverScriptOutputErrorMessage(error, url, owner, options)`, `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                    |
 | Content policy      | `contentSecurityPolicyHeader(policy, hashes)`, which returns the header name and value for one HTML response, from the graph's content security policy and the route's hashes.                                                                                                        |
 
 A buffered page response for a page without stream scripts, given a `page` from `graph.pages` and a `run` like the tutorial's:

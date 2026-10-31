@@ -186,13 +186,13 @@ export const SCRIPT_DIRECTIVES = [
     name: "data-bascik-server",
     detail: "Bascik server-side request script",
     documentation:
-      "Executes in Node.js per request on production and dev servers. The default exported handler function replaces this script tag.",
+      "Executes in Node.js per request on production and dev servers. The markup the default exported handler function returns replaces this script tag: a string, an html`...` value, or an array of them, joined with no separator.",
   },
   {
     name: "data-bascik-stream",
     detail: "Bascik server-side streaming script",
     documentation:
-      "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available.",
+      "Executes in Node.js per request on production and dev servers. Streams chunked HTML responses to the client as data becomes available. The handler returns markup as a server script does: a string, an html`...` value, or an array of them, joined with no separator.",
   },
 ];
 

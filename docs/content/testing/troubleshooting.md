@@ -544,7 +544,13 @@ The linter reports both shapes: `html-joined-string` for the join and `html-esca
 
 ### My page shows [object Promise] or commas between cards
 
-`[object Promise]` means an `async` value reached a plain template literal unawaited; await it (inside `html` it is an error instead). Commas between cards mean the script returned an array of `html` fragments directly, which becomes a string with `String(array)`. Return `` html`${cards}` `` instead.
+`[object Promise]` in the middle of markup means an `async` value reached a plain template literal unawaited, as in `` `<ul>${loadItems()}</ul>` ``; await it. Inside `html` the same value is an error instead, and a script that returns an array holding a Promise is refused with the message in the next entry.
+
+Commas between cards mean an array became a string with `String(array)`. A script that returns the array itself gets its items joined with no separator, so the commas come from a plain template literal around the array (`` `<ul>${cards}</ul>` ``) or a `.join(",")`. Return the array, or `` html`<ul>${cards}</ul>` ``. Releases before the return-value rule printed a returned array with commas too; update `@bascik/bascik` if a returned array still shows them.
+
+### `The server script in src/pages/shop.html:12 returned an array holding a Promise at [0], which is not markup.`
+
+A server or stream script returned a value that `String()` would print as `[object ...]`: a plain object or `Map` (`returned an object ([object Object])`), a `Response` (`returned a Response`; that belongs in an [API route](/api-routes)), a function, a symbol, or an array holding a Promise, which an `async` callback in `.map` makes. Return markup instead: a string, an `html` value or an array of them, and for an async `.map`, `return await Promise.all(items.map(async (item) => ...))`. In dev the message is a server script error under `scripts.onServerScriptError`; in production the slot is empty and the message is logged once per script. See [Return Values](/server-scripts#return-values).
 
 ## Dynamic routes
 

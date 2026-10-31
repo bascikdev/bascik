@@ -26,7 +26,7 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 
 ## Rules for every Node-side script
 
-1. **Export a default function that returns an HTML string.** `console.log()` output goes to the terminal only; it never becomes markup.
+1. **Export a default function that returns markup:** a string or an `html` value. A server or stream script may also return an array of them, joined with no separator (``return items.map((p) => html`...`)``). Never return data, a `Response` (that is an API route) or an async `.map` (use `await Promise.all(...)`): a server or stream script that does is refused, a located error in dev and an empty slot with one warning in production (`read-doc.mjs /server-scripts`). `console.log()` output goes to the terminal only; it never becomes markup.
 2. **One directive per tag.** Combining `data-bascik-build`, `data-bascik-build-once`, `-routes`, `-server`, or `-stream` is a hard error.
 3. **Imports:** top-level `import` and `await` work. Use `@/` for shared helpers: `import { renderMd } from '@/lib/md.ts'` resolves against `scripts.importRoot` (default `src`) from any depth. `./` and `../` resolve against the file containing the script. Bare npm packages work.
 4. **Never import with a bare leading `/`.** `import x from '/lib/x.ts'` and `src="/lib/x.ts"` are hard errors. Use `@/lib/x.ts` or `./lib/x.ts`. A `data-bascik-*` tag with `src=` has an empty body: a tag with both is rejected, and a `src=` file that cannot be read is the reported error.
