@@ -84,15 +84,18 @@ the masks, skip-controls, dismiss selectors, settle time, the browser and the sk
 Pass --refresh-prod at the start of every check stage and review round, and whenever production changed.
 
 Iteration loop: while fixing a route, run a few cases (--cases 360x812,768,1280x900: ids from the matrix, or a bare
-width for every case of it) and only the checks your fix can affect (--only). Such a run prints PARTIAL and its
-report says partial: true, and review-page.mjs refuses to sign or verify it. The gate: the full
-docs/migration/breakpoints.json matrix and every check. "Done" is decided only there.
+width for every case of it) and only the checks your fix can affect (--only, --skip). Such a run prints PARTIAL and
+its report says partial: true (the report lists the checks that ran and the ones left out), and review-page.mjs
+refuses to sign or verify it. The gate: the full docs/migration/breakpoints.json matrix and every check, with
+production measured within the last day (review-page.mjs --max-prod-age, default 24h). "Done" is decided only there.
 
 Options:
   --prod <url>                Live production origin
   --target <url>              Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>              Route to check (repeatable, required; pass every route that shares components)
-  --legacy-src <dir>          The legacy repository, for testid-carryover (required unless it is skipped)
+  --legacy-src <dir>          The legacy repository, for testid-carryover (required unless --no-legacy-repo)
+  --no-legacy-repo            There is no legacy repository: testid-carryover cannot run, and the report says why
+                              (the run can still be the gate; --skip testid-carryover makes it partial)
   --target-src <dir>          The Bascik project, holding src/pages and src/components (default .)
   --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json; another file makes the run
                               partial)
@@ -110,8 +113,8 @@ Options:
                               a layer on a longer timer, 0 for a site with none
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
   --ledger <file>             Append production defects to this decisions ledger
-  --only <check>              Run only these checks (repeatable or comma separated)
-  --skip <check>              Skip these checks (repeatable or comma separated)
+  --only <check>              Run only these checks (repeatable or comma separated; makes the run partial)
+  --skip <check>              Skip these checks (repeatable or comma separated; makes the run partial)
   --out <dir>                 Report folder (default artifacts/checks)
   --prod-cache <dir>          Production cache folder (default ${DEFAULT_PROD_CACHE})
   --refresh-prod              Measure production again and overwrite the cache
@@ -154,6 +157,7 @@ export function parseCliArgs(argv) {
       ledger: { type: "string" },
       only: { type: "string", multiple: true },
       skip: { type: "string", multiple: true },
+      "no-legacy-repo": { type: "boolean", default: false },
       out: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -169,13 +173,19 @@ export function parseCliArgs(argv) {
   const cache = prodCacheFlags(values);
   const only = checkList("--only", values.only);
   const skip = checkList("--skip", values.skip);
+  const noLegacyRepo = values["no-legacy-repo"];
+  if (noLegacyRepo && values["legacy-src"])
+    throw new Error(
+      "--no-legacy-repo says there is no legacy repository, but --legacy-src names one; pass one of them",
+    );
+  const waived = noLegacyRepo ? { [NO_LEGACY_CHECK]: NO_LEGACY_REASON } : {};
   const run = (
     only.length ? CHECKS.filter((c) => only.includes(c)) : [...CHECKS]
-  ).filter((c) => !skip.includes(c));
+  ).filter((c) => !skip.includes(c) && !(c in waived));
   if (!run.length) throw new Error("--only and --skip leave no check to run");
   if (run.includes("testid-carryover") && !values["legacy-src"])
     throw new Error(
-      "--legacy-src <dir> is required while testid-carryover runs (its legacy source hooks are half of the check); pass --skip testid-carryover only when there is no legacy repository",
+      "--legacy-src <dir> is required while testid-carryover runs (its legacy source hooks are half of the check); pass --no-legacy-repo only when there is no legacy repository (--skip testid-carryover makes the run partial)",
     );
   return {
     prod: values.prod,
@@ -208,7 +218,25 @@ export function parseCliArgs(argv) {
     ledger: values.ledger,
     out: values.out ?? DEFAULT_OUT,
     only: run,
+    waived,
   };
+}
+
+/** The check a site without a legacy repository cannot run, and the reason the gate record gives for it. */
+export const NO_LEGACY_CHECK = "testid-carryover";
+export const NO_LEGACY_REASON = "no legacy repository (--no-legacy-repo)";
+
+/**
+ * The cases and gate record of a run-checks run (runMatrix): the gate record also lists the checks that ran and the
+ * checks left out, so a run with --only or --skip is partial like a --cases subset. `defaultMatrix` is for tests.
+ */
+export function runChecksMatrix(args, defaultMatrix) {
+  return runMatrix(args, {
+    checks: args.only,
+    allChecks: CHECKS,
+    waived: args.waived,
+    ...(defaultMatrix ? { defaultMatrix } : {}),
+  });
 }
 
 /** Whether a finding belongs to a route: its own route, one of its routes, or no route at all. */
@@ -361,7 +389,7 @@ export async function runOne(name, browser, options, modules = MODULES) {
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
-  const { cases, gate } = runMatrix(args);
+  const { cases, gate } = runChecksMatrix(args);
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
   const results = [];

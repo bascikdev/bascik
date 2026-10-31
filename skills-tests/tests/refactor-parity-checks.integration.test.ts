@@ -642,7 +642,7 @@ describe("15. the production cache and --cases", () => {
       "production: 0 measurements from cache, 2 captured",
     );
     expect(first.text).toContain(
-      "PARTIAL (1 of 2 cases): iteration result, not a gate",
+      "PARTIAL (1 of 2 cases; 2 of 11 checks, without ",
     );
     const report = JSON.parse(
       readFileSync(join(work, "out", "index", "report.json"), "utf8"),
@@ -650,8 +650,10 @@ describe("15. the production cache and --cases", () => {
     expect(report.gate).toMatchObject({
       cases: ["400x800"],
       total: 2,
+      checks: ["text-style-diff", "spacing-diff"],
       partial: true,
     });
+    expect(report.gate.skipped).toContain("interaction-crawl");
     expect(report.production).toMatchObject({ fromCache: 0, captured: 2 });
 
     const second = await counted(["--cases", "400"]);
@@ -682,7 +684,7 @@ describe("15. the production cache and --cases", () => {
     expect(full.result.status, full.text).toBe(0);
     // Only docs/migration/breakpoints.json, run in full, is the gate.
     expect(full.text).toMatch(
-      /PARTIAL \(2 of 2 cases from .*breakpoints\.json\): iteration result, not a gate/,
+      /PARTIAL \(2 of 2 cases; 2 of 11 checks, without [^)]*\): iteration result, not a gate/,
     );
     // 400 px came from the cache above; 1024 px is new.
     expect(full.text).toMatch(/production: 2 measurements from cache/);

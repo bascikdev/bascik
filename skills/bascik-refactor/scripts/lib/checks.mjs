@@ -396,9 +396,13 @@ export function formatFinding(f) {
 
 /**
  * The matrix of a run: the cases of the matrix file, limited by --cases, and the gate record report.json keeps
- * (gateRecord). Loaded before any browser starts, so a missing file or an unknown case id fails fast.
+ * (gateRecord; run-checks.mjs also passes the checks that run, every check and the waived ones). Loaded before any
+ * browser starts, so a missing file or an unknown case id fails fast.
  */
-export function runMatrix(args) {
+export function runMatrix(
+  args,
+  { checks, allChecks, waived, defaultMatrix = DEFAULT_MATRIX } = {},
+) {
   const all = loadMatrix(args.matrix);
   const cases = selectCases(all, args.caseIds);
   return {
@@ -407,7 +411,10 @@ export function runMatrix(args) {
       file: args.matrix,
       cases: all,
       selected: cases,
-      defaultMatrix: DEFAULT_MATRIX,
+      defaultMatrix,
+      checks,
+      allChecks,
+      waived,
     }),
   };
 }

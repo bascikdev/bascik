@@ -174,21 +174,28 @@ bar for done:
 - **Fewer cases and checks.** `--cases 360x812,768,1280x900` (on `run-checks.mjs` and every check) runs only those
   cases: an id is `<width>x<height>` with a suffix per variant (`1408x900-dark`, `390x844-mobile-touch`,
   `1280x900-motion`), and a bare width selects every case of it. An id the matrix does not have fails and lists the
-  valid ones. `--only` reruns just the checks a fix can affect.
+  valid ones. `--only` (or `--skip`) reruns just the checks a fix can affect.
 
 While building a route or the shell, iterate on one phone, one tablet and one desktop case plus the B - 1, B and
 B + 1 cases of every breakpoint the route's own CSS or JS reacts to, with `--only` for what the last fix touched.
-Such a run prints `PARTIAL (n of m cases): iteration result, not a gate`, and its report records `gate.partial: true`
-(also for a full run of any matrix file other than `docs/migration/breakpoints.json`). The gate is the full
-`docs/migration/breakpoints.json` matrix with every check: run it once at the end of each route stage, at the check
-stage, and in every review and repair round. "Done" is decided only there. `review-page.mjs` refuses to sign a pass
-or verify a partial report, a report whose matrix hash differs from `docs/migration/breakpoints.json` now, and a
-report that records no matrix.
+Such a run prints `PARTIAL (n of m cases; k of 11 checks, without ...): iteration result, not a gate`, and its report
+records `gate.partial: true`, the checks that ran (`gate.checks`) and the ones left out (`gate.skipped`). A run with
+every case but one check left out is partial too, and so is a full run of any matrix file other than
+`docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check (no
+`--cases`, `--only`, `--skip` or `--matrix`): run it once at the end of each route stage, at the check stage, and in
+every review and repair round. "Done" is decided only there. `review-page.mjs` refuses to sign a pass or verify a
+partial report, a report that left out a check, a report whose matrix hash differs from
+`docs/migration/breakpoints.json` now, and a report that records no matrix or no list of checks. A site with no
+legacy repository passes `--no-legacy-repo` instead of `--legacy-src`: testid-carryover cannot run, the report records
+why (`gate.waived`), and the run can still be the gate; `--skip testid-carryover` makes it partial.
 
 Refresh production with `--refresh-prod` (measure again and overwrite) at the start of every check stage and every
-review round, and whenever production changed (a deploy, new content, a changed banner). `review-page.mjs
---max-prod-age 7d` (also `12h`, `30m`) refuses a report that used cached production measurements older than that;
-there is no limit by default, because refreshing at the start of each round is the rule.
+review round, and whenever production changed (a deploy, new content, a changed banner). The cache trades freshness
+for speed: a cached measurement says what production looked like when it was taken, not now. So `review-page.mjs`
+refuses, by default, a report that used cached production measurements more than a day old (`--max-prod-age`,
+default `24h`; also `7d`, `30m`), and a report that records no production measurement or a cached one of unknown age.
+A gate run whose cache entries are older needs `--refresh-prod`. Raise `--max-prod-age` only for a production site you
+know has not changed since, and log that in the decisions ledger.
 
 The interaction crawl and state capture are not read-only toward production. They never follow a plain navigation
 link or press a submit button, but they click every other control (a `<button type="button">`, a `role="button"`, an

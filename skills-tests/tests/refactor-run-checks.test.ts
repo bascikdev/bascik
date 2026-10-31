@@ -117,6 +117,20 @@ describe("parseCliArgs", () => {
     expect(() =>
       parseCliArgs([...noLegacy, "--skip", "testid-carryover"]),
     ).not.toThrow();
+    expect(() => parseCliArgs(noLegacy)).toThrow(/--no-legacy-repo/);
+  });
+
+  it("--no-legacy-repo waives testid-carryover with a reason; misuse: next to --legacy-src it is refused", () => {
+    const noLegacy = base.slice(0, -2);
+    const args = parseCliArgs([...noLegacy, "--no-legacy-repo"]);
+    expect(args.only).not.toContain("testid-carryover");
+    expect(args.waived).toEqual({
+      "testid-carryover": "no legacy repository (--no-legacy-repo)",
+    });
+    expect(parseCliArgs(base).waived).toEqual({});
+    expect(() => parseCliArgs([...base, "--no-legacy-repo"])).toThrow(
+      /--no-legacy-repo[\s\S]*--legacy-src/,
+    );
   });
 
   it("rejects a spacing tolerance that is not a number", () => {
@@ -269,6 +283,63 @@ describe("the gate record", () => {
     expect(gateLine(other)).toMatch(
       /^PARTIAL \(3 of 3 cases from .*breakpoints\.iter-home\.json\): iteration result, not a gate$/,
     );
+  });
+
+  it("with every check listed, a run that leaves one out is partial and PARTIAL names what it left out", () => {
+    const file = join(work, "breakpoints.json");
+    writeFileSync(file, JSON.stringify({ cases }));
+    const all = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: [...CHECKS],
+      allChecks: CHECKS,
+    });
+    expect(all).toMatchObject({
+      checks: [...CHECKS],
+      skipped: [],
+      partial: false,
+    });
+    expect(gateLine(all)).toBeNull();
+    const only = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: ["spacing-diff"],
+      allChecks: CHECKS,
+    });
+    expect(only.partial).toBe(true);
+    expect(only.skipped).toHaveLength(CHECKS.length - 1);
+    expect(gateLine(only)).toBe(
+      `PARTIAL (3 of 3 cases; 1 of ${CHECKS.length} checks, without ${CHECKS.filter((c: string) => c !== "spacing-diff").join(", ")}): iteration result, not a gate`,
+    );
+    const subset = gateRecord({
+      file,
+      cases,
+      selected: [cases[0]],
+      defaultMatrix: file,
+      checks: CHECKS.filter((c: string) => c !== "interaction-crawl"),
+      allChecks: CHECKS,
+    });
+    expect(gateLine(subset)).toBe(
+      `PARTIAL (1 of 3 cases; ${CHECKS.length - 1} of ${CHECKS.length} checks, without interaction-crawl): iteration result, not a gate`,
+    );
+    // A waived check (testid-carryover with --no-legacy-repo) is recorded with its reason and keeps the run whole.
+    const waived = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: CHECKS.filter((c: string) => c !== "testid-carryover"),
+      allChecks: CHECKS,
+      waived: { "testid-carryover": "no legacy repository (--no-legacy-repo)" },
+    });
+    expect(waived).toMatchObject({ skipped: [], partial: false });
+    expect(waived.waived).toEqual({
+      "testid-carryover": "no legacy repository (--no-legacy-repo)",
+    });
   });
 
   it("buildRouteReport carries the gate record and the production cache numbers into report.json", () => {

@@ -59,7 +59,8 @@ autoplay carousel, a rotating ticker); every check leaves it out. `PROD_URL`, `T
 the execution contract. Rebuild and
 restart the production server (`npx bascik --build && npx bascik --server`) before the comparisons, and stop it at
 the end. The acceptance run is the gate: the full `docs/migration/breakpoints.json` matrix, every check, no `--cases`,
-`--only` or `--matrix`, and `--refresh-prod` so production is measured fresh for it. The Lighthouse reports are collected fresh for {{ROUTE}}, so a stale report cannot pass:
+`--only`, `--skip` or `--matrix`, and `--refresh-prod` so production is measured fresh for it (`review-page.mjs`
+refuses a report of cached production more than a day old). The Lighthouse reports are collected fresh for {{ROUTE}}, so a stale report cannot pass:
 
 ```sh
 npx bascik --build && npx bascik --check

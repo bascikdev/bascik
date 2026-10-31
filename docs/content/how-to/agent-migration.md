@@ -437,7 +437,7 @@ node "$REFACTOR/review-page.mjs" --sign --route / --reviewer "Your name" --verdi
 node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
 ```
 
-`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off. `--sign` and `--verify` also refuse a partial report, and a report whose matrix differs from `docs/migration/breakpoints.json` as it is now. With `--max-prod-age 7d` (or `12h`, `30m`), they refuse a report that used cached production measurements older than that; there is no limit by default.
+`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off. `--sign` and `--verify` also refuse a partial report (a subset of the cases, a run that left out a check with `--only` or `--skip`, or another matrix file), and a report whose matrix differs from `docs/migration/breakpoints.json` as it is now. They refuse a report that used cached production measurements more than a day old, or that records none; `--max-prod-age 7d` (or `12h`, `30m`) moves that limit.
 
 ### Iteration Runs and the Gate
 
@@ -456,7 +456,9 @@ node "$REFACTOR/run-checks.mjs" \
 
 A case id is `<width>x<height>`, with a suffix for each variant (`1408x900-dark`, `390x844-mobile-touch`), and a bare width selects every case of that width. An id the matrix does not have fails and lists the valid ones. Pick one phone, one tablet and one desktop case, plus the cases on both sides of every breakpoint the route's own CSS or JS reacts to.
 
-Such a run prints `PARTIAL (3 of 25 cases): iteration result, not a gate`, and its report records `partial: true`, as does a run of any matrix file other than `docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check. Run it once at the end of each route, and in every check and review round: "done" is decided only there.
+Such a run prints `PARTIAL (3 of 25 cases; 2 of 11 checks, without ...): iteration result, not a gate`, and its report records `partial: true` with the checks that ran and the ones left out. A run of every case that leaves out one check is partial too, as is a run of any matrix file other than `docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check. Run it once at the end of each route, and in every check and review round: "done" is decided only there. A site with no legacy repository passes `--no-legacy-repo` instead of `--legacy-src`; the report records why the test hook carryover check did not run, and the run can still be the gate.
+
+The cache trades freshness for speed: a cached measurement shows production as it was when it was taken. A gate run reads the cache like any other, so sign-off refuses a report built from cached production more than a day old. Pass `--refresh-prod` on the gate run when the cache is older, and raise `--max-prod-age` only for a production site you know has not changed.
 
 ### Why a Human Signs Off Every Route
 

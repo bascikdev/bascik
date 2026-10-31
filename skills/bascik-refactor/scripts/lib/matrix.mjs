@@ -193,27 +193,52 @@ export function selectCases(cases, values) {
 }
 
 /**
- * What a run checked, for report.json: the matrix file and its sha256, the ids of the cases run and the total. A run is
- * partial (an iteration result, never the gate) when it ran a subset (--cases) or a matrix file other than
- * `defaultMatrix` (docs/migration/breakpoints.json).
+ * What a run checked, for report.json: the matrix file and its sha256, the ids of the cases run and the total and, when
+ * `allChecks` is given (run-checks.mjs), the checks that ran, the checks left out (`skipped`) and the checks `waived`
+ * ({ check: reason }: testid-carryover with --no-legacy-repo). A run is partial (an iteration result, never the gate)
+ * when it ran a subset of the cases (--cases), a matrix file other than `defaultMatrix`
+ * (docs/migration/breakpoints.json), or left out a check that is not waived (--only, --skip).
  */
-export function gateRecord({ file, cases, selected, defaultMatrix }) {
-  return {
+export function gateRecord({
+  file,
+  cases,
+  selected,
+  defaultMatrix,
+  checks,
+  allChecks,
+  waived = {},
+}) {
+  const record = {
     matrix: file,
     sha256: createHash("sha256").update(readFileSync(file)).digest("hex"),
     cases: selected.map(caseId),
     total: cases.length,
-    partial:
-      selected.length !== cases.length ||
-      resolve(file) !== resolve(defaultMatrix),
   };
+  let skipped = [];
+  if (allChecks) {
+    skipped = allChecks.filter((c) => !checks.includes(c) && !(c in waived));
+    record.checks = [...checks];
+    record.skipped = skipped;
+    if (Object.keys(waived).length) record.waived = { ...waived };
+  }
+  record.partial =
+    selected.length !== cases.length ||
+    resolve(file) !== resolve(defaultMatrix) ||
+    skipped.length > 0;
+  return record;
 }
 
-/** The terminal line for a partial run, or null for a full run of the default matrix. */
+/** The terminal line for a partial run, or null for a full run of the default matrix with every check. */
 export function gateLine(gate) {
   if (!gate?.partial) return null;
   const n = gate.cases.length;
-  // Every case ran, so the matrix file itself is not the default one.
-  const other = n === gate.total ? ` from ${gate.matrix}` : "";
-  return `PARTIAL (${n} of ${gate.total} cases${other}): iteration result, not a gate`;
+  const skipped = gate.skipped ?? [];
+  // Every case and every check ran, so the matrix file itself is not the default one.
+  const other =
+    n === gate.total && !skipped.length ? ` from ${gate.matrix}` : "";
+  const ran = gate.checks?.length ?? 0;
+  const checks = skipped.length
+    ? `; ${ran} of ${ran + skipped.length} checks, without ${skipped.join(", ")}`
+    : "";
+  return `PARTIAL (${n} of ${gate.total} cases${other}${checks}): iteration result, not a gate`;
 }

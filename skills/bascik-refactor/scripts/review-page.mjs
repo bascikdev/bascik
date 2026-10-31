@@ -18,6 +18,7 @@ import {
   validateRouteSet,
 } from "./lib/checks.mjs";
 import { reportDirName } from "./compare-route.mjs";
+import { CHECKS, NO_LEGACY_CHECK } from "./run-checks.mjs";
 import { LEDGER_NOTE } from "./production-defects.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
@@ -42,9 +43,11 @@ run-checks report passes, naming each missing or failing file. A fix after the r
 screenshots, so the route needs a new review.
 
 Only a gate run counts: --sign (with verdict pass) and --verify refuse a run-checks report that is partial (a --cases
-subset or another --matrix file), one whose matrix hash differs from --matrix (docs/migration/breakpoints.json now),
-and, with --max-prod-age, one that used cached production measurements older than that. There is no age limit by
-default: run-checks --refresh-prod at the start of every review round is the rule.
+subset, another --matrix file, or a run that left out a check with --only or --skip), one whose matrix hash differs
+from --matrix (docs/migration/breakpoints.json now), and one that used cached production measurements older than
+--max-prod-age (default 24h). Production can change after it was measured, so a gate run older cache entries would
+pass needs run-checks --refresh-prod; raise --max-prod-age only for a production site you know has not changed, and
+log it in the decisions ledger.
 
 Options:
   --route <path>       Route (repeatable; one with --sign)
@@ -58,7 +61,7 @@ Options:
   --date <yyyy-mm-dd>  With --sign: the review date (default today)
   --matrix <file>      The gate matrix the report must have run in full (default docs/migration/breakpoints.json)
   --max-prod-age <age> With --sign and --verify: refuse a report that used cached production measurements older than
-                       this, such as 7d, 12h or 30m (default no limit)
+                       this, such as 7d, 12h or 30m (default 24h)
   --help               Show this message`;
 
 /** The seven issue types a human caught after the automated loop passed, in order. */
@@ -372,15 +375,23 @@ export function parseAge(flag, value) {
   return Number(m[1]) * { d: 86_400_000, h: 3_600_000, m: 60_000 }[m[2]];
 }
 
+/** How old cached production measurements a gate run may use by default: a day. */
+export const DEFAULT_MAX_PROD_AGE = 86_400_000;
+
 /**
- * Why a run-checks report is not a gate, or []: it records no matrix, it is partial (a --cases subset or another
- * matrix file), its matrix differs from `matrix` (the gate matrix as it is now), or, with `maxProdAge` (ms), it used
- * cached production measurements older than that.
+ * Why a run-checks report is not a gate, or []: it records no matrix or no list of the checks it ran, it is partial (a
+ * --cases subset or another matrix file), it left out a check (--only, --skip; only testid-carryover may be waived, by
+ * --no-legacy-repo), its matrix differs from `matrix` (the gate matrix as it is now), it records no production
+ * measurement, or it used cached production measurements older than `maxProdAge` (ms, default DEFAULT_MAX_PROD_AGE).
  */
 export function gateProblems(
   report,
   file,
-  { matrix = DEFAULT_MATRIX, maxProdAge, now = Date.now() } = {},
+  {
+    matrix = DEFAULT_MATRIX,
+    maxProdAge = DEFAULT_MAX_PROD_AGE,
+    now = Date.now(),
+  } = {},
 ) {
   const gate = report?.gate;
   if (!gate)
@@ -388,7 +399,23 @@ export function gateProblems(
       `${file}: records no matrix (run-checks wrote it before reports recorded one); run run-checks.mjs on the full matrix again`,
     ];
   const problems = [];
-  if (gate.partial)
+  const ran = Array.isArray(gate.checks) ? gate.checks : null;
+  const missing = ran
+    ? CHECKS.filter(
+        (c) => !ran.includes(c) && !(c === NO_LEGACY_CHECK && gate.waived?.[c]),
+      )
+    : [];
+  if (!ran)
+    problems.push(
+      `${file}: records no list of the checks it ran (run-checks wrote it before reports recorded them); run run-checks.mjs on the full matrix with every check again`,
+    );
+  else if (missing.length)
+    problems.push(
+      `${file}: ran ${ran.length} of ${ran.length + missing.length} checks, without ${missing.join(", ")} (--only or --skip): an iteration result, not a gate; run run-checks.mjs on the full matrix (${matrix}) with every check`,
+    );
+  const casesPartial =
+    gate.partial && (!missing.length || gate.cases?.length !== gate.total);
+  if (casesPartial)
     problems.push(
       `${file}: a partial run (${gate.cases?.length ?? "?"} of ${gate.total ?? "?"} cases)${gate.matrix ? ` of ${gate.matrix}` : ""} is an iteration result, not a gate; run run-checks.mjs on the full matrix (${matrix}) with every check`,
     );
@@ -406,16 +433,32 @@ export function gateProblems(
         `${file}: ran another matrix than ${matrix} (${matrix} changed since this run, or the run used a copy); run run-checks.mjs on it again`,
       );
   }
-  const oldest = report.production?.oldestCachedAt;
-  if (
-    maxProdAge !== undefined &&
-    oldest &&
-    now - Date.parse(oldest) > maxProdAge
-  )
+  const production = report.production;
+  const oldest = production?.oldestCachedAt;
+  if (!production)
     problems.push(
-      `${file}: used cached production measurements from ${oldest}, older than --max-prod-age; run run-checks.mjs with --refresh-prod`,
+      `${file}: records no production measurement (how fresh production was is unknown); run run-checks.mjs with --refresh-prod`,
+    );
+  else if (production.fromCache > 0 && !oldest)
+    problems.push(
+      `${file}: used ${production.fromCache} cached production measurement(s) of unknown age; run run-checks.mjs with --refresh-prod`,
+    );
+  else if (oldest && !(now - Date.parse(oldest) <= maxProdAge))
+    problems.push(
+      `${file}: used cached production measurements from ${oldest}, older than --max-prod-age (${formatAge(maxProdAge)}); production may have changed since, so run run-checks.mjs with --refresh-prod`,
     );
   return problems;
+}
+
+/** An age in ms as the largest whole unit --max-prod-age takes: 7d, 24h, 30m. */
+function formatAge(ms) {
+  for (const [unit, size] of [
+    ["d", 86_400_000],
+    ["h", 3_600_000],
+    ["m", 60_000],
+  ])
+    if (ms >= size && ms % size === 0) return `${ms / size}${unit}`;
+  return `${ms} ms`;
 }
 
 /**

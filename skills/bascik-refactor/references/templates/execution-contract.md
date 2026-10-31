@@ -66,9 +66,10 @@ background, rebuild after each change, and stop it before you hand off.
    {{GATE_COMMANDS}}
    ```
 
-   The gate is `run-checks.mjs` on the full {{MATRIX_FILE}} matrix with every check, no `--cases`, `--only` or
-   `--matrix`. "Done" is decided only there. Pass `--refresh-prod` on the first run of every check stage and review
-   round, and whenever production changed; `review-page.mjs` refuses to sign or verify a partial report.
+   The gate is `run-checks.mjs` on the full {{MATRIX_FILE}} matrix with every check, no `--cases`, `--only`, `--skip`
+   or `--matrix`. "Done" is decided only there. Pass `--refresh-prod` on the first run of every check stage and review
+   round, and whenever production changed; `review-page.mjs` refuses to sign or verify a partial report (a subset of
+   the cases or of the checks) and, by default, one that used cached production measured more than a day ago.
 
 6. Hand off.
 

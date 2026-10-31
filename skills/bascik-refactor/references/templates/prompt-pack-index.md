@@ -26,7 +26,8 @@ replace each `{{NN}}` with a two-digit number, and add rows as the queue grows.
 Inside a prompt, iterate with `run-checks.mjs --cases <ids> --only <checks>`: a few cases, the checks the last fix can
 affect, and production read from the production cache. Those runs print `PARTIAL` and never fill the Acceptance
 column. Every Acceptance cell that names a parity check means the gate run: the full `breakpoints.json` matrix, every
-check, with `--refresh-prod` on the first run of each check stage and review round.
+check (no `--cases`, `--only` or `--skip`), with `--refresh-prod` on the first run of each check stage and review round.
+`review-page.mjs` refuses a report built from cached production more than a day old.
 
 ## The representative slice gate
 

@@ -19,7 +19,10 @@ import {
   routeSlug,
   validateRouteSet,
 } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
-import { parseCliArgs as parseRunChecks } from "../../skills/bascik-refactor/scripts/run-checks.mjs";
+import {
+  CHECKS,
+  parseCliArgs as parseRunChecks,
+} from "../../skills/bascik-refactor/scripts/run-checks.mjs";
 import { parseCliArgs as parseReviewPage } from "../../skills/bascik-refactor/scripts/review-page.mjs";
 import {
   diffEffects,
@@ -557,6 +560,8 @@ describe("review-page", () => {
       sha256: createHash("sha256").update(matrixText).digest("hex"),
       cases: ["375x800"],
       total: 1,
+      checks: [...CHECKS],
+      skipped: [],
       partial: false,
     };
     const report = (ok: boolean) =>
@@ -569,6 +574,7 @@ describe("review-page", () => {
             ? []
             : [{ check: "spacing-diff", kind: "gap", message: "gap" }],
           gate,
+          production: { refreshed: true, fromCache: 0, captured: 1 },
         }),
       );
     report(true);
