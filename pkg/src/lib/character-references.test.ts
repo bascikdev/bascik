@@ -146,3 +146,28 @@ describe("decodeAttributeEntities and decodeCharacterReferences agree (R2-03)", 
     expect(decodeCharacterReferences("&mdash;&colon;")).toBe("\u2014:");
   });
 });
+
+describe("what the shared decoder leaves as written (R2-05)", () => {
+  it("reads names case-sensitively, as the tokenizer does", () => {
+    for (const decode of [decodeCharacterReferences, decodeAttributeEntities]) {
+      expect(decode("&AMP;&QUOT;&LT;&GT;")).toBe(
+        browserDecode("&AMP;&QUOT;&LT;&GT;"),
+      );
+      // Not references at all: a lowercased lookup would decode these.
+      expect(decode("&Amp;&Quot;&APOS;")).toBe("&Amp;&Quot;&APOS;");
+    }
+    // `&Eacute;` is É, never é.
+    expect(decodeCharacterReferences("&Eacute;&eacute;")).toBe("Éé");
+  });
+
+  it("documents the forms it does not decode", () => {
+    for (const decode of [decodeCharacterReferences, decodeAttributeEntities]) {
+      // A named reference without its semicolon (the legacy `&amp` form).
+      expect(decode("Tom &amp Jerry")).toBe("Tom &amp Jerry");
+      // A bare ampersand, and an ampersand before a non-reference.
+      expect(decode("a & b &= c &#; &#x;")).toBe("a & b &= c &#; &#x;");
+    }
+    // A name past the ASCII ones and HTML 4's, such as HTML5's `&Lt;` (≪).
+    expect(decodeCharacterReferences("&Lt;&check;")).toBe("&Lt;&check;");
+  });
+});

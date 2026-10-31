@@ -41,6 +41,7 @@ describe("generate-search-index", () => {
         "src/lib/content-path.ts",
         "src/lib/meta-tags.ts",
         "src/lib/heading-slug.ts",
+        "src/lib/html-entities.ts",
       ],
     });
     expect(producer).not.toHaveProperty("outputs");

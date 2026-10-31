@@ -31,11 +31,21 @@ const IMPLIED_END = {
   p: ["p"],
 };
 
-const RAW_TEXT =
-  /(<(script|style|textarea|title)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi;
-const TAG = /<(\/?)([a-zA-Z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+// A tag's attribute text up to its `>`, read as the HTML tokenizer reads it: a quote opens a quoted value only right
+// after `=` (and whitespace), so `title=it's` is an unquoted value with an apostrophe in it, not the start of a string
+// that swallows the next tags. Each character has one reading, so the scan is linear.
+const ATTRIBUTE_TEXT = String.raw`(?:[^>=]|=\s*(?:"[^"]*"|'[^']*'|(?=[^\s"'])))*`;
+const RAW_TEXT = new RegExp(
+  String.raw`(<(script|style|textarea|title)\b${ATTRIBUTE_TEXT}>)([\s\S]*?)(<\/\2\s*>)`,
+  "gi",
+);
+const TAG = new RegExp(
+  String.raw`<(\/?)([a-zA-Z][\w:.-]*)(${ATTRIBUTE_TEXT})>`,
+  "g",
+);
+// An unquoted value runs to whitespace, quotes, `=` and backticks included, as the tokenizer reads it.
 const ATTRIBUTE =
-  /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'][^\s]*)))?/g;
 
 const keepLines = (text) => text.replace(/[^\n]/g, " ");
 

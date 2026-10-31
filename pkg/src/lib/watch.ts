@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Stats } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { relative, resolve } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import { fileURLToPath } from "node:url";
 import type { FSWatcher } from "chokidar";
 import { loadChokidar } from "./dev-watcher.ts";
@@ -415,12 +416,8 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     const isOwnedByOtherWatcher = (path: string): boolean => {
       const resolvedPath = resolve(process.cwd(), path);
       return (
-        resolvedPath === pagesDir ||
-        resolvedPath.startsWith(pagesDir + sep) ||
-        componentRoots.some(
-          (root) =>
-            resolvedPath === root || resolvedPath.startsWith(root + sep),
-        ) ||
+        isSameOrInside(resolvedPath, pagesDir) ||
+        componentRoots.some((root) => isSameOrInside(resolvedPath, root)) ||
         isInlineStylesheet(path)
       );
     };

@@ -70,7 +70,7 @@ const INDEX_HTML = `<!DOCTYPE html>
  * The exact names, not `*.pem`, so certificates a project commits on purpose
  * stay tracked.
  */
-export const REQUIRED_GITIGNORE_ENTRIES = [
+const REQUIRED_GITIGNORE_ENTRIES = [
   "dist/",
   "node_modules/.cache/bascik/",
   "bascik-privkey.pem",
@@ -249,7 +249,7 @@ type PackageJsonPlan =
  * install without a lockfile; it is only the fallback when the running
  * version cannot be read.
  */
-export function bascikDependencyRange(version: string): string {
+function bascikDependencyRange(version: string): string {
   return version === "unknown" ? "latest" : `^${version}`;
 }
 

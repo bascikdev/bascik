@@ -970,7 +970,7 @@ const cssClassSelectorNames = (): RegExp =>
   );
 
 /** The identifier a CSS escape sequence stands for (`md\:flex` -> `md:flex`). */
-export const unescapeCssIdentifier = (raw: string): string =>
+const unescapeCssIdentifier = (raw: string): string =>
   raw.includes("\\")
     ? raw.replace(
         /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([\s\S]))/g,

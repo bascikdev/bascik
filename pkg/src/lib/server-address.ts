@@ -43,7 +43,7 @@ const isIpv6Address = (value: string): boolean => {
 const BRACKETED_IPV6 = /^\[[^\]]*:[^\]]*\](?::\d*)?$/;
 
 /** What a hostname must look like, as error messages say it. */
-export const HOSTNAME_EXPECTATION =
+const HOSTNAME_EXPECTATION =
   'expected a hostname like "localhost" or "example.com", not a URL or path';
 
 /**

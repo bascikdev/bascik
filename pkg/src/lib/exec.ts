@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { matchesGlob, resolve, sep } from "node:path";
+import { matchesGlob, resolve } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
 import { registerExitStopper } from "./exit-stoppers.ts";
@@ -522,7 +523,7 @@ const spawnScript = (
   // script against `cwd`.
   const resolvedScript = resolve(process.cwd(), scriptPath);
   const isInside = (dir: string): boolean =>
-    resolvedScript === dir || resolvedScript.startsWith(dir + sep);
+    isSameOrInside(resolvedScript, dir);
   if (isInside(pagesDir) || componentRoots.some(isInside)) {
     console.warn(
       `[bascik] warning: exec script "${scriptPath}" is located inside source directories (pages/components). Keep exec scripts in scripts/ or project root.`,

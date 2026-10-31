@@ -2,26 +2,11 @@
  * meta-tags.ts: reads a page shell's <title> and <meta name="description"> the way a browser does, for every
  * build script that restates them (the search index's Home entry, Open Graph and Twitter tags, the
  * TechArticle schema). Attribute values keep an apostrophe inside double quotes and a double quote inside
- * single quotes, `name` and `content` may come in either order, and entities are decoded once.
+ * single quotes, `name` and `content` may come in either order, and entities are decoded once
+ * (html-entities.ts).
  */
 
-const ENTITIES: Record<string, string> = {
-  "&quot;": '"',
-  "&#39;": "'",
-  "&#x27;": "'",
-  "&apos;": "'",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&amp;": "&",
-};
-
-/** Decodes the entities page shells use, in one pass, so `&amp;lt;` reads as `&lt;`, not `<`. */
-export function decodeHtmlText(value: string): string {
-  return value.replace(
-    /&(?:quot|#39|#x27|apos|lt|gt|amp);/gi,
-    (entity) => ENTITIES[entity.toLowerCase()],
-  );
-}
+import { decodeHtmlText } from "./html-entities.ts";
 
 /** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
 function attributeValue(tag: string, name: string): string | undefined {

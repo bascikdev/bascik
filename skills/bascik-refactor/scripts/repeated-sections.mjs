@@ -22,6 +22,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { decodeCharacterReferences } from "./lib/character-references.mjs";
 
 export const CHECK = "repeated-sections";
 
@@ -449,38 +450,8 @@ async function sections(browser, origin, route, c, options) {
   );
 }
 
-const ENTITIES = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  rsquo: "\u2019",
-  lsquo: "\u2018",
-  rdquo: "\u201d",
-  ldquo: "\u201c",
-  mdash: "\u2014",
-  ndash: "\u2013",
-  hellip: "\u2026",
-  copy: "\u00a9",
-  reg: "\u00ae",
-  trade: "\u2122",
-  middot: "\u00b7",
-  eacute: "\u00e9",
-};
-
 /** Decodes the character references an author writes in HTML text (&amp;, &rsquo;, &#39;, &#x2014;). */
-export function decodeEntities(text) {
-  return String(text).replace(
-    /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi,
-    (all, dec, hex, name) => {
-      if (dec) return String.fromCodePoint(Number(dec));
-      if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
-      return ENTITIES[name.toLowerCase()] ?? all;
-    },
-  );
-}
+export const decodeEntities = decodeCharacterReferences;
 
 /**
  * The text of every page and component source with tags removed, character references decoded and whitespace

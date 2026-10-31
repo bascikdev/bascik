@@ -26,7 +26,7 @@ import { stdout as colorOut } from "./lib/colors.ts";
 import { pinServerUrl } from "./lib/pinned-banner.ts";
 import { privateDirFor } from "./lib/private-dir.ts";
 import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
-import { isSameOrInsideOnDisk } from "./lib/config-validation.ts";
+import { isSameOrInsideOnDisk } from "./lib/path-containment.ts";
 import { findConfigFile } from "./lib/config-file-names.ts";
 
 /**

@@ -18,7 +18,6 @@ import {
 import { type TextDocumentLike } from "./types.js";
 import {
   type ProjectSnapshot,
-  isPathInside,
   isInsideComponentRoots,
   normalizeComponentName,
   htmlSuppliesComponentProp,
@@ -451,12 +450,14 @@ export function parseScriptOpenTagAttributes(
 ): Map<string, string | true> {
   const attrs = new Map<string, string | true>();
   const insideTag = openTag.replace(/^<script\b/i, "").replace(/>$/, "");
+  // An unquoted value runs to whitespace (quotes, `=` and backticks
+  // included), and the first occurrence of a name wins, as in the tokenizer.
   const attrRe =
-    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'][^\s]*)))?/gi;
   let match: RegExpExecArray | null;
   while ((match = attrRe.exec(insideTag)) !== null) {
     const name = match[1]?.toLowerCase();
-    if (!name) continue;
+    if (!name || attrs.has(name)) continue;
     const value = match[2] ?? match[3] ?? match[4];
     attrs.set(name, value === undefined ? true : value);
   }
@@ -468,12 +469,15 @@ export function parseScriptOpenTagAttributes(
  * maps to `""`, as the DOM reports it. The first occurrence of a name wins, as
  * in the HTML tokenizer, and text inside a quoted value is never read as an
  * attribute. An unquoted value keeps its slashes; a trailing `/>` ends it.
+ *
+ * @internal Exported for the attribute tokenizer agreement test
+ * (skills-tests/tests/attribute-tokenizer-agreement.test.ts).
  */
-function readOpenTagAttributes(openTag: string): Map<string, string> {
+export function readOpenTagAttributes(openTag: string): Map<string, string> {
   const attrs = new Map<string, string>();
   const insideTag = openTag.replace(/^<[^\s/>]+/, "").replace(/\/?>$/, "");
   const attrRe =
-    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'][^\s]*)))?/gi;
   let match: RegExpExecArray | null;
   while ((match = attrRe.exec(insideTag)) !== null) {
     const name = match[1].toLowerCase();
