@@ -404,7 +404,7 @@ export function findBindings(body: string): Map<string, string[]> {
 }
 
 /**
- * The end of the value that starts at each offset in `froms` (ascending):
+ * The end of the value that starts at each offset in `starts` (ascending):
  * the first `;`, `,` or newline at the value's own bracket depth, or the
  * closing bracket of the one it is in, or the end of the body. One pass
  * over the code: strings, comments, regex literals and template text are
@@ -412,7 +412,7 @@ export function findBindings(body: string): Map<string, string[]> {
  * holes are code one level deeper. Values still open are kept on a stack,
  * shallowest first, so each one is closed once.
  */
-function valueEnds(body: string, froms: number[]): Map<number, number> {
+function valueEnds(body: string, starts: number[]): Map<number, number> {
   const ends = new Map<number, number>();
   const open: { from: number; depth: number }[] = [];
   let next = 0;
@@ -429,7 +429,7 @@ function valueEnds(body: string, froms: number[]): Map<number, number> {
   };
   /** Drops starts before `to` that no code reaches (inside a skipped token). */
   const skip = (to: number): void => {
-    while (next < froms.length && froms[next] < to) next++;
+    while (next < starts.length && starts[next] < to) next++;
   };
   let i = 0;
   while (i < body.length) {
@@ -454,8 +454,8 @@ function valueEnds(body: string, froms: number[]): Map<number, number> {
       continue;
     }
     skip(i);
-    while (next < froms.length && froms[next] === i)
-      open.push({ from: froms[next++], depth });
+    while (next < starts.length && starts[next] === i)
+      open.push({ from: starts[next++], depth });
     const c = body[i];
     if (c === "'" || c === '"') {
       i = Math.min(stringEnd(body, i), body.length);
