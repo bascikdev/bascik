@@ -72,29 +72,38 @@ export const computeContentHash = (content: string): string => {
 
 /**
  * Resolves the location of an installed npm package.
+ *
+ * Walks up from `cwd` through every ancestor's `node_modules/<packageName>`,
+ * the same lookup Node's package resolution does, so a package a workspace
+ * hoisted to the repository root is found from a nested project. The lookup
+ * reads the folder directly instead of resolving `<name>/package.json`, which
+ * an `exports` map that omits package.json would reject.
  */
 export const resolvePackageDir = (packageName: string, cwd: string): string => {
-  // Check in <cwd>/node_modules/<packageName>
-  const directPath = join(cwd, "node_modules", ...packageName.split("/"));
+  const startDir = resolve(cwd);
+  let dir = startDir;
+  for (;;) {
+    const candidate = join(dir, "node_modules", ...packageName.split("/"));
+    if (existsSync(join(candidate, "package.json"))) {
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+
+  // A folder without a package.json in the project's own node_modules is a
+  // broken install, not a missing one: readPackageManifest names the file.
+  const directPath = join(startDir, "node_modules", ...packageName.split("/"));
   if (existsSync(directPath)) {
     return directPath;
   }
 
-  // Also try node import.meta.resolve lookup if available
-  try {
-    const pkgJsonPath = import.meta.resolve(
-      `${packageName}/package.json`,
-      `file://${resolve(cwd)}/`,
-    );
-    if (pkgJsonPath && pkgJsonPath.startsWith("file://")) {
-      return dirname(pkgJsonPath.replace(/^file:\/\//, ""));
-    }
-  } catch {
-    // ignore
-  }
-
   throw new Error(
-    `Package "${packageName}" is not installed. Please install it first with your package manager (e.g. npm install ${packageName} or yarn add ${packageName}).`,
+    `Package "${packageName}" is not installed. Please install it first with your package manager (e.g. npm install ${packageName} or yarn add ${packageName}).\n` +
+      `  Looked in node_modules/${packageName} under ${startDir} and each of its parent folders.`,
   );
 };
 
@@ -199,17 +208,50 @@ export const assertPathInside = (filePath: string, parentDir: string): void => {
   }
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
  * Loads the existing bascik-lock.json if present.
+ *
+ * A missing file starts a fresh lockfile. A file that exists but cannot be
+ * read as a lockfile (a merge conflict, a hand edit) is an error: replacing
+ * it would drop every other package's version and hash records.
  */
 export const loadLockfile = async (cwd: string): Promise<BascikLockfile> => {
   const lockfilePath = join(cwd, LOCKFILE_NAME);
+  let raw: string;
   try {
-    const raw = await readFile(lockfilePath, "utf8");
-    return JSON.parse(raw) as BascikLockfile;
-  } catch {
-    return { components: {} };
+    raw = await readFile(lockfilePath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { components: {} };
+    }
+    throw err;
   }
+
+  const refuse = (reason: string): Error =>
+    new Error(
+      `${lockfilePath} could not be parsed: ${reason}\n` +
+        `  bascik add records every added package there, so it will not replace the file. ` +
+        `Fix the file (for example, resolve merge conflict markers) or delete it to start over, then run bascik add again.`,
+    );
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw refuse((err as Error).message);
+  }
+  if (!isPlainObject(parsed)) {
+    throw refuse("expected a JSON object.");
+  }
+  if (parsed.components === undefined) {
+    parsed.components = {};
+  } else if (!isPlainObject(parsed.components)) {
+    throw refuse('"components" must be an object keyed by package name.');
+  }
+  return parsed as unknown as BascikLockfile;
 };
 
 /**
@@ -246,12 +288,11 @@ export const addComponents = async (
     ? configuredComponentsDir
     : resolve(cwd, configuredComponentsDir);
 
-  await mkdir(targetComponentsDir, { recursive: true });
-
+  // Read the lockfile first so an unreadable one stops the command before
+  // anything is created.
   const lockfile = await loadLockfile(cwd);
-  if (!lockfile.components) {
-    lockfile.components = {};
-  }
+
+  await mkdir(targetComponentsDir, { recursive: true });
 
   // Find all existing local component files to build the existing tag collision map
   const localComponentFiles = existsSync(targetComponentsDir)
