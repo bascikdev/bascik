@@ -1,4 +1,5 @@
 import { createContentShield, shieldElementContents } from "./shielding.ts";
+import { decodeCharacterReferences } from "./character-references.ts";
 import {
   ATTR_VALUE,
   createAttributeValueScanner,
@@ -42,19 +43,12 @@ const replaceOpenTags = (
 ): string =>
   replaceSpans(html, openTagsOf(createWordNameOpenTagScanner(html)), replace);
 
-const decodePropEntities = (value: string): string =>
-  value.replace(
-    /&(amp|lt|gt|quot|#39|#x27);/gi,
-    (_match, entity: string) =>
-      ({
-        amp: "&",
-        lt: "<",
-        gt: ">",
-        quot: '"',
-        "#39": "'",
-        "#x27": "'",
-      })[entity.toLowerCase()] ?? _match,
-  );
+/**
+ * A prop value as written on the usage tag, decoded the way the browser
+ * decodes an attribute value (character-references.ts), so the escaping
+ * where it lands encodes each character once.
+ */
+const decodePropEntities = decodeCharacterReferences;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Binding sinks (prompt 157 security audit)

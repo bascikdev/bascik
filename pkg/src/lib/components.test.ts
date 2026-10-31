@@ -670,6 +670,35 @@ describe("extractProps", () => {
     ).toEqual({ title: 'say "hello"', caption: "it's fine" });
   });
 
+  it("decodes named and numeric references as the browser does, so injection escapes the character once (F028)", () => {
+    const props = extractProps(
+      '<my-card data-bascik-prop-title="Caf&eacute; &copy; 2026 &nbsp;x &mdash; &#8212; &#x2014; &hellip;&rsquo;&euro;&trade; it&apos;s &#150;" data-bascik-prop-alt="Milk &mdash; frother"></my-card>',
+    );
+    expect(props).toEqual({
+      title:
+        "Caf\u00e9 \u00a9 2026 \u00a0x \u2014 \u2014 \u2014 \u2026\u2019\u20ac\u2122 it's \u2013",
+      alt: "Milk \u2014 frother",
+    });
+    expect(injectProps("<p data-bascik-prop-title></p>", props)).toBe(
+      "<p>Caf\u00e9 \u00a9 2026 \u00a0x \u2014 \u2014 \u2014 \u2026\u2019\u20ac\u2122 it&#39;s \u2013</p>",
+    );
+    expect(
+      injectPropAttributes('<img data-bascik-attr-alt="alt">', props),
+    ).toBe('<img alt="Milk \u2014 frother">');
+  });
+
+  it("decodes &amp; once, so an escaped reference stays text, and leaves unknown or unterminated names as written", () => {
+    const props = extractProps(
+      '<my-card data-bascik-prop-t="&amp;mdash; &notanentity; &mdash &AMP; &Amp;"></my-card>',
+    );
+    // `&mdash` without its semicolon and the misspelled `&Amp;` are not
+    // decoded: write the semicolon, or the character itself.
+    expect(props).toEqual({ t: "&mdash; &notanentity; &mdash & &Amp;" });
+    expect(injectProps("<p data-bascik-prop-t></p>", props)).toBe(
+      "<p>&amp;mdash; &amp;notanentity; &amp;mdash &amp; &amp;Amp;</p>",
+    );
+  });
+
   it("does not treat a marker token inside another attribute's quoted value as a prop", () => {
     // The marker string appears only inside the `title` value, never as a
     // whole attribute name, so no prop may be fabricated from it.
