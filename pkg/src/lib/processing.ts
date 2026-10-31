@@ -63,7 +63,12 @@ import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deleteDistFile, getRelativePath, listPages } from "./file-system.ts";
+import {
+  deleteDistFile,
+  getProjectPath,
+  getRelativePath,
+  listPages,
+} from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 
 import {
@@ -91,7 +96,7 @@ import { ownershipTracker } from "./ownership.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
 import {
   executeRoutesScript,
-  isDynamicRoute,
+  isDynamicPagePath,
   resolveRoutePath,
 } from "./routes.ts";
 import {
@@ -318,7 +323,7 @@ export const expandPageToJobs = async (
   pagePath: string,
   scriptStats?: BuildScriptStats,
 ): Promise<PageJob[]> => {
-  if (!isDynamicRoute(pagePath)) {
+  if (!isDynamicPagePath(pagePath)) {
     return [
       {
         pagePath,
@@ -399,6 +404,27 @@ export const expandPageToJobs = async (
   templateToGeneratedRelativePaths.set(pagePath, currentGenerated);
 
   return jobs;
+};
+
+/**
+ * Claims `job`'s output path for its source page. Two sources must never
+ * write one file (compared case-insensitively, for case-insensitive disks
+ * and hosts), so a second claim returns the route conflict error to report
+ * and the job must not run. Shared by the serial and worker paths.
+ */
+const claimOutputPath = (
+  pathToSource: Map<string, string>,
+  job: PageJob,
+): Error | undefined => {
+  const outKey = job.relativePagePath.toLowerCase();
+  const existing = pathToSource.get(outKey);
+  if (existing !== undefined && existing !== job.pagePath) {
+    return new Error(
+      `Route conflict: "${getProjectPath(existing)}" and "${getProjectPath(job.pagePath)}" both produce output path "${job.relativePagePath}". Rename one of them, or remove the route.`,
+    );
+  }
+  pathToSource.set(outKey, job.pagePath);
+  return undefined;
 };
 
 /** The route of a page with any trailing slash removed, so `/blog/` and `/blog` compare equal. */
@@ -626,34 +652,20 @@ export const processPageBatch = async (
       try {
         const expanded = await expandPageToJobs(input);
         for (const job of expanded) {
-          const outKey = job.relativePagePath.toLowerCase();
-          const existing = pathToSource.get(outKey);
-          if (existing && existing !== input) {
-            throw new Error(
-              `Route conflict: "${existing}" and "${input}" both produce output path "${job.relativePagePath}".`,
-            );
-          }
-          pathToSource.set(outKey, input);
+          const conflict = claimOutputPath(pathToSource, job);
+          if (conflict) throw conflict;
           jobs.push(job);
         }
       } catch (error) {
         pageErrors.push(normalizePageError(input, error, "expand routes"));
       }
     } else {
-      const outKey = input.relativePagePath.toLowerCase();
-      const existing = pathToSource.get(outKey);
-      if (existing && existing !== input.pagePath) {
+      const conflict = claimOutputPath(pathToSource, input);
+      if (conflict) {
         pageErrors.push(
-          normalizePageError(
-            input.pagePath,
-            new Error(
-              `Route conflict: "${existing}" and "${input.pagePath}" both produce output path "${input.relativePagePath}".`,
-            ),
-            "expand routes",
-          ),
+          normalizePageError(input.pagePath, conflict, "expand routes"),
         );
       } else {
-        pathToSource.set(outKey, input.pagePath);
         jobs.push(input);
       }
     }
@@ -1124,7 +1136,17 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     await releasePagePool(phase);
     throw error;
   }
-  const allJobs = jobBatches.flat();
+  // Both paths below refuse a second source for one output path, in page
+  // list order, before anything is compiled or written.
+  const pathToSource = new Map<string, string>();
+  const allJobs = jobBatches.flat().filter((job) => {
+    const conflict = claimOutputPath(pathToSource, job);
+    if (!conflict) return true;
+    expansionErrors.push(
+      normalizePageError(job.pagePath, conflict, "expand routes"),
+    );
+    return false;
+  });
 
   if (pool && allJobs.length > 0) {
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [
@@ -1329,7 +1351,7 @@ export const pageProcessing = (
     .catch(() => {})
     .then(async () => {
       try {
-        if (!isDynamicRoute(pagePath)) {
+        if (!isDynamicPagePath(pagePath)) {
           // Resolved here rather than inside transpilePage so the dev
           // manifest (prompt 157) is built from the same list object the
           // page is; a failure reaches the same catch below either way.

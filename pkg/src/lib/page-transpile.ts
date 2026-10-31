@@ -38,7 +38,7 @@ import { mem } from "./mem.ts";
 import { ownershipTracker, toOutputFileKey } from "./ownership.ts";
 import {
   executeRoutesScript,
-  isDynamicRoute,
+  isDynamicPagePath,
   resolveRoutePath,
 } from "./routes.ts";
 import {
@@ -212,7 +212,7 @@ export const transpilePage = async (
       resume();
       // Directive scripts record where they are before the routes script is removed.
       rawHtml = stampDirectiveSources(fileBuf.toString(), pagePath);
-      if (isDynamicRoute(pagePath)) {
+      if (isDynamicPagePath(pagePath)) {
         const pendingRoutes = executeRoutesScript(rawHtml, pagePath);
         pause();
         const routesResult = await pendingRoutes;
