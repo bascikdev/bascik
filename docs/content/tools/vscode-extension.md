@@ -281,6 +281,8 @@ Configure extension behavior per project without modifying application config (`
 }
 ```
 
+A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. When a config file cannot be read (invalid JSON, a computed value, no default export), the language server ignores it and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
+
 ### Filter Generic Editor Word Suggestions
 
 VS Code by default offers word-based completions derived from surrounding text in the active document. Because VS Code merges these suggestions independently, generic text tokens from nearby tags may appear in the completion list. To limit HTML suggestions to semantic attributes and Bascik completions, disable word-based suggestions for HTML in `settings.json`:
