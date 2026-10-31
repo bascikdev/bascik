@@ -321,6 +321,61 @@ describe("http.timeouts", () => {
   });
 });
 
+// F093: a wrong-typed body limit used to reach api-runtime, where
+// `"1mb" > 0` and `"1mb" <= 0` are both false, so no limit applied.
+describe("http.maxBodySize, http.apiTimeout and http.httpCache", () => {
+  const httpErrors = (http: Record<string, unknown>) =>
+    validateConfigShape({ http }, { cwd: "/project" });
+
+  it.each(["1mb", "1048576", -1, 1.5, Number.NaN, Infinity, null, true])(
+    "rejects maxBodySize %s",
+    (value) => {
+      const errors = httpErrors({ maxBodySize: value });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.maxBodySize");
+      expect(errors[0].value).toBe(value);
+      expect(errors[0].message).toContain("whole number of bytes");
+    },
+  );
+
+  it("accepts a byte count, and 0 for no limit", () => {
+    expect(httpErrors({ maxBodySize: 1048576 })).toEqual([]);
+    expect(httpErrors({ maxBodySize: 0 })).toEqual([]);
+  });
+
+  it.each(["10s", -5, Number.NaN, Infinity, 2 ** 31, null, false])(
+    "rejects apiTimeout %s",
+    (value) => {
+      const errors = httpErrors({ apiTimeout: value });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("http.apiTimeout");
+      expect(errors[0].message).toContain("milliseconds");
+    },
+  );
+
+  it("accepts an apiTimeout in milliseconds, and 0 for no timeout", () => {
+    expect(httpErrors({ apiTimeout: 10000 })).toEqual([]);
+    expect(httpErrors({ apiTimeout: 0 })).toEqual([]);
+    expect(httpErrors({ apiTimeout: 2 ** 31 - 1 })).toEqual([]);
+  });
+
+  it.each(["false", 0, 1, null])("rejects httpCache %s", (value) => {
+    const errors = httpErrors({ httpCache: value });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("http.httpCache");
+    expect(errors[0].message).toBe("expected true or false");
+  });
+
+  it("reports a wrong type in a mode export too", () => {
+    const errors = validateUserConfig(
+      {},
+      { server: { http: { maxBodySize: "1mb" } } },
+      { fs: allowAllFs, cwd: "/project", env: {} },
+    );
+    expect(errors.map((error) => error.key)).toContain("http.maxBodySize");
+  });
+});
+
 describe("http.cacheControl", () => {
   it("types and accepts a string or a per-extension map (yarn pkg:typecheck)", () => {
     const one = defineConfig({

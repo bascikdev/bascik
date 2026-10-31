@@ -696,6 +696,8 @@ http: {
 - `keepAlive` is how long a connection waits, idle between responses, for its next request before the server closes it. It never applies while a response is being sent.
 - `drain` is how long in-flight requests get to finish on shutdown (see [Production Server](/production-server)).
 
+`maxBodySize` is a whole number of bytes; a request body over it gets `413 Payload Too Large`, and `0` turns the limit off. `apiTimeout` is a number of milliseconds up to 2147483647, the longest delay a timer can wait; `0` turns it off. `httpCache` is `true` or `false`. Any other value, such as `maxBodySize: "1mb"`, is a config error, so a typo can never leave API routes without a body limit.
+
 With `tls.enabled`, `request` and `headers` apply to clients that negotiate HTTP/1.1. HTTP/2 has no per-request equivalent in Node, so for an HTTP/2 connection only `keepAlive` applies: once it has had no open request for that long, the server closes it with a `GOAWAY` and the browser opens a new one for its next request. A request still open, such as a live-reload event stream, keeps the connection open however quiet it is.
 
 `cacheControl` sets the `Cache-Control` header on static files when `httpCache` is on (the default under `bascik --server`). A string applies to every file; an object maps a file extension, with or without the dot, to its value, and files whose extension is not listed get `public, max-age=3600`. Keys match regardless of letter case, so `".PNG"` applies to `photo.png`; when two keys differ only in case, the one in the extension's exact case wins. Each key is one extension such as `".css"`: a glob like `"*.css"` or a path would never match, so it is a config error.

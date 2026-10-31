@@ -70,6 +70,9 @@ const defaultFs: ConfigValidationFs = {
   },
 };
 
+/** The longest delay setTimeout honors; a longer one fires after 1 ms. */
+const MAX_TIMER_DELAY = 2 ** 31 - 1;
+
 /** One extension, dot optional: `.css` or `css`, never `*.css` or `a/b.css`. */
 const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
 
@@ -552,6 +555,39 @@ export const validateConfigShape = (
           push(`http.tls.${key}`, value, "expected a string path");
         }
       }
+    }
+    // api-runtime.ts compares these with `> 0`, which is false for a string
+    // or NaN, so a wrong type would silently turn the limit off.
+    const maxBodySize = http.maxBodySize;
+    if (
+      maxBodySize !== undefined &&
+      (typeof maxBodySize !== "number" ||
+        !Number.isSafeInteger(maxBodySize) ||
+        maxBodySize < 0)
+    ) {
+      push(
+        "http.maxBodySize",
+        maxBodySize,
+        "expected a whole number of bytes, such as 1048576 for 1 MB (0 turns the limit off)",
+      );
+    }
+    // setTimeout fires at once for a delay past 2^31 - 1 ms.
+    const apiTimeout = http.apiTimeout;
+    if (
+      apiTimeout !== undefined &&
+      (typeof apiTimeout !== "number" ||
+        !Number.isFinite(apiTimeout) ||
+        apiTimeout < 0 ||
+        apiTimeout > MAX_TIMER_DELAY)
+    ) {
+      push(
+        "http.apiTimeout",
+        apiTimeout,
+        `expected a number of milliseconds from 0 (no timeout) to ${MAX_TIMER_DELAY}`,
+      );
+    }
+    if (http.httpCache !== undefined && typeof http.httpCache !== "boolean") {
+      push("http.httpCache", http.httpCache, "expected true or false");
     }
     if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
       push("http.trustProxy", http.trustProxy, "expected true or false");
