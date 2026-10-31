@@ -1,3 +1,4 @@
+import { isIPv6 } from "node:net";
 import {
   nativeClock,
   type FrameworkClock,
@@ -45,6 +46,44 @@ export const getClientIp = (
   return socketRemoteAddress;
 };
 
+/**
+ * The identity a request is counted under. IPv4 addresses count one by one.
+ * An IPv6 address counts by its /64 prefix: one host or LAN is routinely
+ * handed a whole /64, so counting each address separately would let a
+ * single sender rotate through its own prefix, dodge its limit, and fill the
+ * tracking table (which then refuses every new visitor). An IPv4-mapped IPv6
+ * address (`::ffff:192.0.2.7`, what a dual-stack socket reports) counts as
+ * its IPv4 address. Anything that is not an IP address is used as is.
+ */
+export const rateLimitKey = (ip: string): string => {
+  if (!isIPv6(ip)) return ip;
+  const address = ip.split("%")[0].toLowerCase();
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(address);
+  if (mapped) return mapped[1];
+  const [head, tail] = address.includes("::")
+    ? address.split("::")
+    : [address, undefined];
+  const hextets = (part: string | undefined): string[] =>
+    part
+      ? part.split(":").flatMap((group) => {
+          if (!group.includes(".")) return [group];
+          // An embedded IPv4 tail (`64:ff9b::192.0.2.1`) is two hextets.
+          const [a, b, c, d] = group.split(".").map(Number);
+          return [((a << 8) | b).toString(16), ((c << 8) | d).toString(16)];
+        })
+      : [];
+  const front = hextets(head);
+  const back = hextets(tail);
+  const groups =
+    tail === undefined
+      ? front
+      : [...front, ...Array(8 - front.length - back.length).fill("0"), ...back];
+  return `${groups
+    .slice(0, 4)
+    .map((group) => parseInt(group, 16).toString(16))
+    .join(":")}::/64`;
+};
+
 interface IpBucketEntry {
   buckets: number[];
   bucketStartTime: number;
@@ -79,7 +118,8 @@ export class RateLimiter {
   }
 
   public isRateLimited(ip: string, now: number = this.clock.now()): boolean {
-    let entry = this.trackedIps.get(ip);
+    const key = rateLimitKey(ip);
+    let entry = this.trackedIps.get(key);
     if (!entry) {
       if (this.trackedIps.size >= this.maxTrackedIps) {
         // Attempt to reclaim expired entries before rejecting
@@ -93,7 +133,7 @@ export class RateLimiter {
         buckets: new Array(SUB_BUCKETS).fill(0),
         bucketStartTime: now,
       };
-      this.trackedIps.set(ip, entry);
+      this.trackedIps.set(key, entry);
     }
 
     // Advance sliding window buckets

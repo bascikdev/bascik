@@ -66,6 +66,10 @@ export default defineConfig({
 });
 ```
 
+### Rate Limiting
+
+`http.rateLimit` counts requests per client in a sliding window (500 per 10 seconds by default) and answers `429 Too Many Requests` with a `Retry-After` of the window in seconds. An IPv4 address is one client; an IPv6 address counts by its `/64` prefix, because one host or network is usually handed a whole `/64`. The limiter tracks at most 10,000 clients at once. When that many are active inside one window, it refuses new clients with `429` rather than grow without bound, so a flood from that many distinct addresses can lock out first-time visitors until it stops. Behind a proxy, set `http.trustProxy` so clients are told apart by `X-Forwarded-For`; for protection against distributed floods, rate limit at the CDN or load balancer as well.
+
 ### Server Configuration Options
 
 | Option                         | Type                | Default                       | Description                                                                                                            |
