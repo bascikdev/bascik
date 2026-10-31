@@ -2862,3 +2862,54 @@ describe("convertCssElementSelectorsToClasses – at-rule preludes", () => {
     expect(css).toContain(".bascik__card__el__p::before");
   });
 });
+
+describe("convertCssElementSelectorsToClasses – & with a pseudo-class or attribute", () => {
+  const convert = (input: string) =>
+    convertCssElementSelectorsToClasses(input, "card");
+
+  it.each([
+    ["&:hover p", "&:hover .bascik__card__el__p", "p"],
+    ["&:focus-within span", "&:focus-within .bascik__card__el__span", "span"],
+    ["&:hover > img", "&:hover > .bascik__card__el__img", "img"],
+    ["&[open] summary", "&[open] .bascik__card__el__summary", "summary"],
+    ["&::after + p", "&::after + .bascik__card__el__p", "p"],
+    [
+      "&:not(.bascik__card__x):hover ~ li",
+      "&:not(.bascik__card__x):hover ~ .bascik__card__el__li",
+      "li",
+    ],
+    [
+      '&[data-state="open"]:hover h2',
+      '&[data-state="open"]:hover .bascik__card__el__h2',
+      "h2",
+    ],
+  ])("converts the element in %s", (selector, expected, element) => {
+    const { css, elementsConvertedClasses } = convert(
+      `.bascik__card__card { ${selector} { color: red } }`,
+    );
+    expect(css).toBe(`.bascik__card__card { ${expected} { color: red } }`);
+    expect(elementsConvertedClasses).toEqual([element]);
+  });
+
+  it("matches the flat form's output", () => {
+    const nested = convert(".bascik__card__card { &:hover p { color: red } }");
+    const flat = convert(".bascik__card__card:hover p { color: red }");
+    expect(nested.css).toContain(".bascik__card__el__p");
+    expect(flat.css).toContain(".bascik__card__el__p");
+  });
+
+  it("leaves a pseudo-class with no element after it alone", () => {
+    const input =
+      ".bascik__card__card { &:hover { color: red } &[open] { color: blue } }";
+    const { css, elementsConvertedClasses } = convert(input);
+    expect(css).toBe(input);
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("does not convert a declaration value after a stray & chain", () => {
+    // A forgotten `{` after `&:hover` puts the declaration in the prelude of
+    // the next rule; values after `:` are not element selectors.
+    const input = ".bascik__card__card { &:hover color: red; }";
+    expect(convert(input).css).toBe(input);
+  });
+});

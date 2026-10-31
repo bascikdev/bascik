@@ -188,10 +188,13 @@ export const convertCssElementSelectorsToClasses = (
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
   //   - Explicit nesting: `& p { }`, `& > h2 { }`, `&>h2 { }`, `& + li { }`, `& ~ span { }`.
+  //   - `&` followed by pseudo-classes, pseudo-elements or attribute
+  //     selectors, then a combinator: `&:hover p { }`, `&[open] > summary { }`
+  //     (the same chain Pass 4 accepts after a scoped class).
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(&\s*(?:[>+~]\s*)?)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
     (_match, prefix: string, elementName: string) =>
       `${prefix}${toClass(elementName)}`,
   );
