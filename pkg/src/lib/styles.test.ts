@@ -3019,6 +3019,27 @@ describe("quotedAttributeValueRanges", () => {
     expect(ranges).toEqual([`"x"`, `'y\\'`, `""`]);
   });
 
+  it("reads an unquoted value to its end, so a quote after a later = in it opens nothing (PR 115 review)", () => {
+    // `a"b="` and `a'b=c` are whole unquoted values: the tokenizer reads
+    // an unquoted value to whitespace or `>`, `=` and quotes included.
+    for (const tag of [
+      `<p data-x=a"b=" class="c">`,
+      `<p x=a'b=' class='c'>`,
+      `<p href=a=b x==" class="c">`,
+    ]) {
+      const ranges = quotedAttributeValueRanges(tag).map(({ start, end }) =>
+        tag.slice(start + 1, end),
+      );
+      expect(ranges, tag).toEqual(["c"]);
+    }
+  });
+
+  it("appends to the real class after an unquoted value holding a quote and =", () => {
+    const out = injectClassIntoTag(`<p data-x=a"b=" class="c">`, "X");
+    expect(out).toBe(`<p data-x=a"b=" class="c X">`);
+    expect(out.match(/\sclass=/g)).toHaveLength(1);
+  });
+
   it("treats an unclosed value as running to the end of the tag", () => {
     const tag = `<a title='never closed class="x"`;
     expect(quotedAttributeValueRanges(tag)).toEqual([

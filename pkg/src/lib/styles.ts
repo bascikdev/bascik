@@ -350,7 +350,8 @@ const HTML_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
  * opens a value only right after `=` (and optional whitespace), the value
  * ends at the next matching quote, and backslashes are plain characters.
  * A quote anywhere else (inside an attribute name or an unquoted value) is
- * an ordinary character.
+ * an ordinary character. An unquoted value runs to whitespace or `>`, so an
+ * `=` inside it (`data-x=a"b="`) opens no new value.
  */
 export const quotedAttributeValueRanges = (
   openTag: string,
@@ -359,7 +360,13 @@ export const quotedAttributeValueRanges = (
   let afterEquals = false;
   for (let j = 0; j < openTag.length; j++) {
     const char = openTag[j];
-    if (afterEquals && (char === '"' || char === "'")) {
+    if (!afterEquals) {
+      if (char === "=") afterEquals = true;
+      continue;
+    }
+    if (HTML_WHITESPACE.has(char)) continue;
+    afterEquals = false;
+    if (char === '"' || char === "'") {
       const end = openTag.indexOf(char, j + 1);
       if (end === -1) {
         ranges.push({ start: j, end: openTag.length });
@@ -367,11 +374,14 @@ export const quotedAttributeValueRanges = (
       }
       ranges.push({ start: j, end });
       j = end;
-      afterEquals = false;
-    } else if (char === "=") {
-      afterEquals = true;
-    } else if (!HTML_WHITESPACE.has(char)) {
-      afterEquals = false;
+    } else if (char !== ">") {
+      // An unquoted value: skip to its last character.
+      while (
+        j + 1 < openTag.length &&
+        openTag[j + 1] !== ">" &&
+        !HTML_WHITESPACE.has(openTag[j + 1])
+      )
+        j++;
     }
   }
   return ranges;
