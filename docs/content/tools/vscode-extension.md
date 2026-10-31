@@ -177,7 +177,7 @@ Server and stream script diagnostics enforce the runtime contract and flag outpu
 
 - An inline server or stream script must `export default` a handler function.
 - Server and stream scripts may import `@bascik/bascik/html`, and nothing else from `@bascik/bascik`, which is build tooling.
-- A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)` or holds a joined string, because wrapping would escape the value twice.
+- A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)`, holds a joined string, or calls a function from a project module (`productCard(p)`, which may return markup), because wrapping would escape that markup, nor on an XML template such as a sitemap.
 - Template substitutions in URL attributes, event handlers, unquoted attributes, inline scripts, and CSS contexts receive targeted warnings because normal HTML escaping is not sufficient there. Inside an `html` template, the ones `html` refuses are errors.
 - `esc()` inside an `html` template is reported as `html-escaped-twice`, and a `.join("")` of `html` values inside one as `html-joined-string`. Both would show escaped tags as text on the page.
 - A function that turns `&` and `<` into entities by hand gets `hand-written-html-escaper` on its name. When it is one `return` of its one parameter followed only by `.replace()` calls that write entities, the quick fix **Make escapeHtml() call esc() from @bascik/bascik/html** replaces its body with a call to `esc()` and adds the import.
@@ -304,7 +304,7 @@ When projects are nested, the closest enclosing project owns the file. Separate 
 
 Component discovery follows `directory.components` in the owning project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
-Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
+Config files, component directories, project HTML usage, and `.ts` and `.js` modules are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required: when a closed module starts or stops importing a helper, the open helper's markup diagnostics follow.
 
 ## How It Works
 

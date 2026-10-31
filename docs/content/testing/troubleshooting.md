@@ -521,6 +521,8 @@ The linter found a template literal with tags in a directive script (server, str
 
 When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
 
+When the value calls a function from your own module (`${productCard(p)}`), there is no quick fix either: if the function returns markup as a string, `html` would show its tags as text. Build that function's markup with `html` first. An XML template (a sitemap or feed) is told to use `esc()`, since `html` builds HTML.
+
 A hole where a tag or attribute name goes (`<h${level}>`) cannot be wrapped in `html`, which throws there: in build scripts and their helpers it is not reported, and in request-time code the message asks you to choose between fixed names in code. Other holes in such a template are told to use `esc()`.
 
 ### `hand-written-html-escaper`: NAME() is a hand-written HTML escaper

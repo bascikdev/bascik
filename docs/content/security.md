@@ -387,7 +387,7 @@ The rule follows values through string concatenation (`${first + last}`) and thr
 
 A function that escapes HTML by hand (a `.replace()` chain that writes `&amp;` and `&lt;`) is reported as `hand-written-html-escaper`: use `html`, or `esc()` for a plain string, instead of keeping your own.
 
-In the editor, the quick fix **Wrap template in html\`...\`** adds the tag and the import. It is not offered where `html` would throw (a tag name, an attribute name, a comment) or where the name `html` and the alias `safeHtml` are both taken. `bascik --check --fix` does not apply it, because the value changes from a string to an `html` value. Inside `html` templates, the sink rules become errors where `html` would throw. See the [Linter](/tools/linter#server-script-unescaped-markup) for configuration and suppression.
+In the editor, the quick fix **Wrap template in html\`...\`** adds the tag and the import. It is not offered where `html` would throw (a tag name, an attribute name, a comment), where a hole calls a project helper that may return markup, on an XML template (a sitemap or feed, which gets `esc()` advice), or where the name `html` and the alias `safeHtml` are both taken. `bascik --check --fix` does not apply it, because the value changes from a string to an `html` value. Inside `html` templates, the sink rules become errors where `html` would throw. See the [Linter](/tools/linter#server-script-unescaped-markup) for configuration and suppression.
 
 ![VS Code showing a server script whose template interpolates a query parameter without html: the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup-still@2x.webp)
 

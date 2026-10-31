@@ -47,8 +47,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * fields repeated on every section. Raise it only for new content, never to fit a format that wastes space.
  * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
  * index until the content lookup learned folder index.md files.
+ * 1.345 MB: server-script-unescaped-markup in build scripts and Node modules, and hand-written-html-escaper
+ * (tools/linter.md, testing/troubleshooting.md and the pages that point to them, about 11 KB of text).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_330_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
