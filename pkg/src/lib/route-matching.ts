@@ -316,46 +316,47 @@ const matchCatchAll = (
   return { params };
 };
 
-/** Exact and `[param]` matching against decoded path segments. Dynamic params decode once from raw segments. */
+/**
+ * Exact and `[param]` matching. An exact (static) route matches the decoded
+ * path segments, as hosts always have. A `[param]` route matches the raw
+ * request segments instead (doubled slashes collapse, as on the decoded
+ * path): each is decoded exactly once, so an encoded `%2F` can never forge a
+ * segment boundary and `100%2520` stays `100%20`. A structural match whose
+ * `[param]` value is unsafe (an encoded `/` or `\`, a dot segment, a control
+ * character) yields `{ invalid }`, so precedence is decided before the
+ * request is rejected, as for catch-all routes.
+ */
 const matchExactOrParam = (
   route: ApiRouteDefinition,
   routeSegments: string[],
   pathSegments: string[],
   rawNonEmptySegments: string[],
-): Record<string, string> | null => {
-  if (pathSegments.length !== routeSegments.length) return null;
-
+): CatchAllOutcome => {
   if (!route.isDynamic) {
-    return routeSegments.every((seg, i) => seg === pathSegments[i]) ? {} : null;
+    if (pathSegments.length !== routeSegments.length) return null;
+    return routeSegments.every((seg, i) => seg === pathSegments[i])
+      ? { params: {} }
+      : null;
   }
 
-  // When rawNonEmptySegments aligns with pathSegments (i.e. every non-empty raw segment
-  // corresponds to the non-empty decoded segment), extract from raw segment to decode once.
-  // Otherwise fall back to the decoded path segment.
-  const rawAligned = rawNonEmptySegments.length === pathSegments.length;
-
+  if (rawNonEmptySegments.length !== routeSegments.length) return null;
   const params: Record<string, string> = {};
+  let invalid: InvalidApiPathError | undefined;
   for (let i = 0; i < routeSegments.length; i++) {
     const rSeg = routeSegments[i];
-    const pSeg = pathSegments[i];
-
+    const decoded = decodeSegmentOnce(rawNonEmptySegments[i]);
     if (rSeg.startsWith("[") && rSeg.endsWith("]")) {
-      const paramName = rSeg.slice(1, -1);
-      if (rawAligned) {
-        const rawSeg = rawNonEmptySegments[i];
-        params[paramName] = decodeSegmentOnce(rawSeg) ?? rawSeg;
-      } else {
-        try {
-          params[paramName] = decodeURIComponent(pSeg);
-        } catch {
-          params[paramName] = pSeg;
-        }
-      }
-    } else if (rSeg !== pSeg) {
+      // Malformed encoding keeps the raw text, as it always has (hosts
+      // answer 400 for it before matching).
+      const reason = decoded === null ? null : unsafeDecodedSegment(decoded);
+      if (reason)
+        invalid ??= new InvalidApiPathError(`Invalid API path: ${reason}`);
+      else params[rSeg.slice(1, -1)] = decoded ?? rawNonEmptySegments[i];
+    } else if (decoded !== rSeg) {
       return null;
     }
   }
-  return params;
+  return invalid ? { invalid } : { params };
 };
 
 /**
@@ -370,9 +371,9 @@ const matchExactOrParam = (
  * `100%2520` are not decoded twice into spaces.
  *
  * Of all matching routes the most specific wins regardless of array order.
- * Throws `InvalidApiPathError` when the winner is a catch-all whose capture is
- * unsafe (malformed encoding, encoded separator, dot or empty segment, control
- * character).
+ * Throws `InvalidApiPathError` when the winner is a `[param]` or catch-all
+ * route whose capture is unsafe (malformed encoding, encoded separator, dot
+ * or empty segment, control character).
  */
 export const matchApiRoute = <R extends ApiRouteDefinition>(
   routes: R[],
@@ -410,14 +411,12 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(
     if (catchAllName !== null) {
       outcome = matchCatchAll(routeSegments, catchAllName, rawSegments);
     } else {
-      const rawNonEmptySegments = rawSegments.filter(Boolean);
-      const params = matchExactOrParam(
+      outcome = matchExactOrParam(
         route,
         routeSegments,
         pathSegments,
-        rawNonEmptySegments,
+        rawSegments.filter(Boolean),
       );
-      outcome = params ? { params } : null;
     }
 
     if (

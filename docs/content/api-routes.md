@@ -36,7 +36,7 @@ API route files live in `directory.api` (default: `src/api`). The URL path prefi
 
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
 
-Dynamic `[param]` values are percent-decoded once from the raw request path. `/api/users/100%2520` supplies the literal string `100%20`, not `100 `.
+Dynamic `[param]` values are percent-decoded once from the raw request path. `/api/users/100%2520` supplies the literal string `100%20`, not `100 `. A `[param]` value is always one path segment: an encoded `/` or `\` (`/api/users/a%2Fb`) never splits it into two and never reaches the handler, the request answers `400`, as it does for a catch-all.
 
 ### Catch-all routes
 
