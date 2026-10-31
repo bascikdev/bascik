@@ -157,6 +157,15 @@ When the shared group is what you want, silence it on the line above the attribu
 
 `bascik-ignore` covers its own line and the next, so for a group spread over many lines use `<!-- bascik-disable shared-name-group -->` and `<!-- bascik-enable -->`, or turn the rule off for the project with `"disabledRules": ["shared-name-group"]` in `bascik.ext.json`.
 
+### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
+
+Two rules are hints: advice that is easy to ignore and never fails a run.
+
+- `attr-prop-unsupplied` marks a `data-bascik-attr-*` binding in a component whose prop no usage supplies: no page, no other component, and no open editor buffer has a `<my-card data-bascik-prop-href="...">` for `data-bascik-attr-href="href"`. It cannot see usages written in Markdown or produced by a build script, which is why it is a hint.
+- `api-unguarded-json` marks a `request.json()` (or `req.json()`) call in an API route that is not inside a `try` block, because a malformed body then throws and the route answers 500.
+
+Silence either with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks. Hints are shown in the editor and by this command, and never fail anything:

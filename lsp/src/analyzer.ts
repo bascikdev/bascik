@@ -680,10 +680,18 @@ export function createDiagnostics(
         severity = DiagnosticSeverity.Information;
       }
       diagnostics.push({
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: Math.min(text.length, 10) },
-        },
+        range: diag.range
+          ? {
+              start: {
+                line: diag.range.startLine,
+                character: diag.range.startChar,
+              },
+              end: { line: diag.range.endLine, character: diag.range.endChar },
+            }
+          : {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: Math.min(text.length, 10) },
+            },
         message: diag.message,
         severity,
         source: "bascik",

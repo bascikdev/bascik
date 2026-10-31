@@ -214,9 +214,19 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
     (m) => m.index,
   );
   const guarded = insideTryBlocks(code, jsonCalls);
-  for (const insideTry of guarded) {
+  for (const [callIndex, insideTry] of guarded.entries()) {
     if (!insideTry) {
+      const callStart = jsonCalls[callIndex];
+      const callEnd = code.indexOf("(", callStart);
+      const lineStart = text.lastIndexOf("\n", callStart - 1) + 1;
+      const line = (text.slice(0, callStart).match(/\n/g) ?? []).length;
       diagnostics.push({
+        range: {
+          startLine: line,
+          startChar: callStart - lineStart,
+          endLine: line,
+          endChar: callEnd - lineStart,
+        },
         code: "api-unguarded-json",
         message: `Calling request.json() without a surrounding try/catch will throw an unhandled error on malformed JSON payloads (resulting in a 500 response). Consider wrapping in a try/catch or validating input.`,
         severity: "info",

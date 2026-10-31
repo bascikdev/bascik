@@ -702,3 +702,37 @@ describe("attr-prop-unsupplied", () => {
     ).toContain("attr-prop-unsupplied");
   });
 });
+
+describe("api-unguarded-json in the editor", () => {
+  const route = [
+    "export const POST = async (request: Request) => {",
+    "  const body = await request.json();",
+    '  return new Response("ok");',
+    "};",
+  ].join("\n");
+
+  it("marks the call itself, so the hint sits where the fix goes", () => {
+    const [hint] = createDiagnostics(
+      TextDocument.create("file:///site/src/api/x.ts", "typescript", 1, route),
+      "/site/src/api/x.ts",
+      snapshot(),
+    ).filter((d) => d.code === "api-unguarded-json");
+    expect(hint.range).toEqual({
+      start: { line: 1, character: 21 },
+      end: { line: 1, character: 33 },
+    });
+  });
+
+  it("is silenced by bascik-ignore on the line above the call", () => {
+    const ignored = route.replace(
+      "  const body",
+      "  // bascik-ignore api-unguarded-json\n  const body",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", ignored)).not.toContain(
+      "api-unguarded-json",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", route)).toContain(
+      "api-unguarded-json",
+    );
+  });
+});
