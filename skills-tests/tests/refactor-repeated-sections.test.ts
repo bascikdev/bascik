@@ -14,6 +14,7 @@ import {
   diffInstances,
   findRepeated,
   fingerprint,
+  matchSection,
   parseCliArgs,
 } from "../../skills/bascik-refactor/scripts/repeated-sections.mjs";
 
@@ -81,6 +82,36 @@ describe("findRepeated", () => {
         ],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("matchSection", () => {
+  // Too small to fingerprint, so only the key or the heading text can find it.
+  const small = (key: string, label: string) => ({
+    key,
+    label,
+    tree: t("DIV", t("P")),
+  });
+
+  it("finds the target's section by key with whitespace removed: React markup and formatted HTML key one heading alike", () => {
+    const list = [small("SECTION:MILK FROTHER", "MILK FROTHER")];
+    expect(matchSection(list, "SECTION:MILKFROTHER", "none")).toBe(list[0]);
+  });
+
+  it("finds it by heading text with whitespace removed when the wrapper changed", () => {
+    const list = [small("DIV:Milk frother deluxe", "Milk frother deluxe")];
+    expect(matchSection(list, "SECTION:Milkfrother\ndeluxe", "none")).toBe(
+      list[0],
+    );
+  });
+
+  it("does not match a section whose text really differs, or an empty heading", () => {
+    const list = [
+      small("SECTION:Milk frother", "Milk frother"),
+      small("DIV:", ""),
+    ];
+    expect(matchSection(list, "SECTION:Milk frothers", "none")).toBeUndefined();
+    expect(matchSection(list, "ASIDE:", "none")).toBeUndefined();
   });
 });
 

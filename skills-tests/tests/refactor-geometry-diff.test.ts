@@ -23,11 +23,13 @@ type Fake = {
   style?: Partial<{ display: string; visibility: string; opacity: string }>;
 };
 
-/** A fake document and window: querySelectorAll returns the elements, getComputedStyle their style. */
+/** A fake document and window: querySelectorAll returns the elements (each with one text node), getComputedStyle their style. */
 const fakePage = (els: Fake[]) => {
   const elements = els.map((e) => ({
+    nodeType: 1,
     tagName: e.tag.toUpperCase(),
     textContent: e.text,
+    childNodes: [{ nodeType: 3, textContent: e.text }],
     closest: (selector: string) =>
       (e.inside ?? []).includes(selector) ? {} : null,
     getBoundingClientRect: () =>
@@ -113,6 +115,28 @@ describe("collectNodes", () => {
     const nodes = collectNodes(doc, view);
     expect(nodes["A:Read more"]).toEqual({ x: 1, y: 1, w: 50, h: 10 });
     expect(Object.keys(nodes)).toContain(`P:${"x".repeat(70)}`);
+  });
+
+  it("cuts keys after 70 visible characters, so React markup and formatted markup cut at the same place", () => {
+    const heading = "Milk frother deluxe editions";
+    const body =
+      "Silky microfoam for lattes and flat whites at home, in seconds.";
+    const keyOf = (text: string) => {
+      const { doc, view } = fakePage([{ tag: "a", text }]);
+      return Object.keys(collectNodes(doc, view))[0];
+    };
+    const a = keyOf(`${heading}${body}`);
+    const b = keyOf(`\n  ${heading}\n  ${body}\n`);
+    expect(a).not.toBe(b);
+    expect(a.replace(/\s+/g, "")).toBe(b.replace(/\s+/g, ""));
+    expect(a.slice(2).replace(/\s+/g, "")).toHaveLength(70);
+    const prod = { [a]: { x: 0, y: 0, w: 300, h: 80 } };
+    const target = { [b]: { x: 0, y: 0, w: 300, h: 80 } };
+    expect(diffGeometry(prod, target)).toMatchObject({
+      ok: true,
+      missing: [],
+      extra: [],
+    });
   });
 
   it("leaves out nodes inside a --mask region, so a rotating carousel's text is not compared", () => {

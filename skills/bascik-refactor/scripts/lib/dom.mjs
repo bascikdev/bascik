@@ -101,21 +101,32 @@ function capText(text, max) {
  * markup as a hidden list, visibility hidden or opacity 0 text, scripts and styles add nothing), with each
  * <time datetime> read as its datetime (a relative date that ticks over between the two loads is still the same text),
  * whitespace collapsed for display and cut after `max` visible characters (default 80; Infinity keeps all). When `el`
- * itself is not rendered (a closed panel), all its text counts, so it has the key it has once open.
+ * itself is not rendered (a closed panel), all its text counts, so it has the key it has once open. Text inside a
+ * display: contents wrapper (no box of its own) counts when the wrapper's nearest ancestor with a box is rendered.
+ * collectNodes in geometry-diff.mjs reads text the same way (it must be self-contained); keep the two in step.
  *
  * Markup formatting still shows in the result: React writes no whitespace between elements, formatted HTML has
  * newlines there, so "MILK<br>FROTHER" reads "MILKFROTHER" on one side and "MILK FROTHER" on the other. Compare keys
  * with keyMatch (lib/checks.mjs; matchKeyInPage in the page), which removes all whitespace; keep this text for messages.
  */
 function keyText(el, max) {
-  const shown = (node) =>
-    typeof node.checkVisibility === "function"
+  const limit = max ?? 80;
+  // A display: contents element has no box, so checkVisibility() is false for it although its text is rendered: its
+  // nearest ancestor with a box decides (visibility still applies, since the text inherits it).
+  const shown = (node) => {
+    const cs = getComputedStyle(node);
+    if (cs.display === "contents")
+      return (
+        cs.visibility === "visible" &&
+        (!node.parentElement || shown(node.parentElement))
+      );
+    return typeof node.checkVisibility === "function"
       ? node.checkVisibility({
           opacityProperty: true,
           visibilityProperty: true,
         })
-      : getComputedStyle(node).display !== "none" &&
-        getComputedStyle(node).visibility === "visible";
+      : cs.display !== "none" && cs.visibility === "visible";
+  };
   const every = !shown(el);
   const seen = new Map();
   const visible = (node) => {
@@ -124,22 +135,29 @@ function keyText(el, max) {
     return seen.get(node);
   };
   let out = "";
+  // Visible characters read so far: the walk stops once the cut is reached, so a long subtree is not read in full.
+  let kept = 0;
+  const add = (text) => {
+    out += text;
+    kept += text.replace(/\s+/g, "").length;
+  };
   const walk = (node) => {
+    if (kept >= limit) return;
     if (node.nodeType === 3) {
-      if (visible(node.parentElement ?? el)) out += node.textContent;
+      if (visible(node.parentElement ?? el)) add(node.textContent);
       return;
     }
     if (node.nodeType !== 1) return;
     if (["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(tagOf(node)))
       return;
     if (node.localName === "time" && node.hasAttribute("datetime")) {
-      if (visible(node)) out += ` ${node.getAttribute("datetime")} `;
+      if (visible(node)) add(` ${node.getAttribute("datetime")} `);
       return;
     }
     for (const child of node.childNodes) walk(child);
   };
   walk(el);
-  return capText(norm(out), max);
+  return capText(norm(out), limit);
 }
 
 /**

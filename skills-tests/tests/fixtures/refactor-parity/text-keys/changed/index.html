@@ -74,6 +74,24 @@
         width: 48px;
         height: 48px;
       }
+      .card {
+        display: block;
+        max-width: 960px;
+        margin: 0 auto 24px;
+        padding: 16px;
+        color: inherit;
+        text-decoration: none;
+      }
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+      .card p {
+        margin: 0;
+      }
+      .contents {
+        display: contents;
+      }
       .foot {
         border-top: 1px solid #e3e7ef;
         padding: 24px 16px;
@@ -114,10 +132,14 @@
           <circle cx="24" cy="24" r="20" fill="#3156d3"></circle>
         </svg>
       </div>
+      <a class="card" href="/deluxe" data-testid="deluxe-card">
+        <h3>Milk frother deluxe editions</h3>
+        <p>Silky microfoam for lattes and flat whites at home, in seconds.</p>
+      </a>
     </main>
     <footer class="foot" data-testid="site-footer">
       <a href="/changelog">Milk frother v5.0.1</a>
-      <p>Copyright 2025 Milk frother</p>
+      <p><span class="contents">Copyright 2025</span> Milk frother</p>
     </footer>
   </body>
 </html>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Geometry diff: open production and the Bascik target side by side at every breakpoint matrix width and compare
-// the box of every visible heading, paragraph, button and link, matched by tag plus normalized text.
+// the box of every visible heading, paragraph, button and link, matched by tag plus the text a reader sees.
 // Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. Read-only: it only loads
 // pages and writes the optional --out report.
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -55,8 +55,9 @@ ${POLITE_HELP}
 export const DEFAULT_THRESHOLDS = Object.freeze({ dx: 6, dy: 12, dw: 12 });
 
 /**
- * Every visible h1-h4, p, button and a, keyed by `TAG:normalized text` (cut at 70 characters; the first occurrence
- * wins), with its rounded box. Hidden, transparent, empty and smaller-than-5px nodes are skipped, and so are nodes
+ * Every visible h1-h4, p, button and a, keyed by `TAG:text`, with its rounded box: the text a reader sees (rendered
+ * descendants only, text in a display: contents wrapper included), cut after 70 characters that are not whitespace, so
+ * both sides cut at the same place; diffGeometry matches keys with whitespace removed. The first occurrence wins. Hidden, transparent, empty and smaller-than-5px nodes are skipped, and so are nodes
  * inside one of `masks` (CSS selectors of documented dynamic regions).
  *
  * Self-contained so Playwright can serialize it into the page: `page.evaluate(collectNodes)`. Pass a document and
@@ -72,6 +73,64 @@ export function collectNodes(doc = document, view = window, masks = []) {
         return false;
       }
     });
+  const MAX = 70;
+  // Whether `node` shows its own text: rendered, not visibility hidden, not transparent. A display: contents element
+  // has no box (checkVisibility() is false for it), so its nearest ancestor with a box decides.
+  const shown = (node) => {
+    const cs = view.getComputedStyle(node);
+    if (cs.display === "contents")
+      return (
+        cs.visibility === "visible" &&
+        (!node.parentElement || shown(node.parentElement))
+      );
+    return typeof node.checkVisibility === "function"
+      ? node.checkVisibility({
+          opacityProperty: true,
+          visibilityProperty: true,
+        })
+      : cs.display !== "none" &&
+          cs.visibility !== "hidden" &&
+          cs.opacity !== "0";
+  };
+  // The text a reader sees in `el`, as keyText in lib/dom.mjs reads it (keep the two in step): rendered descendants
+  // only, each <time datetime> read as its datetime, whitespace collapsed, cut after MAX characters that are not
+  // whitespace, so React markup (no whitespace between elements) and formatted HTML cut at the same place.
+  const textOf = (el) => {
+    const seen = new Map();
+    const visible = (node) => {
+      if (node === el) return true;
+      if (!seen.has(node)) seen.set(node, shown(node));
+      return seen.get(node);
+    };
+    let out = "";
+    let kept = 0;
+    const add = (text) => {
+      out += text;
+      kept += text.replace(/\s+/g, "").length;
+    };
+    const walk = (node) => {
+      if (kept >= MAX) return;
+      if (node.nodeType === 3) {
+        if (visible(node.parentElement ?? el)) add(node.textContent || "");
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const tag = String(node.tagName).toUpperCase();
+      if (["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(tag)) return;
+      if (tag === "TIME" && node.hasAttribute("datetime")) {
+        if (visible(node)) add(` ${node.getAttribute("datetime")} `);
+        return;
+      }
+      for (const child of node.childNodes) walk(child);
+    };
+    walk(el);
+    const value = norm(out);
+    let count = 0;
+    let i = 0;
+    for (; i < value.length && count < MAX; i++)
+      if (!/\s/.test(value[i])) count++;
+    return value.slice(0, i).trim();
+  };
   const map = new Map();
   for (const el of doc.querySelectorAll("h1, h2, h3, h4, p, button, a")) {
     if (masks.length && masked(el)) continue;
@@ -84,9 +143,9 @@ export function collectNodes(doc = document, view = window, masks = []) {
       continue;
     const r = el.getBoundingClientRect();
     if (r.width < 5 || r.height < 5) continue;
-    const text = norm(el.textContent || "");
+    const text = textOf(el);
     if (!text) continue;
-    const key = `${el.tagName}:${text.slice(0, 70)}`;
+    const key = `${el.tagName}:${text}`;
     if (!map.has(key))
       map.set(key, {
         x: Math.round(r.x),

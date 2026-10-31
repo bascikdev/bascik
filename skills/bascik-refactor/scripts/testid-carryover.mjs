@@ -283,7 +283,8 @@ function collectHooks(arg) {
     const anchor = {
       tag: tagOf(el),
       role: roleOf(el),
-      name: accName(el).slice(0, 70),
+      // Cut after 70 visible characters (capText), so a long name cuts at the same place on both sides.
+      name: capText(accName(el), 70),
       text: keyText(el, 70),
     };
     const id = matchKeyInPage(`${anchor.tag}|${anchor.name}|${anchor.text}`);

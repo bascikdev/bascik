@@ -216,7 +216,8 @@ was partial (see "The iteration loop and the gate" below). Each check is also it
 
 Rules every check follows: elements are matched by stable anchors (test id, role and accessible name, in-page `href`,
 tag and text), never by class names; text is the text a reader sees (a closed menu kept in the markup as a hidden list
-adds nothing) and is compared with all whitespace removed, so React's markup with no whitespace between elements
+adds nothing, text in a `display: contents` wrapper counts), is cut after the same number of visible characters on
+both sides and is compared with all whitespace removed, so React's markup with no whitespace between elements
 matches the same page formatted by Prettier: keep the target's source formatted, never strip whitespace to satisfy a
 check; each page is captured with the settings above and the waits in
 `scripts/lib/capture.mjs`, then waits until 5 s after it started loading (`--settle-ms`) and until the page has had no

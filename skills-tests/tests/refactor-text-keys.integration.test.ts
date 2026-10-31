@@ -95,6 +95,92 @@ describe("text keys ignore markup whitespace and text the reader never sees", ()
     }
   }, 60_000);
 
+  it("keyText reads text inside a display: contents wrapper, which has no box of its own", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.setContent(
+        `<p id="a"><span style="display:contents">Hello</span> world</p>` +
+          `<p id="b">Hello world</p>` +
+          // A wrapper with no box inside a hidden one, or hidden itself, still shows nothing.
+          `<p id="c"><span style="display:none"><span style="display:contents">Gone</span></span> kept</p>` +
+          `<p id="d"><span style="display:contents;visibility:hidden">Ghost</span> kept</p>` +
+          `<p id="e"><span style="display:contents"><span style="display:contents">Deep</span></span> text</p>`,
+      );
+      const keys: Record<string, string> = await inPage(
+        page,
+        `function () { return Object.fromEntries(["a", "b", "c", "d", "e"].map((id) => [id, textKey(document.getElementById(id))])); }`,
+      );
+      expect(keys.a).toBe("P:Hello world");
+      expect(keys.a).toBe(keys.b);
+      expect(keys.c).toBe("P:kept");
+      expect(keys.d).toBe("P:kept");
+      expect(keys.e).toBe("P:Deep text");
+    } finally {
+      await context.close();
+    }
+  }, 60_000);
+
+  it("geometry-diff: a long card link and a display: contents wrapper match across React and formatted markup", async () => {
+    const { collectNodes, diffGeometry } = await import(
+      join(SCRIPTS, "geometry-diff.mjs")
+    );
+    const snap = async (side: string) => {
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 800 },
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${server.origin}/text-keys/${side}/`);
+        return await page.evaluate(collectNodes);
+      } finally {
+        await context.close();
+      }
+    };
+    const prod = await snap("prod");
+    const card = Object.keys(prod).find((k) =>
+      k.startsWith("A:Milk frother deluxe"),
+    );
+    // The card's text is longer than the cut, so where the cut lands must not depend on markup whitespace.
+    expect(card?.replace(/\s+/g, "").length).toBeGreaterThan(60);
+    const same = diffGeometry(prod, await snap("target"));
+    expect(same, JSON.stringify(same, null, 2)).toMatchObject({
+      ok: true,
+      missing: [],
+      extra: [],
+    });
+    const changed = diffGeometry(prod, await snap("changed"));
+    expect(changed.missing).toContain("H1:Froth at home");
+    expect(changed.extra).toContain("H1:Froth at work");
+  }, 120_000);
+
+  it("testid-carryover: a hook on a long card link stays on the same element across React and formatted markup", async () => {
+    const mod = (await import(
+      join(SCRIPTS, "testid-carryover.mjs")
+    )) as CheckModule;
+    const empty = mkdtempSync(join(out, "legacy-"));
+    const check = (target: string) =>
+      mod.runCheck(browser, {
+        prod: `${server.origin}/text-keys/prod`,
+        target: `${server.origin}/text-keys/${target}`,
+        route: "/",
+        cases: [{ width: 1280, height: 800 }],
+        legacySrc: empty,
+        targetSrc: empty,
+        settleMs: 0,
+      });
+    const same = await check("target");
+    expect(same.findings, show(same)).toEqual([]);
+    // A real text change still moves the hook: the hero's heading changed.
+    const changed = await check("changed");
+    expect(
+      changed.findings.some(
+        (f) => f.kind === "moved" && /data-testid="hero"/.test(f.message),
+      ),
+      show(changed),
+    ).toBe(true);
+  }, 240_000);
+
   for (const check of ["presence-by-route", "overlap-diff", "spacing-diff"])
     it(`${check}: React markup and the same page formatted by Prettier match`, async () => {
       const r = await run(check, "target");
