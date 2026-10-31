@@ -67,7 +67,7 @@ When configuring a custom `base` in `bascik.config.ts`, API routes compose clean
 
 A route file exports functions corresponding to standard HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
 
-- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods.
+- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods. `TRACE`, `TRACK` and `CONNECT` cannot be exported (a web `Request` cannot carry them), so they always get that `405`.
 - **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
 
@@ -77,7 +77,7 @@ This recording sends two real requests to a dev server whose `src/api/users/[id]
 
 ## The Request and Response Contract & Portability
 
-Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. That makes the handler _function_ reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
+Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. Its pathname is the request path as sent: a request for `//api/ping` has the pathname `//api/ping`, never the host `api`. That makes the handler _function_ reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
 
 Reusable code is not the same as a deployable service. Three more things have to exist on any host before a handler answers traffic: the route table (`src/api/users/[id].ts` to `/api/users/:id`), the method dispatch and `Allow` semantics described above, and whatever the handler imports. A handler that reads `process.env`, opens a database socket, or imports a Node-only package runs where those things exist.
 

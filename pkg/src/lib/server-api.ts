@@ -30,7 +30,51 @@ import {
 } from "./response-sink.ts";
 import { isNetworkResetError } from "./server.ts";
 import { scriptRegistry } from "./script-registry.ts";
+import { allowHeaderFor } from "./request-execution.ts";
 import type { BascikRequest, BascikResponse } from "./server.ts";
+
+/** Methods the fetch `Request` constructor refuses (Fetch, "forbidden method"). */
+const FETCH_FORBIDDEN_METHODS = new Set(["CONNECT", "TRACE", "TRACK"]);
+
+/**
+ * 405 with the route's `Allow` for a method no `Request` can carry. The
+ * module is loaded only to name its methods; a load failure is the same
+ * logged 500 any method gets.
+ */
+const rejectForbiddenMethod = async (
+  res: BascikResponse,
+  match: ApiRouteMatch,
+  secHeaders: Record<string, string>,
+): Promise<number> => {
+  let allow: string;
+  try {
+    const loaded = await scriptRegistry.load(match.route.filePath);
+    allow = allowHeaderFor(loaded.module as Record<string, unknown>);
+  } catch (err) {
+    console.error(
+      "[bascik] Failed to load API route module %s:",
+      match.route.filePath,
+      (err as Error)?.stack ?? String(err),
+    );
+    const body = "Internal Server Error";
+    res.respond(500, {
+      ...secHeaders,
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": String(Buffer.byteLength(body)),
+    });
+    res.end(body);
+    return 500;
+  }
+  const body = "Method Not Allowed";
+  res.respond(405, {
+    ...secHeaders,
+    allow,
+    "content-type": "text/plain; charset=utf-8",
+    "content-length": String(Buffer.byteLength(body)),
+  });
+  res.end(body);
+  return 405;
+};
 
 /**
  * The largest response body `dispatch` buffers to give it a Content-Length
@@ -312,6 +356,14 @@ export class ApiRouteRegistry {
     // large before a byte is read. The handler never runs and its request
     // carries no body, so nothing pulls the upload (or, for an
     // `Expect: 100-continue` client, asks for it) just to reject it.
+    // CONNECT, TRACE and TRACK are forbidden methods to fetch: the
+    // `Request` constructor throws on them, so they never reach the shared
+    // method policy. No handler can be exported for them, so they get the
+    // policy's answer for any unexported method, 405 with Allow.
+    if (FETCH_FORBIDDEN_METHODS.has(req.method?.toUpperCase() ?? "")) {
+      return rejectForbiddenMethod(res, match, secHeaders);
+    }
+
     const declaredTooLarge = declaresBodyOverLimit(req.method, req.headers);
     const webReq = createWebRequest(
       declaredTooLarge ? { ...req, rawStream: undefined } : req,
