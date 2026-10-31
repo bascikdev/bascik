@@ -33,6 +33,20 @@ export const getOnTheFlyCompressionCount = (): number => onTheFlyCompressions;
 export type RepresentationEncoding = "identity" | "br" | "gzip";
 
 /**
+ * The file suffix of each precompressed sidecar, keyed by the content coding
+ * it serves: `<asset>.br` and `<asset>.gz` (not `.gzip`, the coding's name).
+ * The build (`precompress.ts`) writes these and the server reads them, so
+ * both take the suffix from here.
+ */
+export const PRECOMPRESSED_SIDECAR_SUFFIX = {
+  br: ".br",
+  gzip: ".gz",
+} as const satisfies Record<
+  Exclude<RepresentationEncoding, "identity">,
+  string
+>;
+
+/**
  * A selected static representation owns its body, strong validator, and
  * length as one immutable unit. Every field is derived from the same bytes
  * (`buffer`) that are delivered on the wire, so a response never advertises a
@@ -97,8 +111,8 @@ const getVerifiedPrecompressedBytes = async (
   encoding: "br" | "gzip",
   rawEtag: string,
 ): Promise<Buffer | null> => {
-  const sidecarPath = `${fullPath}.${encoding}`;
-  const metaPath = `${fullPath}.${encoding}.bmeta`;
+  const sidecarPath = `${fullPath}${PRECOMPRESSED_SIDECAR_SUFFIX[encoding]}`;
+  const metaPath = `${sidecarPath}.bmeta`;
   let sidecar: Buffer;
   try {
     sidecar = await readFile(sidecarPath);
