@@ -51,15 +51,15 @@ export default defineConfig({
 
 Each exec entry in `pipeline.exec` accepts:
 
-| Property            | Type                            | Default         | Description                                                                                                         |
-| :------------------ | :------------------------------ | :-------------- | :------------------------------------------------------------------------------------------------------------------ |
-| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                               |
-| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                             |
-| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                            |
-| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root, and the directory must exist |
-| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                              |
-| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                     |
-| `timeout`           | `number`                        | `60000`         | Maximum execution time in milliseconds before terminating                                                           |
+| Property            | Type                            | Default         | Description                                                                                                                                    |
+| :------------------ | :------------------------------ | :-------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                                                          |
+| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                                                        |
+| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                                                       |
+| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root, and the directory must exist                            |
+| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                                                         |
+| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                                                |
+| `timeout`           | `number`                        | `60000`         | Maximum run time in milliseconds, in every phase including `parallel`; `0` means no limit. See [Timeouts and stopping](#timeouts-and-stopping) |
 
 ```ts
 // Full exec entry configuration
@@ -73,6 +73,12 @@ Each exec entry in `pipeline.exec` accepts:
   watch: ['vendor/src/**'],
 }
 ```
+
+### Timeouts and stopping
+
+`timeout` applies to every phase, `parallel` included, so a script that keeps running (a CSS or content watcher started as a `parallel` entry) is stopped after 60 seconds unless it sets `timeout: 0`. A build still waits for every `parallel` script, so a script that never exits keeps `bascik --build` from finishing; start a long-running watcher only in dev, for example from a mode export.
+
+When a script times out, Bascik sends `SIGTERM` to the script and to every process it started (a wrapper's `tailwindcss --watch`, a shell), then `SIGKILL` 500 ms later to whatever is still running, and reports `exec "<script>" timed out after <timeout>ms` once the script has exited. The rest of that phase does not run. On Windows the whole process tree is ended with `taskkill /T /F`. Bascik stops running scripts and their processes the same way whenever it exits: Ctrl+C, a failed build or dev boot, or an exec failure under `pipeline.onExecError: 'error'`. A process that detaches itself into its own session is outside that tree, so have the script keep its children attached.
 
 ### Watching source inputs
 

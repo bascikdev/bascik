@@ -114,6 +114,7 @@ import {
   resetActiveExecChildrenForTests,
 } from "./exec.ts";
 import { type FrameworkClock } from "./clock.ts";
+import { stopBeforeExit } from "./exit-stoppers.ts";
 
 const cfg = BascikConfig as {
   pipeline: { exec: typeof BascikConfig.pipeline.exec };
@@ -639,10 +640,17 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.advanceTimersByTime(999);
     expect(proc.kill).not.toHaveBeenCalled();
 
-    // At timeout (1000ms): SIGTERM fired and promise rejected
+    // At timeout (1000ms): SIGTERM fired. The promise waits for the child
+    // to exit, so the next phase never overlaps a dying script.
+    let settled = false;
+    void promise.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
     vi.advanceTimersByTime(1);
     expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-    await expect(promise).rejects.toThrow(/timed out after 1000ms/);
+    await Promise.resolve();
+    expect(settled).toBe(false);
 
     // 499ms after SIGTERM: SIGKILL not yet fired
     vi.advanceTimersByTime(499);
@@ -652,6 +660,10 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.advanceTimersByTime(1);
     expect(proc.kill).toHaveBeenCalledTimes(2);
     expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
+
+    // A child that never reports close after SIGKILL is given up on 500ms later.
+    vi.advanceTimersByTime(500);
+    await expect(promise).rejects.toThrow(/timed out after 1000ms/);
   });
 
   it("does not fire SIGKILL if child closes during the 500ms escalation window", async () => {
@@ -672,11 +684,11 @@ describe("exec timeout escalation and lifecycle", () => {
     // Advance to timeout
     vi.advanceTimersByTime(1000);
     expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-    await expect(promise).rejects.toThrow(/timed out after 1000ms/);
 
-    // Child closes 200ms into escalation
+    // Child closes 200ms into escalation; the timeout is reported then
     vi.advanceTimersByTime(200);
     closeCb?.(0);
+    await expect(promise).rejects.toThrow(/timed out after 1000ms/);
 
     // Advance past escalation deadline
     vi.advanceTimersByTime(400);
@@ -792,6 +804,35 @@ describe("exec timeout escalation and lifecycle", () => {
     expect(proc.kill).toHaveBeenCalledTimes(1); // No SIGKILL needed
   });
 
+  it("stops running exec children on every exit path, not only graceful shutdown", async () => {
+    // exitAfterStopping (CLI failure exits, a dev bind failure, the crash
+    // net) runs only the exit stoppers before process.exit.
+    expect(stopBeforeExit()).toBeNull();
+
+    vi.useFakeTimers();
+    let closeCb: ((code: number) => void) | undefined;
+    const proc = {
+      kill: vi.fn(),
+      on: vi.fn((event: string, cb: any) => {
+        if (event === "close") closeCb = cb;
+        return proc;
+      }),
+    };
+    mockSpawn.mockImplementationOnce(() => proc as any);
+    cfg.pipeline.exec = [
+      { script: "scripts/css-watch.ts", phase: "parallel", timeout: 0 },
+    ];
+    void startExecParallel();
+    expect(getActiveExecChildrenCount()).toBe(1);
+
+    const stopping = stopBeforeExit();
+    expect(stopping).not.toBeNull();
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    closeCb?.(0);
+    await stopping;
+    expect(getActiveExecChildrenCount()).toBe(0);
+  });
+
   it("executes options.clock injection when provided", async () => {
     let clockNow = 1000;
     const timeouts = new Map<number, { cb: () => void; delay: number }>();
@@ -829,6 +870,16 @@ describe("exec timeout escalation and lifecycle", () => {
     // Fire timeout on custom clock
     timeoutEntry.cb();
     expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    // The child never closes: run the SIGKILL escalation and the grace
+    // period on the same injected clock.
+    timeouts.delete(Array.from(timeouts.keys())[0]);
+    for (let step = 0; step < 2; step++) {
+      const [id, next] = Array.from(timeouts.entries())[0];
+      expect(next.delay).toBe(500);
+      timeouts.delete(id);
+      next.cb();
+    }
+    expect(proc.kill).toHaveBeenLastCalledWith("SIGKILL");
     await expect(promise).rejects.toThrow(/timed out after 2000ms/);
   });
 });

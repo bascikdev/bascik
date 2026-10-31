@@ -5,7 +5,61 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { realpathSync } from "node:fs";
-import { runScript, resetActiveExecChildrenForTests } from "./exec.ts";
+import {
+  getActiveExecChildrenCount,
+  runScript,
+  resetActiveExecChildrenForTests,
+} from "./exec.ts";
+import { stopBeforeExit } from "./exit-stoppers.ts";
+
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitFor = async (check: () => boolean, ms = 5000): Promise<void> => {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error("condition not met in time");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
+/**
+ * A wrapper script that starts a long-lived grandchild (as a script running
+ * `tailwindcss --watch` would) and writes its pid. With `ignoreTerm` the
+ * wrapper also ignores SIGTERM, so only the SIGKILL escalation ends it.
+ */
+const writeWrapper = async (ignoreTerm: boolean): Promise<string> => {
+  await mkdir(join(project, "scripts"), { recursive: true });
+  const script = join("scripts", ignoreTerm ? "stubborn.mjs" : "wrapper.mjs");
+  await writeFile(
+    join(project, script),
+    `import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+${ignoreTerm ? 'process.on("SIGTERM", () => {});' : ""}
+const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+writeFileSync("grandchild.pid", String(grandchild.pid));
+setInterval(() => {}, 1000);
+`,
+  );
+  return script;
+};
+
+const grandchildPid = async (): Promise<number> => {
+  await waitFor(() => {
+    try {
+      return realpathSync(join(project, "grandchild.pid")) !== "";
+    } catch {
+      return false;
+    }
+  });
+  return Number(await readFile(join(project, "grandchild.pid"), "utf8"));
+};
 
 let project: string;
 
@@ -54,3 +108,47 @@ writeFileSync("ran.txt", process.cwd());
     );
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "exec timeout and exit leave no process behind",
+  () => {
+    it("kills the processes a timed-out script started", async () => {
+      const script = await writeWrapper(false);
+      const run = runScript({ script, timeout: 1500 });
+      const pid = await grandchildPid();
+      expect(isAlive(pid)).toBe(true);
+
+      await expect(run).rejects.toThrow(
+        `exec "${script}" timed out after 1500ms`,
+      );
+      await waitFor(() => !isAlive(pid));
+    });
+
+    it("settles a timeout only after the script has exited", async () => {
+      const script = await writeWrapper(true);
+      const run = runScript({ script, timeout: 1500 });
+      const pid = await grandchildPid();
+
+      await expect(run).rejects.toThrow("timed out after 1500ms");
+      // The wrapper ignored SIGTERM; by the time the run settles SIGKILL has
+      // ended it, so nothing of this run is still active.
+      expect(getActiveExecChildrenCount()).toBe(0);
+      await waitFor(() => !isAlive(pid));
+    });
+
+    it("stops a running parallel script and its children before any exit", async () => {
+      const script = await writeWrapper(false);
+      const run = runScript({ script, phase: "parallel", timeout: 0 });
+      void run.catch(() => undefined);
+      const pid = await grandchildPid();
+
+      // exitAfterStopping (a failed build, a dev bind failure, the crash net)
+      // runs only the exit stoppers before process.exit.
+      const stopping = stopBeforeExit();
+      expect(stopping).not.toBeNull();
+      await stopping;
+      await waitFor(() => getActiveExecChildrenCount() === 0);
+      await waitFor(() => !isAlive(pid));
+    });
+  },
+);
