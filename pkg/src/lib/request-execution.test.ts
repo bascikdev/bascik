@@ -466,6 +466,60 @@ describe("dispatchApiHandler", () => {
     expect(res.body).toBeNull();
   });
 
+  it("derived HEAD cancels the GET handler's body, so a streamed upstream is released (F088)", async () => {
+    const cancel = vi.fn();
+    let pulls = 0;
+    const streaming = {
+      GET: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              pulls++;
+              controller.enqueue(new TextEncoder().encode("chunk"));
+            },
+            cancel,
+          }),
+          { headers: { "content-type": "text/plain" } },
+        ),
+    };
+    const res = await dispatchApiHandler(
+      streaming,
+      new Request("http://x/api/u/7", { method: "HEAD" }),
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toBeNull();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(pulls).toBeLessThanOrEqual(1);
+  });
+
+  it("misuse: derived HEAD over a GET body whose cancel() throws still answers with the headers", async () => {
+    const onError = vi.fn();
+    const failing = {
+      GET: async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              throw new Error("cancel failed");
+            },
+          }),
+          { status: 203 },
+        ),
+    };
+    const res = await dispatchApiHandler(
+      failing,
+      new Request("http://x/api/u/7", { method: "HEAD" }),
+      ctx,
+      { onError },
+    );
+    expect(res.status).toBe(203);
+    expect(res.body).toBeNull();
+    // A rejected cancel() is swallowed: no unhandled rejection, no log.
+    await tick();
+    await tick();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("passes params and the request through and preserves multiple Set-Cookie", async () => {
     const res = await dispatchApiHandler(
       mod,
