@@ -874,10 +874,13 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   const componentName = rawFileName.split(".")[0].toLowerCase();
   if (!componentName) return;
   // A stylesheet that is not itself a component's companion still reaches the
-  // pages of every component that imports it.
+  // pages of every component that imports it, and a module colocated in a
+  // component folder (`faq-list/faqs.ts`, named after no component) reaches
+  // every page whose scripts imported it.
   const pagesToTranspile = withRequestRenderedPages([
     ...mem.pagesThisComponentIsUsedOn(componentName),
     ...pagesImportingStylesheet(path),
+    ...mem.pagesDependentOnFile(path),
   ]);
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside

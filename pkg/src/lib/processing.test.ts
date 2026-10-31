@@ -2955,6 +2955,44 @@ describe("selectivelyProcessPages", () => {
     }
   });
 
+  it("rebuilds the pages whose scripts import a helper colocated in a component folder", async () => {
+    // faq-list/faqs.ts is not a component: no page uses a <faqs> tag, so only
+    // the dependency the faq-list build script recorded links it to a page.
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockImplementation(
+      (path: string) =>
+        path === "src/components/faq-list/faqs.ts"
+          ? ["src/pages/index.html"]
+          : [],
+    );
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    try {
+      await selectivelyProcessPages("src/components/faq-list/faqs.ts");
+      expect(mem.pagesDependentOnFile).toHaveBeenCalledWith(
+        "src/components/faq-list/faqs.ts",
+      );
+      const stored = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([args]) => args.absolutePagePath,
+      );
+      expect(stored).toEqual(["src/pages/index.html"]);
+    } finally {
+      (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>)
+        .mockReset()
+        .mockReturnValue([]);
+    }
+  });
+
+  it("rebuilds nothing for a colocated helper that no page depends on", async () => {
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
+    (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
+    await selectivelyProcessPages("src/components/faq-list/unused.ts");
+    expect(mem.storePage).not.toHaveBeenCalled();
+  });
+
   it("also rebuilds every page with a server-script plan, which no component usage links to the edit (prompt 157)", async () => {
     // /catalog never uses my-nav in its markup: its server script returns the
     // tag at request time, so the only thing tying it to the edit is the

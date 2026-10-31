@@ -58,6 +58,10 @@ const importedPartialPath = join(
   e2eDir,
   "src/components/css-import/import-base.css",
 );
+const colocatedEntriesPath = join(
+  e2eDir,
+  "src/components/colocated-data/entries.ts",
+);
 
 /**
  * Resolve once the page has navigated to a document whose inlined <head>
@@ -205,6 +209,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
   let originalScopeTestCss: string;
   let originalMissingHelper: string;
   let originalImportedPartial: string;
+  let originalColocatedEntries: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, "utf8");
@@ -216,6 +221,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     originalScopeTestCss = await readFile(scopeTestCssPath, "utf8");
     originalMissingHelper = await readFile(missingHelperPath, "utf8");
     originalImportedPartial = await readFile(importedPartialPath, "utf8");
+    originalColocatedEntries = await readFile(colocatedEntriesPath, "utf8");
   });
 
   test.afterEach(async () => {
@@ -271,6 +277,11 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
       importedPartialPath,
       originalImportedPartial,
       "/css-import-test",
+    );
+    await restoreAndConsumeReload(
+      colocatedEntriesPath,
+      originalColocatedEntries,
+      "/colocated-data-test",
     );
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
@@ -778,6 +789,26 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     );
     await reloaded;
     await expect(text).toHaveCSS("font-size", "23px");
+  });
+
+  test("rebuilds a component page when a module colocated in its folder changes", async ({
+    page,
+  }) => {
+    await page.goto("/colocated-data-test");
+    const entry = page.getByTestId("colocated-data-entry");
+    await expect(entry).toHaveText("Steam wand");
+
+    // entries.ts names no component, so only the build script's import links
+    // the edit to the page.
+    const { reload } = await subscribeToServerReload("/colocated-data-test");
+    await writeFile(
+      colocatedEntriesPath,
+      originalColocatedEntries.replace("Steam wand", "Milk pitcher"),
+      "utf8",
+    );
+    await reload;
+    // The open tab hears the same reload and shows the rebuilt list.
+    await expect(entry).toHaveText("Milk pitcher", { timeout: 15000 });
   });
 
   test("transpiles and serves newly created page with component tags during dev server session", async ({
