@@ -778,6 +778,127 @@ describe("minifyHtml", () => {
     );
   });
 
+  describe("keeps the space next to elements that are inline by default", () => {
+    it.each([
+      [
+        "an inline <svg> icon and its label in a button",
+        '<button type="button"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg>\n<span>Save</span></button>',
+        '<button type="button"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg> <span>Save</span></button>',
+      ],
+      [
+        "an inline <svg> icon and a link in a list item",
+        '<li><svg viewBox="0 0 1 1"></svg>\n<a href="/">Home</a></li>',
+        '<li><svg viewBox="0 0 1 1"></svg> <a href="/">Home</a></li>',
+      ],
+      [
+        "<del> and <ins>",
+        "<p><del>old</del>\n<ins>new</ins></p>",
+        "<p><del>old</del> <ins>new</ins></p>",
+      ],
+      [
+        "a custom element",
+        "<p><b>bold</b>\n<my-widget>x</my-widget></p>",
+        "<p><b>bold</b> <my-widget>x</my-widget></p>",
+      ],
+      [
+        "a custom element and a <span>",
+        "<p><span>Hello</span> <custom-el>World</custom-el></p>",
+        "<p><span>Hello</span> <custom-el>World</custom-el></p>",
+      ],
+      [
+        "<math>",
+        "<p><span>a</span> <math><mi>x</mi></math> <span>b</span></p>",
+        "<p><span>a</span> <math><mi>x</mi></math> <span>b</span></p>",
+      ],
+      ...[
+        "video",
+        "audio",
+        "canvas",
+        "iframe",
+        "picture",
+        "object",
+        "font",
+        "nobr",
+        "strike",
+        "map",
+        "slot",
+      ].map((name) => [
+        `<${name}>`,
+        `<p><span>a</span> <${name}></${name}> <span>b</span></p>`,
+        `<p><span>a</span> <${name}></${name}> <span>b</span></p>`,
+      ]),
+      [
+        "<embed>",
+        '<p><span>a</span> <embed src="x"> <span>b</span></p>',
+        '<p><span>a</span> <embed src="x"> <span>b</span></p>',
+      ],
+    ])("%s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it.each([
+      [
+        "an <svg> next to a block element",
+        "<div><svg></svg>\n<div>x</div></div>",
+        "<div><svg></svg><div>x</div></div>",
+      ],
+      [
+        "a custom element next to a block element",
+        "<section><my-widget>x</my-widget>\n<p>y</p></section>",
+        "<section><my-widget>x</my-widget><p>y</p></section>",
+      ],
+      [
+        "MathML elements, whose whitespace never renders",
+        "<math><mi>x</mi> <mo>+</mo> <mi>y</mi></math>",
+        "<math><mi>x</mi><mo>+</mo><mi>y</mi></math>",
+      ],
+    ])("still drops it next to %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+  });
+
+  describe("keeps the space between SVG text content elements", () => {
+    it.each([
+      [
+        "two <tspan>s",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+      ],
+      [
+        "two <tspan>s on separate lines",
+        "<svg><text><tspan>Hello</tspan>\n  <tspan>World</tspan></text></svg>",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+      ],
+      [
+        "an SVG <a> and a <tspan>",
+        '<svg><text><a href="#">Hello</a> <tspan>World</tspan></text></svg>',
+        '<svg><text><a href="#">Hello</a> <tspan>World</tspan></text></svg>',
+      ],
+      [
+        "a <tspan> and a <textPath>",
+        '<svg><text><tspan>Hello</tspan> <textPath href="#p">World</textPath></text></svg>',
+        '<svg><text><tspan>Hello</tspan> <textPath href="#p">World</textPath></text></svg>',
+      ],
+    ])("%s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it.each([
+      [
+        "SVG shapes, whose whitespace never renders",
+        "<svg><g></g> <g></g>\n<rect/></svg>",
+        "<svg><g></g><g></g><rect/></svg>",
+      ],
+      [
+        "the edges of a <text>, which SVG trims",
+        "<svg><text>\n  <tspan>Hello</tspan>\n</text></svg>",
+        "<svg><text><tspan>Hello</tspan></text></svg>",
+      ],
+    ])("still drops it between %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+  });
+
   it("preserves special regex tokens ($1, $&, $', $`, $$) inside <pre> and <textarea> blocks verbatim", () => {
     const htmlString =
       "<div><pre><code>const query = '$1' && '$&' || '$`';</code></pre></div>";
