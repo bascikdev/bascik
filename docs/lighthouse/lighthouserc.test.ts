@@ -4,7 +4,12 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { generateLighthouseAllConfig } from "./generate-config.ts";
+import {
+  generateLighthouseAllConfig,
+  lighthouseAllConfigs,
+  type LighthouseAssertion,
+  type LighthouseAssertOptions,
+} from "./generate-config.ts";
 import { assertPortFree } from "./check-port.ts";
 import lighthouseSiteConfig from "./bascik.config.ts";
 import {
@@ -13,7 +18,9 @@ import {
   LIGHTHOUSE_ORIGIN,
   LIGHTHOUSE_PORT,
   LIGHTHOUSE_SERVER_COMMAND,
+  SEO_URL_PATTERN,
 } from "./site.ts";
+import type { NavSection } from "../src/lib/nav.ts";
 import { DEV_PORT, E2E_DIST_DIR, parseE2ePort } from "../e2e/site.ts";
 
 const docsDir = fileURLToPath(new URL("..", import.meta.url));
@@ -25,14 +32,8 @@ const STATIC_CONFIGS = [
   "lighthouserc.light.json",
 ];
 
-type Assertion = string | [string, Record<string, number>];
-interface AssertOptions {
-  assertions?: Record<string, Assertion>;
-  assertMatrix?: {
-    matchingUrlPattern?: string;
-    assertions: Record<string, Assertion>;
-  }[];
-}
+type Assertion = LighthouseAssertion;
+type AssertOptions = LighthouseAssertOptions;
 
 /**
  * The assertions lhci applies to one URL: the flat `assertions`, or every `assertMatrix` entry whose
@@ -365,6 +366,81 @@ describe("SEO scoring leaves out the noindex /search route", () => {
       "/how-to/search?q=1",
     ])
       expect(seo(path), path).toEqual(["error", { minScore: 1.0 }]);
+  });
+});
+
+// R3-18: the sweep generate-config.ts writes for every nav page asserted SEO on every URL, so a nav entry for /search
+// would fail it. It now uses the gates' matrix shape and their pattern (SEO_URL_PATTERN in site.ts).
+describe("The generated sweep leaves /search out of SEO scoring, as the gates do", () => {
+  const nav: NavSection[] = [
+    {
+      section: "Milk frother",
+      pages: [
+        { href: "/getting-started", label: "Getting started" },
+        { href: "/search", label: "Search" },
+        { href: "/search/", label: "Search with a slash" },
+        { href: "/searching", label: "Searching" },
+        { href: "/search-tips", label: "Search tips" },
+        { href: "/how-to/search", label: "How to search" },
+        { href: "https://example.com/frother", label: "Shop", external: true },
+      ],
+    },
+  ];
+
+  it("asserts no SEO score for a /search nav entry, and keeps its other categories", () => {
+    const { config, urls } = lighthouseAllConfigs(nav);
+    const search = urls.filter(isSearchUrl);
+    expect(search).toEqual([`${ORIGIN}/search`, `${ORIGIN}/search/`]);
+    for (const url of search) {
+      const assertions = assertionsFor(config.ci.assert, url);
+      expect(assertions["categories:seo"], url).toBeUndefined();
+      expect(assertions["categories:performance"], url).toEqual([
+        "warn",
+        { minScore: 0.95 },
+      ]);
+      for (const category of ["accessibility", "best-practices"])
+        expect(assertions[`categories:${category}`], url).toEqual([
+          "error",
+          { minScore: 1.0 },
+        ]);
+    }
+  });
+
+  it("misuse: still fails every other nav route, including ones that only contain search, on SEO under 1.0", () => {
+    const { config, urls } = lighthouseAllConfigs(nav);
+    const others = urls.filter((url) => !isSearchUrl(url));
+    expect(others).toEqual(
+      ["/", "/getting-started", "/how-to/search", "/license", "/search-tips"]
+        .concat(["/searching", "/sponsor"])
+        .map((path) => `${ORIGIN}${path}`),
+    );
+    for (const url of others)
+      expect(
+        assertionsFor(config.ci.assert, url)["categories:seo"],
+        url,
+      ).toEqual(["error", { minScore: 1.0 }]);
+  });
+
+  it("takes the SEO pattern from site.ts in every config, written or generated, that scores SEO", async () => {
+    const generated = lighthouseAllConfigs(nav);
+    const configs: Array<[string, AssertOptions]> = [
+      ["generated sweep", generated.config.ci.assert],
+      ["generated light sweep", generated.lightConfig.ci.assert],
+    ];
+    for (const file of await allConfigs())
+      configs.push([file, (await readConfig(file)).ci.assert]);
+    let scored = 0;
+    for (const [name, assert] of configs) {
+      // A flat SEO assertion would apply to /search too.
+      expect(assert.assertions?.["categories:seo"], name).toBeUndefined();
+      for (const entry of assert.assertMatrix ?? [])
+        if (entry.assertions["categories:seo"] !== undefined) {
+          scored++;
+          expect(entry.matchingUrlPattern, name).toBe(SEO_URL_PATTERN);
+        }
+    }
+    // lighthouserc.json, the written sweep and the generated one: a config that dropped SEO would make this vacuous.
+    expect(scored).toBe(3);
   });
 });
 

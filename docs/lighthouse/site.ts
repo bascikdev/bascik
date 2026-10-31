@@ -26,3 +26,11 @@ export const LIGHTHOUSE_CONFIG_ARG = "--config lighthouse/bascik.config.ts";
 
 /** The command each lighthouserc*.json starts (cwd docs/): the production server on the Lighthouse port. */
 export const LIGHTHOUSE_SERVER_COMMAND = `bascik ${LIGHTHOUSE_CONFIG_ARG} --server --port ${LIGHTHOUSE_PORT}`;
+
+/**
+ * The `matchingUrlPattern` of the `assertMatrix` entry that holds `categories:seo`: every URL except the noindex
+ * `/search` page (with or without a trailing slash, query or hash), which loses the crawlability audit on purpose.
+ * lhci tests `new RegExp(pattern)` against each URL. generate-config.ts writes it into the sweep configs, and
+ * lighthouserc.test.ts fails when a hand-written lighthouserc*.json that scores SEO uses any other pattern.
+ */
+export const SEO_URL_PATTERN = "^(?!https?://[^/]+/search/?(?:[?#]|$))";
