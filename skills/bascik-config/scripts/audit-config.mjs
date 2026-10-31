@@ -74,6 +74,8 @@ export const KNOWN_DEFAULTS = {
   "http.precompress": false,
   "http.maxBodySize": 1048576,
   "http.apiTimeout": 10000,
+  "http.timeouts.request": 30000,
+  "http.timeouts.keepAlive": 5000,
   "logging.level": "info",
   "logging.requests": true,
   "logging.copies": true,

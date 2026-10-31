@@ -923,6 +923,39 @@ describe("contact.ts", () => {
   });
 });
 
+describe("audit-config defaults", () => {
+  const messages = (config: Record<string, unknown>) =>
+    (
+      auditConfig(
+        { default: config },
+        { root: "/project", exists: () => true },
+      ) as { where: string; message: string }[]
+    ).map((finding) => `${finding.where}: ${finding.message}`);
+
+  it("flags restated http.timeouts defaults and says to delete a config that only restates defaults", () => {
+    const found = messages({
+      http: { timeouts: { request: 30000, keepAlive: 5000 } },
+    });
+    expect(found.some((m) => /http\.timeouts\.request.*restates/.test(m))).toBe(
+      true,
+    );
+    expect(
+      found.some((m) => /http\.timeouts\.keepAlive.*restates/.test(m)),
+    ).toBe(true);
+    expect(found.some((m) => /every value equals a default/.test(m))).toBe(
+      true,
+    );
+  });
+
+  it("misuse: keeps a changed timeout as meaningful", () => {
+    const found = messages({ http: { timeouts: { request: 60000 } } });
+    expect(found.some((m) => /restates/.test(m))).toBe(false);
+    expect(found.some((m) => /every value equals a default/.test(m))).toBe(
+      false,
+    );
+  });
+});
+
 describe("audit-config exec entries", () => {
   const root = "/project";
   const execFindings = (entry: Record<string, unknown>, files: string[]) =>
