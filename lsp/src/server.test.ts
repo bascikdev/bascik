@@ -650,33 +650,51 @@ describe("BascikLanguageServer", () => {
   });
 
   describe("project changes on disk", () => {
-    it("picks up a new component that an open page uses", async () => {
-      await initialize();
-      const page = await write("src/pages/index.html", "<my-card></my-card>\n");
-      open(page, "<my-card></my-card>\n");
-      await settle();
-      expect(
-        (await server.getSnapshotForFile(page))?.componentMap.has("my-card"),
-      ).toBe(false);
+    it.each([0, 250])(
+      "picks up a new component that an open page uses with a %i ms snapshot delay",
+      async (snapshotDelay) => {
+        await initialize();
+        const page = await write(
+          "src/pages/index.html",
+          "<my-card></my-card>\n",
+        );
+        open(page, "<my-card></my-card>\n");
+        await vi.waitFor(() => expect(latest(page)).toBeDefined(), {
+          timeout: 5000,
+        });
+        expect(
+          (await server.getSnapshotForFile(page))?.componentMap.has("my-card"),
+        ).toBe(false);
 
-      // Adding the component changes what the page's tag means, which only a rebuilt snapshot knows.
-      const before = fake.connection.sendDiagnostics.mock.calls.length;
-      await write("src/components/my-card.html", "<p>card</p>\n");
-      await fake.handlers.get("watchedFiles")!({
-        changes: [
-          {
-            uri: uri(path.join(root, "src/components/my-card.html")),
-            type: FileChangeType.Created,
+        // Adding the component changes what the page's tag means, which only a rebuilt snapshot knows.
+        const publications = () =>
+          fake.connection.sendDiagnostics.mock.calls.filter(
+            ([params]) => params.uri === uri(page),
+          ).length;
+        const before = publications();
+        const getSnapshot = server.getSnapshotForFile.bind(server);
+        vi.spyOn(server, "getSnapshotForFile").mockImplementationOnce(
+          async (file) => {
+            await settle(snapshotDelay);
+            return getSnapshot(file);
           },
-        ],
-      });
-      await settle();
-      expect(fake.connection.sendDiagnostics.mock.calls.length).toBeGreaterThan(
-        before,
-      );
-      const snapshot = await server.getSnapshotForFile(page);
-      expect(snapshot?.componentMap.has("my-card")).toBe(true);
-    });
+        );
+        await write("src/components/my-card.html", "<p>card</p>\n");
+        await fake.handlers.get("watchedFiles")!({
+          changes: [
+            {
+              uri: uri(path.join(root, "src/components/my-card.html")),
+              type: FileChangeType.Created,
+            },
+          ],
+        });
+        await vi.waitFor(() => expect(publications()).toBeGreaterThan(before), {
+          timeout: 5000,
+        });
+        const snapshot = await server.getSnapshotForFile(page);
+        expect(snapshot?.componentMap.has("my-card")).toBe(true);
+      },
+    );
 
     it("rebuilds a project after its config changes and checks every open document again", async () => {
       await initialize();
