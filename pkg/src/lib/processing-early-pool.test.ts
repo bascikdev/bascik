@@ -13,7 +13,7 @@ const { pools, routesGate, WorkerPoolMock } = vi.hoisted(() => {
   const pools: Array<{
     size: number;
     env: Record<string, string | undefined>;
-    options: { readySignal?: boolean };
+    options: { readySignal?: boolean; stopSignal?: boolean };
     run: ReturnType<typeof vi.fn>;
     shrink: ReturnType<typeof vi.fn>;
     grow: ReturnType<typeof vi.fn>;
@@ -27,7 +27,11 @@ const { pools, routesGate, WorkerPoolMock } = vi.hoisted(() => {
     _script: string,
     size: number,
     _init: unknown,
-    options: { env: Record<string, string | undefined>; readySignal?: boolean },
+    options: {
+      env: Record<string, string | undefined>;
+      readySignal?: boolean;
+      stopSignal?: boolean;
+    },
   ) {
     this.size = size;
     this.env = options.env;
@@ -450,6 +454,14 @@ describe("processAllPages – early page worker pool", () => {
     vi.mocked(listPages).mockResolvedValue(staticPages(2));
     await processAllPages();
     expect(pools[0].options.readySignal).toBe(true);
+  });
+
+  it("asks the pool to stop its workers by message, not by terminating them", async () => {
+    // An external terminate that lands while a worker allocates code can
+    // abort Node 24 ("Check failed: jit_page.has_value()").
+    vi.mocked(listPages).mockResolvedValue(staticPages(2));
+    await processAllPages();
+    expect(pools[0].options.stopSignal).toBe(true);
   });
 
   // Cleanup must never mask the failure that made the build stop.

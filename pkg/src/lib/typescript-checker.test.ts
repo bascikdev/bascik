@@ -22,6 +22,7 @@ import {
   resetModuleCheckerForBuild,
   __moduleCheckStatsForTests,
   __stopSharedCheckerForTests,
+  stopSharedCheckerGracefully,
 } from "./typescript.ts";
 
 vi.mock("./config.js", () => ({
@@ -217,5 +218,43 @@ describe("shared syntax checker: its output", () => {
     );
     expect(stats.processes - before).toBe(0);
     expect(checkerWarnings()).toHaveLength(0);
+  });
+});
+
+// A page worker ends itself when its pool stops it, and the checker is a
+// thread inside it: tearing the page worker down with the checker still
+// running would terminate the checker from outside, the stop that can abort
+// Node 24 (see `stopSignal` in worker-pool.ts).
+describe("shared syntax checker: stopping it", () => {
+  it("asks the checker to end itself instead of terminating it", async () => {
+    await checkDirectiveModuleSyntax(validModule(), "src/lib/one.ts");
+    const terminatedBefore = stats.checkersTerminated;
+    await stopSharedCheckerGracefully();
+    expect(stats.checkersTerminated).toBe(terminatedBefore);
+    // A deliberate stop is neither a failure nor a reason for a warning,
+    // and the next check starts a fresh checker.
+    expect(checkerWarnings()).toHaveLength(0);
+    const started = stats.checkersStarted;
+    const before = stats.processes;
+    await checkDirectiveModuleSyntax(validModule(), "src/lib/two.ts");
+    expect(stats.checkersStarted).toBe(started + 1);
+    expect(stats.processes).toBe(before);
+  });
+
+  it("terminates a checker that ignores the stop message after the grace period", async () => {
+    stats.checkerSource = checkerSource("");
+    await checkDirectiveModuleSyntax(validModule(), "src/lib/one.ts");
+    const terminatedBefore = stats.checkersTerminated;
+    const started = performance.now();
+    await stopSharedCheckerGracefully(150);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(140);
+    expect(stats.checkersTerminated).toBe(terminatedBefore + 1);
+    expect(checkerWarnings()).toHaveLength(0);
+  });
+
+  it("does nothing when no checker is running", async () => {
+    const terminatedBefore = stats.checkersTerminated;
+    await expect(stopSharedCheckerGracefully()).resolves.toBeUndefined();
+    expect(stats.checkersTerminated).toBe(terminatedBefore);
   });
 });

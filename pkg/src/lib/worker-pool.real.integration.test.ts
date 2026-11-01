@@ -312,3 +312,107 @@ parentPort.on("message", (task) => parentPort.postMessage({ ok: true, result: ta
     }
   }, 15_000);
 });
+
+// An external `worker.terminate()` stops a thread wherever it is, and V8 can
+// abort the whole process when that lands while the thread is allocating code
+// ("Check failed: jit_page.has_value()" on Node 24). A `stopSignal` pool asks
+// each worker to end itself and terminates only one that does not.
+describe("WorkerPool real-worker stop message", () => {
+  const trackTerminated = () => {
+    const terminated: Worker[] = [];
+    const original = Worker.prototype.terminate;
+    const spy = vi
+      .spyOn(Worker.prototype, "terminate")
+      .mockImplementation(function (this: Worker) {
+        terminated.push(this);
+        return original.call(this);
+      });
+    return { terminated, restore: () => spy.mockRestore() };
+  };
+
+  // Ends itself on the stop message, like the page worker.
+  const ENDS_ON_STOP = `
+import { parentPort } from "node:worker_threads";
+parentPort.on("message", (task) => {
+  if (task && task.stop === true) return parentPort.close();
+  parentPort.postMessage({ ok: true, result: task });
+});
+parentPort.postMessage({ ready: true });
+`;
+
+  // Ignores the stop message: the pool must still stop it.
+  const IGNORES_STOP = `
+import { parentPort } from "node:worker_threads";
+parentPort.on("message", (task) => {
+  if (task && task.stop === true) return;
+  parentPort.postMessage({ ok: true, result: task });
+});
+`;
+
+  it("lets the real page worker end itself when trimmed and torn down, terminating none", async () => {
+    const { terminated, restore } = trackTerminated();
+    const pageWorker = new URL("./page-worker.ts", import.meta.url).pathname;
+    const pool = new WorkerPool<unknown, unknown>(
+      pageWorker,
+      3,
+      {},
+      {
+        readySignal: true,
+        stopSignal: true,
+      },
+    );
+    try {
+      const trimmed = pool.shrink(1);
+      await trimmed;
+      await pool.terminate();
+      expect(terminated).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  }, 30_000);
+
+  it("stops workers that end themselves at once, with no external terminate", async () => {
+    const script = await fixture("ends-on-stop", ENDS_ON_STOP);
+    const { terminated, restore } = trackTerminated();
+    const pool = new WorkerPool<unknown, unknown>(
+      script,
+      3,
+      {},
+      {
+        readySignal: true,
+        stopSignal: true,
+      },
+    );
+    try {
+      expect(await pool.run("warm")).toBe("warm");
+      const started = performance.now();
+      await pool.shrink(1);
+      await pool.terminate();
+      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(terminated).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  }, 15_000);
+
+  it("terminates a worker that ignores the stop message once the grace period is over", async () => {
+    const script = await fixture("ignores-stop", IGNORES_STOP);
+    const { terminated, restore } = trackTerminated();
+    const pool = new WorkerPool<unknown, unknown>(
+      script,
+      1,
+      {},
+      {
+        stopSignal: true,
+      },
+    );
+    try {
+      expect(await pool.run("warm")).toBe("warm");
+      await pool.terminate();
+      expect(terminated).toHaveLength(1);
+      expect(terminated[0].threadId).toBe(-1);
+    } finally {
+      restore();
+    }
+  }, 15_000);
+});

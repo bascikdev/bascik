@@ -37,6 +37,9 @@ interface Slot<Task, Result> {
   /** Settles once the worker has loaded (`readySignal`) or has exited. */
   loaded: Promise<void>;
   markLoaded: () => void;
+  /** Settles with the exit code once the worker thread has exited. */
+  exited: Promise<number>;
+  hasExited: boolean;
 }
 
 /** The message a `readySignal` worker posts once its script has loaded. */
@@ -45,6 +48,18 @@ const READY_MESSAGE_KEY = "ready";
 /** How long stopping a `readySignal` worker waits for it to load before
  * terminating it anyway, so a worker stuck loading cannot hang shutdown. */
 const READY_GRACE_MS = 10_000;
+
+/** The message a `stopSignal` worker ends itself on. */
+const STOP_MESSAGE = { stop: true } as const;
+
+/**
+ * How long stopping a `stopSignal` worker waits for it to exit on its own
+ * before terminating it anyway. Longer than the page worker's own fallback
+ * (`page-worker.ts` exits itself 1 s after the stop message when something
+ * still holds its event loop open), so the external terminate stays the
+ * exception.
+ */
+export const STOP_GRACE_MS = 3_000;
 
 /** Maximum consecutive workers that die before a first completion. Bounds
  * respawn: a persistently broken worker module never spins forever. */
@@ -94,6 +109,7 @@ export class WorkerPool<Task, Result> {
 
   #env: NodeJS.ProcessEnv | undefined;
   #readySignal: boolean;
+  #stopSignal: boolean;
 
   /**
    * `readySignal`: the worker script posts `{ ready: true }` once its module
@@ -103,15 +119,38 @@ export class WorkerPool<Task, Result> {
    * terminated while it is still evaluating ES modules with top-level await,
    * and a pool that is started early and trimmed, or torn down after a
    * failure, can otherwise stop workers that are still loading.
+   *
+   * `stopSignal`: the worker script ends itself (lets its event loop drain)
+   * when it receives `{ stop: true }`, and the pool stops a worker by posting
+   * that and waiting for its `exit`, terminating it only when it has not
+   * exited after `STOP_GRACE_MS`. With `readySignal` too, the stop message
+   * goes once the worker has loaded, and a worker that has not loaded by
+   * the ready deadline is terminated without it. An external `worker.terminate()` stops
+   * the thread wherever it is, and V8 can abort the whole process when that
+   * lands while the worker is still allocating code: CI saw "Check failed:
+   * jit_page.has_value()" (SIGTRAP) on Node 24.22.1 when a page worker was
+   * terminated right after it loaded. Node 24's V8 (13.6) has a race between
+   * terminated worker threads and wasm code GC freeing a shared import
+   * wrapper twice (nodejs/node#66366 and #64500, fixed upstream in V8
+   * 9b8ca54d5a and 68210d500a, backport nodejs/node#66376 still open). Page
+   * workers run wasm without asking for it: Node strips the types of every
+   * `.ts` module they load (a `bascik.config.ts`, a TypeScript helper,
+   * Bascik's own source in tests) with Amaro, which is swc compiled to wasm.
+   * A worker that ends itself between tasks is never interrupted that way.
    */
   constructor(
     workerScript: string,
     size: number,
     initData: unknown,
-    options: { env?: NodeJS.ProcessEnv; readySignal?: boolean } = {},
+    options: {
+      env?: NodeJS.ProcessEnv;
+      readySignal?: boolean;
+      stopSignal?: boolean;
+    } = {},
   ) {
     this.#env = options.env;
     this.#readySignal = options.readySignal ?? false;
+    this.#stopSignal = options.stopSignal ?? false;
     this.#workerScript = workerScript;
     this.#initData = initData;
     this.#consecutiveStartupFailures = 0;
@@ -144,12 +183,15 @@ export class WorkerPool<Task, Result> {
     const loaded = this.#readySignal
       ? new Promise<void>((resolve) => (markLoaded = resolve))
       : Promise.resolve();
+    let markExited!: (code: number) => void;
     const slot: Slot<Task, Result> = {
       worker,
       pending: null,
       completedAny: false,
       loaded,
       markLoaded: () => markLoaded?.(),
+      exited: new Promise<number>((resolve) => (markExited = resolve)),
+      hasExited: false,
     };
     this.#slots.push(slot);
     worker.on("message", (message: any) => {
@@ -167,6 +209,8 @@ export class WorkerPool<Task, Result> {
     worker.on("error", (error: Error) => this.#onError(slot, error));
     worker.on("exit", (code: number) => {
       // A worker that exited will never signal; nothing should wait for it.
+      slot.hasExited = true;
+      markExited(code);
       slot.markLoaded();
       this.#onExit(slot, code);
     });
@@ -381,9 +425,9 @@ export class WorkerPool<Task, Result> {
   }
 
   /**
-   * Terminate a worker once it is safe to (see `readySignal`): at once
-   * without the option or once it has loaded, after the grace period at the
-   * latest. Never rejects.
+   * Stop a worker once it is safe to (see `readySignal`): at once without
+   * the option or once it has loaded, after the grace period at the latest;
+   * with `stopSignal`, by asking it to end itself first. Never rejects.
    */
   async #stop(slot: Slot<Task, Result>): Promise<void> {
     await this.#stopForTerminate(slot).catch(() => {});
@@ -392,16 +436,52 @@ export class WorkerPool<Task, Result> {
   /** As `#stop`, but a rejecting `worker.terminate()` reaches the caller
    * (the `terminate()` contract). */
   async #stopForTerminate(slot: Slot<Task, Result>): Promise<number> {
-    if (!this.#readySignal) return slot.worker.terminate();
+    let loaded = true;
+    if (this.#readySignal) {
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        slot.loaded,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            loaded = false;
+            resolve();
+          }, READY_GRACE_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+    }
+    // A worker that is still evaluating its modules at the ready deadline has
+    // no listener for the stop message yet; asking it would only add
+    // STOP_GRACE_MS before the terminate() that ends it anyway.
+    if (this.#stopSignal && loaded) {
+      const code = await this.#askToStop(slot);
+      if (code !== undefined) return code;
+    }
+    return slot.worker.terminate();
+  }
+
+  /**
+   * Post the stop message and wait for the worker to exit, up to
+   * `STOP_GRACE_MS`. Its exit code, or undefined when it is still running
+   * (it ignored the message, or could not receive it), for the caller to
+   * terminate it.
+   */
+  async #askToStop(slot: Slot<Task, Result>): Promise<number | undefined> {
+    if (slot.hasExited) return slot.exited;
+    try {
+      slot.worker.postMessage(STOP_MESSAGE);
+    } catch {
+      return undefined;
+    }
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([
-      slot.loaded,
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, READY_GRACE_MS);
+    const code = await Promise.race([
+      slot.exited,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), STOP_GRACE_MS);
       }),
     ]);
     clearTimeout(timer);
-    return slot.worker.terminate();
+    return code;
   }
 
   /**
@@ -459,7 +539,8 @@ export class WorkerPool<Task, Result> {
   }
 
   /**
-   * Stop every worker (each only once it has loaded, with `readySignal`).
+   * Stop every worker (each only once it has loaded, with `readySignal`;
+   * by asking it to end itself, with `stopSignal`).
    * Queued and in-flight tasks are rejected, so no caller is left hanging.
    *
    * `abandon`: for a process that is about to exit. The tasks are dropped

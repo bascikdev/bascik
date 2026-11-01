@@ -23,10 +23,12 @@ const stoppers = new Set<ExitStopper>();
 
 /**
  * The longest any exit waits for its stoppers. The page pool waits up to
- * 10 s for a loading worker before terminating it anyway; past that, a
- * stuck worker must not keep a crashed or interrupted process alive.
+ * 10 s for a loading worker, then up to 3 s for it to end itself on the stop
+ * message (`READY_GRACE_MS` and `STOP_GRACE_MS` in `worker-pool.ts`) before
+ * terminating it anyway; past that, a stuck worker must not keep a crashed
+ * or interrupted process alive.
  */
-export const STOP_BEFORE_EXIT_TIMEOUT_MS = 10_000;
+export const STOP_BEFORE_EXIT_TIMEOUT_MS = 13_000;
 
 export const registerExitStopper = (stopper: ExitStopper): void => {
   stoppers.add(stopper);

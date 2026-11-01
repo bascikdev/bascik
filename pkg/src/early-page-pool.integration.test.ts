@@ -192,10 +192,15 @@ const groupAlive = (pid: number) => {
 // this loop on an 8-core M1), so a pass here is the regression check, not a
 // single failing run. A TypeScript config matters: importing it is part of
 // what the worker still awaits while it loads.
+// The pool is configured as `processAllPages` configures it: it also asks
+// each worker to end itself (`stopSignal`), because a `worker.terminate()`
+// right after a worker has loaded, while V8 is still allocating code, aborted
+// this loop on CI ("Check failed: jit_page.has_value()", SIGTRAP, Node
+// 24.22.1).
 const stopDuringStartupScript = (poolModule: string, workerScript: string) => `
 import { WorkerPool } from ${JSON.stringify(poolModule)};
 for (let delay = 0; delay <= 400; delay += 10) {
-  const pool = new WorkerPool(${JSON.stringify(workerScript)}, 8, {}, { readySignal: true });
+  const pool = new WorkerPool(${JSON.stringify(workerScript)}, 8, {}, { readySignal: true, stopSignal: true });
   await new Promise((r) => setTimeout(r, delay));
   void pool.shrink(1);
   await new Promise((r) => setTimeout(r, delay / 2));
