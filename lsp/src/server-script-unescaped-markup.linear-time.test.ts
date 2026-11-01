@@ -386,3 +386,41 @@ describe("parameters other modules can fill: linear time (fix round 4)", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 });
+
+describe("parameters whose callers this file cannot all see: linear time (fix round 5)", () => {
+  const run = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "module",
+    });
+  const growthOfModules = (small: string, large: string): number =>
+    growthOf(
+      () => run(small),
+      () => run(large),
+    );
+
+  it(
+    "thousands of callbacks sharing a parameter name, generic functions, typed bindings and loops read in linear time (CPU growth under 8x for 4x the size)",
+    () => {
+      const shapes = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `export function list${i}<T extends string>(items: T[], n: number) { let s = ""; for (const [k, item] of items.entries()) s += \`<i>\${item}</i>\`; return items.map((item) => \`<li>\${item}\${n}</li>\`).join("") + s; }\n` +
+            `const up${i}: (s: string) => string = (s) => s.toUpperCase();\n` +
+            `function row${i}(name: string) { return \`<td>\${name}</td>\`; }\nexport const r${i} = row${i}("Milk frother") + up${i}("x");\n` +
+            `export class C${i} { body = ""; set(b: string) { this.body = b; return this; } render() { return \`<p>\${this.body}\${arguments[0]}</p>\`; } }\n`,
+        ).join("");
+      const diags = run(shapes(50)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(
+        diags.filter((d) => d.template?.fixable === true).length,
+      ).toBeGreaterThan(0);
+      expect(
+        diags.filter((d) => d.template?.fixable === false).length,
+      ).toBeGreaterThan(0);
+      expect(growthOfModules(shapes(500), shapes(2_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});

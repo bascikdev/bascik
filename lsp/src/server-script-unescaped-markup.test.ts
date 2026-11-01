@@ -2279,3 +2279,194 @@ describe("a parameter other modules can fill withholds the wrap fix (fix round 4
     },
   );
 });
+
+describe("every parameter whose callers this file cannot all see withholds the wrap fix (fix round 5)", () => {
+  const holes = (body: string, hole: string) => {
+    const found = unescaped(body, { directive: "module" }).filter(
+      (x) => body.slice(x.start, x.end) === hole,
+    );
+    expect(found.length, `${hole} is reported`).toBeGreaterThan(0);
+    return found;
+  };
+  const CALLER_TEXT = "may be markup from a caller";
+
+  it.each([
+    [
+      "an array parameter's element in a map callback",
+      'export function renderList(items: string[]): string { return items.map((item) => `<li>${item}</li>`).join(""); }',
+      "${item}",
+    ],
+    [
+      "a for...of loop variable",
+      'export const renderList = (items: string[]): string => { let out = ""; for (const i of items) out += `<li>${i}</li>`; return out; };',
+      "${i}",
+    ],
+    [
+      "a destructured for...of loop variable",
+      'export function dl(o: Record<string, string>) { let s = ""; for (const [k, v] of Object.entries(o)) s += `<dd>${v}</dd>`; return s; }',
+      "${v}",
+    ],
+    [
+      "a property of a callback's element",
+      'export function rows(items: { name: string }[]): string { return items.map((item) => `<li>${item.name}</li>`).join(""); }',
+      "${item.name}",
+    ],
+    [
+      "a reduce callback",
+      'export function ul(items: string[]) { return items.reduce((acc, i) => acc + `<li>${i}</li>`, ""); }',
+      "${i}",
+    ],
+    [
+      "a destructured callback parameter",
+      'export function dl(o: Record<string, string>) { return Object.entries(o).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(""); }',
+      "${v}",
+    ],
+    [
+      "a then callback",
+      "export function later(p: Promise<string>) { return p.then((v) => `<p>${v}</p>`); }",
+      "${v}",
+    ],
+    [
+      "a local function passed to map",
+      'function li(t: string) { return `<li>${t}</li>`; }\nexport function list(items: string[]) { return items.map(li).join(""); }',
+      "${t}",
+    ],
+    [
+      "a generic parameter that extends string",
+      "export function f<T extends string>(t: T) { return `<p>${t}</p>`; }",
+      "${t}",
+    ],
+    [
+      "an unconstrained generic parameter",
+      "export function g<T>(t: T) { return `<p>${t}</p>`; }",
+      "${t}",
+    ],
+    [
+      "a returned closure",
+      "export function make() { return (t: string) => `<p>${t}</p>`; }",
+      "${t}",
+    ],
+    [
+      "a returned local function",
+      "function inner(t: string) { return `<p>${t}</p>`; }\nexport function make() { return inner; }",
+      "${t}",
+    ],
+    [
+      "a method of a returned object",
+      "export function make() { return { render(t: string) { return `<p>${t}</p>`; } }; }",
+      "${t}",
+    ],
+    [
+      "an exported function wrapped in a call",
+      "const local = (t: string) => `<p>${t}</p>`;\nconst wrap = <F,>(f: F) => f;\nexport const h = wrap(local);",
+      "${t}",
+    ],
+    [
+      "an arrow in a frozen exported object",
+      "export const api = Object.freeze({ render: (t: string) => `<p>${t}</p>` });",
+      "${t}",
+    ],
+    [
+      "a function in an exported array",
+      "function render(t: string) { return `<p>${t}</p>`; }\nexport const renderers = [render];",
+      "${t}",
+    ],
+    [
+      "a function in an exported Map",
+      'const render = (t: string) => `<p>${t}</p>`;\nexport const renderers = new Map([["a", render]]);',
+      "${t}",
+    ],
+    [
+      "an exported destructuring",
+      "export const { render } = { render: (t: string) => `<p>${t}</p>` };",
+      "${t}",
+    ],
+    [
+      "an exported generator function",
+      "export function* render(t: string) { yield `<p>${t}</p>`; }",
+      "${t}",
+    ],
+    [
+      "a callback passed to an imported function",
+      'import { register } from "./reg.ts";\nregister((t: string) => `<p>${t}</p>`);',
+      "${t}",
+    ],
+    [
+      "a function assigned to globalThis",
+      "(globalThis as any).render = (t: string) => `<p>${t}</p>`;\nexport {};",
+      "${t}",
+    ],
+    [
+      "the arguments object",
+      "export function page() { const t = arguments[0]; return `<p>${t}</p>`; }",
+      "${t}",
+    ],
+    [
+      "a this field set from a constructor parameter",
+      "export class C { body: string; constructor(body: string) { this.body = body; } render() { return `<p>${this.body}</p>`; } }",
+      "${this.body}",
+    ],
+    [
+      "a this field set from a method parameter",
+      'export class C { body = ""; set(b: string) { this.body = b; return this; } render() { return `<p>${this.body}</p>`; } }',
+      "${this.body}",
+    ],
+    [
+      "a regex capture in a local helper an exported function calls",
+      "function t(md: string) { return md.replace(/<pre>([\\s\\S]*?)<\\/pre>/g, (_, code: string) => `<cb>${code}</cb>`); }\nexport function render(md: string) { return t(md); }",
+      "${code}",
+    ],
+    [
+      "a regex match in a replace callback",
+      "export function highlight(code: string, re: RegExp) { return code.replace(re, (m) => `<mark>${m}</mark>`); }",
+      "${m}",
+    ],
+    [
+      "an untyped JavaScript callback parameter",
+      'export function list(items) { return items.map(function (t) { return `<li>${t}</li>`; }).join(""); }',
+      "${t}",
+    ],
+  ])(
+    "%s: no fix, warning kept, with the caller advice",
+    (_name, body, hole) => {
+      for (const d of holes(body, hole)) {
+        expect(d.template?.fixable).toBe(false);
+        expect(d.message).toContain(CALLER_TEXT);
+      }
+    },
+  );
+
+  it.each([
+    [
+      "a number callback parameter",
+      'export function list(counts: number[]) { return counts.map((n: number) => `<li>${n}</li>`).join(""); }',
+      "${n}",
+    ],
+    [
+      "a union of number, bigint and boolean",
+      "export function g(n: number | bigint | boolean) { return `<p>${n}</p>`; }",
+      "${n}",
+    ],
+    [
+      "a number and boolean method parameter of a local class",
+      'class Meter { render(value: number, open: boolean) { return `<meter data-open="${open}">${value}</meter>`; } }\nexport const m = new Meter();',
+      "${value}",
+    ],
+    [
+      "a local arrow whose callers pass plain data",
+      'const row = (name: string) => `<li>${name}</li>`;\nexport const list = row("Milk frother") + row("Kettle");',
+      "${name}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole) => {
+    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
+  });
+
+  it("a build directive script's callback over its own data keeps its other fixes", () => {
+    const body =
+      'export default function () {\n  const product = { name: "Milk frother" };\n  return `<h1>${product.name}</h1>`;\n}\n';
+    const d = unescaped(body, { directive: "build" }).find(
+      (x) => body.slice(x.start, x.end) === "${product.name}",
+    );
+    expect(d?.template?.fixable).toBe(true);
+  });
+});

@@ -416,10 +416,22 @@ export function analyzeServerScriptSource(
   // and objects) may be passed markup by any caller: its parameters count
   // as possibly markup, unless typed number, bigint or boolean. A directive
   // script's own default export is called by Bascik, not by other modules.
-  const externalParams =
-    opts.directive === "module"
-      ? exportReachableParameters(body, tokens)
-      : new Map<string, ReachableOwner[]>();
+  const externalParams = new Map<string, ReachableOwner[]>();
+  if (opts.directive === "module") {
+    for (const [name, owners] of exportReachableParameters(body, tokens))
+      externalParams.set(name, [...owners]);
+    // Callbacks, methods and functions passed on or returned: their
+    // callers are out of sight too. An exported owner's label is kept.
+    for (const [name, owners] of unseenCallerParameters(body, tokens)) {
+      const list = externalParams.get(name) ?? [];
+      const known = new Set(list.map((o) => o.at));
+      for (const owner of owners) if (!known.has(owner.at)) list.push(owner);
+      externalParams.set(name, list);
+    }
+    // In source order, for reachableOwnerAt's binary search.
+    for (const list of externalParams.values())
+      list.sort((x, y) => x.at - y.at);
+  }
   const producers = markupProducers(
     tokens,
     functions,
@@ -496,14 +508,14 @@ export function analyzeServerScriptSource(
         if (seed !== undefined && seed !== name)
           return {
             ...at,
-            text: `reads ${name}, which holds what ${seed}, a parameter of ${reachableOwnerAt(externalParams, seed, hole.start)}, holds; other modules can call it, so the value may be markup from a caller, which html would escape, and the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+            text: `reads ${name}, which is taken from ${callerClause(seed, reachableOwnerAt(externalParams, seed, hole.start))}, which html would escape, so the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
           };
         const owner = reachableOwnerAt(externalParams, name, hole.start);
         return {
           ...at,
           text:
             owner !== undefined
-              ? `reads ${name}, a parameter of ${owner}, which other modules can call: the value may be markup from a caller, which html would escape, so the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+              ? `reads ${callerClause(name, owner)}, which html would escape, so the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
               : !producers.names.has(name)
                 ? `reads ${name}, imported from a project module, which may hold markup as a string; html would escape it, so the page would show its tags as text. Make that value an html\`...\` value in its module (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
                 : producers.markupNames.has(name)
@@ -1388,6 +1400,101 @@ const MEMBER_MODIFIERS = new Set([
   "accessor",
 ]);
 
+/**
+ * The names of the parameter list at token `at` (a `(`, or the lone
+ * parameter of `x => ...`) that may hold markup: every name, patterns and
+ * rest parameters included, except those whose declared type is number,
+ * bigint or boolean (or a union of those). `partner` maps each bracket to
+ * its partner.
+ */
+function possiblyMarkupParameters(
+  body: string,
+  tokens: readonly Token[],
+  partner: Int32Array,
+  at: number,
+): string[] {
+  const n = tokens.length;
+  const punct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  const word = (k: number): boolean =>
+    k >= 0 && k < n && tokens[k].type === "identifier";
+  if (!punct(at, "(")) {
+    return word(at) ? [tokens[at].value] : [];
+  }
+  const close = partner[at];
+  if (close === -1) return [];
+  const out: string[] = [];
+  let names: string[] = [];
+  let typeFrom = -1;
+  let typeTo = -1;
+  const finish = (): void => {
+    const type =
+      typeFrom !== -1 && typeTo >= typeFrom
+        ? body.slice(tokens[typeFrom].start, tokens[typeTo].end)
+        : undefined;
+    if (type === undefined || !PLAIN_PARAMETER_TYPE.test(type))
+      for (const name of names) if (name !== "this") out.push(name);
+    names = [];
+    typeFrom = typeTo = -1;
+  };
+  // 0: the name or pattern, 1: the type, 2: the default value.
+  let part = 0;
+  for (let j = at + 1; j < close; j++) {
+    const t = tokens[j];
+    if (t.type === "punctuation") {
+      if (t.value === ",") {
+        finish();
+        part = 0;
+        continue;
+      }
+      if (part === 0 && t.value === ":") {
+        part = 1;
+        continue;
+      }
+      if (part !== 2 && t.value === "=" && !punct(j + 1, ">")) {
+        part = 2;
+        continue;
+      }
+      if (t.value === "(" || t.value === "[" || t.value === "{") {
+        const end = partner[j] === -1 ? close : partner[j];
+        if (part === 0)
+          for (let q = j + 1; q < end; q++)
+            if (
+              tokens[q].type === "identifier" &&
+              !punct(q + 1, ":") &&
+              !punct(q - 1, ".")
+            )
+              names.push(tokens[q].value);
+        if (part === 1) {
+          if (typeFrom === -1) typeFrom = j;
+          typeTo = end;
+        }
+        j = end;
+        continue;
+      }
+    }
+    if (part === 0 && t.type === "identifier") {
+      if (
+        !MEMBER_MODIFIERS.has(t.value) ||
+        punct(j + 1, ",") ||
+        punct(j + 1, ":") ||
+        punct(j + 1, "?") ||
+        punct(j + 1, "=") ||
+        j + 1 === close
+      )
+        names.push(t.value);
+    } else if (part === 1 && !(t.type === "punctuation" && t.value === "?")) {
+      if (typeFrom === -1) typeFrom = j;
+      typeTo = j;
+    }
+  }
+  finish();
+  return out;
+}
+
 /** How a message names the function a parameter belongs to. */
 function ownerLabel(path: string): string {
   if (path === "default") return "the default export";
@@ -1399,10 +1506,17 @@ function ownerLabel(path: string): string {
   return `${path}()`;
 }
 
-/** A function whose parameter list starts at `at` (a source offset), as a message names it. */
+/**
+ * A function whose parameter list starts at `at` (a source offset), as a
+ * message names it. `exported`: other modules can call it; `unseen`: a
+ * callback, a method, or a function passed on or returned as a value, whose
+ * callers this file cannot all see; `this` and `arguments`: what those
+ * read, which callers fill.
+ */
 interface ReachableOwner {
   at: number;
   label: string;
+  kind: "exported" | "unseen" | "this" | "arguments";
 }
 
 /** The owner of a parameter named `name` read at `offset`: the nearest function before it with such a parameter. */
@@ -1410,12 +1524,33 @@ function reachableOwnerAt(
   owners: ReadonlyMap<string, readonly ReachableOwner[]>,
   name: string,
   offset: number,
-): string | undefined {
-  let best: ReachableOwner | undefined;
-  for (const owner of owners.get(name) ?? [])
-    if (owner.at <= offset && (best === undefined || owner.at > best.at))
-      best = owner;
-  return (best ?? owners.get(name)?.[0])?.label;
+): ReachableOwner | undefined {
+  // Each list is sorted by `at`, so a binary search finds it.
+  const list = owners.get(name);
+  if (list === undefined || list.length === 0) return undefined;
+  let lo = 0;
+  let hi = list.length - 1;
+  if (list[0].at > offset) return list[0];
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (list[mid].at <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return list[lo];
+}
+
+/** How a message says where a parameter's value comes from and why html may escape it. */
+function callerClause(name: string, owner: ReachableOwner | undefined): string {
+  switch (owner?.kind) {
+    case "this":
+      return "this, whose fields a constructor or method may have filled from a caller's arguments: the value may be markup from a caller";
+    case "arguments":
+      return "arguments, which holds what the function's callers pass: the value may be markup from a caller";
+    case "unseen":
+      return `${name}, a parameter of ${owner.label}, whose callers this file cannot all see (a callback, a method, or a function passed on or returned): the value may be markup from a caller`;
+    default:
+      return `${name}, a parameter of ${owner?.label ?? "a function"}, which other modules can call: the value may be markup from a caller`;
+  }
 }
 
 /**
@@ -1439,7 +1574,7 @@ export function exportReachableParameters(
   /** Records that `name` is a parameter of the function whose list starts at token `at`. */
   const own = (name: string, at: number, label: string): void => {
     const list = out.get(name) ?? [];
-    list.push({ at: tokens[at].start, label });
+    list.push({ at: tokens[at].start, label, kind: "exported" });
     out.set(name, list);
   };
   const punct = (k: number, v: string): boolean =>
@@ -1508,77 +1643,8 @@ export function exportReachableParameters(
   /** Records the parameters of the list at `at` (a `(`, or the lone parameter of `x => ...`). */
   const addParameters = (at: number, path: string): void => {
     const label = ownerLabel(path);
-    if (!punct(at, "(")) {
-      if (word(at)) own(tokens[at].value, at, label);
-      return;
-    }
-    const close = partner[at];
-    if (close === -1) return;
-    let names: string[] = [];
-    let typeFrom = -1;
-    let typeTo = -1;
-    const finish = (): void => {
-      const type =
-        typeFrom !== -1 && typeTo >= typeFrom
-          ? body.slice(tokens[typeFrom].start, tokens[typeTo].end)
-          : undefined;
-      if (type === undefined || !PLAIN_PARAMETER_TYPE.test(type))
-        for (const name of names) if (name !== "this") own(name, at, label);
-      names = [];
-      typeFrom = typeTo = -1;
-    };
-    // 0: the name or pattern, 1: the type, 2: the default value.
-    let part = 0;
-    for (let j = at + 1; j < close; j++) {
-      const t = tokens[j];
-      if (t.type === "punctuation") {
-        if (t.value === ",") {
-          finish();
-          part = 0;
-          continue;
-        }
-        if (part === 0 && t.value === ":") {
-          part = 1;
-          continue;
-        }
-        if (part !== 2 && t.value === "=" && !punct(j + 1, ">")) {
-          part = 2;
-          continue;
-        }
-        if (t.value === "(" || t.value === "[" || t.value === "{") {
-          const end = partner[j] === -1 ? close : partner[j];
-          if (part === 0)
-            for (let q = j + 1; q < end; q++)
-              if (
-                tokens[q].type === "identifier" &&
-                !punct(q + 1, ":") &&
-                !punct(q - 1, ".")
-              )
-                names.push(tokens[q].value);
-          if (part === 1) {
-            if (typeFrom === -1) typeFrom = j;
-            typeTo = end;
-          }
-          j = end;
-          continue;
-        }
-      }
-      if (part === 0 && t.type === "identifier") {
-        if (
-          !MEMBER_MODIFIERS.has(t.value) ||
-          punct(j + 1, ",") ||
-          punct(j + 1, ":") ||
-          punct(j + 1, "?") ||
-          punct(j + 1, "=") ||
-          j + 1 === close
-        )
-          names.push(t.value);
-      } else if (part === 1 && !(t.type === "punctuation" && t.value === "?")) {
-        if (typeFrom === -1) typeFrom = j;
-        typeTo = j;
-      }
-    }
-    finish();
+    for (const name of possiblyMarkupParameters(body, tokens, partner, at))
+      own(name, at, label);
   };
   const visited = new Set<number>();
   /** The members of the class or object whose `{` is at `open`. */
@@ -1808,6 +1874,212 @@ export function exportReachableParameters(
   return out;
 }
 
+/**
+ * The parameters in a module whose callers this file cannot all see, with
+ * the functions they belong to: every callback and function expression,
+ * every method and constructor, generators, and named functions that are
+ * exported or used as a value (returned, passed, stored, wrapped) rather
+ * than only called by name. A local function declared with `function` or
+ * bound to a `const`, `let` or `var`, and only ever called by name, is left
+ * out: its parameters hold what those calls pass, which markupProducers
+ * follows. Types count as for exported functions: a number, bigint or
+ * boolean parameter is plain data. `this` and `arguments` are included as
+ * well, since callers fill them. One pass over the tokens, each lookback
+ * bounded, so the pass stays linear.
+ */
+export function unseenCallerParameters(
+  body: string,
+  tokens: readonly Token[] = scanJavaScript(body).tokens,
+): Map<string, ReachableOwner[]> {
+  const n = tokens.length;
+  const punct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  const word = (k: number, v?: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "identifier" &&
+    (v === undefined || tokens[k].value === v);
+  const partner = new Int32Array(n).fill(-1);
+  // The innermost bracket each token is in.
+  const enclosing = new Int32Array(n).fill(-1);
+  const stack: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const t = tokens[k];
+    if (stack.length > 0) enclosing[k] = stack[stack.length - 1];
+    if (t.type !== "punctuation") continue;
+    if (t.value === "(" || t.value === "[" || t.value === "{") stack.push(k);
+    else if (
+      (t.value === ")" || t.value === "]" || t.value === "}") &&
+      stack.length > 0
+    ) {
+      const o = stack.pop()!;
+      partner[o] = k;
+      partner[k] = o;
+    }
+  }
+  const declarationKeyword = (k: number): boolean =>
+    word(k, "const") || word(k, "let") || word(k, "var");
+  // Names used other than as a direct call or their own declaration: a
+  // function named this way may be called where this file cannot see.
+  const usedAsValue = new Set<string>();
+  for (let k = 0; k < n; k++) {
+    if (!word(k) || punct(k - 1, ".") || punct(k - 1, "#")) continue;
+    const name = tokens[k].value;
+    // A key: { name: value }.
+    if (punct(k + 1, ":") && (punct(k - 1, "{") || punct(k - 1, ","))) continue;
+    const isFunctionName =
+      word(k - 1, "function") || (punct(k - 1, "*") && word(k - 2, "function"));
+    if (isFunctionName || declarationKeyword(k - 1)) {
+      let b = isFunctionName ? (word(k - 1) ? k - 2 : k - 3) : k - 2;
+      while (word(b, "async")) b--;
+      if (word(b, "export") || word(b, "default")) usedAsValue.add(name);
+      continue;
+    }
+    if (!punct(k + 1, "(")) usedAsValue.add(name);
+  }
+  /** Before a function head ending at token `j`: the `NAME` of `const|let|var NAME =`, if any. */
+  const boundName = (j: number): string | undefined => {
+    while (word(j, "async")) j--;
+    if (!punct(j, "=") || punct(j - 1, "=")) return undefined;
+    if (word(j - 1) && declarationKeyword(j - 2)) return tokens[j - 1].value;
+    // const NAME: Type = ...: back past the annotation.
+    for (let q = j - 1; q >= 0 && q > j - 64; q--) {
+      if (
+        (punct(q, ")") || punct(q, "]") || punct(q, "}")) &&
+        partner[q] !== -1
+      )
+        q = partner[q];
+      else if (punct(q, ":"))
+        return word(q - 1) && declarationKeyword(q - 2)
+          ? tokens[q - 1].value
+          : undefined;
+      else if (
+        punct(q, ";") ||
+        punct(q, "{") ||
+        (punct(q, "=") && !punct(q + 1, ">"))
+      )
+        break;
+    }
+    return undefined;
+  };
+  /**
+   * Whether the parameter list whose head ends at token `head` is a
+   * function type in an annotation, not a function: `const f: (s: string)
+   * => string`, `(): (s: string) => string`, `(render: () => string)`.
+   */
+  const inAnnotation = (head: number): boolean => {
+    if (!punct(head, ":")) return false;
+    if (punct(head - 1, ")")) return true;
+    let name = head - 1;
+    if (punct(name, "?")) name--;
+    if (!word(name)) return false;
+    if (declarationKeyword(name - 1)) return true;
+    return (
+      (punct(name - 1, "(") || punct(name - 1, ",")) &&
+      enclosing[head] !== -1 &&
+      punct(enclosing[head], "(")
+    );
+  };
+  /** The token before a parameter list at `k`, past type parameters (`<T>`). */
+  const beforeHead = (k: number): number => {
+    let j = k - 1;
+    if (!punct(j, ">")) return j;
+    for (let depth = 0; j >= 0 && j >= k - 64; j--) {
+      if (punct(j, ">")) depth++;
+      else if (punct(j, "<") && --depth === 0) return j - 1;
+    }
+    return k - 1;
+  };
+  /** After a parameter list's `)` at `close`: the token past a return type (`: string`, `: { a: string }`). */
+  const pastReturnType = (close: number): number => {
+    let j = close + 1;
+    if (!punct(j, ":")) return j;
+    for (j++; j < n && j <= close + 64; j++) {
+      if (punct(j, "=") && punct(j + 1, ">")) return j;
+      if (punct(j, "{") && !punct(j - 1, ":") && !punct(j - 1, "|")) return j;
+      if ((punct(j, "(") || punct(j, "[") || punct(j, "{")) && partner[j] > j)
+        j = partner[j];
+      else if (punct(j, ";") || punct(j, ",") || punct(j, ")")) return j;
+    }
+    return j;
+  };
+  const isArrow = (j: number): boolean => punct(j, "=") && punct(j + 1, ">");
+  const out = new Map<string, ReachableOwner[]>();
+  const add = (at: number, label: string): void => {
+    for (const name of possiblyMarkupParameters(body, tokens, partner, at)) {
+      const list = out.get(name) ?? [];
+      list.push({ at: tokens[at].start, label, kind: "unseen" });
+      out.set(name, list);
+    }
+  };
+  /** Whether a function bound or declared as `name` is only ever called by name. */
+  const onlyCalled = (name: string | undefined): boolean =>
+    name !== undefined && !usedAsValue.has(name);
+  /** The parameter lists of `function` heads, read with their head. */
+  const functionLists = new Set<number>();
+  for (let k = 0; k < n; k++) {
+    if (word(k, "function") && !punct(k - 1, ".")) {
+      let j = k + 1;
+      if (punct(j, "*")) j++;
+      const generator = j > k + 1;
+      const name = word(j) ? tokens[j++].value : undefined;
+      if (punct(j, "<"))
+        for (let depth = 0, q = j; q < n && q <= j + 64; q++) {
+          if (punct(q, "<")) depth++;
+          else if (punct(q, ">") && --depth === 0) {
+            j = q + 1;
+            break;
+          }
+        }
+      if (!punct(j, "(")) continue;
+      functionLists.add(j);
+      const bound = boundName(k - 1);
+      let b = k - 1;
+      while (word(b, "async")) b--;
+      const statement =
+        b < 0 || punct(b, ";") || punct(b, "{") || punct(b, "}");
+      const owner = bound ?? (statement ? name : undefined);
+      if (!generator && onlyCalled(owner)) continue;
+      add(j, (owner ?? name) ? `${owner ?? name}()` : "a callback");
+      continue;
+    }
+    if (punct(k, "(") && partner[k] > k && !functionLists.has(k)) {
+      const after = pastReturnType(partner[k]);
+      const head = beforeHead(k);
+      if (isArrow(after)) {
+        if (inAnnotation(head)) continue;
+        const bound = boundName(head);
+        if (onlyCalled(bound)) continue;
+        add(k, bound ? `${bound}()` : "a callback");
+        continue;
+      }
+      // A method: KEY(...) {, its key a name, a string, #name or [computed].
+      if (
+        punct(after, "{") &&
+        ((word(head) && !CONTROL_WORDS.has(tokens[head].value)) ||
+          tokens[head]?.type === "string" ||
+          punct(head, "]")) &&
+        !punct(head - 1, ".")
+      ) {
+        add(k, word(head) ? `${tokens[head].value}()` : "a method");
+        continue;
+      }
+      continue;
+    }
+    if (word(k) && isArrow(k + 1) && !punct(k - 1, ".")) {
+      const bound = boundName(k - 1);
+      if (onlyCalled(bound)) continue;
+      add(k, bound ? `${bound}()` : "a callback");
+    }
+  }
+  out.set("this", [{ at: 0, label: "this", kind: "this" }]);
+  out.set("arguments", [{ at: 0, label: "arguments", kind: "arguments" }]);
+  return out;
+}
+
 /** Globals that return plain data, and syntax that looks like a call. */
 const PLAIN_CALLEES = new Set(
   "String Number Boolean BigInt Symbol Array Object Date RegExp Map Set WeakMap WeakSet Promise Error TypeError RangeError URL URLSearchParams parseInt parseFloat isNaN isFinite encodeURIComponent encodeURI decodeURIComponent decodeURI structuredClone setTimeout clearTimeout setInterval clearInterval queueMicrotask require import super if for while switch catch with function return typeof void delete await yield new async in of instanceof case do else".split(
@@ -1917,6 +2189,47 @@ function markupProducers(
     }
     return spans;
   };
+  // for (const NAME of VALUE) and for (const [k, v] in VALUE): each name
+  // holds what VALUE holds.
+  for (let k = 0; k + 3 < n; k++) {
+    if (
+      !(tokens[k].type === "identifier" && tokens[k].value === "for") ||
+      !isPunct(k + 1, "(") ||
+      partner[k + 1] === -1 ||
+      !(
+        tokens[k + 2].type === "identifier" &&
+        /^(?:const|let|var)$/.test(tokens[k + 2].value)
+      )
+    )
+      continue;
+    const close = partner[k + 1];
+    let j = k + 3;
+    const names: string[] = [];
+    if (isPunct(j, "[") || isPunct(j, "{")) {
+      const end = partner[j];
+      if (end === -1 || end >= close) continue;
+      for (let q = j + 1; q < end; q++)
+        if (
+          tokens[q].type === "identifier" &&
+          !isPunct(q + 1, ":") &&
+          !isPunct(q - 1, ".")
+        )
+          names.push(tokens[q].value);
+      j = end + 1;
+    } else if (tokens[j].type === "identifier") names.push(tokens[j++].value);
+    if (
+      j >= close ||
+      tokens[j].type !== "identifier" ||
+      (tokens[j].value !== "of" && tokens[j].value !== "in")
+    )
+      continue;
+    for (const name of names)
+      regions.push({
+        name,
+        start: tokens[j].end,
+        end: tokens[close].start,
+      });
+  }
   const paramsOf = new Map<string, string[][]>();
   for (const fn of functions)
     if (fn.params.length > 0) {
