@@ -173,14 +173,15 @@ These checks apply to component files only: the component's `.html` file and the
 
 ### Audit Server and Stream Scripts
 
-Server and stream script diagnostics enforce the runtime contract and flag output contexts that need special handling:
+Server and stream script diagnostics enforce the runtime contract and flag output contexts that need special handling. The markup rules below also run in build and routes scripts, and in the `.ts` and `.js` files those scripts and API routes import (a build script's `src/lib/` helper, for example), as soon as you open the file. An open helper is checked again as you type in a page or module that starts or stops importing it, before you save. Helpers of server and stream scripts and API routes get every sink rule; helpers only build scripts import get the build-time ones: see [the Linter](/tools/linter#server-script-unescaped-markup) for which files count.
 
 - An inline server or stream script must `export default` a handler function.
 - Server and stream scripts may import `@bascik/bascik/html`, and nothing else from `@bascik/bascik`, which is build tooling.
 - A default export that returns a `Response` (`return new Response(...)`, `return Response.json(...)`) gets `server-script-returns-response`: the return value is spliced into the page as markup, so return a string or an `html` value, and put a Response in an [API route](/api-routes).
-- A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)` or holds a joined string, because wrapping would escape the value twice.
+- A markup template that interpolates a value without `html` gets `server-script-unescaped-markup` on that hole, with the quick fix **Wrap template in html\`...\`**, which adds the tag and the import. The fix is not offered when a hole calls a hand-written escaper such as `escape(q)`, holds a joined string, or calls a function from a project module (`productCard(p)`, which may return markup), because wrapping would escape that markup, nor on an XML template such as a sitemap, nor where the template's value reaches a `string` type (a function annotated `: string`), which the wrapped `SafeHtml` value would not fit.
 - Template substitutions in URL attributes, event handlers, unquoted attributes, inline scripts, and CSS contexts receive targeted warnings because normal HTML escaping is not sufficient there. Inside an `html` template, the ones `html` refuses are errors.
 - `esc()` inside an `html` template is reported as `html-escaped-twice`, and a `.join("")` of `html` values inside one as `html-joined-string`. Both would show escaped tags as text on the page.
+- A function that turns `&` and `<` into entities by hand gets `hand-written-html-escaper` on its name. When it is one `return` of its one parameter followed only by `.replace()` calls that write entities, the quick fix **Make escapeHtml() call esc() from @bascik/bascik/html** replaces its body with a call to `esc()` and adds the import.
 
 ![VS Code: the hole in a server script's template is underlined, the hover names server-script-unescaped-markup, and the Quick Fix wraps the template in html and adds the import from @bascik/bascik/html](/assets/vscode/unescaped-markup@2x.webp)
 
@@ -304,7 +305,7 @@ When projects are nested, the closest enclosing project owns the file. Separate 
 
 Component discovery follows `directory.components` in the owning project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
-Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
+Config files, component directories, project HTML usage, and `.ts` and `.js` modules are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required: when a closed module starts or stops importing a helper, the open helper's markup diagnostics follow.
 
 ## How It Works
 

@@ -17,7 +17,14 @@ import {
   isInsideComponentRoots,
   type ProjectSnapshot,
 } from "./project.js";
-import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
+import { createDiagnosticsSafely, applyAutoFixes } from "./analyzer.js";
+import {
+  ScriptModules,
+  findScriptModules,
+  normalizeModulePath,
+  scriptModulesOf,
+  snapshotRoots,
+} from "./script-modules.js";
 
 /**
  * A file or folder to check. A folder can be limited to some file types, because what belongs in a pages folder
@@ -185,14 +192,52 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
       snapshot?.projectRoot ?? findConfigRoot(firstTarget) ?? firstTarget;
   }
 
-  const files = [
+  const collected = [
     ...new Set(
       targets.flatMap((target, index) =>
         collectFiles(target, requested[index].extensions),
       ),
     ),
-  ].sort();
+  ];
   snapshot ??= await buildSnapshot(projectRoot);
+
+  // The modules the checked scripts run in Node: a directive script's src=
+  // file and what it imports (a src/lib helper, say), and what the checked
+  // API routes import. They are checked too, wherever they live, so a
+  // helper that builds markup is linted with the page that uses it.
+  const checkedScriptModules = findScriptModules({
+    projectRoot: snapshot.projectRoot,
+    importRoot: snapshot.importRoot,
+    extraRoots: snapshotRoots(snapshot),
+    html: collected
+      .filter((file) => file.toLowerCase().endsWith(".html"))
+      .flatMap((file): [string, string][] => {
+        try {
+          return [[file, fs.readFileSync(file, "utf8")]];
+        } catch {
+          return [];
+        }
+      }),
+    apiRoutes: snapshot.apiRoot
+      ? collected.filter(
+          (file) =>
+            isInsideComponentRoots(file.replace(/\\/g, "/"), [
+              snapshot!.apiRoot!,
+            ]) && /\.(?:[cm]?[jt]s)$/i.test(file),
+        )
+      : [],
+  });
+  const scriptModules = ScriptModules.union(
+    scriptModulesOf(snapshot),
+    checkedScriptModules,
+  );
+  const seen = new Set(collected.map(normalizeModulePath));
+  const files = [
+    ...collected,
+    ...[...checkedScriptModules]
+      .filter((file) => !seen.has(file))
+      .map((file) => path.resolve(file)),
+  ].sort();
 
   const diagnostics: CheckedDiagnostic[] = [];
   const fixedFiles: string[] = [];
@@ -226,7 +271,13 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
       }
     }
 
-    for (const diagnostic of createDiagnostics(document, filePath, snapshot)) {
+    for (const diagnostic of createDiagnosticsSafely(
+      document,
+      filePath,
+      snapshot,
+      [],
+      scriptModules,
+    )) {
       const severity =
         diagnostic.severity === DiagnosticSeverity.Error
           ? "error"

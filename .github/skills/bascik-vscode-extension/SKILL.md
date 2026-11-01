@@ -53,7 +53,7 @@ Highlighting is a TextMate injection into `text.html`, the prefix of `text.html.
 
 ## 3. Server behavior the extension relies on
 
-- **File watching.** The server registers watchers for `bascik.config.{ts,js,mjs}` and `**/*.html`, one pattern per workspace folder using a folder-relative pattern. A bare `**/*.html` pattern is matched against whatever events the editor sees and can arrive seconds late. Keep folder-relative patterns.
+- **File watching.** The server registers watchers for `bascik.config.{ts,js,mjs}`, `**/*.html` and `**/*.{ts,mts,js,mjs}` (a closed module's imports decide which files get the markup rules), one pattern per workspace folder using a folder-relative pattern. A bare `**/*.html` pattern is matched against whatever events the editor sees and can arrive seconds late. Keep folder-relative patterns.
 - **Workspace folders.** The server follows folder changes. It registers `onDidChangeWorkspaceFolders` only after `initialize`, and only when the client sends them, because the connection throws otherwise.
 - **Stale results.** A check whose document changed while the project was being read is dropped; the newer check publishes.
 - **Files outside every workspace folder and non-`file:` documents** get no diagnostics.

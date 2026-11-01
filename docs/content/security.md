@@ -377,7 +377,7 @@ Two things to settle before you turn a policy on:
 
 ## The linter
 
-The language server, the VS Code extension and `bascik --check` warn with `server-script-unescaped-markup` when a server or stream script interpolates a value into a markup template without `html`:
+The language server, the VS Code extension and `bascik --check` warn with `server-script-unescaped-markup` when a script interpolates a value into a markup template without `html`. That covers server, stream, build and routes scripts, API routes, and the `.ts` and `.js` modules they import, since a build script's helper writes your pages too. API routes and the modules that server scripts, stream scripts and API routes import get every sink rule (an `onclick`, a `style` or an unchecked URL holding a request value); build scripts and their helpers get the ones that break markup whoever wrote the value:
 
 ```text
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
@@ -385,7 +385,9 @@ src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This mar
 
 The rule follows values through string concatenation (`${first + last}`) and through later assignments to a `let` or `var`, and checks templates tagged with `String.raw` or a `dedent`-style tag like untagged ones. It reads code, not data flow, so it cannot see every path a value takes: treat a clean report as a check, and build markup with `html` anyway.
 
-In the editor, the quick fix **Wrap template in html\`...\`** adds the tag and the import. It is not offered where `html` would throw (a tag name, an attribute name, a comment) or where the name `html` and the alias `safeHtml` are both taken. `bascik --check --fix` does not apply it, because the value changes from a string to an `html` value. Inside `html` templates, the sink rules become errors where `html` would throw. See the [Linter](/tools/linter#server-script-unescaped-markup) for configuration and suppression.
+A function that escapes HTML by hand (a `.replace()` chain that writes `&amp;` and `&lt;`) is reported as `hand-written-html-escaper`: use `html`, or `esc()` for a plain string, instead of keeping your own.
+
+In the editor, the quick fix **Wrap template in html\`...\`** adds the tag and the import. It is not offered where `html` would throw (a tag name, an attribute name, a comment, a URL split from its scheme such as `href="${base}${path}"`), where a hole calls a project helper that may return markup, on an XML template (a sitemap or feed, which gets `esc()` advice), or where the name `html` and the alias `safeHtml` are both taken. `bascik --check --fix` does not apply it, because the value changes from a string to an `html` value. Inside `html` templates, the sink rules become errors where `html` would throw. See the [Linter](/tools/linter#server-script-unescaped-markup) for configuration and suppression.
 
 ![VS Code showing a server script whose template interpolates a query parameter without html: the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup-still@2x.webp)
 

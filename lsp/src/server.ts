@@ -26,7 +26,7 @@ import {
   isUsageSourcePath,
 } from "./project.js";
 import {
-  createDiagnostics,
+  createDiagnosticsSafely,
   createCompletions,
   createHover,
   createDefinition,
@@ -34,9 +34,34 @@ import {
 } from "./analyzer.js";
 import { createReferences } from "./references.js";
 import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
+import {
+  invalidateScriptModules,
+  normalizeModulePath,
+  scriptModulesOf,
+  snapshotRoots,
+} from "./script-modules.js";
 
-/** Files whose changes can alter a diagnostic: project config, and the HTML that defines or uses components. */
-const WATCHED_FILE_PATTERNS = ["**/bascik.config.{ts,js,mjs}", "**/*.html"];
+/** Languages whose files can run in Node and so get the markup rules. */
+const SCRIPT_LANGUAGES: ReadonlySet<string> = new Set([
+  "javascript",
+  "typescript",
+]);
+const HTML_AND_SCRIPT_LANGUAGES: ReadonlySet<string> = new Set([
+  "html",
+  ...SCRIPT_LANGUAGES,
+]);
+/**
+ * Files whose changes can alter a diagnostic: project config, the HTML that
+ * defines or uses components, and script modules, whose imports decide
+ * which files run in Node (script-modules.ts).
+ */
+const WATCHED_FILE_PATTERNS = [
+  "**/bascik.config.{ts,js,mjs}",
+  "**/*.html",
+  "**/*.{ts,mts,js,mjs}",
+];
+/** A script module's extension, as WATCHED_FILE_PATTERNS watches it. */
+const SCRIPT_MODULE_FILE = /\.(?:ts|mts|js|mjs)$/i;
 
 /**
  * The packages whose presence in a package.json makes a folder without a config a Bascik project: Bascik itself
@@ -95,7 +120,7 @@ export class BascikLanguageServer {
   private pendingSnapshots = new Map<string, Promise<ProjectSnapshot>>();
   private readonly revalidationTimers = new Map<
     string,
-    { timer: NodeJS.Timeout; htmlOnly: boolean }
+    { timer: NodeJS.Timeout; languages: ReadonlySet<string> | undefined }
   >();
   private clientWatchesFiles = false;
   private clientWatchesFolders = false;
@@ -179,10 +204,7 @@ export class BascikLanguageServer {
 
     this.documents.onDidChangeContent((change) => {
       void this.validateDocument(change.document);
-      // Open HTML buffers feed prop usage into other documents' diagnostics.
-      if (change.document.languageId === "html") {
-        this.scheduleRevalidation(change.document, true);
-      }
+      this.revalidateDependents(change.document);
     });
 
     this.documents.onDidClose((event) => {
@@ -191,10 +213,8 @@ export class BascikLanguageServer {
         uri: event.document.uri,
         diagnostics: [],
       });
-      // Closing an open HTML buffer changes which usages supply component props.
-      if (event.document.languageId === "html") {
-        this.scheduleRevalidation(event.document, true);
-      }
+      // Closing a buffer puts the file on disk back in its place.
+      this.revalidateDependents(event.document);
     });
 
     this.connection.onCompletion(async (params) => {
@@ -342,7 +362,7 @@ export class BascikLanguageServer {
       }
     }
     void this.registerFileWatchers();
-    this.scheduleRevalidation(undefined, false);
+    this.scheduleRevalidation(undefined, undefined);
   }
 
   /**
@@ -398,6 +418,7 @@ export class BascikLanguageServer {
     changes: WatchedFileChange[],
   ): Promise<void> {
     let everything = false;
+    let scriptChanged = false;
     const affectedRoots = new Set<string>();
 
     for (const change of changes) {
@@ -414,6 +435,13 @@ export class BascikLanguageServer {
         // A config file appearing or disappearing also changes which project the files below it belong to.
         this.invalidateProject(path.dirname(path.resolve(fsPath)));
         everything = true;
+        continue;
+      }
+      if (SCRIPT_MODULE_FILE.test(fsPath)) {
+        // A closed module's imports changed, or it appeared or went away:
+        // which files run in Node may differ. Open modules are checked again.
+        invalidateScriptModules();
+        scriptChanged = true;
         continue;
       }
       if (!fsPath.toLowerCase().endsWith(".html")) continue;
@@ -449,11 +477,14 @@ export class BascikLanguageServer {
     }
 
     if (everything) {
-      this.scheduleRevalidation(undefined, false);
+      this.scheduleRevalidation(undefined, undefined);
     } else {
       for (const projectRoot of affectedRoots) {
-        this.scheduleRevalidation(projectRoot, false);
+        this.scheduleRevalidation(projectRoot, undefined);
       }
+      // A module may belong to a project other than the one above it on
+      // disk (a shared importRoot), so every open module is checked again.
+      if (scriptChanged) this.scheduleRevalidation(undefined, SCRIPT_LANGUAGES);
     }
   }
 
@@ -643,7 +674,12 @@ export class BascikLanguageServer {
       text: d.getText(),
     }));
 
-    const diagnostics = createDiagnostics(document, fsPath, snapshot, openDocs);
+    const diagnostics = createDiagnosticsSafely(
+      document,
+      fsPath,
+      this.scriptOwnerSnapshot(document, fsPath, snapshot, openDocs),
+      openDocs,
+    );
 
     this.connection.sendDiagnostics({
       uri: document.uri,
@@ -653,13 +689,51 @@ export class BascikLanguageServer {
   }
 
   /**
+   * The snapshot to check a document with. A .ts or .js file that its own
+   * project does not run in Node, but another built project does (a helper
+   * under a `scripts.importRoot` or component root outside that project,
+   * such as a monorepo's shared folder), is checked with that project.
+   */
+  private scriptOwnerSnapshot(
+    document: TextDocument,
+    fsPath: string,
+    snapshot: ProjectSnapshot | undefined,
+    openDocs: { fsPath: string; text: string }[],
+  ): ProjectSnapshot | undefined {
+    if (!SCRIPT_LANGUAGES.has(document.languageId)) return snapshot;
+    const key = normalizeModulePath(fsPath);
+    if (snapshot && scriptModulesOf(snapshot, openDocs).has(key))
+      return snapshot;
+    for (const other of this.projectSnapshots.values()) {
+      if (other === snapshot) continue;
+      if (!snapshotRoots(other).some((root) => isPathInside(fsPath, root)))
+        continue;
+      if (scriptModulesOf(other, openDocs).has(key)) return other;
+    }
+    return snapshot;
+  }
+
+  /**
+   * Checks the open documents that a changed or closed buffer feeds. An HTML
+   * buffer supplies prop usage to other HTML documents, and its directive
+   * scripts decide which .ts and .js files run in Node (script-modules.ts);
+   * a .ts or .js buffer's imports decide that too.
+   */
+  private revalidateDependents(document: TextDocument): void {
+    if (document.languageId === "html")
+      this.scheduleRevalidation(document, HTML_AND_SCRIPT_LANGUAGES);
+    else if (SCRIPT_LANGUAGES.has(document.languageId))
+      this.scheduleRevalidation(document, SCRIPT_LANGUAGES);
+  }
+
+  /**
    * Checks open documents again shortly, so a burst of changes costs one pass. With a document or a project
-   * root, only that project is checked; without one, every open document is. `htmlOnly` limits the pass to
-   * HTML documents.
+   * root, only that project is checked; without one, every open document is. `languages` limits the pass to
+   * documents in those languages; undefined checks every language.
    */
   private scheduleRevalidation(
     scope: TextDocument | string | undefined,
-    htmlOnly: boolean,
+    languages: ReadonlySet<string> | undefined,
   ): void {
     const projectRoot =
       typeof scope === "string"
@@ -670,11 +744,16 @@ export class BascikLanguageServer {
     const key = projectRoot ?? "*";
     const previous = this.revalidationTimers.get(key);
     if (previous) clearTimeout(previous.timer);
-    const onlyHtml = previous ? previous.htmlOnly && htmlOnly : htmlOnly;
+    const merged =
+      previous === undefined
+        ? languages
+        : previous.languages === undefined || languages === undefined
+          ? undefined
+          : new Set([...previous.languages, ...languages]);
     const timer = setTimeout(() => {
       this.revalidationTimers.delete(key);
       for (const document of this.documents.all()) {
-        if (onlyHtml && document.languageId !== "html") continue;
+        if (merged && !merged.has(document.languageId)) continue;
         if (
           projectRoot &&
           this.findProjectRoot(uriToFsPath(document.uri)) !== projectRoot
@@ -684,7 +763,7 @@ export class BascikLanguageServer {
         void this.validateDocument(document);
       }
     }, REVALIDATION_DELAY_MS);
-    this.revalidationTimers.set(key, { timer, htmlOnly: onlyHtml });
+    this.revalidationTimers.set(key, { timer, languages: merged });
   }
 
   public listen(): void {

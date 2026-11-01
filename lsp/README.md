@@ -31,7 +31,8 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
 - **Quick Fixes (`textDocument/codeAction`)**:
   - Adds the missing `data-bascik-prop-` prefix to a prop attribute (`missing-prop-prefix`).
   - Converts a paired tag on a zero-slot component to a self-closing tag (`prefer-self-closing-component`).
-  - Wraps a server script template literal that returns markup in `` html`...` `` and imports `html` from `@bascik/bascik/html` (`server-script-unescaped-markup`). It imports `html as safeHtml` when the script already uses the name `html`, and is not offered when that name is taken too or a value sits where `html` would throw. This fix is editor-only, because it changes the returned value from a string to `SafeHtml`.
+  - Wraps a server script template literal that returns markup in `` html`...` `` and imports `html` from `@bascik/bascik/html` (`server-script-unescaped-markup`). It imports `html as safeHtml` when the script already uses the name `html`, and is not offered when that name is taken too or a value sits where `html` would throw. This fix is editor-only, because it changes the returned value from a string to `SafeHtml`. The rule runs in build and routes scripts too, and in the `.ts` and `.js` modules directive scripts and API routes import. It is not offered where the template's value reaches a `string` type (a return annotated `: string`, a `const` annotated `: string`, `as string`), since the wrapped value is `SafeHtml`; the message names the type to change.
+  - Makes a hand-written HTML escaper whose body is one `return` of its parameter followed only by entity `.replace()` calls call `esc()` from `@bascik/bascik/html`, and imports it (`hand-written-html-escaper`); any other escaper gets only the import of `html`.
 
 ## Installation & CLI Usage
 

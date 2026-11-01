@@ -6,6 +6,25 @@ import { pathToFileURL } from "node:url";
 import { FileChangeType, type Diagnostic } from "vscode-languageserver";
 import { BascikLanguageServer, uriToFsPath } from "./server.js";
 
+// A file Bascik cannot analyze: the scanners no longer overflow on deep
+// nesting, so the analysis-failed fallback is reached through a marker that
+// makes the server-script analysis throw as an overflow would.
+const ANALYSIS_THROWS = "/* bascik-test: analysis throws */";
+vi.mock("./server-script-rules.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./server-script-rules.js")>();
+  return {
+    ...actual,
+    analyzeServerScriptSource: (
+      ...args: Parameters<typeof actual.analyzeServerScriptSource>
+    ) => {
+      if (args[0].includes(ANALYSIS_THROWS))
+        throw new RangeError("Maximum call stack size exceeded");
+      return actual.analyzeServerScriptSource(...args);
+    },
+  };
+});
+
 type Handler = (...args: any[]) => any;
 
 /** The slice of a language server connection that the server uses, recording the handlers it registers. */
@@ -133,12 +152,13 @@ describe("BascikLanguageServer", () => {
       return options.watchers.map((w) => w.globPattern);
     };
 
-    it("asks the editor to watch config files and HTML under each workspace folder", async () => {
+    it("asks the editor to watch config files, HTML and script modules under each workspace folder", async () => {
       await initialize(true);
       expect(fake.connection.client.register).toHaveBeenCalledTimes(1);
       expect(registered(0)).toEqual([
         { baseUri: uri(root), pattern: "**/bascik.config.{ts,js,mjs}" },
         { baseUri: uri(root), pattern: "**/*.html" },
+        { baseUri: uri(root), pattern: "**/*.{ts,mts,js,mjs}" },
       ]);
     });
 
@@ -147,6 +167,7 @@ describe("BascikLanguageServer", () => {
       expect(registered(0)).toEqual([
         "**/bascik.config.{ts,js,mjs}",
         "**/*.html",
+        "**/*.{ts,mts,js,mjs}",
       ]);
     });
 
@@ -577,6 +598,69 @@ describe("BascikLanguageServer", () => {
       expect(codes(component)).not.toContain("attr-prop-unsupplied");
     });
 
+    it("checks an open helper again when an unsaved page starts or stops importing it", async () => {
+      await initialize();
+      const HELPER = "export const card = (n: string) => `<p>${n}</p>`;\n";
+      const helper = await write("src/lib/card.ts", HELPER);
+      const page = await write("src/pages/index.html", "<p>no usage</p>\n");
+      open(helper, HELPER, "typescript");
+      open(page, "<p>no usage</p>\n");
+      await settle();
+      expect(codes(helper)).toEqual([]);
+
+      const importing =
+        '<script data-bascik-build>import { card } from "@/lib/card.ts"; export default () => card("x");</script>\n';
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(page), version: 2 },
+        contentChanges: [{ text: importing }],
+      });
+      await settle();
+      expect(codes(helper)).toEqual(["server-script-unescaped-markup"]);
+
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(page), version: 3 },
+        contentChanges: [{ text: "<p>no usage</p>\n" }],
+      });
+      await settle();
+      expect(codes(helper)).toEqual([]);
+    });
+
+    it("checks an open module again when another open module starts importing it", async () => {
+      await initialize();
+      await write(
+        "src/pages/index.html",
+        '<script data-bascik-build>import { a } from "@/lib/a.ts"; export default () => a;</script>\n',
+      );
+      const ESC =
+        'export function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }\n';
+      const a = await write("src/lib/a.ts", "export const a = 1;\n");
+      const b = await write("src/lib/b.ts", ESC);
+      open(a, "export const a = 1;\n", "typescript");
+      open(b, ESC, "typescript");
+      await settle();
+      expect(codes(b)).toEqual([]);
+
+      fake.handlers.get("didChange")!({
+        textDocument: { uri: uri(a), version: 2 },
+        contentChanges: [{ text: 'import "./b.ts";\nexport const a = 1;\n' }],
+      });
+      await settle();
+      expect(codes(b)).toEqual(["hand-written-html-escaper"]);
+    });
+
+    it("publishes analysis-failed for a module it cannot analyze, and keeps running", async () => {
+      await initialize();
+      await write(
+        "src/pages/index.html",
+        '<script data-bascik-build>import { t } from "@/lib/deep.ts"; export default () => t;</script>\n',
+      );
+      const DEEP = `${ANALYSIS_THROWS}\nexport const t = \`\${\`x\`}\`;\n`;
+      const deep = await write("src/lib/deep.ts", DEEP);
+      open(deep, DEEP, "typescript");
+      await settle();
+      expect(codes(deep)).toEqual(["analysis-failed"]);
+    });
+
     it("reads a saved page from disk without rebuilding the project", async () => {
       await initialize();
       const component = await write("src/components/my-card.html", COMPONENT);
@@ -662,6 +746,89 @@ describe("BascikLanguageServer", () => {
       expect(fake.connection.sendDiagnostics.mock.calls.length).toBeGreaterThan(
         calls,
       );
+    });
+
+    it("checks an open module again when a closed module changes its imports on disk (review round 2)", async () => {
+      await initialize();
+      await write(
+        "src/pages/index.html",
+        '<script data-bascik-build>import { a } from "@/lib/a.ts"; export default () => a();</script>\n',
+      );
+      await write("src/lib/a.ts", "export const a = () => 'Milk frother';\n");
+      const bText =
+        'export const b = (name: string) => `<li class="item">${name}</li>`;\n';
+      const b = await write("src/lib/b.ts", bText);
+      open(b, bText, "typescript");
+      await settle();
+      expect(codes(b)).toEqual([]);
+
+      // a.ts, closed, starts importing b.ts: b.ts now runs in Node.
+      await write(
+        "src/lib/a.ts",
+        'import { b } from "./b.ts";\nexport const a = () => b("Milk frother");\n',
+      );
+      await fake.handlers.get("watchedFiles")!({
+        changes: [
+          {
+            uri: uri(path.join(root, "src/lib/a.ts")),
+            type: FileChangeType.Changed,
+          },
+        ],
+      });
+      await settle();
+      expect(codes(b)).toEqual(["server-script-unescaped-markup"]);
+
+      // And stops again.
+      await write("src/lib/a.ts", "export const a = () => 'Milk frother';\n");
+      await fake.handlers.get("watchedFiles")!({
+        changes: [
+          {
+            uri: uri(path.join(root, "src/lib/a.ts")),
+            type: FileChangeType.Changed,
+          },
+        ],
+      });
+      await settle();
+      expect(codes(b)).toEqual([]);
+    });
+
+    it("a script change inside node_modules checks nothing again", async () => {
+      await initialize();
+      const bText = "export const b = 1;\n";
+      const b = await write("src/lib/b.ts", bText);
+      open(b, bText, "typescript");
+      await settle();
+      const calls = fake.connection.sendDiagnostics.mock.calls.length;
+      await fake.handlers.get("watchedFiles")!({
+        changes: [
+          {
+            uri: uri(path.join(root, "node_modules/pkg/index.js")),
+            type: FileChangeType.Changed,
+          },
+        ],
+      });
+      await settle();
+      expect(fake.connection.sendDiagnostics.mock.calls.length).toBe(calls);
+    });
+
+    it("checks a helper under scripts.importRoot outside the project with the project that imports it (review round 2)", async () => {
+      await write(
+        "site/bascik.config.ts",
+        'export default { scripts: { importRoot: "../shared" } };\n',
+      );
+      const pageText =
+        '<script data-bascik-build>import { card } from "@/lib/cards.ts"; export default () => card("Milk frother");</script>\n';
+      const page = await write("site/src/pages/index.html", pageText);
+      const cardsText =
+        'export const card = (name: string) => `<article class="card"><h2>${name}</h2></article>`;\n';
+      const cards = await write("shared/lib/cards.ts", cardsText);
+      // The workspace root's own config is a different project.
+      await initialize();
+      open(page, pageText);
+      await settle();
+      open(cards, cardsText, "typescript");
+      await settle();
+      expect(codes(cards)).toEqual(["server-script-unescaped-markup"]);
     });
 
     it("ignores changes inside node_modules and dist", async () => {

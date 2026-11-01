@@ -137,7 +137,7 @@ Marks a string of trusted HTML, such as sanitized CMS or Markdown output, so `ht
 esc(value); // "&lt;b&gt;"
 ```
 
-Returns `value` as an entity-escaped string for text or a quoted attribute, for code that builds strings without `html`. `null`, `undefined` and `false` give `""`. Inside `html` it escapes twice, so the page shows `&amp;lt;`; the linter reports that as `html-escaped-twice`.
+Returns `value` as an entity-escaped string for text or a quoted attribute, for code that builds strings without `html`. `null`, `undefined` and `false` give `""`. Inside `html` it escapes twice, so the page shows `&amp;lt;`; the linter reports that as `html-escaped-twice`. Use `esc` instead of an escaper of your own: the linter reports a function that turns `&` and `<` into entities by hand as [`hand-written-html-escaper`](/tools/linter#hand-written-html-escaper), in directive scripts (`data-bascik-build`, `data-bascik-server` and the rest) and the modules they run in Node. Browser scripts are not checked.
 
 `esc` is also the escaper for XML a script writes as a string, such as an Atom feed or a sitemap from an exec script. `html` reads HTML rules (URL attributes, `<title>`, `<script>`), so it does not fit XML, but `esc` escapes `&`, `<`, `>`, `"` and `'`, which is what XML text and quoted attribute values need:
 
