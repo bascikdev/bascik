@@ -24,14 +24,15 @@ function fixture(files: Record<string, string> = {}): Fixture {
 function typescriptWithoutLibFiles(
   root: Fixture,
   libFiles: string[] = [],
+  version = "6.0.0",
 ): string {
   root.write(
     "broken-typescript/package.json",
-    JSON.stringify({ name: "typescript", version: "6.0.0", main: "index.js" }),
+    JSON.stringify({ name: "typescript", version, main: "index.js" }),
   );
   root.write(
     "broken-typescript/index.js",
-    'module.exports = { version: "6.0.0", createLanguageService() {}, getDefaultLibFilePath: () => __dirname + "/lib/lib.d.ts" };\n',
+    `module.exports = { version: ${JSON.stringify(version)}, createLanguageService() {}, getDefaultLibFilePath: () => __dirname + "/lib/lib.d.ts" };\n`,
   );
   for (const name of libFiles)
     root.write(`broken-typescript/lib/${name}`, "// library\n");
@@ -135,6 +136,66 @@ describe("resolveTypeScript", () => {
     expect(result.message).toContain("npm install --save-dev typescript@6");
     // Tried once even though the client path and the project name the same copy.
     expect(result.skipped).toHaveLength(1);
+  });
+
+  it("misuse: rejects TypeScript below 5.0, which has no bundler resolution, from the project and the client, and says why", () => {
+    const root = fixture();
+    // A complete-looking TypeScript 4.9: a language service and every library file, but too old.
+    const old = typescriptWithoutLibFiles(
+      root,
+      [
+        "lib.es5.d.ts",
+        "lib.es2022.d.ts",
+        "lib.dom.d.ts",
+        "lib.dom.iterable.d.ts",
+        "lib.webworker.d.ts",
+        "lib.webworker.iterable.d.ts",
+      ],
+      "4.9.5",
+    );
+    root.link("node_modules/typescript", old);
+    const fromProject = resolveTypeScript({ projectRoot: root.root });
+    expect(fromProject.ok).toBe(false);
+    if (fromProject.ok) return;
+    expect(fromProject.message).toContain(
+      'TypeScript checks of type="text/typescript" scripts are off',
+    );
+    expect(fromProject.skipped).toEqual([
+      expect.stringMatching(
+        /^TypeScript 4\.9\.5 in .* is older than 5\.0; TypeScript 5 or 6 is needed$/,
+      ),
+    ]);
+    // From the client it is a problem with the setting, and the editor's copy is used instead.
+    const fromClient = resolveTypeScript({
+      clientPath: old,
+      editorPath: TYPESCRIPT_6_DIR,
+      projectRoot: root.root,
+    });
+    expect(fromClient).toMatchObject({ ok: true, source: "editor" });
+    expect(fromClient.clientPathProblem).toContain("is older than 5.0");
+    // Pre-release and odd version strings are read by their major number.
+    for (const version of ["5.0.0-beta", "6.1.0-dev.20261001"]) {
+      const next = fixture();
+      next.link(
+        "node_modules/typescript",
+        typescriptWithoutLibFiles(
+          next,
+          [
+            "lib.es5.d.ts",
+            "lib.es2022.d.ts",
+            "lib.dom.d.ts",
+            "lib.dom.iterable.d.ts",
+            "lib.webworker.d.ts",
+            "lib.webworker.iterable.d.ts",
+          ],
+          version,
+        ),
+      );
+      expect(resolveTypeScript({ projectRoot: next.root })).toMatchObject({
+        ok: true,
+        version,
+      });
+    }
   });
 
   it("misuse: with no typescript anywhere, checks are off with one line that says how to turn them on", () => {

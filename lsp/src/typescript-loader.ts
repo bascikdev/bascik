@@ -15,7 +15,8 @@
  * user set it.
  *
  * A copy without `createLanguageService` (TypeScript 7, the native port, publishes no JavaScript language
- * service) is skipped like a missing one, with a note, and so is a copy missing any library file the checks load.
+ * service) is skipped like a missing one, with a note, and so is a copy older than TypeScript 5 or missing any
+ * library file the checks load.
  */
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
@@ -80,6 +81,13 @@ export const REQUIRED_LIB_FILES = [
   "lib.webworker.d.ts",
   "lib.webworker.iterable.d.ts",
 ];
+
+/**
+ * The oldest TypeScript the checks run with, the floor of the peer range (`>=5.0 <7`). TypeScript 4 has no
+ * `moduleResolution: "bundler"` and no `allowImportingTsExtensions`, so every `@/lib/x.ts` import would be a
+ * false error.
+ */
+const MINIMUM_MAJOR_VERSION = 5;
 
 const loaded = new Map<string, TypeScriptModule>();
 
@@ -149,6 +157,13 @@ function tryLoad(
   if (typeof ts.createLanguageService !== "function") {
     skipped.push(
       `TypeScript ${version} in ${packageDir} has no language service (TypeScript 7 and later do not publish one); TypeScript 5 or 6 is needed`,
+    );
+    return undefined;
+  }
+  const major = Number(/^(\d+)\./.exec(version)?.[1]);
+  if (major < MINIMUM_MAJOR_VERSION) {
+    skipped.push(
+      `TypeScript ${version} in ${packageDir} is older than ${MINIMUM_MAJOR_VERSION}.0; TypeScript 5 or 6 is needed`,
     );
     return undefined;
   }
