@@ -10,6 +10,7 @@ import {
   initializationOptions,
   SERVER_MODULE,
 } from "./client-options";
+import { RestartQueue } from "./restart-queue";
 import {
   ScriptCheckPrompt,
   type ScriptCheckResult,
@@ -18,6 +19,8 @@ import {
 /** What `activate` returns. The real-editor tests read it; nothing else depends on it. */
 export interface BascikExtensionApi {
   scriptCheck: ScriptCheckPrompt;
+  /** Settles once every restart asked for so far (by a settings change) has finished. */
+  restarts: () => Promise<void>;
   /** The check made at activation, which may show the "html.validate.scripts" prompt. */
   firstScriptCheck: Promise<ScriptCheckResult>;
 }
@@ -69,15 +72,26 @@ export async function activate(
   };
 
   client = new LanguageClient("bascik", "Bascik", serverOptions, clientOptions);
-  // The server reads the TypeScript settings when it starts, so a change restarts it.
+  const started = client;
+  // The server reads the TypeScript settings when it starts, so a change restarts it: one restart at a time,
+  // with changes made during one applied by the next, and a failure logged rather than left unhandled.
+  const restarts = new RestartQueue(
+    () => started.restart(),
+    (message) => started.outputChannel.appendLine(message),
+  );
   context.subscriptions.push(
+    { dispose: () => restarts.dispose() },
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("bascik.typescript"))
-        void client?.restart();
+        void restarts.request();
     }),
   );
   await client.start();
-  return { scriptCheck, firstScriptCheck };
+  return {
+    scriptCheck,
+    firstScriptCheck,
+    restarts: () => restarts.settled(),
+  };
 }
 
 export async function deactivate(): Promise<void> {
