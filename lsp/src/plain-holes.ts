@@ -8,15 +8,18 @@
  * or templates of them, String(), Number() and the like, and string methods
  * (toFixed, toUpperCase, trim, slice, padStart and similar) on them:
  *
- * - string, number, bigint and boolean literals, and `const` objects or
- *   arrays of only those that the file reads by a literal key or index
- *   and never changes, exports or passes on;
+ * - string, number, bigint and boolean literals with no `&` or `<` in
+ *   their value (an escape such as `\x3c` or `\u0026` counts by the
+ *   character it writes), and `const` objects or arrays of only those that
+ *   the file reads by a literal key or index and never changes, exports or
+ *   passes on;
  * - request data: the `request` parameter, `context.params` and
  *   `context.remoteIp`, in request-time code (and `const` values taken
  *   from them);
  * - `process.env` values;
  * - `Date` and `Date.now()`-derived values, and `Math` results;
- * - parameters typed number, bigint or boolean (or a union of those) that
+ * - parameters typed number, bigint or boolean (or a union of those) of a
+ *   local function that is not exported and is only called by name, that
  *   the file never reassigns or casts with `as`;
  * - local functions that are not exported, are only called by name, and
  *   whose every return is plain itself;
@@ -26,7 +29,15 @@
  * Anything else is unknown: object fields and array slots other code can
  * change, Map and Set reads, class fields, closures, catch and loop
  * bindings, globalThis, destructuring targets, imported values, `let` and
- * `var`, and parameters of any other type.
+ * `var`, parameters of any other type, and parameters of exported
+ * functions, callbacks and methods (a JavaScript caller can pass markup
+ * whatever the type says).
+ *
+ * The built-ins are trusted only while the file leaves them alone: a file
+ * that declares its own String, Math, Date, process and the like, writes to
+ * one of them or to process.env, hands one to other code (Object.assign,
+ * Object.defineProperty), writes through globalThis, or reaches a prototype
+ * gets no fix for those reads (for a prototype, for any hole).
  *
  * Names are merged across scopes: a name declared anywhere in a way that
  * is not plain is unknown wherever it is read. Each name, `const` value
@@ -60,6 +71,12 @@ export interface PlainOptions {
   holes: readonly (readonly [number, number])[];
   /** Whether markup is built as a string between two offsets. */
   markupWithin: (from: number, to: number) => boolean;
+  /**
+   * Whether an untagged template literal whose text holds `&` or `<` (see
+   * holdsMarkupCharacter) starts between two offsets. A template with holes
+   * leaves no token for its text, so this is how its text is seen.
+   */
+  markupCharacterTextWithin?: (from: number, to: number) => boolean;
   /** html tag names and html, raw, safeUrl and json as the script imports them. */
   isHtmlValue: (name: string) => boolean;
   htmlTags: readonly string[];
@@ -169,6 +186,62 @@ const UNKNOWN_WORDS = new Set([
 const PLAIN_PARAMETER_TYPE =
   /^\s*\|?\s*(?:number|bigint|boolean|true|false)(?:\s*\|\s*(?:number|bigint|boolean|true|false))*\s*$/;
 
+/**
+ * Whether a string or template literal's value, its escapes decoded,
+ * holds `&` or `<`: html would escape it, so an entity (`&mdash;`) or a
+ * tag written as `\x3cb>` would show as text after wrapping.
+ */
+export function holdsMarkupCharacter(raw: string): boolean {
+  if (raw.includes("&") || raw.includes("<")) return true;
+  if (!raw.includes("\\")) return false;
+  const decoded = raw.replace(
+    /\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|([0-3][0-7]{0,2}|[4-7][0-7]?)|([\s\S]))/g,
+    (
+      _m,
+      x?: string,
+      braced?: string,
+      u?: string,
+      octal?: string,
+      other?: string,
+    ) => {
+      if (x !== undefined) return String.fromCharCode(parseInt(x, 16));
+      if (braced !== undefined) {
+        const code = parseInt(braced, 16);
+        return code <= 0x10ffff ? String.fromCodePoint(code) : "";
+      }
+      if (u !== undefined) return String.fromCharCode(parseInt(u, 16));
+      if (octal !== undefined) return String.fromCharCode(parseInt(octal, 8));
+      return other === "\n" || other === "\r" ? "" : (other ?? "");
+    },
+  );
+  return decoded.includes("&") || decoded.includes("<");
+}
+
+/** Built-ins the checker trusts by name, while the file leaves them alone. */
+const TRUSTED_GLOBALS = new Set([
+  "String",
+  "encodeURIComponent",
+  "encodeURI",
+  "Number",
+  "Boolean",
+  "parseInt",
+  "parseFloat",
+  "Math",
+  "Date",
+  "process",
+  "URL",
+  "URLSearchParams",
+]);
+/** Names for the global object: writing through one can replace any built-in. */
+const GLOBAL_OBJECTS = new Set(["globalThis", "global", "window", "self"]);
+/** Names that reach an object's prototype. */
+const PROTOTYPE_WORDS = new Set([
+  "prototype",
+  "__proto__",
+  "setPrototypeOf",
+  "getPrototypeOf",
+]);
+
 /** What a value is, for what may follow it. */
 type Kind =
   | { k: "prim" }
@@ -185,6 +258,9 @@ type Result =
   { ok: true; kind: Kind; end: number } | { ok: false; cause: Unproven };
 
 const PRIM: Kind = { k: "prim" };
+
+const MARKUP_CHARACTER =
+  "a literal with & or < in its value (written out or as an escape such as \\x3c), which html would escape, so an entity or a tag in it would show as text";
 
 /** How many names, values and helpers deep a check follows. */
 const MAX_DEPTH = 200;
@@ -317,8 +393,32 @@ export function plainHoleChecker(
   // and whether it holds request data.
   const params = new Map<
     number,
-    { plain: boolean; request: boolean; catch: boolean }
+    {
+      plain: boolean;
+      request: boolean;
+      catch: boolean;
+      /** The local function whose parameter list this is, if any. */
+      owner?: PlainFunction;
+    }
   >();
+  // A parameter list's owner: the outermost local function whose name
+  // comes before the list and whose body after it. Outermost, because a
+  // binding's type annotation (`const f: (s: number) => string = ...`)
+  // reads like a function of its own. Lists are met in source order, so
+  // one sweep with a stack of the functions still open finds each owner.
+  const byStart = [...opts.functions].sort((x, y) => x.start - y.start);
+  const open: PlainFunction[] = [];
+  let nextFn = 0;
+  const ownerOf = (offset: number): PlainFunction | undefined => {
+    while (nextFn < byStart.length && byStart[nextFn].start <= offset) {
+      const f = byStart[nextFn++];
+      while (open.length > 0 && open[open.length - 1].body <= f.start)
+        open.pop();
+      open.push(f);
+    }
+    while (open.length > 0 && open[open.length - 1].body <= offset) open.pop();
+    return open.length > 0 && open[0].body > offset ? open[0] : undefined;
+  };
   /** For `)` at `c`: whether a function body or arrow follows (past a return type). */
   const bodyFollows = (c: number): boolean => {
     if (punct(c + 1, "=") && punct(c + 2, ">")) return true;
@@ -344,6 +444,7 @@ export function plainHoleChecker(
   };
   const addParams = (p: number, isCatch: boolean): void => {
     const c = partner[p];
+    const owner = isCatch ? undefined : ownerOf(tokens[p].start);
     let names: number[] = [];
     let pattern = false;
     let rest = false;
@@ -369,6 +470,7 @@ export function plainHoleChecker(
             !isCatch &&
             (name === "request" || name === "context"),
           catch: isCatch,
+          owner,
         });
       }
       names = [];
@@ -591,6 +693,9 @@ export function plainHoleChecker(
   };
 
   const nameMemo = new Map<string, NameVerdict | "pending">();
+  /** The hole being checked, so a range inside it never reaches the template around it. */
+  let holeLo = -1;
+  let holeHi = -1;
   let depth = 0;
   const helperMemo = new Map<PlainFunction, Unproven | undefined | "pending">();
 
@@ -673,6 +778,115 @@ export function plainHoleChecker(
     return false;
   };
 
+  // Built-ins the file changes: a write to one or one of its members, or
+  // the object handed to other code (Object.assign, defineProperty). A
+  // write through the global object can replace any of them, and a
+  // prototype reached anywhere can change what any method returns.
+  const patched = new Set<string>();
+  let everyGlobalPatched = false;
+  let prototypeReach: Unproven | undefined;
+  {
+    /** The member chain after the name at k: whether it calls, and whether it names prototype. */
+    const chainShape = (k: number): { call: boolean; prototype: boolean } => {
+      let call = false;
+      let prototype = false;
+      for (let j = k + 1; j < n;) {
+        if (punct(j, "?") && punct(j + 1, ".")) j++;
+        if (punct(j, ".") && word(j + 1)) {
+          if (PROTOTYPE_WORDS.has(tokens[j + 1].value)) prototype = true;
+          j += 2;
+        } else if (punct(j, "[") && partner[j] !== -1) {
+          if (
+            partner[j] === j + 2 &&
+            tokens[j + 1].type === "string" &&
+            PROTOTYPE_WORDS.has(tokens[j + 1].value)
+          )
+            prototype = true;
+          j = partner[j] + 1;
+        } else if (punct(j, "(") && partner[j] !== -1) {
+          call = true;
+          j = partner[j] + 1;
+        } else break;
+      }
+      return { call, prototype };
+    };
+    const declaresName = (list: readonly number[]): boolean =>
+      list.some((k) => {
+        const prev = k > 0 ? tokens[k - 1] : undefined;
+        return (
+          params.has(k) ||
+          imported[k] === 1 ||
+          (prev?.type === "identifier" &&
+            /^(?:const|let|var|function|class)$/.test(prev.value))
+        );
+      });
+    for (const [name, list] of occurrences) {
+      const trusted = TRUSTED_GLOBALS.has(name);
+      const globalObject = GLOBAL_OBJECTS.has(name);
+      if (!trusted && !globalObject) continue;
+      if (declaresName(list)) continue;
+      for (const k of list) {
+        const chain = chainAfter(k);
+        const shape = chainShape(k);
+        const handed = !shape.call && handsOn(k);
+        if (shape.prototype && (chain.assigned || handed))
+          prototypeReach ??= {
+            what: body.slice(tokens[k].start, tokens[chain.end - 1].end),
+            why: "a prototype this file changes, which can change what any method returns",
+          };
+        if (globalObject) {
+          // Only a direct method call (globalThis.fetch(...)) leaves it alone.
+          if (!(chain.members === 1 && shape.call && !chain.assigned))
+            everyGlobalPatched = true;
+          continue;
+        }
+        if (
+          chain.assigned ||
+          isPrefixUpdate(k) ||
+          (handed &&
+            (chain.members === 0 ||
+              (name === "process" &&
+                chain.members === 1 &&
+                word(k + 2, "env"))))
+        )
+          patched.add(name);
+      }
+    }
+    // A prototype reached any other way: "".__proto__, setPrototypeOf, or
+    // X.prototype on any object that is not only read through a method.
+    if (prototypeReach === undefined)
+      for (let k = 0; k < n; k++) {
+        const t = tokens[k];
+        if (!PROTOTYPE_WORDS.has(t.value)) continue;
+        if (t.type === "string" && !(punct(k - 1, "[") && punct(k + 1, "]")))
+          continue;
+        if (t.type !== "identifier" && t.type !== "string") continue;
+        const chain = chainAfter(t.type === "string" ? k + 1 : k);
+        if (
+          t.value === "prototype" &&
+          t.type === "identifier" &&
+          !chain.assigned &&
+          chain.methods.length > 0
+        )
+          continue;
+        prototypeReach = {
+          what: t.value,
+          why: "a prototype this file reaches, which can change what any method returns",
+        };
+        break;
+      }
+  }
+  /** Why a trusted built-in is not trusted in this file, if it is not. */
+  const builtinChanged = (name: string): Unproven | undefined =>
+    everyGlobalPatched
+      ? {
+          what: name,
+          why: "a built-in, and this file writes through the global object, which can replace it",
+        }
+      : patched.has(name)
+        ? { what: name, why: "a built-in this file changes" }
+        : undefined;
+
   /** The value of a `const NAME =` or `const NAME: Type =` declaration at k: token range. */
   const constValue = (k: number): [number, number] | undefined => {
     let eq = -1;
@@ -719,6 +933,7 @@ export function plainHoleChecker(
         return false;
       }
       if (t.type === "string") {
+        if (holdsMarkupCharacter(t.value)) return false;
         if (
           object &&
           !punct(j + 1, ":") &&
@@ -861,6 +1076,14 @@ export function plainHoleChecker(
         }
         if (!param.plain)
           return no("a parameter not typed number, bigint or boolean");
+        if (
+          param.owner === undefined ||
+          param.owner.name === name ||
+          nameVerdict(param.owner.name).k !== "helper"
+        )
+          return no(
+            "a parameter of a function whose callers this file cannot all see (exported, a callback, a method, or passed on), and a JavaScript caller can pass markup whatever its type says",
+          );
         fromParam = true;
         kinds.push(PRIM);
         continue;
@@ -908,6 +1131,8 @@ export function plainHoleChecker(
       reads.push(k);
     }
     if (kinds.length === 0) return { k: "global" };
+    if (TRUSTED_GLOBALS.has(name) || GLOBAL_OBJECTS.has(name))
+      return no("a built-in name this file declares as its own");
     const first = kinds[0];
     if (!kinds.every((x) => x.k === first.k))
       return no("a name declared more than once in different ways");
@@ -995,6 +1220,9 @@ export function plainHoleChecker(
           "a constructed object",
         );
       const close = partner[k + 2];
+      const changed = builtinChanged(ctor.value);
+      if (changed !== undefined && TRUSTED_GLOBALS.has(ctor.value))
+        return { ok: false, cause: changed };
       if (ctor.value === "Date" && nameVerdict("Date").k === "global")
         kind = { k: "date" };
       else if (
@@ -1019,6 +1247,8 @@ export function plainHoleChecker(
         return { ok: false, cause };
       }
       if (v.k === "global") {
+        const changed = builtinChanged(name);
+        if (changed !== undefined) return { ok: false, cause: changed };
         if (STRING_CALLS.has(name) && punct(j, "(") && partner[j] !== -1) {
           const r = evalRange(j + 1, partner[j]);
           if (!r.ok) return r;
@@ -1208,10 +1438,25 @@ export function plainHoleChecker(
   /** Evaluates tokens [a, b): every value in them must be plain. */
   const evalRange = (a: number, b: number): Result => {
     if (a >= b) return { ok: true, kind: PRIM, end: b };
-    if (opts.markupWithin(tokens[a].start, tokens[b - 1].end))
+    // A template with holes leaves no token for its backtick or text, so
+    // the gaps around the range count too (kept inside the hole itself).
+    let lo = a > 0 ? tokens[a - 1].end : 0;
+    let hi = b < n ? tokens[b].start : body.length;
+    if (tokens[a].start >= holeLo && tokens[b - 1].end <= holeHi) {
+      lo = Math.max(lo, holeLo);
+      hi = Math.min(hi, holeHi);
+    }
+    lo = Math.min(lo, tokens[a].start);
+    hi = Math.max(hi, tokens[b - 1].end);
+    if (opts.markupWithin(lo, hi))
       return unknown(
         body.slice(tokens[a].start, tokens[b - 1].end).slice(0, 40),
         "markup built as a string",
+      );
+    if (opts.markupCharacterTextWithin?.(lo, hi))
+      return unknown(
+        body.slice(tokens[a].start, tokens[b - 1].end).slice(0, 40),
+        MARKUP_CHARACTER,
       );
     let chains = 0;
     let other = false;
@@ -1298,7 +1543,17 @@ export function plainHoleChecker(
         i++;
         continue;
       }
-      if (t.type === "string") {
+      if (t.type === "string" || t.type === "template") {
+        if (holdsMarkupCharacter(t.value))
+          return unknown(
+            (t.type === "string" ? `"${t.value}"` : `\`${t.value}\``).slice(
+              0,
+              40,
+            ),
+            MARKUP_CHARACTER,
+          );
+        // A template token is a template with no holes; one right after a
+        // value is tagged, which evalChain has refused already.
         i++;
         other = true;
         continue;
@@ -1344,10 +1599,14 @@ export function plainHoleChecker(
   };
 
   return (from: number, to: number): Unproven | undefined => {
+    if (prototypeReach !== undefined) return prototypeReach;
     const a = tokenAt(from);
     let b = a;
     while (b < n && tokens[b].start < to) b++;
+    holeLo = from;
+    holeHi = to;
     const r = evalRange(a, b);
+    holeLo = holeHi = -1;
     return r.ok ? undefined : r.cause;
   };
 }

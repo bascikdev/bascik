@@ -508,13 +508,13 @@ export function escapeHtml(value: string): string {
 
   it("Wrap template in html`...` in a .ts helper adds the import at the top", async () => {
     const { doc, actionsFor } = await setup(
-      "export const card = (count: number) =>\n  `<li>${count}</li>`;\n",
+      "export const card = () =>\n  `<li>${process.env.COUNT}</li>`;\n",
     );
     const action = actionsFor(MARKUP).find(
       (a) => a.title === "Wrap template in html`...`",
     )!;
     expect(applyEdits(doc, action.edit!.changes![doc.uri])).toBe(
-      'import { html } from "@bascik/bascik/html";\nexport const card = (count: number) =>\n  html`<li>${count}</li>`;\n',
+      'import { html } from "@bascik/bascik/html";\nexport const card = () =>\n  html`<li>${process.env.COUNT}</li>`;\n',
     );
   });
 });
@@ -883,11 +883,22 @@ describe("a helper other modules can call gets no wrap fix (fix round 4)", () =>
     expect(diags[0].message).toContain("may be markup from a caller");
   });
 
-  it("a number parameter keeps the fix", async () => {
+  it("a number parameter of an exported function withholds the fix: a JavaScript importer can pass markup (fix round 7)", async () => {
     const diags = await markupOn(
       "src/lib/lf.ts",
       "export const badge = (count: number) => `<b>${count}</b>`;\n",
       'import { badge } from "./lf.ts";\nexport const x = badge(3);\n',
+    );
+    expect(diags.length).toBe(1);
+    expect(fixable(diags[0])).toBe(false);
+    expect(diags[0].message).toContain("whatever its type says");
+  });
+
+  it("a number parameter of a local function only called by name keeps the fix", async () => {
+    const diags = await markupOn(
+      "src/lib/lf.ts",
+      "const badge = (count: number) => `<b>${count}</b>`;\nexport const x = badge(3);\n",
+      'import { x } from "./lf.ts";\nexport const y = x;\n',
     );
     expect(diags.length).toBe(1);
     expect(fixable(diags[0])).toBe(true);

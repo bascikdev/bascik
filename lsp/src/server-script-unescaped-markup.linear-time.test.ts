@@ -355,7 +355,8 @@ describe("parameters other modules can fill: linear time (fix round 4)", () => {
           (_, i) =>
             `export class C${i} extends B { constructor(a: string) { super(); } static s(b: number, c: string) { return \`<p>\${b}\${c}</p>\`; } f = (d: string) => \`<i>\${d}</i>\`; }\n` +
             `function page${i}(e: string) { return \`<li>\${e}</li>\`; }\nconst x = page${i};\n` +
-            `export const o${i} = { page${i}, x, ...o, m(flag: boolean) { return \`<b>\${flag}</b>\`; }, n: { k: (g: string) => \`<u>\${g}</u>\` } };\n`,
+            `export const o${i} = { page${i}, x, ...o, m(flag: boolean) { return \`<b>\${flag}</b>\`; }, n: { k: (g: string) => \`<u>\${g}</u>\` } };\n` +
+            `const local${i} = (q: number) => \`<s>\${q}</s>\`;\nexport const lv${i} = local${i}(1);\n`,
         ).join("");
       // One name declared and named in shorthand thousands of times.
       const shared = (n: number) =>
@@ -410,7 +411,7 @@ describe("parameters whose callers this file cannot all see: linear time (fix ro
             `const up${i}: (s: string) => string = (s) => s.toUpperCase();\n` +
             `function row${i}(name: string) { return \`<td>\${name}</td>\`; }\nexport const r${i} = row${i}("Milk frother") + up${i}("x");\n` +
             `export class C${i} { body = ""; set(b: string) { this.body = b; return this; } render() { return \`<p>\${this.body}\${arguments[0]}</p>\`; } }\n` +
-            `export const count${i} = (n: number) => \`<b>\${n}</b>\`;\n`,
+            `const count${i} = (cq: number) => \`<b>\${cq}</b>\`;\nexport const cv${i} = count${i}(${i});\n`,
         ).join("");
       const diags = run(shapes(50)).filter((d) => d.code === RULE);
       expect(diags.length).toBeGreaterThan(0);
@@ -471,6 +472,57 @@ describe("the plain-data allowlist: linear time (fix round 6)", () => {
         `export const out = (request) => \`<p>\${request.url}\${c${n - 1}}\${f${n - 1}(1)}</p>\`;\n`;
       expect(() => run(chain(5_000))).not.toThrow();
       expect(growthOfModules(chain(2_500), chain(10_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
+describe("entities, escapes, changed built-ins and parameter owners: linear time (fix round 7)", () => {
+  const run = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "module",
+      requestTime: true,
+    });
+  const growthOfModules = (small: string, large: string): number =>
+    growthOf(
+      () => run(small),
+      () => run(large),
+    );
+
+  it(
+    "thousands of escaped literals, entity templates, built-in writes, typed bindings and callbacks read in linear time (CPU growth under 8x for 4x the size)",
+    () => {
+      const shapes = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `const e${i} = process.env.E${i} ?? "\\x3cb>\\u0026mdash;\\74i>";\n` +
+            `process.env.W${i} = "x"; Object.assign(Math, {}); (globalThis as any).g${i} = 1;\n` +
+            `const fx${i}: (a: (b: number) => number) => string = (a: (b: number) => number) => String(a(${i}));\n` +
+            `function loc${i}(n: number, m?: number | true) { return \`<i>\${n}\${m}\${\`&amp;\${n}\`}</i>\`; }\n` +
+            `export const out${i} = [1].map((k: number) => \`<li>\${k}\${e${i}}\${process.env.W${i}}\${Math.max(k, 1)}\${fx${i}((b) => b)}\${loc${i}(k)}</li>\`);\n`,
+        ).join("");
+      const diags = run(shapes(50)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(growthOfModules(shapes(500), shapes(2_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "a file that reaches a prototype checks every hole in linear time",
+    () => {
+      const shapes = (n: number) =>
+        `String.prototype.trim = () => "x";\n` +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `export const p${i} = \`<p>\${process.env.P${i}?.trim()}\${"".__proto__}</p>\`;\n`,
+        ).join("");
+      const diags = run(shapes(50)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(growthOfModules(shapes(1_000), shapes(4_000))).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

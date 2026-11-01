@@ -3,7 +3,7 @@ import {
   scanJavaScript,
   type Token,
 } from "./module-specifiers.js";
-import { plainHoleChecker } from "./plain-holes.js";
+import { holdsMarkupCharacter, plainHoleChecker } from "./plain-holes.js";
 import {
   HAND_WRITTEN_ESCAPER_RULE,
   findHandWrittenEscapers,
@@ -456,6 +456,13 @@ export function analyzeServerScriptSource(
       ? producers.opaqueValues[k]
       : undefined;
   };
+  // Untagged templates whose text holds & or <, which html would escape.
+  const characterCount = [0];
+  for (const l of literals)
+    characterCount.push(
+      characterCount[characterCount.length - 1] +
+        (l.tag === null && l.parts.some(holdsMarkupCharacter) ? 1 : 0),
+    );
   // The allowlist: a hole keeps the fix only when it is provably plain data.
   const unprovenIn = plainHoleChecker(body, tokens, {
     requestTime,
@@ -464,6 +471,10 @@ export function analyzeServerScriptSource(
       l.holes.map((h) => [h.start + 2, h.end - 1] as const),
     ),
     markupWithin: sourceWithin,
+    markupCharacterTextWithin: (from, to) =>
+      characterCount[firstAtOrAfter(literalStarts, to)] -
+        characterCount[firstAtOrAfter(literalStarts, from)] >
+      0,
     isHtmlValue: (name) => {
       const exported = htmlExportOf(name, imports);
       return (
@@ -2522,7 +2533,7 @@ function quoteHole(expr: string): string {
 
 /** How a withheld fix explains the allowlist. */
 const UNPROVEN_TEXT =
-  "cannot prove it is plain text. The fix is offered only when every hole is a literal, request data, an environment variable, a date, a Math result, a number, bigint or boolean parameter, an html value, or a const or local helper built only from those. If the value is text, wrap the template in html`...` from @bascik/bascik/html yourself; if it is markup, make it an html`...` value first (raw() for trusted markup).";
+  "cannot prove it is plain text. The fix is offered only when every hole is a literal with no & or < in its value, request data, an environment variable, a date, a Math result, a number, bigint or boolean parameter of a local function only called by name, an html value, or a const or local helper built only from those. If the value is text, wrap the template in html`...` from @bascik/bascik/html yourself; if it is markup, make it an html`...` value first (raw() for trusted markup).";
 
 /** A .join() of html values inside html: the joined string is escaped. */
 export const JOINED_RULE = "html-joined-string";

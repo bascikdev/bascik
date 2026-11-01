@@ -2264,9 +2264,15 @@ describe("a parameter other modules can fill withholds the wrap fix (fix round 4
       "export const ui = { count: (n: number) => `<b>${n}</b>` };",
       "${n}",
     ],
-  ])("%s keep the fix", (_name, body, hole) => {
-    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
-  });
+  ])(
+    "%s withhold the fix: a JavaScript caller can pass markup whatever the type says (fix round 7)",
+    (_name, body, hole) => {
+      for (const d of holes(body, hole)) {
+        expect(d.template?.fixable).toBe(false);
+        expect(d.message).toContain("whatever its type says");
+      }
+    },
+  );
 
   it.each([
     [
@@ -2483,8 +2489,20 @@ describe("every parameter whose callers this file cannot all see withholds the w
       'class Meter { render(value: number, open: boolean) { return `<meter data-open="${open}">${value}</meter>`; } }\nexport const m = new Meter();',
       "${value}",
     ],
-  ])("%s keeps the fix", (_name, body, hole) => {
-    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
+  ])(
+    "%s withholds the fix: its callers are out of sight (fix round 7)",
+    (_name, body, hole) => {
+      for (const d of holes(body, hole)) {
+        expect(d.template?.fixable).toBe(false);
+        expect(d.message).toContain("whatever its type says");
+      }
+    },
+  );
+
+  it("a number parameter of a local function only called by name keeps the fix", () => {
+    const body =
+      "function g(n: number | bigint | boolean) { return `<p>${n}</p>`; }\nexport const out = g(1) + g(true);";
+    for (const d of holes(body, "${n}")) expect(d.template?.fixable).toBe(true);
   });
 
   it("a build directive script's callback over its own data keeps its other fixes", () => {
@@ -2557,32 +2575,32 @@ describe("the wrap fix is offered only for holes that are provably plain data (a
       { directive: "module" },
     ],
     [
-      "a number parameter",
-      "export function f(n: number) { return `<p>${n}</p>`; }",
+      "a number parameter of a local function",
+      "function f(n: number) { return `<p>${n}</p>`; }\nexport const out = f(1);",
       "${n}",
       { directive: "module" },
     ],
     [
       "String() of a number parameter, padded",
-      'export function f(n: number) { return `<p>${String(n).padStart(3, "0")}</p>`; }',
+      'function f(n: number) { return `<p>${String(n).padStart(3, "0")}</p>`; }\nexport const out = f(1);',
       '${String(n).padStart(3, "0")}',
       { directive: "module" },
     ],
     [
       "a const object of literals read by a literal key",
-      'const labels = { ok: "Fine", bad: "Broken" };\nexport function f(ok: boolean) { return `<p>${ok ? labels.ok : labels.bad}</p>`; }',
+      'const labels = { ok: "Fine", bad: "Broken" };\nfunction f(ok: boolean) { return `<p>${ok ? labels.ok : labels.bad}</p>`; }\nexport const out = f(true);',
       "${ok ? labels.ok : labels.bad}",
       { directive: "module" },
     ],
     [
       "a const array of literals read by a literal index",
-      'const sizes = ["Small", "Large"];\nexport function f(big: boolean) { return `<p>${big ? sizes[1] : sizes[0]}</p>`; }',
+      'const sizes = ["Small", "Large"];\nfunction f(big: boolean) { return `<p>${big ? sizes[1] : sizes[0]}</p>`; }\nexport const out = f(true);',
       "${big ? sizes[1] : sizes[0]}",
       { directive: "module" },
     ],
     [
       "a local helper that returns plain data",
-      'function label(n: number) { return n === 1 ? "item" : "items"; }\nexport function f(n: number) { return `<p>${n} ${label(n)}</p>`; }',
+      'function label(n: number) { return n === 1 ? "item" : "items"; }\nfunction f(n: number) { return `<p>${n} ${label(n)}</p>`; }\nexport const out = f(2);',
       "${label(n)}",
       { directive: "module" },
     ],
@@ -2803,5 +2821,237 @@ describe("destructuring assignments into a module let are reassignments (fix rou
         (x) => body.slice(x.start, x.end) === "${body}",
       ),
     ).toHaveLength(0);
+  });
+});
+
+describe("entities, escaped markup, patched built-ins and exported parameters are not plain (allowlist, fix round 7)", () => {
+  const UNPROVEN = "cannot prove it is plain text";
+  const diagsAt = (
+    body: string,
+    hole: string,
+    opts: Partial<AnalyzeOptions> = { directive: "module" },
+  ) => {
+    const found = unescaped(body, opts).filter(
+      (x) => body.slice(x.start, x.end) === hole,
+    );
+    expect(found.length, `${hole} is reported`).toBeGreaterThan(0);
+    return found;
+  };
+  const server = { directive: "server" } as const;
+  /** A module whose template has a plain env hole beside `hole`. */
+  const beside = (hole: string, before = "") =>
+    `${before}export const out = \`<p>\${process.env.A}${hole}</p>\`;\n`;
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>?]>([
+    [
+      "an entity in a ?? fallback",
+      'const s = process.env.X ?? "&mdash;";\nexport const out = `<p>${s}</p>`;\n',
+      "${s}",
+    ],
+    [
+      "an entity in an array of literals",
+      'const a = ["&nbsp;", "x"];\nexport const out = `<p>${a[0]}</p>`;\n',
+      "${a[0]}",
+    ],
+    [
+      "an entity in an object of literals",
+      'const t = { dash: "&mdash;" };\nexport const out = `<p>${t.dash}</p>`;\n',
+      "${t.dash}",
+    ],
+    [
+      "an entity concatenated to a number",
+      'const g = (n: number) => `<p>${n.toString() + "&nbsp;"}</p>`;\nexport const out = g(1);\n',
+      '${n.toString() + "&nbsp;"}',
+    ],
+    [
+      "an entity repeated, beside a plain hole",
+      beside('${"&amp;".repeat(2)}'),
+      "${process.env.A}",
+    ],
+    [
+      "an entity piece in padStart",
+      beside('${"x".padStart(4, "&lt;")}'),
+      "${process.env.A}",
+    ],
+    [
+      "an entity in a nested template's text",
+      beside("${`&mdash;${process.env.B}`}"),
+      "${process.env.A}",
+    ],
+    [
+      "an entity in a hole-less nested template",
+      beside("${process.env.B ?? `&mdash;`}"),
+      "${process.env.A}",
+    ],
+    [
+      "a request header with an entity fallback",
+      'export default (request) => `<p>${request.headers.get("x-name") ?? "&mdash;"}</p>`;',
+      '${request.headers.get("x-name") ?? "&mdash;"}',
+      server,
+    ],
+    [
+      "markup written with \\x3c in replace",
+      'const s = process.env.S ?? "Hi";\nexport const out = `<p>${s.replace("Hi", "\\x3cb>Hi\\x3c/b>")}</p>`;\n',
+      '${s.replace("Hi", "\\x3cb>Hi\\x3c/b>")}',
+    ],
+    [
+      "markup written with \\x3c after a comma operator",
+      beside('${(1, "\\x3cb>Hi\\x3c/b>")}'),
+      "${process.env.A}",
+    ],
+    [
+      "markup written with \\x3c in concat",
+      beside('${"a".concat("\\x3cb>Hi\\x3c/b>")}'),
+      "${process.env.A}",
+    ],
+    [
+      "markup written with \\u003c in a || fallback",
+      'export default (request) => `<p>${new URL(request.url).searchParams.get("q") || "\\u003cem>none\\u003c/em>"}</p>`;',
+      '${new URL(request.url).searchParams.get("q") || "\\u003cem>none\\u003c/em>"}',
+      server,
+    ],
+    [
+      "markup written with \\u{3c}",
+      'const s = process.env.X ?? "\\u{3c}b>x";\nexport const out = `<p>${s}</p>`;\n',
+      "${s}",
+    ],
+    [
+      "markup written with an octal escape",
+      "const s = process.env.X ?? '\\74b>x';\nexport const out = `<p>${s}</p>`;\n",
+      "${s}",
+    ],
+    [
+      "a file's own String function",
+      'function String(x: number) { return "plain"; }\nexport const out = `<p>${String(1)}</p>`;\n',
+      "${String(1)}",
+    ],
+    [
+      "a patched String.prototype method",
+      'String.prototype.toUpperCase = () => "<b>Hi</b>";\nexport const out = `<p>${process.env.A?.toUpperCase()}</p>`;\n',
+      "${process.env.A?.toUpperCase()}",
+    ],
+    [
+      "a patched Number.prototype method",
+      'Number.prototype.toFixed = () => "<b>Hi</b>";\nconst g = (n: number) => `<p>${process.env.A}${n.toFixed(1)}</p>`;\nexport const out = g(1);\n',
+      "${process.env.A}",
+    ],
+    [
+      "a prototype changed through defineProperty",
+      'Object.defineProperty(String.prototype, "trim", { value: () => "<b>x</b>" });\nexport const out = `<p>${process.env.A?.trim()}</p>`;\n',
+      "${process.env.A?.trim()}",
+    ],
+    [
+      "an env value written in the same file",
+      'process.env.CF_A16 = "<b>Hi</b>";\nexport const out = `<p>${process.env.CF_A16}</p>`;\n',
+      "${process.env.CF_A16}",
+    ],
+    [
+      "an env value written with a bracket",
+      'process.env["CF_A16"] = "<b>Hi</b>";\nexport const out = `<p>${process.env.CF_A16}</p>`;\n',
+      "${process.env.CF_A16}",
+    ],
+    [
+      "process.env handed to Object.assign",
+      'Object.assign(process.env, { A: "<b>Hi</b>" });\nexport const out = `<p>${process.env.A}</p>`;\n',
+      "${process.env.A}",
+    ],
+    [
+      "a patched Math method",
+      beside("${Math.max(1, 2)}", 'Math.max = (() => "<b>Hi</b>") as any;\n'),
+      "${process.env.A}",
+    ],
+    [
+      "a patched Date.now",
+      'Date.now = (() => "<b>Hi</b>") as any;\nexport const out = `<p>${Date.now()}</p>`;\n',
+      "${Date.now()}",
+    ],
+    [
+      "a global written through globalThis",
+      beside(
+        "${Math.max(1, 2)}",
+        '(globalThis as any).Math = { max: () => "<b>Hi</b>" };\n',
+      ),
+      "${process.env.A}",
+    ],
+    [
+      "a number parameter of an exported function",
+      "export function f(n: number) { return `<p>${n}</p>`; }",
+      "${n}",
+    ],
+    [
+      "an optional number parameter of an exported function",
+      "export function f(n?: number) { return `<p>${n}</p>`; }",
+      "${n}",
+    ],
+    [
+      "a number | true parameter of an exported function",
+      "export function f(n: number | true) { return `<p>${n}</p>`; }",
+      "${n}",
+    ],
+    [
+      "a number parameter of an exported arrow",
+      "export const p15 = (w: number) => `<p>${w}</p>`;",
+      "${w}",
+    ],
+    [
+      "a number parameter of a default-exported arrow",
+      "export default (t: number) => `<main>${t}</main>`;",
+      "${t}",
+    ],
+    [
+      "a number parameter of a function exported by name",
+      "function f(n: number) { return `<p>${n}</p>`; }\nexport { f };",
+      "${n}",
+    ],
+    [
+      "a number parameter of a callback",
+      "export const out = [1, 2].map((n: number) => `<li>${n}</li>`).join('');",
+      "${n}",
+    ],
+  ])("%s: no fix, the warning says why", (_name, body, hole, opts) => {
+    for (const d of diagsAt(body, hole, opts ?? { directive: "module" })) {
+      expect(d.template?.fixable).toBe(false);
+      // Object.assign(process.env, ...) is caught first as markup set in the file.
+      expect(d.message).toMatch(
+        new RegExp(`${UNPROVEN}|is set to a markup string in this file`),
+      );
+    }
+  });
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>?]>([
+    [
+      "a plain ?? fallback",
+      'const s = process.env.X ?? "-";\nexport const out = `<p>${s}</p>`;\n',
+      "${s}",
+    ],
+    [
+      "plain padding",
+      'const g = (n: number) => `<p>${String(n).padStart(3, "0")}</p>`;\nexport const out = g(1);\n',
+      '${String(n).padStart(3, "0")}',
+    ],
+    [
+      "a plain escape (\\u00a0, \\n)",
+      'const s = process.env.X ?? "Milk\\u00a0frother\\n";\nexport const out = `<p>${s}</p>`;\n',
+      "${s}",
+    ],
+    [
+      "a number parameter of a local helper called by name",
+      "function f(n: number) { return `<p>${n}</p>`; }\nexport const out = f(1) + f(2);\n",
+      "${n}",
+    ],
+    [
+      "a request header with a plain fallback",
+      'export default (request) => `<p>${request.headers.get("x-name") ?? "-"}</p>`;',
+      '${request.headers.get("x-name") ?? "-"}',
+      server,
+    ],
+    [
+      "Math.max read beside an unrelated field named max",
+      beside("${Math.max(1, limits.max)}", "const limits = { max: 3 };\n"),
+      "${process.env.A}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole, opts) => {
+    for (const d of diagsAt(body, hole, opts ?? { directive: "module" }))
+      expect(d.template?.fixable).toBe(true);
   });
 });
