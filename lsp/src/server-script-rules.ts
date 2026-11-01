@@ -2415,9 +2415,9 @@ function markupProducers(
   for (const fn of functions)
     if (fn.params.length > 0) {
       const list = paramsOf.get(fn.name) ?? [];
-      fn.params.forEach(
-        (names, i) => (list[i] = [...(list[i] ?? []), ...names]),
-      );
+      // Appended in place: copying the list for every function of the same name made a script of many
+      // same-named helpers quadratic.
+      fn.params.forEach((names, i) => (list[i] ??= []).push(...names));
       paramsOf.set(fn.name, list);
     }
   const localNames = new Set(functions.map((f) => f.name));
