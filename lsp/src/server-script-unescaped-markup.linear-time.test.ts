@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeServerScriptSource,
-  exportArgumentsFrom,
   type AnalyzeOptions,
 } from "./server-script-rules.js";
 import { LINEAR_TIME_TIMEOUT_MS, growthOf } from "./linear-time.test.util.js";
@@ -335,83 +334,54 @@ describe("build-time code and Node modules: linear time (review round 2)", () =>
   );
 });
 
-describe("markup across modules: linear time (fix round 3)", () => {
-  const isLayout = (s: string) => s === "./layout.ts";
-  // Importers are remembered by text, so each run gets a fresh one.
-  let run = 0;
-  const fresh = (body: string) => `${body}// ${run++}\n`;
+describe("parameters other modules can fill: linear time (fix round 4)", () => {
+  const run = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "module",
+    });
+  const growthOfModules = (small: string, large: string): number =>
+    growthOf(
+      () => run(small),
+      () => run(large),
+    );
 
   it(
-    "an importer with thousands of calls, imports and nested calls reads in linear time (CPU growth under 8x for 4x the size)",
+    "thousands of exported classes, objects, aliases and shorthand names read in linear time (CPU growth under 8x for 4x the size)",
     () => {
-      // Every import statement comes before every use, so a use checked
-      // against each statement would be quadratic.
-      const importer = (n: number) =>
-        Array.from(
-          { length: n },
-          (_, i) => `import { layout as l${i % 50} } from "./layout.ts";\n`,
-        ).join("") +
-        Array.from(
-          { length: n },
-          (_, i) =>
-            `export const p${i} = l${i % 50}("T", "<p>${i}</p>", ...rest${i});\n`,
-        ).join("");
-      const big = exportArgumentsFrom(importer(10_000), isLayout);
-      expect(big.get("layout")).toEqual(new Set([1]));
-      expect(
-        growthOf(
-          () => exportArgumentsFrom(fresh(importer(2_500)), isLayout),
-          () => exportArgumentsFrom(fresh(importer(10_000)), isLayout),
-        ),
-      ).toBeLessThan(8);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "calls nested thousands deep read in linear time (CPU growth under 8x for 4x the depth)",
-    () => {
-      const nested = (depth: number) =>
-        `import { layout } from "./layout.ts";\nexport const p = ${"layout(t, ".repeat(depth)}"<p>x</p>"${")".repeat(depth)};\n`;
-      expect(
-        exportArgumentsFrom(nested(4_000), isLayout).get("layout"),
-      ).toEqual(new Set([1]));
-      expect(
-        growthOf(
-          () => exportArgumentsFrom(fresh(nested(1_000)), isLayout),
-          () => exportArgumentsFrom(fresh(nested(4_000)), isLayout),
-        ),
-      ).toBeLessThan(8);
-    },
-    LINEAR_TIME_TIMEOUT_MS,
-  );
-
-  it(
-    "a module with thousands of exported functions filled from other modules reads in linear time (CPU growth under 8x for 4x the exports)",
-    () => {
-      const module = (n: number) =>
+      const shapes = (n: number) =>
         Array.from(
           { length: n },
           (_, i) =>
-            `export function f${i}(title: string, body: string) { return \`<main><h1>\${title}</h1>\${body}</main>\`; }\n`,
+            `export class C${i} extends B { constructor(a: string) { super(); } static s(b: number, c: string) { return \`<p>\${b}\${c}</p>\`; } f = (d: string) => \`<i>\${d}</i>\`; }\n` +
+            `function page${i}(e: string) { return \`<li>\${e}</li>\`; }\nconst x = page${i};\n` +
+            `export const o${i} = { page${i}, x, ...o, m(flag: boolean) { return \`<b>\${flag}</b>\`; }, n: { k: (g: string) => \`<u>\${g}</u>\` } };\n`,
         ).join("");
-      const filled = (n: number) =>
-        new Map(Array.from({ length: n }, (_, i) => [`f${i}`, new Set([1])]));
-      const run = (n: number) =>
-        analyzeServerScriptSource(module(n), {
-          hasSrcAttribute: false,
-          directive: "module",
-          exportArguments: filled(n),
-        });
-      const big = run(4_000).filter((d) => d.code === RULE);
-      expect(big).toHaveLength(8_000);
-      expect(big.every((d) => d.template?.fixable === false)).toBe(true);
+      // One name declared and named in shorthand thousands of times.
+      const shared = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `{ const item = (t${i}: string) => \`<li>\${t${i}}</li>\`; }\nexport const s${i} = { item };\n`,
+        ).join("");
+      // An alias chain thousands long, each link a default export.
+      const chain = (n: number) =>
+        "const a0 = (t: string) => `<p>${t}</p>`;\n" +
+        Array.from({ length: n }, (_, i) => `const a${i + 1} = a${i};\n`).join(
+          "",
+        ) +
+        `export default a${n};\n`;
+      const diags = run(shapes(50)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
       expect(
-        growthOf(
-          () => run(1_000),
-          () => run(4_000),
-        ),
-      ).toBeLessThan(8);
+        diags.filter((d) => d.template?.fixable === true).length,
+      ).toBeGreaterThan(0);
+      expect(
+        run(chain(3_000)).filter((d) => d.code === RULE)[0].template?.fixable,
+      ).toBe(false);
+      expect(growthOfModules(shapes(500), shapes(2_000))).toBeLessThan(8);
+      expect(growthOfModules(shared(1_000), shared(4_000))).toBeLessThan(8);
+      expect(growthOfModules(chain(1_000), chain(4_000))).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

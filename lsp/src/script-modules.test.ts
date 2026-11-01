@@ -508,13 +508,13 @@ export function escapeHtml(value: string): string {
 
   it("Wrap template in html`...` in a .ts helper adds the import at the top", async () => {
     const { doc, actionsFor } = await setup(
-      "export const card = (name: string) =>\n  `<li>${name}</li>`;\n",
+      "export const card = (count: number) =>\n  `<li>${count}</li>`;\n",
     );
     const action = actionsFor(MARKUP).find(
       (a) => a.title === "Wrap template in html`...`",
     )!;
     expect(applyEdits(doc, action.edit!.changes![doc.uri])).toBe(
-      'import { html } from "@bascik/bascik/html";\nexport const card = (name: string) =>\n  html`<li>${name}</li>`;\n',
+      'import { html } from "@bascik/bascik/html";\nexport const card = (count: number) =>\n  html`<li>${count}</li>`;\n',
     );
   });
 });
@@ -824,92 +824,90 @@ describe("review 2026-10-31: a file too deep to analyze does not stop the check"
   });
 });
 
-describe("the wrap fix in an exported helper follows the modules that import it (fix round 3)", () => {
-  const LAYOUT =
-    "export function layout(title: string, body: string) {\n  return `<main><h1>${title}</h1>${body}</main>`;\n}\n";
-  const docFor = (file: string, text = fs.readFileSync(file, "utf8")) =>
-    TextDocument.create(pathToFileURL(file).toString(), "typescript", 1, text);
-  /** Whether the markup diagnostics on the layout template offer the template fix. */
-  const layoutFixable = async (
-    files: Record<string, string>,
-    open: (
-      paths: Record<string, string>,
-    ) => { fsPath: string; text: string }[] = () => [],
-  ) => {
-    const paths: Record<string, string> = {};
-    for (const [rel, text] of Object.entries(files))
-      paths[rel] = write(rel, text);
-    const layout = write("src/lib/layout.ts", LAYOUT);
+describe("a helper other modules can call gets no wrap fix (fix round 4)", () => {
+  const docFor = (file: string) =>
+    TextDocument.create(
+      pathToFileURL(file).toString(),
+      "typescript",
+      1,
+      fs.readFileSync(file, "utf8"),
+    );
+  /** The markup diagnostics on `rel` in a project where a page imports `user`, which imports `rel`. */
+  const markupOn = async (rel: string, helper: string, user: string) => {
+    write(
+      "src/pages/index.html",
+      PAGE(
+        '<script data-bascik-build>import { x } from "@/lib/user.ts"; export default () => String(x);</script>',
+      ),
+    );
+    write("src/lib/user.ts", user);
+    const file = write(rel, helper);
     const snapshot = await buildSnapshot(root);
-    const doc = docFor(layout);
-    const diags = createDiagnostics(doc, layout, snapshot, open(paths)).filter(
+    return createDiagnostics(docFor(file), file, snapshot).filter(
       (d) => d.code === MARKUP,
     );
-    expect(diags.length).toBeGreaterThan(0);
-    return diags.every(
-      (d) => (d.data as { fixable?: boolean } | undefined)?.fixable === true,
-    );
   };
-  const PAGE_IMPORTING = (what: string) =>
-    PAGE(
-      `<script data-bascik-build>import { home } from "@/lib/${what}"; export default () => home;</script>`,
+  const fixable = (d: { data?: unknown }) =>
+    (d.data as { fixable?: boolean } | undefined)?.fixable === true;
+
+  it.each([
+    [
+      "an anonymous default export arrow",
+      "export default (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;\n",
+      'import lf from "./lf.ts";\nexport const x = lf("Home", "<p>Welcome</p>");\n',
+    ],
+    [
+      "an anonymous default export function",
+      "export default function (title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\n",
+      'import lf from "./lf.ts";\nexport const x = lf("Home", "<p>Welcome</p>");\n',
+    ],
+    [
+      "an exported class method",
+      "export class Layout { render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }\n",
+      'import { Layout } from "./lf.ts";\nexport const x = new Layout().render("Home", "<p>Welcome</p>");\n',
+    ],
+    [
+      "a shorthand method of an exported object",
+      "export const lg = { page(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } };\n",
+      'import { lg } from "./lf.ts";\nexport const x = lg.page("Home", "<p>Welcome</p>");\n',
+    ],
+    [
+      "an exported function whose importer passes plain text",
+      "export function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\n",
+      'import { layout } from "./lf.ts";\nexport const x = layout("Home", "Welcome");\n',
+    ],
+  ])("%s: warned, no fix", async (_name, helper, user) => {
+    const diags = await markupOn("src/lib/lf.ts", helper, user);
+    expect(diags.length).toBeGreaterThan(0);
+    expect(diags.some(fixable)).toBe(false);
+    expect(diags[0].message).toContain("may be markup from a caller");
+  });
+
+  it("a number parameter keeps the fix", async () => {
+    const diags = await markupOn(
+      "src/lib/lf.ts",
+      "export const badge = (count: number) => `<b>${count}</b>`;\n",
+      'import { badge } from "./lf.ts";\nexport const x = badge(3);\n',
     );
-
-  it("a module that passes it markup withholds the fix", async () => {
-    expect(
-      await layoutFixable({
-        "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
-        "src/lib/q5.ts":
-          'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
-      }),
-    ).toBe(false);
+    expect(diags.length).toBe(1);
+    expect(fixable(diags[0])).toBe(true);
   });
 
-  it("a module that passes it plain text keeps the fix", async () => {
-    expect(
-      await layoutFixable({
-        "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
-        "src/lib/q5.ts":
-          'import { layout } from "./layout.ts";\nexport const home = layout("Home", "Welcome");\n',
-      }),
-    ).toBe(true);
-  });
-
-  it("a page's inline script that passes it markup withholds the fix", async () => {
-    expect(
-      await layoutFixable({
-        "src/pages/index.html": PAGE(
-          '<script data-bascik-build>import { layout } from "@/lib/layout.ts"; export default () => layout("Home", "<p>Welcome</p>");</script>',
-        ),
-      }),
-    ).toBe(false);
-  });
-
-  it("an importer's unsaved buffer is read in place of the disk", async () => {
-    expect(
-      await layoutFixable(
-        {
-          "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
-          "src/lib/q5.ts":
-            'import { layout } from "./layout.ts";\nexport const home = layout("Home", "Welcome");\n',
-        },
-        (paths) => [
-          {
-            fsPath: paths["src/lib/q5.ts"],
-            text: 'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
-          },
-        ],
-      ),
-    ).toBe(false);
-  });
-
-  it("bascik --check reports the layout without crashing on the importer graph", async () => {
-    write("src/pages/index.html", PAGE_IMPORTING("q5.ts"));
+  it("bascik --check reports the helper", async () => {
     write(
-      "src/lib/q5.ts",
-      'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
+      "src/pages/index.html",
+      PAGE(
+        '<script data-bascik-build>import { x } from "@/lib/user.ts"; export default () => x;</script>',
+      ),
     );
-    write("src/lib/layout.ts", LAYOUT);
+    write(
+      "src/lib/user.ts",
+      'import lf from "./lf.ts";\nexport const x = lf("Home", "<p>Welcome</p>");\n',
+    );
+    write(
+      "src/lib/lf.ts",
+      "export default (title: string, body: string) =>\n  `<main><h1>${title}</h1>${body}</main>`;\n",
+    );
     const result = await checkFiles({
       cwd: root,
       targets: [{ path: "src/pages", extensions: ["html"] }],
@@ -918,6 +916,6 @@ describe("the wrap fix in an exported helper follows the modules that import it 
     const got = result.diagnostics.map(
       (d) => `${d.filePath.replace(/\\/g, "/")}:${d.line} ${d.code}`,
     );
-    expect(got).toContain("src/lib/layout.ts:2 server-script-unescaped-markup");
+    expect(got).toContain("src/lib/lf.ts:2 server-script-unescaped-markup");
   });
 });

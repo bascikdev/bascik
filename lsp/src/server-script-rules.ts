@@ -73,16 +73,6 @@ export interface AnalyzeOptions {
   escapeFunctions?: readonly string[];
   /** Added to body line numbers so messages name the file line (the body's first line is line 1 + lineOffset). */
   lineOffset?: number;
-  /**
-   * "module" only: what the files that import this module pass its
-   * exported functions, by export name ("default" for the default
-   * export): the argument positions that may hold markup, or "any" when
-   * an importer passes the function on as a value or re-exports it. The
-   * key "*" with "any" stands for every export (a namespace passed on
-   * whole, `export * from`, a dynamic import). See exportArgumentsFrom.
-   * Undefined when no importer is known.
-   */
-  exportArguments?: ReadonlyMap<string, ReadonlySet<number> | "any">;
 }
 
 export const UNESCAPED_MARKUP_RULE = "server-script-unescaped-markup";
@@ -422,13 +412,14 @@ export function analyzeServerScriptSource(
   /** Whether a markup literal (a template or a quoted string) starts between `from` and `to`. */
   const sourceWithin = (from: number, to: number): boolean =>
     firstAtOrAfter(markupSources, to) > firstAtOrAfter(markupSources, from);
-  // An exported function's parameters hold what the modules that import
-  // it pass them: layout("Home", "<p>Welcome</p>") in another file.
-  const externalParams = externallyFilledParameters(
-    body,
-    functions,
-    opts.exportArguments,
-  );
+  // In a module, what other modules can call (exported functions, classes
+  // and objects) may be passed markup by any caller: its parameters count
+  // as possibly markup, unless typed number, bigint or boolean. A directive
+  // script's own default export is called by Bascik, not by other modules.
+  const externalParams =
+    opts.directive === "module"
+      ? exportReachableParameters(body, tokens)
+      : new Map<string, ReachableOwner[]>();
   const producers = markupProducers(
     tokens,
     functions,
@@ -501,12 +492,18 @@ export function analyzeServerScriptSource(
         };
       const name = producerWithin(hole.start + 2, hole.end - 1);
       if (name !== undefined) {
-        const owner = externalParams.get(name);
+        const seed = producers.fromSeed.get(name);
+        if (seed !== undefined && seed !== name)
+          return {
+            ...at,
+            text: `reads ${name}, which holds what ${seed}, a parameter of ${reachableOwnerAt(externalParams, seed, hole.start)}, holds; other modules can call it, so the value may be markup from a caller, which html would escape, and the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+          };
+        const owner = reachableOwnerAt(externalParams, name, hole.start);
         return {
           ...at,
           text:
             owner !== undefined
-              ? `reads ${name}, a parameter of ${owner}() that a call in another module fills with markup, or that a module passes on where this file cannot see; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` in the calling module (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+              ? `reads ${name}, a parameter of ${owner}, which other modules can call: the value may be markup from a caller, which html would escape, so the page would show its tags as text. Build the callers' markup with html\`...\` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
               : !producers.names.has(name)
                 ? `reads ${name}, imported from a project module, which may hold markup as a string; html would escape it, so the page would show its tags as text. Make that value an html\`...\` value in its module (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
                 : producers.markupNames.has(name)
@@ -1371,316 +1368,443 @@ function markupSourceStarts(
   return starts.sort((x, y) => x - y);
 }
 
-/**
- * The export names of a module's own functions, each with its local name:
- * `export function f`, `export const f =`, `export default function f`,
- * `export default f`, and `export { f as g }` without `from`.
- */
-function exportedLocals(body: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const m of body.matchAll(
-    /\bexport\s+(default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g,
-  ))
-    out.set(m[1] ? "default" : m[2], m[2]);
-  for (const m of body.matchAll(
-    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
-  ))
-    out.set(m[1], m[1]);
-  for (const m of body.matchAll(
-    /\bexport\s+default\s+(?!async\b|function\b|class\b)([A-Za-z_$][\w$]*)\s*(?:;|$)/gm,
-  ))
-    out.set("default", m[1]);
-  for (const m of body.matchAll(/\bexport\s*\{([^}]*)\}(?!\s*from\b)/g))
-    for (const entry of m[1].split(",")) {
-      const specifier = parseImportSpecifier(entry.replace(/^\s*type\s+/, ""));
-      if (specifier && !/^\s*type\s/.test(entry))
-        out.set(specifier[1], specifier[0]);
-    }
-  return out;
+/** Parameter types that cannot hold markup: number, bigint, boolean and unions of them. */
+const PLAIN_PARAMETER_TYPE =
+  /^\s*\|?\s*(?:number|bigint|boolean|true|false)(?:\s*\|\s*(?:number|bigint|boolean|true|false))*\s*$/;
+
+/** Words before a class member's or parameter's name that are not its name. */
+const MEMBER_MODIFIERS = new Set([
+  "async",
+  "static",
+  "get",
+  "set",
+  "public",
+  "private",
+  "protected",
+  "override",
+  "readonly",
+  "abstract",
+  "declare",
+  "accessor",
+]);
+
+/** How a message names the function a parameter belongs to. */
+function ownerLabel(path: string): string {
+  if (path === "default") return "the default export";
+  const constructor = /^(.*)\.constructor$/.exec(path);
+  if (constructor)
+    return `new ${ownerLabel(constructor[1]).replace(/\(\)$/, "")}()`;
+  if (path.startsWith("default."))
+    return `the default export's ${path.slice(8)}()`;
+  return `${path}()`;
+}
+
+/** A function whose parameter list starts at `at` (a source offset), as a message names it. */
+interface ReachableOwner {
+  at: number;
+  label: string;
+}
+
+/** The owner of a parameter named `name` read at `offset`: the nearest function before it with such a parameter. */
+function reachableOwnerAt(
+  owners: ReadonlyMap<string, readonly ReachableOwner[]>,
+  name: string,
+  offset: number,
+): string | undefined {
+  let best: ReachableOwner | undefined;
+  for (const owner of owners.get(name) ?? [])
+    if (owner.at <= offset && (best === undefined || owner.at > best.at))
+      best = owner;
+  return (best ?? owners.get(name)?.[0])?.label;
 }
 
 /**
- * The parameters of this module's exported functions that importers may
- * fill with markup (see AnalyzeOptions.exportArguments), each with the
- * name of its function. A parameter of a function an importer passes on
- * as a value, or of every export when a whole namespace is passed on,
- * counts at every position.
+ * The parameters of everything this module lets other modules call, each
+ * with the functions it belongs to and how a message names them: exported functions (named, or a
+ * default export named or anonymous), every method and constructor of an
+ * exported class, the methods and function members of an exported object
+ * (nested objects too), local functions exported by name or named in an
+ * exported object, and the same through module.exports and exports.x.
+ * Another module may pass any of them markup, so they count as possibly
+ * markup, except a parameter whose declared type is number, bigint or
+ * boolean (or a union of those). Each declaration is read once, so the
+ * pass stays linear in the tokens.
  */
-function externallyFilledParameters(
+export function exportReachableParameters(
   body: string,
-  functions: readonly LocalFunction[],
-  exportArguments: AnalyzeOptions["exportArguments"],
-): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!exportArguments || exportArguments.size === 0) return out;
-  const locals = exportedLocals(body);
-  const byName = new Map<string, LocalFunction[]>();
-  for (const fn of functions) {
-    const list = byName.get(fn.name) ?? [];
-    list.push(fn);
-    byName.set(fn.name, list);
-  }
-  const fill = (local: string, positions: ReadonlySet<number> | "any") => {
-    for (const fn of byName.get(local) ?? []) {
-      fn.params.forEach((names, i) => {
-        if (positions === "any" || positions.has(i))
-          for (const name of names) if (!out.has(name)) out.set(name, local);
-      });
-    }
-  };
-  const everything = exportArguments.get("*") === "any";
-  for (const [exported, local] of locals) {
-    const positions = everything ? "any" : exportArguments.get(exported);
-    if (positions !== undefined) fill(local, positions);
-  }
-  return out;
-}
-
-/** What a call passes an export: the argument positions that may hold markup, or "any". */
-export type ExportArguments = Map<string, Set<number> | "any">;
-
-/**
- * What a file that imports modules passes their exported functions, by
- * import specifier: for each export name ("default" for a default
- * import), the argument positions where a call may pass markup built as a
- * string (a markup string or template, a name that holds one, a call to a
- * project helper or to something this file cannot see into), or "any"
- * when the function is passed on as a value (`titles.map(layout)`) or
- * re-exported. The key "*" with "any" stands for every export: a
- * namespace passed on whole, `export * from`, or a dynamic import. An
- * html`...` argument is not markup built as a string. Every import is
- * read in one pass over the importer's tokens, so an importer is read
- * once for all the modules it imports.
- */
-export function exportArgumentsBySpecifier(
-  body: string,
-): Map<string, ExportArguments> {
-  const out = new Map<string, ExportArguments>();
-  const of = (specifier: string): ExportArguments => {
-    let map = out.get(specifier);
-    if (!map) out.set(specifier, (map = new Map()));
-    return map;
-  };
-  const any = (specifier: string, name: string): void => {
-    of(specifier).set(name, "any");
-  };
-  const at = (specifier: string, name: string, position: number): void => {
-    const map = of(specifier);
-    let set = map.get(name);
-    if (set === "any") return;
-    if (!set) map.set(name, (set = new Set()));
-    set.add(position);
-  };
-  const called = (specifier: string, name: string): void => {
-    const map = of(specifier);
-    if (!map.has(name)) map.set(name, new Set());
-  };
-  /** Local name to [specifier, export name], and namespace name to specifier. */
-  const locals = new Map<string, [string, string]>();
-  const namespaces = new Map<string, string>();
-  /** Import statements' spans, whose names are not uses; in source order. */
-  const statements: [number, number][] = [];
-  for (const m of body.matchAll(
-    /\b(import|export)\s+(?!type\s)([^;'"`]{0,1000}?)\s*from\s*(["'])([^"'\n]*)\3/g,
-  )) {
-    const specifier = m[4];
-    if (!/^(?:\.\.?\/|@\/)/.test(specifier)) continue;
-    const start = m.index ?? 0;
-    statements.push([start, start + m[0].length]);
-    const clause = m[2];
-    const brace = /\{([^}]*)\}/.exec(clause);
-    const rest = brace ? clause.replace(brace[0], "") : clause;
-    if (m[1] === "export") {
-      if (/\*/.test(rest)) any(specifier, "*");
-      if (brace)
-        for (const entry of brace[1].split(",")) {
-          if (/^\s*type\s/.test(entry)) continue;
-          const named = parseImportSpecifier(entry);
-          if (named) any(specifier, named[0]);
-        }
-      continue;
-    }
-    of(specifier);
-    if (brace)
-      for (const entry of brace[1].split(",")) {
-        if (/^\s*type\s/.test(entry)) continue;
-        const named = parseImportSpecifier(entry);
-        if (named) locals.set(named[1], [specifier, named[0]]);
-      }
-    const namespace = /\*\s*as\s+([\w$]+)/.exec(rest);
-    if (namespace) namespaces.set(namespace[1], specifier);
-    const defaultName = /^\s*([\w$]+)\s*(?:,|$)/.exec(rest);
-    if (defaultName) locals.set(defaultName[1], [specifier, "default"]);
-  }
-  for (const m of body.matchAll(/\bimport\s*\(\s*(["'`])([^"'`\n]*)\1/g))
-    if (/^(?:\.\.?\/|@\/)/.test(m[2])) any(m[2], "*");
-  if (locals.size === 0 && namespaces.size === 0) return out;
-
-  const { tokens } = scanJavaScript(body);
+  tokens: readonly Token[] = scanJavaScript(body).tokens,
+): Map<string, ReachableOwner[]> {
+  const out = new Map<string, ReachableOwner[]>();
   const n = tokens.length;
-  const isPunct = (k: number, v: string): boolean =>
+  /** Records that `name` is a parameter of the function whose list starts at token `at`. */
+  const own = (name: string, at: number, label: string): void => {
+    const list = out.get(name) ?? [];
+    list.push({ at: tokens[at].start, label });
+    out.set(name, list);
+  };
+  const punct = (k: number, v: string): boolean =>
     k >= 0 &&
     k < n &&
     tokens[k].type === "punctuation" &&
     tokens[k].value === v;
+  const word = (k: number, v?: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "identifier" &&
+    (v === undefined || tokens[k].value === v);
   const partner = new Int32Array(n).fill(-1);
-  const opens: number[] = [];
-  for (let k = 0; k < n; k++) {
-    if (tokens[k].type !== "punctuation") continue;
-    const v = tokens[k].value;
-    if (v === "(" || v === "[" || v === "{") opens.push(k);
-    else if ((v === ")" || v === "]" || v === "}") && opens.length > 0)
-      partner[opens.pop()!] = k;
-  }
-  // What may hold markup built as a string, found as analyzeServerScriptSource
-  // does, but only when an argument needs it: most calls pass nothing, or
-  // only literals.
-  let sources: number[] | undefined;
-  const sourcesOf = (): number[] => {
-    if (sources) return sources;
-    const markupStarts = findTemplateLiterals(body)
-      .filter(
-        (l) =>
-          (l.tag === null || PLAIN_STRING_TAGS.has(l.tag)) &&
-          looksLikeMarkup(l.parts),
-      )
-      .map((l) => l.start);
-    return (sources = markupSourceStarts(body, tokens, markupStarts));
-  };
-  /** Ascending offsets where an argument would hold markup: a source, a call this file cannot see into, a name that may hold markup, or a project import (called or read). */
-  let suspects: number[] | undefined;
-  const suspectsOf = (): number[] => {
-    if (suspects) return suspects;
-    const found = sourcesOf();
-    const sourceWithin = (from: number, to: number): boolean =>
-      firstAtOrAfter(found, to) > firstAtOrAfter(found, from);
-    const imports = findHtmlImports(body);
-    const projectNames = projectImportNames(body);
-    const producers = markupProducers(
-      tokens,
-      localFunctions(body, tokens),
-      findBindingRanges(body),
-      sourceWithin,
-      projectNames,
-      (name) => htmlExportOf(name, imports) !== undefined,
-    );
-    const all = [...found, ...producers.opaqueStarts, ...producers.starts];
-    for (let k = 0; k < n; k++)
-      if (
-        tokens[k].type === "identifier" &&
-        projectNames.has(tokens[k].value) &&
-        !isPunct(k - 1, ".")
-      )
-        all.push(tokens[k].start);
-    return (suspects = all.sort((x, y) => x - y));
-  };
-  const within = (values: number[], from: number, to: number): boolean =>
-    firstAtOrAfter(values, to) > firstAtOrAfter(values, from);
-  /** Whether the argument with tokens first..last-1 (offsets from..to) may hold markup. */
-  const suspectWithin = (
-    first: number,
-    last: number,
-    from: number,
-    to: number,
-  ): boolean => {
-    let names = false;
-    let literals = false;
-    for (let j = first; j < last; j++) {
-      const type = tokens[j].type;
-      if (type === "identifier") {
-        names = true;
-        break;
-      }
-      if (type === "string" || type === "template") literals = true;
-    }
-    // A template with holes gives no token of its own, only its holes do.
-    if (!names && !literals && /`/.test(body.slice(from, to))) literals = true;
-    if (names) return within(suspectsOf(), from, to);
-    return literals && within(sourcesOf(), from, to);
-  };
-  const statementStarts = statements.map(([start]) => start);
-  const inStatement = (offset: number): boolean => {
-    const k = firstAtOrAfter(statementStarts, offset + 1) - 1;
-    return k >= 0 && offset < statements[k][1];
-  };
-  /** The call whose `(` is at `open`: each argument that may hold markup, by position. */
-  const record = (specifier: string, name: string, open: number): void => {
-    called(specifier, name);
-    const close = partner[open];
-    let from = tokens[open].end;
-    let first = open + 1;
-    let position = 0;
-    for (let j = open + 1; j <= close; j++) {
-      if (j === close || isPunct(j, ",")) {
-        const to = tokens[j].start;
-        if (isPunct(first, ".") && isPunct(first + 1, ".") && j > first + 2) {
-          // A spread fills this position and every one after it.
-          if (suspectWithin(first, j, from, to)) any(specifier, name);
-        } else if (suspectWithin(first, j, from, to))
-          at(specifier, name, position);
-        from = tokens[j].end;
-        first = j + 1;
-        position++;
-      } else if (partner[j] !== -1) j = partner[j];
-    }
-  };
+  const stack: number[] = [];
   for (let k = 0; k < n; k++) {
     const t = tokens[k];
-    if (t.type !== "identifier" || isPunct(k - 1, ".")) continue;
-    const isKey =
-      isPunct(k + 1, ":") && (isPunct(k - 1, "{") || isPunct(k - 1, ","));
-    if (isKey) continue;
-    const imported = locals.get(t.value);
-    if (imported !== undefined) {
-      if (inStatement(t.start)) continue;
-      const [specifier, exported] = imported;
-      if (isPunct(k + 1, "(") && partner[k + 1] !== -1)
-        record(specifier, exported, k + 1);
-      else any(specifier, exported);
+    if (t.type !== "punctuation") continue;
+    if (t.value === "(" || t.value === "[" || t.value === "{") stack.push(k);
+    else if (
+      (t.value === ")" || t.value === "]" || t.value === "}") &&
+      stack.length > 0
+    ) {
+      const o = stack.pop()!;
+      partner[o] = k;
+      partner[k] = o;
+    }
+  }
+  /** After `const|let|var NAME` at `k`: the token after its `=`, past a type annotation; -1 when there is none. */
+  const initializerAfter = (k: number): number => {
+    let j = k + 1;
+    if (!punct(j, ":")) return punct(j, "=") && !punct(j + 1, "=") ? j + 1 : -1;
+    for (let angle = 0; j < n && j <= k + 200; j++) {
+      if (tokens[j].type !== "punctuation") continue;
+      const v = tokens[j].value;
+      if (v === "(" || v === "[" || v === "{") {
+        if (partner[j] === -1) return -1;
+        j = partner[j];
+      } else if (v === "<") angle++;
+      else if (v === ">") angle = Math.max(0, angle - 1);
+      else if (v === "=" && !punct(j - 1, "=")) {
+        if (punct(j + 1, ">")) j++;
+        else if (punct(j + 1, "=")) return -1;
+        else if (angle === 0) return j + 1;
+      } else if (v === ";" || v === ")" || v === "]" || v === "}") return -1;
+    }
+    return -1;
+  };
+  // Where each name is declared: function NAME, class NAME, NAME = value.
+  const declarations = new Map<string, number[]>();
+  const declare = (name: string, at: number): void => {
+    const list = declarations.get(name) ?? [];
+    list.push(at);
+    declarations.set(name, list);
+  };
+  for (let k = 0; k + 1 < n; k++) {
+    if ((word(k, "function") || word(k, "class")) && word(k + 1))
+      declare(tokens[k + 1].value, k);
+    else if (
+      (word(k - 1, "const") || word(k - 1, "let") || word(k - 1, "var")) &&
+      word(k)
+    ) {
+      const v = initializerAfter(k);
+      if (v !== -1 && v < n) declare(tokens[k].value, v);
+    }
+  }
+  /** Records the parameters of the list at `at` (a `(`, or the lone parameter of `x => ...`). */
+  const addParameters = (at: number, path: string): void => {
+    const label = ownerLabel(path);
+    if (!punct(at, "(")) {
+      if (word(at)) own(tokens[at].value, at, label);
+      return;
+    }
+    const close = partner[at];
+    if (close === -1) return;
+    let names: string[] = [];
+    let typeFrom = -1;
+    let typeTo = -1;
+    const finish = (): void => {
+      const type =
+        typeFrom !== -1 && typeTo >= typeFrom
+          ? body.slice(tokens[typeFrom].start, tokens[typeTo].end)
+          : undefined;
+      if (type === undefined || !PLAIN_PARAMETER_TYPE.test(type))
+        for (const name of names) if (name !== "this") own(name, at, label);
+      names = [];
+      typeFrom = typeTo = -1;
+    };
+    // 0: the name or pattern, 1: the type, 2: the default value.
+    let part = 0;
+    for (let j = at + 1; j < close; j++) {
+      const t = tokens[j];
+      if (t.type === "punctuation") {
+        if (t.value === ",") {
+          finish();
+          part = 0;
+          continue;
+        }
+        if (part === 0 && t.value === ":") {
+          part = 1;
+          continue;
+        }
+        if (part !== 2 && t.value === "=" && !punct(j + 1, ">")) {
+          part = 2;
+          continue;
+        }
+        if (t.value === "(" || t.value === "[" || t.value === "{") {
+          const end = partner[j] === -1 ? close : partner[j];
+          if (part === 0)
+            for (let q = j + 1; q < end; q++)
+              if (
+                tokens[q].type === "identifier" &&
+                !punct(q + 1, ":") &&
+                !punct(q - 1, ".")
+              )
+                names.push(tokens[q].value);
+          if (part === 1) {
+            if (typeFrom === -1) typeFrom = j;
+            typeTo = end;
+          }
+          j = end;
+          continue;
+        }
+      }
+      if (part === 0 && t.type === "identifier") {
+        if (
+          !MEMBER_MODIFIERS.has(t.value) ||
+          punct(j + 1, ",") ||
+          punct(j + 1, ":") ||
+          punct(j + 1, "?") ||
+          punct(j + 1, "=") ||
+          j + 1 === close
+        )
+          names.push(t.value);
+      } else if (part === 1 && !(t.type === "punctuation" && t.value === "?")) {
+        if (typeFrom === -1) typeFrom = j;
+        typeTo = j;
+      }
+    }
+    finish();
+  };
+  const visited = new Set<number>();
+  /** The members of the class or object whose `{` is at `open`. */
+  const members = (open: number, base: string, isClass: boolean): void => {
+    const close = partner[open];
+    if (close === -1) return;
+    for (let j = open + 1; j < close; j++) {
+      const t = tokens[j];
+      if (
+        t.type === "punctuation" &&
+        (t.value === "(" || t.value === "[" || t.value === "{")
+      ) {
+        // A method: KEY(...) {, its key an identifier, a string or [computed].
+        if (t.value === "(" && partner[j] !== -1) {
+          const k = j - 1;
+          const keyed =
+            (word(k) || tokens[k]?.type === "string" || punct(k, "]")) &&
+            !punct(k - 1, ".");
+          const after = partner[j] + 1;
+          if (
+            keyed &&
+            (punct(after, "{") || punct(after, ":")) &&
+            !(word(k) && CONTROL_WORDS.has(tokens[k].value))
+          ) {
+            const key =
+              tokens[k].type === "punctuation" ? "[computed]" : tokens[k].value;
+            addParameters(j, `${base}.${key}`);
+          }
+        }
+        if (partner[j] !== -1) j = partner[j];
+        continue;
+      }
+      // KEY: value (objects) and KEY = value (class fields).
+      const valueSign = isClass
+        ? punct(j, "=") &&
+          !punct(j + 1, "=") &&
+          !punct(j + 1, ">") &&
+          !punct(j - 1, "=") &&
+          !punct(j - 1, "!") &&
+          !punct(j - 1, "<") &&
+          !punct(j - 1, ">")
+        : punct(j, ":");
+      if (valueSign) {
+        let k = j - 1;
+        if (isClass) {
+          // Back past a type annotation to the field's name.
+          while (
+            k > open &&
+            k > j - 64 &&
+            !(
+              (word(k) || tokens[k].type === "string") &&
+              (punct(k - 1, ";") ||
+                punct(k - 1, "}") ||
+                punct(k - 1, "{") ||
+                punct(k + 1, ":") ||
+                punct(k + 1, "?") ||
+                punct(k + 1, "!") ||
+                punct(k + 1, "="))
+            )
+          )
+            k--;
+        }
+        const key = k > open && k > j - 64 ? tokens[k].value : "[computed]";
+        collect(j + 1, `${base}.${key}`);
+        continue;
+      }
+      if (!isClass && word(j)) {
+        // { page } and { ...parts }: a local name, read like its declaration.
+        if (
+          (punct(j - 1, "{") || punct(j - 1, ",") || punct(j - 1, ".")) &&
+          (punct(j + 1, ",") || j + 1 === close)
+        )
+          resolve(tokens[j].value, `${base}.${tokens[j].value}`);
+      }
+    }
+  };
+  /** A local name another module can reach: what its declarations hold. */
+  const resolved = new Set<string>();
+  const resolve = (name: string, path: string): void => {
+    // Each name once: its declarations are the same whoever names it.
+    if (resolved.has(name)) return;
+    resolved.add(name);
+    for (const at of declarations.get(name) ?? []) collect(at, path);
+  };
+  // Values still to read, as a queue, so a long alias chain cannot
+  // overflow the call stack.
+  const work: { at: number; path: string }[] = [];
+  /** Queues the value that starts at token `v`, which another module can reach as `path`. */
+  const collect = (v: number, path: string): void => {
+    if (v < 0 || v >= n || visited.has(v)) return;
+    visited.add(v);
+    work.push({ at: v, path });
+  };
+  /** Reads one queued value. */
+  const read = (v: number, path: string): void => {
+    // A token in a template's hole is not the value itself.
+    if (v > 0 && body.slice(tokens[v - 1].end, tokens[v].start).includes("`"))
+      return;
+    let k = v;
+    while (word(k, "async")) k++;
+    if (word(k, "function")) {
+      let j = k + 1;
+      if (punct(j, "*")) j++;
+      if (word(j)) j++;
+      if (punct(j, "(")) addParameters(j, path);
+      return;
+    }
+    if (word(k, "class")) {
+      let j = k + 1;
+      if (word(j) && !word(j, "extends")) j++;
+      for (; j < n && j <= k + 400 && !punct(j, "{"); j++) {
+        if (punct(j, ";") || punct(j, "}")) return;
+        if ((punct(j, "(") || punct(j, "[")) && partner[j] !== -1)
+          j = partner[j];
+      }
+      if (punct(j, "{")) members(j, path, true);
+      return;
+    }
+    if (punct(k, "(") && partner[k] !== -1) {
+      // An arrow's parameter list, past a short return type.
+      for (let j = partner[k] + 1; j < n && j <= partner[k] + 24; j++) {
+        if (punct(j, "=") && punct(j + 1, ">")) {
+          addParameters(k, path);
+          return;
+        }
+        if (punct(j, ";") || punct(j, "{") || punct(j, ",") || punct(j, ")"))
+          break;
+      }
+      return;
+    }
+    if (word(k) && punct(k + 1, "=") && punct(k + 2, ">")) {
+      addParameters(k, path);
+      return;
+    }
+    if (punct(k, "{")) {
+      members(k, path, false);
+      return;
+    }
+    // A name: export default frame, export const lib = lg.
+    if (
+      word(k) &&
+      !punct(k + 1, "(") &&
+      !punct(k + 1, ".") &&
+      !punct(k + 1, "[")
+    )
+      resolve(tokens[k].value, path);
+  };
+  for (let k = 0; k < n; k++) {
+    if (word(k, "export") && !punct(k - 1, ".")) {
+      let j = k + 1;
+      if (word(j, "default")) {
+        let f = j + 1;
+        while (word(f, "async")) f++;
+        // export default function name / class name: messages name it.
+        const named =
+          (word(f, "function") || word(f, "class")) &&
+          word(f + 1) &&
+          !word(f + 1, "extends")
+            ? tokens[f + 1].value
+            : undefined;
+        collect(j + 1, named ?? "default");
+        continue;
+      }
+      if (punct(j, "=")) {
+        collect(j + 1, "default");
+        continue;
+      }
+      while (word(j, "declare") || word(j, "abstract")) j++;
+      let f = j;
+      while (word(f, "async")) f++;
+      if ((word(f, "function") || word(f, "class")) && word(f + 1)) {
+        collect(j, tokens[f + 1].value);
+        continue;
+      }
+      if (
+        (word(j, "const") || word(j, "let") || word(j, "var")) &&
+        word(j + 1)
+      ) {
+        const v = initializerAfter(j + 1);
+        if (v !== -1) collect(v, tokens[j + 1].value);
+        continue;
+      }
+      if (punct(j, "{") && partner[j] !== -1) {
+        const close = partner[j];
+        if (word(close + 1, "from")) continue;
+        for (let q = j + 1; q < close; q++) {
+          if (!word(q) || word(q, "type") || word(q, "as")) continue;
+          if (!(punct(q - 1, "{") || punct(q - 1, ",") || word(q - 1, "type")))
+            continue;
+          const exported =
+            word(q + 1, "as") && word(q + 2)
+              ? tokens[q + 2].value
+              : tokens[q].value;
+          resolve(tokens[q].value, exported);
+        }
+      }
       continue;
     }
-    const specifier = namespaces.get(t.value);
-    if (specifier !== undefined) {
-      if (inStatement(t.start)) continue;
+    // module.exports = ..., module.exports.page = ..., exports.page = ...
+    if (word(k, "exports") && !punct(k - 1, ".")) {
       if (
-        isPunct(k + 1, ".") &&
-        k + 2 < n &&
-        tokens[k + 2].type === "identifier"
-      ) {
-        const member = tokens[k + 2].value;
-        if (isPunct(k + 3, "(") && partner[k + 3] !== -1)
-          record(specifier, member, k + 3);
-        else any(specifier, member);
-      } else any(specifier, "*");
+        punct(k + 1, ".") &&
+        word(k + 2) &&
+        punct(k + 3, "=") &&
+        !punct(k + 4, "=")
+      )
+        collect(k + 4, tokens[k + 2].value);
+      continue;
+    }
+    if (
+      word(k, "module") &&
+      !punct(k - 1, ".") &&
+      punct(k + 1, ".") &&
+      word(k + 2, "exports")
+    ) {
+      if (punct(k + 3, "=") && !punct(k + 4, "=")) collect(k + 4, "default");
+      else if (
+        punct(k + 3, ".") &&
+        word(k + 4) &&
+        punct(k + 5, "=") &&
+        !punct(k + 6, "=")
+      )
+        collect(k + 6, tokens[k + 4].value);
     }
   }
-  return out;
-}
-
-/** Adds what `more` says importers pass to what `into` says already. */
-export function mergeExportArguments(
-  into: ExportArguments,
-  more: ExportArguments,
-): void {
-  for (const [name, positions] of more) {
-    const known = into.get(name);
-    if (known === "any") continue;
-    if (positions === "any") into.set(name, "any");
-    else into.set(name, new Set([...(known ?? []), ...positions]));
-  }
-}
-
-/**
- * What one importer passes the exports of the module that
- * `refersToModule` names (see exportArgumentsBySpecifier).
- */
-export function exportArgumentsFrom(
-  body: string,
-  refersToModule: (specifier: string) => boolean,
-): ExportArguments {
-  const out: ExportArguments = new Map();
-  for (const [specifier, found] of exportArgumentsBySpecifier(body))
-    if (refersToModule(specifier)) mergeExportArguments(out, found);
+  for (let w = 0; w < work.length; w++) read(work[w].at, work[w].path);
   return out;
 }
 
@@ -1721,6 +1845,11 @@ interface MarkupProducers {
   /** Calls whose result this file cannot see into (`render()`, `marked()`, `fs.readFileSync()`), ascending. */
   opaqueStarts: number[];
   opaqueValues: string[];
+  /**
+   * Names that hold markup only through a seed (a parameter other modules
+   * fill), not through markup built in this file, each with that seed.
+   */
+  fromSeed: Map<string, string>;
 }
 
 /**
@@ -1745,7 +1874,7 @@ function markupProducers(
   sourceWithin: (from: number, to: number) => boolean,
   projectNames: ReadonlySet<string>,
   isTrustedCallee: (name: string) => boolean,
-  seeds: ReadonlyMap<string, string> = new Map(),
+  seeds: ReadonlyMap<string, unknown> = new Map(),
 ): MarkupProducers {
   const n = tokens.length;
   const isPunct = (k: number, v: string): boolean =>
@@ -1908,7 +2037,6 @@ function markupProducers(
     if (!set) usedBy.set(from, (set = new Set()));
     set.add(to);
   };
-  for (const name of seeds.keys()) markMarkup(name);
   const opaqueAt = new Set(opaqueStarts);
   const stack: { name: string; end: number }[] = [];
   let r = 0;
@@ -1935,6 +2063,22 @@ function markupProducers(
   }
   while (markupQueue.length > 0)
     for (const next of usedBy.get(markupQueue.pop()!) ?? []) markMarkup(next);
+  // Seeds last, so a name they alone reach is known to hold a caller's
+  // value rather than markup built in this file.
+  const fromSeed = new Map<string, string>();
+  for (const seed of seeds.keys()) {
+    if (markupNames.has(seed)) continue;
+    markMarkup(seed);
+    fromSeed.set(seed, seed);
+    while (markupQueue.length > 0) {
+      const from = markupQueue.pop()!;
+      for (const next of usedBy.get(from) ?? [])
+        if (!markupNames.has(next)) {
+          fromSeed.set(next, seed);
+          markMarkup(next);
+        }
+    }
+  }
   while (queue.length > 0)
     for (const next of usedBy.get(queue.pop()!) ?? []) mark(next);
 
@@ -1952,7 +2096,15 @@ function markupProducers(
       starts.push(tokens[k].start);
       values.push(tokens[k].value);
     }
-  return { names, markupNames, starts, values, opaqueStarts, opaqueValues };
+  return {
+    names,
+    markupNames,
+    starts,
+    values,
+    opaqueStarts,
+    opaqueValues,
+    fromSeed,
+  };
 }
 
 const CONTROL_WORDS = new Set([

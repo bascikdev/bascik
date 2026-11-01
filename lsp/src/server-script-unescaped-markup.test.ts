@@ -13,7 +13,6 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeServerScriptSource,
-  exportArgumentsFrom,
   type AnalyzeOptions,
 } from "./server-script-rules.js";
 import { scanJavaScript } from "./module-specifiers.js";
@@ -941,7 +940,7 @@ describe("server-script-unescaped-markup: holes where a tag or attribute name go
   });
 
   it("a fixable template keeps the wrap advice", () => {
-    const body = 'export const p = (t: string) => `<p class="x">${t}</p>`;\n';
+    const body = 'const p = (t: string) => `<p class="x">${t}</p>`;\n';
     const [d] = module(body);
     expect(d.message).toContain("Wrap the template in html");
     expect(d.template?.fixable).toBe(true);
@@ -1199,7 +1198,7 @@ describe("XML templates get XML advice and no html fix (review round 2)", () => 
 
   it("an HTML template that mentions an item is still HTML", () => {
     const diags = module(
-      'export const c = (x: string) => `<li class="item">${x}</li>`;',
+      'const c = (x: string) => `<li class="item">${x}</li>`;',
     );
     expect(diags[0].template?.fixable).toBe(true);
   });
@@ -1469,7 +1468,7 @@ describe("review round 3", () => {
     it("a local helper that builds its markup with html keeps the fix", () => {
       const diags = moduleDiags(
         IMPORT +
-          "const item = (t: string) => html`<li>${t}</li>`;\nexport const list = (title: string, x: string) => `<ul>${item(title)}${x}</ul>`;",
+          "const item = (t: string) => html`<li>${t}</li>`;\nconst list = (title: string, x: string) => `<ul>${item(title)}${x}</ul>`;",
       );
       expect(diags.every((d) => d.template?.fixable === true)).toBe(true);
     });
@@ -1747,25 +1746,25 @@ describe("the wrap fix is offered only when no hole can hold markup (fix round 1
   });
 
   it.each([
-    ["a parameter", "export const g = (t: string) => `<p>${t}</p>`;", "${t}"],
+    ["a parameter", "const g = (t: string) => `<p>${t}</p>`;", "${t}"],
     [
       "a local helper with no markup",
-      "const upper = (s: string) => s.toUpperCase();\nexport const g = (t: string) => `<p>${upper(t)}</p>`;",
+      "const upper = (s: string) => s.toUpperCase();\nconst g = (t: string) => `<p>${upper(t)}</p>`;",
       "${upper(t)}",
     ],
     [
       "a local helper that builds its markup with html",
-      'import { html } from "@bascik/bascik/html";\nconst item = (t: string) => html`<li>${t}</li>`;\nexport const g = (t: string, x: string) => `<ul>${item(t)}${x}</ul>`;',
+      'import { html } from "@bascik/bascik/html";\nconst item = (t: string) => html`<li>${t}</li>`;\nconst g = (t: string, x: string) => `<ul>${item(t)}${x}</ul>`;',
       "${x}",
     ],
     [
       "a name bound to plain data",
-      'export const g = (p: { n: string }) => { const label = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      'const g = (p: { n: string }) => { const label = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
       "${label}",
     ],
     [
       "a property of a parameter",
-      "export const g = (p: { title: string }) => `<h2>${p.title}</h2>`;",
+      "const g = (p: { title: string }) => `<h2>${p.title}</h2>`;",
       "${p.title}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
@@ -1825,97 +1824,97 @@ describe("the wrap fix follows typed bindings, parameters, file reads and unknow
   it.each([
     [
       "a constant with a type annotation",
-      "const ICONS2: Record<string, string> = { ok: '<svg class=\"ok\"></svg>' };\nexport function st2(s: string, l: string) { return `<td>${ICONS2[s]}${l}</td>`; }",
+      "const ICONS2: Record<string, string> = { ok: '<svg class=\"ok\"></svg>' };\nfunction st2(s: string, l: string) { return `<td>${ICONS2[s]}${l}</td>`; }",
       "${l}",
       "ICONS2",
     ],
     [
       "a typed let accumulator",
-      'let out: string = "";\nexport function e(t: string) { out += `<li>${t}</li>`; return `<ul>${out}</ul>`; }',
+      'let out: string = "";\nfunction e(t: string) { out += `<li>${t}</li>`; return `<ul>${out}</ul>`; }',
       "${out}",
       "out",
     ],
     [
       "a typed let declared without a value",
-      "let out: string;\nexport function e(t: string) { out = `<li>${t}</li>`; return `<ul>${out}</ul>`; }",
+      "let out: string;\nfunction e(t: string) { out = `<li>${t}</li>`; return `<ul>${out}</ul>`; }",
       "${out}",
       "out",
     ],
     [
       "a typed markup constant",
-      'const sep: string = "<br>";\nexport function f(a: string) { return `<p>${a}${sep}</p>`; }',
+      'const sep: string = "<br>";\nfunction f(a: string) { return `<p>${a}${sep}</p>`; }',
       "${a}",
       "sep",
     ],
     [
       "a typed array of markup strings",
-      'export function e(items: string[]) { const lis: string[] = items.map((i) => "<li>" + i + "</li>"); return `<ul>${lis}</ul>`; }',
+      'function e(items: string[]) { const lis: string[] = items.map((i) => "<li>" + i + "</li>"); return `<ul>${lis}</ul>`; }',
       "${lis}",
       "lis",
     ],
     [
       "an arrow with a function type annotation",
-      'const ital: (t: string) => string = (t) => "<i>" + t + "</i>";\nexport function c(t: string) { return `<p>${ital(t)}</p>`; }',
+      'const ital: (t: string) => string = (t) => "<i>" + t + "</i>";\nfunction c(t: string) { return `<p>${ital(t)}</p>`; }',
       "${ital(t)}",
       "ital",
     ],
     [
       "a typed arrow with a generic annotation",
-      'const b: Map<string, () => string> = new Map([["a", () => "<b>x</b>"]]);\nexport function c(t: string) { return `<p>${b.get(t)}</p>`; }',
+      'const b: Map<string, () => string> = new Map([["a", () => "<b>x</b>"]]);\nfunction c(t: string) { return `<p>${b.get(t)}</p>`; }',
       "${b.get(t)}",
       "b",
     ],
     [
       "a destructured binding",
-      "const { icon } = { icon: '<svg class=\"i\"></svg>' };\nexport function c(t: string) { return `<p>${icon}${t}</p>`; }",
+      "const { icon } = { icon: '<svg class=\"i\"></svg>' };\nfunction c(t: string) { return `<p>${icon}${t}</p>`; }",
       "${t}",
       "icon",
     ],
     [
       "an array destructured binding",
-      "const [first] = ['<svg class=\"i\"></svg>'];\nexport function c(t: string) { return `<p>${first}${t}</p>`; }",
+      "const [first] = ['<svg class=\"i\"></svg>'];\nfunction c(t: string) { return `<p>${first}${t}</p>`; }",
       "${t}",
       "first",
     ],
     [
       "a parameter a local call fills with a markup string",
-      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport const home = layout("Home", "<p>Welcome</p>");',
+      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nconst home = layout("Home", "<p>Welcome</p>");',
       "${title}",
       "body",
     ],
     [
       "a parameter a local call fills with a markup template",
-      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport function page(y: string) { return layout("Home", `<p>${y}</p>`); }',
+      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nfunction page(y: string) { return layout("Home", `<p>${y}</p>`); }',
       "${title}",
       "body",
     ],
     [
       "a callback parameter",
-      'export function wrap(render: () => string) { return `<div class="w">${render()}</div>`; }',
+      'function wrap(render: () => string) { return `<div class="w">${render()}</div>`; }',
       "${render()}",
       "render",
     ],
     [
       "a function imported from a package",
-      'import { marked } from "marked";\nexport function post(md: string, t: string) { return `<article><h1>${t}</h1>${marked(md)}</article>`; }',
+      'import { marked } from "marked";\nfunction post(md: string, t: string) { return `<article><h1>${t}</h1>${marked(md)}</article>`; }',
       "${t}",
       "marked",
     ],
     [
       "a file read",
-      'import fs from "node:fs";\nexport function withHeader(c: string) { const header = fs.readFileSync("partials/header.html", "utf8"); return `<body>${header}<p>${c}</p></body>`; }',
+      'import fs from "node:fs";\nfunction withHeader(c: string) { const header = fs.readFileSync("partials/header.html", "utf8"); return `<body>${header}<p>${c}</p></body>`; }',
       "${c}",
       "header",
     ],
     [
       "a file read in the hole",
-      'import { readFileSync } from "node:fs";\nexport function withHeader(c: string) { return `<body>${readFileSync("h.html", "utf8")}<p>${c}</p></body>`; }',
+      'import { readFileSync } from "node:fs";\nfunction withHeader(c: string) { return `<body>${readFileSync("h.html", "utf8")}<p>${c}</p></body>`; }',
       "${c}",
       "readFileSync",
     ],
     [
       "a fetched response's text",
-      'export async function part(c: string) { const res = await fetch("https://example.com/p"); const body = await res.text(); return `<div>${body}<p>${c}</p></div>`; }',
+      'async function part(c: string) { const res = await fetch("https://example.com/p"); const body = await res.text(); return `<div>${body}<p>${c}</p></div>`; }',
       "${c}",
       "body",
     ],
@@ -1931,22 +1930,22 @@ describe("the wrap fix follows typed bindings, parameters, file reads and unknow
   it.each([
     [
       "a typed binding to plain data",
-      'export const g = (p: { n: string }) => { const label: string = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      'const g = (p: { n: string }) => { const label: string = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
       "${label}",
     ],
     [
       "a parameter local calls fill with plain data",
-      'function heading(title: string) { return `<h1>${title}</h1>`; }\nexport const home = heading("Home");\nexport const about = heading(`About ${"us"}`);',
+      'function heading(title: string) { return `<h1>${title}</h1>`; }\nconst home = heading("Home");\nconst about = heading(`About ${"us"}`);',
       "${title}",
     ],
     [
       "a global conversion call",
-      "export const g = (n: string) => `<p>${String(n)} ${encodeURIComponent(n)}</p>`;",
+      "const g = (n: string) => `<p>${String(n)} ${encodeURIComponent(n)}</p>`;",
       "${String(n)}",
     ],
     [
       "a local helper with no markup, typed",
-      "const upper: (s: string) => string = (s) => s.toUpperCase();\nexport const g = (t: string) => `<p>${upper(t)}</p>`;",
+      "const upper: (s: string) => string = (s) => s.toUpperCase();\nconst g = (t: string) => `<p>${upper(t)}</p>`;",
       "${upper(t)}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
@@ -1990,43 +1989,43 @@ describe("the wrap fix follows markup across modules (fix round 3)", () => {
   it.each([
     [
       "an imported ALL_CAPS markup constant",
-      'import { ICON_OK } from "./icons.ts";\nexport const a = (l: string) => `<td>${ICON_OK}${l}</td>`;',
+      'import { ICON_OK } from "./icons.ts";\nconst a = (l: string) => `<td>${ICON_OK}${l}</td>`;',
       "${l}",
       "ICON_OK",
     ],
     [
       "a property of an imported object",
-      'import { icons } from "./icons.ts";\nexport const b = (l: string) => `<td>${icons.ok}${l}</td>`;',
+      'import { icons } from "./icons.ts";\nconst b = (l: string) => `<td>${icons.ok}${l}</td>`;',
       "${l}",
       "icons",
     ],
     [
       "an imported name after the reported hole",
-      'import { footer } from "../partials/icons.ts";\nexport const c = (l: string) => `<p>${l}</p>${footer}`;',
+      'import { footer } from "../partials/icons.ts";\nconst c = (l: string) => `<p>${l}</p>${footer}`;',
       "${l}",
       "footer",
     ],
     [
       "a default import from an @/ specifier",
-      'import banner from "@/lib/banner.ts";\nexport const c = (l: string) => `<p>${l}</p>${banner}`;',
+      'import banner from "@/lib/banner.ts";\nconst c = (l: string) => `<p>${l}</p>${banner}`;',
       "${l}",
       "banner",
     ],
     [
       "a namespace import's member",
-      'import * as parts from "./parts.ts";\nexport const c = (l: string) => `<p>${l}</p>${parts.footer}`;',
+      'import * as parts from "./parts.ts";\nconst c = (l: string) => `<p>${l}</p>${parts.footer}`;',
       "${l}",
       "parts",
     ],
     [
       "an environment variable",
-      "const footer = process.env.FOOTER_MARKUP;\nexport const c = (l: string) => `<p>${l}</p>${footer}`;",
+      "const footer = process.env.FOOTER_MARKUP;\nconst c = (l: string) => `<p>${l}</p>${footer}`;",
       "${l}",
       "footer",
     ],
     [
       "an environment variable in the hole",
-      "export const c = (l: string) => `<p>${l}</p>${process.env.FOOTER_MARKUP}`;",
+      "const c = (l: string) => `<p>${l}</p>${process.env.FOOTER_MARKUP}`;",
       "${l}",
       "process.env",
     ],
@@ -2040,192 +2039,243 @@ describe("the wrap fix follows markup across modules (fix round 3)", () => {
   it.each([
     [
       "a name imported from a package",
-      'import { siteName } from "site-meta";\nexport const c = (l: string) => `<p>${siteName}: ${l}</p>`;',
+      'import { siteName } from "site-meta";\nconst c = (l: string) => `<p>${siteName}: ${l}</p>`;',
       "${l}",
     ],
     [
       "an environment variable not named for markup",
-      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nexport const c = (p: string) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
+      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nconst c = (p: string) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
       "${p}",
     ],
     [
       "a bracketed environment variable not named for markup",
-      'export const c = (l: string) => `<p>${process.env["SITE_NAME"]}: ${l}</p>`;',
+      'const c = (l: string) => `<p>${process.env["SITE_NAME"]}: ${l}</p>`;',
       "${l}",
     ],
     [
       "a type-only import",
-      'import type { Row } from "./types.ts";\nexport const c = (r: Row) => `<p>${r.name}</p>`;',
+      'import type { Row } from "./types.ts";\nconst c = (r: Row) => `<p>${r.name}</p>`;',
       "${r.name}",
     ],
     [
       "an imported function's parameter name shadowed by nothing (a property named like an import)",
-      'import { footer } from "./icons.ts";\nexport const c = (p: { footer: string }) => `<p>${p.footer}</p>`;',
+      'import { footer } from "./icons.ts";\nconst c = (p: { footer: string }) => `<p>${p.footer}</p>`;',
       "${p.footer}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
     expect(fixableAt(body, hole).fixable).toBe(true);
   });
+});
 
-  const LAYOUT =
-    "export function layout(title: string, body: string) {\n  return `<main><h1>${title}</h1>${body}</main>`;\n}\n";
-
-  it("an exported function whose parameter a call in another module fills with markup: no fix", () => {
-    const { fixable, message } = fixableAt(LAYOUT, "${title}", {
-      exportArguments: new Map([["layout", new Set([1])]]),
-    });
-    expect(fixable).toBe(false);
-    expect(message).toContain("body");
-    expect(message).toContain("another module");
-  });
-
-  it.each([
-    ["no importer passes it markup", new Map([["layout", new Set<number>()]])],
-    ["only another export gets markup", new Map([["other", "any" as const]])],
-    ["no importers are known", undefined],
-  ])("%s: the fix stays", (_name, exportArguments) => {
-    expect(fixableAt(LAYOUT, "${title}", { exportArguments }).fixable).toBe(
-      true,
+describe("a parameter other modules can fill withholds the wrap fix (fix round 4)", () => {
+  const holes = (
+    body: string,
+    hole: string,
+    opts: Partial<AnalyzeOptions> = {},
+  ) => {
+    const found = unescaped(body, { directive: "module", ...opts }).filter(
+      (x) => body.slice(x.start, x.end) === hole,
     );
-  });
+    expect(found.length, `${hole} is reported`).toBeGreaterThan(0);
+    return found;
+  };
+  const CALLER_TEXT = "may be markup from a caller";
 
   it.each([
-    ["passed on as a value", new Map([["layout", "any" as const]])],
     [
-      "a whole-module re-export or dynamic import",
-      new Map([["*", "any" as const]]),
+      "an anonymous default export arrow",
+      "export default (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;",
     ],
-  ])(
-    "%s: every parameter may hold markup, no fix",
-    (_name, exportArguments) => {
-      expect(fixableAt(LAYOUT, "${title}", { exportArguments }).fixable).toBe(
-        false,
-      );
-    },
-  );
-
-  it.each([
     [
-      "export const arrow",
+      "an anonymous default export function",
+      "export default function (title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "an async anonymous default export function",
+      "export default async function (title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "an async anonymous default export arrow",
+      "export default async (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;",
+    ],
+    [
+      "a named default export",
+      "export default function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "an exported function",
+      "export function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "an exported const arrow",
       "export const layout = (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;",
-      "layout",
+    ],
+    [
+      "an exported const function expression",
+      "export const layout = function (title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; };",
     ],
     [
       "an export list with an alias",
       "function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport { frame as layout };",
-      "layout",
-    ],
-    [
-      "a default export",
-      "export default function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
-      "default",
     ],
     [
       "a default export of a name",
-      "function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport default frame;",
-      "default",
+      "const frame = (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;\nexport default frame;",
     ],
-  ])(
-    "%s: the export's parameters are filled by importers",
-    (_name, body, key) => {
-      expect(
-        fixableAt(body, "${title}", {
-          exportArguments: new Map([[key, new Set([1])]]),
-        }).fixable,
-      ).toBe(false);
-    },
-  );
-});
+    [
+      "an exported class method",
+      "export class Layout { render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }",
+    ],
+    [
+      "a static method of an exported class",
+      "export class Layout { static render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }",
+    ],
+    [
+      "an exported class's constructor",
+      "export class Layout { out: string; constructor(title: string, body: string) { this.out = `<main><h1>${title}</h1>${body}</main>`; } }",
+    ],
+    [
+      "an arrow field of an exported class",
+      "export class Layout { render = (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "an anonymous default export class",
+      "export default class { render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }",
+    ],
+    [
+      "a class exported by name later",
+      "class Layout extends Base { render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }\nexport { Layout };",
+    ],
+    [
+      "a shorthand method of an exported object",
+      "export const lg = { page(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } };",
+    ],
+    [
+      "an arrow member of an exported object",
+      "export const lg = { page: (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>` };",
+    ],
+    [
+      "a function member of a nested exported object",
+      "export const ui = { parts: { page: function (title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } } };",
+    ],
+    [
+      "an object default export",
+      "export default { page(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } };",
+    ],
+    [
+      "a local function an exported object names in shorthand",
+      "function page(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport const lg = { page };",
+    ],
+    [
+      "module.exports",
+      "module.exports = { page(title, body) { return `<main><h1>${title}</h1>${body}</main>`; } };",
+    ],
+    [
+      "an exports property",
+      "exports.page = function (title, body) { return `<main><h1>${title}</h1>${body}</main>`; };",
+    ],
+    [
+      "untyped JavaScript parameters",
+      "export function layout(title, body) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "a string or number parameter",
+      "export function layout(title: string | number, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+    ],
+    [
+      "a binding read from the parameter",
+      "export function layout(title: string, body: string) { const heading = title.trim(); return `<main><h1>${heading}</h1>${body}</main>`; }",
+    ],
+  ])("%s: no fix, warning kept, with the caller advice", (_name, body) => {
+    for (const hole of ["${body}"]) {
+      for (const d of holes(body, hole)) {
+        expect(d.template?.fixable).toBe(false);
+        expect(d.message).toContain(CALLER_TEXT);
+        expect(d.message).toContain("html");
+      }
+    }
+  });
 
-describe("exportArgumentsFrom: what an importer passes a module's exports (fix round 3)", () => {
-  const isLayout = (s: string) =>
-    s === "./layout.ts" || s === "@/lib/layout.ts";
-  const of = (body: string) =>
-    Object.fromEntries(
-      [...exportArgumentsFrom(body, isLayout)].map(([k, v]) => [
-        k,
-        v === "any" ? v : [...v].sort(),
-      ]),
-    );
+  it("the message names the function the hole's parameter belongs to", () => {
+    const body =
+      "export class Layout { render(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } }\nexport const lg = { page(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; } };\nexport default (title: string) => `<h1>${title}</h1>`;\nexport class Card { constructor(title: string) { this.out = `<h2>${title}</h2>`; } }";
+    const owners = unescaped(body, { directive: "module" })
+      .filter((d) => body.slice(d.start, d.end) === "${title}")
+      .map((d) => /a parameter of (.+?), which/.exec(d.message)?.[1]);
+    expect(owners).toEqual([
+      "Layout.render()",
+      "lg.page()",
+      "the default export",
+      "new Card()",
+    ]);
+  });
+
+  it("the fix is withheld though no other module is known to call it", () => {
+    const body =
+      "export default (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;";
+    expect(holes(body, "${title}")[0].template?.fixable).toBe(false);
+  });
 
   it.each([
     [
-      "a markup string argument",
-      'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");',
-      { layout: [1] },
+      "number and boolean parameters",
+      'export function badge(count: number, open: boolean) { return `<span data-open="${open}">${count}</span>`; }',
+      "${count}",
     ],
     [
-      "a markup template argument",
-      'import { layout } from "./layout.ts";\nexport const page = (y: string) => layout(`Hi ${y}`, `<p>${y}</p>`);',
-      { layout: [1] },
+      "a bigint parameter with a default",
+      "export const id = (n: bigint = 1n) => `<b>${n}</b>`;",
+      "${n}",
     ],
     [
-      "a name bound to markup",
-      'import { layout } from "./layout.ts";\nconst body = "<p>x</p>";\nexport const home = layout("Home", body);',
-      { layout: [1] },
+      "an optional union of number and boolean",
+      "export class Meter { render(value?: number | boolean) { return `<meter>${value}</meter>`; } }",
+      "${value}",
     ],
     [
-      "a call to another project module's helper",
-      'import { layout } from "./layout.ts";\nimport { card } from "./card.ts";\nexport const home = layout("Home", card());',
-      { layout: [1] },
+      "a number member of an exported object",
+      "export const ui = { count: (n: number) => `<b>${n}</b>` };",
+      "${n}",
     ],
-    [
-      "an html value and plain text",
-      'import { html } from "@bascik/bascik/html";\nimport { layout } from "./layout.ts";\nexport const home = layout("Home", html`<p>x</p>`);',
-      { layout: [] },
-    ],
-    [
-      "an alias",
-      'import { layout as frame } from "@/lib/layout.ts";\nexport const home = frame("Home", "<p>Welcome</p>");',
-      { layout: [1] },
-    ],
-    [
-      "a namespace import",
-      'import * as L from "./layout.ts";\nexport const home = L.layout("<b>Home</b>", "x");',
-      { layout: [0] },
-    ],
-    [
-      "a default import",
-      'import frame from "./layout.ts";\nexport const home = frame("Home", "<p>Welcome</p>");',
-      { default: [1] },
-    ],
-    [
-      "passed on as a callback",
-      'import { layout } from "./layout.ts";\nexport const pages = titles.map(layout);',
-      { layout: "any" },
-    ],
-    [
-      "a namespace passed on whole",
-      'import * as L from "./layout.ts";\nexport const lib = L;',
-      { "*": "any" },
-    ],
-    [
-      "a named re-export",
-      'export { layout } from "./layout.ts";',
-      { layout: "any" },
-    ],
-    ["a star re-export", 'export * from "./layout.ts";', { "*": "any" }],
-    [
-      "a dynamic import",
-      'export const load = () => import("./layout.ts");',
-      { "*": "any" },
-    ],
-    [
-      "a spread of markup fills every position",
-      'import { layout } from "./layout.ts";\nexport const home = layout(...["Home", "<p>x</p>"]);',
-      { layout: "any" },
-    ],
-    [
-      "a spread of plain data",
-      'import { layout } from "./layout.ts";\nconst parts = ["Home", "Welcome"];\nexport const home = layout(...parts);',
-      { layout: [] },
-    ],
-    [
-      "another module's import with the same name",
-      'import { layout } from "./other.ts";\nexport const home = layout("Home", "<p>Welcome</p>");',
-      {},
-    ],
-  ])("%s", (_name, body, expected) => {
-    expect(of(body)).toEqual(expected);
+  ])("%s keep the fix", (_name, body, hole) => {
+    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
   });
+
+  it.each([
+    [
+      "a local function whose callers pass plain data",
+      'function row(name: string) { return `<li>${name}</li>`; }\nexport const list = row("Milk frother");',
+      "${name}",
+    ],
+    [
+      "a function nested in an exported one, called with plain data",
+      'export function list() { function row(name: string) { return `<li>${name}</li>`; } return row("Milk frother"); }',
+      "${name}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole) => {
+    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
+  });
+
+  it("a local function an exported one passes its parameter: no fix", () => {
+    const body =
+      "function wrap(inner: string) { return `<main>${inner}</main>`; }\nexport function layout(body: string) { return wrap(body); }";
+    expect(holes(body, "${inner}")[0].template?.fixable).toBe(false);
+  });
+
+  it.each([
+    [
+      "build",
+      'export default function () {\n  const product = { name: "Milk frother" };\n  return `<h1>${product.name}</h1>`;\n}\n',
+      "${product.name}",
+    ],
+    ["server", handler("`<p>${q}</p>`"), "${q}"],
+  ])(
+    "a %s directive script's own locals keep the fix",
+    (directive, body, hole) => {
+      const d = unescaped(body, {
+        directive: directive as AnalyzeOptions["directive"],
+      }).find((x) => body.slice(x.start, x.end) === hole);
+      expect(d?.template?.fixable).toBe(true);
+    },
+  );
 });

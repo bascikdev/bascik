@@ -19,11 +19,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { findModuleSpecifiers } from "./module-specifiers.js";
 import type { ProjectSnapshot } from "./project.js";
-import {
-  exportArgumentsBySpecifier,
-  mergeExportArguments,
-  type ExportArguments,
-} from "./server-script-rules.js";
 
 /** A directive attribute in a script's open tag; group 1 is the directive. */
 const DIRECTIVE_RE =
@@ -178,12 +173,6 @@ export interface ScriptModuleSources {
 export class ScriptModules extends Set<string> {
   readonly requestTime = new Set<string>();
   readonly browser = new Set<string>();
-  /**
-   * For each module (normalized path), the files that import it with a
-   * `./`, `../` or `@/` specifier: modules, and pages or components whose
-   * scripts do. Their calls fill its exported functions' parameters.
-   */
-  readonly importers = new Map<string, Set<string>>();
 
   /** Every module of both, request-time or browser in either. */
   static union(a: ScriptModules, b: ScriptModules): ScriptModules {
@@ -191,12 +180,6 @@ export class ScriptModules extends Set<string> {
     for (const m of [...a.requestTime, ...b.requestTime])
       out.requestTime.add(m);
     for (const m of [...a.browser, ...b.browser]) out.browser.add(m);
-    for (const source of [a.importers, b.importers])
-      for (const [target, files] of source) {
-        const set = out.importers.get(target) ?? new Set<string>();
-        for (const file of files) set.add(file);
-        out.importers.set(target, set);
-      }
     return out;
   }
 }
@@ -222,18 +205,9 @@ export function findScriptModules(sources: ScriptModuleSources): ScriptModules {
       const rel = path.relative(r, file);
       return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
     });
-  const add = (
-    file: string | undefined | null,
-    reach: Reach,
-    importer?: string,
-  ): void => {
+  const add = (file: string | undefined | null, reach: Reach): void => {
     if (!file || !inProject(file) || isTestFile(file)) return;
     const key = normalizeModulePath(file);
-    if (importer !== undefined) {
-      let set = found.importers.get(key);
-      if (!set) found.importers.set(key, (set = new Set()));
-      set.add(importer);
-    }
     if (visited[reach].has(key) || visits >= MAX_MODULES * 3) return;
     visited[reach].add(key);
     visits++;
@@ -245,14 +219,9 @@ export function findScriptModules(sources: ScriptModuleSources): ScriptModules {
     }
     queue.push([file, reach]);
   };
-  const addImports = (
-    text: string,
-    fromDir: string,
-    reach: Reach,
-    importer: string,
-  ): void => {
+  const addImports = (text: string, fromDir: string, reach: Reach): void => {
     for (const value of specifiersOf(text))
-      add(resolveSpecifier(value, fromDir, importRoot), reach, importer);
+      add(resolveSpecifier(value, fromDir, importRoot), reach);
   };
 
   for (const [htmlPath, text] of sources.html) {
@@ -266,7 +235,7 @@ export function findScriptModules(sources: ScriptModuleSources): ScriptModules {
             ? "request"
             : "build";
       const src = resolveSrc(attrs, dir, importRoot);
-      if (src === null) addImports(body, dir, reach, htmlPath);
+      if (src === null) addImports(body, dir, reach);
       else add(src, reach);
     }
   }
@@ -287,7 +256,7 @@ export function findScriptModules(sources: ScriptModuleSources): ScriptModules {
       }
       texts.set(file, text);
     }
-    if (text !== undefined) addImports(text, path.dirname(file), reach, file);
+    if (text !== undefined) addImports(text, path.dirname(file), reach);
   }
   return found;
 }
@@ -438,103 +407,3 @@ export const snapshotRoots = (snapshot: ProjectSnapshot): string[] => [
   ...(snapshot.apiRoot ? [snapshot.apiRoot] : []),
   snapshot.importRoot,
 ];
-
-/**
- * Per module set, each importer's text and what it passes the modules it
- * imports, by resolved module path: an importer is read once for all the
- * modules it imports, and again only when its text changes (an open
- * buffer being typed). A new module set (an import or a file changed)
- * starts afresh.
- */
-const importerMemo = new WeakMap<
-  ScriptModules,
-  Map<string, { text: string; byModule: Map<string, ExportArguments> }>
->();
-
-/** What the importer at `importer`, with this text, passes each module it imports, by normalized path. */
-function importerArguments(
-  modules: ScriptModules,
-  importer: string,
-  text: string,
-  importRoot: string,
-): Map<string, ExportArguments> {
-  let memo = importerMemo.get(modules);
-  if (!memo) importerMemo.set(modules, (memo = new Map()));
-  const known = memo.get(importer);
-  if (known && known.text === text) return known.byModule;
-  const fromDir = path.dirname(importer);
-  const bodies = importer.toLowerCase().endsWith(".html")
-    ? scriptTags(text)
-        .filter(({ attrs }) => SRC_RE.exec(attrs) === null)
-        .map(({ body }) => body)
-    : [text];
-  const byModule = new Map<string, ExportArguments>();
-  for (const body of bodies)
-    for (const [specifier, found] of exportArgumentsBySpecifier(body)) {
-      const file = resolveSpecifier(specifier, fromDir, importRoot);
-      if (file === undefined) continue;
-      const key = normalizeModulePath(file);
-      const into = byModule.get(key) ?? new Map();
-      mergeExportArguments(into, found);
-      byModule.set(key, into);
-    }
-  memo.set(importer, { text, byModule });
-  return byModule;
-}
-
-/** A bound on the importers read for one module, so a module every file imports cannot stall the editor. */
-const MAX_IMPORTERS = 1_000;
-
-/**
- * What the files that import a module pass its exported functions (see
- * AnalyzeOptions.exportArguments): each importer is read (an open buffer
- * in place of the disk; a page's or component's scripts), and its calls
- * of the module's exports are checked for markup built as a string.
- * Undefined when nothing imports the module; every export counts as
- * filled with markup ("*") when an importer cannot be read or there are
- * more than MAX_IMPORTERS.
- */
-export function exportArgumentsOf(
-  modules: ScriptModules,
-  snapshot: ProjectSnapshot,
-  fsPath: string,
-  openDocumentTexts: { fsPath: string; text: string }[] = [],
-): Map<string, Set<number> | "any"> | undefined {
-  const target = normalizeModulePath(fsPath);
-  const importers = modules.importers.get(target);
-  if (!importers || importers.size === 0) return undefined;
-  const out = new Map<string, Set<number> | "any">();
-  if (importers.size > MAX_IMPORTERS) return out.set("*", "any");
-  const open = new Map(
-    openDocumentTexts.map((d) => [normalizeModulePath(d.fsPath), d.text]),
-  );
-  for (const importer of importers) {
-    const key = normalizeModulePath(importer);
-    let text =
-      open.get(key) ??
-      snapshot.htmlUsageByFile.get(importer) ??
-      snapshot.componentSourceByFile?.get(importer) ??
-      // A closed module read before: a change on disk makes a new module set.
-      importerMemo.get(modules)?.get(importer)?.text;
-    if (text === undefined) {
-      try {
-        text = fs.readFileSync(importer, "utf8");
-      } catch {
-        return out.set("*", "any");
-      }
-    }
-    let found: ExportArguments | undefined;
-    try {
-      found = importerArguments(
-        modules,
-        importer,
-        text,
-        snapshot.importRoot,
-      ).get(target);
-    } catch {
-      return out.set("*", "any");
-    }
-    if (found) mergeExportArguments(out, found);
-  }
-  return out;
-}
