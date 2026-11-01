@@ -1111,6 +1111,7 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     expect(registration.watchers.map((w) => w.globPattern.pattern)).toEqual([
       "**/bascik.config.{ts,js,mjs}",
       "**/*.html",
+      "**/*.{ts,mts,js,mjs}",
     ]);
   });
 
@@ -1133,7 +1134,8 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     expect(registration.watchers.map((w) => w.globPattern.pattern)).toEqual([
       "**/bascik.config.{ts,js,mjs}",
       "**/*.html",
-      "**/*.{ts,mts,cts,js,mjs,cjs}",
+      "**/*.{ts,mts,js,mjs}",
+      "**/*.{cts,cjs}",
       "**/{tsconfig,package}.json",
     ]);
   });

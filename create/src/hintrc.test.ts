@@ -189,12 +189,12 @@ describe("sourceUrlPattern", () => {
   it("misuse: matches a folder with a space or non-ASCII name in the percent-encoded URL webhint tests", () => {
     const dirs = {
       pages: "site pages",
-      components: ["src/composants é", "src/50%#ui"],
+      components: ["src/widgets é", "src/50%#ui"],
     };
     const re = new RegExp(sourceUrlPattern(dirs)!, "i");
     for (const path of [
       "/p/site site/site pages/index.html",
-      "/p/x/src/composants é/card/card.html",
+      "/p/x/src/widgets é/card/card.html",
       "/p/x/src/50%#ui/card/card.html",
     ]) {
       // The URL webhint builds for the file, and the folder name as written.

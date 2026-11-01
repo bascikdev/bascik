@@ -90,11 +90,11 @@ const WATCHED_FILE_PATTERNS = [
 const SCRIPT_MODULE_FILE = /\.(?:ts|mts|js|mjs)$/i;
 
 /**
- * With TypeScript checks on, also the files a `type="text/typescript"` block can import and the files that decide
- * how it is checked.
+ * With TypeScript checks on, also the files a `type="text/typescript"` block can import that
+ * WATCHED_FILE_PATTERNS does not watch already, and the files that decide how it is checked.
  */
 const TYPESCRIPT_WATCHED_FILE_PATTERNS = [
-  "**/*.{ts,mts,cts,js,mjs,cjs}",
+  "**/*.{cts,cjs}",
   "**/{tsconfig,package}.json",
 ];
 

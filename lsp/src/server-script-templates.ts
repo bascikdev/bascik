@@ -859,20 +859,6 @@ const stringEnd = (text: string, i: number): number => {
   return i + 1;
 };
 
-const templateEnd = (text: string, i: number): number => {
-  i++;
-  while (i < text.length && text[i] !== "`") {
-    if (text[i] === "\\") i++;
-    else if (text[i] === "$" && text[i + 1] === "{") {
-      const close = matchingClose(text, i + 1);
-      if (close === -1) return text.length;
-      i = close;
-    }
-    i++;
-  }
-  return i + 1;
-};
-
 const stripParens = (e: string): string => {
   while (e.startsWith("(") && matchingClose(e, 0) === e.length - 1)
     e = e.slice(1, -1).trim();
