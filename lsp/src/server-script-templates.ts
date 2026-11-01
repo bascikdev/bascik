@@ -474,6 +474,19 @@ function nameVerdict(
  * runs to the end of the ones around it, are not each scanned again.
  */
 export function findBindings(body: string): Map<string, string[]> {
+  const bindings = new Map<string, string[]>();
+  for (const { name, from, end } of findBindingRanges(body)) {
+    const list = bindings.get(name) ?? [];
+    list.push(body.slice(from, end));
+    bindings.set(name, list);
+  }
+  return bindings;
+}
+
+/** The bindings findBindings reads, each with its value's offsets, in no set order. */
+export function findBindingRanges(
+  body: string,
+): { name: string; from: number; end: number }[] {
   const found: { name: string; from: number }[] = [];
   const reassignable = new Set<string>();
   for (const m of body.matchAll(
@@ -499,16 +512,14 @@ export function findBindings(body: string): Map<string, string[]> {
     body,
     [...new Set(found.map((f) => f.from))].sort((x, y) => x - y),
   );
-  const bindings = new Map<string, string[]>();
+  const ranges: { name: string; from: number; end: number }[] = [];
   for (const { name, from } of found) {
     const end = ends.get(from);
     // Inside a string, comment or template text: not code.
     if (end === undefined) continue;
-    const list = bindings.get(name) ?? [];
-    list.push(body.slice(from, end));
-    bindings.set(name, list);
+    ranges.push({ name, from, end });
   }
-  return bindings;
+  return ranges;
 }
 
 /**

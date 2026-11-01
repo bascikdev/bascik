@@ -1,4 +1,8 @@
-import { findModuleSpecifiers, scanJavaScript } from "./module-specifiers.js";
+import {
+  findModuleSpecifiers,
+  scanJavaScript,
+  type Token,
+} from "./module-specifiers.js";
 import {
   HAND_WRITTEN_ESCAPER_RULE,
   findHandWrittenEscapers,
@@ -7,6 +11,7 @@ import {
   HTML_MODULE,
   callOf,
   findBindings,
+  findBindingRanges,
   findHtmlImports,
   findTemplateLiterals,
   htmlExportOf,
@@ -387,12 +392,77 @@ export function analyzeServerScriptSource(
     markupCount[firstAtOrAfter(literalStarts, to)] -
       markupCount[firstAtOrAfter(literalStarts, from)] >
     0;
+  // What may hold markup built as a string: wrapping a template whose hole
+  // holds one in html would escape it, so the page would show its tags.
+  const { tokens } = scanJavaScript(body);
+  const functions = localFunctions(body, tokens);
+  const markupSources = markupSourceStarts(
+    body,
+    tokens,
+    literals.filter((_, k) => markupOf[k]).map((l) => l.start),
+  );
+  /** Whether a markup literal (a template or a quoted string) starts between `from` and `to`. */
+  const sourceWithin = (from: number, to: number): boolean =>
+    firstAtOrAfter(markupSources, to) > firstAtOrAfter(markupSources, from);
+  const producers = markupProducers(
+    tokens,
+    functions,
+    findBindingRanges(body),
+    sourceWithin,
+    projectNames,
+  );
   // Local functions that build a markup string: a hole that calls one
   // holds markup, which wrapping the template in html would escape.
   const localHelpers = new Set<string>();
-  for (const fn of localFunctions(body)) {
-    if (markupWithin(fn.start, fn.end)) localHelpers.add(fn.name);
-  }
+  for (const fn of functions)
+    if (producers.names.has(fn.name)) localHelpers.add(fn.name);
+  /** The first name in `from`..`to` that may hold markup, or undefined. */
+  const producerWithin = (from: number, to: number): string | undefined => {
+    const k = firstAtOrAfter(producers.starts, from);
+    return k < producers.starts.length && producers.starts[k] < to
+      ? producers.values[k]
+      : undefined;
+  };
+  /**
+   * Why wrapping this template in html would escape what a hole holds:
+   * a hole that may hold markup built as a string, or one escaped with
+   * esc() or a listed escaper already. Undefined when every hole is plain
+   * data.
+   */
+  const withholdReason = (
+    literal: TemplateLiteral,
+    contexts: readonly HoleContext[],
+    fenced: ReadonlySet<number> | undefined,
+  ): { hole: number; shown: string; text: string } | undefined => {
+    for (const hole of literal.holes) {
+      if (contexts[hole.index - 1].kind === "comment") continue;
+      if (fenced?.has(hole.index)) continue;
+      const shown = `${quoteHole(hole.expr)} (hole ${hole.index})`;
+      const callee = callOf(hole.expr);
+      const at = { hole: hole.index, shown };
+      if (
+        callee !== undefined &&
+        (htmlExportOf(callee, imports) === "esc" ||
+          ctx.escapeFunctions.includes(callee))
+      )
+        return {
+          ...at,
+          text: `is escaped already, and html would escape it again. Wrap the template in html\`...\` from @bascik/bascik/html and pass that value as it is, without ${callee}().`,
+        };
+      if (sourceWithin(hole.start + 2, hole.end - 1))
+        return {
+          ...at,
+          text: `builds markup as a string, which html would escape, so the page would show its tags as text. Build that markup with html\`...\` first, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+        };
+      const name = producerWithin(hole.start + 2, hole.end - 1);
+      if (name !== undefined)
+        return {
+          ...at,
+          text: `reads ${name}, which may hold markup built as a string in this file; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+        };
+    }
+    return undefined;
+  };
   const markupStrings = markupStringNames(body);
   const helperMemo = new Map<string, string | undefined>();
   const localHelperMemo = new Map<string, string | undefined>();
@@ -462,6 +532,10 @@ export function analyzeServerScriptSource(
     const fences =
       markup && !requestTime ? markdownFences(literal.parts) : undefined;
     if (fences?.hasFence) fixable = false;
+    const reason = fixable
+      ? withholdReason(literal, scanned.holes, fences?.fencedHoles)
+      : undefined;
+    if (reason !== undefined) fixable = false;
     for (const hole of literal.holes) {
       const context = scanned.holes[hole.index - 1];
       const inner = wholeTemplateIn(hole);
@@ -699,7 +773,11 @@ export function analyzeServerScriptSource(
               ? `${head} ${escaper.name}() looks like a hand-written escaper, and html escapes too, so wrapping this template in html would show &amp;lt; on the page. Wrap it in html\`...\` and pass the value as it is: \${${escaper.args}}. If ${escaper.name}() is a trusted escaper, list it in diagnostics.escapeFunctions.`
               : inner === undefined && isJoined(hole.expr, joined)
                 ? `${head} It joins markup into one string, which html would escape, so wrapping only this template would show the inner tags as text. Wrap the inner templates in html\`...\`, drop .join(""), and pass the array; then wrap this template in html\`...\` from @bascik/bascik/html.`
-                : `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`;
+                : reason === undefined
+                  ? `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`
+                  : reason.hole === hole.index
+                    ? `${head} It ${reason.text}`
+                    : `${head} Wrapping this template in html is not offered as a fix: ${reason.shown} ${reason.text}`;
         pending.push({
           code: UNESCAPED_MARKUP_RULE,
           message,
@@ -904,8 +982,8 @@ function markupStringIn(expr: string, names: Set<string>): string | undefined {
  */
 function localFunctions(
   body: string,
+  tokens: readonly Token[] = scanJavaScript(body).tokens,
 ): { name: string; start: number; end: number }[] {
-  const { tokens } = scanJavaScript(body);
   const n = tokens.length;
   const punct = (k: number, v: string): boolean =>
     k >= 0 &&
@@ -1059,6 +1137,140 @@ function localFunctions(
     }
     return { name: f.name, start, end };
   });
+}
+
+/** A quoted string that holds a tag, or a lone `<` or `</` that starts one. */
+const MARKUP_STRING = /<[a-zA-Z!/]|^\s*<\s*$/;
+
+/**
+ * The offsets, ascending, where markup built as a string starts: the
+ * markup templates given, and each quoted string that holds a tag (`'<svg
+ * class="ok"></svg>'`, `"<b>"`), messages and search patterns left out.
+ */
+function markupSourceStarts(
+  body: string,
+  tokens: readonly Token[],
+  templateStarts: readonly number[],
+): number[] {
+  const starts = [...templateStarts];
+  for (const t of tokens)
+    if (
+      t.type === "string" &&
+      MARKUP_STRING.test(t.value) &&
+      !isMessageArgument(body, t.start - 1) &&
+      !isPatternArgument(body, t.start - 1)
+    )
+      starts.push(t.start - 1);
+  return starts.sort((x, y) => x - y);
+}
+
+/**
+ * The names that may hold or return markup built as a string: a local
+ * function, a binding (`let out = ""; out += \`<li>...\``), or an array
+ * filled with .push() or .unshift(), whose code holds a markup literal,
+ * calls a project import, or reads another such name. Names are merged
+ * across scopes, so a name that holds markup anywhere counts everywhere:
+ * the fix is withheld when unsure. Each identifier counts for the
+ * innermost region around it, and a region counts for the ones around it,
+ * so the pass stays linear in the tokens.
+ *
+ * Returns the names, and the identifiers that read one (ascending
+ * `starts` with their `values`).
+ */
+function markupProducers(
+  tokens: readonly Token[],
+  functions: readonly { name: string; start: number; end: number }[],
+  bindings: readonly { name: string; from: number; end: number }[],
+  sourceWithin: (from: number, to: number) => boolean,
+  projectNames: ReadonlySet<string>,
+): { names: Set<string>; starts: number[]; values: string[] } {
+  const n = tokens.length;
+  const isPunct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  /** An identifier read as a value: not a property (`x.name`) or a key (`{ name: x }`). */
+  const reads = (k: number): boolean =>
+    tokens[k].type === "identifier" &&
+    !isPunct(k - 1, ".") &&
+    !(isPunct(k + 1, ":") && (isPunct(k - 1, "{") || isPunct(k - 1, ",")));
+  const regions: { name: string; start: number; end: number }[] = [
+    ...functions,
+    ...bindings.map((b) => ({ name: b.name, start: b.from, end: b.end })),
+  ];
+  // NAME.push(...) and NAME.unshift(...): the arguments fill NAME.
+  const opens: number[] = [];
+  const partner = new Int32Array(n).fill(-1);
+  for (let k = 0; k < n; k++) {
+    if (tokens[k].type !== "punctuation") continue;
+    const v = tokens[k].value;
+    if (v === "(" || v === "[" || v === "{") opens.push(k);
+    else if ((v === ")" || v === "]" || v === "}") && opens.length > 0)
+      partner[opens.pop()!] = k;
+  }
+  for (let k = 0; k + 3 < n; k++)
+    if (
+      tokens[k].type === "identifier" &&
+      !isPunct(k - 1, ".") &&
+      isPunct(k + 1, ".") &&
+      (tokens[k + 2].value === "push" || tokens[k + 2].value === "unshift") &&
+      isPunct(k + 3, "(") &&
+      partner[k + 3] !== -1
+    )
+      regions.push({
+        name: tokens[k].value,
+        start: tokens[k + 3].start,
+        end: tokens[partner[k + 3]].end,
+      });
+  regions.sort((x, y) => x.start - y.start || y.end - x.end);
+
+  const names = new Set<string>();
+  const usedBy = new Map<string, Set<string>>();
+  const queue: string[] = [];
+  const mark = (name: string): void => {
+    if (names.has(name)) return;
+    names.add(name);
+    queue.push(name);
+  };
+  const edge = (from: string, to: string): void => {
+    if (from === to) return;
+    let set = usedBy.get(from);
+    if (!set) usedBy.set(from, (set = new Set()));
+    set.add(to);
+  };
+  const stack: { name: string; end: number }[] = [];
+  let r = 0;
+  for (let k = 0; k <= n; k++) {
+    const at = k < n ? tokens[k].start : Infinity;
+    while (r < regions.length && regions[r].start <= at) {
+      const region = regions[r++];
+      while (stack.length > 0 && stack[stack.length - 1].end <= region.start)
+        stack.pop();
+      if (sourceWithin(region.start, region.end)) mark(region.name);
+      if (stack.length > 0) edge(region.name, stack[stack.length - 1].name);
+      stack.push(region);
+    }
+    if (k === n) break;
+    while (stack.length > 0 && stack[stack.length - 1].end <= at) stack.pop();
+    if (stack.length === 0 || !reads(k)) continue;
+    const value = tokens[k].value;
+    const owner = stack[stack.length - 1].name;
+    // A project import that is called or passed on may return markup.
+    if (projectNames.has(value)) mark(owner);
+    else edge(value, owner);
+  }
+  while (queue.length > 0)
+    for (const next of usedBy.get(queue.pop()!) ?? []) mark(next);
+
+  const starts: number[] = [];
+  const values: string[] = [];
+  for (let k = 0; k < n; k++)
+    if (reads(k) && names.has(tokens[k].value)) {
+      starts.push(tokens[k].start);
+      values.push(tokens[k].value);
+    }
+  return { names, starts, values };
 }
 
 const CONTROL_WORDS = new Set([

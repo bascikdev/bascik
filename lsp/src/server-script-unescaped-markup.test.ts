@@ -1663,3 +1663,111 @@ describe("Markdown code spans and fences hold no markup, tag-name holes too (fix
     expect(diags[0].message).toContain("esc()");
   });
 });
+
+describe("the wrap fix is offered only when no hole can hold markup (fix round 1)", () => {
+  const moduleDiags = (body: string) =>
+    unescaped(body, { directive: "module" });
+  /** Whether the template whose holes include `hole` is fixable. */
+  const fixableAt = (body: string, hole: string) => {
+    const diags = moduleDiags(body);
+    const d = diags.find((x) => body.slice(x.start, x.end) === hole);
+    expect(d, `${hole} is reported`).toBeDefined();
+    return { fixable: d!.template?.fixable, message: d!.message };
+  };
+
+  it.each([
+    [
+      "an accumulator built with +=",
+      'export function e(items: string[]) { let out = ""; for (const t of items) out += `<li>${t}</li>`; return `<ul>${out}</ul>`; }',
+      "${out}",
+      "out",
+    ],
+    [
+      "an accumulator built with += outside a loop",
+      'export function e(t: string) { let out = ""; out += `<li>${t}</li>`; return `<ul>${out}</ul>`; }',
+      "${out}",
+      "out",
+    ],
+    [
+      "a local helper returning concatenated markup",
+      'function bold(t: string) { return "<b>" + t + "</b>"; }\nexport function b(t: string) { return `<p>${bold(t)}</p>`; }',
+      "${bold(t)}",
+      "bold",
+    ],
+    [
+      "a local helper returning quoted markup literals",
+      'function icon(s: string) { return s === "ok" ? \'<svg class="ok"></svg>\' : "<span>-</span>"; }\nexport function a(s: string, label: string) { return `<td>${icon(s)} ${label}</td>`; }',
+      "${label}",
+      "icon",
+    ],
+    [
+      "a local helper returning a markup constant",
+      "const ICON = '<svg class=\"ok\"></svg>';\nfunction getIcon() { return ICON; }\nexport function c(t: string) { return `<p>${getIcon()}${t}</p>`; }",
+      "${t}",
+      "getIcon",
+    ],
+    [
+      "an array of markup templates interpolated without .join",
+      "export function d(items: string[]) { const parts = items.map((i) => `<li>${i}</li>`); return `<ul>${parts}</ul>`; }",
+      "${parts}",
+      "parts",
+    ],
+    [
+      "an array filled with .push",
+      "export function f(items: string[]) { const rows: string[] = []; for (const t of items) rows.push(`<li>${t}</li>`); return `<ul>${rows}</ul>`; }",
+      "${rows}",
+      "rows",
+    ],
+    [
+      "inline concatenation in the hole",
+      'export const g = (t: string, u: string) => `<p>${"<b>" + t + "</b>"}${u}</p>`;',
+      "${u}",
+      "",
+    ],
+    [
+      "a nested untagged template in the hole",
+      "export const g = (items: string[]) => `<ul>${items.map((i) => `<li>${i}</li>`)}</ul>`;",
+      "${items.map((i) => `<li>${i}</li>`)}",
+      "",
+    ],
+    [
+      "a hole escaped with esc() already",
+      'import { esc } from "@bascik/bascik/html";\nexport const g = (a: string, b: string) => `<p>${esc(a)} ${b}</p>`;',
+      "${b}",
+      "esc(a)",
+    ],
+  ])("%s: no fix, and the message says why", (_name, body, hole, culprit) => {
+    const { fixable, message } = fixableAt(body, hole);
+    expect(fixable).toBe(false);
+    expect(message).not.toContain(
+      "Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.",
+    );
+    if (culprit) expect(message).toContain(culprit);
+  });
+
+  it.each([
+    ["a parameter", "export const g = (t: string) => `<p>${t}</p>`;", "${t}"],
+    [
+      "a local helper with no markup",
+      "const upper = (s: string) => s.toUpperCase();\nexport const g = (t: string) => `<p>${upper(t)}</p>`;",
+      "${upper(t)}",
+    ],
+    [
+      "a local helper that builds its markup with html",
+      'import { html } from "@bascik/bascik/html";\nconst item = (t: string) => html`<li>${t}</li>`;\nexport const g = (t: string, x: string) => `<ul>${item(t)}${x}</ul>`;',
+      "${x}",
+    ],
+    [
+      "a name bound to plain data",
+      'export const g = (p: { n: string }) => { const label = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      "${label}",
+    ],
+    [
+      "a property of a parameter",
+      "export const g = (p: { title: string }) => `<h2>${p.title}</h2>`;",
+      "${p.title}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole) => {
+    expect(fixableAt(body, hole).fixable).toBe(true);
+  });
+});

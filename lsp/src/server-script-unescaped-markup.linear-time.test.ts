@@ -73,6 +73,39 @@ describe("server-script-unescaped-markup: linear time", () => {
   );
 
   it(
+    "a chain of thousands of local helpers is read in linear time when deciding the fix (CPU growth under 8x for 4x the helpers)",
+    () => {
+      // markupProducers follows each name once (fix round 1): h0 returns a
+      // markup string, each later helper calls the one before, and every
+      // template that calls one gets no fix.
+      const script = (n: number) =>
+        'function h0(t) { return "<b>" + t + "</b>"; }\n' +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `function h${i + 1}(t) { const v${i} = h${i}(t); return v${i}; }\nexport const p${i} = (t, u) => \`<p>\${h${i + 1}(t)}\${u}</p>\`;\n`,
+        ).join("");
+      const run = (body: string) =>
+        analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive: "module",
+        });
+      const small = script(2_500);
+      const large = script(10_000);
+      const diags = run(large).filter((d) => d.code === RULE);
+      expect(diags).toHaveLength(20_000);
+      expect(diags.every((d) => d.template?.fixable === false)).toBe(true);
+      expect(
+        growthOf(
+          () => run(small),
+          () => run(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
     "templates nested deep read in linear time, with no stack overflow (CPU growth under 8x for 4x the depth)",
     () => {
       // The template finder and the tokenizer keep the open templates on an
