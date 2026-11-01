@@ -18,10 +18,26 @@ import { createFixture, typescript6 as ts } from "./typescript.test.util.js";
 const fixture = createFixture({ "bascik.config.ts": "export default {};\n" });
 afterAll(() => fixture.remove());
 
-// Repeated script tags at 2,000/8,000 cross V8's large-object allocation boundary.
-// At 8,000/32,000 both strings use the same regime, without relaxing the 8x growth limit.
-const SMALL_SCAN_SIZE = 8_000;
-const LARGE_SCAN_SIZE = 4 * SMALL_SCAN_SIZE;
+// Both inputs must exceed V8's large-object allocation boundary. Unit counts alone
+// cross it for some fixtures: 8,000/32,000 unclosed-comment units are 56 KB/224 KB.
+const SMALL_SCAN_CHARACTERS = 256_000;
+const scanGrowth = (
+  html: (count: number) => string,
+  scan: (text: string) => unknown,
+): number => {
+  const prefixLength = html(0).length;
+  const unitLength = html(1).length - prefixLength;
+  expect(unitLength).toBeGreaterThan(0);
+  const smallCount = Math.ceil(SMALL_SCAN_CHARACTERS / unitLength);
+  const small = html(smallCount);
+  const large = html(4 * smallCount);
+  expect(small.length).toBeGreaterThanOrEqual(SMALL_SCAN_CHARACTERS);
+  expect(large.length - prefixLength).toBe(4 * (small.length - prefixLength));
+  return growthOf(
+    () => scan(small),
+    () => scan(large),
+  );
+};
 
 /** A page of `count` client blocks, each with a little typed code. */
 const pageOf = (count: number, edited: string) =>
@@ -100,13 +116,7 @@ describe("TypeScript block diagnostics: linear time", () => {
   it.each(scans)(
     "finds blocks in linear time with %s",
     (_label, html) => {
-      const runOf = (n: number) => {
-        const text = html(n);
-        return () => extractTypeScriptBlocks(text);
-      };
-      expect(
-        growthOf(runOf(SMALL_SCAN_SIZE), runOf(LARGE_SCAN_SIZE)),
-      ).toBeLessThan(8);
+      expect(scanGrowth(html, extractTypeScriptBlocks)).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
@@ -114,12 +124,11 @@ describe("TypeScript block diagnostics: linear time", () => {
   it.each(scans)(
     "finds the page's classic scripts in linear time with %s",
     (_label, html) => {
-      const runOf = (n: number) => {
-        const text = html(n).replaceAll("text/typescript", "text/javascript");
-        return () => extractPageScopeScripts(text);
-      };
       expect(
-        growthOf(runOf(SMALL_SCAN_SIZE), runOf(LARGE_SCAN_SIZE)),
+        scanGrowth(
+          (n) => html(n).replaceAll("text/typescript", "text/javascript"),
+          extractPageScopeScripts,
+        ),
       ).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
