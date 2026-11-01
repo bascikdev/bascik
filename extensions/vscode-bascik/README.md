@@ -7,7 +7,7 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 - **Move through components instantly.** Cmd/Ctrl-click a custom element to open its source, or hover to inspect its props, slots, source path, styles, and scripts.
 - **Complete component usage in context.** Suggest project component tags, inferred prop attributes, and named slots, with paired tag snippets for components that accept default content.
 - **Document component contracts.** Add an optional leading `@bascik` comment to describe a component and the props and slots inferred from its markup.
-- **Read TypeScript in script tags.** `<script type="text/typescript">` blocks are colored and edited as TypeScript instead of plain text.
+- **Read TypeScript in script tags.** `<script type="text/typescript">` blocks are colored and edited as TypeScript instead of plain text, with type errors underlined, and hover, Go to Definition, completion, and signature help for what they import.
 - **Catch scoping leaks early.** Get focused CSS and JavaScript warnings for patterns Bascik cannot safely rewrite.
 - **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server and stream scripts.
 - **Validate component contracts.** Find unclosed tags, conflicting directives, invalid preserve values, broken ID references, and unsupplied prop bindings as you type.
@@ -119,7 +119,9 @@ Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and ser
 
 A `<script type="text/typescript">` block is colored with VS Code's own TypeScript grammar instead of as plain text, in any attribute order and in Prettier-wrapped tags, and VS Code's editing commands treat it as TypeScript: **Toggle Line Comment** adds `//`, and brackets, auto-closing pairs, and TypeScript snippets follow TypeScript's rules. Other script types are unchanged.
 
-Type errors in those blocks are underlined with TypeScript's message (source `ts (bascik)`), checked with VS Code's own TypeScript: each block in the scope it runs in (a page's browser blocks share one), browser blocks with the DOM, server-side blocks with Node.js, `@/` imports resolved against `scripts.importRoot`, and your `tsconfig.json` applied. Unsaved edits to the page and to the `.ts` files it imports count. Turn the check off with `bascik.typescript.enabled`, or point `bascik.typescript.path` (a user setting) at another TypeScript 5 or 6. The extension never bundles TypeScript.
+Type errors in those blocks are underlined with TypeScript's message (source `ts (bascik)`), checked with VS Code's own TypeScript: each block in the scope it runs in (a page's browser blocks share one), browser blocks with the DOM, server-side blocks with Node.js, `@/` imports resolved against `scripts.importRoot`, and your `tsconfig.json` applied. Unsaved edits to the page and to the `.ts` files it imports count. Turn the check off with `bascik.typescript.enabled`, or point `bascik.typescript.path` (a user setting) at another TypeScript 5 or 6. The extension never bundles TypeScript: it uses that setting's folder, then VS Code's own TypeScript, then the project's.
+
+Names imported through `@/` or a relative path work as in a `.ts` file: hover shows their type and documentation, Go to Definition opens the file and line that declare them (and an import path opens its file), completion lists an imported object's members and the files in an import path, and signature help shows an imported function's parameters. VS Code's HTML support keeps answering for the page's own names, so nothing is listed twice. Rename, quick fixes, and adding missing imports are not offered, and scripts without `type="text/typescript"` get none of this.
 
 ## Diagnostics That Understand Bascik
 

@@ -234,7 +234,7 @@ end
 lspconfig.bascik.setup{}
 ```
 
-TypeScript errors in `type="text/typescript"` blocks are on in every editor and use the project's own `typescript` (5 or 6). A client can pass options when it starts the server, as `initializationOptions`:
+TypeScript errors in `type="text/typescript"` blocks are on in every editor and use the project's own `typescript` (5 or 6). Inside those blocks the server also answers hover, Go to Definition, completion (members after `.`, and files in relative and `@/` import paths), and signature help, for the page's own names and for what it imports, as the [VS Code extension](/tools/vscode-extension#imports-in-typescript-script-tags) does. A client can pass options when it starts the server, as `initializationOptions`:
 
 ```lua
 lspconfig.bascik.setup{
@@ -249,6 +249,8 @@ lspconfig.bascik.setup{
   },
 }
 ```
+
+`editorHasEmbeddedTypeScript = true` is for an editor that already answers about a page's own names in these blocks, as VS Code's HTML support does: the server then answers only for other files and import paths, so nothing is listed twice. Leave it out in Neovim.
 
 ## Suppressing Warnings
 
