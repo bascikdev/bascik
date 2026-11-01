@@ -46,8 +46,8 @@ const starterDir = join(examplesDir, "starter-site");
 
 // The starter site's .ts helpers live outside docs/ (outside this tsconfig's rootDir), so load them by computed path.
 const starter = (path: string): Promise<any> => import(join(starterDir, path));
-const { escapeHtml, groupByTag, parseFrontMatter, toPost } =
-  await starter("src/lib/posts.ts");
+const posts = await starter("src/lib/posts.ts");
+const { groupByTag, parseFrontMatter, postList, toPost } = posts;
 const { isCurrent, navLinks } = await import(
   join(examplesDir, "components/site-header/links.ts")
 );
@@ -804,17 +804,38 @@ describe("new-post and posts.ts", () => {
       ["x", ["b", "a"]],
       ["y", ["a"]],
     ]);
-    expect(escapeHtml('<a href="x">\'&')).toBe(
-      "&lt;a href=&quot;x&quot;&gt;&#39;&amp;",
+  });
+
+  it("builds the post list with html, escaping titles and descriptions, and exports no escaper of its own", () => {
+    const post = toPost(
+      "a",
+      "---\ntitle: \"<b>A</b> & 'B'\"\ndescription: D <i>\ndate: 2026-01-01\n---\n",
     );
+    const list = postList([post]);
+    expect(typeof list).toBe("object");
+    expect(String(list)).toContain(
+      '<a href="/blog/a/">&lt;b&gt;A&lt;/b&gt; &amp; &#39;B&#39;</a>',
+    );
+    expect(String(list)).toContain("<p>D &lt;i&gt;</p>");
+    expect(String(list)).toMatch(/^<ul class="post-list">/);
+    expect(String(postList([]))).toBe("<p>No posts yet.</p>");
+    expect(posts.escapeHtml).toBeUndefined();
   });
 });
 
 describe("site-footer links.ts", () => {
   it("escapes labels and hrefs", () => {
-    expect(footerLinks([{ label: "A & B", href: '/a?x="1"' }])).toBe(
+    // Whitespace between tags is Prettier's layout of the template, not part of the contract.
+    const list = String(footerLinks([{ label: "A & B", href: '/a?x="1"' }]));
+    expect(list.replace(/>\s+</g, "><")).toBe(
       '<ul class="links"><li><a href="/a?x=&quot;1&quot;">A &amp; B</a></li></ul>',
     );
+  });
+
+  it("turns a javascript: link from an edited list into about:invalid", () => {
+    expect(
+      String(footerLinks([{ label: "Oops", href: "javascript:alert(1)" }])),
+    ).toContain('href="about:invalid"');
   });
 });
 
@@ -824,9 +845,9 @@ describe("site-header links.ts", () => {
     expect(isCurrent("/", "/about")).toBe(false);
     expect(isCurrent("/blog/", "/blog/hello/")).toBe(true);
     expect(isCurrent("/blog/", "/blogroll")).toBe(false);
-    const html = navLinks("/blog/hello/");
+    const html = String(navLinks("/blog/hello/"));
     expect(html).toContain('<a href="/blog/" aria-current="true">Blog</a>');
-    expect(navLinks("/about")).toContain(
+    expect(String(navLinks("/about"))).toContain(
       '<a href="/about" aria-current="page">About</a>',
     );
   });
@@ -837,11 +858,13 @@ describe("seo.ts", () => {
     vi.stubEnv("BASCIK_SITE_URL", "https://example.com/");
     vi.stubEnv("BASCIK_BASE", "/sub/");
     vi.stubEnv("BASCIK_PAGE_PATH", "/about");
-    const html = seo({
-      title: "About <us>",
-      description: 'Who "we" are.',
-      image: "/og.png",
-    });
+    const html = String(
+      seo({
+        title: "About <us>",
+        description: 'Who "we" are.',
+        image: "/og.png",
+      }),
+    );
     expect(html).toContain("<title>About &lt;us&gt;</title>");
     expect(html).toContain(
       '<link rel="canonical" href="https://example.com/sub/about" />',
@@ -855,17 +878,41 @@ describe("seo.ts", () => {
     );
   });
 
+  it("escapes quotes in an og:image URL and keeps the canonical absolute", () => {
+    vi.stubEnv("BASCIK_SITE_URL", "https://example.com");
+    const html = String(
+      seo({
+        title: "T",
+        description: "D",
+        path: "/x",
+        image: 'https://cdn.example.com/a.png?q="1"',
+      }),
+    );
+    expect(html).toContain(
+      '<link rel="canonical" href="https://example.com/x" />',
+    );
+    expect(html).toContain(
+      'content="https://cdn.example.com/a.png?q=&quot;1&quot;"',
+    );
+  });
+
   it("omits the canonical without a site URL", () => {
     vi.stubEnv("BASCIK_SITE_URL", "");
-    const html = seo({ title: "T", description: "D" });
+    const html = String(seo({ title: "T", description: "D" }));
     expect(html).not.toContain("canonical");
     expect(absoluteUrl("/x")).toBe("/x");
   });
 
   it("escapes < in JSON-LD so data cannot close the script tag", () => {
-    expect(
+    const block = String(
       jsonLd({ name: "</script><script>alert(1)</script>" }),
-    ).not.toContain("</script><script>");
+    );
+    expect(block).not.toContain("</script><script>");
+    expect(block).toMatch(/^<script type="application\/ld\+json">/);
+    expect(JSON.parse(block.slice(block.indexOf(">") + 1, -9))).toEqual({
+      "@context": "https://schema.org",
+      name: "</script><script>alert(1)</script>",
+    });
   });
 });
 

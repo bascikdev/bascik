@@ -6,6 +6,8 @@
 //   BascikConfig        — the frozen runtime value exported from config.ts
 import type { ContentSecurityPolicyConfig } from "./content-security-policy.ts";
 import type { BuildScriptStats } from "./build-script-stats.ts";
+import type { SafeHtml } from "./html-template.ts";
+import type { PlatformContext } from "./request-execution.ts";
 
 export type ExecPhase = "pre" | "post" | "parallel";
 
@@ -40,6 +42,36 @@ export interface RouteEntry {
   params: Record<string, string | number>;
   data?: unknown;
 }
+
+/**
+ * The default export of a `data-bascik-build` or `data-bascik-build-once`
+ * script: it returns the markup that replaces the tag, as a string or an
+ * `html` value from `@bascik/bascik/html`, or a promise of either.
+ */
+export type BuildScript = () => string | SafeHtml | Promise<string | SafeHtml>;
+
+/** The default export of a `data-bascik-routes` script: the routes to generate. */
+export type RoutesScript = () =>
+  readonly RouteEntry[] | Promise<readonly RouteEntry[]>;
+
+/** Request context passed to every `data-bascik-server` and `data-bascik-stream` script. */
+export interface ServerScriptContext {
+  /** The remote IP address of the client. */
+  remoteIp: string;
+  /** Host capabilities (prompt 131). The Node server passes `{ name: "node" }`. */
+  platform?: PlatformContext;
+}
+
+/**
+ * The default export of a `data-bascik-server` or `data-bascik-stream`
+ * script. Its result is the markup for the slot; Bascik checks it when the
+ * script runs.
+ */
+export type ServerScript = (
+  request: Request,
+  context: ServerScriptContext,
+  options: { signal: AbortSignal },
+) => unknown;
 
 export interface BascikComponent {
   name: string;

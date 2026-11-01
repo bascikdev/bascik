@@ -102,17 +102,32 @@ export function thirdPartyNotices(packageFolders) {
 export function bundleServer(outfile = join(root, "dist/server.js")) {
   return build({
     ...shared,
-    // `start.ts` is the same entry the `bascik-language-server` command uses.
+    // `start.ts` is the same entry the `bascik-language-server` command uses. The bundle is also the TypeScript
+    // worker's file: started as that worker, `typescript-worker.ts` runs and the server does not start.
+    // TypeScript itself is never bundled (see TYPESCRIPT_EXTERNALS): the server loads the editor's copy, or the
+    // project's, at run time.
     stdin: {
-      contents:
-        "import { startLanguageServer } from './start.ts';\nstartLanguageServer();\n",
+      contents: [
+        "import { isMainThread } from 'node:worker_threads';",
+        "import { startLanguageServer } from './start.ts';",
+        "import './typescript-worker.ts';",
+        "if (isMainThread) startLanguageServer({ typeScriptWorker: __filename });",
+        "",
+      ].join("\n"),
       resolveDir: lspSource,
       sourcefile: "server-entry.ts",
       loader: "ts",
     },
+    external: TYPESCRIPT_EXTERNALS,
     outfile,
   });
 }
+
+/**
+ * TypeScript is an optional peer of the language server, loaded at run time from a path, never imported by name.
+ * Marking it external as well means a stray import can never pull its 9 MB into the VSIX.
+ */
+export const TYPESCRIPT_EXTERNALS = ["typescript", "typescript-6"];
 
 /** Bundles the language client. The `vscode` module is provided by the editor, so it stays external. */
 export function bundleExtension(outfile = join(root, "dist/extension.js")) {

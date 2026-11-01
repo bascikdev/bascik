@@ -559,10 +559,10 @@ const x = 1;
         `width="20" height="10" src="/assets/demos/a%26b%402x.webp?v=${version}" alt="Amp"`,
       );
       expect(html).toContain(
-        `srcset="/assets/demos/it's-still%402x.webp?v=${version}"`,
+        `srcset="/assets/demos/it&#39;s-still%402x.webp?v=${version}"`,
       );
       expect(html).toContain(
-        `width="20" height="10" src="/assets/demos/it's%402x.webp?v=${version}" alt="Apostrophe"`,
+        `width="20" height="10" src="/assets/demos/it&#39;s%402x.webp?v=${version}" alt="Apostrophe"`,
       );
       // CommonMark decodes an entity in a link destination, so `&amp;` written in Markdown also means `&`.
       expect(html).toContain(
@@ -570,7 +570,8 @@ const x = 1;
       );
       expect(html).not.toContain("%26amp%3B%402x");
       expect(html).not.toContain("%26%2339%3B");
-      expect(html).not.toMatch(/src="[^"]*#/);
+      // The attribute escapes ' as &#39;, which the browser reads back as '; no URL may carry a # fragment.
+      expect(html.replace(/&#39;/g, "'")).not.toMatch(/src="[^"]*#/);
     } finally {
       cwd.mockRestore();
     }
@@ -663,7 +664,7 @@ Third content.
     );
     const html = await renderMd(mdFile);
     expect(html).toContain(
-      '<code-block data-bascik-prop-lang="html">&lt;<span data-code-token="kw">a</span> <span data-code-token="attr">title</span>=<span data-code-token="val">"x"</span> <span data-code-token="attr">href</span>=<span data-code-token="val">\'y\'</span>&gt;&amp;amp; &lt;<span data-code-token="kw">b</span>&gt;&lt;/<span data-code-token="kw">a</span>&gt;\n</code-block>',
+      '<code-block data-bascik-prop-lang="html">&lt;<span data-code-token="kw">a</span> <span data-code-token="attr">title</span>=<span data-code-token="val">&quot;x&quot;</span> <span data-code-token="attr">href</span>=<span data-code-token="val">&#39;y&#39;</span>&gt;&amp;amp; &lt;<span data-code-token="kw">b</span>&gt;&lt;/<span data-code-token="kw">a</span>&gt;\n</code-block>',
     );
     // Text blocks keep marked's escaped text: no tokens.
     expect(html).toContain(
@@ -702,7 +703,7 @@ Third content.
 
     const code = await extractDemoBlock(mdFile, "source-html");
     expect(code.replace(/<span data-code-token="[a-z]+">|<\/span>/g, "")).toBe(
-      '&lt;div class="card"&gt;\n  &lt;p&gt;Hello&lt;/p&gt;\n&lt;/div&gt;',
+      "&lt;div class=&quot;card&quot;&gt;\n  &lt;p&gt;Hello&lt;/p&gt;\n&lt;/div&gt;",
     );
     expect(code).toContain('<span data-code-token="kw">div</span>');
   });

@@ -1,4 +1,7 @@
 // links.ts: the footer links. Edit this list for your site. site-footer.html prints it from a build script.
+// The markup is built with html from @bascik/bascik/html, which escapes each label and href for where it lands and
+// turns a javascript: link into about:invalid, so there is no escaper to write.
+import { html, type SafeHtml } from "@bascik/bascik/html";
 
 export interface FooterLink {
   label: string;
@@ -12,21 +15,13 @@ export const FOOTER_LINKS: FooterLink[] = [
   { label: "Contact", href: "/contact" },
 ];
 
-const ENTITIES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
-
 /** The footer link list. */
-export function footerLinks(links: FooterLink[] = FOOTER_LINKS): string {
+export function footerLinks(links: FooterLink[] = FOOTER_LINKS): SafeHtml {
   const items = links.map(
-    (link) =>
-      `<li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></li>`,
+    (link) => html`<li><a href="${link.href}">${link.label}</a></li>`,
   );
-  return `<ul class="links">${items.join("")}</ul>`;
+  // An array of html values is inserted as it is: no .join("").
+  return html`<ul class="links">
+    ${items}
+  </ul>`;
 }

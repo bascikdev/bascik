@@ -1,7 +1,10 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { join, matchesGlob, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error build.mjs is plain JavaScript with no declaration file.
+import { bundleServer, TYPESCRIPT_EXTERNALS } from "../build.mjs";
 
 const extensionRoot = join(__dirname, "..");
 const read = (file: string) => readFileSync(join(extensionRoot, file), "utf8");
@@ -90,5 +93,45 @@ describe("extension packaging", () => {
     ]) {
       expect(ships(file), file).toBe(true);
     }
+  });
+
+  it("ships every grammar the manifest contributes", () => {
+    const { contributes } = JSON.parse(read("package.json")) as {
+      contributes: { grammars: { path: string }[] };
+    };
+    expect(contributes.grammars.length).toBeGreaterThan(1);
+    for (const { path } of contributes.grammars) {
+      const file = relative(extensionRoot, resolve(extensionRoot, path));
+      expect(ships(file), file).toBe(true);
+      expect(() => JSON.parse(read(file)), file).not.toThrow();
+    }
+  });
+
+  it("never bundles TypeScript: the server uses the editor's copy or the project's at run time", async () => {
+    const work = mkdtempSync(join(tmpdir(), "bascik-ext-pack-"));
+    try {
+      const outfile = join(work, "server.js");
+      const result = (await bundleServer(outfile)) as {
+        metafile: { inputs: Record<string, unknown> };
+      };
+      const typescriptInputs = Object.keys(result.metafile.inputs).filter(
+        (input) => /node_modules[\\/]typescript(?:-\d+)?[\\/]/.test(input),
+      );
+      expect(typescriptInputs).toEqual([]);
+      expect(TYPESCRIPT_EXTERNALS).toEqual(["typescript", "typescript-6"]);
+      // TypeScript alone is about 9 MB; the server with its TypeScript support stays well under 1 MB.
+      expect(statSync(outfile).size).toBeLessThan(1_000_000);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("lists no runtime dependency, so vsce publish --no-dependencies ships everything it needs", () => {
+    const manifest = JSON.parse(read("package.json")) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+    expect(manifest.dependencies ?? {}).toEqual({});
+    expect(manifest.peerDependencies ?? {}).toEqual({});
   });
 });

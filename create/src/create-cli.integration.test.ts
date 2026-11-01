@@ -145,6 +145,19 @@ describe("npm create bascik and the agent skills", () => {
     expect(LATER[0]).toContain(`#v${BASCIK_VERSION}`);
   });
 
+  it("the built CLI does not generate optional Webhint config", async () => {
+    const { status, output, parent } = await create([
+      "my-site",
+      "-y",
+      "--no-skills",
+      ...QUIET,
+    ]);
+    expect(status, output).toBe(0);
+    const site = join(parent, "my-site");
+    expect(existsSync(join(site, ".hintrc"))).toBe(false);
+    expect(existsSync(join(site, ".hintrc.dist.json"))).toBe(false);
+  });
+
   it("misuse: --no-skills and --no-install written before --, which npm exports as empty values, are honored", async () => {
     // What npm 11 hands over for `npm create bascik my-site -y --no-skills --no-install -- --no-dev`.
     const { status, output, parent } = await create(["my-site", "--no-dev"], {

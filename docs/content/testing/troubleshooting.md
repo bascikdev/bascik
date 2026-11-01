@@ -37,6 +37,12 @@ Put every scaffolder flag after `--`. `yarn create` and `pnpm create` pass flags
 
 The template name is misspelled or missing. The message lists the valid names. See [Scaffold a new project](/cli#scaffold-a-new-project).
 
+## Editor warnings
+
+### `A 'viewport' meta element was not specified` or `Documents must have <title> element`
+
+webhint, axe, or another editor linter read the source page, which has no charset, viewport, or `<title>` because a head component and a build script add them at build time. Open the built page in `dist/`: if the tags are there, the warning is false, and adding them to the source page would put two in the built page. Third-party linters are opt-in, and `npm create bascik` and `bascik init` leave their config files alone. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source) for every such warning and copyable settings.
+
 ## Configuration
 
 ### `Configuration errors in bascik.config.ts`
@@ -517,9 +523,21 @@ Each `origins` entry is a scheme, a host and an optional port, with no path. The
 
 ### `server-script-unescaped-markup`: This markup template interpolates a value without html
 
-The linter found a template literal with tags in a server or stream script, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
+The linter found a template literal with tags in a directive script (server, stream, build or routes) or in a module one imports, and a value in it that is not a literal, a number, a nested `html` value, or a call to `html`, `raw`, `esc`, `safeUrl` or `json`. Wrap the template in `html` (the editor's quick fix does it), or list your own escaper in `diagnostics.escapeFunctions`. See the [Linter](/tools/linter#server-script-unescaped-markup).
 
 When the value is a call to a hand-written escaper (`${escape(q)}`), the message says so and the editor offers no quick fix, because `html` would escape the escaper's output again. Wrap the template in `html` and pass the value as it is (`${q}`), then delete the escaper.
+
+When the value calls a function from your own module (`${productCard(p)}`), there is no quick fix either: if the function returns markup as a string, `html` would show its tags as text. Build that function's markup with `html` first. An XML template (a sitemap or feed) is told to use `esc()`, since `html` builds HTML.
+
+A hole where a tag or attribute name goes (`<h${level}>`) cannot be wrapped in `html`, which throws there: in build scripts and their helpers it is not reported, and in request-time code the message asks you to choose between fixed names in code. Other holes in such a template are told to use `esc()`.
+
+### `hand-written-html-escaper`: NAME() is a hand-written HTML escaper
+
+The linter found a function that turns `&` and `<` into entities with a `.replace()` or `.split().join()` chain, a lookup object or `Map`, or a `switch`. Build the markup with `html` from `@bascik/bascik/html`, or call `esc()` for a plain string; for a one-return escaper, the editor's quick fix makes it call `esc()`. An escaper that is for XML on purpose, such as an RSS feed's, needs a comment on its own lines right above it, or inside it, that says so. See the [Linter](/tools/linter#hand-written-html-escaper).
+
+### `analysis-failed`: Bascik could not analyze this file
+
+The language server hit an error while reading the file. The file gets this one warning and no other Bascik diagnostics; every other file is still checked. Deep nesting does not cause it: templates nested tens of thousands deep are read like any other. It is a bug in Bascik, so please report it with the file, or the smallest part of it that still shows the warning.
 
 ### `html-escaped-twice`: esc() inside html`...` escapes twice
 

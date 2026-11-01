@@ -100,11 +100,18 @@ describe("diagnostics in a page", () => {
     expect(found[0].source).toBe("bascik");
   });
 
-  it("is not reported in a build script", () => {
-    const { diags } = open(
-      PAGE(SEARCH).replace("data-bascik-server", "data-bascik-build"),
+  it("is reported in a build script too, with the quick fix", () => {
+    // A build script has no request: an environment variable is its plain data.
+    const { doc, diags } = open(
+      PAGE(
+        "      export default () => `<p>Built for ${process.env.SITE_NAME}</p>`;",
+      ).replace("data-bascik-server", "data-bascik-build"),
     );
-    expect(markupDiags(diags)).toEqual([]);
+    const found = markupDiags(diags);
+    expect(found).toHaveLength(1);
+    expect(doc.getText(found[0].range)).toBe("${process.env.SITE_NAME}");
+    const actions = createCodeActions(doc, found[0].range, diags, snapshot());
+    expect(actions.map((a) => a.title)).toContain("Wrap template in html`...`");
   });
 });
 
@@ -211,10 +218,10 @@ ${SEARCH}`;
   });
 
   it("aliases the import when a parameter named html shadows it", () => {
-    const script = `      const layout = (title, html) => \`<h1>\${title}</h1><main>\${html}</main>\`;
+    const script = `      const layout = (title: number, html: boolean) => \`<h1>\${title}</h1><main>\${html}</main>\`;
       export default async function (request) {
         const q = new URL(request.url).searchParams.get("q") ?? "";
-        return layout(q, "body");
+        return layout(q.length, true);
       }`;
     const { doc, action } = fixFor(PAGE(script));
     expect(action).toBeDefined();
@@ -223,16 +230,16 @@ ${SEARCH}`;
       'import { html as safeHtml } from "@bascik/bascik/html";',
     );
     expect(fixed).toContain(
-      "(title, html) => safeHtml`<h1>${title}</h1><main>${html}</main>`",
+      "(title: number, html: boolean) => safeHtml`<h1>${title}</h1><main>${html}</main>`",
     );
   });
 
   it("adds an alias next to an imported html that a parameter shadows", () => {
     const script = `      import { html } from "@bascik/bascik/html";
-      const layout = (title, html) => \`<h1>\${title}</h1><main>\${html}</main>\`;
+      const layout = (title: number, html: boolean) => \`<h1>\${title}</h1><main>\${title + 1}</main>\`;
       export default async function (request) {
         const q = new URL(request.url).searchParams.get("q") ?? "";
-        return layout(q, html\`<p>x</p>\`);
+        return layout(q.length, Boolean(html\`<p>x</p>\`));
       }`;
     const { doc, action } = fixFor(PAGE(script));
     expect(action).toBeDefined();
@@ -240,15 +247,15 @@ ${SEARCH}`;
     expect(fixed).toContain(
       'import { html, html as safeHtml } from "@bascik/bascik/html";',
     );
-    expect(fixed).toContain("(title, html) => safeHtml`<h1>");
+    expect(fixed).toContain("(title: number, html: boolean) => safeHtml`<h1>");
   });
 
   it("is not offered when both html and safeHtml are taken", () => {
     const script = `      const safeHtml = 1;
-      const layout = (title, html) => \`<h1>\${title}</h1><main>\${html}</main>\`;
+      const layout = (title: number, html: boolean) => \`<h1>\${title}</h1><main>\${html}</main>\`;
       export default async function (request) {
         const q = new URL(request.url).searchParams.get("q") ?? "";
-        return layout(q, "body");
+        return layout(q.length, true);
       }`;
     const { doc, diags } = open(PAGE(script));
     expect(markupDiags(diags).length).toBeGreaterThan(0);

@@ -22,6 +22,8 @@ Run cheapest first and stop at the first failure:
 
 CI gate: `bascik --check && vitest run && bascik --build && playwright test`. `bascik --check` already runs the per-file checks, so there is no separate linter step. Add `bascik-language-server --check <dir>` only for a component folder outside the project.
 
+Bascik strips types without checking them. To fail CI on type errors in `<script type="text/typescript">` blocks, add `--typescript` (`bascik --check --typescript`); it needs `typescript` 5 or 6, from the project or else resolvable from the installed `@bascik/language-server` (TypeScript 7 and versions before 5 are skipped with a note) and is off by default. Read `read-doc.mjs /cli#typescript-errors-with-typescript`.
+
 ## Unit tests: extract pure logic
 
 Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
@@ -30,13 +32,15 @@ Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
 2. Load it from the component with `<script src="search-logic.ts"></script>`. Bascik strips its types and scopes it; no build step or `minify.js` hook is needed.
 3. Import the `.ts` file directly in `search-logic.test.ts`. No browser is needed.
 
+For manual Vitest setup, install `vitest`, `@vitest/coverage-v8` and `vite` as dev dependencies. Vitest 5 requires the Vite peer even when the config imports `vitest/config`; see `read-doc.mjs /testing/unit-testing`.
+
 ```ts
-// vite.config.ts: vitest/config, not vite, which the project does not declare
+// vite.config.ts
 import { defineConfig } from "vitest/config";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```
 
-Server, stream, and API logic: put it in `src/lib/*.ts`, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`. A function that returns `html` from `@bascik/bascik/html` returns an object, not a string: assert on `String(output)` (`expect(String(output)).toContain("Seattle")`), and type a helper's return as `SafeHtml`, not `string`. For a server or stream script's default export, assert on `serverScriptOutput(await handler(request, context, { signal })).text` from `@bascik/bascik/runtime`: it prints the bytes the page gets (a returned array joined with no separator, where `String()` adds commas), and its `.error` names a return the page refuses (data, a `Response`, an `Error`, an array of Promises). Details: `read-doc.mjs /testing/server-scripts`.
+Server, stream, and API logic: put it in a `.ts` module (beside the one page or component that uses it, or in `src/lib/` when several do or an API route calls it, since every file in `src/api/` is a route), keep its `*.test.ts` beside it, unit test the functions, and cover the HTTP layer with requests against the dev server or `bascik --server`. A function or handler that returns `html` from `@bascik/bascik/html` returns an object, not a string: assert on `String(output)` (`expect(String(output)).toContain("Seattle")`), and type a helper's return as `SafeHtml`, not `string`. For a server or stream script's default export, assert on `serverScriptOutput(await handler(request, context, { signal })).text` from `@bascik/bascik/runtime`: it prints the bytes the page gets (a returned array joined with no separator, where `String()` adds commas), and its `.error` names a return the page refuses (data, a `Response`, an `Error`, an array of Promises). Details: `read-doc.mjs /testing/server-scripts`.
 
 ## E2E tests: locators that survive production
 
@@ -86,6 +90,7 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 | Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
 | Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
 | Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
+| Handle false editor linter warnings  | `/testing/linting#editor-linters-read-source`                                |
 | Fix a known problem                  | `/testing/troubleshooting`                                                   |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

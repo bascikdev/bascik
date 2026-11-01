@@ -44,6 +44,7 @@ import {
   components,
 } from "../../skills/bascik-refactor/scripts/testid-coverage.mjs";
 import {
+  browserHolder,
   isTransient,
   parseCliArgs as parseRunChecks,
   runOne,
@@ -705,9 +706,14 @@ describe("settle time and crash retries", () => {
     };
   };
 
+  const live = () =>
+    browserHolder({ isConnected: () => true }, async () => {
+      throw new Error("a connected browser is never relaunched");
+    });
+
   it("one transient crash is retried and the result says so", async () => {
     const mod = flaky([new Error("page.goto: Timeout 30000ms exceeded.")]);
-    const r = await runOne("spacing-diff", null, {}, [mod]);
+    const r = await runOne("spacing-diff", live(), {}, [mod]);
     expect(mod.calls()).toBe(2);
     expect(r.ok).toBe(true);
     expect(r.retried).toMatch(/crashed once and was run again.*Timeout/);
@@ -718,11 +724,11 @@ describe("settle time and crash retries", () => {
       new Error("page.goto: Timeout 30000ms exceeded."),
       new Error("page.goto: Timeout 30000ms exceeded."),
     ]);
-    const r = await runOne("spacing-diff", null, {}, [twice]);
+    const r = await runOne("spacing-diff", live(), {}, [twice]);
     expect(twice.calls()).toBe(2);
     expect(r.error).toMatch(/spacing-diff crashed: page.goto: Timeout/);
     const bug = flaky([new TypeError("x is not a function")]);
-    const b = await runOne("spacing-diff", null, {}, [bug]);
+    const b = await runOne("spacing-diff", live(), {}, [bug]);
     expect(bug.calls()).toBe(1);
     expect(b.error).toMatch(/x is not a function/);
     expect(b.retried).toBeUndefined();

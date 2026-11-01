@@ -7,6 +7,7 @@ import {
   readDemoBlock,
 } from "../../../src/lib/md-renderer.js";
 import type ejs from "ejs";
+import { handWrittenEscapers } from "../../../../skills/bascik/scripts/lib/escapers.mjs";
 
 const FIXTURE_DIR = path.resolve(import.meta.dirname, ".");
 const TEMPLATING_MD = path.resolve(
@@ -23,7 +24,7 @@ const TEMPLATING_MD = path.resolve(
 
 describe("templating fixtures", () => {
   it("interpolate helper escapes HTML and resolves dotted paths", async () => {
-    const { interpolate, escape } = await import(
+    const { interpolate } = await import(
       `file://${path.join(FIXTURE_DIR, "interpolate.ts")}`
     );
 
@@ -44,8 +45,58 @@ describe("templating fixtures", () => {
       "<p></p>",
     );
 
-    // The context-specific escape function is exported for reuse.
-    expect(escape("<b>")).toBe("&lt;b&gt;");
+    // Both quote characters, so a placeholder in a quoted attribute stays inside it.
+    expect(interpolate(`<a title="\${t}" data-x='\${t}'>`, { t: `"' &` })).toBe(
+      `<a title="&quot;&#39; &amp;" data-x='&quot;&#39; &amp;'>`,
+    );
+  });
+
+  it("the helper and its page block use esc() from @bascik/bascik/html, not an escaper of their own", async () => {
+    const fixture = await readFile(
+      path.join(FIXTURE_DIR, "interpolate.ts"),
+      "utf8",
+    );
+    const { code: block = "" } = await readDemoBlock(
+      "./content/how-to/templating.md",
+      "helper-module",
+    );
+    for (const source of [fixture, block]) {
+      expect(source).toContain('import { esc } from "@bascik/bascik/html";');
+      expect(handWrittenEscapers(source)).toEqual([]);
+    }
+  });
+
+  it("the fixture and documented helper preserve false and zero while leaving missing values empty", async () => {
+    const { interpolate } = await import("./interpolate.ts");
+    const { code: block = "" } = await readDemoBlock(
+      "./content/how-to/templating.md",
+      "helper-module",
+    );
+    const source = stripTypeScriptTypes(block)
+      .replace(/^\s*import .*$/m, "")
+      .replace("export const interpolate", "const interpolate");
+    const { esc } = await import(
+      path.resolve(import.meta.dirname, "../../../../pkg/src/html.ts")
+    );
+    const documented = new Function("esc", `${source}\nreturn interpolate;`)(
+      esc,
+    );
+    for (const render of [interpolate, documented]) {
+      expect(
+        render(
+          "${item.disabled}|${item.enabled}|${item.count}|${item.missing}|${item.nil}|${item.text}",
+          {
+            item: {
+              disabled: false,
+              enabled: true,
+              count: 0,
+              nil: null,
+              text: "<b>&",
+            },
+          },
+        ),
+      ).toBe("false|true|0|||&lt;b&gt;&amp;");
+    }
   });
 
   it("handlebars fixture renders the article list", async () => {

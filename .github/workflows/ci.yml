@@ -934,6 +934,11 @@ jobs:
           path: extensions/vscode-bascik/.vscode-test/vscode-*
           key: vscode-test-${{ runner.os }}-${{ steps.vscode-version.outputs.version }}
 
+      # The fixture workspaces resolve @bascik/bascik to pkg/, so the server-side TypeScript tests (which hover
+      # ServerScriptContext from the package's types) need pkg/dist built.
+      - name: Build the package
+        run: yarn pkg:build
+
       # Compiles the extension and bundles the language server from lsp/src, then runs both configurations in
       # .vscode-test.cjs. VS Code is an Electron app, so on Linux xvfb-run gives it a virtual display.
       - name: Run the extension tests in VS Code

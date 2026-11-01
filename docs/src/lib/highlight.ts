@@ -6,13 +6,11 @@
  * code painted plain before it turned colored. md-renderer.ts and examples.ts now emit the highlighted markup,
  * and the component only has a copy button.
  *
- * The output is the escaped source with `<span data-code-token="...">` around tokens. Escaping covers `&`, `<`
- * and `>`, so the output is safe as element content and its text is exactly the source.
+ * The output is the escaped source with `<span data-code-token="...">` around tokens. Escaping is esc() from
+ * @bascik/bascik/html (`&`, `<`, `>` and both quotes), so the output is safe as element content and its text is
+ * exactly the source.
  */
-
-function e(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { esc as e } from "@bascik/bascik/html";
 
 const C = {
   cm: "cm",

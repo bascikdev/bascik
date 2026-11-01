@@ -46,6 +46,17 @@ describe("docs-search component template", () => {
     expect(dom).toContain("search-sitelink");
   });
 
+  it("builds result elements and sets their text, so no index value is parsed as HTML", async () => {
+    const dom = await readFile(
+      join(process.cwd(), "src/components/docs-search/docs-search-dom.js"),
+      "utf8",
+    );
+    // A browser script cannot import @bascik/bascik/html, so the rule is textContent, not a hand-written escaper.
+    expect(dom).toContain("document.createElement(");
+    expect(dom).not.toMatch(/function esc\b/);
+    expect(dom).not.toMatch(/innerHTML\s*=\s*(?!"")\S/);
+  });
+
   it("fetches the versioned index URL, warms it on intent, and waits for load on /search", async () => {
     const html = await readFile(componentPath, "utf8");
     const dom = await readFile(

@@ -53,6 +53,8 @@ export interface CliFlags {
   strict?: boolean;
   json?: boolean;
   fix?: boolean;
+  /** `--typescript`: `--check` also reports TypeScript errors in `type="text/typescript"` scripts. */
+  typescript?: boolean;
   force?: boolean;
   yes?: boolean;
   /** `--no-skills`: `bascik init` skips the agent skills question and install. */
@@ -96,6 +98,7 @@ const BOOLEAN_FLAGS = new Set([
   "--server",
   "--check",
   "--fix",
+  "--typescript",
   "--strict",
   "--json",
   "--force",
@@ -145,6 +148,7 @@ const SUGGESTION_CANDIDATES = [
   "--server",
   "--check",
   "--fix",
+  "--typescript",
   "--strict",
   "--json",
   "--force",
@@ -512,6 +516,7 @@ const parseCliArgs = (
   if (present.has("--strict")) flags.strict = true;
   if (present.has("--json")) flags.json = true;
   if (present.has("--fix")) flags.fix = true;
+  if (present.has("--typescript")) flags.typescript = true;
   if (present.has("--no-pin")) flags.noPin = true;
 
   // `--quiet` is `--log-level warn`. Giving both is a contradiction, so it is rejected instead of one winning.
@@ -560,6 +565,10 @@ const parseCliArgs = (
     return error("Error: --fix only applies to --check.");
   }
 
+  if (flags.typescript && action !== "check") {
+    return error("Error: --typescript only applies to --check.");
+  }
+
   if (flags.noPin && action !== "dev") {
     return error("Error: --no-pin only applies to the dev server.");
   }
@@ -602,6 +611,8 @@ Options:
   --check            Validate the project (pages, components, config)
   --fix              Apply deterministic fixes during --check, such as adding a
                      missing data-bascik-prop- prefix, then report what remains
+  --typescript       Also report TypeScript errors in type="text/typescript"
+                     scripts during --check (needs typescript 5 or 6)
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
   --json             Emit structured JSON findings during --check
   --force            Overwrite modified local components when running add

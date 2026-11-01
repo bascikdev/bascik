@@ -27,6 +27,14 @@ export default defineConfig({
 - `defineConfig(config)` returns the config unchanged, typed as `BascikConfig`, so your editor surfaces every option with inline docs.
 - `composeSiteUrl(siteUrl, base, pathname)` joins a site origin, the base path and a page path into an absolute URL (`composeSiteUrl("https://example.com", "/docs/", "/about")` gives `https://example.com/docs/about`).
 
+The main entry also exports the types of the scripts Bascik calls:
+
+- `BuildScript`: the default export of a `data-bascik-build` or `data-bascik-build-once` script, which returns a string or an `html` value (or a promise of either).
+- `RoutesScript`: the default export of a `data-bascik-routes` script, which returns route objects (`RouteEntry`).
+- `ServerScript`: the default export of a `data-bascik-server` or `data-bascik-stream` script, called with the `Request`, a `ServerScriptContext` (`remoteIp` and `platform`) and `{ signal }`.
+
+The editor's [TypeScript errors in script tags](/tools/vscode-extension#typescript-errors-in-script-tags) and `bascik --check --typescript` type a `type="text/typescript"` script's default export with these, so a script does not import them: a server or stream script imports nothing from `@bascik/bascik` but `@bascik/bascik/html`. Use them where code outside a script needs the shape, such as a unit test that calls a handler.
+
 The CLI itself is not importable: run it through the `bascik` command.
 
 ## `@bascik/bascik/config`

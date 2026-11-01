@@ -1,0 +1,14 @@
+<!--
+  Reads its entries from a module beside it (./entries.ts), named after no
+  component: an edit to that module must still rebuild the page in dev.
+-->
+<ul class="colocated-data" data-testid="colocated-data">
+  <script data-bascik-build type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { entries } from "./entries.ts";
+    export default () =>
+      html`${entries.map(
+        (entry) => html`<li data-testid="colocated-data-entry">${entry}</li>`,
+      )}`;
+  </script>
+</ul>

@@ -4,14 +4,27 @@
 //
 // Why it exists: agents treated "no flags" from the scripts they happened to run as PASS. One command with every check
 // leaves nothing to forget, and its report feeds the human review page.
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHECKS,
+  browserHolder,
   buildRouteReport,
   parseCliArgs,
+  runOne,
 } from "../../skills/bascik-refactor/scripts/run-checks.mjs";
+import {
+  caseId,
+  gateLine,
+  gateRecord,
+  selectCases,
+} from "../../skills/bascik-refactor/scripts/lib/matrix.mjs";
+import { parseArgsFor } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
 
 const SCRIPT = fileURLToPath(
   new URL(
@@ -88,6 +101,25 @@ describe("parseCliArgs", () => {
     ).toThrow(/--skip-control/);
   });
 
+  it("--reject and --accepted pass reviewed production-defects false positives through, and a malformed id is refused", () => {
+    expect(
+      parseCliArgs([
+        ...base,
+        "--reject",
+        "PD-1a2b3c",
+        "--accepted",
+        "docs/migration/accepted.json",
+      ]),
+    ).toMatchObject({
+      reject: ["PD-1a2b3c"],
+      accepted: "docs/migration/accepted.json",
+    });
+    expect(parseCliArgs(base).reject).toEqual([]);
+    expect(() => parseCliArgs([...base, "--reject", "PD-1a2b"])).toThrow(
+      /--reject PD-1a2b/,
+    );
+  });
+
   it("--only and --skip take check names and reject a typo, listing the valid ones", () => {
     expect(parseCliArgs([...base, "--only", "spacing-diff"]).only).toEqual([
       "spacing-diff",
@@ -106,12 +138,291 @@ describe("parseCliArgs", () => {
     expect(() =>
       parseCliArgs([...noLegacy, "--skip", "testid-carryover"]),
     ).not.toThrow();
+    expect(() => parseCliArgs(noLegacy)).toThrow(/--no-legacy-repo/);
+  });
+
+  it("--no-legacy-repo waives testid-carryover with a reason; misuse: next to --legacy-src it is refused", () => {
+    const noLegacy = base.slice(0, -2);
+    const args = parseCliArgs([...noLegacy, "--no-legacy-repo"]);
+    expect(args.only).not.toContain("testid-carryover");
+    expect(args.waived).toEqual({
+      "testid-carryover": "no legacy repository (--no-legacy-repo)",
+    });
+    expect(parseCliArgs(base).waived).toEqual({});
+    expect(() => parseCliArgs([...base, "--no-legacy-repo"])).toThrow(
+      /--no-legacy-repo[\s\S]*--legacy-src/,
+    );
   });
 
   it("rejects a spacing tolerance that is not a number", () => {
     expect(() => parseCliArgs([...base, "--spacing-tolerance", "two"])).toThrow(
       /--spacing-tolerance/,
     );
+  });
+});
+
+describe("--cases: a subset of the matrix for the iteration loop", () => {
+  const MATRIX = [
+    { width: 360, height: 812 },
+    { width: 360, height: 640 },
+    { width: 1024, height: 1024 },
+    { width: 1408, height: 900 },
+    { width: 1408, height: 900, colorScheme: "dark" },
+    { width: 390, height: 844, isMobile: true, hasTouch: true },
+    { width: 1280, height: 900, reducedMotion: "no-preference" },
+  ];
+
+  it("names each case by its viewport, with a suffix for each variant", () => {
+    expect(MATRIX.map(caseId)).toEqual([
+      "360x812",
+      "360x640",
+      "1024x1024",
+      "1408x900",
+      "1408x900-dark",
+      "390x844-mobile-touch",
+      "1280x900-motion",
+    ]);
+  });
+
+  it("selects cases by id, and a bare width selects every case of that width, in matrix order", () => {
+    expect(selectCases(MATRIX, ["1408x900-dark", "360x812"])).toEqual([
+      MATRIX[0],
+      MATRIX[4],
+    ]);
+    expect(selectCases(MATRIX, ["360"])).toEqual([MATRIX[0], MATRIX[1]]);
+    expect(selectCases(MATRIX, ["1408,1024x1024"])).toEqual([
+      MATRIX[2],
+      MATRIX[3],
+      MATRIX[4],
+    ]);
+    expect(selectCases(MATRIX, [])).toEqual(MATRIX);
+    expect(selectCases(MATRIX, undefined)).toEqual(MATRIX);
+  });
+
+  it("misuse: an id or width the matrix does not have fails, listing the valid ids", () => {
+    expect(() => selectCases(MATRIX, ["375x812"])).toThrow(
+      /--cases 375x812[\s\S]*360x812, 360x640, 1024x1024/,
+    );
+    expect(() => selectCases(MATRIX, ["999"])).toThrow(/999/);
+    expect(() => selectCases(MATRIX, [" , "])).toThrow(/--cases/);
+  });
+
+  it("run-checks and every check CLI take --cases (repeatable or comma separated)", () => {
+    expect(
+      parseCliArgs([...base, "--cases", "360x812,1024", "--cases", "1408"])
+        .caseIds,
+    ).toEqual(["360x812", "1024", "1408"]);
+    expect(parseCliArgs(base).caseIds).toEqual([]);
+    expect(
+      parseArgsFor([
+        "--prod",
+        "https://a.example",
+        "--target",
+        "http://b",
+        "--route",
+        "/",
+        "--cases",
+        "360",
+      ]).caseIds,
+    ).toEqual(["360"]);
+  });
+
+  it("misuse: run-checks and every check refuse a --target that is production, pointing at production-only mode", () => {
+    const prod = ["--prod", "https://www.example.com"];
+    expect(() =>
+      parseCliArgs([
+        ...prod,
+        "--target",
+        "https://example.com/",
+        "--route",
+        "/",
+        "--legacy-src",
+        "../legacy",
+      ]),
+    ).toThrow(
+      /--target https:\/\/example\.com\/ is production.*interaction-crawl, presence-by-route, state-capture and production-defects run on production alone.*capture-baselines/s,
+    );
+    expect(() =>
+      parseArgsFor([
+        ...prod,
+        "--target",
+        "https://www.example.com",
+        "--route",
+        "/",
+      ]),
+    ).toThrow(/is production/);
+    // Another host, or the same host on another port, is a real target.
+    for (const target of [
+      "http://localhost:8080",
+      "https://staging.example.com",
+      "https://www.example.com:8443",
+    ])
+      expect(
+        parseArgsFor([...prod, "--target", target, "--route", "/"]).target,
+      ).toBe(target);
+    // The checks that compare two sides still need --target by default.
+    expect(() => parseArgsFor([...prod, "--route", "/"])).toThrow(
+      /--target <url> is required/,
+    );
+  });
+
+  it("run-checks takes the production cache flags and rejects --refresh-prod with --no-prod-cache", () => {
+    expect(parseCliArgs(base)).toMatchObject({
+      prodCache: "artifacts/prod-cache",
+      refreshProd: false,
+    });
+    expect(
+      parseCliArgs([...base, "--prod-cache", "tmp/pc", "--refresh-prod"]),
+    ).toMatchObject({ prodCache: "tmp/pc", refreshProd: true });
+    expect(() =>
+      parseCliArgs([...base, "--refresh-prod", "--no-prod-cache"]),
+    ).toThrow(/--refresh-prod.*--no-prod-cache/);
+  });
+});
+
+describe("the gate record", () => {
+  let work: string;
+  beforeAll(() => {
+    work = mkdtempSync(join(tmpdir(), "bascik-gate-"));
+  });
+  afterAll(() => rmSync(work, { recursive: true, force: true }));
+  const cases = [
+    { width: 360, height: 812 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 900 },
+  ];
+
+  it("records the matrix file, its sha256, the cases run and the total; the full default matrix is not partial", () => {
+    const file = join(work, "breakpoints.json");
+    writeFileSync(file, JSON.stringify({ cases }));
+    const sha = createHash("sha256")
+      .update(JSON.stringify({ cases }))
+      .digest("hex");
+    expect(
+      gateRecord({ file, cases, selected: cases, defaultMatrix: file }),
+    ).toEqual({
+      matrix: file,
+      sha256: sha,
+      cases: ["360x812", "768x1024", "1280x900"],
+      total: 3,
+      partial: false,
+    });
+    expect(
+      gateLine(
+        gateRecord({ file, cases, selected: cases, defaultMatrix: file }),
+      ),
+    ).toBeNull();
+  });
+
+  it("a subset or another matrix file is partial: an iteration result, not a gate", () => {
+    const file = join(work, "breakpoints.json");
+    writeFileSync(file, JSON.stringify({ cases }));
+    const subset = gateRecord({
+      file,
+      cases,
+      selected: [cases[0]],
+      defaultMatrix: file,
+    });
+    expect(subset).toMatchObject({
+      partial: true,
+      cases: ["360x812"],
+      total: 3,
+    });
+    expect(gateLine(subset)).toBe(
+      "PARTIAL (1 of 3 cases): iteration result, not a gate",
+    );
+    const iter = join(work, "breakpoints.iter-home.json");
+    writeFileSync(iter, JSON.stringify({ cases }));
+    const other = gateRecord({
+      file: iter,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+    });
+    expect(other.partial).toBe(true);
+    expect(gateLine(other)).toMatch(
+      /^PARTIAL \(3 of 3 cases from .*breakpoints\.iter-home\.json\): iteration result, not a gate$/,
+    );
+  });
+
+  it("with every check listed, a run that leaves one out is partial and PARTIAL names what it left out", () => {
+    const file = join(work, "breakpoints.json");
+    writeFileSync(file, JSON.stringify({ cases }));
+    const all = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: [...CHECKS],
+      allChecks: CHECKS,
+    });
+    expect(all).toMatchObject({
+      checks: [...CHECKS],
+      skipped: [],
+      partial: false,
+    });
+    expect(gateLine(all)).toBeNull();
+    const only = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: ["spacing-diff"],
+      allChecks: CHECKS,
+    });
+    expect(only.partial).toBe(true);
+    expect(only.skipped).toHaveLength(CHECKS.length - 1);
+    expect(gateLine(only)).toBe(
+      `PARTIAL (3 of 3 cases; 1 of ${CHECKS.length} checks, without ${CHECKS.filter((c: string) => c !== "spacing-diff").join(", ")}): iteration result, not a gate`,
+    );
+    const subset = gateRecord({
+      file,
+      cases,
+      selected: [cases[0]],
+      defaultMatrix: file,
+      checks: CHECKS.filter((c: string) => c !== "interaction-crawl"),
+      allChecks: CHECKS,
+    });
+    expect(gateLine(subset)).toBe(
+      `PARTIAL (1 of 3 cases; ${CHECKS.length - 1} of ${CHECKS.length} checks, without interaction-crawl): iteration result, not a gate`,
+    );
+    // A waived check (testid-carryover with --no-legacy-repo) is recorded with its reason and keeps the run whole.
+    const waived = gateRecord({
+      file,
+      cases,
+      selected: cases,
+      defaultMatrix: file,
+      checks: CHECKS.filter((c: string) => c !== "testid-carryover"),
+      allChecks: CHECKS,
+      waived: { "testid-carryover": "no legacy repository (--no-legacy-repo)" },
+    });
+    expect(waived).toMatchObject({ skipped: [], partial: false });
+    expect(waived.waived).toEqual({
+      "testid-carryover": "no legacy repository (--no-legacy-repo)",
+    });
+  });
+
+  it("buildRouteReport carries the gate record and the production cache numbers into report.json", () => {
+    const gate = {
+      matrix: "m.json",
+      sha256: "x",
+      cases: [],
+      total: 1,
+      partial: true,
+    };
+    const production = {
+      cache: "artifacts/prod-cache",
+      fromCache: 2,
+      captured: 0,
+      oldestCachedAt: "2026-10-30T00:00:00.000Z",
+    };
+    const report = buildRouteReport(
+      "/",
+      CHECKS.map((c: string) => ({ check: c, ok: true, findings: [] })),
+      { gate, production },
+    );
+    expect(report.gate).toEqual(gate);
+    expect(report.production).toEqual(production);
   });
 });
 
@@ -208,8 +519,221 @@ describe("buildRouteReport", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("keeps the rejected production defects of the route and every rejection with its source, so the gate record shows them", () => {
+    const rejectedDefect = {
+      check: "production-defects",
+      kind: "text-overflow",
+      route: "/",
+      width: 400,
+      key: "SPAN:MILKFROTHER",
+      selector: "header a > span",
+      message: "overflows its box",
+      id: "PD-1a2b3c",
+      sources: ["--reject"],
+    };
+    const rejections = [
+      { id: "PD-1a2b3c", source: "--reject", matched: 2 },
+      { id: "PD-00ff00", source: "D-07", ledgerRow: true, matched: 0 },
+    ];
+    const report = buildRouteReport(
+      "/",
+      CHECKS.map((c: string) =>
+        c === "production-defects"
+          ? {
+              ...result(c),
+              defects: [],
+              rejected: [rejectedDefect, { ...rejectedDefect, route: "/shop" }],
+              rejections,
+            }
+          : result(c),
+      ),
+    );
+    expect(report.rejectedDefects).toEqual([rejectedDefect]);
+    expect(report.rejections).toEqual(rejections);
+    // A rejection is not a finding: the route still passes on its findings alone.
+    expect(report.ok).toBe(true);
+    // A run without production-defects records none.
+    expect(buildRouteReport("/", [result("spacing-diff")])).toMatchObject({
+      rejectedDefects: [],
+      rejections: [],
+    });
+  });
+
   it("an empty run never passes", () => {
     expect(buildRouteReport("/", []).ok).toBe(false);
+  });
+});
+
+// A Chromium that went away mid-run (killed, out of memory) used to be retried as it was, so the retry and every later
+// check crashed in 0.0 s on "Target page, context or browser has been closed". The holder relaunches it instead.
+class FakeBrowser {
+  connected = true;
+  constructor(readonly id: number) {}
+  isConnected() {
+    return this.connected;
+  }
+  async close() {
+    this.connected = false;
+  }
+}
+const CLOSED =
+  "browser.newContext: Target page, context or browser has been closed";
+
+function fakeSession(failLaunch = false) {
+  let launched = 0;
+  const holder = browserHolder(new FakeBrowser(++launched), async () => {
+    if (failLaunch)
+      throw new Error("browserType.launch: Executable doesn't exist");
+    return new FakeBrowser(++launched);
+  });
+  return holder;
+}
+
+describe("runOne when the browser dies", () => {
+  it("relaunches a browser that closed during a check, passes on the retry, and hands the next check a connected browser", async () => {
+    const holder = fakeSession();
+    const seen: { check: string; id: number; connected: boolean }[] = [];
+    let crashed = false;
+    const modules = [
+      {
+        CHECK: "repeated-sections",
+        async runCheck(browser: FakeBrowser) {
+          seen.push({
+            check: "repeated-sections",
+            id: browser.id,
+            connected: browser.isConnected(),
+          });
+          if (!crashed) {
+            crashed = true;
+            await browser.close();
+            throw new Error(CLOSED);
+          }
+          return { check: "repeated-sections", ok: true, findings: [] };
+        },
+      },
+      {
+        CHECK: "text-style-diff",
+        async runCheck(browser: FakeBrowser) {
+          seen.push({
+            check: "text-style-diff",
+            id: browser.id,
+            connected: browser.isConnected(),
+          });
+          return { check: "text-style-diff", ok: true, findings: [] };
+        },
+      },
+    ];
+    const first = await runOne("repeated-sections", holder, {}, modules);
+    expect(first.error).toBeUndefined();
+    expect(first.retried).toMatch(/browser had closed and was relaunched/);
+    expect(first.retried).toMatch(/has been closed/);
+    const second = await runOne("text-style-diff", holder, {}, modules);
+    expect(second).toEqual({
+      check: "text-style-diff",
+      ok: true,
+      findings: [],
+    });
+    expect(seen).toEqual([
+      { check: "repeated-sections", id: 1, connected: true },
+      { check: "repeated-sections", id: 2, connected: true },
+      { check: "text-style-diff", id: 2, connected: true },
+    ]);
+    expect(holder.relaunches).toBe(1);
+  });
+
+  it("a crash that closes the browser twice is one finding; the check after it still runs on a fresh browser", async () => {
+    const holder = fakeSession();
+    const modules = [
+      {
+        CHECK: "state-capture",
+        async runCheck(browser: FakeBrowser) {
+          await browser.close();
+          throw new Error(CLOSED);
+        },
+      },
+      {
+        CHECK: "spacing-diff",
+        async runCheck(browser: FakeBrowser) {
+          return {
+            check: "spacing-diff",
+            ok: browser.isConnected(),
+            findings: [],
+          };
+        },
+      },
+    ];
+    const first = await runOne("state-capture", holder, {}, modules);
+    expect(first.error).toMatch(/^state-capture crashed: .*has been closed/);
+    expect(first.retried).toMatch(/relaunched/);
+    const second = await runOne("spacing-diff", holder, {}, modules);
+    expect(second).toEqual({ check: "spacing-diff", ok: true, findings: [] });
+    expect(holder.relaunches).toBe(2);
+  });
+
+  it("a non-transient crash that took the browser with it is retried on a relaunched browser too", async () => {
+    const holder = fakeSession();
+    let calls = 0;
+    const modules = [
+      {
+        CHECK: "overlap-diff",
+        async runCheck(browser: FakeBrowser) {
+          if (calls++ === 0) {
+            await browser.close();
+            throw new Error(
+              "Protocol error (Page.captureScreenshot): Browser crashed",
+            );
+          }
+          return { check: "overlap-diff", ok: true, findings: [] };
+        },
+      },
+    ];
+    const r = await runOne("overlap-diff", holder, {}, modules);
+    expect(r.error).toBeUndefined();
+    expect(r.retried).toMatch(/relaunched/);
+  });
+
+  it("a check that crashes for its own reasons on a live browser is not retried and the browser is kept", async () => {
+    const holder = fakeSession();
+    const before = holder.browser;
+    const modules = [
+      {
+        CHECK: "alignment-diff",
+        async runCheck() {
+          throw new Error("Cannot read properties of undefined (reading 'x')");
+        },
+      },
+    ];
+    const r = await runOne("alignment-diff", holder, {}, modules);
+    expect(r).toEqual({
+      check: "alignment-diff",
+      error:
+        "alignment-diff crashed: Cannot read properties of undefined (reading 'x')",
+    });
+    expect(holder.browser).toBe(before);
+    expect(holder.relaunches).toBe(0);
+  });
+
+  it("unhappy path: a relaunch that fails is that check's finding, not an uncaught crash of the run", async () => {
+    const holder = fakeSession(true);
+    const modules = [
+      {
+        CHECK: "testid-coverage",
+        async runCheck(browser: FakeBrowser) {
+          await browser.close();
+          throw new Error(CLOSED);
+        },
+      },
+    ];
+    const r = await runOne("testid-coverage", holder, {}, modules);
+    expect(r.error).toMatch(
+      /^testid-coverage crashed: .*relaunch.*Executable doesn't exist/,
+    );
+  });
+
+  it("misuse: a bare browser in place of a holder is refused with a message naming browserHolder", async () => {
+    await expect(
+      runOne("spacing-diff", new FakeBrowser(1) as never, {}, []),
+    ).rejects.toThrow(/browserHolder/);
   });
 });
 
@@ -232,5 +756,41 @@ describe("the CLI", () => {
     );
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("nope/breakpoints.json");
+  });
+
+  it("misuse: --cases with no match in the matrix fails before any browser starts, listing the valid ids", () => {
+    const work = mkdtempSync(join(tmpdir(), "bascik-cases-"));
+    try {
+      const matrix = join(work, "breakpoints.json");
+      writeFileSync(
+        matrix,
+        JSON.stringify({
+          cases: [
+            { width: 360, height: 812 },
+            { width: 1280, height: 900 },
+          ],
+        }),
+      );
+      const r = spawnSync(
+        process.execPath,
+        [SCRIPT, ...base, "--matrix", matrix, "--cases", "375"],
+        { cwd: work, encoding: "utf8" },
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/--cases 375/);
+      expect(r.stderr).toContain("360x812, 1280x900");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("misuse: --refresh-prod with --no-prod-cache exits 1 naming both flags", () => {
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, ...base, "--refresh-prod", "--no-prod-cache"],
+      { encoding: "utf8" },
+    );
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/--refresh-prod.*--no-prod-cache/);
   });
 });

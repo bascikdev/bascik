@@ -33,6 +33,8 @@ interface LanguageServerCheckResult {
   filesChecked: number;
   fixedFiles: string[];
   diagnostics: LanguageServerDiagnostic[];
+  /** Added with TypeScript checks; an older language server has none. */
+  notes?: string[];
 }
 
 type CheckTarget = string | { path: string; extensions?: string[] };
@@ -45,11 +47,14 @@ interface LanguageServerCheckModule {
     projectPath: string;
     fix: boolean;
     hints: boolean;
+    typescript?: boolean;
   }) => Promise<LanguageServerCheckResult>;
   formatDiagnostic: (
     diagnostic: LanguageServerDiagnostic,
     color?: boolean,
   ) => string;
+  /** `true` in a language server that reports TypeScript errors when asked; an older one ignores the option. */
+  supportsTypeScript?: boolean;
 }
 
 export type LanguageServerOutcome =
@@ -58,6 +63,8 @@ export type LanguageServerOutcome =
       filesChecked: number;
       fixedFiles: string[];
       diagnostics: LanguageServerDiagnostic[];
+      /** One line each about what the per-file checks could not do, such as TypeScript checks without TypeScript. */
+      notes: string[];
       formatDiagnostic: LanguageServerCheckModule["formatDiagnostic"];
     }
   | { status: "missing" }
@@ -146,9 +153,13 @@ export function languageServerTargets(
   );
 }
 
+/** The note for `--typescript` with a language server from before TypeScript checks. */
+export const TYPESCRIPT_NEEDS_NEWER_LANGUAGE_SERVER =
+  "TypeScript checks skipped: the installed @bascik/language-server is too old to report TypeScript errors. Update it with npm install --save-dev @bascik/language-server@latest";
+
 /** Runs the per-file checks over the project's pages, components, and API routes. */
 export async function runLanguageServerCheck(
-  options: { fix?: boolean; cwd?: string } = {},
+  options: { fix?: boolean; typescript?: boolean; cwd?: string } = {},
 ): Promise<LanguageServerOutcome> {
   const cwd = options.cwd ?? process.cwd();
   const mod = await loadLanguageServerCheck(cwd);
@@ -161,8 +172,20 @@ export async function runLanguageServerCheck(
     fix: options.fix ?? false,
     // Hints are advice for the editor. A check that gates CI reports only what is wrong.
     hints: false,
+    // Opt-in, so a project that never asked does not start failing CI on errors its build ignores.
+    typescript: options.typescript ?? false,
   });
-  return { status: "ran", ...result, formatDiagnostic: mod.formatDiagnostic };
+  const notes = [...(result.notes ?? [])];
+  if (options.typescript && mod.supportsTypeScript !== true)
+    notes.push(TYPESCRIPT_NEEDS_NEWER_LANGUAGE_SERVER);
+  return {
+    status: "ran",
+    filesChecked: result.filesChecked,
+    fixedFiles: result.fixedFiles,
+    diagnostics: result.diagnostics,
+    notes,
+    formatDiagnostic: mod.formatDiagnostic,
+  };
 }
 
 /** Why `--fix` cannot run. Fixes are applied by the language server, so without it there is nothing to apply. */

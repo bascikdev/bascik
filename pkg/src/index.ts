@@ -155,7 +155,10 @@ export const runCli = async (
         await import("./lib/check-language-server.ts");
       let findings;
       try {
-        findings = await checkProject({ fix: decision.flags.fix });
+        findings = await checkProject({
+          fix: decision.flags.fix,
+          typescript: decision.flags.typescript,
+        });
       } catch (error) {
         // The one expected failure is `--fix` with no language server to apply the fixes. Say so, without a stack.
         // Anything else is a bug and keeps its stack.

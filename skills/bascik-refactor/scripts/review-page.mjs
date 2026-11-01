@@ -11,8 +11,14 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { routeSlug, validateRoute, validateRouteSet } from "./lib/checks.mjs";
+import {
+  DEFAULT_MATRIX,
+  routeSlug,
+  validateRoute,
+  validateRouteSet,
+} from "./lib/checks.mjs";
 import { reportDirName } from "./compare-route.mjs";
+import { CHECKS, NO_LEGACY_CHECK } from "./run-checks.mjs";
 import { LEDGER_NOTE } from "./production-defects.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
 
@@ -36,6 +42,14 @@ Verify: exits 1 unless every route has a valid sign-off with verdict "pass" for 
 run-checks report passes, naming each missing or failing file. A fix after the review changes the target's
 screenshots, so the route needs a new review.
 
+Only a gate run counts: --sign (with verdict pass) and --verify refuse a run-checks report that is partial (a --cases
+subset, another --matrix file, or a run that left out a check with --only or --skip), one whose matrix hash differs
+from --matrix (docs/migration/breakpoints.json now), and one that used cached production measurements older than
+--max-prod-age (default 24h). Production can change after it was measured, so a gate run older cache entries would
+pass needs run-checks --refresh-prod; raise --max-prod-age only for a production site you know has not changed, and
+log it in the decisions ledger. They also refuse a report that rejected a production defect with a bare --reject, or
+by an accepted.json entry with no decisions ledger row: only a recorded, reviewed rejection decides "done".
+
 Options:
   --route <path>       Route (repeatable; one with --sign)
   --compare <dir>      compare-route.mjs output (default artifacts/compare)
@@ -46,6 +60,9 @@ Options:
   --verdict <v>        With --sign: pass or issues
   --notes <text>       With --sign: what differs (required for issues)
   --date <yyyy-mm-dd>  With --sign: the review date (default today)
+  --matrix <file>      The gate matrix the report must have run in full (default docs/migration/breakpoints.json)
+  --max-prod-age <age> With --sign and --verify: refuse a report that used cached production measurements older than
+                       this, such as 7d, 12h or 30m (default 24h)
   --help               Show this message`;
 
 /** The seven issue types a human caught after the automated loop passed, in order. */
@@ -92,7 +109,8 @@ function findingItem(f) {
 /**
  * The review page for one route. data: { route, cases: [{ width, height, prod, target }] (screenshot files),
  * states: [{ anchor, width, prod: { crop }, target: { crop } }], findings, productionDefects, base } where base is the
- * folder the page is written to. Everything is escaped; nothing loads from the network.
+ * folder the page is written to; notGate lists why the run-checks report is not a gate run (gateProblems). Everything
+ * is escaped; nothing loads from the network.
  */
 export function renderReviewPage({
   route,
@@ -100,9 +118,12 @@ export function renderReviewPage({
   states = [],
   findings = [],
   productionDefects = [],
+  rejectedDefects = [],
+  rejections = [],
   base = ".",
   reviewed,
   checksOk,
+  notGate = [],
 }) {
   const slug = routeSlug(route);
   const byWidth = (w) => findings.filter((f) => f.width === w);
@@ -147,6 +168,30 @@ export function renderReviewPage({
     .join("")}</ul>
 </section>`
     : "";
+  const sourceText = (r) =>
+    r.source === "--reject"
+      ? "a bare --reject (one run only; not accepted in a gate run)"
+      : `accepted.json entry ${r.source}${r.ledgerRow === false ? " (no decisions ledger row: not accepted in a gate run)" : ""}`;
+  const rejectedHtml =
+    rejectedDefects.length || rejections.length
+      ? `<section data-testid="review-rejected-defects">
+  <h2>Production defects rejected as false positives</h2>
+  <p>A reviewer found these are not defects, so they are neither fix targets nor copied defects. Check each one: an id covers every element with the same text and kind.</p>
+  <ul>${rejectedDefects
+    .map(
+      (d) =>
+        `<li data-testid="review-rejected-defect"><code>${esc(d.id)}</code> <code>${esc(d.kind)}</code> ${esc(d.route)} at ${esc(d.width)} px, <code>${esc(d.selector)}</code>: ${esc(d.message)} (rejected by ${esc((d.sources ?? []).join(", "))})</li>`,
+    )
+    .join("")}</ul>
+  <h3>Rejections this run used</h3>
+  <ul>${rejections
+    .map(
+      (r) =>
+        `<li data-testid="review-rejection"><code>${esc(r.id)}</code> by ${esc(sourceText(r))}: ${r.matched ? `${esc(r.matched)} defect(s) across the run` : "matches no defect"}</li>`,
+    )
+    .join("")}</ul>
+</section>`
+      : "";
   const file = `docs/migration/review/${slug}.json`;
   return `<!doctype html>
 <html lang="en">
@@ -188,12 +233,14 @@ export function renderReviewPage({
   <ol>${CHECKLIST.map((item) => `<li>${esc(item)}</li>`).join("")}</ol>
 </section>
 ${defectsHtml}
+${rejectedHtml}
 ${general.length ? `<section data-testid="review-findings"><h2>Findings for the route</h2><ul>${general.map(findingItem).join("")}</ul></section>` : ""}
 ${caseHtml}
 ${stateHtml}
 <section data-testid="review-sign-off">
   <h2>Sign off</h2>
-  ${checksOk === false ? `<p class="warning" data-testid="review-checks-failing">run-checks.mjs still reports findings for this route. A pass sign-off does not pass the gate until they are fixed and the route is reviewed again.</p>` : ""}
+  ${notGate.length ? `<p class="warning" data-testid="review-checks-partial">This run-checks report is not a gate run, so it cannot be signed as a pass: ${esc(notGate.join(" "))}</p>` : ""}
+  ${checksOk === false && !notGate.length ? `<p class="warning" data-testid="review-checks-failing">run-checks.mjs still reports findings for this route. A pass sign-off does not pass the gate until they are fixed and the route is reviewed again.</p>` : ""}
   <p>The form downloads <code>${esc(slug)}.json</code>. Save it as <code>${esc(file)}</code>, or run <code>node "$REFACTOR/review-page.mjs" --sign --route "${esc(route)}" --reviewer "Your name" --verdict pass</code>.</p>
   <form id="sign-off">
     <label>Reviewer <input data-testid="review-reviewer" name="reviewer" required /></label>
@@ -346,10 +393,118 @@ export function reviewFingerprint(route, { compare, checks }) {
   return hash.digest("hex").slice(0, 32);
 }
 
+/** A duration such as 7d, 12h or 30m, in milliseconds, or an error naming the flag. */
+export function parseAge(flag, value) {
+  const m = /^(\d+(?:\.\d+)?)\s*([dhm])$/.exec(String(value ?? "").trim());
+  if (!m || Number(m[1]) <= 0)
+    throw new Error(
+      `${flag} takes an age such as 7d, 12h or 30m (got "${value}")`,
+    );
+  return Number(m[1]) * { d: 86_400_000, h: 3_600_000, m: 60_000 }[m[2]];
+}
+
+/** How old cached production measurements a gate run may use by default: a day. */
+export const DEFAULT_MAX_PROD_AGE = 86_400_000;
+
+/**
+ * Why a run-checks report is not a gate, or []: it records no matrix or no list of the checks it ran, it is partial (a
+ * --cases subset or another matrix file), it left out a check (--only, --skip; only testid-carryover may be waived, by
+ * --no-legacy-repo), its matrix differs from `matrix` (the gate matrix as it is now), it records no production
+ * measurement, it used cached production measurements older than `maxProdAge` (ms, default DEFAULT_MAX_PROD_AGE), or it
+ * rejected a production defect by a bare --reject or by an accepted.json entry with no decisions ledger row.
+ */
+export function gateProblems(
+  report,
+  file,
+  {
+    matrix = DEFAULT_MATRIX,
+    maxProdAge = DEFAULT_MAX_PROD_AGE,
+    now = Date.now(),
+  } = {},
+) {
+  const gate = report?.gate;
+  if (!gate)
+    return [
+      `${file}: records no matrix (run-checks wrote it before reports recorded one); run run-checks.mjs on the full matrix again`,
+    ];
+  const problems = [];
+  const ran = Array.isArray(gate.checks) ? gate.checks : null;
+  const missing = ran
+    ? CHECKS.filter(
+        (c) => !ran.includes(c) && !(c === NO_LEGACY_CHECK && gate.waived?.[c]),
+      )
+    : [];
+  if (!ran)
+    problems.push(
+      `${file}: records no list of the checks it ran (run-checks wrote it before reports recorded them); run run-checks.mjs on the full matrix with every check again`,
+    );
+  else if (missing.length)
+    problems.push(
+      `${file}: ran ${ran.length} of ${ran.length + missing.length} checks, without ${missing.join(", ")} (--only or --skip): an iteration result, not a gate; run run-checks.mjs on the full matrix (${matrix}) with every check`,
+    );
+  const casesPartial =
+    gate.partial && (!missing.length || gate.cases?.length !== gate.total);
+  if (casesPartial)
+    problems.push(
+      `${file}: a partial run (${gate.cases?.length ?? "?"} of ${gate.total ?? "?"} cases)${gate.matrix ? ` of ${gate.matrix}` : ""} is an iteration result, not a gate; run run-checks.mjs on the full matrix (${matrix}) with every check`,
+    );
+  else {
+    let sha;
+    try {
+      sha = createHash("sha256").update(readFileSync(matrix)).digest("hex");
+    } catch (error) {
+      problems.push(
+        `${file}: cannot read the gate matrix ${matrix} (${error.message})`,
+      );
+    }
+    if (sha && sha !== gate.sha256)
+      problems.push(
+        `${file}: ran another matrix than ${matrix} (${matrix} changed since this run, or the run used a copy); run run-checks.mjs on it again`,
+      );
+  }
+  for (const r of report.rejections ?? []) {
+    if (r.source === "--reject")
+      problems.push(
+        `${file}: rejected ${r.id} with a bare --reject, which leaves no reviewed record; list it in an accepted.json "defect" entry with a decisions ledger row saying why, and run run-checks.mjs again`,
+      );
+    else if (r.ledgerRow === false)
+      problems.push(
+        `${file}: rejected ${r.id} by accepted.json entry ${r.source}, which has no row in the decisions ledger; add the ${r.source} row saying why, and run run-checks.mjs again`,
+      );
+  }
+  const production = report.production;
+  const oldest = production?.oldestCachedAt;
+  if (!production)
+    problems.push(
+      `${file}: records no production measurement (how fresh production was is unknown); run run-checks.mjs with --refresh-prod`,
+    );
+  else if (production.fromCache > 0 && !oldest)
+    problems.push(
+      `${file}: used ${production.fromCache} cached production measurement(s) of unknown age; run run-checks.mjs with --refresh-prod`,
+    );
+  else if (oldest && !(now - Date.parse(oldest) <= maxProdAge))
+    problems.push(
+      `${file}: used cached production measurements from ${oldest}, older than --max-prod-age (${formatAge(maxProdAge)}); production may have changed since, so run run-checks.mjs with --refresh-prod`,
+    );
+  return problems;
+}
+
+/** An age in ms as the largest whole unit --max-prod-age takes: 7d, 24h, 30m. */
+function formatAge(ms) {
+  for (const [unit, size] of [
+    ["d", 86_400_000],
+    ["h", 3_600_000],
+    ["m", 60_000],
+  ])
+    if (ms >= size && ms % size === 0) return `${ms / size}${unit}`;
+  return `${ms} ms`;
+}
+
 /**
  * The PASS gate: every route needs a valid sign-off for that route with verdict pass. With `options` ({ compare,
- * checks }, the report folders) it also needs the route's run-checks report to pass, and the sign-off to name the run
- * the reports hold now (reviewFingerprint), so a review of older pixels does not pass a changed target.
+ * checks }, the report folders) it also needs the route's run-checks report to pass and to be a gate run (gateProblems,
+ * with options.matrix and options.maxProdAge), and the sign-off to name the run the reports hold now
+ * (reviewFingerprint), so a review of older pixels does not pass a changed target.
  */
 export function verifySignOffs(dir, routes, options) {
   const problems = [];
@@ -364,6 +519,14 @@ export function verifySignOffs(dir, routes, options) {
       else if (!checked.ok)
         problems.push(
           `${join(options.checks, routeSlug(route), "report.json")}: run-checks reports ${checked.findings?.length ?? 0} finding(s) for ${route}; fix them, run it again and review the route again`,
+        );
+      else
+        problems.push(
+          ...gateProblems(
+            checked,
+            join(options.checks, routeSlug(route), "report.json"),
+            options,
+          ),
         );
     }
     if (!existsSync(file)) {
@@ -435,6 +598,8 @@ export function parseCliArgs(argv) {
       verdict: { type: "string" },
       notes: { type: "string" },
       date: { type: "string" },
+      matrix: { type: "string" },
+      "max-prod-age": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -459,6 +624,11 @@ export function parseCliArgs(argv) {
     verdict: values.verdict,
     notes: values.notes ?? "",
     date: values.date,
+    matrix: values.matrix ?? DEFAULT_MATRIX,
+    maxProdAge:
+      values["max-prod-age"] === undefined
+        ? undefined
+        : parseAge("--max-prod-age", values["max-prod-age"]),
   };
 }
 
@@ -471,6 +641,8 @@ function build(args) {
       process.stderr.write(
         `review-page: ${checksFile} not found; the page shows no findings until run-checks.mjs runs for ${route}\n`,
       );
+    const notGate = checks ? gateProblems(checks, checksFile, args) : [];
+    for (const p of notGate) process.stderr.write(`review-page: ${p}\n`);
     const base = resolve(args.out);
     mkdirSync(base, { recursive: true });
     const html = renderReviewPage({
@@ -484,9 +656,12 @@ function build(args) {
       states: checks?.states ?? [],
       findings: checks?.findings ?? [],
       productionDefects: checks?.productionDefects ?? [],
+      rejectedDefects: checks?.rejectedDefects ?? [],
+      rejections: checks?.rejections ?? [],
       base,
       reviewed: reviewFingerprint(route, args),
       checksOk: checks ? checks.ok : false,
+      notGate,
     });
     const file = join(args.out, `${routeSlug(route)}.html`);
     writeFileSync(file, html);
@@ -498,6 +673,18 @@ function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
   if (args.mode === "sign") {
+    const checksFile = join(
+      args.checks,
+      routeSlug(args.route[0]),
+      "report.json",
+    );
+    const checks = checksReport(args.checks, args.route[0]);
+    const refused =
+      args.verdict === "pass" && checks
+        ? gateProblems(checks, checksFile, args)
+        : [];
+    if (refused.length)
+      throw new Error(`cannot sign a pass: ${refused.join("; ")}`);
     const file = writeSignOff({
       dir: args.dir,
       route: args.route[0],
@@ -513,6 +700,8 @@ function main() {
     const { ok, problems } = verifySignOffs(args.dir, args.route, {
       compare: args.compare,
       checks: args.checks,
+      matrix: args.matrix,
+      maxProdAge: args.maxProdAge,
     });
     for (const p of problems) console.log(`FAIL  ${p}`);
     if (ok)

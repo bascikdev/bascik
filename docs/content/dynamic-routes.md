@@ -68,24 +68,26 @@ Inside your template, `<script data-bascik-build>` blocks can read the current r
 <html lang="en">
   <head>
     <script data-bascik-build>
+      import { html } from "@bascik/bascik/html";
+
       export default function () {
         const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
         const { title } = route.data || {};
-        return `<title>${title || "Blog"} - My Site</title>`;
+        return html`<title>${title || "Blog"} - My Site</title>`;
       }
     </script>
   </head>
   <body>
     <article>
       <script data-bascik-build>
+        import { html } from "@bascik/bascik/html";
+
         export default function () {
           const route = JSON.parse(process.env.BASCIK_ROUTE || "{}");
           const { params, data } = route;
-          return `
-          <h1>${data.title}</h1>
-          <p class="slug">Slug: ${params.slug}</p>
-          <p class="date">Published: ${data.date}</p>
-        `;
+          return html`<h1>${data.title}</h1>
+            <p class="slug">Slug: ${params.slug}</p>
+            <p class="date">Published: ${data.date}</p>`;
         }
       </script>
     </article>

@@ -7,7 +7,9 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
 - Route: {{ROUTE}}
 - Legacy entry: {{LEGACY_ENTRY}}
 - Target page: {{TARGET_PAGE}}
-- Production baselines: {{BASELINE_IDS}}
+- Production baselines: {{BASELINE_IDS}} (ids `<route>@<caseId>` in `artifacts/baselines/index.json`, such as
+  `{{ROUTE}}@360x812`; an open state adds `#<label>`. Each has `artifacts/baselines/<route slug>/<caseId>.png`, its
+  `.nodes.json` geometry and its open-state crops, recorded by `capture-baselines.mjs` in phase 1)
 - Components to use or create: {{REQUIRED_COMPONENTS}}
 - Interactions on this route (from `interactions.json`): {{INTERACTIONS}}
 
@@ -18,7 +20,10 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
    heading, overflow or sideways scroll becomes a row in `docs/migration/decisions.md` that says
    "production defect: fix in target". Build the corrected version of those elements; the parity checks compare them
    with the correction, not with production.
-2. Capture production and the target for {{ROUTE}} at every case in the breakpoint matrix with identical settings.
+2. Read the production baselines {{BASELINE_IDS}}: what {{ROUTE}} looks like at each case and with each open state,
+   before any target page exists. When one is missing, record it first:
+   `node "$REFACTOR/capture-baselines.mjs" --prod "$PROD_URL" --route "{{ROUTE}}" --states`. Then capture the target
+   at every case in the breakpoint matrix with identical settings.
 3. Work one section at a time, top to bottom. For each section:
    1. Find the owning production subtree from stable anchors (heading text, `href`, `src`, `alt`, landmarks, test
       ids), never generated class names.
@@ -31,7 +36,11 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
       section that also appears on another route is one component, used on both. Behavior is TypeScript (a `.ts`
       companion or `<script type="text/typescript">`); when {{LEGACY_ENTRY}} is TypeScript, carry its prop and state
       types across.
-   5. Build, reload, re-measure the same boxes and fix the section before the next one.
+   5. Build, reload, re-measure the same boxes and fix the section before the next one. This is the iteration loop:
+      run `run-checks.mjs` with `--cases` for one phone, one tablet and one desktop case plus the B - 1, B and B + 1
+      cases of every breakpoint {{ROUTE}}'s own CSS or JS reacts to, and `--only` for the checks your last fix can
+      affect. Production's side comes from the production cache, so only the target is loaded. Such a run prints
+      `PARTIAL`: it is never the acceptance result.
 4. Carry every test hook over: each `data-testid`, `data-test`, `data-test-id`, `data-cy` and `data-qa` attribute in
    production's rendered page and in {{LEGACY_ENTRY}} goes on the same element of the target, with the same attribute
    name and value (`testid-carryover`). Then give every control, form, landmark and component root without one a
@@ -54,7 +63,9 @@ and banners are compared across routes. Pass `--mask <selector>` only for a dyna
 autoplay carousel, a rotating ticker); every check leaves it out. `PROD_URL`, `TARGET_URL` and `REFACTOR` come from
 the execution contract. Rebuild and
 restart the production server (`npx bascik --build && npx bascik --server`) before the comparisons, and stop it at
-the end. The Lighthouse reports are collected fresh for {{ROUTE}}, so a stale report cannot pass:
+the end. The acceptance run is the gate: the full `docs/migration/breakpoints.json` matrix, every check, no `--cases`,
+`--only`, `--skip` or `--matrix`, and `--refresh-prod` so production is measured fresh for it (`review-page.mjs`
+refuses a report of cached production more than a day old). The Lighthouse reports are collected fresh for {{ROUTE}}, so a stale report cannot pass:
 
 ```sh
 npx bascik --build && npx bascik --check
@@ -63,7 +74,7 @@ node "$REFACTOR/geometry-diff.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --r
 node "$REFACTOR/compare-route.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route "{{ROUTE}}" \
   --interactions docs/migration/interactions.json --accepted docs/migration/accepted.json
 node "$REFACTOR/run-checks.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route "{{ROUTE}}" \
-  --legacy-src "{{LEGACY_REPO}}" --target-src .
+  --legacy-src "{{LEGACY_REPO}}" --target-src . --refresh-prod
 rm -f artifacts/lighthouse/route-mobile.json artifacts/lighthouse/route-desktop.json
 mkdir -p artifacts/lighthouse
 npx lighthouse "$TARGET_URL{{ROUTE}}" --quiet --chrome-flags=--headless=new --output=json \
@@ -89,7 +100,7 @@ that person); the route is done only when
 node "$REFACTOR/review-page.mjs" --verify --route "{{ROUTE}}"
 ```
 
-exits 0. It also fails while `run-checks.mjs` reports findings, and after any change to the target's screenshots or
+exits 0. It also fails while `run-checks.mjs` reports findings or its report is partial, and after any change to the target's screenshots or
 findings since the sign-off. Never write the sign-off file yourself.
 
 End with the handoff from the execution contract.

@@ -142,7 +142,7 @@ describe("diffIcons", () => {
 });
 
 describe("parseCliArgs", () => {
-  it("needs --prod, --target and --route, and defaults --out", () => {
+  it("needs --prod and --route, and defaults --out", () => {
     expect(() => parseCliArgs([])).toThrow(/--prod/);
     const args = parseCliArgs([
       "--prod",
@@ -154,6 +154,22 @@ describe("parseCliArgs", () => {
     ]);
     expect(args.out).toBe("artifacts/checks");
     expect(args.skipControls).toEqual([]);
+  });
+
+  it("runs on production alone without --target (open-state inventory); misuse: --target equal to --prod is refused", () => {
+    expect(
+      parseCliArgs(["--prod", "https://example.com", "--route", "/"]).target,
+    ).toBeUndefined();
+    expect(() =>
+      parseCliArgs([
+        "--prod",
+        "https://www.example.com",
+        "--target",
+        "https://www.example.com",
+        "--route",
+        "/",
+      ]),
+    ).toThrow(/is production.*leave --target out/s);
   });
 
   it("takes --skip-control like the interaction crawl, since it activates the same controls", () => {

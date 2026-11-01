@@ -1,13 +1,15 @@
 /**
  * @module vscode-settings
  *
- * Writes or merges the two VS Code files a Bascik project ships with:
+ * Writes or merges the editor files a Bascik project ships with:
  *
  *  - `.vscode/settings.json` turns off `html.validate.scripts`. VS Code's
  *    built-in HTML checker joins every `<script>` in a file that has no
  *    `type="module"` into one JavaScript file, so two Bascik scripts that each
  *    `export default` show the false error "A module cannot have multiple
- *    default exports". Bascik compiles each script on its own.
+ *    default exports". It also checks `type="text/typescript"` blocks as
+ *    TypeScript without Bascik's `@/` import root. Bascik compiles each script
+ *    on its own.
  *  - `.vscode/extensions.json` recommends the Bascik extension.
  *
  * Existing files are merged, never replaced: comments, other settings and
@@ -28,8 +30,10 @@ export const BASCIK_EXTENSION_ID = "bascik.bascik-vscode";
 const SETTINGS_COMMENT = [
   "// Bascik pages can hold several <script> blocks. VS Code's HTML checker",
   "// joins them into one file and reports errors Bascik never hits, such as",
-  '// "A module cannot have multiple default exports". Bascik compiles each',
-  "// script on its own. This turns off only VS Code's inline script check.",
+  '// "A module cannot have multiple default exports". It also checks',
+  '// type="text/typescript" blocks without Bascik\'s @/ import root. Bascik',
+  "// compiles each script on its own. This turns off only VS Code's inline",
+  "// script check.",
   "// https://bascik.dev/tools/vscode-extension#several-scripts-in-one-file",
 ];
 
@@ -129,11 +133,13 @@ function newlineOf(text: string): string {
 
 /**
  * Position just past the top-level object's `{`, and, when `key` is given,
- * just past the `[` that opens that top-level key's array value.
+ * just past the `opener` (`[` by default) that opens that top-level key's
+ * value.
  */
 function locate(
   blanked: string,
   key?: string,
+  opener: "[" | "{" = "[",
 ): { objectOpen: number; arrayOpen?: number } {
   const objectOpen = blanked.indexOf("{") + 1;
   let depth = 0;
@@ -143,7 +149,7 @@ function locate(
       const end = stringEnd(blanked, i);
       if (depth === 1 && key !== undefined) {
         const rest = blanked.slice(end);
-        const colon = /^\s*:\s*\[/.exec(rest);
+        const colon = (opener === "[" ? /^\s*:\s*\[/ : /^\s*:\s*\{/).exec(rest);
         if (colon && JSON.parse(blanked.slice(i, end)) === key) {
           return { objectOpen, arrayOpen: end + colon[0].length };
         }

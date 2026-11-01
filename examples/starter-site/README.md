@@ -35,13 +35,15 @@ Every page is a short shell: `<site-head />` in `<head>`, then `<site-header><th
 
 `site-head` is the site's own component: it holds the stylesheet, favicon, and `theme-init`. The header and footer are the [Site Header](https://bascik.dev/example-components/site-header) and [Site Footer](https://bascik.dev/example-components/site-footer) example components. Edit their navigation in `links.ts` next to each component; the header marks the current page at build time. The theme toggle goes in the header's slot.
 
+Modules live with their users: `links.ts` sits in each component's folder because only that component reads it, and `src/lib/` holds only what several pages share (`seo.ts` and `posts.ts`, which the feed reads too). Add a module the same way: beside its one component or page, or in `src/lib/` once a second one needs it.
+
 Code is TypeScript throughout: the helpers in `src/lib/`, the API route, the exec scripts, and every script in the pages and components, in the browser and at build time (`<script type="text/typescript">` and `<script data-bascik-build type="text/typescript">`, which Bascik strips to JavaScript with no setup).
 
 ## SEO Tags
 
-`seo()` in `src/lib/seo.ts` writes the title, description, canonical URL, Open Graph, and Twitter tags for one page, escaping every value. Absolute URLs come from `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page path, so the same source works at any domain and base path. Call it from a build script in each page's `<head>` (see `src/pages/about.html`), not from a shared component, so each page gets its own canonical URL.
+`seo()` in `src/lib/seo.ts` writes the title, description, canonical URL, Open Graph, and Twitter tags for one page. It builds them with `html` from `@bascik/bascik/html`, which escapes every value for where it lands, so the starter has no escaper of its own. Absolute URLs come from `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page path, so the same source works at any domain and base path. Call it from a build script in each page's `<head>` (see `src/pages/about.html`), not from a shared component, so each page gets its own canonical URL.
 
-The helper also exports `jsonLd()` (it escapes `<` so data can never close the script tag), `breadcrumbList()`, and `article()`. A page marked `noindex` also needs `<meta name="bascik-sitemap" content="exclude" />` in its source; see [Sitemap](https://bascik.dev/sitemap#per-page-sitemap-exclusion).
+The helper also exports `jsonLd()` (it writes the data with `json()`, so a value can never close the script tag), `breadcrumbList()`, and `article()`. A page marked `noindex` also needs `<meta name="bascik-sitemap" content="exclude" />` in its source; see [Sitemap](https://bascik.dev/sitemap#per-page-sitemap-exclusion).
 
 ## Blog
 

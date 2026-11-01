@@ -11,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,7 +19,10 @@ import {
   routeSlug,
   validateRouteSet,
 } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
-import { parseCliArgs as parseRunChecks } from "../../skills/bascik-refactor/scripts/run-checks.mjs";
+import {
+  CHECKS,
+  parseCliArgs as parseRunChecks,
+} from "../../skills/bascik-refactor/scripts/run-checks.mjs";
 import { parseCliArgs as parseReviewPage } from "../../skills/bascik-refactor/scripts/review-page.mjs";
 import {
   diffEffects,
@@ -467,11 +471,11 @@ describe("production-defects", () => {
     const ids = ledgerRows(defects).map((r: string) => r.split("|")[1].trim());
     expect(new Set(ids).size).toBe(ids.length);
     const file = join(dir, "ledger", "decisions.md");
-    expect(appendLedger(file, defects)).toBe(3);
+    expect(appendLedger(file, defects).added).toBe(3);
     const ledger = readFileSync(file, "utf8");
     expect(ledger).toMatch(/^# /);
     expect(ledger).toMatch(/\| id\s+\| route/);
-    expect(appendLedger(file, defects)).toBe(0);
+    expect(appendLedger(file, defects)).toMatchObject({ added: 0, updated: 0 });
   });
 });
 
@@ -547,6 +551,19 @@ describe("review-page", () => {
         cases: [{ width: 375, height: 800, screenshots: { prod, target } }],
       }),
     );
+    // A gate run: the full matrix the sign-off is checked against.
+    const matrix = join(dir, "breakpoints.json");
+    const matrixText = JSON.stringify({ cases: [{ width: 375, height: 800 }] });
+    writeFileSync(matrix, matrixText);
+    const gate = {
+      matrix,
+      sha256: createHash("sha256").update(matrixText).digest("hex"),
+      cases: ["375x800"],
+      total: 1,
+      checks: [...CHECKS],
+      skipped: [],
+      partial: false,
+    };
     const report = (ok: boolean) =>
       writeFileSync(
         join(checks, "index", "report.json"),
@@ -556,10 +573,12 @@ describe("review-page", () => {
           findings: ok
             ? []
             : [{ check: "spacing-diff", kind: "gap", message: "gap" }],
+          gate,
+          production: { refreshed: true, fromCache: 0, captured: 1 },
         }),
       );
     report(true);
-    const options = { compare, checks };
+    const options = { compare, checks, matrix };
     const reviewed = reviewFingerprint("/", options);
     writeSignOff({
       dir: review,

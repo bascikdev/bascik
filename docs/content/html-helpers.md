@@ -1,6 +1,6 @@
 # HTML Helpers
 
-`@bascik/bascik/html` is a small module of plain functions for building HTML safely in server, stream and build scripts. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/security) for why it exists and how it fits with the rest of a site's protection.
+`@bascik/bascik/html` is a small module of plain functions for building HTML safely. It is the way to build markup in every script and helper: build, build-once, routes, server and stream scripts, API routes, and the `.ts` helpers in `src/lib/` or beside a component that they import. A project needs no escaper of its own: build the markup with `html`, insert HTML you trust or sanitized with `raw()`, write JSON-LD and other JSON scripts with `json()`, and use `esc()` or `safeUrl()` where a string is built without `html`. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/security) for why it exists and how it fits with the rest of a site's protection.
 
 ## Import
 
@@ -51,6 +51,7 @@ export function card(product: { name: string; price: string }): SafeHtml {
 | URL attribute after a static prefix that settles the scheme          | `href="/u/${id}"`, `href="https://x.example/${p}"`, `?q=${q}` | Escapes                                                                                             |
 | URL lists                                                            | `srcset`, `imagesrcset`, `ping`, SVG animation `values`       | Checks every entry; a blocked entry makes the hole `about:invalid`; then escapes                    |
 | JSON script, the hole as its only content                            | `<script type="application/json">${json(data)}</script>`      | Inserts `json(value)` output as it is; refuses anything else                                        |
+| URL attribute, two holes before the URL's first `/`, `?` or `#`      | `href="${siteUrl}${path}"`, `href="${host}:${port}"`          | Throws `url-scheme-split`                                                                           |
 | Unquoted attribute value                                             | `class=${c}`                                                  | Throws `unquoted-attribute`                                                                         |
 | Event handler                                                        | `onclick="${x}"`                                              | Throws `event-handler`                                                                              |
 | `style` attribute, `srcdoc`, `<meta http-equiv>`                     | `style="${s}"`                                                | Throws `style-attribute`, `srcdoc`, `meta-http-equiv`                                               |
@@ -59,6 +60,20 @@ export function card(product: { name: string; price: string }): SafeHtml {
 | Comment, `<!DOCTYPE>`, CDATA                                         | `<!-- ${x} -->`                                               | Throws `comment`                                                                                    |
 
 URL attributes are `href`, `xlink:href`, `src`, `action`, `formaction`, `poster`, `background`, `cite`, `codebase`, `longdesc`, `lowsrc`, `dynsrc`, `manifest`, `icon`, and `data` on `<object>`, on any element. Image slots (`<img src>`, `<img srcset>`, `<source srcset>`, `<video poster>`, `<input src>`, `<link imagesrcset>`) keep `data:image/*` URLs. Any `http:` or `https:` URL, another site's included, is kept, as the browser takes it; see [Loading scripts and styles from other sites](/security#loading-scripts-and-styles-from-other-sites). This is the same rule Bascik applies to props bound to URL attributes.
+
+Give each URL attribute one hole, and build the URL in code first. `html` checks a URL's scheme (`https:`, `javascript:`) from the start of the attribute to its first `/`, `?` or `#`. Two values side by side there could together spell `javascript:`, one supplying `java` and the next `script:`, so `html` refuses the split instead of guessing (`url-scheme-split`), on every call. Join the parts in code and pass the whole URL, which `html` then checks as one value:
+
+```ts
+import { html } from "@bascik/bascik/html";
+
+export function canonicalLink(siteUrl: string, urlPath: string) {
+  // Not href="${siteUrl}${urlPath}": html refuses two holes in one URL scheme.
+  const href = `${siteUrl}${urlPath}`;
+  return html`<link rel="canonical" href="${href}" />`;
+}
+```
+
+A hole after the template has written the first `/`, such as `href="/blog/${slug}"` or `href="${base}/tags/${tag}"`, is fine: the scheme is settled by then.
 
 `html` follows the browser's tokenizer exactly where code, comments and tag structure are concerned, and refuses wherever it cannot. Where parsers differ, it reads the template every way a browser might and keeps the strictest result. The content of `<noscript>` is inert text in a page, but `template.innerHTML`, `DOMParser` and libraries that swap HTML into a page (htmx, Turbo) parse with scripting off and read it as markup, so a hole in `<noscript><img onerror="${x}">` is refused like one outside. An html`...` or `raw()` value nested in one of these elements is inserted as markup (an `<img>` in `<noscript>` is the scripting-off fallback), but one that contains the element's own end tag, such as `</noscript` inside an attribute, is refused: the browser would end the element there and read the rest of the value as markup that `html` checked as attribute text. Inside `<svg>` and `<math>`, the content of `<script>`, `<style>`, `<title>` and the elements above is markup, and `html` reads it that way. The same goes for `<plaintext>`: a fragment nested in `<svg>`, or a `<select>` in an older parser, reads what follows it as markup, so holes after it are checked as markup too. An `</svg>` or `</math>` end tag closes the element only where the browser's tree builder would: with an HTML element still open inside it (in `<foreignObject>` or `<mtext>`, for example), the browser ignores the end tag and stays in SVG or MathML, and so does `html`. A template must also end outside every tag, comment, `<script>`, `<style>`, `<textarea>`, `<title>`, `<svg>` and `<math>`, so a fragment can never open a context in the template it is nested in. An ordinary unclosed element such as `<div>` is fine. A `<![CDATA[` section ends at `]]>` in SVG and MathML but at the first `>` in HTML, so when its text has a `>` before `]]>`, every hole after it throws `comment`; a section without one, such as `<style><![CDATA[.a{}]]></style>` in an exported SVG, ends at the same place either way, and holes after it work.
 
@@ -122,7 +137,17 @@ Marks a string of trusted HTML, such as sanitized CMS or Markdown output, so `ht
 esc(value); // "&lt;b&gt;"
 ```
 
-Returns `value` as an entity-escaped string for text or a quoted attribute, for code that builds strings without `html`. `null`, `undefined` and `false` give `""`. Inside `html` it escapes twice, so the page shows `&amp;lt;`; the linter reports that as `html-escaped-twice`.
+Returns `value` as an entity-escaped string for text or a quoted attribute, for code that builds strings without `html`. `null`, `undefined` and `false` give `""`. Inside `html` it escapes twice, so the page shows `&amp;lt;`; the linter reports that as `html-escaped-twice`. Use `esc` instead of an escaper of your own: the linter reports a function that turns `&` and `<` into entities by hand as [`hand-written-html-escaper`](/tools/linter#hand-written-html-escaper), in directive scripts (`data-bascik-build`, `data-bascik-server` and the rest) and the modules they run in Node. Browser scripts are not checked.
+
+`esc` is also the escaper for XML a script writes as a string, such as an Atom feed or a sitemap from an exec script. `html` reads HTML rules (URL attributes, `<title>`, `<script>`), so it does not fit XML, but `esc` escapes `&`, `<`, `>`, `"` and `'`, which is what XML text and quoted attribute values need:
+
+```ts
+// scripts/feed.ts
+import { esc } from "@bascik/bascik/html";
+
+const entry = (post: { title: string; url: string }) =>
+  `<entry><title>${esc(post.title)}</title><link href="${esc(post.url)}" /></entry>`;
+```
 
 ## safeUrl
 

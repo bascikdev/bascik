@@ -81,9 +81,13 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 ```html
 <!-- src/pages/posts/[slug].html -->
 <script data-bascik-build>
+  import { html, raw } from "@bascik/bascik/html";
+
   export default function () {
     const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
-    return `<h1>${params.slug}</h1><article>${data.contentHtml}</article>`;
+    // contentHtml is rendered from your own Markdown, so raw() inserts it as it is.
+    return html`<h1>${params.slug}</h1>
+      <article>${raw(data.contentHtml)}</article>`;
   }
 </script>
 ```

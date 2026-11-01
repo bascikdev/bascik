@@ -12,6 +12,7 @@ import {
   buildReport,
   contextOptions,
   loadAccepted,
+  loadInteractions,
   parseCliArgs,
   reportDirName,
   pixelDiff,
@@ -19,6 +20,7 @@ import {
   validateStep,
 } from "../../skills/bascik-refactor/scripts/compare-route.mjs";
 import { routeUrl } from "../../skills/bascik-refactor/scripts/lib/capture.mjs";
+import { DEFAULT_SETTLE_MS } from "../../skills/bascik-refactor/scripts/lib/checks.mjs";
 import {
   loadPlaywright,
   loadSharp,
@@ -558,6 +560,33 @@ describe("accepted differences (decisions ledger rows the comparison may pass)",
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("an entry may reject reviewed production-defects ids instead, and compare-route applies nothing for it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compare-accepted-"));
+    try {
+      const rejecting = [
+        { id: "D-07", defect: ["PD-1a2b3c"], reason: "a logotype, not text" },
+      ];
+      const good = join(dir, "accepted.json");
+      writeFileSync(good, JSON.stringify(rejecting));
+      expect(loadAccepted(good)).toEqual(rejecting);
+      expect(acceptedFor(rejecting, "/", { width: 375, height: 812 })).toEqual({
+        ids: [],
+        masks: [],
+        maxRatio: undefined,
+      });
+      // A typo'd id, or a string where a list belongs, is refused with the entry named.
+      for (const defect of [["PD-1a2b"], ["D-07"], "PD-1a2b3c", []]) {
+        const bad = join(dir, "bad-defect.json");
+        writeFileSync(bad, JSON.stringify([{ id: "D-08", defect }]));
+        expect(() => loadAccepted(bad), JSON.stringify(defect)).toThrow(
+          /\[0\] D-08.*defect/,
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("routeUrl", () => {
@@ -634,6 +663,25 @@ describe("parseCliArgs", () => {
         "-1",
       ]),
     ).toThrow(/--tolerance/);
+  });
+
+  const base = ["--prod", "a", "--target", "b", "--route", "/"];
+
+  it("waits like the checks: --settle-ms defaults to the checks' settle time and takes 0", () => {
+    expect(parseCliArgs(base).settleMs).toBe(DEFAULT_SETTLE_MS);
+    expect(parseCliArgs([...base, "--settle-ms", "0"]).settleMs).toBe(0);
+    expect(parseCliArgs([...base, "--settle-ms", "8000"]).settleMs).toBe(8000);
+  });
+
+  it("misuse: a --settle-ms that is not a number of milliseconds, or an empty or unbalanced --mask, names the flag", () => {
+    for (const bad of ["abc", "-5", ""])
+      expect(() => parseCliArgs([...base, `--settle-ms=${bad}`])).toThrow(
+        /--settle-ms must be a number of milliseconds/,
+      );
+    expect(() => parseCliArgs([...base, "--mask", " "])).toThrow(/--mask/);
+    expect(() =>
+      parseCliArgs([...base, "--mask", "[data-testid=carousel"]),
+    ).toThrow(/--mask/);
   });
 });
 
@@ -750,5 +798,40 @@ describe("project dependencies", () => {
     expect(typeof playwright.chromium?.launch).toBe("function");
     const sharp = await loadSharp({ cwd: packageDir });
     expect(typeof sharp).toBe("function");
+  });
+});
+
+describe("loadInteractions", () => {
+  it("misuse: refuses a draft from interaction-crawl --discover until a person reviews it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-interactions-"));
+    try {
+      const step = {
+        name: "open the menu",
+        route: "/",
+        testId: "menu-trigger",
+        action: "click",
+      };
+      const reviewed = join(dir, "interactions.json");
+      writeFileSync(reviewed, JSON.stringify([step]));
+      expect(loadInteractions(reviewed)).toHaveLength(1);
+      const draftFile = join(dir, "interactions.draft.json");
+      writeFileSync(
+        draftFile,
+        JSON.stringify({ draft: true, interactions: [step] }),
+      );
+      expect(() => loadInteractions(draftFile)).toThrow(
+        /is a draft from interaction-crawl --discover/,
+      );
+      // A draft step copied into a reviewed file is refused too, by its position.
+      writeFileSync(
+        reviewed,
+        JSON.stringify([step, { ...step, name: "close it", draft: true }]),
+      );
+      expect(() => loadInteractions(reviewed)).toThrow(
+        /interactions\[1\] "close it" is still marked draft/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

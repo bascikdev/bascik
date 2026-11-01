@@ -7,7 +7,7 @@ replace each `{{NN}}` with a two-digit number, and add rows as the queue grows.
 | #      | Phase                   | Prompt                                          | Acceptance                                                    | Status |
 | ------ | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------- | ------ |
 | {{NN}} | 1. Record the real site | Inventories: routes, interactions, integrations | JSON files exist and every route in the sitemap is listed     |        |
-| {{NN}} | 1. Record the real site | Breakpoint matrix and production baselines      | `breakpoints.json` reviewed; baseline screenshots per case    |        |
+| {{NN}} | 1. Record the real site | Breakpoint matrix and production baselines      | `breakpoints.json` reviewed; a baseline id per route and case |        |
 | {{NN}} | 2. Local runtime        | Bootstrap, config boundaries, dev server        | `bascik --build` and `bascik --check` pass                    |        |
 | {{NN}} | 2. Local runtime        | Worker packaging, redirects, headers            | every redirect in `routes.json` answers with its status       |        |
 | {{NN}} | 2. Local runtime        | Test harness and Lighthouse runner              | the scripts run against one page, mobile and desktop          |        |
@@ -20,6 +20,36 @@ replace each `{{NN}}` with a two-digit number, and add rows as the queue grows.
 | {{NN}} | 8. Whole-site visual    | Every route at every case                       | compare-route passes site-wide; ledger covers each difference |        |
 | {{NN}} | 9. Optimization, audits | Images, fonts, CSP, llms.txt                    | lighthouse-gate passes for every URL, mobile and desktop      |        |
 | {{NN}} | 10. Handoff             | Docs, runbook, open items                       | build, check and all tests green on a clean checkout          |        |
+
+## Phase 1 runs on production alone
+
+No target page exists yet, so phase 1 never passes `--target` (a `--target` that is production is refused: it would
+load the live site twice at once):
+
+- `interaction-crawl.mjs --prod "$PROD_URL" --route <path>... --discover` crawls production alone and writes
+  `docs/migration/interactions.draft.json`. Review every step, remove each `"draft"`, and save the steps as
+  `docs/migration/interactions.json`; `compare-route.mjs` refuses a draft.
+- `presence-by-route.mjs` and `state-capture.mjs` without `--target` write production's layers per route and its open
+  states, and `production-defects.mjs` lists production's own bugs.
+- `capture-baselines.mjs --prod "$PROD_URL" --route <path>... --states` records the baselines: for every route and
+  matrix case `artifacts/baselines/<route slug>/<caseId>.png`, its `.nodes.json` geometry and every open state's
+  crop, indexed in `artifacts/baselines/index.json`. A baseline id is `<route>@<caseId>` (`/pricing@360x812`,
+  `/@1408x900-dark`); an open state adds `#<label>`. One-route prompts name theirs in `{{BASELINE_IDS}}`.
+
+Each writes through the production cache under its own check's key, and only those checks reuse it. The first
+`run-checks.mjs` of a route reads production-defects, interaction-crawl and state-capture from the cache when it passes
+the same `--mask`, `--skip-control` and `--settle-ms`, and presence-by-route only when it also passes the same
+`--route` values in the same order (an inventory of every route does not match a one-route run). repeated-sections,
+text-style-diff, spacing-diff, alignment-diff, overlap-diff, testid-carryover and testid-coverage still load production
+on that first run. Plan the first run of each route with that in mind.
+
+## Iteration runs and gate runs
+
+Inside a prompt, iterate with `run-checks.mjs --cases <ids> --only <checks>`: a few cases, the checks the last fix can
+affect, and production read from the production cache. Those runs print `PARTIAL` and never fill the Acceptance
+column. Every Acceptance cell that names a parity check means the gate run: the full `breakpoints.json` matrix, every
+check (no `--cases`, `--only` or `--skip`), with `--refresh-prod` on the first run of each check stage and review round.
+`review-page.mjs` refuses a report built from cached production more than a day old.
 
 ## The representative slice gate
 

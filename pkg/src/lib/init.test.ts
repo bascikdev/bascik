@@ -344,6 +344,69 @@ describe("initProject", () => {
     });
   });
 
+  describe("webhint config", () => {
+    const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+
+    /** Serve package.json and the given root files; everything else is absent. */
+    function files(root: Record<string, string> = {}): void {
+      mockReadFile.mockImplementation(async (path: unknown) => {
+        const p = String(path).replace(/\\/g, "/");
+        for (const [name, text] of Object.entries(root)) {
+          if (p.endsWith(`/${name}`)) return text;
+        }
+        if (p.endsWith("/package.json")) return '{"name":"my-app"}';
+        throw enoent();
+      });
+    }
+
+    it("does not create Webhint config files or add a Webhint dependency", async () => {
+      files();
+      await init();
+      expect(writtenTo("/.hintrc")).toBeUndefined();
+      expect(writtenTo("/.hintrc.dist.json")).toBeUndefined();
+      expect(writtenTo("/package.json")).not.toMatch(/"hint"|"webhint"/);
+    });
+
+    it("preserves an existing package.json hintConfig", async () => {
+      const hintConfig = { extends: ["development"] };
+      files({
+        "package.json": JSON.stringify({
+          name: "my-app",
+          hintConfig,
+        }),
+      });
+      await init();
+      expect(writtenTo("/.hintrc")).toBeUndefined();
+      expect(JSON.parse(writtenTo("/package.json")!).hintConfig).toEqual(
+        hintConfig,
+      );
+    });
+
+    it.each([".hintrc", ".hintrc.json", ".hintrc.js", ".hintrc.dist.json"])(
+      "does not read or modify an existing %s, even if it is invalid",
+      async (file) => {
+        files({ [file]: "{ user-owned config" });
+        await init();
+        expect(writtenTo(`/${file}`)).toBeUndefined();
+        expect(
+          mockReadFile.mock.calls.some(([path]) =>
+            String(path).replace(/\\/g, "/").endsWith(`/${file}`),
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it("does not load bascik.config just to initialize the project", async () => {
+      files();
+      await init();
+      expect(
+        mockReadFile.mock.calls.some(([path]) =>
+          /bascik\.config\./.test(String(path)),
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe("coding assistants", () => {
     const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     const logged = (): string =>

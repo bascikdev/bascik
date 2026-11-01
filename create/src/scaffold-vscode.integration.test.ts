@@ -3,9 +3,11 @@
  * writes, including into a folder that already has its own `.vscode` files.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TEMPLATES, VSCODE_LAUNCH_JSON, scaffold } from "./scaffold.ts";
 import {
   BASCIK_EXTENSION_ID,
@@ -95,5 +97,55 @@ describe("scaffold writes VS Code settings on disk", () => {
     expect(text).toContain('"html.validate.scripts": false');
     expect(text).toContain(BASCIK_EXTENSION_ID);
     expect(text).toContain("launch.json");
+  });
+});
+
+describe("Webhint is opt-in", () => {
+  const configFiles = [
+    ".hintrc",
+    ".hintrc.json",
+    ".hintrc.js",
+    ".hintrc.dist.json",
+  ];
+
+  for (const template of TEMPLATES) {
+    it(`${template} template does not generate Webhint configs or dependencies`, async () => {
+      const parent = await createTempDir();
+      await scaffold("site", parent, { template });
+      const root = join(parent, "site");
+      for (const file of configFiles) {
+        expect(existsSync(join(root, file)), file).toBe(false);
+      }
+      const pkg = JSON.parse(await read(join(root, "package.json")));
+      for (const dependencies of [pkg.dependencies, pkg.devDependencies]) {
+        expect(dependencies).not.toHaveProperty("hint");
+        expect(dependencies).not.toHaveProperty("webhint");
+      }
+    });
+
+    it(`${template} template leaves existing Webhint configs untouched`, async () => {
+      const parent = await createTempDir();
+      const root = join(parent, "site");
+      await mkdir(root);
+      for (const file of configFiles) {
+        await writeFile(join(root, file), `user-owned ${file}\n`);
+      }
+      const result = await scaffold("site", parent, { template });
+      for (const file of configFiles) {
+        expect(await read(join(root, file))).toBe(`user-owned ${file}\n`);
+      }
+      expect(result.notes).toEqual([]);
+    });
+  }
+
+  it("the starter example does not include Webhint configs", () => {
+    const root = fileURLToPath(
+      new URL("../../examples/starter-site/", import.meta.url),
+    );
+    for (const file of configFiles) {
+      expect(existsSync(join(root, file)), file).toBe(false);
+    }
+    const pkg = readFileSync(join(root, "package.json"), "utf8");
+    expect(pkg).not.toMatch(/"hint"|"webhint"/);
   });
 });

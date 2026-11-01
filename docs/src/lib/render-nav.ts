@@ -14,6 +14,7 @@
 
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { esc } from "@bascik/bascik/html";
 import { marked } from "marked";
 import { headingPlainText, slugFromHeadingHtml } from "./heading-slug.ts";
 import { NAV } from "./nav.ts";
@@ -52,14 +53,6 @@ export function renderSectionLabel(currentPath?: string): string {
   const section = NAV.find((s) => s.pages.some((p) => p.href === path));
   if (!section) return "";
   return `<p class="section-label">${section.section}</p>`;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -129,9 +122,9 @@ export async function renderPageTableOfContents(
     text: string;
     id: string;
   }): string =>
-    `<toc-entry data-bascik-prop-href="#${escapeHtml(heading.id)}" ` +
+    `<toc-entry data-bascik-prop-href="#${esc(heading.id)}" ` +
     `data-bascik-prop-level="${heading.level}" ` +
-    `data-bascik-prop-text="${escapeHtml(heading.text)}">`;
+    `data-bascik-prop-text="${esc(heading.text)}">`;
   let html = "";
   let subsectionListOpen = false;
   let subsectionHasItems = false;
@@ -188,10 +181,10 @@ export function renderPagination(currentPath?: string): string {
     dir: string,
     which: "prev" | "next",
   ): string =>
-    `<pagination-link data-bascik-prop-href="${escapeHtml(item.href)}" data-pg="${which}" ` +
+    `<pagination-link data-bascik-prop-href="${esc(item.href)}" data-pg="${which}" ` +
     `data-bascik-prop-dir="${dir}" ` +
-    `data-bascik-prop-section="${escapeHtml(item.section)}" ` +
-    `data-bascik-prop-label="${escapeHtml(item.label)}"></pagination-link>`;
+    `data-bascik-prop-section="${esc(item.section)}" ` +
+    `data-bascik-prop-label="${esc(item.label)}"></pagination-link>`;
   let html = "";
   if (prev) html += link(prev, "\u2190 Previous", "prev");
   if (next) html += link(next, "Next \u2192", "next");

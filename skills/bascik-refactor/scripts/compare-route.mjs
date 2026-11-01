@@ -8,11 +8,24 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { contextOptions, openPage, routeUrl } from "./lib/capture.mjs";
+import {
+  contextOptions,
+  POLITE_HELP,
+  POLITE_OPTIONS,
+  politeBrowser,
+  politeFlags,
+  politeSummary,
+} from "./lib/capture.mjs";
 import { loadMatrix } from "./lib/matrix.mjs";
 import { loadPlaywright, loadSharp } from "./lib/project-deps.mjs";
 import { collectNodes, diffGeometry } from "./geometry-diff.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import {
+  DEFAULT_SETTLE_MS,
+  pixels,
+  validateMask,
+  withPage,
+} from "./lib/checks.mjs";
 
 export { contextOptions };
 
@@ -22,19 +35,27 @@ Compares a route on production and on the Bascik target at every breakpoint matr
 pixels (per-channel tolerance), geometry (collectNodes) and interactions (interactions.json). No route passes on
 one screenshot or a Lighthouse score. Exits 1 when any case fails.
 
+Each side is captured the way the parity checks capture it: the page is scrolled through and back (lazy images
+load, scroll-triggered reveals run), then waits --settle-ms after navigation and for the DOM to go quiet.
+
 Options:
   --prod <url>            Live production origin
   --target <url>          Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>          Route to compare (repeatable, required)
   --matrix <file>         Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --interactions <file>   Interaction steps JSON (optional; see below)
-  --mask <selector>       Element to paint over on both sides, such as a rotating carousel (repeatable)
+  --mask <selector>       Element to paint over on both sides, such as a rotating carousel (repeatable); the settle
+                          wait ignores changes inside it
+  --settle-ms <n>         Least time after navigation before a capture, then 0.75 s without a DOM change outside
+                          the masks, as every parity check waits (default ${DEFAULT_SETTLE_MS}; 0 for a site with no
+                          timers)
   --evidence <selector>   Element whose box and computed styles go into the report (repeatable;
                           default: header, h1, main, footer)
   --tolerance <n>         Per-channel pixel tolerance 0-255 (default 10)
   --max-ratio <r>         Share of differing pixels a case may have (default 0.001)
   --accepted <file>       Accepted differences: decisions ledger rows turned into masks or budgets (see below)
   --out <dir>             Report folder (default artifacts/compare)
+${POLITE_HELP}
   --help                  Show this message
 
 interactions.json is an array of steps run in order on one page per matrix case:
@@ -49,7 +70,8 @@ docs/migration/decisions.md and narrows itself by route and width:
   [{ "id": "D-01", "route": "/", "mask": ["footer"] },
    { "id": "D-02", "maxWidth": 767, "maxRatio": 0.02 }]
 "mask" paints those elements over on both sides; "maxRatio" replaces --max-ratio for matching cases. The report
-lists the ids applied to each case. Never raise --max-ratio globally to make a difference pass.`;
+lists the ids applied to each case. An entry with "defect": ["PD-xxxxxx"] rejects reviewed production-defects false
+positives instead; production-defects.mjs and run-checks.mjs read it, and compare-route applies nothing for it. Never raise --max-ratio globally to make a difference pass.`;
 
 export const ACTIONS = Object.freeze([
   "click",
@@ -318,11 +340,13 @@ export function parseCliArgs(argv) {
       matrix: { type: "string" },
       interactions: { type: "string" },
       mask: { type: "string", multiple: true },
+      "settle-ms": { type: "string" },
       accepted: { type: "string" },
       evidence: { type: "string", multiple: true },
       tolerance: { type: "string" },
       "max-ratio": { type: "string" },
       out: { type: "string" },
+      ...POLITE_OPTIONS,
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -331,6 +355,14 @@ export function parseCliArgs(argv) {
   if (!values.target) throw new Error("--target <url> is required");
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
+  const polite = politeFlags(values, values);
+  for (const selector of values.mask ?? []) validateMask(selector);
+  const settleMs = pixels(
+    "--settle-ms",
+    values["settle-ms"],
+    DEFAULT_SETTLE_MS,
+    "milliseconds",
+  );
   const seen = new Set();
   for (const route of values.route) {
     validateRoute(route);
@@ -359,15 +391,20 @@ export function parseCliArgs(argv) {
     matrix: values.matrix ?? "docs/migration/breakpoints.json",
     interactions: values.interactions,
     mask: values.mask ?? [],
+    settleMs,
     accepted: values.accepted,
     evidence: values.evidence ?? ["header", "h1", "main", "footer"],
     tolerance,
     maxRatio,
     out: values.out ?? "artifacts/compare",
+    polite,
   };
 }
 
-/** Reads interactions.json and validates every step up front, so a typo fails before any browser starts. */
+/**
+ * Reads interactions.json and validates every step up front, so a typo fails before any browser starts. A draft from
+ * interaction-crawl --discover (the file or a step marked "draft": true) is refused until a person has reviewed it.
+ */
 export function loadInteractions(file) {
   let data;
   try {
@@ -375,10 +412,18 @@ export function loadInteractions(file) {
   } catch (error) {
     throw new Error(`${file}: cannot read interactions (${error.message})`);
   }
+  if (data?.draft === true)
+    throw new Error(
+      `${file} is a draft from interaction-crawl --discover: review every step, remove each "draft", and save the steps as docs/migration/interactions.json`,
+    );
   const steps = Array.isArray(data) ? data : data?.interactions;
   if (!Array.isArray(steps))
     throw new Error(`${file}: expected an array of steps`);
   steps.forEach((step, i) => {
+    if (step?.draft === true)
+      throw new Error(
+        `${file}: interactions[${i}] "${step.name ?? "(unnamed)"}" is still marked draft (from interaction-crawl --discover); review it and remove "draft"`,
+      );
     try {
       validateStep(step, i);
     } catch (error) {
@@ -395,12 +440,18 @@ const ACCEPTED_KEYS = new Set([
   "maxWidth",
   "mask",
   "maxRatio",
+  "defect",
   "reason",
 ]);
 
+/** A production-defects ledger id, as its rows and --reject name it. */
+export const DEFECT_ID = /^PD-[0-9a-f]{6}$/;
+
 /**
- * Reads accepted.json: an array of { id, route?, minWidth?, maxWidth?, mask?: [selector], maxRatio?, reason? }, each
- * tied to a row of the decisions ledger by id. Errors name the file and the entry index.
+ * Reads accepted.json: an array of { id, route?, minWidth?, maxWidth?, mask?: [selector], maxRatio?, defect?: [PD-id],
+ * reason? }, each tied to a row of the decisions ledger by id. `defect` lists production-defects ids a reviewer
+ * rejected as false positives (production-defects.mjs reads it; compare-route applies nothing for it). Errors name the
+ * file and the entry index.
  */
 export function loadAccepted(file) {
   let data;
@@ -439,9 +490,22 @@ export function loadAccepted(file) {
       throw new Error(
         `${at} ${entry.id}: maxRatio must be a number from 0 to 1 (got ${JSON.stringify(entry.maxRatio)})`,
       );
-    if (!entry.mask?.length && entry.maxRatio === undefined)
+    if (
+      entry.defect !== undefined &&
+      (!Array.isArray(entry.defect) ||
+        !entry.defect.length ||
+        entry.defect.some((d) => typeof d !== "string" || !DEFECT_ID.test(d)))
+    )
       throw new Error(
-        `${at} ${entry.id}: accepts nothing; give it a mask or a maxRatio`,
+        `${at} ${entry.id}: defect must be a list of production-defects ids such as ["PD-1a2b3c"] (got ${JSON.stringify(entry.defect)})`,
+      );
+    if (
+      !entry.mask?.length &&
+      entry.maxRatio === undefined &&
+      !entry.defect?.length
+    )
+      throw new Error(
+        `${at} ${entry.id}: accepts nothing; give it a mask, a maxRatio or a defect list`,
       );
   });
   return data;
@@ -454,7 +518,12 @@ const inRange = (entry, route, c) =>
 
 /** The accepted entries for one route and case: their ids, the selectors to mask, and the largest budget they set. */
 export function acceptedFor(accepted, route, c) {
-  const hits = accepted.filter((entry) => inRange(entry, route, c));
+  // An entry that only rejects production defects changes no pixels.
+  const hits = accepted.filter(
+    (entry) =>
+      inRange(entry, route, c) &&
+      (entry.mask?.length || entry.maxRatio !== undefined),
+  );
   const ratios = hits
     .map((entry) => entry.maxRatio)
     .filter((r) => r !== undefined);
@@ -537,7 +606,11 @@ async function main() {
   const accepted = args.accepted ? loadAccepted(args.accepted) : [];
   const { chromium } = await loadPlaywright();
   const sharp = await loadSharp();
-  const browser = await chromium.launch();
+  const browser = politeBrowser(await chromium.launch(), {
+    prod: args.prod,
+    target: args.target,
+    ...args.polite,
+  });
   let allOk = true;
   try {
     for (const route of args.route) {
@@ -548,44 +621,44 @@ async function main() {
         const label = `${c.width}x${c.height}`;
         const allowed = acceptedFor(accepted, route, c);
         const masks = [...new Set([...args.mask, ...allowed.masks])];
-        const side = async (name, origin) => {
-          const { context, page } = await openPage(
+        const side = (name, origin) =>
+          withPage(
             browser,
-            routeUrl(origin, route),
+            origin,
+            route,
             c,
-          );
-          try {
-            const file = join(dir, `${name}-${label}.png`);
-            const png = await page.screenshot({
-              path: file,
-              fullPage: true,
-              animations: "disabled",
-              mask: masks.map((s) => page.locator(s)),
-              maskColor: "#ff00ff",
-            });
-            const nodes = await page.evaluate(collectNodes);
-            const facts = await evidence(page, args.evidence);
-            const interactions = [];
-            for (const [i, step] of steps.entries())
-              if (appliesTo(step, route, c)) {
-                try {
-                  interactions.push(
-                    await runInteraction(page, step, i, { label }),
-                  );
-                } catch (error) {
-                  interactions.push({
-                    name: step.name,
-                    action: step.action,
-                    ok: false,
-                    failures: [error.message.split("\n")[0]],
-                  });
+            async (page) => {
+              const file = join(dir, `${name}-${label}.png`);
+              const png = await page.screenshot({
+                path: file,
+                fullPage: true,
+                animations: "disabled",
+                mask: masks.map((s) => page.locator(s)),
+                maskColor: "#ff00ff",
+              });
+              const nodes = await page.evaluate(collectNodes);
+              const facts = await evidence(page, args.evidence);
+              const interactions = [];
+              for (const [i, step] of steps.entries())
+                if (appliesTo(step, route, c)) {
+                  try {
+                    interactions.push(
+                      await runInteraction(page, step, i, { label }),
+                    );
+                  } catch (error) {
+                    interactions.push({
+                      name: step.name,
+                      action: step.action,
+                      ok: false,
+                      failures: [error.message.split("\n")[0]],
+                    });
+                  }
                 }
-              }
-            return { file, png, nodes, facts, interactions };
-          } finally {
-            await context.close();
-          }
-        };
+              return { file, png, nodes, facts, interactions };
+            },
+            masks,
+            args.settleMs,
+          );
         const prod = await side("prod", args.prod);
         const target = await side("target", args.target);
         const [a, b] = await Promise.all(
@@ -664,6 +737,11 @@ async function main() {
   } finally {
     await browser.close();
   }
+  const politeLine = politeSummary(
+    browser.politeStats,
+    args.polite.minIntervalMs,
+  );
+  if (politeLine) console.log(politeLine);
   if (!allOk) process.exitCode = 1;
 }
 

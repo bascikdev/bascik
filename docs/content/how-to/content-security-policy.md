@@ -103,6 +103,7 @@ export default defineConfig({
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { esc } from "@bascik/bascik/html";
 
 const outDir = process.env.BASCIK_OUT_DIR;
 if (!outDir)
@@ -144,11 +145,11 @@ for (const entry of await readdir(outDir, {
 })) {
   if (!entry.isFile() || !entry.name.endsWith(".html")) continue;
   const file = join(entry.parentPath, entry.name);
-  const html = await readFile(file, "utf8");
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${policyFor(html)}" />`;
+  const page = await readFile(file, "utf8");
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${esc(policyFor(page))}" />`;
   await writeFile(
     file,
-    html.replace(/<meta\s+charset\s*=[^>]*>/i, (charset) => charset + meta),
+    page.replace(/<meta\s+charset\s*=[^>]*>/i, (charset) => charset + meta),
   );
 }
 ```

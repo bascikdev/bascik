@@ -9,5 +9,8 @@ if (args.includes("--check") || args.includes("check")) {
   );
   process.exit(exitCode);
 } else {
-  startLanguageServer();
+  startLanguageServer({
+    typeScriptWorker: new URL("./typescript-worker.js", import.meta.url),
+    typeScriptFallbackFrom: import.meta.url,
+  });
 }

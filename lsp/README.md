@@ -27,11 +27,13 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
   - Misplaced `data-bascik-slot` attributes.
   - Scoping compatibility checks in CSS and JavaScript.
   - In-file ignore comment support (`<!-- bascik-ignore -->`, `/* bascik-ignore */`, `// bascik-ignore`).
+  - TypeScript errors in `<script type="text/typescript">` blocks, from TypeScript's own language service, with the source `ts (bascik)`. Each block is checked in the scope it runs in (a page's browser blocks share one scope, a scoped component's and every server-side block are on their own); browser blocks get the DOM and server-side blocks (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) get Node.js (its types with `@types/node`; without it, the web globals Node.js and workerd share, and Node.js's globals and modules untyped); `@/` resolves against `scripts.importRoot`, and the project's `tsconfig.json` is the base. See [TypeScript](#typescript) below.
   - Configuration support via `bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`. The `.ts` and `.js` forms are read without running them (literal values only), and a config that cannot be read is logged to stderr with its file and line.
 - **Quick Fixes (`textDocument/codeAction`)**:
   - Adds the missing `data-bascik-prop-` prefix to a prop attribute (`missing-prop-prefix`).
   - Converts a paired tag on a zero-slot component to a self-closing tag (`prefer-self-closing-component`).
-  - Wraps a server script template literal that returns markup in `` html`...` `` and imports `html` from `@bascik/bascik/html` (`server-script-unescaped-markup`). It imports `html as safeHtml` when the script already uses the name `html`, and is not offered when that name is taken too or a value sits where `html` would throw. This fix is editor-only, because it changes the returned value from a string to `SafeHtml`.
+  - Wraps a server script template literal that returns markup in `` html`...` `` and imports `html` from `@bascik/bascik/html` (`server-script-unescaped-markup`). It imports `html as safeHtml` when the script already uses the name `html`, and is not offered when that name is taken too or a value sits where `html` would throw. This fix is editor-only, because it changes the returned value from a string to `SafeHtml`. The rule runs in build and routes scripts too, and in the `.ts` and `.js` modules directive scripts and API routes import. It is not offered where the template's value reaches a `string` type (a return annotated `: string`, a `const` annotated `: string`, `as string`), since the wrapped value is `SafeHtml`; the message names the type to change.
+  - Makes a hand-written HTML escaper whose body is one `return` of its parameter followed only by entity `.replace()` calls call `esc()` from `@bascik/bascik/html`, and imports it (`hand-written-html-escaper`); any other escaper gets only the import of `html`.
 
 ## Installation & CLI Usage
 
@@ -47,6 +49,30 @@ Or install globally:
 npm install -g @bascik/language-server
 bascik-language-server --stdio
 ```
+
+## TypeScript
+
+TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: an absolute path to a `typescript` package folder the client passes in `initializationOptions.typescript.path` (a relative one is skipped with a warning, never read from the open project; the VS Code extension passes the `bascik.typescript.path` setting), the editor's own copy in `initializationOptions.typescript.editorPath` (the VS Code extension passes VS Code's), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped, and so is one older than TypeScript 5 (no `bundler` module resolution, so every `.ts` import would be an error). Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
+
+`initializationOptions`, all optional:
+
+```json
+{
+  "typescript": {
+    "enabled": true,
+    "path": "/path/to/node_modules/typescript",
+    "editorPath": "/path/to/editor/typescript",
+    "releaseDelayMs": 30000
+  },
+  "editorHasEmbeddedTypeScript": false
+}
+```
+
+`path` is used first; `editorPath`, the editor's own copy, is used when `path` is missing or cannot be used, before the project's `typescript`. When `path` cannot be used, the server shows the reason once with `window/showMessageRequest` and logs it.
+
+Inside these blocks the server answers hover, definition, completion (members, and files in relative and `@/` import paths) and signature help from the same TypeScript, after its own answers: hover and definition only where Bascik has none. `editorHasEmbeddedTypeScript` tells the server the editor already answers about the page's own names there (VS Code's HTML support does, and cannot be turned off; the VS Code extension sends `true` only while it runs). The server then answers only what that mode cannot: symbols, members, globals and calls declared in another file (an import, a package, `@types/node`, the context `@bascik/bascik` gives a directive script), names whose type comes from one, import paths, the names a module exports inside an import's braces, and every member and signature reached through a value the editor's mode types as `any` (a library method on an imported array, for example). A block counts as the editor's only when its open tag has `type="text/typescript"` written exactly so (quoted, lowercase), the only form VS Code's HTML support embeds as TypeScript; a block whose open tag has no lowercase `type` attribute (`TYPE="text/typescript"`) is embedded as JavaScript, with the page's plain scripts, and the server treats its page-local names as the editor's too. In any other block Bascik compiles as TypeScript, the server answers everything. That mode reads every block with `lib.es2020.full` (the DOM), directives ignored, so the server also leaves to it what it types or resolves to that library itself: in a server-side block, a global `@types/node` shares with the DOM (`console`, `setTimeout`, `URL`) and that global's members. `.` and `/` trigger completion in these blocks. The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first. A page edit checks that page only; a change to a file the blocks may import, a `tsconfig.json`, a `package.json` or the Bascik config checks every open page. Until a page is checked again, its TypeScript errors move with their blocks, and an edited block's errors are left out rather than shown on the wrong code. Pages due a check are given to TypeScript together, so its programs are built once for all of them. Once no open page has TypeScript blocks for `releaseDelayMs` (default 30000), the worker ends and its memory is freed; the next page with blocks starts it again.
+
+A page's browser blocks are checked as one classic script: the names its plain `<script>` elements declare, and those of the component scripts in its scope (with `scoping.scriptBlocks` off), are known as `any`; top-level names are never reported unused; a top-level `var` or `function`, and a plain script's name, is also a property of `window`, `self` and `globalThis`; a `var` a block types again after a plain script sets it is not "used before being assigned"; a top-level `interface Window { ... }` (or a `declare global`) adds to the global interface for that page only, never for another page, and a component's additions hold on every page that uses it; and a block with a syntax error is reported alone and left out, as a browser skips it.
 
 ## Project Config Discovery
 
@@ -96,9 +122,10 @@ For CI or an agent that wants a single pass instead of a running server, `--chec
 npx @bascik/language-server --check          # the current folder
 npx @bascik/language-server --check src      # one folder or file
 npx @bascik/language-server --check --fix    # also apply the fixes that have one correct answer
+npx @bascik/language-server --check --typescript  # also report TypeScript errors in type="text/typescript" blocks
 ```
 
-`--project <path>` names the project when the target lives outside it, such as a monorepo's shared components. The exit code is 1 when any error is found, otherwise 0. `--fix` applies the prop prefix and self-closing fixes above and rewrites those files; the `html` wrap fix is never applied there.
+`--project <path>` names the project when the target lives outside it, such as a monorepo's shared components. The exit code is 1 when any error is found, otherwise 0. `--fix` applies the prop prefix and self-closing fixes above and rewrites those files; the `html` wrap fix is never applied there. `--typescript` is opt-in, uses the project's own `typescript`, and without a usable one prints a single `note:` line and checks the rest.
 
 ## Development
 

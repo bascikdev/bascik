@@ -256,12 +256,8 @@
         </form>
         <div class="catalog-grid" data-testid="catalog-results">
           <script data-bascik-server>
+            import { html } from "@bascik/bascik/html";
             export default function (request) {
-              const escape = (s) =>
-                String(s)
-                  .replace(/&/g, "&amp;")
-                  .replace(/</g, "&lt;")
-                  .replace(/"/g, "&quot;");
               const products = [
                 { name: "Pour-over kettle", price: "$48", badge: "New" },
                 { name: "Ceramic dripper", price: "$22" },
@@ -276,16 +272,18 @@
                 p.name.toLowerCase().includes(q),
               );
               if (matches.length === 0) {
-                return `<p class="empty" data-testid="catalog-empty">No products match "${escape(q)}".</p>`;
+                return html`<p class="empty" data-testid="catalog-empty">
+                  No products match "${q}".
+                </p>`;
               }
-              return matches
-                .map(
-                  (p) =>
-                    `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-                    (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
-                    `</product-card>`,
-                )
-                .join("");
+              return html`${matches.map(
+                (p) =>
+                  html`<product-card
+                    data-bascik-prop-name="${p.name}"
+                    data-bascik-prop-price="${p.price}"
+                    >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                  >`,
+              )}`;
             }
           </script>
         </div>

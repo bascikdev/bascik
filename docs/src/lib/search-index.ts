@@ -48,8 +48,16 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
  * index until the content lookup learned folder index.md files. 1.335 MB: the full naming scheme for generated
  * element and #id classes on the internals scoping page (prompt 158 R3-03).
+ * 1.345 MB: the rc.10 docs sweep took the index to 1,334,643 bytes, and building every code sample's markup with
+ * html (its import, SafeHtml types, String(output) in the sample tests) added about 4 KB, for 1,338,640.
+ * 1.345 MB: server-script-unescaped-markup in build scripts and Node modules, and hand-written-html-escaper
+ * (tools/linter.md, testing/troubleshooting.md and the pages that point to them, about 11 KB of text).
+ * 1.36 MB: TypeScript checks of type="text/typescript" blocks, documented on the VS Code extension, linter and
+ * CLI pages (errors, --typescript, imports in script tags; about 20 KB of text).
+ * 1.39 MB: all of the above merged (the trial fixes, the build-code lint, the editor linter config and
+ * TypeScript blocks) measures 1,386,661 bytes.
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_390_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

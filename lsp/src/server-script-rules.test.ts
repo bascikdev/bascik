@@ -266,20 +266,16 @@ describe("Server Script Diagnostics", () => {
       }
     });
 
-    it("does not apply server-specific import or sink rules to build or routes", () => {
+    it("does not apply the server import rule to build or routes, but does report unescaped markup", () => {
       const body = `import { escapeHtml } from '@bascik/bascik';
 export default async () => \`<a href="\${request.query}"></a>\`;`;
-      const diagsBuild = analyzeServerScriptSource(body, {
-        hasSrcAttribute: false,
-        directive: "build",
-      });
-      expect(diagsBuild.length).toBe(0);
-
-      const diagsRoutes = analyzeServerScriptSource(body, {
-        hasSrcAttribute: false,
-        directive: "routes",
-      });
-      expect(diagsRoutes.length).toBe(0);
+      for (const directive of ["build", "routes"] as const) {
+        const codes = analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive,
+        }).map((d) => d.code);
+        expect(codes, directive).toEqual(["server-script-unescaped-markup"]);
+      }
     });
   });
 
@@ -608,5 +604,31 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
         expect(() => responseDiags(body)).not.toThrow();
       expect(responseDiags("export default async function (").length).toBe(0);
     });
+  });
+});
+
+describe("project import names", () => {
+  const analyze = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "server",
+    });
+
+  it("reads a long import clause that never reaches a from in linear time", () => {
+    // The former clause pattern backtracked quadratically on this text before giving up.
+    const body = `import ${"{{|".repeat(20_000)}\nexport default () => "";`;
+    expect(analyze(body).map((d) => d.code)).not.toContain(
+      "server-script-missing-default-export",
+    );
+  });
+
+  it("reads a long run of white space inside an import clause in linear time", () => {
+    const body = `import {${"\t".repeat(20_000)}card${"\t".repeat(20_000)}} from "./card.js";\nexport default () => card(1);`;
+    expect(() => analyze(body)).not.toThrow();
+  });
+
+  it("misuse: an import clause broken by a quote or semicolon binds no helper", () => {
+    const body = `import { card ; } from "./card.js";\nexport default () => card(1);`;
+    expect(() => analyze(body)).not.toThrow();
   });
 });

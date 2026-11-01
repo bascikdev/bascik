@@ -1,0 +1,10 @@
+<p>Milk frother API</p>
+<script type="text/typescript" data-bascik-server>
+  import { frotherSettings } from "@/lib/frother-settings.ts";
+  export default async function (request, context) {
+    console.log(frotherSettings.rpm, process.cwd());
+    setTimeout(() => {}, 1);
+    const url = new URL(request.url);
+    return url.pathname + context.remoteIp;
+  }
+</script>

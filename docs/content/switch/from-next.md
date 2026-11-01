@@ -217,7 +217,7 @@ See [Passing Data to Client Scripts](/build-scripts#passing-data-to-client-scrip
 
 ### Escaping and Shared Helpers
 
-Move the code that turns data into markup into `src/lib/*.ts` helpers that return `html` values, and import them with the `@/` alias from any page. Two rules differ from Next.js:
+Move the code that turns data into markup into `.ts` helpers that return `html` values. A helper or data module that one component or page uses sits beside it, in that component's folder or next to the page, and is imported with `./`; only a helper several components or pages share goes in `src/lib/`, imported with the `@/` alias. See [Component Best Practices](/component-best-practices). Two rules differ from Next.js:
 
 - **`@/` works only in the script tag.** Bascik resolves `@/lib/x.ts` inside `<script data-bascik-build>`. A helper file is run by Node as-is, so tsconfig `paths` do not apply there: a helper that imports another helper uses a relative path with its extension (`./site.ts`), and a type-only import must be `import type`.
 - **Build markup with `html`.** JSX escapes text for you; a plain template string does not. The `html` tagged template from `@bascik/bascik/html` escapes every interpolated value for where it lands, text or attribute, and blocks `javascript:` URLs. A helper that returns it declares `SafeHtml`. See [HTML Helpers](/html-helpers).
@@ -342,7 +342,7 @@ Handlers run in-process on the production server (`bascik --server`) or during l
 ## CSS Modules & Tailwind CSS
 
 - **CSS Modules:** Create a plain `.css` file alongside the component HTML (e.g. `src/components/card/card.css`). Replace `className={styles.foo}` with `class="foo"`. Bascik scopes class names at build time without requiring PostCSS or Webpack configuration. A rule such as `.markdown h2` matches only `h2` elements written in the component's template; to style HTML passed through a slot, such as rendered Markdown, write `.markdown :is(h2)`.
-- **Tailwind CSS:** Keep your Tailwind classes and run Tailwind as a `pipeline.exec` script with `phase: 'pre'` that writes the stylesheet into `BASCIK_OUT_DIR`, then link it from the head. Point Tailwind's `content` at `src/**/*.html` and at any `src/lib` helpers that return markup. Bascik leaves a class unscoped when the component's own stylesheet does not define it, so Tailwind utilities and a `dark` class toggled on `<html>` keep matching without `scoping.attributes.class: false`. `@apply` in a component's `.css` file is not processed, because Bascik does not run Tailwind on component stylesheets; write the CSS out or keep `@apply` in the Tailwind input file. See [Libraries](/libraries#tailwind-css) for the CDN option.
+- **Tailwind CSS:** Keep your Tailwind classes and run Tailwind as a `pipeline.exec` script with `phase: 'pre'` that writes the stylesheet into `BASCIK_OUT_DIR`, then link it from the head. Point Tailwind's `content` at `src/**/*.{html,ts}`, which covers component files and the markup helpers beside them as well as shared ones in `src/lib/`. Bascik leaves a class unscoped when the component's own stylesheet does not define it, so Tailwind utilities and a `dark` class toggled on `<html>` keep matching without `scoping.attributes.class: false`. `@apply` in a component's `.css` file is not processed, because Bascik does not run Tailwind on component stylesheets; write the CSS out or keep `@apply` in the Tailwind input file. See [Libraries](/libraries#tailwind-css) for the CDN option.
 
 ## TypeScript in Bascik
 

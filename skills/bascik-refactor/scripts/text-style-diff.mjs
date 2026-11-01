@@ -9,6 +9,7 @@
 // only shows when something hovers.
 import { inPage } from "./lib/dom.mjs";
 import {
+  byKeyMatch,
   casesOf,
   finding,
   masksOf,
@@ -20,6 +21,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "text-style-diff";
 
@@ -94,8 +96,10 @@ function canonical(property, value) {
  */
 export function diffTextStyles(prod, target) {
   const findings = [];
+  // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
+  const targets = byKeyMatch(target);
   for (const [key, states] of Object.entries(prod)) {
-    const other = target[key];
+    const other = targets.get(key);
     if (!other) {
       findings.push(
         finding(
@@ -145,8 +149,8 @@ function textElements(arg) {
     );
     if (!own || !isRendered(el) || isMasked(el, arg.masks)) continue;
     const base = textKey(el);
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
+    const n = (seen.get(matchKeyInPage(base)) ?? 0) + 1;
+    seen.set(matchKeyInPage(base), n);
     const ancestors = [];
     for (
       let a = el.parentElement;
@@ -277,7 +281,9 @@ export async function runCheck(browser, options) {
           settleOf(options),
         );
       const [prod, target] = await Promise.all([
-        capture(options.prod),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          capture(options.prod),
+        ),
         capture(options.target),
       ]);
       for (const f of diffTextStyles(prod, target))

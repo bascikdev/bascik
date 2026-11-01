@@ -3,18 +3,19 @@
   <head>
     <site-head />
     <script data-bascik-build type="text/typescript">
+      import { html } from "@bascik/bascik/html";
       import { seo, jsonLd, breadcrumbList } from "@/lib/seo.ts";
-      export default () =>
-        [
-          seo({
-            title: "About - Example Site",
-            description:
-              "Who runs Example Site, what we build, and how to get in touch with the team.",
-          }),
-          jsonLd(
-            breadcrumbList([{ name: "Home", path: "/" }, { name: "About" }]),
-          ),
-        ].join("\n");
+      export default () => {
+        const tags = seo({
+          title: "About - Example Site",
+          description:
+            "Who runs Example Site, what we build, and how to get in touch with the team.",
+        });
+        const breadcrumbs = jsonLd(
+          breadcrumbList([{ name: "Home", path: "/" }, { name: "About" }]),
+        );
+        return html`${tags}${breadcrumbs}`;
+      };
     </script>
   </head>
 

@@ -1,0 +1,78 @@
+{
+  "scopeName": "bascik.html.typescript-script.injection",
+  "injectionSelector": "L:text.html.derivative meta.embedded.block.html - meta.tag - source - string - comment - meta.script.typescript.bascik",
+  "comment": "Embeds VS Code's TypeScript grammar in <script type=\"text/typescript\">, which VS Code's HTML grammar leaves as source.unknown. It takes over where that grammar starts its unknown-type branch: at the type attribute, after the attributes before it. The structure mirrors the HTML grammar's JavaScript embedding, including how a comment ends at </script>. The rule's contentName keeps the injection from matching again inside it.",
+  "patterns": [
+    {
+      "begin": "(?:^|(?<=\\s))(?=(?i:type)\\s*=\\s*(?:\"\\s*(?i:text/typescript)\\s*\"|'\\s*(?i:text/typescript)\\s*'|(?i:text/typescript)(?=[\\s>]|$)))",
+      "end": "(<)(?=/(?i:script))",
+      "endCaptures": {
+        "0": {
+          "name": "meta.tag.metadata.script.end.html"
+        },
+        "1": {
+          "name": "punctuation.definition.tag.begin.html"
+        }
+      },
+      "contentName": "meta.script.typescript.bascik",
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(>)",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.end.html"
+            }
+          },
+          "name": "meta.tag.metadata.script.start.html",
+          "patterns": [
+            {
+              "include": "text.html.basic#attribute"
+            }
+          ]
+        },
+        {
+          "begin": "(?!\\G)",
+          "end": "(?=</(?i:script))",
+          "name": "source.ts",
+          "patterns": [
+            {
+              "begin": "(^[ \\t]+)?(?=//)",
+              "beginCaptures": {
+                "1": {
+                  "name": "punctuation.whitespace.comment.leading.ts"
+                }
+              },
+              "end": "(?!\\G)",
+              "patterns": [
+                {
+                  "begin": "//",
+                  "beginCaptures": {
+                    "0": {
+                      "name": "punctuation.definition.comment.ts"
+                    }
+                  },
+                  "end": "(?=</(?i:script))|\\n",
+                  "name": "comment.line.double-slash.ts"
+                }
+              ]
+            },
+            {
+              "begin": "/\\*",
+              "captures": {
+                "0": {
+                  "name": "punctuation.definition.comment.ts"
+                }
+              },
+              "end": "\\*/|(?=</(?i:script))",
+              "name": "comment.block.ts"
+            },
+            {
+              "include": "source.ts"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

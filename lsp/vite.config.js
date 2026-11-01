@@ -24,6 +24,9 @@ export default defineConfig({
           // them once, on Linux, beside the integration tests.
           name: "linear-time",
           include: ["src/**/*.linear-time.test.ts"],
+          // One file at a time: two growth measurements sharing CI's two cores
+          // read 8.1 to 8.5 (limit 8) on linear work.
+          fileParallelism: false,
         },
       },
     ],

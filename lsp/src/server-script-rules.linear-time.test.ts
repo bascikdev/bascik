@@ -106,4 +106,23 @@ describe("Server Script Diagnostics: linear time", () => {
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
+
+  // projectImportNames reads each import forward only as far as a clause can reach.
+  it(
+    "misuse: a huge script of side-effect imports that never reach a from is scanned in linear time",
+    () => {
+      const importsOf = (n: number): string =>
+        `${'import "/x.js";\n'.repeat(n)}export default () => "";`;
+      const small = importsOf(4_000);
+      const large = importsOf(16_000);
+      analyze(large);
+      expect(
+        growthOf(
+          () => analyze(small),
+          () => analyze(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });

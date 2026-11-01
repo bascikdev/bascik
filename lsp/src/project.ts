@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
+import { findComponentUsages } from "./component-usages.js";
 import {
   analyzeComponentSource,
   type ComponentMetadata,
@@ -28,6 +29,11 @@ export interface ProjectSnapshot {
    * default, when every `name` ships as written.
    */
   scopesName?: boolean;
+  /**
+   * `scoping.scriptBlocks`: whether each client script block of a component is wrapped in its own function, so
+   * its top-level names stay in that block. On by default. Page scripts are never wrapped.
+   */
+  scopesScriptBlocks?: boolean;
 }
 
 /**
@@ -103,6 +109,91 @@ export function parseScopesName(source: string | undefined): boolean {
   const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
   if (!attributes) return false;
   return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
+}
+
+/** Reads `scoping.scriptBlocks` from the config source: on unless it is set to `false`. */
+export function parseScriptBlocks(source: string | undefined): boolean {
+  return !/(?<![\w$-])["']?scriptBlocks["']?\s*:\s*false\b/.test(
+    stripConfigComments(source),
+  );
+}
+
+/**
+ * Whether each client script block of an HTML file runs in its own scope: true in a component when
+ * `scoping.scriptBlocks` is on, where Bascik wraps every block in a function. A page's blocks, and a component's
+ * when the setting is off, become plain `<script>` elements that share the page's global scope.
+ */
+export function hasIsolatedClientBlocks(
+  fsPath: string,
+  snapshot: Pick<ProjectSnapshot, "componentRoots" | "scopesScriptBlocks">,
+): boolean {
+  return (
+    snapshot.scopesScriptBlocks !== false &&
+    isInsideComponentRoots(fsPath, snapshot.componentRoots)
+  );
+}
+
+/** A component's file and its current text (an open editor buffer's, when newer than the file on disk). */
+export interface ComponentSource {
+  fsPath: string;
+  text: string;
+}
+
+/**
+ * Every component a page uses, directly or through other components, with its file and text, whatever the script
+ * scoping. Each component appears once, in the order first used, and never the page itself. `readOpen` gives an
+ * open editor buffer's newer text.
+ */
+export function usedComponentSources(
+  fsPath: string,
+  text: string,
+  snapshot: Pick<ProjectSnapshot, "componentMap"> &
+    Partial<Pick<ProjectSnapshot, "componentSourceByFile">>,
+  readOpen: (fsPath: string) => string | undefined = () => undefined,
+): ComponentSource[] {
+  const names = new Set(snapshot.componentMap.keys());
+  const seen = new Set<string>([path.resolve(fsPath)]);
+  const found: ComponentSource[] = [];
+  const queue = [text];
+  while (queue.length > 0) {
+    const html = queue.shift()!;
+    for (const usage of findComponentUsages(html, names)) {
+      const componentPath = snapshot.componentMap.get(usage.name);
+      if (componentPath === undefined) continue;
+      const resolved = path.resolve(componentPath);
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      const source =
+        readOpen(componentPath) ??
+        snapshot.componentSourceByFile?.get(componentPath);
+      if (source === undefined) continue;
+      found.push({ fsPath: componentPath, text: source });
+      queue.push(source);
+    }
+  }
+  return found;
+}
+
+/**
+ * The HTML of every component a page uses, directly or through other components, whose client scripts run in the
+ * page's own scope: all of them when `scoping.scriptBlocks` is off, none otherwise (each component block is then
+ * wrapped in its own function). Each component appears once, in the order first used. `readOpen` gives an open
+ * editor buffer's newer text.
+ */
+export function pageScopeComponentHtml(
+  fsPath: string,
+  text: string,
+  snapshot: Pick<
+    ProjectSnapshot,
+    "componentRoots" | "scopesScriptBlocks" | "componentMap"
+  > &
+    Partial<Pick<ProjectSnapshot, "componentSourceByFile">>,
+  readOpen: (fsPath: string) => string | undefined = () => undefined,
+): string[] {
+  if (snapshot.scopesScriptBlocks !== false) return [];
+  return usedComponentSources(fsPath, text, snapshot, readOpen).map(
+    (component) => component.text,
+  );
 }
 
 /** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */
@@ -304,6 +395,7 @@ export async function buildSnapshot(
     htmlUsageByFile,
     componentSourceByFile,
     scopesName: parseScopesName(configSource),
+    scopesScriptBlocks: parseScriptBlocks(configSource),
   };
 }
 

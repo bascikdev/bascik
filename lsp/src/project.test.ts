@@ -9,8 +9,12 @@ import {
   parseImportRoot,
   parsePagesRoot,
   parseScopesName,
+  parseScriptBlocks,
+  hasIsolatedClientBlocks,
+  pageScopeComponentHtml,
   readConfigSource,
   resolveComponentRoots,
+  usedComponentSources,
 } from "./project.js";
 
 describe("resolveComponentRoots", () => {
@@ -124,6 +128,158 @@ describe("config readers skip commented-out settings, as the compiler does", () 
     );
     expect(parseComponentRoots(source)).toEqual(["src/parts"]);
     expect(parsePagesRoot(source)).toBe("site//pages");
+  });
+
+  it("reads scoping.scriptBlocks, on unless set to false outside a comment", () => {
+    expect(parseScriptBlocks(undefined)).toBe(true);
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlocks: true },")),
+    ).toBe(true);
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlocks: false },")),
+    ).toBe(false);
+    expect(
+      parseScriptBlocks(config('  scoping: { "scriptBlocks": false },')),
+    ).toBe(false);
+    expect(
+      parseScriptBlocks(config("  // scoping: { scriptBlocks: false },")),
+    ).toBe(true);
+    // misuse: a typo'd key is not the setting.
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlock: false },")),
+    ).toBe(true);
+  });
+
+  it("isolates client blocks only in components whose script blocks are scoped", () => {
+    const snapshot = {
+      componentRoots: ["/site/src/components"],
+      scopesScriptBlocks: true,
+    };
+    expect(
+      hasIsolatedClientBlocks("/site/src/components/card.html", snapshot),
+    ).toBe(true);
+    expect(
+      hasIsolatedClientBlocks("/site/src/pages/index.html", snapshot),
+    ).toBe(false);
+    expect(
+      hasIsolatedClientBlocks("/site/src/components/card.html", {
+        ...snapshot,
+        scopesScriptBlocks: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("finds the HTML of the components, nested ones too, whose scripts run in a page's scope", () => {
+    const button =
+      "<button>Milk frother</button><script>function startFrother() {}</script>";
+    const card = "<article><frother-button></frother-button></article>";
+    const unused = "<p>unused</p>";
+    const snapshot = {
+      componentRoots: ["/site/src/components"],
+      scopesScriptBlocks: false,
+      componentMap: new Map([
+        ["frother-card", "/site/src/components/frother-card.html"],
+        ["frother-button", "/site/src/components/frother-button.html"],
+        ["unused-card", "/site/src/components/unused-card.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/src/components/frother-card.html", card],
+        ["/site/src/components/frother-button.html", button],
+        ["/site/src/components/unused-card.html", unused],
+      ]),
+    };
+    const pageText =
+      "<frother-card></frother-card><frother-card></frother-card><!-- <unused-card></unused-card> -->";
+    expect(
+      pageScopeComponentHtml("/site/src/pages/index.html", pageText, snapshot),
+    ).toEqual([card, button]);
+    // An open buffer is newer than the file on disk.
+    expect(
+      pageScopeComponentHtml(
+        "/site/src/pages/index.html",
+        pageText,
+        snapshot,
+        (fsPath) =>
+          fsPath.endsWith("frother-button.html") ? "<b>edited</b>" : undefined,
+      ),
+    ).toEqual([card, "<b>edited</b>"]);
+    // A component that uses itself (or a cycle) ends.
+    const selfSnapshot = {
+      ...snapshot,
+      componentSourceByFile: new Map([
+        [
+          "/site/src/components/frother-card.html",
+          "<frother-card></frother-card>",
+        ],
+      ]),
+    };
+    expect(
+      pageScopeComponentHtml(
+        "/site/src/pages/index.html",
+        "<frother-card></frother-card>",
+        selfSnapshot,
+      ),
+    ).toEqual(["<frother-card></frother-card>"]);
+    // With script blocks scoped (the default), every component script runs in its own function.
+    expect(
+      pageScopeComponentHtml("/site/src/pages/index.html", pageText, {
+        ...snapshot,
+        scopesScriptBlocks: true,
+      }),
+    ).toEqual([]);
+    expect(
+      pageScopeComponentHtml("/site/src/pages/index.html", pageText, {
+        ...snapshot,
+        scopesScriptBlocks: undefined,
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds every component a page uses, nested ones too, with its path, whatever the script scoping", () => {
+    const button = "<button>Milk frother</button>";
+    const card = "<article><frother-button></frother-button></article>";
+    const snapshot = {
+      componentRoots: ["/site/src/components"],
+      scopesScriptBlocks: true,
+      componentMap: new Map([
+        ["frother-card", "/site/src/components/frother-card.html"],
+        ["frother-button", "/site/src/components/frother-button.html"],
+        ["unused-card", "/site/src/components/unused-card.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/src/components/frother-card.html", card],
+        ["/site/src/components/frother-button.html", button],
+        ["/site/src/components/unused-card.html", "<p>unused</p>"],
+      ]),
+    };
+    const expected = [
+      { fsPath: "/site/src/components/frother-card.html", text: card },
+      {
+        fsPath: "/site/src/components/frother-button.html",
+        text: "<b>edited</b>",
+      },
+    ];
+    const readOpen = (fsPath: string) =>
+      fsPath.endsWith("frother-button.html") ? "<b>edited</b>" : undefined;
+    for (const scopesScriptBlocks of [true, false, undefined]) {
+      const scoped = { ...snapshot, scopesScriptBlocks };
+      expect(
+        usedComponentSources(
+          "/site/src/pages/index.html",
+          "<frother-card></frother-card><frother-card />",
+          scoped,
+          readOpen,
+        ),
+      ).toEqual(expected);
+    }
+    // A component never lists itself.
+    expect(
+      usedComponentSources(
+        "/site/src/components/frother-button.html",
+        "<frother-button></frother-button>",
+        snapshot,
+      ),
+    ).toEqual([]);
   });
 
   it("reads the live setting after a commented copy of it", () => {

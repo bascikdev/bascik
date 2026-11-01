@@ -1,0 +1,7 @@
+<span data-testid="frother-analytics">Milk frother analytics</span>
+<script type="text/typescript">
+  interface Window {
+    frotherEvents: { event: string }[];
+  }
+  window.frotherEvents = window.frotherEvents || [];
+</script>
