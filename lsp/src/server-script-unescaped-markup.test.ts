@@ -1272,3 +1272,239 @@ describe("a hole that calls a project module's function gets no wrap fix (review
     ).toBe(true);
   });
 });
+
+describe("review round 3", () => {
+  const moduleDiags = (body: string, opts: Partial<AnalyzeOptions> = {}) =>
+    analyze(body, { directive: "module", ...opts }).filter(
+      (d) => d.code === RULE,
+    );
+  const moduleCovered = (body: string, opts: Partial<AnalyzeOptions> = {}) =>
+    moduleDiags(body, opts).map((d) => body.slice(d.start, d.end));
+  const XML_ESCAPER = `// Escape text for XML (the RSS feed and sitemap).\nfunction escapeXml(s: string): string {\n  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");\n}\n`;
+
+  describe("an XML hole that already holds XML is not told to escape it", () => {
+    it.each([
+      `export const rss = (items: { t: string }[]) => \`<?xml version="1.0"?><rss><channel>\${items.map((i) => \`<item><title>\${escapeXml(i.t)}</title></item>\`).join("\\n")}</channel></rss>\`;`,
+      `export const sitemap = (urls: string[]) => \`<?xml version="1.0"?>\n<urlset>\n\${urls.map((u) => \`  <url><loc>\${escapeXml(u)}</loc></url>\`).join("\\n")}\n</urlset>\`;`,
+      `export const atom = (items: { t: string }[]) => \`<feed>\${items.map((i) => \`<entry><title>\${escapeXml(i.t)}</title></entry>\`).join("")}</feed>\`;`,
+      `export const atom = (entries: string[]) => \`<feed>\${entries.join("")}</feed>\`;`,
+      `export const atom = (items: { t: string }[]) => {\n  const body = items.map((i) => \`<entry><title>\${escapeXml(i.t)}</title></entry>\`).join("");\n  return \`<feed>\${body}</feed>\`;\n};`,
+      `export const doc = (t: string) => \`<?xml version="1.0"?><list>\${\`<i>\${escapeXml(t)}</i>\`}</list>\`;`,
+    ])("%s", (code) => {
+      expect(moduleDiags(XML_ESCAPER + code)).toEqual([]);
+    });
+
+    it("a template nested in an XML template is XML too, so its own holes get the XML advice", () => {
+      const body = `export const doc = (items: { t: string }[]) => \`<?xml version="1.0"?><list>\${items.map((i) => \`<i>\${i.t}</i>\`).join("")}</list>\`;`;
+      const diags = moduleDiags(body);
+      expect(diags.map((d) => body.slice(d.start, d.end))).toEqual(["${i.t}"]);
+      expect(diags[0].message).toContain("This XML template");
+      expect(diags[0].template?.fixable).toBe(false);
+    });
+
+    it("in a server script, an inner template's own hole is reported, not the outer hole", () => {
+      const body = handler(
+        '`<?xml version="1.0"?><urlset>${`<b>${q}</b>`}</urlset>`',
+      );
+      expect(covered(body)).toEqual(["${q}"]);
+    });
+
+    it("a plain value in an XML template still gets the XML advice", () => {
+      const body = `export const f = (d: string) => \`<rss><channel><pubDate>\${d}</pubDate></channel></rss>\`;`;
+      expect(moduleCovered(body)).toEqual(["${d}"]);
+    });
+  });
+
+  it("a sitemap index's <sitemap> template is XML; the docs' list of first tags matches the code", () => {
+    for (const first of [
+      "sitemap",
+      "sitemapindex",
+      "loc",
+      "urlset",
+      "url",
+      "rss",
+      "feed",
+      "channel",
+      "item",
+      "entry",
+    ]) {
+      const body = `export const t = (u: string) => \`<${first}><b>\${u}</b></${first}>\`;`;
+      const diags = moduleDiags(body);
+      expect(diags, first).toHaveLength(1);
+      expect(diags[0].message, first).toContain("This XML template");
+      expect(diags[0].template?.fixable, first).toBe(false);
+    }
+  });
+
+  describe("a template that searches rendered HTML is a pattern, not markup output", () => {
+    it.each([
+      "page.includes(`<h1>${title}</h1>`)",
+      'page.indexOf(`<section id="${id}">`)',
+      'page.lastIndexOf(`<section id="${id}">`)',
+      'page.split(`<hr class="${id}">`)',
+      'page.startsWith(`<h2 id="${id}">`)',
+      'page.search(`<h2 id="${id}">`)',
+      'page.match(`<h2 id="${id}">`)',
+      'new RegExp(`<h2 id="${id}">`)',
+      'RegExp(`<h2 id="${id}">`, "g")',
+      'page.replace(`<h2 id="${id}">`, "<h2>")',
+      'page.replaceAll(\n  `<h2 id="${id}">`,\n  "<h2>",\n)',
+    ])("%s", (expr) => {
+      expect(
+        moduleCovered(
+          `export const f = (page: string, title: string, id: string) => ${expr};`,
+        ),
+      ).toEqual([]);
+      expect(
+        covered(handler(expr.replace(/\$\{(?:title|id)\}/g, "${q}"))),
+      ).toEqual([]);
+    });
+
+    it("the replacement argument of .replace() is still output", () => {
+      const body = `export const f = (page: string, id: string) => page.replace(\`<h2 id="\${id}">\`, \`<h2 id="\${id}" tabindex="-1">\`);`;
+      const diags = moduleDiags(body);
+      expect(diags).toHaveLength(1);
+      expect(diags[0].start).toBe(body.lastIndexOf("${id}"));
+    });
+  });
+
+  describe("build-time messages that name elements", () => {
+    it.each([
+      "out.push(`Found <p> inside <button> in ${file}`);",
+      "out.push(`Unclosed <ul> in ${file}`);",
+      "const report = { message: `Unclosed <ul> in ${file}` };",
+      "const report = { error: `<head> must contain <meta charset> (${file})` };",
+      "class LintError extends Error {\n  constructor(file: string) {\n    super(`<head> must contain <meta charset> (${file})`);\n  }\n}",
+      "class LintError extends errors.BuildError {\n  constructor(file: string) {\n    super(`Unclosed <ul> in ${file}`);\n  }\n}",
+    ])("%s", (code) => {
+      expect(moduleCovered(`const file = process.argv[2];\n${code}`)).toEqual(
+        [],
+      );
+    });
+
+    it("a super() call in a class that is no Error is still checked", () => {
+      expect(
+        moduleCovered(
+          "class Card extends Base {\n  constructor(t: string) {\n    super(`<p>${t}</p>`);\n  }\n}",
+        ),
+      ).toEqual(["${t}"]);
+    });
+
+    it("a bare tag that starts the template or follows a tag or hole is still markup", () => {
+      expect(
+        moduleCovered(
+          "export const a = (t: string) => `<li>${t}`;\nexport const b = (t: string, u: string) => `${t}<br>${u}`;\nexport const c = (t: string) => `\n  <p>\n    ${t}`;\nexport const d = (t: string) => `<ul><li>${t}`;",
+        ),
+      ).toEqual(["${t}", "${t}", "${u}", "${t}", "${t}"]);
+    });
+  });
+
+  describe("a tag name made from a hole", () => {
+    it("a generic element builder in build code: the other holes get esc() advice and no fix", () => {
+      const body =
+        'export function el(tag: string, cls: string, content: string): string {\n  return `<${tag} class="${cls}">${content}</${tag}>`;\n}';
+      const diags = moduleDiags(body);
+      expect(diags.map((d) => body.slice(d.start, d.end))).toEqual([
+        "${cls}",
+        "${content}",
+      ]);
+      expect(diags[0].message).toContain("esc()");
+      expect(diags[0].template?.fixable).toBe(false);
+    });
+
+    it("a request value in such a template is reported in a server script", () => {
+      const body = handler(
+        '`<${q.length > 3 ? "h1" : "h2"} class="x">${q}</${q.length > 3 ? "h1" : "h2"}>`',
+      );
+      expect(covered(body)).toEqual(["${q}"]);
+      const named = handler('`<${q} class="x">x</${q}>`');
+      const diags = unescaped(named);
+      expect(diags).toHaveLength(2);
+      expect(diags[0].message).toContain("choose between fixed names");
+    });
+
+    it("an element builder with a hole-only start and end tag counts; a message that names a tag does not", () => {
+      expect(
+        moduleCovered(
+          "export const el = (tag: string, c: string) => `<${tag}>${c}</${tag}>`;",
+        ),
+      ).toEqual(["${c}"]);
+      expect(
+        moduleCovered(
+          "const tag = process.argv[2]; const file = process.argv[3];\nconsole.log(1);\nexport const m = `<${tag}> needs a src attribute in ${file}`;",
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  describe("a joined hole and a local markup helper withhold the fix with advice that works", () => {
+    it('a joined hole names the inner templates, .join("") and the array', () => {
+      const body =
+        'export const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;';
+      const diags = moduleDiags(IMPORT + body);
+      expect(diags).toHaveLength(1);
+      expect(diags[0].template?.fixable).toBe(false);
+      expect(diags[0].message).toContain("Wrap the inner templates in html");
+      expect(diags[0].message).toContain('drop .join("")');
+      expect(diags[0].message).toContain("pass the array");
+    });
+
+    it.each([
+      "function card(t: string) {\n  return `<em>${esc(t)}</em>`;\n}\nexport default (name: string) => {\n  const c = card(name);\n  return `<section>${c}<p>${name}</p></section>`;\n};",
+      "const item = (t: string) => `<li>${esc(t)}</li>`;\nexport const list = (title: string) => `<ul>${item(title)}</ul>`;",
+      "const item = (t: string) =>\n  `<li>${esc(t)}</li>`;\nexport const list = (title: string) => `<ul>${item(title)}</ul>`;",
+      "export default () => {\n  const statusIcon = ({ label }: { label: string }) =>\n    `<span>${esc(label)}</span>`;\n  return (m: string) => `<td>${statusIcon({ label: m })}</td>`;\n};",
+    ])("%s", (code) => {
+      const diags = moduleDiags(IMPORT + code);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(diags.every((d) => d.template?.fixable === false)).toBe(true);
+      expect(
+        diags.some((d) => /\(\) builds markup as a string/.test(d.message)),
+      ).toBe(true);
+    });
+
+    it("a local helper that builds its markup with html keeps the fix", () => {
+      const diags = moduleDiags(
+        IMPORT +
+          "const item = (t: string) => html`<li>${t}</li>`;\nexport const list = (title: string, x: string) => `<ul>${item(title)}${x}</ul>`;",
+      );
+      expect(diags.every((d) => d.template?.fixable === true)).toBe(true);
+    });
+
+    it("a hole holding a markup string literal (a const or an object property) withholds the fix", () => {
+      const viaConst = moduleDiags(
+        "const icon = '<svg><path d=\"M0 0\" /></svg>';\nexport const a = (t: string) => `<a>${icon}${t}</a>`;",
+      );
+      expect(viaConst).toHaveLength(1);
+      expect(viaConst[0].template?.fixable).toBe(false);
+      const viaProperty = moduleDiags(
+        'const statuses = { ok: { shape: \'<path d="m5 12 4 4L19 6" />\' } };\nexport const a = ({ label, shape }: { label: string; shape: string }) => `<svg aria-label="${label}">${shape}</svg>`;',
+      );
+      expect(viaProperty.every((d) => d.template?.fixable === false)).toBe(
+        true,
+      );
+    });
+  });
+});
+
+describe("a long alias chain does not overflow the stack (review round 3)", () => {
+  it("3000 aliases: the analysis finishes, and a chain past the bound counts as not fine", () => {
+    const chain = (n: number) =>
+      "const a0 = 'x';\n" +
+      Array.from({ length: n }, (_, i) => `const a${i + 1} = a${i};\n`).join(
+        "",
+      ) +
+      `export const t = \`<p>\${a${n}}</p>\`;\n`;
+    expect(() => analyze(chain(3_000), { directive: "module" })).not.toThrow();
+    expect(
+      analyze(chain(3_000), { directive: "module" }).filter(
+        (d) => d.code === RULE,
+      ),
+    ).toHaveLength(1);
+    expect(
+      analyze(chain(20), { directive: "module" }).filter(
+        (d) => d.code === RULE,
+      ),
+    ).toEqual([]);
+  });
+});

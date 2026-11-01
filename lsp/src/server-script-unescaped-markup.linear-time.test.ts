@@ -135,6 +135,29 @@ describe("build-time code and Node modules: linear time (review round 2)", () =>
   );
 
   it(
+    "a local name declared in every function is read once, not once per hole (CPU growth under 8x for 4x the functions; review round 3)",
+    () => {
+      // findBindings collects every `const count` in the module, and each
+      // `${count}` hole once checked all of them: 2000 helpers took 8.5 s.
+      const helper = (i: number) =>
+        `export function card${i}(items: string[], done: number) {\n  const count = items.length;\n  const pct = Math.round((done / count) * 100);\n  return \`<p class="progress">\${count} items, \${pct}%</p>\`;\n}\n`;
+      const module = (n: number) =>
+        Array.from({ length: n }, (_, i) => helper(i)).join("");
+      expect(analyzeModule(module(250)).filter((d) => d.code === RULE)).toEqual(
+        [],
+      );
+      expect(growthOfModules(module(500), module(2_000))).toBeLessThan(8);
+      const division = (n: number) =>
+        "const r = a / b; const h = `<p>${r}</p>`;\n".repeat(n);
+      expect(growthOfModules(division(1_000), division(4_000))).toBeLessThan(8);
+      const regex = (n: number) =>
+        "const r = /`/; const h = `<p>${r}</p>`;\n".repeat(n);
+      expect(growthOfModules(regex(1_000), regex(4_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
     "templates nested in each other's holes read in linear time (CPU growth under 8x for 4x the depth)",
     () => {
       const nested = (n: number) =>

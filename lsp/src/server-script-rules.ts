@@ -1,4 +1,4 @@
-import { findModuleSpecifiers } from "./module-specifiers.js";
+import { findModuleSpecifiers, scanJavaScript } from "./module-specifiers.js";
 import {
   HAND_WRITTEN_ESCAPER_RULE,
   findHandWrittenEscapers,
@@ -13,7 +13,9 @@ import {
   htmlTagNames,
   isExempt,
   isMessageArgument,
+  isPatternArgument,
   isEscapedJson,
+  newNameMemo,
   looksLikeMarkup,
   parseImportSpecifier,
   markupInCode,
@@ -326,6 +328,7 @@ export function analyzeServerScriptSource(
     htmlTags: htmlTagNames(imports),
     escapeFunctions: [...(opts.escapeFunctions ?? []), ...xmlEscapers],
     bindings: findBindings(body),
+    memo: newNameMemo(),
   };
   const lineStarts = [0];
   for (let i = body.indexOf("\n"); i !== -1; i = body.indexOf("\n", i + 1))
@@ -345,6 +348,71 @@ export function analyzeServerScriptSource(
   const projectNames = projectImportNames(body);
   const literals = findTemplateLiterals(body);
   const literalAt = new Map(literals.map((l) => [l.start, l]));
+  const errorClasses = classesBefore(body);
+  // Which literals are markup the code writes, read once: the markup
+  // rule, local helpers and XML nesting all ask.
+  const markupLikeOf = literals.map((literal) => {
+    const isHtml = literal.tag !== null && ctx.htmlTags.includes(literal.tag);
+    // SQL, URLs and plain text: `WHERE id = ${id}` is not an attribute.
+    // Build-time code also holds CLI text and generated TypeScript, so it
+    // needs an element name, an end tag or an attribute.
+    return (
+      isHtml ||
+      (requestTime
+        ? looksLikeMarkup(literal.parts)
+        : markupInCode(literal.parts))
+    );
+  });
+  const markupOf = literals.map((literal, k) => {
+    // String.raw and common-tags style tags join their values as they are.
+    const plainTag = literal.tag !== null && PLAIN_STRING_TAGS.has(literal.tag);
+    return (
+      !opts.hasSrcAttribute &&
+      (literal.tag === null || plainTag) &&
+      markupLikeOf[k] &&
+      !isMessageArgument(body, literal.start) &&
+      !isPatternArgument(body, literal.start) &&
+      !errorSuperArgument(body, literal.start, errorClasses)
+    );
+  });
+  // Literals are in source order, outer before nested, so the literal
+  // whose hole holds this one is on a stack of the ones still open.
+  const literalStarts = literals.map((l) => l.start);
+  const markupCount = [0];
+  for (const m of markupOf)
+    markupCount.push(markupCount[markupCount.length - 1] + (m ? 1 : 0));
+  /** Whether a markup literal starts between `from` and `to`. */
+  const markupWithin = (from: number, to: number): boolean =>
+    markupCount[firstAtOrAfter(literalStarts, to)] -
+      markupCount[firstAtOrAfter(literalStarts, from)] >
+    0;
+  // Local functions that build a markup string: a hole that calls one
+  // holds markup, which wrapping the template in html would escape.
+  const localHelpers = new Set<string>();
+  for (const fn of localFunctions(body)) {
+    if (markupWithin(fn.start, fn.end)) localHelpers.add(fn.name);
+  }
+  const markupStrings = markupStringNames(body);
+  const helperMemo = new Map<string, string | undefined>();
+  const localHelperMemo = new Map<string, string | undefined>();
+  const builtMemo = new Map<string, boolean>();
+  /** A hole that holds markup already built as a string: joined, a nested template, or a name bound to one. */
+  const holdsBuiltMarkup = (hole: TemplateHole): boolean => {
+    if (isJoined(hole.expr, joined)) return true;
+    if (markupWithin(hole.start + 1, hole.end)) return true;
+    const name = hole.expr.trim();
+    if (!/^[\w$]+$/.test(name)) return false;
+    let known = builtMemo.get(name);
+    if (known === undefined) {
+      known = (ctx.bindings.get(name) ?? []).some((value) =>
+        /^\s*`/.test(value),
+      );
+      builtMemo.set(name, known);
+    }
+    return known;
+  };
+  const xmlOf: boolean[] = [];
+  const open: number[] = [];
   /**
    * The untagged template a hole holds whole (`${`<li>${x}</li>`}`), found
    * by offset: its holes are checked as its own, so the outer hole is fine
@@ -360,27 +428,27 @@ export function analyzeServerScriptSource(
     while (j < hole.end - 1 && /\s/.test(body[j])) j++;
     return j === hole.end - 1 && body[j] === "}" ? inner : undefined;
   };
-  for (const literal of literals) {
+  for (let k = 0; k < literals.length; k++) {
+    const literal = literals[k];
     const isHtml = literal.tag !== null && ctx.htmlTags.includes(literal.tag);
-    // SQL, URLs and plain text: `WHERE id = ${id}` is not an attribute.
-    // Build-time code also holds CLI text and generated TypeScript, so it
-    // needs an element name, an end tag or an attribute.
-    const markupLike =
-      isHtml ||
-      (requestTime
-        ? looksLikeMarkup(literal.parts)
-        : markupInCode(literal.parts));
-    // String.raw and common-tags style tags join their values as they are.
+    const markupLike = markupLikeOf[k];
     const plainTag = literal.tag !== null && PLAIN_STRING_TAGS.has(literal.tag);
-    const markup =
-      !opts.hasSrcAttribute &&
-      (literal.tag === null || plainTag) &&
-      markupLike &&
-      !isMessageArgument(body, literal.start);
+    const markup = markupOf[k];
+    while (
+      open.length > 0 &&
+      literals[open[open.length - 1]].end <= literal.start
+    )
+      open.pop();
+    const parent = open.length > 0 ? open[open.length - 1] : -1;
+    open.push(k);
     const pending: ServerScriptDiagnostic[] = [];
-    // An XML document or fragment (a sitemap, an RSS or Atom feed): html
-    // builds HTML, so it gets esc() advice and no fix.
-    const xml = markup && XML_TEMPLATE.test(literal.parts[0]);
+    // An XML document or fragment (a sitemap, an RSS or Atom feed), or a
+    // template nested in one's holes: html builds HTML, so it gets esc()
+    // advice and no fix.
+    const xml =
+      markup &&
+      (XML_TEMPLATE.test(literal.parts[0]) || (parent !== -1 && xmlOf[parent]));
+    xmlOf[k] = xml;
     // Where each hole lands, read once for the whole template.
     const scanned = scanTemplateHtml(literal.parts);
     // The fix puts html before the backtick, so a tagged template and one
@@ -398,6 +466,13 @@ export function analyzeServerScriptSource(
       const shown = quoteHole(hole.expr);
       // A placeholder inside a <!-- --> comment within the literal is skipped.
       if (context.kind === "comment") continue;
+      // A name set to a markup string in this file (`icon = '<svg>...'`,
+      // `shape: '<path ... />'`): wrapping would escape it, fine or not.
+      const markupString =
+        !isHtml && !xml && markup
+          ? markupStringIn(hole.expr, markupStrings)
+          : undefined;
+      if (markupString !== undefined) fixable = false;
       // A fragment that has opened no tag yet (` href="${u}"`) is read the
       // old way, over a bounded stretch of text before the hole.
       const found =
@@ -532,6 +607,10 @@ export function analyzeServerScriptSource(
         if (xml) {
           // Any entity escaper is right for XML text and quoted values.
           if (escaper !== undefined) continue;
+          // Markup built already (a joined list of <item>s, a nested
+          // template, a name bound to one): its own templates are checked
+          // as XML, and escaping it again would show its tags as text.
+          if (holdsBuiltMarkup(hole)) continue;
           pending.push({
             code: UNESCAPED_MARKUP_RULE,
             message: `This XML template (line ${lineOf(literal.start)}) interpolates ${shown} (hole ${hole.index}) without escaping. html\`...\` builds HTML, not XML, so escape the value with esc() from @bascik/bascik/html (its entities are valid XML too), or with an XML escaper that has a comment saying it is for XML.`,
@@ -552,13 +631,41 @@ export function analyzeServerScriptSource(
         // which html would escape: the page would show its tags as text.
         const helper =
           escaper === undefined && inner === undefined
-            ? projectHelperIn(hole.expr, projectNames, ctx.bindings)
+            ? projectHelperIn(hole.expr, projectNames, ctx.bindings, helperMemo)
             : undefined;
         if (helper !== undefined) {
           fixable = false;
           pending.push({
             code: UNESCAPED_MARKUP_RULE,
             message: `${head} ${helper}() comes from a project module: if it returns markup as a string, wrapping this template in html would show its tags as text. Build that function's markup with html\`...\` first, since html inserts an html value as it is, then wrap this template.`,
+            severity: "warning",
+            ...at,
+          });
+          continue;
+        }
+        const localHelper =
+          escaper === undefined && inner === undefined
+            ? projectHelperIn(
+                hole.expr,
+                localHelpers,
+                ctx.bindings,
+                localHelperMemo,
+              )
+            : undefined;
+        if (localHelper !== undefined) {
+          fixable = false;
+          pending.push({
+            code: UNESCAPED_MARKUP_RULE,
+            message: `${head} ${localHelper}() builds markup as a string in this file, so wrapping this template in html would show its tags as text. Build that function's markup with html\`...\` first, since html inserts an html value as it is, then wrap this template.`,
+            severity: "warning",
+            ...at,
+          });
+          continue;
+        }
+        if (markupString !== undefined) {
+          pending.push({
+            code: UNESCAPED_MARKUP_RULE,
+            message: `${head} ${markupString} is set to a markup string in this file, so wrapping this template in html would show its tags as text. Make that value an html\`...\` value first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template.`,
             severity: "warning",
             ...at,
           });
@@ -581,7 +688,9 @@ export function analyzeServerScriptSource(
           message =
             escaper !== undefined
               ? `${head} ${escaper.name}() looks like a hand-written escaper, and html escapes too, so wrapping this template in html would show &amp;lt; on the page. Wrap it in html\`...\` and pass the value as it is: \${${escaper.args}}. If ${escaper.name}() is a trusted escaper, list it in diagnostics.escapeFunctions.`
-              : `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`;
+              : inner === undefined && isJoined(hole.expr, joined)
+                ? `${head} It joins markup into one string, which html would escape, so wrapping only this template would show the inner tags as text. Wrap the inner templates in html\`...\`, drop .join(""), and pass the array; then wrap this template in html\`...\` from @bascik/bascik/html.`
+                : `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`;
         pending.push({
           code: UNESCAPED_MARKUP_RULE,
           message,
@@ -687,6 +796,7 @@ function projectHelperIn(
   expr: string,
   names: Set<string>,
   bindings: Map<string, string[]>,
+  memo: Map<string, string | undefined>,
 ): string | undefined {
   if (names.size === 0) return undefined;
   const find = (text: string): string | undefined => {
@@ -707,16 +817,268 @@ function projectHelperIn(
   if (direct !== undefined) return direct;
   const name = expr.trim();
   if (!/^[\w$]+$/.test(name)) return undefined;
+  // Read once per name: a name declared in many functions is not rescanned per hole.
+  if (memo.has(name)) return memo.get(name);
+  let found: string | undefined;
   for (const value of bindings.get(name) ?? []) {
-    const found = find(value);
-    if (found !== undefined) return found;
+    found = find(value);
+    if (found !== undefined) break;
   }
-  return undefined;
+  memo.set(name, found);
+  return found;
 }
+
+/** Index of the first value in ascending `values` that is at least `at`. */
+function firstAtOrAfter(values: readonly number[], at: number): number {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (values[mid] < at) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Each `class` keyword's offset, and whether that class extends an Error (`extends Error`, `extends errors.BuildError`). */
+function classesBefore(body: string): { at: number; error: boolean }[] {
+  const classes: { at: number; error: boolean }[] = [];
+  for (const m of body.matchAll(
+    /\bclass\b(?:\s+[\w$]+)?(?:\s+extends\s+([\w$.]+))?/g,
+  ))
+    classes.push({ at: m.index, error: /Error$/.test(m[1] ?? "") });
+  return classes;
+}
+
+/** Whether a literal is the argument of super() in the class (the last one before it) that extends an Error. */
+function errorSuperArgument(
+  body: string,
+  start: number,
+  classes: readonly { at: number; error: boolean }[],
+): boolean {
+  if (!/\bsuper\s*\(\s*$/.test(body.slice(Math.max(0, start - 40), start)))
+    return false;
+  const k = firstAtOrAfter(
+    classes.map((c) => c.at),
+    start,
+  );
+  return k > 0 && classes[k - 1].error;
+}
+
+/**
+ * Names set to a string with a tag in it, as a binding or a property
+ * (`const icon = '<svg>...'`, `shape: '<path d="..." />'`).
+ */
+function markupStringNames(body: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of body.matchAll(
+    /(?<![\w$.])([\w$]+)\s*(?::|=(?![=>]))\s*(["'`])\s*<[a-zA-Z]/g,
+  ))
+    names.add(m[1]);
+  return names;
+}
+
+/** The name a hole reads (`shape`, `statuses[m].shape`) when it is set to a markup string, or undefined. */
+function markupStringIn(expr: string, names: Set<string>): string | undefined {
+  if (names.size === 0) return undefined;
+  const e = expr.trim();
+  if (!/^[\w$]+(?:\??\.[\w$]+|\[[^\]\[]*\])*$/.test(e)) return undefined;
+  const last = /([\w$]+)$/.exec(e);
+  return last && names.has(last[1]) ? e : undefined;
+}
+
+/**
+ * The functions defined in a script with the span of their code: function
+ * declarations, methods, and functions or arrows bound to a name or a
+ * property. An arrow with an expression body runs to the next `;` or `,`
+ * at its own depth, or the bracket around it. One pass over the tokens.
+ */
+function localFunctions(
+  body: string,
+): { name: string; start: number; end: number }[] {
+  const { tokens } = scanJavaScript(body);
+  const n = tokens.length;
+  const punct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  const word = (k: number, v?: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "identifier" &&
+    (v === undefined || tokens[k].value === v);
+  // Bracket partners, and where each expression-bodied arrow stops.
+  const partner = new Int32Array(n).fill(-1);
+  const stack: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const t = tokens[k];
+    if (t.type !== "punctuation") continue;
+    if (t.value === "(" || t.value === "[" || t.value === "{") stack.push(k);
+    else if (
+      (t.value === ")" || t.value === "]" || t.value === "}") &&
+      stack.length > 0
+    ) {
+      const o = stack.pop()!;
+      partner[o] = k;
+      partner[k] = o;
+    }
+  }
+  const found: {
+    name: string;
+    nameAt: number;
+    body: number;
+    arrow: boolean;
+  }[] = [];
+  /** After `)` of a parameter list at `close`: the body's `{`, or the token after `=>` (arrow). */
+  const bodyAfter = (
+    close: number,
+    arrow: boolean,
+  ): { at: number; arrow: boolean } | undefined => {
+    // Past a short return type: `): string {`, `): Promise<string> =>`.
+    for (let k = close + 1; k < n && k <= close + 24; k++) {
+      if (arrow && punct(k, "=") && punct(k + 1, ">"))
+        return { at: k + 2, arrow: true };
+      if (!arrow && punct(k, "{")) return { at: k, arrow: false };
+      if (punct(k, ";") || punct(k, "}") || punct(k, "=")) return undefined;
+    }
+    return undefined;
+  };
+  for (let k = 0; k < n; k++) {
+    if (word(k, "function") && word(k + 1) && punct(k + 2, "(")) {
+      const close = partner[k + 2];
+      const b = close === -1 ? undefined : bodyAfter(close, false);
+      if (b)
+        found.push({
+          name: tokens[k + 1].value,
+          nameAt: k + 1,
+          body: b.at,
+          arrow: false,
+        });
+      continue;
+    }
+    if (!word(k)) continue;
+    // NAME = ..., NAME: ... (a property), or a method NAME(...) {.
+    const isBinding =
+      punct(k + 1, "=") && !punct(k + 2, "=") && !punct(k + 2, ">");
+    const isProperty =
+      punct(k + 1, ":") && (punct(k - 1, "{") || punct(k - 1, ","));
+    if (isBinding || isProperty) {
+      let v = k + 2;
+      if (word(v, "async")) v++;
+      if (word(v, "function")) {
+        const paren = word(v + 1) ? v + 2 : v + 1;
+        if (!punct(paren, "(") || partner[paren] === -1) continue;
+        const b = bodyAfter(partner[paren], false);
+        if (b)
+          found.push({
+            name: tokens[k].value,
+            nameAt: k,
+            body: b.at,
+            arrow: false,
+          });
+      } else if (punct(v, "(") && partner[v] !== -1) {
+        const b = bodyAfter(partner[v], true);
+        if (b)
+          found.push({
+            name: tokens[k].value,
+            nameAt: k,
+            body: b.at,
+            arrow: true,
+          });
+      } else if (word(v) && punct(v + 1, "=") && punct(v + 2, ">"))
+        found.push({
+          name: tokens[k].value,
+          nameAt: k,
+          body: v + 3,
+          arrow: true,
+        });
+      continue;
+    }
+    if (
+      punct(k + 1, "(") &&
+      !punct(k - 1, ".") &&
+      partner[k + 1] !== -1 &&
+      !CONTROL_WORDS.has(tokens[k].value) &&
+      (punct(k - 1, "{") ||
+        punct(k - 1, "}") ||
+        punct(k - 1, ";") ||
+        punct(k - 1, ",") ||
+        (word(k - 1) && METHOD_MODIFIERS.has(tokens[k - 1].value)))
+    ) {
+      const b = bodyAfter(partner[k + 1], false);
+      if (b)
+        found.push({
+          name: tokens[k].value,
+          nameAt: k,
+          body: b.at,
+          arrow: false,
+        });
+    }
+  }
+  // An expression body ends at the next `;` or `,` at its depth, or at the
+  // bracket that closes around it: one pass with the open arrows pending
+  // per depth.
+  const stopOf = new Map<number, number>();
+  const pendingStarts = new Set(
+    found.filter((f) => f.arrow && !punct(f.body, "{")).map((f) => f.body),
+  );
+  const pending: number[][] = [[]];
+  for (let k = 0; k < n; k++) {
+    if (pendingStarts.has(k)) pending[pending.length - 1].push(k);
+    const t = tokens[k];
+    if (t.type !== "punctuation") continue;
+    if (t.value === "(" || t.value === "[" || t.value === "{") pending.push([]);
+    else if (t.value === ")" || t.value === "]" || t.value === "}") {
+      if (pending.length > 1) {
+        for (const s of pending.pop()!) stopOf.set(s, k);
+      }
+    } else if (t.value === ";" || t.value === ",") {
+      for (const s of pending[pending.length - 1]) stopOf.set(s, k);
+      pending[pending.length - 1] = [];
+    }
+  }
+  return found.map((f) => {
+    const start = tokens[f.nameAt].start;
+    let end: number;
+    if (punct(f.body, "{")) {
+      const close = partner[f.body];
+      end = close === -1 ? body.length : tokens[close].end;
+    } else {
+      const stop = stopOf.get(f.body);
+      end = stop === undefined ? body.length : tokens[stop].start;
+    }
+    return { name: f.name, start, end };
+  });
+}
+
+const CONTROL_WORDS = new Set([
+  "if",
+  "for",
+  "while",
+  "switch",
+  "catch",
+  "with",
+  "function",
+  "return",
+  "typeof",
+  "await",
+  "new",
+]);
+const METHOD_MODIFIERS = new Set([
+  "async",
+  "static",
+  "get",
+  "set",
+  "public",
+  "private",
+  "protected",
+  "override",
+]);
 
 /** A template whose first tag is an XML prolog or the root of a sitemap or a feed. */
 const XML_TEMPLATE =
-  /^\s*<(?:\?xml\b|(?:rss|feed|urlset|sitemapindex|url|loc|channel|item|entry)(?=[\s/>]))/;
+  /^\s*<(?:\?xml\b|(?:rss|feed|urlset|sitemapindex|sitemap|url|loc|channel|item|entry)(?=[\s/>]))/;
 
 /** How a message quotes a hole: `${expr}`, cut short when the expression is long. */
 function quoteHole(expr: string): string {

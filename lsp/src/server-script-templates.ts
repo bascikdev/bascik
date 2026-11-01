@@ -354,6 +354,74 @@ export interface ExemptContext {
   escapeFunctions: readonly string[];
   /** `const|let|var NAME = EXPR` bindings in the body (every binding of a name). */
   bindings: Map<string, string[]>;
+  /**
+   * Verdicts already reached for a name, so a name declared in many
+   * functions (`const count` in each) is read once for the whole script,
+   * not once per hole. Filled by isExempt and isEscapedJson.
+   */
+  memo?: NameMemo;
+}
+
+/**
+ * Per-name verdicts, and the state that keeps them sound: a verdict cut
+ * short by a cycle or by the alias depth bound is not stored when false.
+ */
+export interface NameMemo {
+  exempt: Map<string, boolean>;
+  escapedJson: Map<string, boolean>;
+  /** Names being read right now, innermost last. */
+  depth: number;
+  /** A read under way was cut short (a cycle or the depth bound). */
+  cut: boolean;
+}
+
+export const newNameMemo = (): NameMemo => ({
+  exempt: new Map(),
+  escapedJson: new Map(),
+  depth: 0,
+  cut: false,
+});
+
+/**
+ * How many names deep an alias chain is followed (`const b = a; const c =
+ * b; ...`). Deeper chains count as not fine, so a generated chain of
+ * thousands of aliases cannot overflow the stack.
+ */
+const MAX_ALIAS_DEPTH = 200;
+
+/**
+ * Whether every value bound to `name` passes `check`, read once per script
+ * through `verdicts`. A name already on the path (a cycle) or past
+ * MAX_ALIAS_DEPTH is not fine; a false verdict cut short that way is not
+ * stored, since a later read from elsewhere may reach further.
+ */
+function nameVerdict(
+  name: string,
+  bound: readonly string[],
+  memo: NameMemo,
+  verdicts: Map<string, boolean>,
+  seen: Set<string>,
+  check: (value: string) => boolean,
+): boolean {
+  const known = verdicts.get(name);
+  if (known !== undefined) return known;
+  if (seen.has(name) || memo.depth >= MAX_ALIAS_DEPTH) {
+    memo.cut = true;
+    return false;
+  }
+  seen.add(name);
+  const outerCut = memo.cut;
+  memo.cut = false;
+  memo.depth++;
+  let result: boolean;
+  try {
+    result = bound.every(check);
+  } finally {
+    memo.depth--;
+  }
+  if (result || !memo.cut) verdicts.set(name, result);
+  memo.cut = outerCut || memo.cut;
+  return result;
 }
 
 /**
@@ -593,9 +661,11 @@ export function isExempt(
   }
   if (/^[\w$]+$/.test(e)) {
     const bound = ctx.bindings.get(e);
-    if (!bound || seen.has(e)) return false;
-    seen.add(e);
-    return bound.every((value) => isExempt(value, ctx, seen));
+    if (!bound) return false;
+    ctx.memo ??= newNameMemo();
+    return nameVerdict(e, bound, ctx.memo, ctx.memo.exempt, seen, (value) =>
+      isExempt(value, ctx, seen),
+    );
   }
   // cond ? a : b (only the rendered branches matter).
   let question = -1;
@@ -718,9 +788,32 @@ function isArithmeticExempt(
   });
 }
 
+/**
+ * A tag whose name is a hole: `<${tag} class="...">`, or `<${tag}>` with
+ * an end tag `</${tag}>` in the same template. A lone `<${tag}>` is how a
+ * message names an element (`<${tag}> needs a src attribute`), and a hole
+ * after `<` followed by neither is a comparison or a regex source.
+ */
+const holeNamesTag = (parts: readonly string[]): boolean => {
+  const last = parts.length - 1;
+  let startThenClose = false;
+  let endTag = false;
+  for (let p = 0; p < last; p++) {
+    const part = parts[p];
+    const next = parts[p + 1];
+    if (part.endsWith("</")) {
+      if (/^\s*>/.test(next)) endTag = true;
+    } else if (!part.endsWith("<")) continue;
+    else if (HOLE_THEN_ATTRIBUTE.test(next)) return true;
+    else if (/^\s*>/.test(next)) startThenClose = true;
+  }
+  return startThenClose && endTag;
+};
+
 /** Static text that looks like markup: a start or end tag. */
 export const looksLikeMarkup = (parts: readonly string[]): boolean =>
-  parts.some((part) => /<\/?[a-zA-Z][\w:-]*(?=[\s/>]|$)/.test(part));
+  parts.some((part) => /<\/?[a-zA-Z][\w:-]*(?=[\s/>]|$)/.test(part)) ||
+  holeNamesTag(parts);
 
 /**
  * Elements whose bare start tag (`<li>`, no attribute) counts as markup in
@@ -762,12 +855,18 @@ const HOLE_THEN_ATTRIBUTE =
  * backtick is in a Markdown code span and does not count. One pass per part.
  */
 export const markupInCode = (parts: readonly string[]): boolean =>
+  holeNamesTag(parts) ||
   parts.some((part, p) => {
     for (const m of part.matchAll(CODE_TAG)) {
       if (m.index > 0 && part[m.index - 1] === "`") continue;
       if (m[3] !== undefined && m[1] !== "/") return true;
       if (m[4] !== undefined) {
-        if (m[1] === "/" || BARE_MARKUP_ELEMENTS.has(m[2])) return true;
+        if (m[1] === "/") return true;
+        // A bare start tag counts where markup goes: at the start of the
+        // template or right after a hole, or after another tag. After a
+        // word it is prose that names the element (`Found <p> inside`).
+        if (BARE_MARKUP_ELEMENTS.has(m[2]) && afterTagOrStart(part, m.index))
+          return true;
         continue;
       }
       // A tag that a hole continues, with an attribute or an end tag's `>`
@@ -782,6 +881,13 @@ export const markupInCode = (parts: readonly string[]): boolean =>
     }
     return false;
   });
+
+/** Whether only whitespace, or a tag's `>` then whitespace, comes before `at` in `part`. */
+const afterTagOrStart = (part: string, at: number): boolean => {
+  let k = at - 1;
+  while (k >= 0 && /\s/.test(part[k])) k--;
+  return k < 0 || part[k] === ">";
+};
 
 /** `<` written as \u003c in a replacement: `.replace(/</g, "\\u003c")`. */
 const LT_TO_U003C =
@@ -801,9 +907,16 @@ export function isEscapedJson(
   const e = stripParens(expr.trim());
   if (/^[\w$]+$/.test(e)) {
     const bound = ctx.bindings.get(e);
-    if (!bound || seen.has(e)) return false;
-    seen.add(e);
-    return bound.every((value) => isEscapedJson(value, ctx, seen));
+    if (!bound) return false;
+    ctx.memo ??= newNameMemo();
+    return nameVerdict(
+      e,
+      bound,
+      ctx.memo,
+      ctx.memo.escapedJson,
+      seen,
+      (value) => isEscapedJson(value, ctx, seen),
+    );
   }
   const head = /^JSON\.stringify\s*\(/.exec(e);
   if (!head) return false;
@@ -823,14 +936,32 @@ export function isEscapedJson(
   return escaped;
 }
 
-/** Whether a literal is the direct argument of console.*(), new *Error() or throw. */
+/**
+ * Whether a literal is a message, not markup: the direct argument of
+ * console.*(), new *Error() or throw, or the value of a `message`, `error`,
+ * `reason` or `warning` property. `super(...)` in a class that extends an
+ * Error is checked by the caller, which knows the class.
+ */
 export const isMessageArgument = (source: string, start: number): boolean => {
   const before = source.slice(Math.max(0, start - 80), start);
   return (
     /\bthrow\s*$/.test(before) ||
-    /\b(?:console\.[a-zA-Z]+|new\s+[\w$.]*Error)\s*\(\s*$/.test(before)
+    /\b(?:console\.[a-zA-Z]+|new\s+[\w$.]*Error)\s*\(\s*$/.test(before) ||
+    /(?:^|[{,\s])(?:message|error|reason|warning)\s*:\s*$/.test(before)
   );
 };
+
+/**
+ * Whether a literal is a pattern that searches text rather than markup
+ * the code writes: the needle of .includes(), .indexOf(), .lastIndexOf(),
+ * .startsWith(), .endsWith(), .split(), .search(), .match() or
+ * .matchAll(), the first argument of .replace() or .replaceAll(), or the
+ * source of RegExp(). Wrapping it in html would change what it matches.
+ */
+export const isPatternArgument = (source: string, start: number): boolean =>
+  /(?:\.\s*(?:includes|indexOf|lastIndexOf|startsWith|endsWith|split|search|match|matchAll|replace|replaceAll)|\bRegExp)\s*\(\s*(?:String\.raw\s*)?$/.test(
+    source.slice(Math.max(0, start - 80), start),
+  );
 
 // ─── Where each hole lands, and where html would throw ─────────────────────
 
