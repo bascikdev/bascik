@@ -338,6 +338,7 @@ const MODULE_CHECK_TIMEOUT_MS = 30_000;
 export const __moduleCheckStatsForTests = {
   processes: 0,
   checkersStarted: 0,
+  checkersTerminated: 0,
   disableChecker: false,
   checkerSource: undefined as string | undefined,
   timeoutMs: MODULE_CHECK_TIMEOUT_MS,
@@ -367,7 +368,9 @@ const vm = require("node:vm");
 const { parentPort } = require("node:worker_threads");
 // vm.SourceTextModule is experimental; its one-time warning is not the author's concern.
 process.emitWarning = () => {};
-parentPort.on("message", ({ id, code }) => {
+parentPort.on("message", ({ id, code, stop }) => {
+  // Ends the thread from inside once nothing else holds it (stopSharedCheckerGracefully).
+  if (stop === true) return parentPort.close();
   let parses = true;
   try {
     new vm.SourceTextModule(code);
@@ -508,6 +511,53 @@ const getSharedChecker = (): SharedChecker | undefined => {
 export const resetModuleCheckerForBuild = (): void => {
   sharedCheckerBroken = false;
   warnedCheckerFallback = false;
+};
+
+/**
+ * How long `stopSharedCheckerGracefully` waits for the checker to end
+ * itself before terminating it. It is idle or parsing one module, so it
+ * normally exits within milliseconds.
+ */
+const CHECKER_STOP_GRACE_MS = 500;
+
+/**
+ * Stop this thread's checker by asking it to end itself, and wait for its
+ * thread to exit; terminate it only if it has not after `graceMs`. For a
+ * page worker that is ending itself: a worker's nested threads are
+ * terminated when it exits, and terminating a thread from outside can abort
+ * Node 24 (see `stopSignal` in worker-pool.ts). Pending checks fall back to
+ * `node --check`; a later check starts a fresh checker. Never rejects.
+ */
+export const stopSharedCheckerGracefully = async (
+  graceMs: number = CHECKER_STOP_GRACE_MS,
+): Promise<void> => {
+  const checker = sharedChecker;
+  if (!checker) return;
+  stopSharedChecker(checker, undefined);
+  const { worker } = checker;
+  const exited = new Promise<"exited">((resolveExit) =>
+    worker.once("exit", () => resolveExit("exited")),
+  );
+  // An idle checker is unref'd; the wait for its exit must hold this
+  // thread's event loop open, or the thread would end first and terminate it.
+  worker.ref();
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    worker.postMessage({ stop: true });
+    const outcome = await Promise.race([
+      exited,
+      new Promise<"timeout">((resolveTimeout) => {
+        timer = setTimeout(() => resolveTimeout("timeout"), graceMs);
+      }),
+    ]);
+    if (outcome === "exited") return;
+  } catch {
+    // Could not be asked; terminated below.
+  } finally {
+    clearTimeout(timer);
+  }
+  __moduleCheckStatsForTests.checkersTerminated++;
+  await worker.terminate().catch(() => {});
 };
 
 /** Test-only: stop the shared checker without counting it as broken. */

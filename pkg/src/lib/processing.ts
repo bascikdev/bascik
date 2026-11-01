@@ -944,6 +944,10 @@ const startPagePool = (pageList: string[]): PagePool => {
       // The pool can now be trimmed or torn down while workers are still
       // loading the compiler; it must wait until each has loaded first.
       readySignal: true,
+      // And then ask each to end itself instead of terminating it: an
+      // external terminate that lands while V8 allocates code can abort
+      // Node 24 (`stopSignal` in `WorkerPool`).
+      stopSignal: true,
     },
   );
 };
