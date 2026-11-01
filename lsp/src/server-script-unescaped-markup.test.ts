@@ -661,6 +661,74 @@ describe("no quick fix where html would throw", () => {
   });
 });
 
+describe("no quick fix where html's URL scheme rule throws (review 2026-11-01)", () => {
+  // html refuses a URL attribute whose first hole starts the URL and is
+  // followed by another hole, or by text with : or & before the first /, ?
+  // or #, and one whose template text before the first hole could be
+  // continued into a scheme, or is a script scheme. The fixed page would
+  // throw on every request (u01-u04, q10).
+  const before = 'const path = "/about/";\nconst port = 8080;\n';
+  it.each([
+    ["two holes start the URL (u01)", '`<a href="${q}${path}">About</a>`'],
+    ["two holes start an img src (u04)", '`<img alt="" src="${q}${path}">`'],
+    ["a hole then :// (u02)", '`<a href="${q}://${path}">Home</a>`'],
+    ["a hole then :port (u03)", '`<a href="${q}:${port}/">Local</a>`'],
+    ["a hole then & before any /", '`<a href="${q}&amp;x=1">x</a>`'],
+    ["a hole then text and a hole", '`<a href="${q}.test${path}">x</a>`'],
+    [
+      "env base and request path (q10)",
+      '`<link rel="alternate" href="${process.env.SITE_URL}${new URL(request.url).pathname}">`',
+    ],
+    ["text that could continue a scheme", '`<a href="java${q}">x</a>`'],
+    ["a javascript: URL", '`<a href="javascript:${q}">x</a>`'],
+    ["a data: URL outside an image", '`<a href="data:text/html,${q}">x</a>`'],
+    ["a srcset entry split from its scheme", '`<img srcset="x${q} 2x">`'],
+    ["a ping URL split from its scheme", '`<a ping="java${q}" href="/">x</a>`'],
+    ["upper-case HREF", '`<a HREF="${q}${path}">x</a>`'],
+    ["single quotes", "`<a href='${q}${path}'>x</a>`"],
+  ])("%s", (_name, ret) => {
+    const diags = unescaped(handler(ret, before));
+    expect(diags.length).toBeGreaterThan(0);
+    for (const d of diags) {
+      expect(d.template?.fixable).toBe(false);
+      expect(d.message).toContain("sits where html throws");
+      expect(d.message).not.toContain("Wrap the template");
+    }
+  });
+
+  it.each([
+    ["one hole as the whole URL", '`<a href="${q}">x</a>`'],
+    ["a hole then a path", '`<a href="${q}/about/">x</a>`'],
+    ["a hole then a query", '`<a href="${q}?x=1&amp;y=${q}">x</a>`'],
+    ["a hole then a fragment", '`<a href="${q}#top">x</a>`'],
+    ["a hole then text with no : or &", '`<a href="${q}.html">x</a>`'],
+    ["a path before the holes", '`<a href="/p/${q}${q}">x</a>`'],
+    ["a scheme and host first", '`<a href="https://milk.test/${q}${q}">x</a>`'],
+    ["a mailto: URL", '`<a href="mailto:${q}@${q}">x</a>`'],
+    [
+      "a data: image in img src",
+      '`<img alt="" src="data:image/png;base64,${q}">`',
+    ],
+    ["two holes in a title", '`<a title="${q}${q}" href="/">x</a>`'],
+    ["a srcset with a path", '`<img alt="" srcset="/a/${q} 1x, /b/${q} 2x">`'],
+  ])("%s keeps the quick fix", (_name, ret) => {
+    const diags = unescaped(handler(ret));
+    expect(diags.length).toBeGreaterThan(0);
+    for (const d of diags) expect(d.template?.fixable).toBe(true);
+  });
+
+  it("the u01 module case: an env base and a const path get esc() advice and no fix", () => {
+    const body =
+      'const path = "/about/";\nexport function f() { return `<a href="${process.env.SITE_URL}${path}">About</a>`; }\n';
+    const diags = unescaped(body, { directive: "module" });
+    expect(diags.length).toBeGreaterThan(0);
+    for (const d of diags) {
+      expect(d.template?.fixable).toBe(false);
+      expect(d.message).toContain("hole 1 sits where html throws");
+    }
+  });
+});
+
 describe("server-script-unescaped-markup: build-time code (build, routes, module)", () => {
   const build = (
     body: string,
@@ -2053,7 +2121,7 @@ describe("the wrap fix follows markup across modules (fix round 3)", () => {
   it.each([
     [
       "an environment variable not named for markup",
-      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nconst c = (p: number) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
+      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nconst c = (p: number) => `<link rel="canonical" href="${siteUrl}/page/${p}" />`;',
       "${p}",
     ],
     [

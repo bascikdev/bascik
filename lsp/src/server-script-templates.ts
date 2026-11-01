@@ -1374,8 +1374,148 @@ const SVG_ANIMATION_TAGS = new Set([
   "animate",
   "animatemotion",
   "animatetransform",
+  "animatecolor",
   "set",
 ]);
+
+// ─── html's URL scheme rule (pkg/src/lib/url-safety.ts, html-template.ts) ──
+
+/** Attribute names whose whole value is one URL (url-safety.ts URL_TARGETS). */
+const URL_TARGETS = new Set([
+  "href",
+  "xlink:href",
+  "src",
+  "action",
+  "formaction",
+  "poster",
+  "background",
+  "cite",
+  "codebase",
+  "longdesc",
+  "lowsrc",
+  "dynsrc",
+  "manifest",
+  "icon",
+]);
+const IMAGE_TARGETS = new Set([
+  "img src",
+  "img srcset",
+  "source srcset",
+  "video poster",
+  "input src",
+  "link imagesrcset",
+]);
+const SCRIPT_SCHEMES = new Set([
+  "javascript",
+  "vbscript",
+  "livescript",
+  "mocha",
+  "data",
+]);
+type UrlSlot = "url" | "srcset" | "ping" | "animation";
+const LIST_BOUNDARY: Readonly<Record<Exclude<UrlSlot, "url">, RegExp>> = {
+  srcset: /[\t\n\f\r ,]/,
+  ping: /[\t\n\f\r ]/,
+  animation: /;/,
+};
+
+/** Which kind of URL `<tag attr>` holds, as html reads it, or null. */
+const urlSlotOf = (tag: string, attr: string): UrlSlot | null => {
+  if (URL_TARGETS.has(attr) || (tag === "object" && attr === "data"))
+    return "url";
+  if (attr === "srcset" || attr === "imagesrcset") return "srcset";
+  if (attr === "ping") return "ping";
+  if (
+    SVG_ANIMATION_TAGS.has(tag) &&
+    (attr === "to" || attr === "from" || attr === "by" || attr === "values")
+  )
+    return "animation";
+  return null;
+};
+
+/** A URL as the URL parser reads it: outer C0 controls and spaces dropped, tabs and newlines removed. */
+const normalizeUrl = (url: string): string => {
+  let start = 0;
+  let end = url.length;
+  while (start < end && url.charCodeAt(start) <= 0x20) start++;
+  while (end > start && url.charCodeAt(end - 1) <= 0x20) end--;
+  return url.slice(start, end).replace(/[\t\n\r]/g, "");
+};
+
+/** How the text before a URL hole settles its scheme (html's prefixVerdict). */
+const prefixVerdict = (
+  prefix: string,
+  image: boolean,
+): "start" | "settled" | "refused" => {
+  const text = normalizeUrl(prefix);
+  if (text === "") return "start";
+  const match = /[/?#:&]/.exec(text);
+  if (match === null || match[0] === "&") return "refused";
+  if (match[0] !== ":") return "settled";
+  const scheme = text.slice(0, match.index);
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*$/.test(scheme)) return "settled";
+  if (!SCRIPT_SCHEMES.has(scheme.toLowerCase())) return "settled";
+  return image && /^data:image\/[a-z0-9.+-]+[;,]/i.test(text)
+    ? "settled"
+    : "refused";
+};
+
+/**
+ * The 1-based number of the first hole html refuses in a URL attribute
+ * value, from its static text and hole numbers in order, or -1. A list
+ * (srcset, ping, SVG animation values) is read entry by entry; one URL
+ * whose first hole starts it must reach a /, ? or # before a : or & or a
+ * second hole, or end there.
+ */
+const urlRefusal = (
+  slot: UrlSlot,
+  image: boolean,
+  parts: readonly (string | number)[],
+): number => {
+  if (slot !== "url") {
+    // Each entry's verdict is read once it is settled, and a blank entry
+    // (spaces, controls, holes) starts its URL, so this stays linear in
+    // the value however many holes it has.
+    const boundary = LIST_BOUNDARY[slot];
+    let token = "";
+    let blank = true;
+    let settled = false;
+    for (const p of parts) {
+      if (typeof p === "string") {
+        for (const c of p)
+          if (boundary.test(c)) {
+            token = "";
+            blank = true;
+            settled = false;
+          } else if (!settled) {
+            token += c;
+            if (c.charCodeAt(0) > 0x20) blank = false;
+          }
+        continue;
+      }
+      if (!blank && !settled) {
+        if (prefixVerdict(token, image) === "refused") return p + 1;
+        settled = true;
+      }
+      if (!settled) token += HOLE_CHAR;
+    }
+    return -1;
+  }
+  const first = parts.findIndex((p) => typeof p === "number");
+  if (first === -1) return -1;
+  const start = parts[first] as number;
+  const verdict = prefixVerdict(parts.slice(0, first).join(""), image);
+  if (verdict === "refused") return start + 1;
+  if (verdict === "settled") return -1;
+  let after = "";
+  let index = first + 1;
+  while (index < parts.length && typeof parts[index] === "string")
+    after += parts[index++] as string;
+  const match = /[/?#:&]/.exec(after);
+  const settled = match !== null && match[0] !== ":" && match[0] !== "&";
+  return settled || (index >= parts.length && match === null) ? -1 : start + 1;
+};
+
 const isAsciiAlpha = (c: string): boolean => /[a-zA-Z]/.test(c);
 const isTagSpace = (c: string): boolean => /[\t\n\f\r ]/.test(c);
 /** Stands for the text of a hole inside a tag or attribute name. */
@@ -1408,7 +1548,8 @@ const throwsOn = (context: HoleContext): boolean => {
  * goes, in an unquoted value, inside a comment or <!...> declaration,
  * inside a <script> or <style>, in an on*, style or srcdoc value, a <meta>
  * http-equiv or content value, any attribute of an SVG animation element,
- * or a template that ends inside a tag, comment, quoted value or raw-text
+ * a URL value that breaks html's scheme rule (see urlRefusal), or a
+ * template that ends inside a tag, comment, quoted value or raw-text
  * element. A small version of html's own tokenizer that carries its state
  * across the holes, so the whole template is read once, however many holes
  * it has. A hole in a name position counts as part of that name, so the
@@ -1428,6 +1569,28 @@ export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
   let jsonScript = false;
   /** Only whitespace so far in the raw-text element. */
   let rawBlank = true;
+  /**
+   * The quoted value being read when it holds URLs (html's URL scheme
+   * rule): its slot, and its static text and hole numbers so far.
+   */
+  let urlSlot: UrlSlot | null = null;
+  let urlImage = false;
+  let urlParts: (string | number)[] = [];
+  let urlText = "";
+  const endUrlValue = (): void => {
+    if (urlSlot === null) return;
+    urlParts.push(urlText);
+    const refused = urlRefusal(urlSlot, urlImage, urlParts);
+    if (refused !== -1 && (throwsAt === -1 || refused < throwsAt))
+      throwsAt = refused;
+    urlSlot = null;
+    urlParts = [];
+    urlText = "";
+  };
+  const startValue = (): void => {
+    urlSlot = urlSlotOf(tag, attr);
+    urlImage = IMAGE_TARGETS.has(`${tag} ${attr}`);
+  };
   for (let p = 0; p < parts.length; p++) {
     const text = parts[p];
     for (let i = 0; i < text.length; i++) {
@@ -1487,9 +1650,13 @@ export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
             else if (c === "/") state = T.SelfClosing;
             else tag += c.toLowerCase();
           } else if (state === T.BeforeAttrValue) {
-            if (c === '"') state = T.ValueDq;
-            else if (c === "'") state = T.ValueSq;
-            else if (!isTagSpace(c)) {
+            if (c === '"') {
+              state = T.ValueDq;
+              startValue();
+            } else if (c === "'") {
+              state = T.ValueSq;
+              startValue();
+            } else if (!isTagSpace(c)) {
               state = T.ValueUq;
               if (attr === "type") typeValue += c;
             }
@@ -1512,12 +1679,14 @@ export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
           }
           break;
         case T.ValueDq:
-          if (c === '"') state = T.AfterValueQuoted;
-          else if (attr === "type") typeValue += c;
-          break;
         case T.ValueSq:
-          if (c === "'") state = T.AfterValueQuoted;
-          else if (attr === "type") typeValue += c;
+          if (c === (state === T.ValueDq ? '"' : "'")) {
+            state = T.AfterValueQuoted;
+            endUrlValue();
+          } else {
+            if (attr === "type") typeValue += c;
+            if (urlSlot !== null) urlText += c;
+          }
           break;
         case T.Comment: {
           const close = text.indexOf("-->", i);
@@ -1568,6 +1737,10 @@ export function scanTemplateHtml(parts: readonly string[]): TemplateHtml {
       case T.ValueSq:
         context = { kind: "value", tag, attr };
         if (attr === "type") typeValue += HOLE_CHAR;
+        if (urlSlot !== null) {
+          urlParts.push(urlText, holes.length);
+          urlText = "";
+        }
         break;
       case T.BeforeAttrValue:
       case T.ValueUq:
