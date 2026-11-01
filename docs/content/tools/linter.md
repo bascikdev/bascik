@@ -68,6 +68,16 @@ npx @bascik/language-server --check ../../shared/components
 npx @bascik/language-server --check ../../shared/components --project .
 ```
 
+### TypeScript Errors with `--typescript`
+
+Pass `--typescript` to also report TypeScript errors in `<script type="text/typescript">` blocks, checked the same way as in the [VS Code extension](/tools/vscode-extension#typescript-errors-in-script-tags):
+
+```sh
+npx @bascik/language-server --check --typescript
+```
+
+Each error is reported at its line and column with TypeScript's number as the rule, such as `(TS2322)`, and fails the run like any other error. The check uses the project's own `typescript` package, or, when the project cannot resolve one, a `typescript` the `@bascik/language-server` package can resolve from where it is installed (a pnpm strict layout or a global install, for example). It must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`); TypeScript 7 publishes no language service and TypeScript 4 cannot resolve `.ts` imports as Bascik does, so both are skipped. Without a usable TypeScript the run prints one `note:` line saying why and checks everything else. TypeScript errors are opt-in so that adding the language server to an existing project's CI never fails it on errors its build ignores.
+
 ### Auto-fixing with `--fix`
 
 Add `--fix` to apply the fixes that have exactly one correct answer, write them to disk, and report what remains:
@@ -289,6 +299,24 @@ end
 
 lspconfig.bascik.setup{}
 ```
+
+TypeScript errors in `type="text/typescript"` blocks are on in every editor and use the project's own `typescript` (5 or 6), or, when the project cannot resolve one, a `typescript` the `@bascik/language-server` package can resolve from where it is installed. Inside those blocks the server also answers hover, Go to Definition, completion (members after `.`, and files in relative and `@/` import paths), and signature help, for the page's own names and for what it imports, as the [VS Code extension](/tools/vscode-extension#imports-in-typescript-script-tags) does. A client can pass options when it starts the server, as `initializationOptions`:
+
+```lua
+lspconfig.bascik.setup{
+  init_options = {
+    typescript = {
+      enabled = true,
+      -- An absolute path to a typescript package folder to use instead of the project's own.
+      path = '/path/to/node_modules/typescript',
+      -- How long TypeScript stays loaded once no open page has a TypeScript block.
+      releaseDelayMs = 30000,
+    },
+  },
+}
+```
+
+`editorHasEmbeddedTypeScript = true` is for an editor that already answers about a page's own names in these blocks, as VS Code's HTML support does: the server then answers only for other files, import paths and what reaches the page through an import, so nothing is listed twice. Leave it out in Neovim.
 
 ## Suppressing Warnings
 

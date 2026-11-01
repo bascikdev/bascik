@@ -118,6 +118,8 @@ export interface CheckFindings {
   perFileHint?: string;
   /** Files `--fix` rewrote, relative to the project. */
   fixedFiles: string[];
+  /** One line each about what the per-file checks could not do, such as `--typescript` without TypeScript. */
+  perFileNotes?: string[];
   /** The language server's own one-line rendering of a finding. Absent when the per-file checks did not run. */
   perFileFormat?: (
     diagnostic: LanguageServerDiagnostic,
@@ -684,13 +686,16 @@ const findComponentCycles = (graph: Map<string, Set<string>>): string[][] => {
  * Produces structured data without printing.
  */
 export const checkProject = async (
-  options: { fix?: boolean } = {},
+  options: { fix?: boolean; typescript?: boolean } = {},
 ): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
 
   // The per-file checks run first: `--fix` rewrites files, and everything below should read the fixed text.
-  const perFile = await runLanguageServerCheck({ fix: options.fix });
+  const perFile = await runLanguageServerCheck({
+    fix: options.fix,
+    typescript: options.typescript,
+  });
   if (options.fix && perFile.status !== "ran") {
     // Fixes are the language server's. Reporting success with nothing fixed would be a lie.
     throw new LanguageServerRequiredError(languageServerFixMessage(perFile));
@@ -1207,6 +1212,7 @@ export const checkProject = async (
     perFileChecked: perFile.status === "ran" ? perFile.filesChecked : null,
     perFileHint: languageServerHint(perFile),
     fixedFiles: perFile.status === "ran" ? perFile.fixedFiles : [],
+    perFileNotes: perFile.status === "ran" ? perFile.notes : [],
     perFileFormat:
       perFile.status === "ran" ? perFile.formatDiagnostic : undefined,
   };
@@ -1392,6 +1398,7 @@ const statusLines = (findings: CheckFindings): string[] => {
   } else if (findings.perFileHint) {
     lines.push(`ℹ  ${findings.perFileHint}`);
   }
+  for (const note of findings.perFileNotes ?? []) lines.push(`ℹ  ${note}`);
   if (findings.fixedFiles?.length) {
     lines.push(
       `✓ fixed ${plural(findings.fixedFiles.length, "file")}: ${findings.fixedFiles.join(", ")}`,
@@ -1542,6 +1549,8 @@ export interface CheckJsonOutput {
   perFileChecked: number | null;
   /** True when the per-file checks were skipped because the language server is missing or too old. */
   perFileHintNeeded: boolean;
+  /** What the per-file checks could not do, one line each, such as `--typescript` without a usable TypeScript. */
+  perFileNotes: string[];
   fixedFiles: string[];
   findings: Array<{
     category: string;
@@ -1569,6 +1578,7 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
     distHtmlSpecHintNeeded: findings.distHtmlSpecHintNeeded,
     perFileChecked: findings.perFileChecked ?? null,
     perFileHintNeeded: Boolean(findings.perFileHint),
+    perFileNotes: findings.perFileNotes ?? [],
     fixedFiles: findings.fixedFiles ?? [],
     findings: findings.items.map((item) => ({
       category: item.category,

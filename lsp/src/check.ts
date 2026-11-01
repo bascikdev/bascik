@@ -14,6 +14,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { DiagnosticSeverity } from "vscode-languageserver";
 import {
   buildSnapshot,
+  hasIsolatedClientBlocks,
   isInsideComponentRoots,
   type ProjectSnapshot,
 } from "./project.js";
@@ -25,6 +26,17 @@ import {
   scriptModulesOf,
   snapshotRoots,
 } from "./script-modules.js";
+import {
+  hasTypeScriptBlocks,
+  pageComponentsForTypeScript,
+} from "./typescript-blocks.js";
+import { TypeScriptProjects } from "./typescript-service.js";
+
+/**
+ * This version can report TypeScript errors in `type="text/typescript"` blocks (`typescript: true`). `bascik
+ * --check --typescript` reads it to tell an older language server apart, which would ignore the option.
+ */
+export const supportsTypeScript = true;
 
 /**
  * A file or folder to check. A folder can be limited to some file types, because what belongs in a pages folder
@@ -46,6 +58,12 @@ export interface CheckOptions {
    * on results, such as `bascik --check --strict` in CI, leaves them out. Defaults to true.
    */
   hints?: boolean;
+  /**
+   * Also report TypeScript errors in `type="text/typescript"` script blocks, checked with the project's own
+   * `typescript` (5 or 6). Off by default, so an existing project's check does not start failing. Without a usable
+   * TypeScript the check still runs and `notes` says why there are no TypeScript results.
+   */
+  typescript?: boolean;
 }
 
 export interface CheckedDiagnostic {
@@ -57,7 +75,7 @@ export interface CheckedDiagnostic {
   column: number;
   /** Only `error` fails a check. `info` is a hint: advice that may be wrong for a project the file cannot see. */
   severity: "error" | "warning" | "info";
-  /** The rule id, usable in `bascik-ignore`, `bascik-disable` and `disabledRules`. */
+  /** The rule id, usable in `bascik-ignore`, `bascik-disable` and `disabledRules`; `TS2322` and the like for TypeScript. */
   code?: string;
   message: string;
 }
@@ -68,6 +86,8 @@ export interface CheckResult {
   /** Files rewritten by `fix`, relative to `cwd`. */
   fixedFiles: string[];
   diagnostics: CheckedDiagnostic[];
+  /** One line each about what the check could not do, such as TypeScript checks without a usable TypeScript. */
+  notes: string[];
 }
 
 /** Thrown for a mistake in how the check was asked for (a path that does not exist), not a finding. */
@@ -241,6 +261,17 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
 
   const diagnostics: CheckedDiagnostic[] = [];
   const fixedFiles: string[] = [];
+  const notes: string[] = [];
+  // Looked up from the project, then from this package (an installed peer under a strict layout such as pnpm).
+  let typeScript: TypeScriptProjects | undefined = options.typescript
+    ? new TypeScriptProjects({ fallbackFrom: import.meta.url })
+    : undefined;
+  const documents: {
+    filePath: string;
+    relative: string;
+    languageId: ReturnType<typeof languageIdFor>;
+    document: TextDocument;
+  }[] = [];
   for (const filePath of files) {
     let content: string;
     try {
@@ -270,7 +301,39 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
         );
       }
     }
+    documents.push({ filePath, relative, languageId, document });
+  }
 
+  // Every page with TypeScript blocks is given to TypeScript first, so it builds its programs once for the whole
+  // check rather than once per page.
+  const typeScriptPages = (typeScript === undefined ? [] : documents).flatMap(
+    ({ filePath, languageId, document }) =>
+      languageId === "html" && hasTypeScriptBlocks(document.getText())
+        ? [
+            {
+              htmlPath: filePath,
+              text: document.getText(),
+              isolatedClientBlocks: hasIsolatedClientBlocks(filePath, snapshot),
+              ...pageComponentsForTypeScript(
+                filePath,
+                document.getText(),
+                snapshot,
+              ),
+            },
+          ]
+        : [],
+  );
+  if (typeScript && typeScriptPages.length > 1)
+    typeScript.preparePages({
+      projectRoot,
+      importRoot: snapshot.importRoot,
+      pages: typeScriptPages,
+    });
+  const typeScriptPageByPath = new Map(
+    typeScriptPages.map((page) => [page.htmlPath, page]),
+  );
+
+  for (const { filePath, relative, document } of documents) {
     for (const diagnostic of createDiagnosticsSafely(
       document,
       filePath,
@@ -299,9 +362,47 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
             : diagnostic.message.value,
       });
     }
-  }
 
-  return { projectRoot, filesChecked: files.length, fixedFiles, diagnostics };
+    const typeScriptPage = typeScriptPageByPath.get(filePath);
+    if (typeScript && typeScriptPage) {
+      const result = typeScript.diagnostics({
+        projectRoot,
+        importRoot: snapshot.importRoot,
+        ...typeScriptPage,
+      });
+      if (result.status === "unavailable") {
+        // One note for the whole check, which then goes on without TypeScript.
+        notes.push(result.message);
+        typeScript.dispose();
+        typeScript = undefined;
+      } else if (result.status === "failed") {
+        notes.push(
+          `TypeScript could not check ${relative}: ${result.message.split("\n")[0]}`,
+        );
+      } else if (result.status === "ok") {
+        for (const found of result.diagnostics) {
+          const position = document.positionAt(found.start);
+          diagnostics.push({
+            filePath: relative,
+            line: position.line + 1,
+            column: position.character + 1,
+            severity: found.category,
+            code: `TS${found.code}`,
+            message: found.message,
+          });
+        }
+      }
+    }
+  }
+  typeScript?.dispose();
+
+  return {
+    projectRoot,
+    filesChecked: files.length,
+    fixedFiles,
+    diagnostics,
+    notes,
+  };
 }
 
 /** One diagnostic as a line of terminal output: `file:line:col - severity: (code) message`. */

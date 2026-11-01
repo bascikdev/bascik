@@ -11,15 +11,18 @@ That is all the setup there is. The extension activates for HTML, CSS, JavaScrip
 
 ## What You Get
 
-| When you...                      | The extension...                          | Learn more                                           |
-| -------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
-| Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)           |
-| Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)         |
-| Write a `<script>`               | Offers the five execution directives      | [Script directives](#complete-script-directives)     |
-| Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover) |
-| Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)       |
-| Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)          |
-| Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)           |
+| When you...                      | The extension...                          | Learn more                                                   |
+| -------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| Type `<` and the start of a tag  | Suggests your project's components        | [Component tags](#complete-component-tags)                   |
+| Add attributes to a component    | Suggests its props and named slots        | [Props and slots](#complete-props-and-slots)                 |
+| Write a `<script>`               | Offers the five execution directives      | [Script directives](#complete-script-directives)             |
+| Hover a component tag            | Shows its source, props, and slots        | [Hover details](#see-a-components-contract-on-hover)         |
+| Cmd/Ctrl-click a tag or import   | Jumps to the component or module          | [Navigation](#navigate-components-and-imports)               |
+| Press `Shift+F12` on a component | Lists every page and component using it   | [Find All References](#find-all-references)                  |
+| Write `type="text/typescript"`   | Colors the script as TypeScript           | [TypeScript in script tags](#typescript-in-script-tags)      |
+| Make a type error in that script | Underlines it with TypeScript's message   | [TypeScript errors](#typescript-errors-in-script-tags)       |
+| Use an import in that script     | Hovers, completes, and opens its source   | [Imports in script tags](#imports-in-typescript-script-tags) |
+| Save or type a mistake           | Flags it in the editor and Problems panel | [Diagnostics](#catch-problems-as-you-type)                   |
 
 ## Complete Component Tags
 
@@ -113,7 +116,7 @@ Hold `Cmd` on macOS or `Ctrl` on Windows and Linux, then click:
 
 The `@/` alias follows `scripts.importRoot` from the owning Bascik config and defaults to `src`. Relative imports resolve from the current HTML file.
 
-> **Scope.** Import navigation applies to build, routes, and server scripts. Stream-script import navigation is not currently provided.
+> **Scope.** Import navigation applies to build, routes, and server scripts. In any `<script type="text/typescript">` block, browser and stream scripts included, TypeScript's Go to Definition also reaches imports, as [Imports in TypeScript script tags](#imports-in-typescript-script-tags) describes.
 
 ## Find All References
 
@@ -128,7 +131,76 @@ VS Code's standard Find All References works on components, so the shortcuts you
 
 > **Source files only.** References come from the HTML files in your project, so a usage that only exists in the output of a build script, a Markdown file, or a server script is not listed.
 
-Bascik-specific syntax highlighting also makes the framework's attributes easy to pick out of ordinary markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
+## Highlighting
+
+Bascik-specific syntax highlighting makes the framework's attributes easy to pick out of ordinary markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
+
+### TypeScript in Script Tags
+
+A `<script type="text/typescript">` block is colored as TypeScript, with the grammar VS Code uses for `.ts` files. Without the extension, VS Code shows the block as plain text: browsers do not run that type, so VS Code's HTML support colors only JavaScript script types. Bascik strips the types at build time, so the extension tells VS Code to treat the block as TypeScript:
+
+```html
+<script data-bascik-build-once type="text/typescript">
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
+
+  export default async function (): Promise<string> {
+    const md: string = await readFile("./content/milk-frother.md", "utf8");
+    return marked(md);
+  }
+</script>
+```
+
+Inside the block, VS Code's editing commands also work as they do in a `.ts` file: **Toggle Line Comment** (`Cmd+/` or `Ctrl+/`) adds `//` instead of `<!-- -->`, and bracket matching, auto-closing pairs, and TypeScript snippets follow TypeScript's rules. The `type` attribute can go anywhere in the tag, next to any directive, in single, double, or no quotes, and in a tag that Prettier wraps over several lines.
+
+The rest of the file is unchanged. Scripts with no `type`, `type="module"`, or another JavaScript type stay JavaScript, any other type stays as VS Code shows it, and `.ts` companion files are ordinary TypeScript files. A `</script>` inside a `//` or `/* */` comment ends the block, as VS Code does for a JavaScript block. One inside a string is colored as part of the string, again as in a JavaScript block, but a browser and Bascik end the script there, so write it as `<\/script>` in a string.
+
+> **Errors and imports come from Bascik.** VS Code's HTML support completes and describes names declared in the block itself, but it reports no type errors there and knows nothing about what the block imports. The extension adds TypeScript's errors and everything that needs another file, as the next two sections describe. Bascik's own checks, such as conflicting directives and unsafe server output, run inside the block too.
+
+### TypeScript Errors in Script Tags
+
+A type error in a `<script type="text/typescript">` block is underlined with TypeScript's own message and error number, as it would be in a `.ts` file. The Problems panel lists it with the source `ts (bascik)`:
+
+```html
+<script type="text/typescript">
+  import { frotherSpeed } from "@/lib/frother.ts";
+
+  const rpm: number = "fast"; // TS2322: Type 'string' is not assignable to type 'number'.
+</script>
+```
+
+Each block is checked the way Bascik compiles it:
+
+- **Each block is checked in the scope it runs in.** A page's browser blocks become plain `<script>` elements, so they share the page's scope: a block can call a function another block declares, and declaring the same `const` in two blocks is an error. A component's browser blocks are each wrapped in a function when [`scoping.scriptBlocks`](/configuration#scopingscriptblocks) is on (the default), so they never see each other's names. A server-side block is a module of its own. Top-level `await` is reported in a browser block, which runs as a classic script, and allowed in a server-side block.
+- **A page's browser blocks are checked as the classic script they are.** Names a page's plain `<script>` elements declare are known to its TypeScript blocks, and so are the names declared by the scripts of components it uses when `scoping.scriptBlocks` is off (those are `any`). A top-level name is never reported as unused, even with `noUnusedLocals`, since markup such as `onclick="toggleFrother()"` and later scripts can use it. A top-level `var` or `function`, and a name a plain `<script>` declares, is also a property of `window`, `self` and `globalThis`, so `function gtag() {}` followed by `window.gtag("js", new Date())` is not reported; `let`, `const` and `class` names are not properties of `window`, in TypeScript as in a browser. A `var` that a block types again (`var shared: number;`) after a plain script sets it is not reported as used before being assigned. `interface Window { dataLayer: unknown[] }` adds to the browser's `Window`, as it does in a classic script, for that page only: no two pages run together, so one page's additions never reach another page's checks. A component's additions hold on every page that uses it, scoped or not, since its script runs there: a `<ga-tag />` component that declares `interface Window { dataLayer: unknown[] }` lets the page call `window.dataLayer.push(...)`. A block with a syntax error is reported on its own and the page's other blocks are checked without it, as a browser skips that one script and runs the rest.
+- **A browser block and a server-side block see different globals.** A block with no directive runs in the browser, so it gets the DOM (`document`, `HTMLButtonElement`) and no Node.js. A block with `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` runs in Node.js, so it gets Node.js's types when the project has `@types/node` installed, and no DOM. Without `@types/node`, it gets the web globals Node.js and workerd share (`Request`, `Response`, `URL`, `fetch`, `import.meta.url`), and Node.js's own globals (`process`) and built-in modules (`node:fs`) are known but untyped, so code that runs is never reported. Install `@types/node` to have them checked.
+- **A directive script's `export default` is typed.** A server or stream script's `request`, `context`, and `{ signal }` get their types (`ServerScript` from `@bascik/bascik`), a build script must return a string or an `html` value (`BuildScript`), and a routes script must return route objects (`RoutesScript`). This needs a version of `@bascik/bascik` that publishes these types; with an older one the parameters are not checked.
+- **Imports resolve as Bascik resolves them.** Relative imports resolve from the page's folder, `@/` resolves against [`scripts.importRoot`](/configuration#scriptsimportroot), and `.ts` extensions in import paths are allowed. A misspelled import path is underlined on the path.
+- **Your `tsconfig.json` applies.** The project's `tsconfig.json`, when it has one, sets options such as `strict` and its own `paths`; Bascik's settings go on top, and each kind of block keeps the libraries it needs, so a tsconfig written for Node.js still gives browser blocks the DOM. Without a tsconfig, blocks are checked with `strict` on.
+- **Unsaved edits count.** Errors update as you type in the page, and when you edit a `.ts` file the page imports, before either is saved.
+
+The check uses VS Code's own TypeScript, so there is nothing to install, and it runs beside the extension's other diagnostics without delaying them. Pages opened together are checked together, and once no open page has a TypeScript block for 30 seconds, the check gives its memory back until the next one opens. Scripts without `type="text/typescript"` are not type checked. To check in CI too, run [`bascik --check --typescript`](/cli#typescript-errors-with-typescript).
+
+### Imports in TypeScript Script Tags
+
+In a `<script type="text/typescript">` block, what comes from another file works as it does in a `.ts` file:
+
+- **Hover** a name imported through `@/` or a relative path to see its type and documentation. A name whose type comes from another file shows that type too, such as `const settings = frotherSettings`, or a server script's `request` and `context`, which `@bascik/bascik` types.
+- **Go to Definition** (`F12` or `Cmd`/`Ctrl`-click) on an imported name opens the file and line that declare it, and on an import path opens the file.
+- **Completion** lists an imported object's members as you type the `.`, and the files and folders inside an import path, `@/` paths included.
+- **Signature help** shows an imported function's parameters as you type its arguments.
+
+```html
+<script type="text/typescript">
+  import { frotherSettings, froth } from "@/lib/frother-settings.ts";
+
+  froth(frotherSettings.rpm); // hover, F12, completion and signature help reach src/lib/frother-settings.ts
+</script>
+```
+
+VS Code's HTML support keeps answering for the names the page declares itself and for the DOM's globals, and the extension leaves those to it, so a suggestion or a signature is never listed twice. VS Code reads a server-side block with the DOM too, whatever its directive, so there a global that Node.js and the DOM both have (`console`, `setTimeout`, `fetch`, `URL`) and its members come from VS Code's library, and the extension adds only what VS Code does not know: Node.js's own globals and members (`process`, `Buffer`, `console.Console`) and the types Bascik gives the default export's parameters. Because VS Code sees every import as `any`, the extension also completes the names a module exports inside an import's braces (`import { | } from "@/lib/frother.ts"`), and the members, methods and signatures of a library type reached through an import, such as `froth(1).` on a string or `frothers.map(` on an imported array. Hovering an imported name can show two cards, VS Code's (which sees the import as `any`) and the extension's. VS Code reads a block as TypeScript only when its `type` attribute is written exactly `type="text/typescript"` (or with single quotes). A block Bascik still compiles but VS Code does not recognize, such as `type="text/TypeScript"` or an unquoted `type=text/typescript`, gets every answer from the extension, its own names too. A block whose attribute is written in capitals, `TYPE="text/typescript"`, is read by VS Code as JavaScript, together with the page's plain scripts, so there VS Code answers the page's own names and the extension adds only what needs another file. With VS Code's built-in HTML Language Features extension disabled, the extension answers for the page's own names in every block.
+
+These features use the same TypeScript as the errors, so the [TypeScript settings](#typescript-settings) apply, and they need no setup. Scripts without `type="text/typescript"` get none of them. Rename, quick fixes, and adding a missing import are not offered.
 
 ## Catch Problems as You Type
 
@@ -286,6 +358,17 @@ Configure extension behavior per project without modifying application config (`
 ```
 
 A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
+
+### TypeScript Settings
+
+Two settings control the TypeScript errors and import features in script tags:
+
+| Setting                     | Default | What it does                                                                                                                                                                                                                                                             |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bascik.typescript.enabled` | `true`  | Report TypeScript errors in `type="text/typescript"` blocks, and answer hover, completion, definition, and signature help for imports there. Turn it off to keep only Bascik's own diagnostics                                                                           |
+| `bascik.typescript.path`    | `""`    | An absolute path to a `typescript` package folder (TypeScript 5 or 6) to check with instead of VS Code's own. A relative path is rejected, not read from the open workspace. It is a user setting only, so a workspace you open cannot choose code for the editor to run |
+
+The extension never bundles TypeScript. It looks for one in this order: the folder `bascik.typescript.path` names, then the TypeScript VS Code ships with, then the project's own `typescript` package. When `bascik.typescript.path` names a folder that cannot be used (a typo, a relative path, a folder that is not a `typescript` package, TypeScript 7, or a TypeScript older than 5), VS Code shows a warning once and the check uses VS Code's own TypeScript instead. TypeScript 7 publishes no language service for other programs to use, so a TypeScript 7 install is skipped, and so is one older than TypeScript 5, which cannot resolve `.ts` imports as Bascik does. When no usable TypeScript is found, the checks are off and the **Bascik** output panel says why, once. Changing either setting restarts the language server.
 
 ### Filter Generic Editor Word Suggestions
 

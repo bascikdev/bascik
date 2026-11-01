@@ -41,6 +41,7 @@ function createFakeConnection() {
     onCompletion: register("completion"),
     onHover: register("hover"),
     onDefinition: register("definition"),
+    onSignatureHelp: register("signatureHelp"),
     onReferences: register("references"),
     onCodeAction: register("codeAction"),
     onDidChangeWatchedFiles: register("watchedFiles"),

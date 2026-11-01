@@ -1,0 +1,430 @@
+import { describe, expect, it } from "vitest";
+import {
+  blockFooter,
+  extractPageScopeScripts,
+  relocateBlockRanges,
+  sharedScriptText,
+  extractTypeScriptBlocks,
+  mayHaveTypeScriptBlocks,
+  toGeneratedOffset,
+  toSourceOffset,
+  virtualBlockText,
+  typeScriptBlockAt,
+} from "./typescript-blocks.js";
+
+describe("extractTypeScriptBlocks", () => {
+  it("finds only type=text/typescript blocks, each with its directive and program", () => {
+    const html = [
+      "<script>const a = 1;</script>",
+      '<script type="module">const b = 1;</script>',
+      '<script type="text/typescript" data-bascik-build>export default () => "";</script>',
+      "<script type='text/typescript' data-bascik-server>export default () => '';</script>",
+      '<script type="text/typescript">const c: number = 1;</script>',
+      '<script type="TEXT/TypeScript" data-bascik-routes>export default () => [];</script>',
+      '<script type="text/typescript" data-bascik-stream>export default () => "";</script>',
+      '<script type=" text/typescript " data-bascik-build-once>export default () => "";</script>',
+      "<script type=text/typescript>let d = 1;</script>",
+    ].join("\n");
+    const blocks = extractTypeScriptBlocks(html);
+    expect(blocks.map((block) => [block.directive, block.program])).toEqual([
+      ["build", "server"],
+      ["server", "server"],
+      [undefined, "client"],
+      ["routes", "server"],
+      ["stream", "server"],
+      ["build-once", "server"],
+      [undefined, "client"],
+    ]);
+    expect(blocks.map((block) => block.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it("records each block's exact offset and text", () => {
+    const html =
+      '<p>x</p>\n<script type="text/typescript">\n  const n: number = 1;\n</script>';
+    const [block] = extractTypeScriptBlocks(html);
+    expect(
+      html.slice(block.contentStart, block.contentStart + block.content.length),
+    ).toBe("\n  const n: number = 1;\n");
+  });
+
+  it("reads Prettier's wrapped attributes and a `>` inside a quoted value", () => {
+    const html =
+      '<script\n  type="text/typescript"\n  data-note="a > b"\n  data-bascik-server\n>\n  export default () => "";\n</script\n>';
+    const blocks = extractTypeScriptBlocks(html);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].directive).toBe("server");
+    expect(blocks[0].content).toBe('\n  export default () => "";\n');
+  });
+
+  it("misuse: an unclosed script element yields no block instead of throwing", () => {
+    expect(
+      extractTypeScriptBlocks('<script type="text/typescript">const a = 1;'),
+    ).toEqual([]);
+    // The blocks before it are still found.
+    expect(
+      extractTypeScriptBlocks(
+        '<script type="text/typescript">let a = 1;</script><script type="text/typescript">let b',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("misuse: an unclosed open tag or quote yields no block", () => {
+    expect(extractTypeScriptBlocks('<script type="text/typescript')).toEqual(
+      [],
+    );
+    expect(
+      extractTypeScriptBlocks("<script type='text/typescript>x</script>"),
+    ).toEqual([]);
+  });
+
+  it("misuse: a block inside an HTML comment is not a block, and an unclosed comment hides the rest", () => {
+    expect(
+      extractTypeScriptBlocks(
+        '<!-- <script type="text/typescript">const a: number = "x";</script> -->',
+      ),
+    ).toEqual([]);
+    expect(
+      extractTypeScriptBlocks(
+        '<!-- open\n<script type="text/typescript">const a: number = "x";</script>',
+      ),
+    ).toEqual([]);
+  });
+
+  it("misuse: a typo'd type is not TypeScript", () => {
+    for (const type of [
+      "text/typscript",
+      "text/ts",
+      "typescript",
+      "text/typescript; x",
+    ]) {
+      expect(
+        extractTypeScriptBlocks(
+          `<script type="${type}">const a: number = 1;</script>`,
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("marks the language VS Code's HTML support embeds each block as: its last lowercase type attribute decides", () => {
+    const language = (openTag: string) =>
+      extractTypeScriptBlocks(`${openTag}let a = 1;</script>`).map(
+        (block) => block.editorLanguage,
+      );
+    expect(language('<script type="text/typescript">')).toEqual(["typescript"]);
+    expect(language("<script type='text/typescript'>")).toEqual(["typescript"]);
+    expect(
+      language('<script data-bascik-server\n  type="text/typescript"\n>'),
+    ).toEqual(["typescript"]);
+    // Bascik reads these as TypeScript too, but VS Code's regex does not match the value: no mode answers.
+    for (const openTag of [
+      '<script type="text/TypeScript">',
+      "<script type=text/typescript>",
+      '<script type=" text/typescript">',
+      '<script type="text/typescript ">',
+    ])
+      expect(language(openTag)).toEqual([undefined]);
+    // VS Code compares the attribute's name as written: without a lowercase `type`, the block stays JavaScript.
+    for (const openTag of [
+      '<script TYPE="text/typescript">',
+      '<script Type="text/typescript">',
+      "<SCRIPT TYPE='text/typescript'>",
+    ])
+      expect(language(openTag)).toEqual(["javascript"]);
+    expect(
+      language('<script TYPE="text/typescript" type="text/typescript">'),
+    ).toEqual(["typescript"]);
+  });
+
+  it("skips a script with src, and script text inside style, textarea and title", () => {
+    expect(
+      extractTypeScriptBlocks(
+        '<script type="text/typescript" src="./a.ts"></script>',
+      ),
+    ).toEqual([]);
+    const hidden = '<script type="text/typescript">let a = 1;</script>';
+    for (const element of ["style", "textarea", "title"]) {
+      expect(
+        extractTypeScriptBlocks(`<${element}>${hidden}</${element}>`),
+      ).toEqual([]);
+    }
+  });
+
+  it("keeps a TypeScript string that mentions an HTML comment inside the block", () => {
+    const [block] = extractTypeScriptBlocks(
+      '<script type="text/typescript">const marker = "<!--";</script><script type="text/typescript">let b = 1;</script>',
+    );
+    expect(block.content).toBe('const marker = "<!--";');
+    expect(
+      extractTypeScriptBlocks(
+        '<script type="text/typescript">const marker = "<!--";</script><script type="text/typescript">let b = 1;</script>',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("does not take <scripted> or <scripts> for a script tag", () => {
+    expect(
+      extractTypeScriptBlocks(
+        '<scripts type="text/typescript">let a;</scripts>',
+      ),
+    ).toEqual([]);
+  });
+
+  it("skips the scan when the file never mentions text/typescript", () => {
+    expect(mayHaveTypeScriptBlocks("<script>let a;</script>")).toBe(false);
+    expect(mayHaveTypeScriptBlocks('<script type="Text/TypeScript">')).toBe(
+      true,
+    );
+  });
+});
+
+describe("virtualBlockText and offset mapping", () => {
+  const html =
+    '<main></main>\n<script type="text/typescript" data-bascik-server>\nexport default (request) => request.url;\n</script>';
+  const [block] = extractTypeScriptBlocks(html);
+  const at = block.content.indexOf("(request)");
+  const end = block.content.indexOf(";", at);
+  const virtual = virtualBlockText(block, [
+    { at: end, text: ")" },
+    { at, text: "__bascikScript(" },
+  ]);
+
+  it("inserts the text in order and appends the footer for the directive", () => {
+    expect(virtual.text).toBe(
+      "\nexport default __bascikScript((request) => request.url);\n\n" +
+        blockFooter("server").slice(1),
+    );
+    expect(virtual.text.slice(virtual.footerStart)).toBe(blockFooter("server"));
+    expect(blockFooter("server")).toContain("__bascik.ServerScript");
+    expect(blockFooter("build-once")).toContain("__bascik.BuildScript");
+    expect(blockFooter("routes")).toContain("__bascik.RoutesScript");
+    expect(blockFooter(undefined)).toBe("\nexport {};\n");
+  });
+
+  it("maps every source character there and back", () => {
+    for (let offset = 0; offset <= block.content.length; offset++) {
+      const source = block.contentStart + offset;
+      const generated = toGeneratedOffset(virtual, source);
+      expect(generated).toBeDefined();
+      expect(toSourceOffset(virtual, generated!)).toBe(source);
+      if (offset < block.content.length)
+        expect(virtual.text[generated!]).toBe(html[source]);
+    }
+  });
+
+  it("maps a position inside inserted text to the next source character, and the footer to the block end", () => {
+    const inside = virtual.text.indexOf("__bascikScript(") + 3;
+    expect(toSourceOffset(virtual, inside)).toBe(block.contentStart + at);
+    expect(toSourceOffset(virtual, virtual.footerStart + 5)).toBe(
+      block.contentStart + block.content.length,
+    );
+  });
+
+  it("has no generated offset for a position outside the block", () => {
+    expect(toGeneratedOffset(virtual, 0)).toBeUndefined();
+    expect(toGeneratedOffset(virtual, html.length)).toBeUndefined();
+  });
+
+  it("checks a named default export from the footer, leaving the declaration as written", () => {
+    const named =
+      '<script type="text/typescript" data-bascik-build>\nexport default function build() { return build.name; }\n</script>';
+    const [namedBlock] = extractTypeScriptBlocks(named);
+    const nameAt = namedBlock.content.indexOf("build(");
+    const checked = virtualBlockText(namedBlock, [], true, {
+      name: "build",
+      start: nameAt,
+      end: nameAt + 5,
+    });
+    expect(checked.text.startsWith(namedBlock.content)).toBe(true);
+    expect(checked.text.slice(checked.footerStart)).toBe(
+      `${blockFooter("build")}__bascikScript(build);\n`,
+    );
+    const { footerCheck } = checked;
+    expect(
+      checked.text.slice(
+        footerCheck!.generatedStart,
+        footerCheck!.generatedEnd,
+      ),
+    ).toBe("build");
+    expect(named.slice(footerCheck!.sourceStart, footerCheck!.sourceEnd)).toBe(
+      "build",
+    );
+    expect(footerCheck!.sourceStart).toBe(named.indexOf("build("));
+  });
+});
+
+describe("sharedScriptText", () => {
+  const html =
+    '<script type="text/typescript">\nfunction a() {}\n</script>\n<p>Milk frother</p>\n<script type="text/typescript">\na();\n</script>';
+  const blocks = extractTypeScriptBlocks(html);
+  const shared = sharedScriptText(blocks);
+
+  it("joins the blocks as separate statements, then makes the text a module", () => {
+    expect(shared.text).toBe(
+      `${blocks[0].content}\n;\n${blocks[1].content}${blockFooter(undefined)}`,
+    );
+    expect(shared.text.slice(shared.footerStart)).toBe(blockFooter(undefined));
+  });
+
+  it("maps each block's characters back to its own place in the HTML", () => {
+    for (const block of blocks) {
+      for (let offset = 0; offset < block.content.length; offset++) {
+        const source = block.contentStart + offset;
+        const generated = toGeneratedOffset(shared, source)!;
+        expect(shared.text[generated]).toBe(html[source]);
+        expect(toSourceOffset(shared, generated)).toBe(source);
+      }
+    }
+    // The separator stands for the start of the next block.
+    const separator = blocks[0].content.length + 1;
+    expect(toSourceOffset(shared, separator)).toBe(blocks[1].contentStart);
+  });
+});
+
+describe("sharedScriptText with insertions and the page's other globals", () => {
+  const html =
+    '<script type="text/typescript">\ninterface Window { a: number }\n</script>\n<script type="text/typescript">\nwindow.a = 1;\n</script>';
+  const blocks = extractTypeScriptBlocks(html);
+  const at = blocks[0].content.indexOf("interface");
+  const end = blocks[0].content.indexOf("}") + 1;
+  const shared = sharedScriptText(blocks, {
+    insertions: new Map([
+      [
+        0,
+        [
+          { at, text: "declare global { " },
+          { at: end, text: " }" },
+        ],
+      ],
+    ]),
+    ambientNames: ["track", "frotherCount"],
+  });
+
+  it("wraps the insertions around the block's text and declares the other globals in the footer", () => {
+    expect(shared.text).toContain(
+      "declare global { interface Window { a: number } }",
+    );
+    expect(shared.text.slice(shared.footerStart)).toBe(
+      `\ndeclare var track: any, frotherCount: any;${blockFooter(undefined)}`,
+    );
+  });
+
+  it("still maps every block character back to the HTML", () => {
+    for (const block of blocks) {
+      for (let offset = 0; offset < block.content.length; offset++) {
+        const source = block.contentStart + offset;
+        const generated = toGeneratedOffset(shared, source)!;
+        expect(shared.text[generated]).toBe(html[source]);
+        expect(toSourceOffset(shared, generated)).toBe(source);
+      }
+    }
+  });
+});
+
+describe("extractPageScopeScripts", () => {
+  it("finds the classic scripts, plain and typed, and nothing else", () => {
+    const html = [
+      "<script>function plain() {}</script>",
+      '<script type="text/javascript">var typedJs = 1;</script>',
+      "<script TYPE=' Text/JavaScript '>var spaced = 1;</script>",
+      '<script type="text/typescript">const typed = 1;</script>',
+      '<script type="module">const moduleScoped = 1;</script>',
+      '<script type="application/json">{"data": 1}</script>',
+      '<script src="/frother.js">var external = 1;</script>',
+      "<script data-bascik-build>var build = 1;</script>",
+      '<script data-bascik-server type="text/typescript">var server = 1;</script>',
+      "<!-- <script>var commented = 1;</script> -->",
+      '<script type="text/typscript">var typo = 1;</script>',
+    ].join("\n");
+    expect(extractPageScopeScripts(html)).toEqual([
+      { typed: false, content: "function plain() {}" },
+      { typed: false, content: "var typedJs = 1;" },
+      { typed: false, content: "var spaced = 1;" },
+      { typed: true, content: "const typed = 1;" },
+    ]);
+  });
+
+  it("misuse: an unclosed script swallows the rest of the file, as in a browser", () => {
+    expect(
+      extractPageScopeScripts(
+        "<script>var a = 1;</script><script>var b = 2;<script>var c = 3;</script>",
+      ),
+    ).toEqual([
+      { typed: false, content: "var a = 1;" },
+      { typed: false, content: "var b = 2;<script>var c = 3;" },
+    ]);
+  });
+});
+
+describe("relocateBlockRanges", () => {
+  const block = (body: string) =>
+    `<script type="text/typescript">\n${body}\n</script>\n`;
+  const html = `<main>Milk frother</main>\n${block('const a: number = "x";')}${block("const b: string = 2;")}`;
+  const rangeOf = (text: string, word: string, from = 0) => {
+    const start = text.indexOf(word, from);
+    return { start, end: start + word.length };
+  };
+  const a = rangeOf(html, "a:");
+  const b = rangeOf(html, "b:");
+
+  it("moves ranges with an edit above their blocks", () => {
+    const edited = `<p>new</p>\n<p>lines</p>\n${html}`;
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "a:"),
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("drops the ranges of a block whose text changed, and keeps the others", () => {
+    const edited = html.replace('"x"', '"xy"');
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("follows a block when a new block is inserted before it", () => {
+    const edited = html.replace(
+      "<main>Milk frother</main>\n",
+      `<main>Milk frother</main>\n${block("let added = 1;")}`,
+    );
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "a:"),
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("misuse: drops a range outside every block, and everything when the blocks are gone", () => {
+    expect(relocateBlockRanges(html, html, [{ start: 0, end: 4 }])).toEqual([]);
+    expect(relocateBlockRanges(html, "<main></main>", [a, b])).toEqual([]);
+  });
+
+  it("keeps extra fields on each range", () => {
+    const edited = `\n${html}`;
+    expect(relocateBlockRanges(html, edited, [{ ...a, code: 2322 }])).toEqual([
+      { ...rangeOf(edited, "a:"), code: 2322 },
+    ]);
+  });
+});
+
+describe("typeScriptBlockAt", () => {
+  const html =
+    '<p>Milk frother</p>\n<script type="text/typescript">\n  const rpm = 1200;\n</script>\n<script>\n  const plain = 1;\n</script>\n';
+  const start = html.indexOf("\n  const rpm");
+  const end = html.indexOf("</script>");
+
+  it("finds the block at its first character, inside it and at its end", () => {
+    for (const offset of [start, start + 5, end])
+      expect(typeScriptBlockAt(html, offset)?.index).toBe(0);
+  });
+
+  it("finds nothing in markup, in the open tag, past the close tag or in a plain script", () => {
+    for (const offset of [
+      0,
+      html.indexOf("text/typescript"),
+      end + 1,
+      html.indexOf("plain"),
+      -1,
+      html.length + 5,
+    ])
+      expect(typeScriptBlockAt(html, offset)).toBeUndefined();
+  });
+});

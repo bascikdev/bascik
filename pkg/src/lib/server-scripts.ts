@@ -66,7 +66,6 @@ import {
   streamComposedResponse,
   STREAM_LOOKAHEAD,
   type ExecutionPlan,
-  type PlatformContext,
   type ScriptJobRunner,
 } from "./request-execution.ts";
 import {
@@ -81,14 +80,9 @@ import {
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { ServerScriptMode } from "./server-sidecar.ts";
+import type { ServerScriptContext } from "./types.ts";
 
-/** Request context passed to every `data-bascik-server` script. */
-export interface ServerScriptContext {
-  /** The remote IP address of the client. */
-  remoteIp: string;
-  /** Host capabilities (prompt 131). The Node server passes `{ name: "node" }`. */
-  platform?: PlatformContext;
-}
+export type { ServerScriptContext };
 
 export { STREAM_LOOKAHEAD };
 

@@ -5,16 +5,18 @@ interface CliOptions {
   targetPaths: string[];
   projectPath?: string;
   fix: boolean;
+  typescript: boolean;
 }
 
 const USAGE =
-  "Usage: bascik-language-server --check [--fix] [--project <dir>] [path ...]";
+  "Usage: bascik-language-server --check [--fix] [--typescript] [--project <dir>] [path ...]";
 
 /** Every positional argument is a path to check; an unknown flag is a usage error, never ignored. */
 function parseArgs(args: string[]): CliOptions {
   const targetPaths: string[] = [];
   let projectPath: string | undefined;
   let fix = false;
+  let typescript = false;
   const projectValue = (value: string | undefined): string => {
     if (!value || value.startsWith("-"))
       throw new CheckUsageError(`--project needs a directory. ${USAGE}`);
@@ -28,6 +30,10 @@ function parseArgs(args: string[]): CliOptions {
     }
     if (arg === "--fix") {
       fix = true;
+      continue;
+    }
+    if (arg === "--typescript") {
+      typescript = true;
       continue;
     }
     if (arg === "--project") {
@@ -46,7 +52,7 @@ function parseArgs(args: string[]): CliOptions {
       throw new CheckUsageError(`Unknown option: ${arg}. ${USAGE}`);
     targetPaths.push(arg);
   }
-  return { targetPaths, projectPath, fix };
+  return { targetPaths, projectPath, fix, typescript };
 }
 
 /** `bascik-language-server --check`: per-file diagnostics over a folder or file, printed one per line. */
@@ -57,12 +63,13 @@ export async function runCliCheck(
 
   let result;
   try {
-    const { targetPaths, projectPath, fix } = parseArgs(args);
+    const { targetPaths, projectPath, fix, typescript } = parseArgs(args);
     result = await checkFiles({
       cwd,
       targets: targetPaths.length > 0 ? targetPaths : undefined,
       projectPath,
       fix,
+      typescript,
     });
   } catch (error) {
     if (error instanceof CheckUsageError) {
@@ -74,6 +81,7 @@ export async function runCliCheck(
 
   for (const diagnostic of result.diagnostics)
     console.log(formatDiagnostic(diagnostic));
+  for (const note of result.notes) console.log(`note: ${note}`);
 
   const errorCount = result.diagnostics.filter(
     (d) => d.severity === "error",

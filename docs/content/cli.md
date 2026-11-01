@@ -124,6 +124,7 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--only <glob>`       | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build`                                                                                                                                                            |
 | `--target <name>`     | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare`, `cloudflare-workers`, `cloudflare-pages`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
 | `--fix`               | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain                                                                                                                                             |
+| `--typescript`        | Also report TypeScript errors in `type="text/typescript"` scripts during `--check`, with the project's own `typescript` (5 or 6), else one the language server can resolve                                                                                                       |
 | `--strict`            | Treat warnings as errors during `--check` (exits with code 1 if warnings are found)                                                                                                                                                                                              |
 | `--json`              | Emit findings as a structured JSON document during `--check`                                                                                                                                                                                                                     |
 | `--force`             | Overwrite locally modified components during `bascik add`                                                                                                                                                                                                                        |
@@ -481,6 +482,16 @@ By default, warnings do not fail the command. Pass `--strict` to treat warnings 
 bascik --check --strict
 ```
 
+### TypeScript errors with `--typescript`
+
+Pass `--typescript` to also report TypeScript errors in `<script type="text/typescript">` blocks, checked as the [VS Code extension](/tools/vscode-extension#typescript-errors-in-script-tags) checks them: each block in the scope it runs in, browser blocks with the DOM, server-side blocks with Node.js, `@/` resolved against `scripts.importRoot`, and the project's `tsconfig.json` as the base:
+
+```sh
+bascik --check --typescript
+```
+
+Each error is a per-file finding at its line and column, with TypeScript's error number as its category, such as `TS2322`, and makes the command exit with code 1. TypeScript is not a dependency of Bascik: the check uses the project's own `typescript` package, or, when the project cannot resolve one, a `typescript` the language server package `@bascik/language-server` can resolve from where it is installed (a pnpm strict layout or a global install, for example). It must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`). TypeScript 7 publishes no language service for other programs, and TypeScript 4 cannot resolve `.ts` imports as Bascik does, so both are skipped. Without a usable TypeScript, the report has one line saying why, the rest of the check runs, and the exit code is unchanged. Without `--typescript`, TypeScript errors are never reported, so an existing project's check does not start failing.
+
 ### Auto-fixing with `--fix`
 
 Pass `--fix` to rewrite the findings that have exactly one correct fix, then report what remains. Fixes are applied by the language server, so `--fix` needs it installed: without it, `bascik --check --fix` exits with code 1 and changes nothing.
@@ -520,6 +531,7 @@ Schema:
   "distHtmlSpecHintNeeded": false,
   "perFileChecked": 31,
   "perFileHintNeeded": false,
+  "perFileNotes": [],
   "fixedFiles": [],
   "findings": [
     {
@@ -553,7 +565,7 @@ Schema:
 
 `distHtmlChecked` is the number of `dist/` HTML files parse5 validated, or `null` when `dist/` does not exist or parse5 is not installed. `distHtmlSpecHintNeeded` is `true` when `dist/` has HTML files but parse5 is absent.
 
-`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id. An `unused-component` finding has a `note` when a script builds a tag name in code (see [Static analysis](#static-analysis-with-bascik-check) above).
+`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `perFileNotes` holds one line for each thing the per-file checks could not do, such as `--typescript` without a usable TypeScript. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id. An `unused-component` finding has a `note` when a script builds a tag name in code (see [Static analysis](#static-analysis-with-bascik-check) above).
 
 `bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 
