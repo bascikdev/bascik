@@ -197,6 +197,10 @@ describe("bascik --check --typescript", () => {
 /** Pages whose TypeScript is valid where Bascik runs it, each a false error the check once reported. */
 const VALID_FILES: Record<string, string> = {
   "bascik.config.js": "export default {};\n",
+  // A strict setting many projects use, under which a page's globals once read as unused.
+  "tsconfig.json": JSON.stringify({
+    compilerOptions: { noUnusedLocals: true },
+  }),
   "package.json": JSON.stringify({
     name: "valid",
     private: true,
@@ -216,6 +220,22 @@ const VALID_FILES: Record<string, string> = {
 </script>
 <script type="text/typescript">
   document.title = frotherLabel(3);
+</script>
+`,
+  // A page's blocks run as one classic script: its plain scripts' names, a global Window augmentation, and a
+  // top-level function used only from markup.
+  "src/pages/classic-script.html": `<main>Milk frother</main>
+<button onclick="toggleFrother()">Froth</button>
+<script>
+  function track(name) { return name; }
+</script>
+<script type="text/typescript">
+  interface Window { dataLayer: unknown[] }
+  window.dataLayer = window.dataLayer || [];
+  function toggleFrother(): void {
+    track("toggle");
+    document.body.classList.toggle("frothing");
+  }
 </script>
 `,
   // Server-side blocks in a project without @types/node: Node's globals and the web globals Node shares.
