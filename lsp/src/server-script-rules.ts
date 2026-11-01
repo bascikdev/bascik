@@ -1066,6 +1066,8 @@ export function analyzeServerScriptSource(
  * imports. Type-only imports bind no value and are left out. The import
  * clause is bounded, so the scan stays linear.
  */
+const MAX_IMPORT_CLAUSE = 1000;
+
 function projectImportNames(body: string): Set<string> {
   const names = new Set<string>();
   // Each `import` is read forward to its `from` by hand: a single regular expression with a bounded clause before
@@ -1074,14 +1076,16 @@ function projectImportNames(body: string): Set<string> {
   const from = /\bfrom\s*["'](?:\.\.?\/|@\/)/g;
   for (const m of body.matchAll(/\bimport\s+(?!type\s)/g)) {
     const start = m.index + m[0].length;
-    from.lastIndex = start;
-    const end = from.exec(body);
-    if (!end) break;
-    const clause = body.slice(start, end.index).trimEnd();
+    // Only as far as a clause can reach, so many imports stay linear in the script.
+    const reach = body.slice(start, start + MAX_IMPORT_CLAUSE + 16);
+    from.lastIndex = 0;
+    const end = from.exec(reach);
+    if (!end) continue;
+    const clause = reach.slice(0, end.index).trimEnd();
     if (
       clause.length === 0 ||
-      clause.length === end.index - start ||
-      clause.length > 1000 ||
+      clause.length === end.index ||
+      clause.length > MAX_IMPORT_CLAUSE ||
       /[;'"`]/.test(clause)
     )
       continue;
