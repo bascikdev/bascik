@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blockFooter,
+  extractPageScopeScripts,
   relocateBlockRanges,
   sharedScriptText,
   extractTypeScriptBlocks,
@@ -245,6 +246,81 @@ describe("sharedScriptText", () => {
     // The separator stands for the start of the next block.
     const separator = blocks[0].content.length + 1;
     expect(toSourceOffset(shared, separator)).toBe(blocks[1].contentStart);
+  });
+});
+
+describe("sharedScriptText with insertions and the page's other globals", () => {
+  const html =
+    '<script type="text/typescript">\ninterface Window { a: number }\n</script>\n<script type="text/typescript">\nwindow.a = 1;\n</script>';
+  const blocks = extractTypeScriptBlocks(html);
+  const at = blocks[0].content.indexOf("interface");
+  const end = blocks[0].content.indexOf("}") + 1;
+  const shared = sharedScriptText(blocks, {
+    insertions: new Map([
+      [
+        0,
+        [
+          { at, text: "declare global { " },
+          { at: end, text: " }" },
+        ],
+      ],
+    ]),
+    ambientNames: ["track", "frotherCount"],
+  });
+
+  it("wraps the insertions around the block's text and declares the other globals in the footer", () => {
+    expect(shared.text).toContain(
+      "declare global { interface Window { a: number } }",
+    );
+    expect(shared.text.slice(shared.footerStart)).toBe(
+      `\ndeclare var track: any, frotherCount: any;${blockFooter(undefined)}`,
+    );
+  });
+
+  it("still maps every block character back to the HTML", () => {
+    for (const block of blocks) {
+      for (let offset = 0; offset < block.content.length; offset++) {
+        const source = block.contentStart + offset;
+        const generated = toGeneratedOffset(shared, source)!;
+        expect(shared.text[generated]).toBe(html[source]);
+        expect(toSourceOffset(shared, generated)).toBe(source);
+      }
+    }
+  });
+});
+
+describe("extractPageScopeScripts", () => {
+  it("finds the classic scripts, plain and typed, and nothing else", () => {
+    const html = [
+      "<script>function plain() {}</script>",
+      '<script type="text/javascript">var typedJs = 1;</script>',
+      "<script TYPE=' Text/JavaScript '>var spaced = 1;</script>",
+      '<script type="text/typescript">const typed = 1;</script>',
+      '<script type="module">const moduleScoped = 1;</script>',
+      '<script type="application/json">{"data": 1}</script>',
+      '<script src="/frother.js">var external = 1;</script>',
+      "<script data-bascik-build>var build = 1;</script>",
+      '<script data-bascik-server type="text/typescript">var server = 1;</script>',
+      "<!-- <script>var commented = 1;</script> -->",
+      '<script type="text/typscript">var typo = 1;</script>',
+    ].join("\n");
+    expect(extractPageScopeScripts(html)).toEqual([
+      { typed: false, content: "function plain() {}" },
+      { typed: false, content: "var typedJs = 1;" },
+      { typed: false, content: "var spaced = 1;" },
+      { typed: true, content: "const typed = 1;" },
+    ]);
+  });
+
+  it("misuse: an unclosed script swallows the rest of the file, as in a browser", () => {
+    expect(
+      extractPageScopeScripts(
+        "<script>var a = 1;</script><script>var b = 2;<script>var c = 3;</script>",
+      ),
+    ).toEqual([
+      { typed: false, content: "var a = 1;" },
+      { typed: false, content: "var b = 2;<script>var c = 3;" },
+    ]);
   });
 });
 

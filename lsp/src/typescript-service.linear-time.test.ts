@@ -7,7 +7,10 @@
  * script tags that never close, quotes that never end, and comments.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { extractTypeScriptBlocks } from "./typescript-blocks.js";
+import {
+  extractPageScopeScripts,
+  extractTypeScriptBlocks,
+} from "./typescript-blocks.js";
 import { TypeScriptProject } from "./typescript-service.js";
 import { LINEAR_TIME_TIMEOUT_MS, growthOf } from "./linear-time.test.util.js";
 import { createFixture, typescript6 as ts } from "./typescript.test.util.js";
@@ -97,6 +100,55 @@ describe("TypeScript block diagnostics: linear time", () => {
         return () => extractTypeScriptBlocks(text);
       };
       expect(growthOf(runOf(2_000), runOf(8_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it.each(scans)(
+    "finds the page's classic scripts in linear time with %s",
+    (_label, html) => {
+      const runOf = (n: number) => {
+        const text = html(n).replaceAll("text/typescript", "text/javascript");
+        return () => extractPageScopeScripts(text);
+      };
+      expect(growthOf(runOf(2_000), runOf(8_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "costs a keystroke in proportion to the page's plain scripts, whose names stay known",
+    () => {
+      const keystrokeIn = (count: number) => {
+        const service = new TypeScriptProject({
+          ts,
+          projectRoot: fixture.root,
+          importRoot: fixture.file("src"),
+        });
+        const plain = Array.from(
+          { length: count },
+          (_, index) =>
+            `<script>function track${index}(name) { return name; }</script>\n`,
+        ).join("");
+        const pageWith = (value: string) =>
+          `${plain}<script type="text/typescript">\n  track${count - 1}("open");\n  const speed: number = ${value};\n</script>\n`;
+        const file = fixture.write(
+          `src/pages/plain-${count}.html`,
+          pageWith("0"),
+        );
+        let typed = 0;
+        service.diagnostics(file, pageWith("0"));
+        return () => {
+          typed++;
+          const diagnostics = service.diagnostics(
+            file,
+            pageWith(typed % 2 === 0 ? String(typed) : `"${typed}"`),
+          );
+          if (diagnostics.length !== typed % 2)
+            throw new Error("unexpected diagnostics");
+        };
+      };
+      expect(growthOf(keystrokeIn(50), keystrokeIn(200))).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

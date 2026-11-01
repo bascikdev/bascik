@@ -79,13 +79,19 @@ export function mayHaveTypeScriptBlocks(html: string): boolean {
   return /text\/typescript/i.test(html);
 }
 
+/** A `<script>` element of an HTML file, with its open tag's attributes. */
+interface ScriptElement {
+  attributes: Map<string, string>;
+  contentStart: number;
+  content: string;
+}
+
 /**
- * The `type="text/typescript"` script blocks of an HTML file, in source order. A block inside an HTML comment, a
- * script with `src`, a script whose tag or element never closes, and a script with any other type are not blocks.
+ * Every `<script>` element of an HTML file, in source order. A script inside an HTML comment or another raw-text
+ * element, and one whose tag or element never closes, is not one.
  */
-export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
-  const blocks: TypeScriptBlock[] = [];
-  if (!mayHaveTypeScriptBlocks(html)) return blocks;
+function scanScripts(html: string): ScriptElement[] {
+  const scripts: ScriptElement[] = [];
   const lower = html.toLowerCase();
   let i = 0;
   while (i < html.length) {
@@ -114,24 +120,89 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
     // An element that never closes swallows the rest of the file; nothing after it is a tag.
     if (close < 0) break;
     if (name === "script") {
-      const attributes = readOpenTagAttributes(html.slice(lt, contentStart));
-      const type = attributes.get("type")?.trim().toLowerCase();
-      if (type === "text/typescript" && !attributes.has("src")) {
-        const directive = DIRECTIVES.find((candidate) =>
-          attributes.has(`data-bascik-${candidate}`),
-        );
-        blocks.push({
-          index: blocks.length,
-          directive,
-          program: directive === undefined ? "client" : "server",
-          contentStart,
-          content: html.slice(contentStart, close),
-        });
-      }
+      scripts.push({
+        attributes: readOpenTagAttributes(html.slice(lt, contentStart)),
+        contentStart,
+        content: html.slice(contentStart, close),
+      });
     }
     i = close + 2 + name.length;
   }
+  return scripts;
+}
+
+const directiveOf = (
+  attributes: Map<string, string>,
+): TypeScriptBlockDirective | undefined =>
+  DIRECTIVES.find((candidate) => attributes.has(`data-bascik-${candidate}`));
+
+/**
+ * The `type="text/typescript"` script blocks of an HTML file, in source order. A block inside an HTML comment, a
+ * script with `src`, a script whose tag or element never closes, and a script with any other type are not blocks.
+ */
+export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
+  const blocks: TypeScriptBlock[] = [];
+  if (!mayHaveTypeScriptBlocks(html)) return blocks;
+  for (const { attributes, contentStart, content } of scanScripts(html)) {
+    const type = attributes.get("type")?.trim().toLowerCase();
+    if (type !== "text/typescript" || attributes.has("src")) continue;
+    const directive = directiveOf(attributes);
+    blocks.push({
+      index: blocks.length,
+      directive,
+      program: directive === undefined ? "client" : "server",
+      contentStart,
+      content,
+    });
+  }
   return blocks;
+}
+
+/** The `type` values a browser runs as a classic script (the HTML standard's JavaScript MIME type essences). */
+const CLASSIC_SCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+/** A script that runs in the browser in a page's shared scope. */
+export interface PageScopeScript {
+  /** `type="text/typescript"` (Bascik strips the types) or plain JavaScript. */
+  typed: boolean;
+  content: string;
+}
+
+/**
+ * The inline scripts of an HTML file that the browser runs as classic scripts, so their top-level names are
+ * globals every other classic script on the page sees: plain JavaScript ones (no `type`, or a JavaScript type)
+ * and `type="text/typescript"` ones. A module, a data block, a script with `src` and a server-side script (a
+ * Bascik directive) are not among them.
+ */
+export function extractPageScopeScripts(html: string): PageScopeScript[] {
+  const scripts: PageScopeScript[] = [];
+  for (const { attributes, content } of scanScripts(html)) {
+    if (attributes.has("src") || directiveOf(attributes) !== undefined)
+      continue;
+    const type = (attributes.get("type") ?? "").trim().toLowerCase();
+    if (type === "text/typescript") scripts.push({ typed: true, content });
+    else if (CLASSIC_SCRIPT_TYPES.has(type))
+      scripts.push({ typed: false, content });
+  }
+  return scripts;
 }
 
 /** A run of virtual text copied unchanged from the HTML. */
@@ -218,16 +289,14 @@ function footerCheckLine(name: string): { line: string; argumentAt: number } {
   return { line: `${opening}${name});\n`, argumentAt: opening.length };
 }
 
-/** The virtual text for a block: its content with the insertions made, then the footer. */
-export function virtualBlockText(
-  block: TypeScriptBlock,
+/** Appends a block's content, with the insertions made, to `text`, recording its segments. */
+function appendBlock(
+  text: string,
+  segments: Segment[],
+  block: Pick<TypeScriptBlock, "contentStart" | "content">,
   insertions: Insertion[],
-  typed = true,
-  check?: FooterCheck,
-): VirtualBlockText {
+): string {
   const sorted = [...insertions].sort((a, b) => a.at - b.at);
-  const segments: Segment[] = [];
-  let text = "";
   let cursor = 0;
   for (const insertion of sorted) {
     segments.push({
@@ -243,7 +312,18 @@ export function virtualBlockText(
     source: block.contentStart + cursor,
     length: block.content.length - cursor,
   });
-  text += block.content.slice(cursor);
+  return text + block.content.slice(cursor);
+}
+
+/** The virtual text for a block: its content with the insertions made, then the footer. */
+export function virtualBlockText(
+  block: TypeScriptBlock,
+  insertions: Insertion[],
+  typed = true,
+  check?: FooterCheck,
+): VirtualBlockText {
+  const segments: Segment[] = [];
+  let text = appendBlock("", segments, block, insertions);
   const footerStart = text.length;
   text += blockFooter(block.directive, typed);
   if (check === undefined) return { text, segments, footerStart };
@@ -266,23 +346,40 @@ export function virtualBlockText(
 /** What goes between two blocks of a shared scope: a new statement, as a new `<script>` element starts one. */
 const SHARED_SCOPE_SEPARATOR = "\n;\n";
 
+/** What `sharedScriptText` adds to the blocks it joins. */
+export interface SharedScriptOptions {
+  /** Insertions per block, keyed by the block's `index`. */
+  insertions?: Map<number, Insertion[]>;
+  /**
+   * Globals the page's other classic scripts declare (plain JavaScript ones, components' scripts in the page
+   * scope, blocks left out for a syntax error), declared `any` in the footer so a block can use them.
+   */
+  ambientNames?: string[];
+}
+
 /**
  * The virtual text for client blocks that share one scope (a page's): their contents in order, then the footer
- * that makes the text a module of its own, so two pages never share a name.
+ * that declares the page's other globals and makes the text a module of its own, so two pages never share a name.
  */
-export function sharedScriptText(blocks: TypeScriptBlock[]): VirtualBlockText {
+export function sharedScriptText(
+  blocks: TypeScriptBlock[],
+  options: SharedScriptOptions = {},
+): VirtualBlockText {
   const segments: Segment[] = [];
   let text = "";
   blocks.forEach((block, index) => {
     if (index > 0) text += SHARED_SCOPE_SEPARATOR;
-    segments.push({
-      generated: text.length,
-      source: block.contentStart,
-      length: block.content.length,
-    });
-    text += block.content;
+    text = appendBlock(
+      text,
+      segments,
+      block,
+      options.insertions?.get(block.index) ?? [],
+    );
   });
   const footerStart = text.length;
+  const ambient = options.ambientNames ?? [];
+  if (ambient.length > 0)
+    text += `\ndeclare var ${ambient.map((name) => `${name}: any`).join(", ")};`;
   text += blockFooter(undefined);
   return { text, segments, footerStart };
 }

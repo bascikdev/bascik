@@ -19,6 +19,7 @@ import { builtinModules, createRequire } from "node:module";
 import * as path from "node:path";
 import type * as TS from "typescript-6";
 import {
+  extractPageScopeScripts,
   extractTypeScriptBlocks,
   type FooterCheck,
   SCRIPT_TYPE_CHECK,
@@ -72,13 +73,18 @@ interface VirtualFile extends VirtualBlockText {
   fileName: string;
   htmlPath: string;
   program: TypeScriptProgramKind;
+  /** A page's client blocks joined into one classic script. */
+  sharedScope: boolean;
   version: number;
 }
 
 interface Page {
   text: string;
   isolatedClientBlocks: boolean;
+  pageScopeHtml: string[];
   fileNames: string[];
+  /** Syntax errors of client blocks left out of the shared scope, located in the HTML. */
+  blockErrors: TypeScriptDiagnostic[];
 }
 
 /** How an HTML file's blocks are checked, from where it sits in the project (see `hasIsolatedClientBlocks`). */
@@ -88,6 +94,11 @@ export interface PageCheckOptions {
    * page, the client blocks share one scope. Default `false`.
    */
   isolatedClientBlocks?: boolean;
+  /**
+   * The HTML of the components whose client scripts run in this page's scope (with `scoping.scriptBlocks` off),
+   * so the names they declare are known. Default none.
+   */
+  pageScopeHtml?: string[];
 }
 
 export interface TypeScriptProjectOptions {
@@ -321,6 +332,205 @@ function defaultExportPlan(
   return { insertions: [] };
 }
 
+/** What a client script declares and how it parses, read once per distinct text (see `classicScriptInfo`). */
+interface ClassicScriptInfo {
+  /** Top-level value names: the globals a classic script adds for the scripts after it. */
+  names: string[];
+  /** Top-level interfaces with no modifiers, by name and offsets in the script. */
+  interfaces: { name: string; start: number; end: number }[];
+  /** Syntax errors, in offsets of the script, clamped to its length. */
+  syntaxErrors: Omit<TypeScriptDiagnostic, "category">[];
+}
+
+/** The value names a binding (`a`, `{ a, b: [c] }`) declares. */
+function bindingNames(
+  ts: TypeScriptModule,
+  name: TS.BindingName,
+  names: string[],
+): void {
+  if (ts.isIdentifier(name)) {
+    names.push(name.text);
+    return;
+  }
+  for (const element of name.elements) {
+    if (!ts.isOmittedExpression(element)) bindingNames(ts, element.name, names);
+  }
+}
+
+/** The text after a script's content when it is parsed alone: a module, as Bascik checks a block. */
+const PARSE_FOOTER = "\nexport {};\n";
+
+/**
+ * Reads a client script on its own: the names it declares at the top level, its interfaces and (for a typed one)
+ * its syntax errors. A program of that one file, with no libraries and no imports, finds the syntax errors with
+ * TypeScript's public API.
+ */
+export function readClassicScript(
+  ts: TypeScriptModule,
+  content: string,
+  typed: boolean,
+): ClassicScriptInfo {
+  const fileName = typed ? "/__bascik-script.ts" : "/__bascik-script.js";
+  const source = ts.createSourceFile(
+    fileName,
+    content + PARSE_FOOTER,
+    ts.ScriptTarget.Latest,
+    true,
+    typed ? ts.ScriptKind.TS : ts.ScriptKind.JS,
+  );
+  const names: string[] = [];
+  const interfaces: ClassicScriptInfo["interfaces"] = [];
+  for (const statement of source.statements) {
+    if (statement.pos >= content.length) break;
+    if (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement)) &&
+      statement.name
+    ) {
+      names.push(statement.name.text);
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations)
+        bindingNames(ts, declaration.name, names);
+    } else if (
+      ts.isInterfaceDeclaration(statement) &&
+      (statement.modifiers?.length ?? 0) === 0
+    ) {
+      interfaces.push({
+        name: statement.name.text,
+        start: statement.getStart(source),
+        end: statement.end,
+      });
+    }
+  }
+  let syntaxErrors: ClassicScriptInfo["syntaxErrors"] = [];
+  if (typed) {
+    const host: TS.CompilerHost = {
+      getSourceFile: (name) => (name === fileName ? source : undefined),
+      getDefaultLibFileName: () => "/lib.d.ts",
+      writeFile: () => undefined,
+      getCurrentDirectory: () => "/",
+      getCanonicalFileName: (name) => name,
+      useCaseSensitiveFileNames: () => true,
+      getNewLine: () => "\n",
+      fileExists: (name) => name === fileName,
+      readFile: () => undefined,
+    };
+    const program = ts.createProgram({
+      rootNames: [fileName],
+      options: { noLib: true, noResolve: true, types: [] },
+      host,
+    });
+    syntaxErrors = program.getSyntacticDiagnostics(source).map((diagnostic) => {
+      // An error past the content (an unclosed brace runs into the footer) is at the end of the script.
+      const start = Math.min(diagnostic.start ?? 0, content.length);
+      return {
+        start,
+        end: Math.max(
+          start,
+          Math.min(
+            (diagnostic.start ?? 0) + (diagnostic.length ?? 0),
+            content.length,
+          ),
+        ),
+        message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+        code: diagnostic.code,
+      };
+    });
+  }
+  return { names: [...new Set(names)], interfaces, syntaxErrors };
+}
+
+/** Global interface names per library file, read once per process (the files never change while it runs). */
+const libraryInterfaces = new Map<string, Set<string>>();
+
+/**
+ * The interfaces a library file declares globally, following its `/// <reference lib>` lines. The library files
+ * are generated with every global interface at the start of a line, so a scan of the text finds them without
+ * parsing a multi-megabyte file.
+ */
+function globalInterfacesOf(
+  ts: TypeScriptModule,
+  libDir: string,
+  libName: string,
+  into: Set<string>,
+  seen: Set<string>,
+): void {
+  const file = path.join(libDir, libName);
+  if (seen.has(file)) return;
+  seen.add(file);
+  let names = libraryInterfaces.get(file);
+  const references: string[] = [];
+  const text = ts.sys.readFile(file) ?? "";
+  for (const match of text.matchAll(
+    /^\/\/\/\s*<reference\s+lib=["']([^"']+)["']/gm,
+  ))
+    references.push(`lib.${match[1].toLowerCase()}.d.ts`);
+  if (!names) {
+    names = new Set(
+      [
+        ...text.matchAll(/^(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)/gm),
+      ].map((match) => match[1]),
+    );
+    libraryInterfaces.set(file, names);
+  }
+  for (const name of names) into.add(name);
+  for (const reference of references)
+    globalInterfacesOf(ts, libDir, reference, into, seen);
+}
+
+/** Diagnostics TypeScript gives for a name declared and never used (`noUnusedLocals` and the like). */
+const UNUSED_CODES = new Set([6133, 6196, 6198, 6199]);
+
+/**
+ * Where the names a shared classic script declares at its top level start, with the starts of its variable lists
+ * and binding patterns: where TypeScript puts its "declared but never used" errors for them. In a classic script
+ * these are globals, which markup (`onclick="toggleFrother()"`) and later scripts can use, so those errors are
+ * wrong for them.
+ */
+function topLevelNameStarts(
+  ts: TypeScriptModule,
+  source: TS.SourceFile,
+  footerStart: number,
+): Set<number> {
+  const starts = new Set<number>();
+  const visitBinding = (name: TS.BindingName) => {
+    starts.add(name.getStart(source));
+    if (!ts.isIdentifier(name))
+      for (const element of name.elements)
+        if (!ts.isOmittedExpression(element)) visitBinding(element.name);
+  };
+  const visitStatements = (statements: readonly TS.Statement[]) => {
+    for (const statement of statements) {
+      if (statement.pos >= footerStart) break;
+      if (ts.isVariableStatement(statement)) {
+        starts.add(statement.getStart(source));
+        starts.add(statement.declarationList.getStart(source));
+        for (const declaration of statement.declarationList.declarations)
+          visitBinding(declaration.name);
+      } else if (
+        (ts.isFunctionDeclaration(statement) ||
+          ts.isClassDeclaration(statement) ||
+          ts.isEnumDeclaration(statement) ||
+          ts.isInterfaceDeclaration(statement) ||
+          ts.isTypeAliasDeclaration(statement)) &&
+        statement.name
+      ) {
+        starts.add(statement.name.getStart(source));
+      } else if (
+        ts.isModuleDeclaration(statement) &&
+        statement.body &&
+        ts.isModuleBlock(statement.body)
+      ) {
+        // `declare global { interface Window {} }`, which Bascik wraps around a global interface.
+        visitStatements(statement.body.statements);
+      }
+    }
+  };
+  visitStatements(source.statements);
+  return starts;
+}
+
 const CLASSIC_SCRIPT_NOTE =
   'A type="text/typescript" block runs in the browser as a classic script, not a module.';
 
@@ -393,6 +603,10 @@ export class TypeScriptProject {
     { fileName: string; text: string } | undefined;
   /** Each program's compiler options, for `missingLibraryFiles`. */
   private readonly programOptions: TS.CompilerOptions[] = [];
+  /** `readClassicScript` results by kind and text: most scripts do not change between edits. */
+  private readonly scriptInfo = new Map<string, ClassicScriptInfo>();
+  /** The interfaces the client program's libraries declare globally, such as `Window`; read on first need. */
+  private clientGlobalInterfaces: Set<string> | undefined;
 
   constructor(options: TypeScriptProjectOptions) {
     // TypeScript keys files by absolute path; a relative root would make every relative import miss.
@@ -510,6 +724,49 @@ export class TypeScriptProject {
     return this.readOpenFile(fileName) ?? this.ts.sys.readFile(fileName);
   }
 
+  /** What a client script declares and how it parses, cached by its text. */
+  private classicScript(content: string, typed: boolean): ClassicScriptInfo {
+    const key = `${typed ? "ts" : "js"}:${content}`;
+    let info = this.scriptInfo.get(key);
+    if (!info) {
+      // Bounded: an edit makes a new entry per keystroke, and old texts are rarely seen again.
+      if (this.scriptInfo.size >= 500) this.scriptInfo.clear();
+      info = readClassicScript(this.ts, content, typed);
+      this.scriptInfo.set(key, info);
+    }
+    return info;
+  }
+
+  private globalInterfaces(): Set<string> {
+    if (!this.clientGlobalInterfaces) {
+      const options = this.programOptions[0];
+      const libDir = path.dirname(this.ts.getDefaultLibFilePath(options));
+      const names = new Set<string>();
+      const seen = new Set<string>();
+      for (const lib of options.lib ?? [])
+        globalInterfacesOf(this.ts, libDir, lib, names, seen);
+      this.clientGlobalInterfaces = names;
+    }
+    return this.clientGlobalInterfaces;
+  }
+
+  /**
+   * In a classic script, a top-level `interface Window { ... }` adds to the global interface; the block is checked
+   * as a module, where it would declare a new one. Wrapping it in `declare global { }` keeps the browser's meaning.
+   */
+  private globalInterfaceWraps(info: ClassicScriptInfo): Insertion[] {
+    const insertions: Insertion[] = [];
+    const globals = info.interfaces.length > 0 ? this.globalInterfaces() : [];
+    for (const declaration of info.interfaces) {
+      if (!(globals as Set<string>).has(declaration.name)) continue;
+      insertions.push(
+        { at: declaration.start, text: "declare global { " },
+        { at: declaration.end, text: " }" },
+      );
+    }
+    return insertions;
+  }
+
   /**
    * Records an HTML file's text. Only virtual files whose text changed get a new version, so TypeScript reuses
    * what it knows about the rest.
@@ -521,38 +778,49 @@ export class TypeScriptProject {
   ): void {
     htmlPath = path.resolve(this.projectRoot, htmlPath);
     const isolatedClientBlocks = options.isolatedClientBlocks === true;
+    const pageScopeHtml = isolatedClientBlocks
+      ? []
+      : (options.pageScopeHtml ?? []);
     const previous = this.pages.get(htmlPath);
     if (
       previous?.text === text &&
-      previous.isolatedClientBlocks === isolatedClientBlocks
+      previous.isolatedClientBlocks === isolatedClientBlocks &&
+      previous.pageScopeHtml.length === pageScopeHtml.length &&
+      previous.pageScopeHtml.every(
+        (html, index) => html === pageScopeHtml[index],
+      )
     )
       return;
     const blocks = extractTypeScriptBlocks(text);
     const units: {
       fileName: string;
       program: TypeScriptProgramKind;
+      sharedScope: boolean;
       virtual: VirtualBlockText;
     }[] = [];
-    const sharedClient = isolatedClientBlocks
-      ? []
-      : blocks.filter((block) => block.program === "client");
-    if (sharedClient.length > 0) {
-      units.push({
-        fileName: `${htmlPath}.bascik-client.ts`,
-        program: "client",
-        virtual: sharedScriptText(sharedClient),
-      });
+    const blockErrors: TypeScriptDiagnostic[] = [];
+    if (!isolatedClientBlocks) {
+      const shared = this.sharedClientText(text, blocks, pageScopeHtml);
+      blockErrors.push(...shared.blockErrors);
+      if (shared.virtual)
+        units.push({
+          fileName: `${htmlPath}.bascik-client.ts`,
+          program: "client",
+          sharedScope: true,
+          virtual: shared.virtual,
+        });
     }
     for (const block of blocks) {
       if (block.program === "client" && !isolatedClientBlocks) continue;
       units.push({
         fileName: `${htmlPath}.bascik-${block.index}.ts`,
         program: block.program,
+        sharedScope: false,
         virtual: this.virtualFile(block),
       });
     }
     let changed = false;
-    for (const { fileName, program, virtual } of units) {
+    for (const { fileName, program, sharedScope, virtual } of units) {
       const existing = this.files.get(fileName);
       if (
         existing &&
@@ -571,6 +839,7 @@ export class TypeScriptProject {
         fileName,
         htmlPath,
         program,
+        sharedScope,
         version: this.nextFileVersion++,
       });
     }
@@ -581,13 +850,75 @@ export class TypeScriptProject {
       this.files.delete(fileName);
       changed = true;
     }
-    this.pages.set(htmlPath, { text, isolatedClientBlocks, fileNames });
+    this.pages.set(htmlPath, {
+      text,
+      isolatedClientBlocks,
+      pageScopeHtml,
+      fileNames,
+      blockErrors,
+    });
     if (changed) this.projectVersion++;
+  }
+
+  /**
+   * A page's client blocks as the one classic script the browser runs them as. A block with a syntax error does
+   * not run at all in a browser, while the others do, so it is left out and reported on its own; its names stay
+   * declared (`any`), so the error is not repeated as unknown names in the blocks after it. The page's plain
+   * JavaScript scripts and the component scripts that share its scope add their names the same way.
+   */
+  private sharedClientText(
+    text: string,
+    blocks: TypeScriptBlock[],
+    pageScopeHtml: string[],
+  ): { virtual?: VirtualBlockText; blockErrors: TypeScriptDiagnostic[] } {
+    const blockErrors: TypeScriptDiagnostic[] = [];
+    const client = blocks.filter((block) => block.program === "client");
+    if (client.length === 0) return { blockErrors };
+    const valid: TypeScriptBlock[] = [];
+    const insertions = new Map<number, Insertion[]>();
+    const declared = new Set<string>();
+    const ambient = new Set<string>();
+    for (const block of client) {
+      const info = this.classicScript(block.content, true);
+      if (info.syntaxErrors.length > 0) {
+        for (const error of info.syntaxErrors)
+          blockErrors.push({
+            ...error,
+            start: block.contentStart + error.start,
+            end: block.contentStart + error.end,
+            category: "error",
+          });
+        for (const name of info.names) ambient.add(name);
+        continue;
+      }
+      valid.push(block);
+      for (const name of info.names) declared.add(name);
+      const wraps = this.globalInterfaceWraps(info);
+      if (wraps.length > 0) insertions.set(block.index, wraps);
+    }
+    if (valid.length === 0) return { blockErrors };
+    const others = [
+      ...extractPageScopeScripts(text).filter((script) => !script.typed),
+      ...pageScopeHtml.flatMap((html) => extractPageScopeScripts(html)),
+    ];
+    for (const script of others)
+      for (const name of this.classicScript(script.content, script.typed).names)
+        ambient.add(name);
+    // A name a block declares itself is the block's: declaring it again would be reported as a redeclaration.
+    const ambientNames = [...ambient].filter((name) => !declared.has(name));
+    return {
+      virtual: sharedScriptText(valid, { insertions, ambientNames }),
+      blockErrors,
+    };
   }
 
   private virtualFile(block: TypeScriptBlock): VirtualBlockText {
     if (block.directive === undefined)
-      return virtualBlockText(block, [], this.scriptTypes);
+      return virtualBlockText(
+        block,
+        this.globalInterfaceWraps(this.classicScript(block.content, true)),
+        this.scriptTypes,
+      );
     const plan = defaultExportPlan(this.ts, block.content);
     return virtualBlockText(
       block,
@@ -630,12 +961,25 @@ export class TypeScriptProject {
   ): TypeScriptDiagnostic[] {
     htmlPath = path.resolve(this.projectRoot, htmlPath);
     this.updatePage(htmlPath, text, options);
-    const result: TypeScriptDiagnostic[] = [];
-    for (const fileName of this.pages.get(htmlPath)?.fileNames ?? []) {
+    const page = this.pages.get(htmlPath);
+    const result: TypeScriptDiagnostic[] = [...(page?.blockErrors ?? [])];
+    for (const fileName of page?.fileNames ?? []) {
       const file = this.files.get(fileName)!;
       const service = this.services[file.program];
       const syntactic = service.getSyntacticDiagnostics(fileName);
-      const semantic = service.getSemanticDiagnostics(fileName);
+      let semantic = service.getSemanticDiagnostics(fileName);
+      if (file.sharedScope && semantic.some((d) => UNUSED_CODES.has(d.code))) {
+        const source = service.getProgram()?.getSourceFile(fileName);
+        if (source) {
+          const globals = topLevelNameStarts(this.ts, source, file.footerStart);
+          semantic = semantic.filter(
+            (diagnostic) =>
+              !UNUSED_CODES.has(diagnostic.code) ||
+              diagnostic.start === undefined ||
+              !globals.has(diagnostic.start),
+          );
+        }
+      }
       // A type error in Bascik's footer means @bascik/bascik's script types are not there: check without them.
       // Not while the block has a syntax error, which can swallow the footer (an unclosed brace or comment).
       const inFooterCheck = (diagnostic: TS.Diagnostic) =>
@@ -838,7 +1182,10 @@ export class TypeScriptProjects {
         diagnostics: project.diagnostics(
           path.resolve(projectRoot, request.htmlPath),
           request.text,
-          { isolatedClientBlocks: request.isolatedClientBlocks },
+          {
+            isolatedClientBlocks: request.isolatedClientBlocks,
+            pageScopeHtml: request.pageScopeHtml,
+          },
         ),
       };
     } catch (error) {

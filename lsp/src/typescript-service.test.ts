@@ -61,7 +61,7 @@ function check(
   relative: string,
   html: string,
   service = project(root),
-  options: { isolatedClientBlocks?: boolean } = {},
+  options: { isolatedClientBlocks?: boolean; pageScopeHtml?: string[] } = {},
 ): (TypeScriptDiagnostic & { text: string })[] {
   const file = root.write(relative, html);
   return service.diagnostics(file, html, options).map((diagnostic) => ({
@@ -576,6 +576,145 @@ describe("TypeScriptProject diagnostics", () => {
     expect(
       service.diagnostics(file, page("let a: number = 'x';")),
     ).toHaveLength(1);
+  });
+});
+
+describe("a page's client blocks run as one classic script", () => {
+  const strict = () =>
+    fixture({
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { noUnusedLocals: true },
+      }),
+    });
+
+  it("augments a global interface such as Window, with or without a tsconfig, in a page and in a component", () => {
+    const body =
+      "interface Window { dataLayer: unknown[] }\nwindow.dataLayer = window.dataLayer || [];";
+    for (const root of [fixture(), strict()]) {
+      expect(check(root, "src/pages/index.html", page(body))).toEqual([]);
+      expect(
+        check(
+          root,
+          "src/components/frother-card.html",
+          page(body),
+          project(root),
+          { isolatedClientBlocks: true },
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("misuse: a typo'd property of the augmented Window is still reported", () => {
+    const root = fixture();
+    const html = page(
+      "interface Window { dataLayer: unknown[] }\nwindow.dataLayr = [];",
+    );
+    expect(
+      check(root, "src/pages/index.html", html).map((d) => [d.code, d.text]),
+    ).toEqual([[2551, "dataLayr"]]);
+  });
+
+  it("never reports a top-level name as unused: markup and later scripts can use it", () => {
+    const root = strict();
+    const html =
+      '<button onclick="toggleFrother()">Milk frother</button>\n' +
+      page(
+        "interface FrotherSettings { speed: number }\nconst [first, second] = [1, 2];\nfunction toggleFrother(): void {\n  document.body.classList.toggle('frothing');\n}",
+      );
+    expect(check(root, "src/pages/index.html", html)).toEqual([]);
+  });
+
+  it("misuse: an unused name inside a function is still reported with noUnusedLocals", () => {
+    const root = strict();
+    const html = page(
+      "function toggleFrother(): void {\n  const unusedSpeed = 3;\n}",
+    );
+    expect(
+      check(root, "src/pages/index.html", html).map((d) => [d.code, d.text]),
+    ).toEqual([[6133, "unusedSpeed"]]);
+  });
+
+  it("sees names declared by the page's untyped classic scripts", () => {
+    const root = fixture();
+    const html =
+      "<script>function track(x){ return x } var frotherCount = 0; const [speedA] = [1];</script>\n" +
+      page('track("hi");\nfrotherCount++;\nconsole.log(speedA);');
+    expect(check(root, "src/pages/index.html", html)).toEqual([]);
+    // A typed block may declare a name an untyped one also declares, as a later script may.
+    expect(
+      check(
+        root,
+        "src/pages/again.html",
+        "<script>var frotherCount = 0;</script>\n" +
+          page("var frotherCount = 1;\nconsole.log(frotherCount);"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("misuse: names from a module, a server-side or an external script, and typos, are not in the page scope", () => {
+    const root = fixture();
+    const html =
+      '<script type="module">function fromModule() {}</script>\n' +
+      "<script data-bascik-build>function fromBuild() {}</script>\n" +
+      '<script src="/frother.js">function fromSrc() {}</script>\n' +
+      '<script type="application/json">{"fromJson": 1}</script>\n' +
+      "<script>function track() {}</script>\n" +
+      page("fromModule();\nfromBuild();\nfromSrc();\ntrak();");
+    const diagnostics = check(root, "src/pages/index.html", html);
+    expect(diagnostics.map((d) => d.text)).toEqual([
+      "fromModule",
+      "fromBuild",
+      "fromSrc",
+      "trak",
+    ]);
+    expect(diagnostics.every((d) => d.code === 2304 || d.code === 2552)).toBe(
+      true,
+    );
+  });
+
+  it("sees names declared by component scripts that run in the page scope", () => {
+    const root = fixture();
+    const component =
+      "<button>Milk frother</button>\n<script>function startFrother() {}</script>\n" +
+      '<script type="text/typescript">const frotherSpeed: number = 3;</script>\n';
+    const html = page("startFrother();\nconsole.log(frotherSpeed + 1);");
+    const file = root.write("src/pages/index.html", html);
+    const service = project(root);
+    expect(service.diagnostics(file, html)).toHaveLength(2);
+    expect(
+      service.diagnostics(file, html, { pageScopeHtml: [component] }),
+    ).toEqual([]);
+  });
+
+  it("misuse: a syntax error stays in its own block, and the next block still runs", () => {
+    const root = fixture();
+    const first =
+      page("const a: number =") + page("const b = 2;\nconsole.log(b);");
+    const firstErrors = check(root, "src/pages/index.html", first);
+    expect(firstErrors.map((d) => d.code)).toEqual([1109]);
+    const firstEnd = first.indexOf("</script>");
+    expect(firstErrors[0].start).toBeGreaterThan(first.indexOf("const a"));
+    expect(firstErrors[0].end).toBeLessThanOrEqual(firstEnd);
+
+    const unclosed =
+      page('function openFrother() { console.log("open");') +
+      page("const c = 3;\nconsole.log(c);\nopenFrother();");
+    const unclosedErrors = check(root, "src/pages/unclosed.html", unclosed);
+    // Only the brace, in the first block; the second block does not lose sight of the first block's function.
+    expect(unclosedErrors.map((d) => d.code)).toEqual([1005]);
+    expect(unclosedErrors[0].start).toBeGreaterThan(
+      unclosed.indexOf("openFrother"),
+    );
+    expect(unclosedErrors[0].end).toBeLessThanOrEqual(
+      unclosed.indexOf("</script>"),
+    );
+
+    // Every block broken: each reports its own error.
+    const both = page("let = 1;") + page("const = 2;");
+    const bothErrors = check(root, "src/pages/both.html", both);
+    expect(bothErrors.length).toBeGreaterThanOrEqual(2);
+    expect(bothErrors[0].start).toBeLessThan(both.indexOf("</script>"));
+    expect(bothErrors.at(-1)!.start).toBeGreaterThan(both.indexOf("</script>"));
   });
 });
 
