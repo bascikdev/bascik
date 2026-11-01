@@ -98,6 +98,52 @@ suite("TypeScript errors in script blocks", () => {
     }
   });
 
+  test("lines added above the block never show its errors on the wrong code", async () => {
+    const document = await vscode.workspace.openTextDocument(page);
+    const original = document.getText();
+    await waitLong(
+      () =>
+        typeScriptDiagnostics(page).some((diagnostic) =>
+          diagnostic.range.isEqual(rangeOf(document, "rpm")),
+        ),
+      "The rpm error should be published first",
+    );
+    // Every TypeScript range VS Code holds after the edit, with the text it covered at that moment.
+    const seen: string[] = [];
+    let edited = false;
+    const listener = vscode.languages.onDidChangeDiagnostics((event) => {
+      if (!edited) return;
+      if (!event.uris.some((uri) => uri.toString() === page.toString())) return;
+      for (const diagnostic of typeScriptDiagnostics(page))
+        seen.push(document.getText(diagnostic.range));
+    });
+    try {
+      edited = true;
+      await replaceUnsaved(
+        document,
+        `<p>Steam wand</p>\n<p>Milk jug</p>\n${original}`,
+      );
+      // Bascik's own check publishes for the new text first; TypeScript's check follows.
+      await waitLong(
+        () =>
+          seen.length > 0 &&
+          typeScriptDiagnostics(page).some((diagnostic) =>
+            diagnostic.range.isEqual(rangeOf(document, "rpm")),
+          ),
+        "The rpm error should be at its new place",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      assert.deepStrictEqual(
+        [...new Set(seen)].sort(),
+        ["label", "rpm"],
+        `Every published TypeScript range should cover rpm or label; saw ${JSON.stringify(seen)}`,
+      );
+    } finally {
+      listener.dispose();
+      await replaceUnsaved(document, original);
+    }
+  });
+
   test("an unsaved edit to an imported .ts file checks the page again", async () => {
     const pageDocument = await vscode.workspace.openTextDocument(page);
     await waitLong(
