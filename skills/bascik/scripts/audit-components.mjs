@@ -930,8 +930,31 @@ const FUNCTION_VALUE =
   /^\s*(?::[^=]*=>[^=]*)?=\s*(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)|^\s*:[^=]*=>/;
 
 /**
- * Whether a module holds content rather than helpers: a .json file, or a script file that exports no function or
- * class. What a value is built from does not matter, so an html`...` template with .map((f) => ...) inside it is
+ * Whether the object literal whose `{` is at `open` in masked code holds a function: an arrow, a `function`
+ * expression, or a method `name(...) {`.
+ */
+function holdsFunctions(bare, open) {
+  let depth = 0;
+  let end = bare.length;
+  for (let i = open; i < bare.length; i++) {
+    if (bare[i] === "{") depth++;
+    else if (bare[i] === "}" && --depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  const body = bare.slice(open + 1, end);
+  return (
+    /=>|\bfunction\b/.test(body) ||
+    /(?:^|[{,\s])(?:async\s+|get\s+|set\s+)?\*?\s*[A-Za-z_$][\w$]*\s*\([^()]*\)\s*(?::[^{,]+)?\{/.test(
+      body,
+    )
+  );
+}
+
+/**
+ * Whether a module holds content rather than helpers: a .json file, or a script file that exports no function, no
+ * class and no object with function members. What a value is built from does not matter, so an html`...` template with .map((f) => ...) inside it is
  * still content, and so is FAQ text that says "function". Comments, strings and templates are masked first. A
  * re-export from another module, or a module that cannot be read, is not counted as content.
  */
@@ -953,17 +976,26 @@ function exportsDataOnly(file) {
     )
   )
     return false;
+  // An exported object literal whose members are functions holds helpers: export default { render: (x) => x }.
+  // Arrows in html`...` holes were masked with the template, so content built with html stays content.
+  const objectStart =
+    /\bexport\s+default\s*\{|\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=\s*\{/g;
+  for (const m of bare.matchAll(objectStart))
+    if (holdsFunctions(bare, m.index + m[0].length - 1)) return false;
   // Local names declared as functions or classes.
   const functions = new Set();
   for (const m of bare.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g))
     functions.add(m[1]);
-  for (const m of bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g))
+  for (const m of bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) {
+    const after = bare.slice(m.index + m[0].length);
+    const object = /^\s*(?::[^=]+)?=\s*\{/.exec(after);
     if (
-      FUNCTION_VALUE.test(
-        bare.slice(m.index + m[0].length, m.index + m[0].length + 400),
-      )
+      FUNCTION_VALUE.test(after.slice(0, 400)) ||
+      (object &&
+        holdsFunctions(bare, m.index + m[0].length + object[0].length - 1))
     )
       functions.add(m[1]);
+  }
   // Exported names: export const x, and export { a, b as c }.
   const exported = [];
   for (const m of bare.matchAll(

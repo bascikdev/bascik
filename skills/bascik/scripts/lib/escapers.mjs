@@ -34,6 +34,8 @@ const PATTERNS = [
   // case "&": return "&amp;"
   new RegExp(`\\bcase\\s+(${Q})&\\1\\s*:[^\\n]*${AMP}`, "g"),
 ];
+/** The patterns that find an entity map rather than code that replaces: { "&": "&amp;" } and case "&":. */
+const ENTITY_MAPS = PATTERNS.slice(3);
 /** What follows a character-class match when the characters are deleted: an empty string. */
 const EMPTY_REPLACEMENT = new RegExp(`^\\s*(${Q})\\1\\s*\\)`);
 
@@ -92,11 +94,31 @@ function explainedAsXml(lines, line, name) {
   return XML_WORDS.test(text) && !/\bhtml\b/i.test(text);
 }
 
-/** The name of the function the escaper is written in, from its line or the lines just above it. */
+const indentOf = (line) => /^\s*/.exec(line ?? "")[0].length;
+
+/**
+ * The name of the function the escaper is written in, from its line or the lines just above it. A block closed at
+ * the escaper's own level or outside it (`}`) ends the search, so a name is never borrowed from an earlier function.
+ * After a finished statement (`;`) above the escaper, only a function that opens a block around the escaper counts.
+ */
 function nameAt(lines, line) {
+  const indent = indentOf(lines[line - 1]);
+  let afterStatement = false;
   for (let n = line; n >= Math.max(1, line - STATEMENT_LINES); n--) {
-    const match = NAME.exec(lines[n - 1] ?? "");
-    if (match) return match[1] ?? match[2] ?? match[3];
+    const text = lines[n - 1] ?? "";
+    if (n < line) {
+      const trimmed = text.trim();
+      if (/\}[\s;,)]*$/.test(trimmed) && indentOf(text) <= indent) break;
+      if (/[;}]$/.test(trimmed)) {
+        afterStatement = true;
+        continue;
+      }
+    }
+    const match = NAME.exec(text);
+    if (!match) continue;
+    if (afterStatement && !(indentOf(text) < indent && /\{\s*$/.test(text)))
+      continue;
+    return match[1] ?? match[2] ?? match[3];
   }
   return undefined;
 }
@@ -129,32 +151,44 @@ export function handWrittenEscapers(code) {
       const strip =
         pattern === PATTERNS[0] &&
         EMPTY_REPLACEMENT.test(code.slice(match.index + match[0].length));
-      if (!strip || !hits.has(line)) hits.set(line, strip ? "strip" : "escape");
+      const map = ENTITY_MAPS.includes(pattern);
+      const reader = pattern === PATTERNS[0];
+      const known = hits.get(line);
+      if (!known)
+        hits.set(line, { kind: strip ? "strip" : "escape", map, reader });
+      else {
+        if (!strip) known.kind = "escape";
+        known.map &&= map;
+        known.reader ||= reader;
+      }
     }
   // Each hit is judged on its own: its function's name and whether it explains itself as XML. Hits close together
-  // join one escaper (an entity map and the replace that reads it) only when they are not two different named
-  // functions, so an escapeXml beside an escapeHtml never hides it and two escapers keep their own lines.
+  // join one escaper only in two cases: two lines of the same function (same name, same explanation), or an entity
+  // map and the function that reads it. Only that map case shares an XML explanation, so a replace chain beside an
+  // escapeXml never hides behind it, and an escapeXml beside an escapeHtml never hides the HTML one.
   const out = [];
   for (const hit of [...hits.keys()].sort((a, b) => a - b)) {
-    const kind = hits.get(hit);
+    const { kind, map, reader } = hits.get(hit);
     const name = nameAt(lines, hit);
     const xml = explainedAsXml(lines, statementLine(lines, hit), name);
     const last = out.at(-1);
-    const unnamed = name === undefined || last?.name === undefined;
-    if (
-      last &&
-      hit - last.hit <= SAME_ESCAPER_LINES &&
-      (unnamed || (name === last.name && xml === last.xml))
-    ) {
-      // An unnamed hit (an entity map) is part of the function beside it: a comment that explains either as XML
-      // explains the escaper.
+    const near = last && hit - last.hit <= SAME_ESCAPER_LINES;
+    // An unnamed entity map belongs to the function beside it, and a character-class replace reads the unnamed map
+    // above it.
+    const mapCase =
+      near &&
+      ((map && name === undefined) ||
+        (last.map && last.name === undefined && reader));
+    const sameFunction = near && name === last.name && xml === last.xml;
+    if (mapCase || sameFunction) {
       last.hit = hit;
       last.name ??= name;
-      last.xml ||= xml;
+      if (mapCase) last.xml ||= xml;
+      last.map &&= map;
       if (kind === "escape") last.kind = "escape";
       continue;
     }
-    out.push({ start: hit, hit, kind, name, xml });
+    out.push({ start: hit, hit, kind, name, xml, map });
   }
   return out
     .filter(({ xml }) => !xml)
