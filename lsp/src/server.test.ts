@@ -476,25 +476,38 @@ describe("BascikLanguageServer", () => {
       expect(codes(css)).toContain("css-attribute-selector");
     });
 
-    it("starts checking when a bascik.config is added", async () => {
-      await initialize();
-      const css = await write("src/components/button.css", ATTRIBUTE_CSS);
-      open(css, ATTRIBUTE_CSS, "css");
-      await settle();
-      expect(latest(css)).toEqual([]);
+    it.each([0, 250])(
+      "starts checking when a bascik.config is added with a %i ms snapshot delay",
+      async (snapshotDelay) => {
+        await initialize();
+        const css = await write("src/components/button.css", ATTRIBUTE_CSS);
+        open(css, ATTRIBUTE_CSS, "css");
+        await vi.waitFor(() => expect(latest(css)).toEqual([]), {
+          timeout: 5000,
+        });
 
-      await write("bascik.config.ts", "export default {};\n");
-      await fake.handlers.get("watchedFiles")!({
-        changes: [
-          {
-            uri: uri(path.join(root, "bascik.config.ts")),
-            type: FileChangeType.Created,
+        const getSnapshot = server.getSnapshotForFile.bind(server);
+        vi.spyOn(server, "getSnapshotForFile").mockImplementationOnce(
+          async (file) => {
+            await settle(snapshotDelay);
+            return getSnapshot(file);
           },
-        ],
-      });
-      await settle();
-      expect(codes(css)).toContain("css-attribute-selector");
-    });
+        );
+        await write("bascik.config.ts", "export default {};\n");
+        await fake.handlers.get("watchedFiles")!({
+          changes: [
+            {
+              uri: uri(path.join(root, "bascik.config.ts")),
+              type: FileChangeType.Created,
+            },
+          ],
+        });
+        await vi.waitFor(
+          () => expect(codes(css)).toContain("css-attribute-selector"),
+          { timeout: 5000 },
+        );
+      },
+    );
 
     it("keeps navigation for a folder that is not a Bascik project", async () => {
       await initialize();
