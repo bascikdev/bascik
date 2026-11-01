@@ -3431,3 +3431,128 @@ describe("call arguments, html turned into text, decoded URLs, changed request d
       expect(d.template?.fixable).toBe(true);
   });
 });
+
+describe("html helper results bound to a name count like the call itself", () => {
+  const codes = (body: string, opts: Partial<AnalyzeOptions> = {}) =>
+    analyze(body, { directive: "module", ...opts }).map((d) => d.code);
+
+  // The starter's seo.ts: json() stored in a const, then put in a JSON-LD script.
+  const jsonLd = (bind: string) =>
+    `${IMPORT}export function jsonLd(data: Record<string, unknown>) {\n  ${bind}\n  return html\`<script type="application/ld+json">\n    \${body}\n  </script>\`;\n}\n`;
+
+  it("a const bound to json() in a JSON script is html's own form", () => {
+    const body = jsonLd(
+      'const body = json({ "@context": "https://schema.org", ...data });',
+    );
+    expect(codes(body)).toEqual([]);
+    expect(codes(body, { requestTime: true })).toEqual([]);
+    expect(
+      codes(body.replace("export function jsonLd", "export default function"), {
+        directive: "server",
+      }),
+    ).toEqual([]);
+  });
+
+  it("an alias of a json() const, and a never-reassigned let, are followed", () => {
+    expect(
+      codes(jsonLd("const value = json(data);\n  const body = value;")),
+    ).toEqual([]);
+    expect(codes(jsonLd("let body = json(data);"))).toEqual([]);
+    expect(codes(jsonLd("const body = (json(data));"))).toEqual([]);
+  });
+
+  it("a namespace import's json() bound to a const is followed", () => {
+    const body = `import * as b from "@bascik/bascik/html";\nexport const ld = (data: object) => {\n  const body = b.json(data);\n  return b.html\`<script type="application/json">\${body}</script>\`;\n};\n`;
+    expect(codes(body)).toEqual([]);
+  });
+
+  it("misuse: a let reassigned to a plain string is still an error", () => {
+    const body = jsonLd(
+      'let body = json(data);\n  if (!data.name) body = "{}" + String(data.raw);',
+    );
+    const diags = analyze(body, { directive: "module" });
+    expect(diags.map((d) => d.code)).toEqual([
+      "server-script-sink-inline-script",
+    ]);
+    expect(diags[0].severity).toBe("error");
+  });
+
+  it("misuse: a const bound to something else, or to esc(), is still an error", () => {
+    for (const bind of [
+      "const body = JSON.stringify(data);",
+      "const body = esc(String(data));",
+      "const body = raw(String(data));",
+      "const body = json;",
+      "const body = json(data).toString();",
+      "const body = data.json(data);",
+    ])
+      expect(codes(jsonLd(bind)), bind).toEqual([
+        "server-script-sink-inline-script",
+      ]);
+  });
+
+  it("misuse: a json() const in a script that is not JSON is still an error", () => {
+    const body = `${IMPORT}export const f = (data: object) => {\n  const body = json(data);\n  return html\`<script>const d = \${body};</script>\`;\n};\n`;
+    expect(codes(body)).toEqual(["server-script-sink-inline-script"]);
+  });
+
+  it("misuse: json not imported from @bascik/bascik/html is still an error", () => {
+    const body = `import { html } from "@bascik/bascik/html";\nimport { json } from "./json.js";\nexport const f = (data: object) => {\n  const body = json(data);\n  return html\`<script type="application/json">\${body}</script>\`;\n};\n`;
+    expect(codes(body)).toEqual(["server-script-sink-inline-script"]);
+  });
+
+  it("a const bound to esc() inside html`` is html-escaped-twice, like esc() in the hole", () => {
+    const body = handler("html`<p>${safe}</p>`", IMPORT).replace(
+      "return html",
+      "const safe = esc(q);\n  return html",
+    );
+    const diags = analyze(body).filter((d) => d.code === "html-escaped-twice");
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual(["${safe}"]);
+  });
+
+  it("a let bound to esc() and then to a plain value is not html-escaped-twice", () => {
+    const body = handler("html`<p>${safe}</p>`", IMPORT).replace(
+      "return html",
+      'let safe = esc(q);\n  if (!q) safe = "none";\n  return html',
+    );
+    expect(analyze(body).map((d) => d.code)).not.toContain(
+      "html-escaped-twice",
+    );
+  });
+
+  it("a const bound to esc() withholds the wrap fix as escaped already", () => {
+    const body = handler("`<p>${q}${safe}</p>`", IMPORT).replace(
+      "return `",
+      "const safe = esc(q);\n  return `",
+    );
+    const diags = unescaped(body);
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual(["${q}"]);
+    expect(diags[0].template?.fixable).toBe(false);
+    expect(diags[0].message).toContain("is escaped already");
+    expect(diags[0].message).toContain("without esc()");
+  });
+
+  it("a const bound to safeUrl() in a request-time URL attribute is checked", () => {
+    const body = handler('`<a href="${u}">x</a>`', IMPORT).replace(
+      "return `",
+      "const u = esc(safeUrl(q));\n  return `",
+    );
+    // esc(safeUrl(q)) is exempt; the URL sink accepts safeUrl inside it.
+    expect(analyze(body).map((d) => d.code)).toEqual([]);
+    const direct = handler('html`<a href="${u}">x</a>`', IMPORT).replace(
+      "return html",
+      "const u = safeUrl(q);\n  return html",
+    );
+    expect(analyze(direct).map((d) => d.code)).toEqual([]);
+  });
+
+  it("misuse: a let bound to safeUrl() and then to request data is still a URL sink", () => {
+    const body = handler('`<a href="${esc(u)}">x</a>`', IMPORT).replace(
+      "return `",
+      "let u = safeUrl(q);\n  if (q.length > 3) u = q;\n  return `",
+    );
+    expect(analyze(body).map((d) => d.code)).toEqual([
+      "server-script-sink-url-attribute",
+    ]);
+  });
+});

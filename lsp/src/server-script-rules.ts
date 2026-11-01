@@ -10,6 +10,7 @@ import {
 } from "./hand-written-escaper.js";
 import {
   HTML_MODULE,
+  boundTo,
   callOf,
   findBindings,
   findBindingRanges,
@@ -337,6 +338,19 @@ export function analyzeServerScriptSource(
     bindings: findBindings(body),
     memo: newNameMemo(),
   };
+  /**
+   * The callee when a hole is one call `accept` takes (`json(x)`), or a
+   * name every value of which is (`const body = json(x)`), or undefined.
+   */
+  const boundCallee = (
+    expr: string,
+    question: string,
+    accept: (callee: string) => boolean,
+  ): string | undefined =>
+    boundTo(expr, ctx, question, (e) => {
+      const callee = callOf(e);
+      return callee !== undefined && accept(callee) ? callee : undefined;
+    });
   const lineStarts = [0];
   for (let i = body.indexOf("\n"); i !== -1; i = body.indexOf("\n", i + 1))
     lineStarts.push(i + 1);
@@ -522,13 +536,14 @@ export function analyzeServerScriptSource(
       if (contexts[hole.index - 1].kind === "comment") continue;
       if (fenced?.has(hole.index)) continue;
       const shown = `${quoteHole(hole.expr)} (hole ${hole.index})`;
-      const callee = callOf(hole.expr);
+      const callee = boundCallee(
+        hole.expr,
+        "escaper",
+        (c) =>
+          htmlExportOf(c, imports) === "esc" || ctx.escapeFunctions.includes(c),
+      );
       const at = { hole: hole.index, shown };
-      if (
-        callee !== undefined &&
-        (htmlExportOf(callee, imports) === "esc" ||
-          ctx.escapeFunctions.includes(callee))
-      )
+      if (callee !== undefined)
         return {
           ...at,
           text: `is escaped already, and html would escape it again. Wrap the template in html\`...\` from @bascik/bascik/html and pass that value as it is, without ${callee}().`,
@@ -715,13 +730,16 @@ export function analyzeServerScriptSource(
 
       if (isHtml) {
         if (sink === "server-script-sink-inline-script") {
-          // <script type="application/json">${json(value)}</script> is html's own form.
-          const callee = callOf(hole.expr);
+          // <script type="application/json">${json(value)}</script> is
+          // html's own form, also through a name bound to json(value).
           const isJsonScript = context.kind === "raw" && context.jsonScript;
           if (
             isJsonScript &&
-            callee !== undefined &&
-            htmlExportOf(callee, imports) === "json"
+            boundCallee(
+              hole.expr,
+              "json",
+              (c) => htmlExportOf(c, imports) === "json",
+            ) !== undefined
           )
             continue;
         }
@@ -734,11 +752,13 @@ export function analyzeServerScriptSource(
           });
           continue;
         }
-        const callee = callOf(hole.expr);
         if (
-          callee !== undefined &&
-          htmlExportOf(callee, imports) === "esc" &&
-          sink === null
+          sink === null &&
+          boundCallee(
+            hole.expr,
+            "esc",
+            (c) => htmlExportOf(c, imports) === "esc",
+          ) !== undefined
         )
           diagnostics.push({
             code: "html-escaped-twice",
@@ -933,14 +953,21 @@ export function analyzeServerScriptSource(
       if (!requestTime) continue;
 
       if (sink === "server-script-sink-url-attribute") {
-        const callee = callOf(hole.expr);
+        // safeUrl() in the hole, or in every value of a name it reads.
+        const importsSafeUrl = [...ctx.imports.named.values()].includes(
+          "safeUrl",
+        );
         const checked =
-          /\bsafeUrl\s*\(|\.safeUrl\s*\(/.test(hole.expr) &&
-          [...ctx.imports.named.values()].includes("safeUrl");
-        if (
-          !checked &&
-          !(callee && htmlExportOf(callee, imports) === "safeUrl")
-        )
+          boundTo(hole.expr, ctx, "safeUrl", (e) => {
+            const callee = callOf(e);
+            return (importsSafeUrl &&
+              /\bsafeUrl\s*\(|\.safeUrl\s*\(/.test(e)) ||
+              (callee !== undefined &&
+                htmlExportOf(callee, imports) === "safeUrl")
+              ? "safeUrl"
+              : undefined;
+          }) !== undefined;
+        if (!checked)
           diagnostics.push({
             code: sink,
             message: SINK_MESSAGES[sink],

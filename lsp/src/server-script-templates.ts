@@ -410,6 +410,11 @@ export interface ExemptContext {
 export interface NameMemo {
   exempt: Map<string, boolean>;
   escapedJson: Map<string, boolean>;
+  /** boundTo verdicts, by question, and the label each fine name resolved to. */
+  bound: Map<
+    string,
+    { verdicts: Map<string, boolean>; labels: Map<string, string> }
+  >;
   /** Names being read right now, innermost last. */
   depth: number;
   /** A read under way was cut short (a cycle or the depth bound). */
@@ -419,6 +424,7 @@ export interface NameMemo {
 export const newNameMemo = (): NameMemo => ({
   exempt: new Map(),
   escapedJson: new Map(),
+  bound: new Map(),
   depth: 0,
   cut: false,
 });
@@ -891,6 +897,50 @@ export const callOf = (expr: string): string | undefined => {
   if (!m) return undefined;
   return matchingClose(e, m[0].length - 1) === e.length - 1 ? m[1] : undefined;
 };
+
+/**
+ * What `test` says of `expr` (a label, such as the callee of `json(x)`), or,
+ * when `expr` is a name, of every value bound to it, followed through
+ * aliases (`const body = json(x)`, `const b = body`): the label of the first
+ * value when every one passes, so a `let` reassigned to anything else is not
+ * followed. `question` names the test, so each name is read once per script
+ * and question. Undefined when the expression, or any value, fails.
+ */
+export function boundTo(
+  expr: string,
+  ctx: ExemptContext,
+  question: string,
+  test: (e: string) => string | undefined,
+  seen: Set<string> = new Set(),
+): string | undefined {
+  const e = stripParens(expr.trim());
+  if (!/^[\w$]+$/.test(e)) return test(e);
+  const bound = ctx.bindings.get(e);
+  if (!bound) return undefined;
+  ctx.memo ??= newNameMemo();
+  let entry = ctx.memo.bound.get(question);
+  if (entry === undefined) {
+    entry = { verdicts: new Map(), labels: new Map() };
+    ctx.memo.bound.set(question, entry);
+  }
+  const { labels } = entry;
+  let first: string | undefined;
+  const fine = nameVerdict(
+    e,
+    bound,
+    ctx.memo,
+    entry.verdicts,
+    seen,
+    (value) => {
+      const label = boundTo(value, ctx, question, test, seen);
+      first ??= label;
+      return label !== undefined;
+    },
+  );
+  if (!fine) return undefined;
+  if (first !== undefined) labels.set(e, first);
+  return labels.get(e);
+}
 
 /**
  * Whether a hole's expression cannot carry markup a visitor controls:
