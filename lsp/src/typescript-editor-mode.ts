@@ -12,7 +12,12 @@
 import * as path from "node:path";
 import type * as TS from "typescript-6";
 import { extractTypeScriptBlocks } from "./typescript-blocks.js";
-import { type EditorModeAnswers, nodeAt } from "./typescript-features.js";
+import {
+  type EditorModeAnswers,
+  involvesAny,
+  memberReceiver,
+  nodeAt,
+} from "./typescript-features.js";
 import type { TypeScriptModule } from "./typescript-loader.js";
 
 /** The library VS Code's HTML support gives its in-file TypeScript mode. */
@@ -29,24 +34,6 @@ export function editorModeText(html: string): string {
       for (let i = 0; i < block.content.length; i++)
         chars[block.contentStart + i] = block.content[i];
   return chars.join("");
-}
-
-/** Whether a type is `any` or built from it a level or two down (`any[]`, `Promise<any>`, `any | number`). */
-function involvesAny(
-  ts: TypeScriptModule,
-  checker: TS.TypeChecker,
-  type: TS.Type,
-  depth = 0,
-): boolean {
-  if ((type.getFlags() & ts.TypeFlags.Any) !== 0) return true;
-  if (depth > 2) return false;
-  const parts: readonly TS.Type[] = type.isUnionOrIntersection()
-    ? type.types
-    : (type.getFlags() & ts.TypeFlags.Object) !== 0 &&
-        ((type as TS.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
-      ? checker.getTypeArguments(type as TS.TypeReference)
-      : [];
-  return parts.some((part) => involvesAny(ts, checker, part, depth + 1));
 }
 
 /** One mirror per loaded TypeScript, shared by every project: its library is parsed once. */
@@ -153,6 +140,15 @@ export class EditorModeMirror {
         const checker = program.getTypeChecker();
         return !involvesAny(ts, checker, checker.getTypeAtLocation(node));
       },
+      typesReceiver: () => {
+        const program = use().getProgram();
+        const source = program?.getSourceFile(fileName);
+        if (!program || !source) return false;
+        const receiver = memberReceiver(ts, nodeAt(ts, source, offset));
+        if (!receiver) return false;
+        const checker = program.getTypeChecker();
+        return !involvesAny(ts, checker, checker.getTypeAtLocation(receiver));
+      },
       definesInLibrary: () =>
         (use().getDefinitionAtPosition(fileName, offset) ?? []).some(
           (definition) => this.isLib(definition.fileName),
@@ -176,6 +172,7 @@ export class EditorModeMirror {
 
 const NOTHING_KNOWN: EditorModeAnswers = {
   typesName: () => false,
+  typesReceiver: () => false,
   definesInLibrary: () => false,
   completionNames: () => new Set(),
   hasSignature: () => false,

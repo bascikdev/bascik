@@ -101,6 +101,20 @@ describe("EditorModeMirror", () => {
     expect(at(member, "request.\n", 8).completionNames(".").size).toBe(0);
   });
 
+  it("types a member access's receiver from the DOM or the page, not from an unresolved import", () => {
+    expect(at(SERVER, "log(request", 1).typesReceiver()).toBe(true);
+    expect(at(SERVER, "pathname", 2).typesReceiver()).toBe(true);
+    expect(at(SERVER, "url);", 1).typesReceiver()).toBe(false);
+    const imported = SERVER.replace(
+      "console.log(request.url);",
+      "makeLogger().;\n    log.length;",
+    );
+    expect(at(imported, "makeLogger().", 13).typesReceiver()).toBe(false);
+    expect(at(imported, "log.length", 5).typesReceiver()).toBe(false);
+    // Misuse: no member access at the offset.
+    expect(at(SERVER, "makeLogger()", 1).typesReceiver()).toBe(false);
+  });
+
   it("shows a signature for a DOM function, not for an unresolved import", () => {
     const html = SERVER.replace(
       "console.log(request.url);",
@@ -135,6 +149,7 @@ describe("EditorModeMirror", () => {
       offsetOf(SERVER, "console.log", 1),
     );
     expect(answers.typesName()).toBe(false);
+    expect(answers.typesReceiver()).toBe(false);
     expect(answers.definesInLibrary()).toBe(false);
     expect(answers.completionNames().size).toBe(0);
     expect(answers.hasSignature()).toBe(false);

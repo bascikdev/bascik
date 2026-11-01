@@ -424,7 +424,7 @@ describe("the bundled language server's TypeScript checks", () => {
 
   /** A page importing `@/lib/frother.ts`, and the position of `needle` (plus `delta`) in it. */
   const FEATURE_PAGE =
-    '<main>Milk frother</main>\n<script type="text/typescript">\n  import { frother } from "@/lib/frother.ts";\n  const rpm: number = frother.speed;\n  frother.\n</script>\n';
+    '<main>Milk frother</main>\n<script type="text/typescript">\n  import { frother } from "@/lib/frother.ts";\n  const rpm: number = frother.speed;\n  import {  } from "@/lib/frother.ts";\n  frother.speed.;\n  frother.speed.toFixed();\n  frother.\n</script>\n';
   const at = (needle: string, delta = 0) => {
     const before = FEATURE_PAGE.slice(
       0,
@@ -490,6 +490,22 @@ describe("the bundled language server's TypeScript checks", () => {
       expect(
         (await ask("textDocument/hover", "frother.speed", 1)).contents.value,
       ).toContain("const frother: Frother");
+      // VS Code's mode resolves no import: a module's exports in an import's braces, and the library members of
+      // a value from an import, are Bascik's to offer.
+      const labels = (items: { label: string }[]) =>
+        items.map((item) => item.label);
+      expect(
+        labels(await ask("textDocument/completion", "import {  }", 9)),
+      ).toEqual(expect.arrayContaining(["Frother", "frother"]));
+      expect(
+        labels(
+          await ask("textDocument/completion", "speed.;", 6, {
+            context: { triggerKind: 2, triggerCharacter: "." },
+          }),
+        ),
+      ).toContain("toFixed");
+      const signature = await ask("textDocument/signatureHelp", "toFixed()", 8);
+      expect(signature.signatures[0].label).toContain("toFixed");
     } finally {
       await server.stop();
     }

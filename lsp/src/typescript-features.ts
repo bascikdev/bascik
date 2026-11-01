@@ -119,6 +119,11 @@ export interface FeatureContext {
 export interface EditorModeAnswers {
   /** It gives the name here a type that is not built from `any`, so its own hover says what Bascik's would. */
   typesName(): boolean;
+  /**
+   * In a member access (`receiver.` or `receiver.na`), it gives the receiver a type not built from `any`, so it
+   * completes the members itself. `false` for a value from an import, which it cannot resolve.
+   */
+  typesReceiver(): boolean;
   /** Its Go to Definition here reaches its library. */
   definesInLibrary(): boolean;
   /** The names it completes here. */
@@ -216,6 +221,42 @@ const declaredIn = (symbol: TS.Symbol | undefined): string[] =>
     (declaration) => declaration.getSourceFile().fileName,
   );
 
+/** Whether a type is `any` or built from it a level or two down (`any[]`, `Promise<any>`, `any | number`). */
+export function involvesAny(
+  ts: TypeScriptModule,
+  checker: TS.TypeChecker,
+  type: TS.Type,
+  depth = 0,
+): boolean {
+  if ((type.getFlags() & ts.TypeFlags.Any) !== 0) return true;
+  if (depth > 2) return false;
+  const parts: readonly TS.Type[] = type.isUnionOrIntersection()
+    ? type.types
+    : (type.getFlags() & ts.TypeFlags.Object) !== 0 &&
+        ((type as TS.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
+      ? checker.getTypeArguments(type as TS.TypeReference)
+      : [];
+  return parts.some((part) => involvesAny(ts, checker, part, depth + 1));
+}
+
+/** The expression before the dot of the member access holding a node (`frother.` or `frother.settings.sp`). */
+export function memberReceiver(
+  ts: TypeScriptModule,
+  node: TS.Node,
+): TS.Node | undefined {
+  let access: TS.Node | undefined = node;
+  while (
+    access &&
+    !ts.isPropertyAccessExpression(access) &&
+    !ts.isQualifiedName(access)
+  )
+    access = access.parent;
+  if (!access) return undefined;
+  return ts.isPropertyAccessExpression(access)
+    ? access.expression
+    : (access as TS.QualifiedName).left;
+}
+
 /**
  * Whether a type is (or is built from, a level or two down) a type declared in a foreign file: an interface from
  * an import, `Promise<Frother>`, `Frother | undefined`, or the context type `@bascik/bascik` gives a parameter.
@@ -248,7 +289,8 @@ function hover(context: FeatureContext): TypeScriptHover | undefined {
     return undefined;
   if (
     context.isForeign !== everyFile &&
-    (!isCrossFile(context) || context.editor?.typesName())
+    (context.editor?.typesName() ||
+      !(isCrossFile(context) || typesBetterThanEditor(context)))
   )
     return;
   const start = context.toSource(info.textSpan.start);
@@ -294,6 +336,21 @@ function isCrossFile(context: FeatureContext): boolean {
     checker.getTypeAtLocation(node),
     isForeign,
   );
+}
+
+/**
+ * Whether Bascik's program types the name at the cursor without `any` (asked where the editor's mode types it with
+ * `any`): a library member reached through an import, such as `map` in `frothers.map`, which the editor cannot type.
+ */
+function typesBetterThanEditor(context: FeatureContext): boolean {
+  const { ts, service, fileName, generated } = context;
+  const program = service.getProgram();
+  const source = program?.getSourceFile(fileName);
+  if (!program || !source) return false;
+  const node = nodeAt(ts, source, generated);
+  if (!ts.isIdentifier(node)) return false;
+  const checker = program.getTypeChecker();
+  return !involvesAny(ts, checker, checker.getTypeAtLocation(node));
 }
 
 function definition(context: FeatureContext): TypeScriptLocation[] {
@@ -346,20 +403,19 @@ function foreignCompletionNames(
   };
   if (memberCompletion) {
     // The expression before the dot: `frother.` or `frother.settings.`, mid-word or not.
-    let access: TS.Node | undefined = node;
-    while (
-      access &&
-      !ts.isPropertyAccessExpression(access) &&
-      !ts.isQualifiedName(access)
-    )
-      access = access.parent;
-    if (!access) return names;
-    const receiver = ts.isPropertyAccessExpression(access)
-      ? access.expression
-      : access.left;
+    const receiver = memberReceiver(ts, node);
+    if (!receiver) return names;
     const type = checker.getNonNullableType(
       checker.getTypeAtLocation(receiver),
     );
+    // A receiver the editor types as `any` (from an import it cannot resolve): every member is Bascik's to offer,
+    // a library one too (`map` on an imported array, `toUpperCase` on an imported function's string).
+    if (
+      context.editor
+        ? !context.editor.typesReceiver()
+        : touchesForeign(ts, checker, type, isForeign)
+    )
+      return undefined;
     add(checker.getPropertiesOfType(type));
     const symbol = checker.getSymbolAtLocation(receiver);
     // A namespace import or a module's types: its exports.
@@ -487,7 +543,11 @@ function signatureHelp(
   const { ts, service, fileName, generated, isForeign } = context;
   const items = service.getSignatureHelpItems(fileName, generated, undefined);
   if (!items || items.items.length === 0) return undefined;
-  if (isForeign !== everyFile) {
+  if (isForeign !== everyFile && context.editor) {
+    // The editor's mode shows a signature wherever it resolves the call; where it does not (a callee from an
+    // import, or a library method reached through one, such as `frothers.map(`), the signature is Bascik's.
+    if (context.editor.hasSignature()) return undefined;
+  } else if (isForeign !== everyFile) {
     const program = service.getProgram();
     const source = program?.getSourceFile(fileName);
     const call = source && callAt(ts, source, generated);
@@ -497,7 +557,6 @@ function signatureHelp(
       .getResolvedSignature(call)?.declaration;
     if (!declaration || !isForeign(declaration.getSourceFile().fileName))
       return undefined;
-    if (context.editor?.hasSignature()) return undefined;
   }
   return {
     signatures: items.items.map((item) => {

@@ -363,6 +363,43 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
     ).toEqual([]);
   });
 
+  it("completes members and gives signatures for library types reached through an import, which the editor sees as any", () => {
+    const setup = project();
+    const text = PAGE.replace(
+      "import { frother, froth }",
+      "import { frother, froth, frothers }",
+    ).replace(
+      "document.title = frother.label;",
+      "document.title = frother.label;\n  froth(1).;\n  frothers.;\n  frothers.map();",
+    );
+    const dot = { ...crossFileOnly, triggerCharacter: "." };
+    expect(names(ask(setup, text, "completion", "froth(1).", 9, dot))).toEqual(
+      expect.arrayContaining(["toUpperCase", "length"]),
+    );
+    expect(names(ask(setup, text, "completion", "frothers.;", 9, dot))).toEqual(
+      expect.arrayContaining(["map", "length"]),
+    );
+    expect(
+      ask(setup, text, "signatureHelp", "frothers.map()", 13, crossFileOnly)
+        ?.signatures[0].label,
+    ).toContain("map");
+    expect(
+      ask(setup, text, "hover", "frothers.map()", 10, crossFileOnly)?.markdown,
+    ).toContain("map");
+    // The page's own string and array: their members and calls are the editor's.
+    const local = PAGE.replace(
+      "document.title = frother.label;",
+      'const word = "foam";\n  word.;\n  [1, 2].map();',
+    );
+    expect(ask(setup, local, "completion", "word.", 5, dot)).toEqual([]);
+    expect(
+      ask(setup, local, "signatureHelp", "[1, 2].map()", 11, crossFileOnly),
+    ).toBeUndefined();
+    expect(
+      ask(setup, local, "hover", "[1, 2].map()", 7, crossFileOnly),
+    ).toBeUndefined();
+  });
+
   it("answers everything in a block VS Code does not embed as TypeScript (its type not quoted and lowercase)", () => {
     const setup = project();
     for (const type of [
