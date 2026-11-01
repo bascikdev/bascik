@@ -1644,7 +1644,8 @@ export class TypeScriptProject {
             if (virtual.htmlPath !== htmlPath || start >= virtual.footerStart)
               return undefined;
             return {
-              fsPath: htmlPath,
+              // The page's own path, in the platform's spelling like every other location.
+              fsPath: path.resolve(htmlPath),
               start: positionIn(lines, toSourceOffset(virtual, start)),
               end: positionIn(
                 lines,
