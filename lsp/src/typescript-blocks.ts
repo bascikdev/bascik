@@ -320,3 +320,73 @@ export function toGeneratedOffset(
     ? last.generated + last.length
     : undefined;
 }
+
+/**
+ * Ranges inside a file's blocks, computed for `oldText`, moved to where the same block text sits in `newText`. A
+ * range in a block whose text changed (or that is gone), or outside every block, is dropped: its position in the
+ * new text is unknown until it is checked again. A block is found at its old position among the blocks first,
+ * then as the first unclaimed block with the same text, so a block inserted above another does not lose its
+ * ranges.
+ */
+export function relocateBlockRanges<T extends { start: number; end: number }>(
+  oldText: string,
+  newText: string,
+  ranges: T[],
+): T[] {
+  if (ranges.length === 0) return [];
+  const oldBlocks = extractTypeScriptBlocks(oldText);
+  const newBlocks = extractTypeScriptBlocks(newText);
+  // The unclaimed new blocks with each text, in order, so finding a moved block costs no rescan.
+  const byContent = new Map<string, { indexes: number[]; next: number }>();
+  newBlocks.forEach((block, index) => {
+    const entry = byContent.get(block.content);
+    if (entry) entry.indexes.push(index);
+    else byContent.set(block.content, { indexes: [index], next: 0 });
+  });
+  const claimed = new Set<number>();
+  const take = (content: string): number | undefined => {
+    const entry = byContent.get(content);
+    if (!entry) return undefined;
+    while (
+      entry.next < entry.indexes.length &&
+      claimed.has(entry.indexes[entry.next])
+    )
+      entry.next++;
+    return entry.indexes[entry.next++];
+  };
+  const shifts = oldBlocks.map((block, index) => {
+    let match: number | undefined =
+      newBlocks[index]?.content === block.content && !claimed.has(index)
+        ? index
+        : undefined;
+    match ??= take(block.content);
+    if (match === undefined) return undefined;
+    claimed.add(match);
+    return newBlocks[match].contentStart - block.contentStart;
+  });
+  const moved: T[] = [];
+  for (const range of ranges) {
+    // The last block starting at or before the range (blocks are in source order).
+    let low = 0;
+    let high = oldBlocks.length - 1;
+    let index = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (oldBlocks[middle].contentStart <= range.start) {
+        index = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    const block = oldBlocks[index];
+    if (!block || range.end > block.contentStart + block.content.length)
+      continue;
+    const shift = shifts[index];
+    if (shift === undefined) continue;
+    moved.push({
+      ...range,
+      start: range.start + shift,
+      end: range.end + shift,
+    });
+  }
+  return moved;
+}

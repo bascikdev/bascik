@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blockFooter,
+  relocateBlockRanges,
   sharedScriptText,
   extractTypeScriptBlocks,
   mayHaveTypeScriptBlocks,
@@ -244,5 +245,55 @@ describe("sharedScriptText", () => {
     // The separator stands for the start of the next block.
     const separator = blocks[0].content.length + 1;
     expect(toSourceOffset(shared, separator)).toBe(blocks[1].contentStart);
+  });
+});
+
+describe("relocateBlockRanges", () => {
+  const block = (body: string) =>
+    `<script type="text/typescript">\n${body}\n</script>\n`;
+  const html = `<main>Milk frother</main>\n${block('const a: number = "x";')}${block("const b: string = 2;")}`;
+  const rangeOf = (text: string, word: string, from = 0) => {
+    const start = text.indexOf(word, from);
+    return { start, end: start + word.length };
+  };
+  const a = rangeOf(html, "a:");
+  const b = rangeOf(html, "b:");
+
+  it("moves ranges with an edit above their blocks", () => {
+    const edited = `<p>new</p>\n<p>lines</p>\n${html}`;
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "a:"),
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("drops the ranges of a block whose text changed, and keeps the others", () => {
+    const edited = html.replace('"x"', '"xy"');
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("follows a block when a new block is inserted before it", () => {
+    const edited = html.replace(
+      "<main>Milk frother</main>\n",
+      `<main>Milk frother</main>\n${block("let added = 1;")}`,
+    );
+    expect(relocateBlockRanges(html, edited, [a, b])).toEqual([
+      rangeOf(edited, "a:"),
+      rangeOf(edited, "b:"),
+    ]);
+  });
+
+  it("misuse: drops a range outside every block, and everything when the blocks are gone", () => {
+    expect(relocateBlockRanges(html, html, [{ start: 0, end: 4 }])).toEqual([]);
+    expect(relocateBlockRanges(html, "<main></main>", [a, b])).toEqual([]);
+  });
+
+  it("keeps extra fields on each range", () => {
+    const edited = `\n${html}`;
+    expect(relocateBlockRanges(html, edited, [{ ...a, code: 2322 }])).toEqual([
+      { ...rangeOf(edited, "a:"), code: 2322 },
+    ]);
   });
 });

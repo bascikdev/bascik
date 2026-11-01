@@ -62,7 +62,7 @@ TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. 
 }
 ```
 
-`editorHasEmbeddedTypeScript` tells the server the editor already answers completion and hover inside these blocks (VS Code's HTML support does). The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first.
+`editorHasEmbeddedTypeScript` tells the server the editor already answers completion and hover inside these blocks (VS Code's HTML support does). The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first. A page edit checks that page only; a change to a file the blocks may import, a `tsconfig.json`, a `package.json` or the Bascik config checks every open page. Until a page is checked again, its TypeScript errors move with their blocks, and an edited block's errors are left out rather than shown on the wrong code.
 
 ## Project Config Discovery
 

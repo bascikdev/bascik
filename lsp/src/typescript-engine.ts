@@ -2,8 +2,8 @@
  * The engine the language server asks for TypeScript diagnostics, behind a small asynchronous interface.
  *
  * The language server never waits on TypeScript to publish its own diagnostics, and TypeScript's first check of a
- * project (parsing the DOM library alone takes about half a second) must not hold up a completion or another
- * file's diagnostics. So the editor runs the engine in a worker thread (`createWorkerTypeScriptEngine`); tests and
+ * project (a few seconds: parsing the DOM library and, in a project with `@types/node`, Node's types) must not
+ * hold up a completion or another file's diagnostics. So the editor runs the engine in a worker thread (`createWorkerTypeScriptEngine`); tests and
  * hosts without a worker file run it on the main thread after the current turn (`createInProcessTypeScriptEngine`).
  * The interface is also the seam for swapping TypeScript's JavaScript LanguageService for TypeScript 7's native
  * API later.

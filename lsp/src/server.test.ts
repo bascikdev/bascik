@@ -16,59 +16,8 @@ import {
   type TypeScriptDiagnosticsResult,
   type TypeScriptEngine,
 } from "./typescript-engine.js";
+import { createFakeConnection } from "./server.test.util.js";
 import { TYPESCRIPT_6_DIR } from "./typescript.test.util.js";
-
-type Handler = (...args: any[]) => any;
-
-/** The slice of a language server connection that the server uses, recording the handlers it registers. */
-function createFakeConnection() {
-  const handlers = new Map<string, Handler>();
-  // The real connection only allows registering for folder changes once the client has said it sends them.
-  const state = { clientSendsFolderChanges: false };
-  const register = (name: string) =>
-    vi.fn((handler: Handler) => {
-      handlers.set(name, handler);
-      return { dispose() {} };
-    });
-  const connection = {
-    onInitialize: register("initialize"),
-    onInitialized: register("initialized"),
-    onCompletion: register("completion"),
-    onHover: register("hover"),
-    onDefinition: register("definition"),
-    onReferences: register("references"),
-    onCodeAction: register("codeAction"),
-    onDidChangeWatchedFiles: register("watchedFiles"),
-    onDidOpenTextDocument: register("didOpen"),
-    onDidChangeTextDocument: register("didChange"),
-    onDidCloseTextDocument: register("didClose"),
-    onWillSaveTextDocument: register("willSave"),
-    onWillSaveTextDocumentWaitUntil: register("willSaveWaitUntil"),
-    onDidSaveTextDocument: register("didSave"),
-    sendDiagnostics: vi.fn(),
-    listen: vi.fn(),
-    client: {
-      register: vi.fn(
-        async (..._args: unknown[]): Promise<{ dispose(): void }> => ({
-          dispose() {},
-        }),
-      ),
-    },
-    console: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), log: vi.fn() },
-    workspace: {
-      onDidChangeWorkspaceFolders: vi.fn((handler: Handler) => {
-        if (!state.clientSendsFolderChanges) {
-          throw new Error(
-            "Client doesn't support sending workspace folder change events.",
-          );
-        }
-        handlers.set("workspaceFolders", handler);
-        return { dispose() {} };
-      }),
-    },
-  };
-  return { connection, handlers, state };
-}
 
 const settle = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1102,6 +1051,137 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     );
     expect(scopes.get(page)).toBe(false);
     expect(scopes.get(component)).toBe(true);
+  });
+
+  /** An answer with one error on the first `speed` in the checked text. */
+  const errorOnSpeed = (
+    request: TypeScriptCheckRequest,
+  ): TypeScriptDiagnosticsResult => {
+    const start = request.text.indexOf("speed");
+    return {
+      status: "ok",
+      diagnostics: [
+        { start, end: start + 5, message: "m", code: 2322, category: "error" },
+      ],
+    };
+  };
+
+  it("checks only the edited page on a page edit, and publishes nothing new for the others", async () => {
+    const engine = recordingEngine(errorOnSpeed);
+    await start({ createTypeScriptEngine: () => engine });
+    const pages = await Promise.all(
+      ["a", "b", "c"].map((name) => write(`src/pages/${name}.html`, PAGE)),
+    );
+    for (const page of pages) open(page, PAGE);
+    await eventually(() => {
+      for (const page of pages) expect(typeScriptOf(page)).toHaveLength(1);
+    });
+    await pause(400);
+    engine.diagnostics.mockClear();
+    fake.connection.sendDiagnostics.mockClear();
+
+    change(pages[0], PAGE.replace('"fast"', '"faster"'), 2);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(1));
+    await pause(400);
+    expect(engine.diagnostics.mock.calls.map(([r]) => r.htmlPath)).toEqual([
+      pages[0],
+    ]);
+    // The other pages get Bascik's own revalidation, with their TypeScript errors unchanged, and nothing more.
+    for (const page of pages.slice(1)) {
+      expect(published(page).length).toBeLessThanOrEqual(1);
+      expect(typeScriptOf(page)).toHaveLength(1);
+    }
+  });
+
+  it("checks every open page when an imported file changes, again for a page whose check was cancelled", async () => {
+    let cancelOther = false;
+    const engine = recordingEngine((request) => {
+      if (cancelOther && request.htmlPath.endsWith("other.html")) {
+        cancelOther = false;
+        return { status: "cancelled" };
+      }
+      return { status: "ok", diagnostics: [] };
+    });
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    const other = await write("src/pages/other.html", PAGE);
+    const helper = await write("src/lib/frother.ts", "export const a = 1;\n");
+    open(page, PAGE);
+    open(other, PAGE);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    engine.diagnostics.mockClear();
+    cancelOther = true;
+    await server.handleWatchedFileChanges([
+      { fsPath: helper, type: FileChangeType.Changed },
+    ]);
+    const callsFor = (file: string) =>
+      engine.diagnostics.mock.calls.filter(([r]) => r.htmlPath === file).length;
+    await eventually(() => {
+      expect(callsFor(page)).toBe(1);
+      expect(callsFor(other)).toBe(2);
+    });
+  });
+
+  it("checks open pages again when the Bascik config changes", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(1));
+    await server.handleWatchedFileChanges([
+      {
+        fsPath: path.join(root, "bascik.config.ts"),
+        type: FileChangeType.Changed,
+      },
+    ]);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+  });
+
+  it("moves TypeScript's errors with an edit above their block, and drops them when the block changes, until checked again", async () => {
+    let answered = 0;
+    const engine = recordingEngine(async (request) => {
+      // Only the first check answers; later ones wait, as a slow check would.
+      if (answered++ > 0) await new Promise(() => undefined);
+      return errorOnSpeed(request);
+    });
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    open(page, PAGE);
+    await eventually(() => expect(typeScriptOf(page)).toHaveLength(1));
+    expect(typeScriptOf(page)[0].range.start).toEqual({
+      line: 2,
+      character: 8,
+    });
+
+    const shifted = `<p>Milk frother</p>\n<p>Steam wand</p>\n${PAGE}`;
+    change(page, shifted, 2);
+    // Bascik's own diagnostic moved two lines down: its check published for the new text.
+    await eventually(() =>
+      expect(
+        latest(page).find((d) => d.code === "unknown-bascik-attribute")?.range
+          .start.line,
+      ).toBe(2),
+    );
+    expect(typeScriptOf(page)).toHaveLength(1);
+    expect(typeScriptOf(page)[0].range.start).toEqual({
+      line: 4,
+      character: 8,
+    });
+
+    change(page, shifted.replace('"fast"', '"faster"'), 3);
+    await eventually(() =>
+      expect(
+        fake.connection.sendDiagnostics.mock.calls.some(
+          ([params]) =>
+            (params as { uri: string; version?: number }).uri === uri(page) &&
+            (params as { version?: number }).version === 3,
+        ),
+      ).toBe(true),
+    );
+    expect(typeScriptOf(page)).toEqual([]);
+    expect(latest(page).map((d) => d.code)).toEqual([
+      "unknown-bascik-attribute",
+    ]);
   });
 
   it("gives a page outside every workspace folder no TypeScript diagnostics", async () => {
