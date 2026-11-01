@@ -249,7 +249,7 @@ async function liveReload(layout: Layout): Promise<Frame[]> {
     const pageFile = join(rig.project.dir, "src/pages/index.html");
     const cardFile = join(
       rig.project.dir,
-      "src/components/feat-card/feat-card.html",
+      "src/components/feature-card/feature-card.html",
     );
 
     // Beat 1: edit a page. The brand name in the heading is the lime green word.
@@ -274,7 +274,7 @@ async function liveReload(layout: Layout): Promise<Frame[]> {
     await rig.snap(frames, 2600);
 
     // Beat 2: edit a component. Every card on the page uses it, so every card changes.
-    await openFile(editor, "feat-card.html");
+    await openFile(editor, "feature-card.html");
     await scrollToCards(rig.page);
     const declaration = "border: 1px solid var(--border);";
     const border = await readLine(cardFile, declaration);
@@ -675,7 +675,7 @@ const LINT_PAGE = `<!DOCTYPE html>
   <script data-bascik-build data-bascik-server>
     export default () => '<p>Hi</p>';
   </script>
-  <feat-card>
+  <feature-card>
     <h3>Unclosed card</h3>
   <site-footer data-bascik-prop-brand="my-site" />
 </body>

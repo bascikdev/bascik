@@ -396,7 +396,7 @@ Output:
 
 Scaffolded projects also include `npm run lint`, which is `bascik --check`. It runs the same `@bascik/language-server` checks as the editor extension, plus the project-wide checks, from the terminal. Each finding names the file, line, column, and rule:
 
-![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feature-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
 > **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 
