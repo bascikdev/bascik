@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -329,6 +336,40 @@ describe("the bundled language server's TypeScript checks", () => {
     }
   }, 30_000);
 
+  it("misuse: a relative TypeScript path setting is not read from the open project, with a warning", async () => {
+    const root = await project("relative-setting");
+    // The open project has a TypeScript at the relative path; it must not be the one loaded.
+    await mkdir(join(root, "node_modules"), { recursive: true });
+    await symlink(TYPESCRIPT_6_DIR, join(root, "node_modules", "typescript"));
+    const server = await startServer(
+      serverFile,
+      root,
+      initializationOptions(
+        join(work, "no-editor"),
+        { enabled: true, path: "node_modules/typescript" },
+        true,
+      ),
+    );
+    try {
+      const file = join(root, "src/pages/index.html");
+      await open(server, file, PAGE);
+      // The project's own TypeScript still checks the page, as the last fallback; the setting is not what found it.
+      const diagnostics = await server.waitFor(
+        pathToFileURL(file).toString(),
+        (all) => all.some(isTypeScript),
+      );
+      expect(diagnostics.filter(isTypeScript).map((d) => d.code)).toEqual([
+        2322,
+      ]);
+      expect(server.shown).toHaveLength(1);
+      expect(server.shown[0]).toContain(
+        "(node_modules/typescript) is not an absolute path",
+      );
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+
   it("is off, with one log line and no diagnostics, when the project has no usable TypeScript", async () => {
     const root = await project("without-typescript");
     const server = await startServer(
@@ -337,7 +378,6 @@ describe("the bundled language server's TypeScript checks", () => {
       initializationOptions(
         join(work, "no-editor"),
         { enabled: true, path: "" },
-        root,
         true,
       ),
     );

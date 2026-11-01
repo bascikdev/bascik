@@ -51,7 +51,7 @@ bascik-language-server --stdio
 
 ## TypeScript
 
-TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: a `typescript` package folder the client passes in `initializationOptions.typescript.path` (the VS Code extension passes the `bascik.typescript.path` setting), the editor's own copy in `initializationOptions.typescript.editorPath` (the VS Code extension passes VS Code's), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped, and so is one older than TypeScript 5 (no `bundler` module resolution, so every `.ts` import would be an error). Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
+TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: an absolute path to a `typescript` package folder the client passes in `initializationOptions.typescript.path` (a relative one is skipped with a warning, never read from the open project; the VS Code extension passes the `bascik.typescript.path` setting), the editor's own copy in `initializationOptions.typescript.editorPath` (the VS Code extension passes VS Code's), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped, and so is one older than TypeScript 5 (no `bundler` module resolution, so every `.ts` import would be an error). Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
 
 `initializationOptions`, all optional:
 

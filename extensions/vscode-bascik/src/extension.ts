@@ -67,7 +67,6 @@ export async function activate(
           enabled: settings.get<boolean>("enabled", true),
           path: settings.get<string>("path", ""),
         },
-        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
         htmlLanguageFeaturesRunning(),
       );
     },

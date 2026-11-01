@@ -92,6 +92,28 @@ describe("resolveTypeScript", () => {
     );
   });
 
+  it("misuse: rejects a relative client path, which would load code from whatever folder is open, and says why", () => {
+    const root = fixture();
+    // A real TypeScript at the relative path, from the server's working directory and from the project: neither
+    // is used, because a relative path names whichever folder happens to be open.
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    const relative = path.join("node_modules", "typescript");
+    const result = resolveTypeScript({
+      clientPath: relative,
+      editorPath: TYPESCRIPT_6_DIR,
+      projectRoot: root.root,
+    });
+    expect(result).toMatchObject({ ok: true, source: "editor" });
+    expect(result.clientPathProblem).toBe(
+      `the TypeScript path the editor gave (${relative}) is not an absolute path`,
+    );
+    for (const dotted of ["./typescript", "../typescript", "~/typescript"])
+      expect(
+        resolveTypeScript({ clientPath: dotted, projectRoot: root.root })
+          .clientPathProblem,
+      ).toContain("is not an absolute path");
+  });
+
   it("accepts a client path that names the package's lib folder, as typescript.tsdk does", () => {
     const root = fixture();
     const result = resolveTypeScript({

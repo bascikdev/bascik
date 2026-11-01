@@ -4,7 +4,8 @@
  * TypeScript is never a dependency of the language server and never bundled with it: it is an optional peer. The
  * first of these that works is used:
  *
- *   1. a path the client passes (the VS Code extension passes the `bascik.typescript.path` setting);
+ *   1. a path the client passes (the VS Code extension passes the `bascik.typescript.path` setting), which must
+ *      be absolute;
  *   2. the editor's own TypeScript, when the client passes one (the VS Code extension passes VS Code's), so a
  *      mistyped or broken setting falls back to it rather than turning the checks off;
  *   3. the project's `typescript`, resolved from the project root, then from this package (where a strict
@@ -221,8 +222,14 @@ export function resolveTypeScript(
   for (const [candidate, source, label] of given) {
     if (!candidate) continue;
     const before = skipped.length;
-    const packageDir = packageDirOf(candidate);
-    if (packageDir === undefined) {
+    // A relative path would name a folder inside whichever project is open (or the server's working directory),
+    // so a workspace could choose the code the editor loads.
+    const packageDir = path.isAbsolute(candidate)
+      ? packageDirOf(candidate)
+      : undefined;
+    if (!path.isAbsolute(candidate)) {
+      skipped.push(`${label} (${candidate}) is not an absolute path`);
+    } else if (packageDir === undefined) {
       skipped.push(
         `${label} (${candidate}) is not a typescript package folder`,
       );

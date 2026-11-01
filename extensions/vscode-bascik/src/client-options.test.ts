@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bundledTypeScriptPath, initializationOptions } from "./client-options";
 
@@ -13,12 +13,7 @@ const appRoot = join(
 describe("initializationOptions", () => {
   it("passes VS Code's own TypeScript and says the editor answers inside TypeScript blocks itself", () => {
     expect(
-      initializationOptions(
-        appRoot,
-        { enabled: true, path: "" },
-        "/work/site",
-        true,
-      ),
+      initializationOptions(appRoot, { enabled: true, path: "" }, true),
     ).toEqual({
       typescript: {
         enabled: true,
@@ -37,44 +32,30 @@ describe("initializationOptions", () => {
       initializationOptions(
         appRoot,
         { enabled: false, path: "  /opt/typescript  " },
-        "/work/site",
         true,
       ).typescript,
     ).toEqual({
       enabled: false,
-      path: resolve("/opt/typescript"),
+      path: "/opt/typescript",
       // A mistyped setting falls back to this copy rather than turning checks off.
       editorPath: bundledTypeScriptPath(appRoot),
     });
   });
 
-  it("misuse: reads a relative setting from the first workspace folder, or the editor when there is none", () => {
+  it("misuse: passes a relative setting as written, never resolved against the open workspace, so the server rejects it", () => {
     expect(
       initializationOptions(
         appRoot,
-        { enabled: true, path: "node_modules/typescript" },
-        "/work/site",
+        { enabled: true, path: " node_modules/typescript " },
         true,
       ).typescript.path,
-    ).toBe(resolve("/work/site", "node_modules/typescript"));
-    expect(
-      initializationOptions(
-        appRoot,
-        { enabled: true, path: "node_modules/typescript" },
-        undefined,
-        true,
-      ).typescript.path,
-    ).toBe(resolve(appRoot, "node_modules/typescript"));
+    ).toBe("node_modules/typescript");
   });
 
   it("asks the server for every answer when VS Code's HTML support is disabled", () => {
     expect(
-      initializationOptions(
-        appRoot,
-        { enabled: true, path: "" },
-        "/work/site",
-        false,
-      ).editorHasEmbeddedTypeScript,
+      initializationOptions(appRoot, { enabled: true, path: "" }, false)
+        .editorHasEmbeddedTypeScript,
     ).toBe(false);
   });
 });

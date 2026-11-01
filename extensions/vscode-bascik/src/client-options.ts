@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 /**
  * Which documents the language server analyzes. Only files on disk have a project, so other schemes
@@ -20,7 +20,7 @@ export const SERVER_MODULE = "dist/server.js";
 /** The `bascik.typescript.*` settings the server is started with. */
 export interface TypeScriptSettings {
   enabled: boolean;
-  /** A `typescript` package folder; empty means VS Code's own. */
+  /** An absolute path to a `typescript` package folder; empty means VS Code's own. */
   path: string;
 }
 
@@ -44,18 +44,15 @@ export function bundledTypeScriptPath(appRoot: string): string {
 export function initializationOptions(
   appRoot: string,
   settings: TypeScriptSettings,
-  workspaceFolder: string | undefined,
   htmlLanguageFeatures: boolean,
 ) {
   const configured = settings.path.trim();
   return {
     typescript: {
       enabled: settings.enabled,
-      path:
-        configured === ""
-          ? undefined
-          : // A relative setting is read from the (first) workspace folder, as typescript.tsdk is.
-            resolve(workspaceFolder ?? appRoot, configured),
+      // As written: the server rejects a relative path (with a warning) rather than load code from whichever
+      // workspace is open.
+      path: configured === "" ? undefined : configured,
       editorPath: bundledTypeScriptPath(appRoot),
     },
     editorHasEmbeddedTypeScript: htmlLanguageFeatures,
