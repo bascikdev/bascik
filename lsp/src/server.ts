@@ -24,6 +24,7 @@ import {
   isConfigFile,
   isExcludedProjectPath,
   hasIsolatedClientBlocks,
+  pageScopeComponentHtml,
   isInsideComponentRoots,
   isPathInside,
   isUsageSourcePath,
@@ -849,9 +850,18 @@ export class BascikLanguageServer {
     const projectRoot = this.findProjectRoot(fsPath);
     if (document.languageId === "html") {
       if (closed && projectRoot) this.typeScript.closePage(projectRoot, fsPath);
-      // A page edit only changes that page's blocks.
-      if (!closed && projectRoot)
-        this.scheduleTypeScriptCheck(projectRoot, document.uri);
+      if (!closed && projectRoot) {
+        // A page edit only changes that page's blocks, unless it is a component whose scripts run in the scope
+        // of the pages that use it (`scoping.scriptBlocks` off): their names are those pages' globals.
+        const snapshot = this.projectSnapshots.get(projectRoot);
+        const sharesPageScope =
+          snapshot?.scopesScriptBlocks === false &&
+          isInsideComponentRoots(fsPath, snapshot.componentRoots);
+        this.scheduleTypeScriptCheck(
+          projectRoot,
+          sharesPageScope ? undefined : document.uri,
+        );
+      }
       return;
     }
     if (!TYPESCRIPT_INPUT_FILE.test(fsPath)) return;
@@ -977,6 +987,14 @@ export class BascikLanguageServer {
       text,
       isolatedClientBlocks:
         snapshot !== undefined && hasIsolatedClientBlocks(fsPath, snapshot),
+      pageScopeHtml:
+        snapshot === undefined
+          ? undefined
+          : pageScopeComponentHtml(fsPath, text, snapshot, (componentPath) =>
+              this.documents
+                .get(pathToFileURL(componentPath).toString())
+                ?.getText(),
+            ),
     });
     // Closed meanwhile: there is nothing to show.
     const current = this.documents.get(uri);

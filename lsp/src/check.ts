@@ -15,6 +15,7 @@ import { DiagnosticSeverity } from "vscode-languageserver";
 import {
   buildSnapshot,
   hasIsolatedClientBlocks,
+  pageScopeComponentHtml,
   isInsideComponentRoots,
   type ProjectSnapshot,
 } from "./project.js";
@@ -282,6 +283,11 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
         htmlPath: filePath,
         text: document.getText(),
         isolatedClientBlocks: hasIsolatedClientBlocks(filePath, snapshot),
+        pageScopeHtml: pageScopeComponentHtml(
+          filePath,
+          document.getText(),
+          snapshot,
+        ),
       });
       if (result.status === "unavailable") {
         // One note for the whole check, which then goes on without TypeScript.

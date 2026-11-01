@@ -96,6 +96,29 @@ describe("checkFiles with TypeScript", () => {
     expect(unscoped.diagnostics).toEqual([]);
   });
 
+  it("sees the names a page's plain scripts declare, and a component's when its scripts share the page scope", async () => {
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    root.write(
+      "src/components/frother-button.html",
+      "<button>Milk frother</button>\n<script>function startFrother() {}</script>\n",
+    );
+    root.write(
+      "src/pages/index.html",
+      '<frother-button />\n<script>function track(name) { return name; }</script>\n<script type="text/typescript">\n  track("open");\n  startFrother();\n</script>\n',
+    );
+    // Scoped (the default), the component's script runs in its own function: its name is not the page's.
+    const scoped = await checkFiles({ cwd: root.root, typescript: true });
+    expect(scoped.diagnostics.map((d) => [d.line, d.code])).toEqual([
+      [5, "TS2304"],
+    ]);
+    root.write(
+      "bascik.config.ts",
+      "export default { scoping: { scriptBlocks: false } };\n",
+    );
+    const unscoped = await checkFiles({ cwd: root.root, typescript: true });
+    expect(unscoped.diagnostics).toEqual([]);
+  });
+
   it("misuse: a project with TypeScript 7 gets the note, naming why its copy was skipped", async () => {
     root.link("node_modules/typescript", TYPESCRIPT_7_DIR);
     const result = await checkFiles({ cwd: root.root, typescript: true });

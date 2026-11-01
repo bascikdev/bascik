@@ -29,6 +29,8 @@ export interface TypeScriptCheckRequest {
   text: string;
   /** Each client block runs in its own scope (a scoped component); otherwise, as in a page, they share one. */
   isolatedClientBlocks?: boolean;
+  /** The HTML of the components whose client scripts run in the page's scope (see `PageCheckOptions`). */
+  pageScopeHtml?: string[];
 }
 
 export interface TypeScriptEngine {
@@ -251,6 +253,7 @@ export function createWorkerTypeScriptEngine(
           htmlPath: request.htmlPath,
           text: request.text,
           isolatedClientBlocks: request.isolatedClientBlocks,
+          pageScopeHtml: request.pageScopeHtml,
         } satisfies TypeScriptWorkerRequest);
       });
     },

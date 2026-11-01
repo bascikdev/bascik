@@ -1077,6 +1077,43 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     expect(scopes.get(component)).toBe(true);
   });
 
+  it("passes the HTML of components whose scripts share the page scope, and checks pages again when one is edited", async () => {
+    await write(
+      "bascik.config.ts",
+      "export default { scoping: { scriptBlocks: false } };\n",
+    );
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const button =
+      "<button>Milk frother</button>\n<script>function startFrother() {}</script>\n";
+    const component = await write("src/components/frother-button.html", button);
+    const pageText = `<frother-button></frother-button>\n${PAGE}`;
+    const page = await write("src/pages/index.html", pageText);
+    open(page, pageText);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalled());
+    const first = engine.diagnostics.mock.calls.at(-1)![0];
+    expect(first).toMatchObject({
+      htmlPath: page,
+      isolatedClientBlocks: false,
+      pageScopeHtml: [button],
+    });
+
+    // An unsaved edit to the component is what the page sees, and the page is checked again for it.
+    open(component, button);
+    await pause(400);
+    engine.diagnostics.mockClear();
+    const edited = button.replace("startFrother", "stopFrother");
+    change(component, edited, 2);
+    await eventually(() =>
+      expect(
+        engine.diagnostics.mock.calls.some(
+          ([request]) =>
+            request.htmlPath === page && request.pageScopeHtml?.[0] === edited,
+        ),
+      ).toBe(true),
+    );
+  });
+
   /** An answer with one error on the first `speed` in the checked text. */
   const errorOnSpeed = (
     request: TypeScriptCheckRequest,

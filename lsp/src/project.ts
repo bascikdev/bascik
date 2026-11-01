@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
+import { findComponentUsages } from "./component-usages.js";
 import {
   analyzeComponentSource,
   type ComponentMetadata,
@@ -130,6 +131,46 @@ export function hasIsolatedClientBlocks(
     snapshot.scopesScriptBlocks !== false &&
     isInsideComponentRoots(fsPath, snapshot.componentRoots)
   );
+}
+
+/**
+ * The HTML of every component a page uses, directly or through other components, whose client scripts run in the
+ * page's own scope: all of them when `scoping.scriptBlocks` is off, none otherwise (each component block is then
+ * wrapped in its own function). Each component appears once, in the order first used. `readOpen` gives an open
+ * editor buffer's newer text.
+ */
+export function pageScopeComponentHtml(
+  fsPath: string,
+  text: string,
+  snapshot: Pick<
+    ProjectSnapshot,
+    "componentRoots" | "scopesScriptBlocks" | "componentMap"
+  > &
+    Partial<Pick<ProjectSnapshot, "componentSourceByFile">>,
+  readOpen: (fsPath: string) => string | undefined = () => undefined,
+): string[] {
+  if (snapshot.scopesScriptBlocks !== false) return [];
+  const names = new Set(snapshot.componentMap.keys());
+  const seen = new Set<string>([path.resolve(fsPath)]);
+  const found: string[] = [];
+  const queue = [text];
+  while (queue.length > 0) {
+    const html = queue.shift()!;
+    for (const usage of findComponentUsages(html, names)) {
+      const componentPath = snapshot.componentMap.get(usage.name);
+      if (componentPath === undefined) continue;
+      const resolved = path.resolve(componentPath);
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      const source =
+        readOpen(componentPath) ??
+        snapshot.componentSourceByFile?.get(componentPath);
+      if (source === undefined) continue;
+      found.push(source);
+      queue.push(source);
+    }
+  }
+  return found;
 }
 
 /** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */
