@@ -6,7 +6,7 @@
  * already answers about names the page itself declares and the library's globals, but it resolves no import. With
  * `crossFileOnly`, only what that mode cannot know is answered, so nothing is shown twice: a symbol, member, global
  * or call whose declaration lies in another file (an `@/` or relative import, a package, `@types/node`, the types
- * `@bascik/bascik` gives a directive script), and import paths. That mode reads every block with the DOM library,
+ * `@bascik/bascik` gives a directive script), import paths and the names an import's braces offer. That mode reads every block with the DOM library,
  * whatever its directive, so a name it types or resolves there itself (`console` or `URL` in a server script, which
  * Bascik's server program declares from `@types/node`) is left to it too. Other editors get every answer.
  *
@@ -195,6 +195,22 @@ function isModuleSpecifier(ts: TypeScriptModule, node: TS.Node): boolean {
   );
 }
 
+/**
+ * The module specifier of the `import { ... } from` or `export { ... } from` whose braces hold a node: a completion
+ * there offers the module's exports, which the editor's in-file mode cannot resolve.
+ */
+function importBracesModule(
+  ts: TypeScriptModule,
+  node: TS.Node,
+): TS.Expression | undefined {
+  for (let at: TS.Node | undefined = node; at; at = at.parent) {
+    if (ts.isNamedImports(at)) return at.parent.parent.moduleSpecifier;
+    if (ts.isNamedExports(at)) return at.parent.moduleSpecifier;
+    if (ts.isStatement(at)) return undefined;
+  }
+  return undefined;
+}
+
 const declaredIn = (symbol: TS.Symbol | undefined): string[] =>
   (symbol?.declarations ?? []).map(
     (declaration) => declaration.getSourceFile().fileName,
@@ -311,6 +327,16 @@ function foreignCompletionNames(
   const node = nodeAt(ts, source, generated);
   if (isModuleSpecifier(ts, node)) return undefined;
   const checker = program.getTypeChecker();
+  const braces = importBracesModule(ts, node);
+  if (braces) {
+    // The module's exports, every one (a keyword such as `type` the editor offers itself).
+    const module = checker.getSymbolAtLocation(braces);
+    return new Set(
+      module
+        ? checker.getExportsOfModule(module).map((symbol) => symbol.name)
+        : [],
+    );
+  }
   const names = new Set<string>();
   const add = (symbols: readonly TS.Symbol[]) => {
     for (const symbol of symbols) {

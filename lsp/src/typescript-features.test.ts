@@ -30,6 +30,8 @@ export const frother: Frother = { speed: 1200, label: "Milk frother" };
 export function froth(level: number, foam = true): string {
   return foam ? "foam".repeat(level) : "";
 }
+
+export const frothers: Frother[] = [frother];
 `;
 
 const STEAM = "export const steamTemperature = 65;\n";
@@ -326,6 +328,39 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
         }),
       ),
     ).toEqual(expect.arrayContaining(["frother.ts", "steam.ts"]));
+  });
+
+  it("completes the names a module exports inside an import's braces, which the editor cannot resolve", () => {
+    const setup = project();
+    const atAlias = PAGE.replace(
+      "import { frother, froth }",
+      "import { frother, froth, fr }",
+    );
+    expect(
+      names(ask(setup, atAlias, "completion", ", fr }", 4, crossFileOnly)),
+    ).toEqual(expect.arrayContaining(["Frother", "frothers"]));
+    const empty = PAGE.replace(
+      "import { steamTemperature }",
+      'import { steamTemperature, frother as f2 } from "@/lib/frother.ts";\n  import {  }',
+    );
+    expect(
+      names(ask(setup, empty, "completion", "import {  }", 9, crossFileOnly)),
+    ).toContain("steamTemperature");
+    const typeOnly = PAGE.replace(
+      "import { frother, froth }",
+      'import type { Fr } from "@/lib/frother.ts";\n  import { frother, froth }',
+    );
+    expect(
+      names(ask(setup, typeOnly, "completion", "{ Fr }", 4, crossFileOnly)),
+    ).toContain("Frother");
+    // Misuse: a module that does not exist has nothing to offer, and nothing throws.
+    const missing = PAGE.replace(
+      "import { frother, froth }",
+      'import {  } from "@/lib/missing.ts";\n  import { frother, froth }',
+    );
+    expect(
+      ask(setup, missing, "completion", "import {  }", 9, crossFileOnly),
+    ).toEqual([]);
   });
 
   it("answers everything in a block VS Code does not embed as TypeScript (its type not quoted and lowercase)", () => {
