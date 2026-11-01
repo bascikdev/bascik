@@ -479,6 +479,10 @@ function globalInterfacesOf(
     globalInterfacesOf(ts, libDir, reference, into, seen);
 }
 
+/** Whether a file is part of an installed package (or TypeScript's own libraries), never the project's own. */
+const isPackageFile = (fileName: string): boolean =>
+  /[\\/]node_modules[\\/]/.test(fileName);
+
 /** Diagnostics TypeScript gives for a name declared and never used (`noUnusedLocals` and the like). */
 const UNUSED_CODES = new Set([6133, 6196, 6198, 6199]);
 
@@ -613,12 +617,12 @@ export class TypeScriptProject {
   private readonly missingPaths = new Set<string>();
   /** Files TypeScript read: deleting one can make an import fail. */
   private readonly foundFiles = new Set<string>();
-  /** Bumped when a file TypeScript looked for appears or disappears, so every program resolves its imports again. */
+  /**
+   * Bumped when a file TypeScript looked for appears or disappears. It is part of every project file's version
+   * (not a library's or a package's), so TypeScript parses those files again and resolves their imports anew: a
+   * file whose version did not change keeps its old resolutions.
+   */
   private resolutionGeneration = 0;
-  private readonly resolvedAt: Record<TypeScriptProgramKind, number> = {
-    client: 0,
-    server: 0,
-  };
   /** The interfaces the client program's libraries declare globally, such as `Window`; read on first need. */
   private clientGlobalInterfaces: Set<string> | undefined;
 
@@ -689,6 +693,8 @@ export class TypeScriptProject {
     cancellationToken: TS.CancellationToken,
   ): TS.LanguageServiceHost {
     const ts = this.ts;
+    // TypeScript's own library files, wherever the copy sits (a client path need not be under node_modules).
+    const libDir = path.dirname(ts.getDefaultLibFilePath(options)) + path.sep;
     return {
       getProjectVersion: () => String(this.projectVersion),
       getCompilationSettings: () => options,
@@ -700,12 +706,15 @@ export class TypeScriptProject {
           names.push(this.nodeDeclarations.fileName);
         return names;
       },
-      getScriptVersion: (fileName) =>
-        String(
+      getScriptVersion: (fileName) => {
+        const version =
           this.files.get(fileName)?.version ??
-            this.fileVersions.get(fileName) ??
-            0,
-        ),
+          this.fileVersions.get(fileName) ??
+          0;
+        return isPackageFile(fileName) || fileName.startsWith(libDir)
+          ? String(version)
+          : `${version}.${this.resolutionGeneration}`;
+      },
       getScriptSnapshot: (fileName) => {
         const text = this.readFile(fileName);
         return text === undefined
@@ -731,8 +740,6 @@ export class TypeScriptProject {
         this.recordLookup(directoryName, exists);
         return exists;
       },
-      hasInvalidatedResolutions: () =>
-        this.resolvedAt[program] !== this.resolutionGeneration,
       getDirectories: ts.sys.getDirectories,
       realpath: ts.sys.realpath,
       useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
@@ -741,8 +748,8 @@ export class TypeScriptProject {
   }
 
   private recordLookup(fsPath: string, exists: boolean): void {
-    // Library and package files never appear mid-session in a way that matters here.
-    if (fsPath.includes(`${path.sep}node_modules${path.sep}`)) return;
+    // Package files never appear mid-session in a way that matters here.
+    if (isPackageFile(fsPath)) return;
     if (exists) this.foundFiles.add(path.resolve(fsPath));
     else this.missingPaths.add(path.resolve(fsPath));
   }
@@ -1013,10 +1020,7 @@ export class TypeScriptProject {
     for (const fileName of page?.fileNames ?? []) {
       const file = this.files.get(fileName)!;
       const service = this.services[file.program];
-      const generation = this.resolutionGeneration;
       const syntactic = service.getSyntacticDiagnostics(fileName);
-      // The program is up to date now, with its imports resolved again if a looked-for file came or went.
-      this.resolvedAt[file.program] = generation;
       let semantic = service.getSemanticDiagnostics(fileName);
       if (file.sharedScope && semantic.some((d) => UNUSED_CODES.has(d.code))) {
         const source = service.getProgram()?.getSourceFile(fileName);
