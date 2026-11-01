@@ -124,7 +124,8 @@ export class WorkerPool<Task, Result> {
    * when it receives `{ stop: true }`, and the pool stops a worker by posting
    * that and waiting for its `exit`, terminating it only when it has not
    * exited after `STOP_GRACE_MS`. With `readySignal` too, the stop message
-   * goes once the worker has loaded. An external `worker.terminate()` stops
+   * goes once the worker has loaded, and a worker that has not loaded by
+   * the ready deadline is terminated without it. An external `worker.terminate()` stops
    * the thread wherever it is, and V8 can abort the whole process when that
    * lands while the worker is still allocating code: CI saw "Check failed:
    * jit_page.has_value()" (SIGTRAP) on Node 24.22.1 when a page worker was
@@ -435,17 +436,24 @@ export class WorkerPool<Task, Result> {
   /** As `#stop`, but a rejecting `worker.terminate()` reaches the caller
    * (the `terminate()` contract). */
   async #stopForTerminate(slot: Slot<Task, Result>): Promise<number> {
+    let loaded = true;
     if (this.#readySignal) {
       let timer: NodeJS.Timeout | undefined;
       await Promise.race([
         slot.loaded,
         new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, READY_GRACE_MS);
+          timer = setTimeout(() => {
+            loaded = false;
+            resolve();
+          }, READY_GRACE_MS);
         }),
       ]);
       clearTimeout(timer);
     }
-    if (this.#stopSignal) {
+    // A worker that is still evaluating its modules at the ready deadline has
+    // no listener for the stop message yet; asking it would only add
+    // STOP_GRACE_MS before the terminate() that ends it anyway.
+    if (this.#stopSignal && loaded) {
       const code = await this.#askToStop(slot);
       if (code !== undefined) return code;
     }

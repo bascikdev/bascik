@@ -923,6 +923,26 @@ describe("WorkerPool", () => {
       expect(workers[0].terminate).not.toHaveBeenCalled();
     });
 
+    it("with readySignal, terminates a worker that never loaded at the ready deadline without asking it to stop", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeStopPool(1, true);
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(stopsPosted(workers[0])).toBe(0);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        // A worker still evaluating its modules has no listener for the stop
+        // message, so waiting STOP_GRACE_MS for a reply would only push the
+        // terminate() to the exit bound.
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(stopsPosted(workers[0])).toBe(0);
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+        await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("never sends the stop message to a pool's workers without the option", async () => {
       const pool = makePool(1);
       await pool.terminate();
