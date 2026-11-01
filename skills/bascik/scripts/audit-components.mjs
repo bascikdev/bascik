@@ -76,11 +76,12 @@ Rules:
   single-use-module    A module in src/lib/ (data, helper, types) that one component or one page uses, followed
                        through @/ and relative imports in inline scripts, src= files, .ts companions, and other
                        src/lib modules (a page and the modules in its folder count as one user): move it into that
-                       component's folder (or beside that page, as a .ts file) and import it with ./. Data only
-                       (no functions) that one component renders and pages also read, for JSON-LD say, moves into
-                       the component's folder too, and the pages import it from there. A module that config, an
-                       exec script, an API route, or a second component also imports stays, and so does a helper
-                       with functions that a component and a page share. Test files do not count as users
+                       component's folder (or beside that page, as a .ts file) and import it with ./. Content (a
+                       module that exports no function, even when its values are built with html) that one component
+                       renders and pages also read, for JSON-LD say, moves into the component's folder too, and the
+                       pages import it from there. A module that config, an exec script, an API route, a second
+                       component, or two other src/lib modules import stays, and so does a helper with functions
+                       that a component and a page share. Test files do not count as users
 
 Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
 checked by the bascik-seo audit):
@@ -617,7 +618,8 @@ const srcSpecifier = (src) =>
  * pages also read belongs in the component's folder, and the pages import it from there. A page and the modules in
  * the pages folder that only it reaches are one user. Users are found through @/ and relative imports
  * in every page and component script (inline or src=), every script file of the project, and src/lib modules that
- * import each other (a module a lib module imports serves that module's users). Config, exec scripts, API routes,
+ * import each other (a module one lib module imports serves that module's users; one that two or more lib modules
+ * import is shared). Config, exec scripts, API routes,
  * and other code outside the pages and component folders make a module shared. Test files are not users.
  */
 function checkSingleUseModules(root, docs, layout, importRoot, findings) {
@@ -779,13 +781,17 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
       );
   }
 
-  // A lib module serves the users of every lib module that imports it, through any number of steps.
+  // A lib module that two or more other lib modules import (site.ts read by seo.ts and schema.ts) is a shared
+  // building block of src/lib, whoever reaches those modules. One lib importer passes its users on, through any
+  // number of steps, so a module and the one lib module it serves move together.
   const usersOf = new Map();
   const collect = (file, seen = new Set()) => {
     if (usersOf.has(file)) return usersOf.get(file);
+    const importers = libEdges.get(file) ?? new Set();
+    if (importers.size >= 2) return new Set([SHARED]);
     const users = new Set(direct.get(file) ?? []);
     seen.add(file);
-    for (const from of libEdges.get(file) ?? [])
+    for (const from of importers)
       if (!seen.has(from)) for (const u of collect(from, seen)) users.add(u);
     return users;
   };
@@ -863,8 +869,71 @@ function checkSingleUseModules(root, docs, layout, importRoot, findings) {
 }
 
 /**
- * Whether a module only holds data: a .json file, or a script file with no function, arrow function, or class (types
- * and constants only). Comments are ignored. A module that cannot be read is not data-only.
+ * `code` with every comment, string and template literal (holes included) blanked to spaces, so words such as
+ * "function" or "=>" inside FAQ text or an html`...` template are not read as code. Line breaks are kept.
+ */
+function maskLiterals(code) {
+  let out = "";
+  let i = 0;
+  const blank = (text) => text.replace(/[^\n]/g, " ");
+  while (i < code.length) {
+    const c = code[i];
+    const next = code[i + 1];
+    let end = -1;
+    if (c === "/" && next === "/") {
+      end = code.indexOf("\n", i);
+      if (end === -1) end = code.length;
+    } else if (c === "/" && next === "*") {
+      end = code.indexOf("*/", i + 2);
+      end = end === -1 ? code.length : end + 2;
+    } else if (c === '"' || c === "'" || c === "`") end = literalEnd(code, i);
+    if (end === -1) {
+      out += c;
+      i++;
+    } else {
+      out += blank(code.slice(i, end));
+      i = end;
+    }
+  }
+  return out;
+}
+
+/** The index just past the string or template literal that opens at `start`. */
+function literalEnd(code, start) {
+  const quote = code[start];
+  let i = start + 1;
+  while (i < code.length) {
+    const c = code[i];
+    if (c === "\\") i += 2;
+    else if (c === quote) return i + 1;
+    else if (quote !== "`" && c === "\n") return i;
+    else if (quote === "`" && c === "$" && code[i + 1] === "{") {
+      // A hole: skip to its closing brace, past nested literals.
+      let depth = 1;
+      i += 2;
+      while (i < code.length && depth > 0) {
+        const d = code[i];
+        if (d === '"' || d === "'" || d === "`") i = literalEnd(code, i);
+        else {
+          if (d === "{") depth++;
+          else if (d === "}") depth--;
+          i++;
+        }
+      }
+    } else i++;
+  }
+  return code.length;
+}
+
+/** `name = (async) (args) =>`, `= function`, `= x =>`, or a type annotation that is a function type. */
+const FUNCTION_VALUE =
+  /^\s*(?::[^=]*=>[^=]*)?=\s*(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)|^\s*:[^=]*=>/;
+
+/**
+ * Whether a module holds content rather than helpers: a .json file, or a script file that exports no function or
+ * class. What a value is built from does not matter, so an html`...` template with .map((f) => ...) inside it is
+ * still content, and so is FAQ text that says "function". Comments, strings and templates are masked first. A
+ * re-export from another module, or a module that cannot be read, is not counted as content.
  */
 function exportsDataOnly(file) {
   if (/\.json$/i.test(file)) return true;
@@ -874,8 +943,46 @@ function exportsDataOnly(file) {
   } catch {
     return false;
   }
-  const bare = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-  return !/\bfunction\b|=>|\bclass\b/.test(bare);
+  const bare = maskLiterals(code);
+  if (/\bexport\s*(?:\*|\{[^}]*\}\s*from\b)/.test(bare)) return false;
+  if (/\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class)\b/.test(bare))
+    return false;
+  if (
+    /\bexport\s+default\s+(?:async\s+)?(?:[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)/.test(
+      bare,
+    )
+  )
+    return false;
+  // Local names declared as functions or classes.
+  const functions = new Set();
+  for (const m of bare.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g))
+    functions.add(m[1]);
+  for (const m of bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g))
+    if (
+      FUNCTION_VALUE.test(
+        bare.slice(m.index + m[0].length, m.index + m[0].length + 400),
+      )
+    )
+      functions.add(m[1]);
+  // Exported names: export const x, and export { a, b as c }.
+  const exported = [];
+  for (const m of bare.matchAll(
+    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
+  ))
+    exported.push(m[1]);
+  for (const m of bare.matchAll(/\bexport\s*\{([^}]*)\}/g))
+    for (const entry of m[1].split(",")) {
+      const local = entry
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)[0];
+      if (local && !/^type\s/.test(entry.trim())) exported.push(local);
+    }
+  const defaultName = /\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*$/m.exec(
+    bare,
+  );
+  if (defaultName) exported.push(defaultName[1]);
+  return !exported.some((name) => functions.has(name));
 }
 
 /** The names in `dir`, or none when it cannot be read. */

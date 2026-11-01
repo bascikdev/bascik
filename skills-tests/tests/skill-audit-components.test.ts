@@ -2038,6 +2038,95 @@ export default () => html\`<p>\${plans.join(", ")}</p>\`;
     expect(found[0].suggestion).not.toMatch(/into src\/components\/[,. ]/);
   });
 
+  it("reads FAQ text that says function, class or => as text, not code", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": `// Answers quote code, so the words function and class appear in them.
+export const faqs = [
+  { q: "Is the frother a class of its own?", a: "Yes: no other function => needed." },
+  { q: 'What does "function" mean here?', a: \`It means the class of steam wand.\` },
+  /* A block comment: () => {} */
+];
+`,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(
+        `      <faq-list />`,
+        `    <script data-bascik-build type="text/typescript">
+      import { faqs } from "@/lib/faqs.ts";
+      export default () => JSON.stringify(faqs.length);
+    </script>
+`,
+      ),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faqs.ts"]);
+  });
+
+  it("treats content built with html as content, and an exported function as a helper", async () => {
+    const component = (spec: string) =>
+      faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => value;
+  </script>
+`);
+    const pageReads = (
+      spec: string,
+    ) => `    <script data-bascik-build type="text/typescript">
+      import { value } from "${spec}";
+      export default () => String(value);
+    </script>
+`;
+    const root = withFiles({
+      // Content: the values are built with html, arrows and all.
+      "src/lib/faq-items.ts": `import { html } from "@bascik/bascik/html";
+const items = [{ q: "Is it loud?", a: "No." }];
+export const value = html\`\${items.map((f) => html\`<h3>\${f.q}</h3><p>\${f.a}</p>\`)}\`;
+`,
+      // Helpers: an exported arrow, a function exported by name, a function typed const.
+      "src/lib/format.ts": `const format = (n: number) => n.toFixed(2);\nexport { format as value };\n`,
+      "src/lib/typed.ts": `export const value: (n: number) => string = String;\n`,
+      "src/components/faq-list/faq-list.html": component("@/lib/faq-items.ts"),
+      "src/components/price-tag/price-tag.html": `<p data-testid="price-tag">
+${component("@/lib/format.ts")}${component("@/lib/typed.ts")}</p>
+`,
+      "src/pages/help.html": page(
+        `      <faq-list />
+      <price-tag />`,
+        `${pageReads("@/lib/faq-items.ts")}${pageReads("@/lib/format.ts")}${pageReads("@/lib/typed.ts")}`,
+      ),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faq-items.ts"]);
+  });
+
+  it("leaves a src/lib module that two other src/lib modules import, even when one page reaches both", async () => {
+    const root = withFiles({
+      "src/lib/site.ts": `export const site = { name: "Milk frother", url: "https://example.com" };\n`,
+      "src/lib/seo.ts": `import { site } from "./site.ts";\nexport const title = (t: string) => \`\${t} | \${site.name}\`;\n`,
+      "src/lib/schema.ts": `import { site } from "./site.ts";\nexport const org = () => ({ "@type": "Organization", url: site.url });\n`,
+      "src/pages/help.html": page(
+        `      <h1>Help</h1>`,
+        `    <script data-bascik-build type="text/typescript">
+      import { title } from "@/lib/seo.ts";
+      import { org } from "@/lib/schema.ts";
+      export default () => title("Help") + JSON.stringify(org());
+    </script>
+`,
+      ),
+    });
+    const files = moduleFindings((await audit(root)).findings).map(
+      (f) => f.file,
+    );
+    expect(files).not.toContain("src/lib/site.ts");
+    expect(files).toEqual(["src/lib/schema.ts", "src/lib/seo.ts"]);
+  });
+
   it("does not flag the starter site's shared seo and posts helpers", async () => {
     const { findings } = await audit(starterSite);
     expect(moduleFindings(findings)).toEqual([]);

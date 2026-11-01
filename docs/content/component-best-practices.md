@@ -64,7 +64,7 @@ src/components/faq-list/
 - **Only shared modules go in `src/lib/`:** a helper several components or pages call, such as an SEO helper or a collection reader, or a module that `bascik.config.ts`, an [exec script](/exec-scripts), or an [API route](/api-routes) also imports. Import those with `@/lib/...` ([Script Imports](/script-imports)).
 - **No watch entry needed.** The dev server watches component folders and the pages folder already, and an edit to a module there rebuilds every page whose scripts import it. Only `src/lib/` and other folders outside them need [`pipeline.watchPaths`](/watch-paths).
 
-The `bascik` agent skill's `audit-components.mjs` reports a `src/lib/` module that exactly one component or page imports (`single-use-module`) and names the folder to move it to.
+The `bascik` agent skill's `audit-components.mjs` checks this (`single-use-module`). It reports a `src/lib/` module that exactly one component or page imports, and content one component renders that pages also read for JSON-LD: a module that exports values rather than functions, even when those values are built with `html`. Each finding names the folder to move the module to and the `@/components/...` path the pages then import. It leaves genuine shared helpers alone: a module that exports functions a component and a page both call, a module several components use, and a module two other `src/lib/` modules import (a `site.ts` that `seo.ts` and `schema.ts` both read), whoever reaches those modules. A module that config, an exec script or an API route imports stays too.
 
 ## Props for Text, Slots for Markup
 
