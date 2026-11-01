@@ -26,7 +26,14 @@ module.exports = defineConfig([
     mocha,
   },
   {
-    // The html.validate.scripts prompt with the built-in HTML language features turned off.
+    // The bascik.typescript settings: the path setting's TypeScript, its fallbacks, and changes close together.
+    label: "typescript-settings",
+    files: "out/test-typescript-settings/**/*.test.js",
+    workspaceFolder,
+    mocha: { ...mocha, timeout: 120000 },
+  },
+  {
+    // The html.validate.scripts prompt, and the TypeScript errors, with the built-in HTML language features off.
     label: "no-html-features",
     files: "out/test-no-html/**/*.test.js",
     workspaceFolder,
