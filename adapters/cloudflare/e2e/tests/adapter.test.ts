@@ -335,10 +335,11 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
       const footer = page.getByTestId("catalog-footer");
       await expect(next).toBeVisible();
       const gap = await next.evaluate((el) => {
-        const range = document.createRange();
+        const doc = el.ownerDocument;
+        const range = doc.createRange();
         range.selectNodeContents(el);
         const textBottom = range.getBoundingClientRect().bottom;
-        const footerTop = document
+        const footerTop = doc
           .querySelector('[data-testid="catalog-footer"]')!
           .getBoundingClientRect().top;
         return footerTop - textBottom;
