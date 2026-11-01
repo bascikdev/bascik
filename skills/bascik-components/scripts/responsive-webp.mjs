@@ -2,13 +2,13 @@
 // Responsive WebP: write <name>-<width>.webp variants of each source image at the standard widths up to its own
 // width (never upscaled, and the source width itself when it falls between two), plus manifest.json with each
 // file's width, path, site URL, bytes and sha256, for <img srcset>.
-// Dependency-free; Node.js 22.22+; needs sharp in your project (npm install -D sharp). Writes only into --out.
+// Node.js 22.22+; needs sharp in your project (npm install -D sharp).
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { loadSharp } from "./lib/project-deps.mjs";
-import { fail, isMain } from "./lib/cli.mjs";
+import { fileURLToPath } from "node:url";
 
 const HELP = `Usage: node responsive-webp.mjs --src <image>... --out <dir> [--widths 320,480,...] [--quality 80]
                                    [--url-prefix /img/] [--manifest <file>]
@@ -199,7 +199,16 @@ export function parseCliArgs(argv) {
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
-  const sharp = await loadSharp();
+  const require = createRequire(join(process.cwd(), "package.json"));
+  let sharp;
+  try {
+    sharp = require("sharp");
+  } catch (error) {
+    if (error.code !== "MODULE_NOT_FOUND") throw error;
+    throw new Error(
+      `sharp is not installed in ${resolve(process.cwd())}. Install it as a dev dependency of your project:\n  npm install -D sharp`,
+    );
+  }
   const result = await generateResponsive({ ...args, sharp });
   for (const [name, images] of Object.entries(result.images))
     console.log(
@@ -208,10 +217,14 @@ async function main() {
   console.log(`manifest: ${args.manifest}`);
 }
 
-if (isMain(import.meta.url)) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     await main();
   } catch (error) {
-    fail(`responsive-webp: ${error.message}`);
+    process.stderr.write(`responsive-webp: ${error.message}\n`);
+    process.exitCode = 1;
   }
 }

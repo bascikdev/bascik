@@ -22,6 +22,8 @@ This is why sites like McMaster-Carr, which could justify a rich SPA for their 6
 
 ## Responsive Images with `srcset`
 
+For the everyday local workflow, see [Optimizing Images](/how-to/optimizing-images): ask your coding agent to generate responsive WebP files with local tools and wire up native HTML and CSS. No special image component or image service is required.
+
 Sending a 2400 px image to a 375 px phone is one of the most common performance killers on the web. The `srcset` attribute tells the browser which image file to choose based on the device's pixel density and viewport width, no JavaScript required.
 
 ```html
@@ -105,7 +107,7 @@ Most modern CDNs, Cloudflare Images, Imgix, Cloudinary, Bunny.net Transform, sup
 />
 ```
 
-If your host does not support CDN transforms, use `<picture>` to offer WebP with a JPEG fallback, all declarative HTML, no JavaScript, no build step:
+For a finite set of site images, [generate optimized files locally](/how-to/optimizing-images) instead of requiring a CDN transform service. Serve WebP directly with `<img>`, or use `<picture>` when you need format alternatives or art direction. This example offers WebP with a JPEG fallback using files prepared ahead of time:
 
 ```html
 <picture>

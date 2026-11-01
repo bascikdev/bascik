@@ -391,7 +391,8 @@ reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --s
 ## Score techniques
 
 - LCP: no hero animation that starts at `opacity: 0` (Chromium records no LCP candidate while transparent);
-  responsive WebP with `srcset` (`scripts/responsive-webp.mjs`; its manifest's `url` fields build the srcset, and
+  responsive WebP with `srcset` (`node <skills-dir>/bascik-components/scripts/responsive-webp.mjs`, from the default
+  component skill; read `/how-to/optimizing-images`; its manifest's `url` fields build the srcset, and
   `--manifest src/lib/images.json` keeps it out of the published site); a route-aware preload of the hero from a
   `data-bascik-build` script reading `BASCIK_PAGE_PATH` (a `data-bascik-build-once` script has no page context);
   `loading="lazy"` below the fold.
@@ -478,7 +479,6 @@ so when one is missing. Run any of them with `--help`.
 | `compare-route.mjs`          | Pixels, geometry, evidence, interactions, `--accepted`; report and PNGs  |
 | `lighthouse-gate.mjs`        | Five categories at 100 for a form factor and a URL list; exit 1          |
 | `llms-txt.mjs`               | Post exec script: `dist/llms.txt` from built pages                       |
-| `responsive-webp.mjs`        | WebP widths up to the source width, plus a sha256 manifest               |
 | `worker-response-policy.mjs` | Worker wrapper: CSP hashes, X-Robots-Tag and Cache-Control per response  |
 | `production-defects.mjs`     | Production's own bugs, logged as fixes before parity                     |
 | `interaction-crawl.mjs`      | Activates every interactive element; compares effects (CDP listeners)    |

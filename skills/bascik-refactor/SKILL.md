@@ -34,6 +34,8 @@ The parity checks prove the page looks and behaves like production; they do not 
 
 ## Scripts
 
+For responsive images, use `node <skills-dir>/bascik-components/scripts/responsive-webp.mjs` from the existing component skill. Read `/how-to/optimizing-images` for the local generation and native HTML workflow.
+
 | Script                                                                     | Use                                                                    |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | [`scripts/breakpoint-matrix.mjs`](scripts/breakpoint-matrix.mjs)           | Legacy breakpoints to `breakpoints.json` (B - 1, B, B + 1, midpoints)  |
@@ -42,7 +44,6 @@ The parity checks prove the page looks and behaves like production; they do not 
 | [`scripts/compare-route.mjs`](scripts/compare-route.mjs)                   | Pixels, geometry, evidence and interaction traces per route            |
 | [`scripts/lighthouse-gate.mjs`](scripts/lighthouse-gate.mjs)               | Fails unless every report is 100 in all five categories                |
 | [`scripts/llms-txt.mjs`](scripts/llms-txt.mjs)                             | Post exec script that writes `dist/llms.txt`                           |
-| [`scripts/responsive-webp.mjs`](scripts/responsive-webp.mjs)               | WebP widths and a sha256 manifest for `srcset`                         |
 | [`scripts/worker-response-policy.mjs`](scripts/worker-response-policy.mjs) | Cloudflare Worker wrapper: CSP hashes, robots and cache headers        |
 | [`scripts/interaction-crawl.mjs`](scripts/interaction-crawl.mjs)           | Activates every interactive element; compares effects (CDP listeners)  |
 | [`scripts/state-capture.mjs`](scripts/state-capture.mjs)                   | Open dropdowns and disclosures: styles, icons, crops                   |

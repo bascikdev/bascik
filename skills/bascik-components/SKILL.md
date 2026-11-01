@@ -1,6 +1,6 @@
 ---
 name: bascik-components
-description: Decide what becomes a Bascik component and write component CSS and TypeScript that keep working with several instances on a page. Use when a page is turning into a big block of HTML, when deciding whether to split a section, pass a prop, or use a slot; when writing or debugging a component's <style>, companion .css, or <script>; when a component works once but breaks with two instances; when compiled class or ID names look wrong; when adding tabs, dialogs, menus, toggles, forms, fetch calls, storage, or events between components without a framework; when setting up design tokens, dark mode, a theme toggle, or fonts; or when configuring deduplicateCss, preserve, data-bascik-preserve, or Tailwind. Includes a CSS token checker.
+description: Decide what becomes a Bascik component and write component CSS and TypeScript that keep working with several instances on a page. Use when a page is turning into a big block of HTML, when deciding whether to split a section, pass a prop, or use a slot; when writing or debugging a component's <style>, companion .css, or <script>; when a component works once but breaks with two instances; when compiled class or ID names look wrong; when adding tabs, dialogs, menus, toggles, forms, fetch calls, storage, or events between components without a framework; when setting up design tokens, dark mode, a theme toggle, or fonts; when optimizing images with local CLI tools, responsive WebP, srcset, sizes, or picture; or when configuring deduplicateCss, preserve, data-bascik-preserve, or Tailwind. Includes a CSS token checker and a local WebP generator.
 license: MIT
 metadata:
   author: bascik
@@ -249,6 +249,15 @@ node <skills-dir>/bascik-components/scripts/check-tokens.mjs --unused  # also li
 
 It reports an **error** for `var(--x)` with no declaration and no fallback, a **warn** for custom properties declared on `:root` or `html` inside a component, and **info** for undeclared tokens that have a fallback. Exit code 1 on errors.
 
+## Responsive images
+
+Read `/how-to/optimizing-images` before preparing images. Use local tools and native `<img srcset sizes>` or `<picture>`, not a framework image component or a required image service.
+
+- Keep originals outside the published pages directory. Inspect the actual CSS layout and choose widths for its slots and pixel densities; never upscale.
+- Run [`scripts/responsive-webp.mjs`](scripts/responsive-webp.mjs) from the project root. It loads the project's Sharp, writes WebP variants and a manifest, and does **not** edit HTML. Use an available local CLI instead if it fits the project.
+- Wire the generated URLs into the owning component's HTML. Match `sizes` to CSS, reserve space with dimensions, lazy-load only below-the-fold images, and prioritize only the likely LCP image.
+- Verify built assets, browser `currentSrc` at fresh mobile and desktop loads including high density, transferred bytes, and visual quality. Do not claim optimization from file generation alone.
+
 ## Examples to copy
 
 | Example                      | Shows                                                                                |
@@ -273,6 +282,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | `name` on fields, radios, `<details>`, `<iframe>`, `<map>`               | `/component-best-practices#name-form-controls-and-groups`           |
 | Pick an interactivity pattern (fetch, storage, events, delegation, a11y) | `/how-to/interactivity`                                             |
 | Set up tokens, dark mode, fonts, Tailwind                                | `/how-to/theming`                                                   |
+| Optimize images locally and wire responsive WebP into native HTML        | `/how-to/optimizing-images`                                         |
 | Style a child component's root from its parent                           | `/attribute-inheritance`                                            |
 | Use TypeScript in a component script                                     | `/scoped-javascript#typescript-in-component-scripts`                |
 | Compile full TypeScript or bundle npm packages with esbuild              | `/configuration#scriptstypescript`, `/how-to/bundling-npm-packages` |

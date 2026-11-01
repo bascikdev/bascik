@@ -23,7 +23,6 @@ const NO_ARGS: Record<string, RegExp> = {
   "capture-baselines": /--prod <url> is required/,
   "lighthouse-gate": /--dir <folder>/,
   "llms-txt": /BASCIK_OUT_DIR is not set/,
-  "responsive-webp": /--src <image> is required/,
   "worker-response-policy": /--html <built page> is required/,
 };
 

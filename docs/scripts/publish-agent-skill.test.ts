@@ -66,6 +66,12 @@ describe("publish-agent-skill", () => {
         true,
       );
     expect(files.has("bascik/scripts/verify.mjs")).toBe(true);
+    expect(files.has("bascik-components/scripts/responsive-webp.mjs")).toBe(
+      true,
+    );
+    expect(files.has("bascik-refactor/scripts/responsive-webp.mjs")).toBe(
+      false,
+    );
     // The opt-in skill new projects leave out still ships in the tarball.
     expect(files.has("bascik-refactor/SKILL.md")).toBe(true);
     expect(files.has("bascik-refactor/scripts/compare-route.mjs")).toBe(true);
@@ -91,6 +97,13 @@ describe("publish-agent-skill", () => {
         `sha256:${createHash("sha256").update(archive).digest("hex")}`,
       );
       const files = readTar(gunzipSync(archive));
+      if (entry.name === "bascik-components") {
+        const helper = files
+          .get("scripts/responsive-webp.mjs")
+          ?.toString("utf8");
+        expect(helper).toBeDefined();
+        expect(helper).not.toMatch(/from ["']\.{1,2}\//);
+      }
       expect(
         files
           .get("SKILL.md")

@@ -50,7 +50,6 @@ const SCRIPTS = [
   "scripts/breakpoint-matrix.mjs",
   "scripts/lighthouse-gate.mjs",
   "scripts/llms-txt.mjs",
-  "scripts/responsive-webp.mjs",
   "scripts/worker-response-policy.mjs",
   "scripts/interaction-crawl.mjs",
   "scripts/state-capture.mjs",
@@ -69,7 +68,7 @@ const SCRIPTS = [
 ];
 
 /** The parity checks run-checks.mjs runs, one per issue type a human caught after the automated loop passed. */
-const CHECK_SCRIPTS = SCRIPTS.slice(7, 18).map((s) => path.basename(s, ".mjs"));
+const CHECK_SCRIPTS = SCRIPTS.slice(6, 17).map((s) => path.basename(s, ".mjs"));
 
 /**
  * The seven issue types, as a reader would name them. The how-to section, the visual review template and the review
