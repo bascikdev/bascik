@@ -144,52 +144,52 @@ function runSearch(query) {
   }
 
   function resultLink(e) {
+    var separator = el("span", {}, ["\u203a"]);
+    separator.className = "sr-sep";
     var label = e.heading
-      ? [
-          e.navLabel,
-          " ",
-          el("span", { class: "sr-sep" }, ["\u203a"]),
-          " ",
-          e.heading,
-        ]
+      ? [e.navLabel, " ", separator, " ", e.heading]
       : [e.navLabel];
     var snip = snippet(e.text, q, toks);
-    return el("a", { href: e.path, class: "sr-link" }, [
-      el("span", { class: "sr-section" }, [e.section || ""]),
-      el("span", { class: "sr-label" }, label),
-      snip ? el("span", { class: "sr-text" }, [snip]) : null,
+    var section = el("span", { "data-testid": "search-result-section" }, [
+      e.section || "",
     ]);
+    section.className = "sr-section";
+    var title = el("span", { "data-testid": "search-result-label" }, label);
+    title.className = "sr-label";
+    var text = snip
+      ? el("span", { "data-testid": "search-result-text" }, [snip])
+      : null;
+    if (text) text.className = "sr-text";
+    var link = el("a", { href: e.path, "data-testid": "search-result-link" }, [
+      section,
+      title,
+      text,
+    ]);
+    link.className = "sr-link";
+    return link;
   }
 
   // Home result with its popular pages nested under it, in the same result.
   function homeGroup(e) {
     var items = sitelinks.map(function (s) {
-      return el("li", { role: "option" }, [
-        el(
-          "a",
-          {
-            href: s.path,
-            class: "sr-sitelink",
-            "data-testid": "search-sitelink",
-          },
-          [s.navLabel],
-        ),
+      var link = el("a", { href: s.path, "data-testid": "search-sitelink" }, [
+        s.navLabel,
       ]);
+      link.className = "sr-sitelink";
+      return el("li", { role: "option" }, [link]);
     });
+    var nested = items.length
+      ? el("ul", { role: "presentation" }, items)
+      : null;
+    if (nested) nested.className = "sr-sitelinks";
     return el(
       "li",
       {
         role: "group",
         "aria-label": "Bascik home and popular pages",
-        class: "sr-group",
         "data-testid": "search-home-result",
       },
-      [
-        el("div", { role: "option" }, [resultLink(e)]),
-        items.length
-          ? el("ul", { class: "sr-sitelinks", role: "presentation" }, items)
-          : null,
-      ],
+      [el("div", { role: "option" }, [resultLink(e)]), nested],
     );
   }
 

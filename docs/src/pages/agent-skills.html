@@ -20,7 +20,7 @@
     </script>
     <meta
       name="description"
-      content="Install the Bascik agent skills with npx skills or curl so Copilot, Claude Code, Cursor, and Codex know how to build with Bascik and check their work."
+      content="Install Bascik agent skills with npx skills add. Browse all nine skills and their install commands for Copilot, Claude Code, Cursor, and Codex."
     />
     <title>Bascik Agent Skills for Copilot, Claude, and Cursor</title>
   </head>
@@ -32,7 +32,11 @@
       <div class="docs-layout">
         <docs-sidebar />
 
-        <main class="docs-content" id="main-content">
+        <main
+          class="docs-content"
+          id="main-content"
+          data-testid="agent-skills-content"
+        >
           <script data-bascik-build>
             import { renderSectionLabel } from "@/lib/render-nav.ts";
             export default async () => renderSectionLabel("/agent-skills");
