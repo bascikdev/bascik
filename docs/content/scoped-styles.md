@@ -100,7 +100,7 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
 <!-- demo:scope-lab-html -->
 
 ```html
-<section class="scope-lab">
+<section class="lab">
   <div>
     <h3>Scoped selectors are active</h3>
     <p>
@@ -115,7 +115,7 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
 <!-- demo:scope-lab-css -->
 
 ```css
-.scope-lab {
+.lab {
   --signal-color: #d3ff8d;
   display: flex;
   flex-direction: column;
