@@ -463,6 +463,15 @@ export function analyzeServerScriptSource(
       characterCount[characterCount.length - 1] +
         (l.tag === null && l.parts.some(holdsMarkupCharacter) ? 1 : 0),
     );
+  // Untagged templates with holes, which turn an html value in them into text.
+  const plainTemplateCount = [0];
+  for (const l of literals)
+    plainTemplateCount.push(
+      plainTemplateCount[plainTemplateCount.length - 1] +
+        ((l.tag === null || PLAIN_STRING_TAGS.has(l.tag)) && l.holes.length > 0
+          ? 1
+          : 0),
+    );
   // The allowlist: a hole keeps the fix only when it is provably plain data.
   const unprovenIn = plainHoleChecker(body, tokens, {
     requestTime,
@@ -474,6 +483,10 @@ export function analyzeServerScriptSource(
     markupCharacterTextWithin: (from, to) =>
       characterCount[firstAtOrAfter(literalStarts, to)] -
         characterCount[firstAtOrAfter(literalStarts, from)] >
+      0,
+    plainTemplateWithin: (from, to) =>
+      plainTemplateCount[firstAtOrAfter(literalStarts, to)] -
+        plainTemplateCount[firstAtOrAfter(literalStarts, from)] >
       0,
     isHtmlValue: (name) => {
       const exported = htmlExportOf(name, imports);

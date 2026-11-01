@@ -15,16 +15,23 @@
  *   passes on;
  * - request data: the `request` parameter, `context.params` and
  *   `context.remoteIp`, in request-time code (and `const` values taken
- *   from them);
+ *   from them, and a URL or URLSearchParams made from them), while the
+ *   script neither changes it (headers.set, a params write) nor hands a
+ *   request object to other code;
  * - `process.env` values;
  * - `Date` and `Date.now()`-derived values, and `Math` results;
  * - parameters typed number, bigint or boolean (or a union of those) of a
  *   local function that is not exported and is only called by name, that
- *   the file never reassigns or casts with `as`;
+ *   the file never reassigns or casts with `as`, and that every call and
+ *   the default value fill with a provable number;
  * - local functions that are not exported, are only called by name, and
  *   whose every return is plain itself;
  * - html values (an html`...` template, raw(), safeUrl(), json()), which
- *   html inserts as they are.
+ *   html inserts as they are, while nothing turns them into text (String(),
+ *   a string method, + or a template).
+ *
+ * Every argument of a call in the chain (a string method, a Date or
+ * request method, optional calls too) must be plain itself.
  *
  * Anything else is unknown: object fields and array slots other code can
  * change, Map and Set reads, class fields, closures, catch and loop
@@ -37,7 +44,10 @@
  * that declares its own String, Math, Date, process and the like, writes to
  * one of them or to process.env, hands one to other code (Object.assign,
  * Object.defineProperty), writes through globalThis, or reaches a prototype
- * gets no fix for those reads (for a prototype, for any hole).
+ * gets no fix for those reads (for a prototype, for any hole). Code that
+ * rewrites built-ins or globals is out of scope: a file that calls eval,
+ * Function, Object.defineProperty, Reflect.defineProperty, Reflect.set or
+ * Object.setPrototypeOf gets no fix for any hole.
  *
  * Names are merged across scopes: a name declared anywhere in a way that
  * is not plain is unknown wherever it is read. Each name, `const` value
@@ -77,6 +87,11 @@ export interface PlainOptions {
    * leaves no token for its text, so this is how its text is seen.
    */
   markupCharacterTextWithin?: (from: number, to: number) => boolean;
+  /**
+   * Whether an untagged (or plain-string tagged) template literal starts
+   * between two offsets: an html value in its hole turns into text.
+   */
+  plainTemplateWithin?: (from: number, to: number) => boolean;
   /** html tag names and html, raw, safeUrl and json as the script imports them. */
   isHtmlValue: (name: string) => boolean;
   htmlTags: readonly string[];
@@ -110,6 +125,22 @@ const REQUEST_READ_METHODS = new Set([
   "text",
   "formData",
 ]);
+
+/**
+ * Members of request data (the request, a URL, context) that are text,
+ * not objects other code could change: url, method, a URL's parts.
+ */
+const REQUEST_TEXT_MEMBERS = new Set(
+  "url method href origin protocol username password host hostname port pathname search hash remoteIp mode credentials cache redirect referrer referrerPolicy integrity destination keepalive bodyUsed size".split(
+    " ",
+  ),
+);
+
+/** Calls that can rewrite any built-in or global: a file that makes one gets no wrap fix. */
+const REWRITING_MEMBERS: Record<string, ReadonlySet<string>> = {
+  Object: new Set(["defineProperty", "defineProperties", "setPrototypeOf"]),
+  Reflect: new Set(["defineProperty", "set", "setPrototypeOf"]),
+};
 
 /** Globals whose call returns text made only from their arguments. */
 const STRING_CALLS = new Set(["String", "encodeURIComponent", "encodeURI"]);
@@ -258,6 +289,14 @@ type Result =
   { ok: true; kind: Kind; end: number } | { ok: false; cause: Unproven };
 
 const PRIM: Kind = { k: "prim" };
+const HTML: Kind = { k: "html" };
+
+const HTML_AS_TEXT =
+  "an html value turned into text (by String(), a string method, + or a template), which html would escape";
+
+/** The text between tokens of a number: digits, a radix or exponent, white space and comments. */
+const NUMBER_TEXT =
+  /^(?:\s|[\d._xXoObBnaAbBcCdDeEfF]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*$/;
 
 const MARKUP_CHARACTER =
   "a literal with & or < in its value (written out or as an escape such as \\x3c), which html would escape, so an entity or a tag in it would show as text";
@@ -399,6 +438,10 @@ export function plainHoleChecker(
       catch: boolean;
       /** The local function whose parameter list this is, if any. */
       owner?: PlainFunction;
+      /** The parameter's position in its list. */
+      index: number;
+      /** Its default value, as a token range. */
+      defaultRange?: readonly [number, number];
     }
   >();
   // A parameter list's owner: the outermost local function whose name
@@ -451,7 +494,9 @@ export function plainHoleChecker(
     let part = 0;
     let typeFrom = -1;
     let typeTo = -1;
-    const finish = (): void => {
+    let index = 0;
+    let defaultFrom = -1;
+    const finish = (endToken: number): void => {
       const type =
         typeFrom !== -1 ? body.slice(typeFrom, typeTo) : (undefined as unknown);
       const plain =
@@ -471,18 +516,23 @@ export function plainHoleChecker(
             (name === "request" || name === "context"),
           catch: isCatch,
           owner,
+          index,
+          defaultRange:
+            defaultFrom !== -1 ? [defaultFrom, endToken] : undefined,
         });
       }
       names = [];
       pattern = rest = false;
       part = 0;
       typeFrom = typeTo = -1;
+      defaultFrom = -1;
+      index++;
     };
     for (let j = p + 1; j < c; j++) {
       const t = tokens[j];
       if (t.type === "punctuation") {
         if (t.value === ",") {
-          finish();
+          finish(j);
           continue;
         }
         if (part === 0 && t.value === "." && isSpread(j + 1)) {
@@ -495,6 +545,7 @@ export function plainHoleChecker(
         }
         if (part !== 2 && t.value === "=" && !punct(j + 1, ">")) {
           part = 2;
+          defaultFrom = j + 1;
           continue;
         }
         if (t.value === "(" || t.value === "[" || t.value === "{") {
@@ -534,7 +585,7 @@ export function plainHoleChecker(
         typeTo = t.end;
       }
     }
-    finish();
+    finish(c);
   };
   for (let k = 0; k < n; k++) {
     if (punct(k, "(") && partner[k] !== -1) {
@@ -556,7 +607,7 @@ export function plainHoleChecker(
       adjacent(k + 2) &&
       !punct(k - 1, ".")
     )
-      params.set(k, { plain: false, request: false, catch: false });
+      params.set(k, { plain: false, request: false, catch: false, index: 0 });
   }
 
   // The outermost bracket of a chain of nested `{` and `[`: a pattern root.
@@ -698,6 +749,8 @@ export function plainHoleChecker(
   let holeHi = -1;
   let depth = 0;
   const helperMemo = new Map<PlainFunction, Unproven | undefined | "pending">();
+  /** Local functions that may return an html value. */
+  const helperHtml = new Set<PlainFunction>();
 
   const unknown = (what: string, why: string): Result => ({
     ok: false,
@@ -798,7 +851,8 @@ export function plainHoleChecker(
         } else if (punct(j, "[") && partner[j] !== -1) {
           if (
             partner[j] === j + 2 &&
-            tokens[j + 1].type === "string" &&
+            (tokens[j + 1].type === "string" ||
+              tokens[j + 1].type === "template") &&
             PROTOTYPE_WORDS.has(tokens[j + 1].value)
           )
             prototype = true;
@@ -858,10 +912,10 @@ export function plainHoleChecker(
       for (let k = 0; k < n; k++) {
         const t = tokens[k];
         if (!PROTOTYPE_WORDS.has(t.value)) continue;
-        if (t.type === "string" && !(punct(k - 1, "[") && punct(k + 1, "]")))
-          continue;
-        if (t.type !== "identifier" && t.type !== "string") continue;
-        const chain = chainAfter(t.type === "string" ? k + 1 : k);
+        const keyed = t.type === "string" || t.type === "template";
+        if (keyed && !(punct(k - 1, "[") && punct(k + 1, "]"))) continue;
+        if (t.type !== "identifier" && !keyed) continue;
+        const chain = chainAfter(keyed ? k + 1 : k);
         if (
           t.value === "prototype" &&
           t.type === "identifier" &&
@@ -876,6 +930,34 @@ export function plainHoleChecker(
         break;
       }
   }
+  // Out of scope by design: code that rewrites built-ins or globals.
+  // Rather than follow eval, Function, defineProperty, Reflect.set or
+  // setPrototypeOf, a file that calls one gets no fix for any hole.
+  let rewrites: Unproven | undefined;
+  for (let k = 0; k < n && rewrites === undefined; k++) {
+    const t = tokens[k];
+    if (t.type !== "identifier" || punct(k - 1, ".")) continue;
+    let what: string | undefined;
+    if (t.value === "eval" && punct(k + 1, "(")) what = "eval()";
+    else if (
+      t.value === "Function" &&
+      (punct(k + 1, "(") || word(k - 1, "new"))
+    )
+      what = word(k - 1, "new") ? "new Function()" : "Function()";
+    else if (
+      REWRITING_MEMBERS[t.value] !== undefined &&
+      punct(k + 1, ".") &&
+      word(k + 2) &&
+      REWRITING_MEMBERS[t.value].has(tokens[k + 2].value)
+    )
+      what = `${t.value}.${tokens[k + 2].value}()`;
+    if (what !== undefined)
+      rewrites = {
+        what,
+        why: "code that can rewrite built-ins or globals, so no hole in this file is proven plain",
+      };
+  }
+
   /** Why a trusted built-in is not trusted in this file, if it is not. */
   const builtinChanged = (name: string): Unproven | undefined =>
     everyGlobalPatched
@@ -886,6 +968,182 @@ export function plainHoleChecker(
       : patched.has(name)
         ? { what: name, why: "a built-in this file changes" }
         : undefined;
+
+  // Request data the script changes or hands to other code: a header it
+  // sets, appends or deletes, params or searchParams it writes, or the
+  // request, its headers, params or a URL made from it passed to a
+  // function. Other code may write markup into it, so no value read from
+  // request data keeps the fix.
+  let requestTaint: Unproven | undefined;
+  if (opts.requestTime) {
+    /** Names that hold a request object, and whether its members are text (params). */
+    const roots = new Map<string, boolean>();
+    for (const [k, p] of params)
+      if (p.request) roots.set(tokens[k].value, false);
+    /** The member chain after a request object at k: where it ends, whether on an object, and whether it changes one. */
+    const walk = (
+      k: number,
+      textMembers: boolean,
+    ): { end: number; object: boolean; text: boolean; changes: boolean } => {
+      let object = true;
+      let text = textMembers;
+      let changes = false;
+      let j = k + 1;
+      for (;;) {
+        if (punct(j, "!") && !punct(j + 1, "=")) {
+          j++;
+          continue;
+        }
+        if (punct(j, "?") && punct(j + 1, ".")) {
+          j++;
+          if (punct(j + 1, "(") || punct(j + 1, "[")) j++;
+        }
+        if (punct(j, ".") && word(j + 1)) {
+          const member = tokens[j + 1].value;
+          const callAt = punct(j + 2, "(")
+            ? j + 2
+            : punct(j + 2, "?") && punct(j + 3, ".") && punct(j + 4, "(")
+              ? j + 4
+              : -1;
+          if (callAt !== -1 && partner[callAt] !== -1) {
+            if (object && !REQUEST_READ_METHODS.has(member)) changes = true;
+            object = false;
+            j = partner[callAt] + 1;
+            continue;
+          }
+          if (object) {
+            if (text || REQUEST_TEXT_MEMBERS.has(member)) object = false;
+            else if (member === "params") text = true;
+          }
+          j += 2;
+          continue;
+        }
+        if (punct(j, "[") && partner[j] !== -1) {
+          object = false;
+          j = partner[j] + 1;
+          continue;
+        }
+        if (punct(j, "(") && partner[j] !== -1) {
+          if (object) changes = true;
+          object = false;
+          j = partner[j] + 1;
+          continue;
+        }
+        break;
+      }
+      return { end: j, object, text, changes };
+    };
+    // Aliases, in source order: const h = request.headers, const u = new
+    // URL(...), const { headers } = request.
+    for (let k = 0; k < n; k++) {
+      if (!word(k, "const")) continue;
+      if (word(k + 1) && punct(k + 2, "=") && !punct(k + 3, "=")) {
+        const v = k + 3;
+        // The value starts right after `=` (not inside a template).
+        if (v >= n || body.slice(tokens[k + 2].end, tokens[v].start).trim())
+          continue;
+        let w: ReturnType<typeof walk> | undefined;
+        if (
+          word(v, "new") &&
+          (word(v + 1, "URL") || word(v + 1, "URLSearchParams")) &&
+          punct(v + 2, "(") &&
+          partner[v + 2] !== -1
+        )
+          w = walk(partner[v + 2], false);
+        else if (word(v) && roots.has(tokens[v].value))
+          w = walk(v, roots.get(tokens[v].value)!);
+        if (w?.object && expressionEnd(v, true) === w.end)
+          roots.set(tokens[k + 1].value, w.text);
+        continue;
+      }
+      const close = punct(k + 1, "{") ? partner[k + 1] : -1;
+      if (close === -1 || !punct(close + 1, "=") || !word(close + 2)) continue;
+      const from = roots.get(tokens[close + 2].value);
+      if (from === undefined) continue;
+      const w = walk(close + 2, from);
+      if (!w.object || w.text) continue;
+      for (let j = k + 2; j < close; j++) {
+        if (punct(j, "{") || punct(j, "[")) {
+          requestTaint ??= {
+            what: body.slice(tokens[k].start, tokens[close].end).slice(0, 60),
+            why: "request data destructured in a way Bascik does not follow",
+          };
+          break;
+        }
+        if (!word(j) || !(punct(j - 1, "{") || punct(j - 1, ","))) continue;
+        const key = tokens[j].value;
+        const local = punct(j + 1, ":") && word(j + 2) ? j + 2 : j;
+        if (!REQUEST_TEXT_MEMBERS.has(key))
+          roots.set(tokens[local].value, key === "params");
+        j = local;
+      }
+    }
+    for (const [name, text] of roots) {
+      if (requestTaint !== undefined) break;
+      for (const k of occurrences.get(name) ?? []) {
+        if (params.has(k)) continue;
+        if (
+          word(k - 1, "const") ||
+          word(k - 1, "let") ||
+          word(k - 1, "var") ||
+          word(k - 1, "function")
+        )
+          continue;
+        const open = parentOpen[k];
+        if (
+          open !== -1 &&
+          (punct(open, "{") || punct(open, "[")) &&
+          !isIndex(open)
+        ) {
+          const root = patternRoot[open];
+          if (
+            word(root - 1, "const") ||
+            word(root - 1, "let") ||
+            word(root - 1, "var")
+          )
+            continue;
+        }
+        const w = walk(k, text);
+        const shown = (why: string): Unproven => ({
+          what: body
+            .slice(tokens[k].start, tokens[Math.max(k, w.end - 1)].end)
+            .slice(0, 60),
+          why,
+        });
+        if (w.changes) {
+          requestTaint = shown(
+            "request data this script changes, so a value read from it may be markup the script wrote",
+          );
+          break;
+        }
+        if (isAssignAt(w.end) || isPrefixUpdate(k) || word(k - 1, "delete")) {
+          requestTaint = shown(
+            "request data this script writes to, so a value read from it may be markup the script wrote",
+          );
+          break;
+        }
+        if (!w.object) continue;
+        const alias =
+          punct(k - 1, "=") &&
+          word(k - 2) &&
+          word(k - 3, "const") &&
+          expressionEnd(k, true) === w.end;
+        const handed =
+          handsOn(k) ||
+          (!holeFirst.has(k) &&
+            (punct(k - 1, "?") ||
+              punct(k - 1, ":") ||
+              punct(k - 1, "|") ||
+              punct(k - 1, "&")));
+        if (!alias && handed) {
+          requestTaint = shown(
+            "request data this script hands to other code, which may change it",
+          );
+          break;
+        }
+      }
+    }
+  }
 
   /** The value of a `const NAME =` or `const NAME: Type =` declaration at k: token range. */
   const constValue = (k: number): [number, number] | undefined => {
@@ -965,6 +1223,249 @@ export function plainHoleChecker(
     return true;
   };
 
+  /** Calls `each(from, to)` for each top-level comma-separated piece of tokens [a, b); false stops. */
+  const eachArgument = (
+    a: number,
+    b: number,
+    each: (from: number, to: number) => boolean,
+  ): boolean => {
+    let start = a;
+    for (let j = a; j <= b; j++) {
+      if (j < b && !punct(j, ",")) {
+        if (
+          (punct(j, "(") || punct(j, "[") || punct(j, "{")) &&
+          partner[j] !== -1 &&
+          partner[j] < b
+        )
+          j = partner[j];
+        continue;
+      }
+      if (!each(start, j)) return false;
+      start = j + 1;
+    }
+    return true;
+  };
+
+  /**
+   * Evaluates call arguments, tokens [a, b): each must be plain (an
+   * options object of literals counts), and none an html value, which a
+   * call turns into text.
+   */
+  const evalArgs = (a: number, b: number): Result => {
+    let failed: Result | undefined;
+    eachArgument(a, b, (from, to) => {
+      if (from >= to || isTable(from, to)) return true;
+      const r = evalRange(from, to);
+      if (!r.ok) failed = r;
+      else if (r.kind.k === "html")
+        failed = unknown(
+          body.slice(tokens[from].start, tokens[to - 1].end).slice(0, 40),
+          HTML_AS_TEXT,
+        );
+      return failed === undefined;
+    });
+    return failed ?? { ok: true, kind: PRIM, end: b };
+  };
+
+  /** Each const table's keys whose value is a number literal. */
+  const tableNumbers = new Map<string, Map<string, boolean> | null>();
+  const tableNumber = (name: string, key: string): boolean => {
+    let map = tableNumbers.get(name);
+    if (map === undefined) {
+      map = null;
+      const decls = (occurrences.get(name) ?? []).filter((k) =>
+        word(k - 1, "const"),
+      );
+      const range = decls.length === 1 ? constValue(decls[0]) : undefined;
+      if (
+        nameVerdict(name).k === "table" &&
+        range !== undefined &&
+        punct(range[0], "{")
+      ) {
+        map = new Map();
+        const close = partner[range[0]];
+        for (let j = range[0] + 1; j < close; j++) {
+          if (
+            tokens[j].type === "punctuation" ||
+            !punct(j + 1, ":") ||
+            !(punct(j - 1, "{") || punct(j - 1, ","))
+          )
+            continue;
+          const next = j + 2;
+          const text = body.slice(tokens[j + 1].end, tokens[next].start);
+          const isNumber =
+            (punct(next, ",") || next === close) &&
+            NUMBER_TEXT.test(text) &&
+            /\d/.test(text);
+          map.set(
+            tokens[j].value,
+            isNumber && map.get(tokens[j].value) !== false,
+          );
+        }
+      }
+      tableNumbers.set(name, map);
+    }
+    return map?.get(key) === true;
+  };
+
+  const numericMemo = new Map<string, boolean | "pending">();
+  /** Whether a name holds a number: a number const, or a checked number parameter. */
+  const numericName = (name: string): boolean => {
+    const memo = numericMemo.get(name);
+    if (memo !== undefined) return memo === true;
+    numericMemo.set(name, "pending");
+    let ok = nameVerdict(name).k === "prim";
+    for (const k of ok ? (occurrences.get(name) ?? []) : []) {
+      if (word(k - 1, "const")) {
+        const range = constValue(k);
+        ok =
+          range !== undefined &&
+          numericSpan(
+            range[0],
+            range[1],
+            tokens[range[0] - 1].end,
+            range[1] < n ? tokens[range[1]].start : body.length,
+          );
+      } else if (params.has(k)) ok = params.get(k)!.plain;
+      else if (word(k - 1, "function")) ok = false;
+      if (!ok) break;
+    }
+    numericMemo.set(name, ok);
+    return ok;
+  };
+
+  /**
+   * Whether the code between offsets from and to, tokens [a, b), is
+   * provably a number: number literals, number names, Math, Number(),
+   * parseInt(), parseFloat(), Boolean(), Date.now(), a const table's
+   * number and a plain value's length, joined by operators.
+   */
+  const numericSpan = (
+    a: number,
+    b: number,
+    from: number,
+    to: number,
+    self?: string,
+  ): boolean => {
+    let digits = false;
+    let at = from;
+    for (let j = a; j <= b; j++) {
+      const gap = body.slice(at, j < b ? tokens[j].start : to);
+      if (!NUMBER_TEXT.test(gap)) return false;
+      if (/\d/.test(gap.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")))
+        digits = true;
+      if (j < b) at = tokens[j].end;
+    }
+    if (a >= b) return digits;
+    const trusted = (w: string): boolean =>
+      nameVerdict(w).k === "global" && builtinChanged(w) === undefined;
+    for (let j = a; j < b;) {
+      const t = tokens[j];
+      if (t.type === "punctuation") {
+        if (!/^[-+*/%()~!<>=&|^?:]$/.test(t.value)) return false;
+        j++;
+        continue;
+      }
+      if (t.type !== "identifier" || punct(j - 1, ".")) return false;
+      const w = t.value;
+      if (LITERAL_WORDS.has(w)) {
+        j++;
+        continue;
+      }
+      if ((w === "Math" || w === "Number" || w === "Date") && trusted(w)) {
+        let q = j + 1;
+        if (punct(q, ".") && word(q + 1)) {
+          if (w === "Date" && !/^(?:now|parse|UTC)$/.test(tokens[q + 1].value))
+            return false;
+          q += 2;
+        } else if (w !== "Number") return false;
+        if (punct(q, "(") && partner[q] !== -1 && partner[q] < b)
+          q = partner[q] + 1;
+        else if (w === "Date" || q === j + 1) return false;
+        j = q;
+        continue;
+      }
+      if (
+        (w === "parseInt" || w === "parseFloat" || w === "Boolean") &&
+        trusted(w) &&
+        punct(j + 1, "(") &&
+        partner[j + 1] !== -1 &&
+        partner[j + 1] < b
+      ) {
+        j = partner[j + 1] + 1;
+        continue;
+      }
+      if (punct(j + 1, ".") && word(j + 2)) {
+        if (punct(j + 3, "(") || punct(j + 3, ".") || punct(j + 3, "["))
+          return false;
+        const member = tokens[j + 2].value;
+        const verdict = nameVerdict(w);
+        // A table's number, or the length of a plain value.
+        if (
+          !(verdict.k === "table"
+            ? tableNumber(w, member)
+            : member === "length" && evalRange(j, j + 1).ok)
+        )
+          return false;
+        j += 3;
+        continue;
+      }
+      if (punct(j + 1, "(") || punct(j + 1, "[")) return false;
+      // The parameter being judged, passed on to its own position
+      // (label(n) inside a function of n): a number if every other
+      // call passes one.
+      if (w !== self && !numericName(w)) return false;
+      j++;
+    }
+    return true;
+  };
+
+  /** For each local function: argument positions where some call passes what may not be a number (null: a spread). */
+  const callNumbers = new Map<PlainFunction, boolean[] | null | "pending">();
+  /** Each local function's parameter names, by position. */
+  const parameterNames = new Map<PlainFunction, string[]>();
+  for (const [k, p] of params)
+    if (p.owner !== undefined) {
+      const list = parameterNames.get(p.owner) ?? [];
+      list[p.index] = tokens[k].value;
+      parameterNames.set(p.owner, list);
+    }
+  const callsPassNumbers = (fn: PlainFunction, index: number): boolean => {
+    if (!callNumbers.has(fn)) {
+      callNumbers.set(fn, "pending");
+      const names = parameterNames.get(fn) ?? [];
+      let bad: boolean[] | null = [];
+      for (const k of occurrences.get(fn.name) ?? []) {
+        if (bad === null) break;
+        if (tokens[k].start === fn.start || word(k - 1, "function")) continue;
+        if (!punct(k + 1, "(") || partner[k + 1] === -1) continue;
+        const close = partner[k + 1];
+        let position = 0;
+        const flags: boolean[] = bad;
+        eachArgument(k + 2, close, (from, to) => {
+          if (
+            punct(from, ".") &&
+            punct(from + 1, ".") &&
+            punct(from + 2, ".")
+          ) {
+            bad = null;
+            return false;
+          }
+          const start = tokens[from - 1].end;
+          const end = to < n ? tokens[to].start : body.length;
+          if (!(from === to && body.slice(start, end).trim() === ""))
+            if (!numericSpan(from, to, start, end, names[position]))
+              flags[position] = true;
+          position++;
+          return true;
+        });
+      }
+      callNumbers.set(fn, bad);
+    }
+    const flags = callNumbers.get(fn);
+    return Array.isArray(flags) && flags[index] !== true;
+  };
+
   /** A helper's verdict: undefined when every return is plain. */
   const helperVerdict = (fn: PlainFunction): Unproven | undefined => {
     const memo = helperMemo.get(fn);
@@ -984,6 +1485,7 @@ export function plainHoleChecker(
       const b = tokenAt(fn.end);
       const r = evalRange(a, b);
       if (!r.ok) cause = r.cause;
+      else if (r.kind.k === "html") helperHtml.add(fn);
     } else
       for (const k of returnsOf.get(fn) ?? []) {
         if (punct(k + 1, ";") || punct(k + 1, "}")) continue;
@@ -992,6 +1494,7 @@ export function plainHoleChecker(
           cause = r.cause;
           break;
         }
+        if (r.kind.k === "html") helperHtml.add(fn);
       }
     depth--;
     helperMemo.set(fn, cause);
@@ -1083,6 +1586,17 @@ export function plainHoleChecker(
         )
           return no(
             "a parameter of a function whose callers this file cannot all see (exported, a callback, a method, or passed on), and a JavaScript caller can pass markup whatever its type says",
+          );
+        if (param.defaultRange !== undefined) {
+          const [a, b] = param.defaultRange;
+          if (!numericSpan(a, b, tokens[a - 1].end, tokens[b].start))
+            return no(
+              "a number parameter whose default value Bascik cannot prove is a number",
+            );
+        }
+        if (!callsPassNumbers(param.owner, param.index))
+          return no(
+            "a number parameter that a call fills with a value Bascik cannot prove is a number",
           );
         fromParam = true;
         kinds.push(PRIM);
@@ -1190,6 +1704,8 @@ export function plainHoleChecker(
         }
       }
     }
+    if (first.k === "date" && escapes)
+      return no("a Date handed to other code, which may change it");
     if (first.k === "request")
       return { k: "request", name: first.name, escapes };
     return first;
@@ -1200,19 +1716,25 @@ export function plainHoleChecker(
     const t = tokens[k];
     const name = t.value;
     let j = k + 1;
-    let kind: Kind;
+    let kind: Kind | undefined;
     const tagged = (at: number): boolean =>
       body[tokens[at - 1]?.end ?? 0] === "`";
+    // An html value: html`...`, raw(), safeUrl(), json(). What follows it
+    // (a member, a call) is checked below.
+    let htmlEnd = -1;
     if (opts.isHtmlValue(name) || opts.htmlTags.includes(name)) {
-      if (tagged(j)) {
-        const end = opts.templateEndAt(t.end);
-        if (end !== undefined)
-          return { ok: true, kind: { k: "html" }, end: tokenAt(end) };
+      const end = tagged(j) ? opts.templateEndAt(t.end) : undefined;
+      if (end !== undefined) {
+        kind = HTML;
+        j = htmlEnd = tokenAt(end);
+      } else if (punct(j, "(") && partner[j] !== -1) {
+        kind = HTML;
+        j = htmlEnd = partner[j] + 1;
       }
-      if (punct(j, "(") && partner[j] !== -1)
-        return { ok: true, kind: { k: "html" }, end: partner[j] + 1 };
     }
-    if (name === "new") {
+    if (kind !== undefined) {
+      // An html value; nothing more to resolve.
+    } else if (name === "new") {
       const ctor = tokens[k + 1];
       if (!word(k + 1) || !punct(k + 2, "(") || partner[k + 2] === -1)
         return unknown(
@@ -1229,8 +1751,31 @@ export function plainHoleChecker(
         (ctor.value === "URL" || ctor.value === "URLSearchParams") &&
         nameVerdict(ctor.value).k === "global"
       ) {
-        const r = evalRange(k + 3, close);
-        if (!r.ok) return r;
+        // A URL decodes %3C and %26 into < and &: it holds request data
+        // only when built from request data (a base may be a literal with
+        // no % in it).
+        if (requestTaint !== undefined)
+          return { ok: false, cause: requestTaint };
+        let failed: Result | undefined;
+        let position = 0;
+        eachArgument(k + 3, close, (from, to) => {
+          const plainBase =
+            position > 0 &&
+            to === from + 1 &&
+            tokens[from].type === "string" &&
+            !tokens[from].value.includes("%");
+          position++;
+          if (plainBase) return true;
+          const r = from < to ? evalRange(from, to) : undefined;
+          if (r !== undefined && !r.ok) failed = r;
+          else if (r === undefined || r.kind.k !== "request")
+            failed = unknown(
+              `new ${ctor.value}()`,
+              "a URL built from something other than request data, which decodes %3C and %26 into markup characters",
+            );
+          return failed === undefined;
+        });
+        if (failed !== undefined) return failed;
         kind = { k: "request" };
       } else return unknown(`new ${ctor.value}()`, "a constructed object");
       j = close + 1;
@@ -1250,7 +1795,7 @@ export function plainHoleChecker(
         const changed = builtinChanged(name);
         if (changed !== undefined) return { ok: false, cause: changed };
         if (STRING_CALLS.has(name) && punct(j, "(") && partner[j] !== -1) {
-          const r = evalRange(j + 1, partner[j]);
+          const r = evalArgs(j + 1, partner[j]);
           if (!r.ok) return r;
           kind = PRIM;
           j = partner[j] + 1;
@@ -1320,7 +1865,9 @@ export function plainHoleChecker(
         }
         if (fn.length === 0)
           return unknown(`${name}()`, "a function Bascik cannot follow");
-        kind = PRIM;
+        // Its arguments reach the result only through its parameters,
+        // which are judged where they are read.
+        kind = fn.some((f) => helperHtml.has(f)) ? HTML : PRIM;
         j = partner[j] + 1;
       } else if (v.k === "table") {
         if (punct(j, ".") && word(j + 1)) j += 2;
@@ -1343,6 +1890,8 @@ export function plainHoleChecker(
             name,
             "an object handed to other code, which may change it",
           );
+        if (requestTaint !== undefined)
+          return { ok: false, cause: requestTaint };
         kind = { k: "request" };
       } else kind = v;
     }
@@ -1353,21 +1902,36 @@ export function plainHoleChecker(
         j++;
         continue;
       }
-      let optional = false;
       if (punct(j, "?") && punct(j + 1, ".") && adjacent(j + 1)) {
-        optional = true;
         j++;
         if (punct(j + 1, "(") || punct(j + 1, "[")) j++;
       }
       if (punct(j, ".") && word(j + 1)) {
         const member = tokens[j + 1].value;
-        const call = punct(j + 2, "(") && partner[j + 2] !== -1;
+        // The call's `(`: right after the member, or after `?.`.
+        const callAt =
+          punct(j + 2, "(") && partner[j + 2] !== -1
+            ? j + 2
+            : punct(j + 2, "?") &&
+                punct(j + 3, ".") &&
+                adjacent(j + 3) &&
+                punct(j + 4, "(") &&
+                partner[j + 4] !== -1
+              ? j + 4
+              : -1;
+        const call = callAt !== -1;
         if (kind.k === "date") {
-          j += 2;
-          if (call) {
-            j = partner[j] + 1;
-            kind = PRIM;
-          }
+          // A Date's methods return text or numbers; its other members
+          // (constructor and the like) are not followed.
+          if (!call)
+            return unknown(
+              body.slice(t.start, tokens[j + 1].end),
+              `a read of .${member} on a Date, which Bascik cannot follow`,
+            );
+          const r = evalArgs(callAt + 1, partner[callAt]);
+          if (!r.ok) return r;
+          j = partner[callAt] + 1;
+          kind = PRIM;
           continue;
         }
         if (kind.k === "request") {
@@ -1378,9 +1942,9 @@ export function plainHoleChecker(
             );
           j += 2;
           if (call) {
-            const r = evalRange(j + 1, partner[j]);
+            const r = evalArgs(callAt + 1, partner[callAt]);
             if (!r.ok) return r;
-            j = partner[j] + 1;
+            j = partner[callAt] + 1;
           }
           continue;
         }
@@ -1390,14 +1954,14 @@ export function plainHoleChecker(
           continue;
         }
         if (STRING_METHODS.has(member) && call && kind.k !== "html") {
-          const r = evalRange(j + 3, partner[j + 2]);
+          const r = evalArgs(callAt + 1, partner[callAt]);
           if (!r.ok) return r;
-          j = partner[j + 2] + 1;
+          j = partner[callAt] + 1;
           kind = PRIM;
           continue;
         }
         return unknown(
-          body.slice(t.start, tokens[call ? partner[j + 2] : j + 1].end),
+          body.slice(t.start, tokens[call ? partner[callAt] : j + 1].end),
           call
             ? `a call of .${member}(), which Bascik does not know returns text`
             : `a read of .${member}, which Bascik cannot follow`,
@@ -1416,10 +1980,6 @@ export function plainHoleChecker(
         continue;
       }
       if (punct(j, "(") && partner[j] !== -1) {
-        if (kind.k === "request" && optional) {
-          j = partner[j] + 1;
-          continue;
-        }
         return unknown(
           body.slice(t.start, tokens[partner[j]].end),
           "a call Bascik cannot follow",
@@ -1427,7 +1987,7 @@ export function plainHoleChecker(
       }
       break;
     }
-    if (tagged(j) && j <= limit)
+    if (j !== htmlEnd && tagged(j) && j <= limit)
       return unknown(
         body.slice(t.start, tokens[j - 1].end),
         "a tagged template",
@@ -1461,6 +2021,9 @@ export function plainHoleChecker(
     let chains = 0;
     let other = false;
     let last: Kind = PRIM;
+    // An html value here, and whether + or a template turns it into text.
+    let html = false;
+    let plus = false;
     let i = a;
     while (i < b) {
       const t = tokens[i];
@@ -1473,9 +2036,11 @@ export function plainHoleChecker(
           if (!r.ok) return r;
           i = partner[i] + 1;
           other = true;
+          if (r.kind.k === "html") html = true;
           // A member of a parenthesized value.
           while (punct(i, ".") && word(i + 1)) {
             const m = tokens[i + 1].value;
+            if (r.kind.k === "html") return unknown(`.${m}`, HTML_AS_TEXT);
             if (m === "length" && !punct(i + 2, "(")) {
               i += 2;
               continue;
@@ -1485,7 +2050,7 @@ export function plainHoleChecker(
               punct(i + 2, "(") &&
               partner[i + 2] !== -1
             ) {
-              const ar = evalRange(i + 3, partner[i + 2]);
+              const ar = evalArgs(i + 3, partner[i + 2]);
               if (!ar.ok) return ar;
               i = partner[i + 2] + 1;
               continue;
@@ -1519,7 +2084,7 @@ export function plainHoleChecker(
               punct(i + 2, "(") &&
               partner[i + 2] !== -1
             ) {
-              const ar = evalRange(i + 3, partner[i + 2]);
+              const ar = evalArgs(i + 3, partner[i + 2]);
               if (!ar.ok) return ar;
               i = partner[i + 2] + 1;
               continue;
@@ -1535,6 +2100,7 @@ export function plainHoleChecker(
             return unknown("=>", "a function, which Bascik does not follow");
           if (isAssignOp(op))
             return unknown(op, "an assignment, which Bascik does not follow");
+          if (op.includes("+")) plus = true;
           i += Math.max(1, op.length);
           other = true;
           continue;
@@ -1593,12 +2159,23 @@ export function plainHoleChecker(
       if (!r.ok) return r;
       chains++;
       last = r.kind;
+      if (r.kind.k === "html") html = true;
       i = r.end;
     }
-    return { ok: true, kind: chains === 1 && !other ? last : PRIM, end: b };
+    if (html && (plus || opts.plainTemplateWithin?.(lo, hi)))
+      return unknown(
+        body.slice(tokens[a].start, tokens[b - 1].end).slice(0, 40),
+        HTML_AS_TEXT,
+      );
+    return {
+      ok: true,
+      kind: html ? HTML : chains === 1 && !other ? last : PRIM,
+      end: b,
+    };
   };
 
   return (from: number, to: number): Unproven | undefined => {
+    if (rewrites !== undefined) return rewrites;
     if (prototypeReach !== undefined) return prototypeReach;
     const a = tokenAt(from);
     let b = a;

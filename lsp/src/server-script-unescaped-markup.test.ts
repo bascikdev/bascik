@@ -1280,7 +1280,7 @@ describe("a hole that calls a project module's function gets no wrap fix (review
     ).toBe(false);
     expect(
       diagsOf(
-        "const fixed = (s: number) => s.toFixed(1);\nexport default (t: number) => `<main>${fixed(t)}</main>`;",
+        "const fixed = (s: number) => s.toFixed(1);\nexport default () => `<main>${fixed(4)}</main>`;",
       )[0].template?.fixable,
     ).toBe(true);
   });
@@ -3049,6 +3049,314 @@ describe("entities, escaped markup, patched built-ins and exported parameters ar
       "Math.max read beside an unrelated field named max",
       beside("${Math.max(1, limits.max)}", "const limits = { max: 3 };\n"),
       "${process.env.A}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole, opts) => {
+    for (const d of diagsAt(body, hole, opts ?? { directive: "module" }))
+      expect(d.template?.fixable).toBe(true);
+  });
+});
+
+describe("call arguments, html turned into text, decoded URLs, changed request data and number arguments are not plain (allowlist, fix round 8)", () => {
+  const UNPROVEN = "cannot prove it is plain text";
+  const diagsAt = (
+    body: string,
+    hole: string,
+    opts: Partial<AnalyzeOptions> = { directive: "module" },
+  ) => {
+    const found = unescaped(body, opts).filter(
+      (x) => body.slice(x.start, x.end) === hole,
+    );
+    expect(found.length, `${hole} is reported`).toBeGreaterThan(0);
+    return found;
+  };
+  const server = { directive: "server" } as const;
+  /** A value Bascik cannot follow, built without a markup literal. */
+  const M =
+    'const m = String.fromCharCode(60) + "b>Hi" + String.fromCharCode(60) + "/b>";\n';
+  const HTML = 'import { html, raw } from "@bascik/bascik/html";\n';
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>?]>([
+    // (1) Every argument of every call in the chain.
+    [
+      "an unknown argument of a call on a Date's members",
+      `${M}const d = new Date(0);\nexport const out = \`<p>\${d.constructor.name.concat(m)}</p>\`;\n`,
+      "${d.constructor.name.concat(m)}",
+    ],
+    [
+      "an unknown argument of replace on a new Date's members",
+      `${M}export const out = \`<p>\${new Date(0).constructor.name.replace("Date", m)}</p>\`;\n`,
+      '${new Date(0).constructor.name.replace("Date", m)}',
+    ],
+    [
+      "an unknown argument of a Date method",
+      `${M}export const out = \`<p>\${new Date(0).toLocaleDateString(m)}</p>\`;\n`,
+      "${new Date(0).toLocaleDateString(m)}",
+    ],
+    [
+      "an unknown argument of an optional call on request data",
+      `${M}export default function (request) { return \`<p>\${request.url.concat?.(m)}</p>\`; }\n`,
+      "${request.url.concat?.(m)}",
+      server,
+    ],
+    [
+      "an unknown argument of an optional replace on request data",
+      `${M}export default function (request) { return \`<p>\${request.method.replace?.("GET", m)}</p>\`; }\n`,
+      '${request.method.replace?.("GET", m)}',
+      server,
+    ],
+    // (2) An html value turned into a string.
+    [
+      "raw() turned into a string with toString()",
+      `${HTML}${M}export const out = \`<p>\${raw(m).toString()}</p>\`;\n`,
+      "${raw(m).toString()}",
+    ],
+    [
+      "String() of an html value",
+      `${HTML}export const out = \`<p>\${String(html\`<b>Hi</b>\`)}</p>\`;\n`,
+      "${String(html`<b>Hi</b>`)}",
+    ],
+    [
+      "a local helper that returns an html value + ''",
+      `${HTML}function g() { return html\`<b>Hi</b>\` + ""; }\nexport const out = \`<p>\${g()}</p>\`;\n`,
+      "${g()}",
+    ],
+    [
+      "a local helper's html value + ''",
+      `${HTML}function g() { return html\`<b>Hi</b>\`; }\nexport const out = \`<p>\${g() + ""}</p>\`;\n`,
+      '${g() + ""}',
+    ],
+    [
+      "an html const in a nested untagged template",
+      `${HTML}const h = html\`<b>Hi</b>\`;\nexport const out = \`<p>\${\`\${h}\`}</p>\`;\n`,
+      "${`${h}`}",
+    ],
+    [
+      "an html const in concat()",
+      `${HTML}const h = html\`<b>Hi</b>\`;\nexport const out = \`<p>\${"a".concat(h)}</p>\`;\n`,
+      '${"a".concat(h)}',
+    ],
+    [
+      "a parenthesized html value turned into a string",
+      `${HTML}const h = html\`<b>Hi</b>\`;\nexport const out = \`<p>\${(h).toString()}</p>\`;\n`,
+      "${(h).toString()}",
+    ],
+    // (3) A URL or URLSearchParams built from literals decodes %3C and %26.
+    [
+      "URLSearchParams of a literal",
+      'export const out = `<p>${new URLSearchParams("q=%3Cb%3EHi%3C%2Fb%3E").get("q")}</p>`;\n',
+      '${new URLSearchParams("q=%3Cb%3EHi%3C%2Fb%3E").get("q")}',
+    ],
+    [
+      "a URL of a literal, through a const",
+      'const u = new URL("https://example.com/?q=%3Cb%3EHi%3C/b%3E");\nexport const out = `<p>${u.searchParams.get("q")}</p>`;\n',
+      '${u.searchParams.get("q")}',
+    ],
+    [
+      "URLSearchParams of a literal joined to a const",
+      'const tail = "%3C/b%3E";\nconst q = new URLSearchParams("q=%3Cb%3EHi" + tail);\nexport const out = `<p>${q.get("q")}</p>`;\n',
+      '${q.get("q")}',
+    ],
+    [
+      "URLSearchParams of a literal beside request data",
+      'export default function (request) { return `<p>${new URLSearchParams("q=%3Cb%3E").get("q") ?? request.method}</p>`; }\n',
+      '${new URLSearchParams("q=%3Cb%3E").get("q") ?? request.method}',
+      server,
+    ],
+    [
+      "a URL of a literal in request-time code",
+      'export default function (request) { const u = new URL("http://x/?q=%3Cb%3EHi%3C/b%3E"); return `<p>${u.searchParams.get("q")}</p>`; }\n',
+      '${u.searchParams.get("q")}',
+      server,
+    ],
+    // (4) Request data the script changes or hands to other code.
+    [
+      "a header the script sets",
+      'export default function (request) {\n  request.headers.set("x-name", "Hi");\n  return `<p>${request.headers.get("x-name")}</p>`;\n}\n',
+      '${request.headers.get("x-name")}',
+      server,
+    ],
+    [
+      "a header the script appends",
+      'export default function (request) {\n  request.headers.append("x-extra", "Hi");\n  return `<p>${request.headers.get("x-extra")}</p>`;\n}\n',
+      '${request.headers.get("x-extra")}',
+      server,
+    ],
+    [
+      "a header the script deletes, through an alias",
+      'export default function (request) {\n  const h = request.headers;\n  h.delete("x-name");\n  return `<p>${request.headers.get("x-name")}</p>`;\n}\n',
+      '${request.headers.get("x-name")}',
+      server,
+    ],
+    [
+      "searchParams handed to a local function",
+      'function fill(p) { p.set("q", "Hi"); }\nexport default function (request) {\n  const u = new URL(request.url);\n  fill(u.searchParams);\n  return `<p>${u.searchParams.get("q")}</p>`;\n}\n',
+      '${u.searchParams.get("q")}',
+      server,
+    ],
+    [
+      "headers handed to a local function",
+      'function fill(h) { h.set("x-name", "Hi"); }\nexport default function (request) {\n  fill(request.headers);\n  return `<p>${request.headers.get("x-name")}</p>`;\n}\n',
+      '${request.headers.get("x-name")}',
+      server,
+    ],
+    [
+      "params written through an alias",
+      'export default function (request, context) {\n  const p = context.params;\n  p.id = "Hi";\n  return `<p>${context.params.id}</p>`;\n}\n',
+      "${context.params.id}",
+      server,
+    ],
+    [
+      "the request handed to other code",
+      "export default function (request) {\n  stamp(request);\n  return `<p>${request.method}</p>`;\n}\n",
+      "${request.method}",
+      server,
+    ],
+    [
+      "searchParams written",
+      'export default function (request) {\n  const u = new URL(request.url);\n  u.searchParams.set("q", "Hi");\n  return `<p>${u.searchParams.get("q")}</p>`;\n}\n',
+      '${u.searchParams.get("q")}',
+      server,
+    ],
+    // (5) A Date the script changes or hands on.
+    [
+      "a Date handed to Object.assign",
+      'const d = new Date(0);\nObject.assign(d, { toISOString: () => "Hi" });\nexport const out = `<p>${d.toISOString()}</p>`;\n',
+      "${d.toISOString()}",
+    ],
+    // (6) Number parameters keep the fix only for number arguments.
+    [
+      "a number parameter whose default is an any value",
+      `${M}const a: any = m;\nfunction g(n: number = a) { return n; }\nexport const out = \`<p>\${g()}</p>\`;\n`,
+      "${g()}",
+    ],
+    [
+      "a number parameter called with an any value",
+      `${M}const a: any = m;\nfunction g(n: number) { return n; }\nexport const out = \`<p>\${g(a)}</p>\`;\n`,
+      "${g(a)}",
+    ],
+    [
+      "a number parameter called with JSON.parse()",
+      'const text = JSON.stringify("Hi");\nfunction g(n: number) { return n; }\nexport const out = `<p>${g(JSON.parse(text))}</p>`;\n',
+      "${g(JSON.parse(text))}",
+    ],
+    [
+      "a number parameter called with a string from the environment",
+      "function g(n: number) { return n; }\nexport const out = `<p>${g(process.env.N as any)}</p>`;\n",
+      "${g(process.env.N as any)}",
+    ],
+    [
+      "a number parameter called with a spread",
+      "const xs = [1];\nfunction g(n: number) { return n; }\nexport const out = `<p>${g(...xs)}</p>`;\n",
+      "${g(...xs)}",
+    ],
+  ])("%s: no fix, the warning says why", (_name, body, hole, opts) => {
+    for (const d of diagsAt(body, hole, opts ?? { directive: "module" })) {
+      expect(d.template?.fixable).toBe(false);
+      expect(d.message).toContain(UNPROVEN);
+    }
+  });
+
+  it.each<[string, string]>([
+    ["eval", 'eval("1");\n'],
+    ["new Function", 'new Function("return 1");\n'],
+    ["Function()", 'Function("return this")();\n'],
+    [
+      "Object.defineProperty",
+      'Object.defineProperty({}, "a", { value: 1 });\n',
+    ],
+    [
+      "Reflect.defineProperty",
+      'Reflect.defineProperty({}, "a", { value: 1 });\n',
+    ],
+    ["Reflect.set", 'Reflect.set({}, "a", 1);\n'],
+    ["Object.setPrototypeOf", "Object.setPrototypeOf({}, null);\n"],
+    [
+      "a prototype member written through a template key",
+      "(String as any)[`prototype`].trim = function () { return 'x'; };\n",
+    ],
+    [
+      "a prototype written through a string key",
+      '(Array as any)["prototype"][1] = "x";\n',
+    ],
+  ])(
+    "a file that calls %s gets no wrap fix anywhere (out of scope: code that rewrites built-ins)",
+    (_name, before) => {
+      const body = `${before}const T = { a: "x" };\nfunction count() { return 3; }\nexport const out = \`<p>\${process.env.A} \${T.a} \${count()} \${new Date(0).getUTCFullYear()}</p>\`;\n`;
+      for (const hole of [
+        "${process.env.A}",
+        "${T.a}",
+        "${count()}",
+        "${new Date(0).getUTCFullYear()}",
+      ])
+        for (const d of diagsAt(body, hole)) {
+          expect(d.template?.fixable).toBe(false);
+          expect(d.message).toContain(UNPROVEN);
+        }
+    },
+  );
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>?]>([
+    [
+      "an env value",
+      "export const out = `<p>${process.env.HOME}</p>`;\n",
+      "${process.env.HOME}",
+    ],
+    [
+      "an env value with a fallback, joined",
+      'export const out = `<p>${(process.env.USER ?? "guest") + " here"}</p>`;\n',
+      '${(process.env.USER ?? "guest") + " here"}',
+    ],
+    [
+      "a local helper that returns a number",
+      "function count() { return 3; }\nexport const out = `<p>${count()}</p>`;\n",
+      "${count()}",
+    ],
+    [
+      "a const table read by literal keys",
+      'const T = { name: "Milk frother", price: 12 };\nexport const out = `<p>${T.name}</p>`;\n',
+      "${T.name}",
+    ],
+    [
+      "a number parameter called with a number",
+      "function money(n: number) { return n.toFixed(2); }\nexport const out = `<p>${money(4)}</p>`;\n",
+      "${money(4)}",
+    ],
+    [
+      "a number parameter called with Math, arithmetic, a number const and a table number",
+      "const base = 2;\nconst T = { price: 12 };\nfunction money(n: number, k: number = 1) { return (n * k).toFixed(2); }\nexport const out = `<p>${money(Math.max(1, 2) * base - 1)} ${money(Number(process.env.P), -3)} ${money(T.price)}</p>`;\n",
+      "${money(Math.max(1, 2) * base - 1)}",
+    ],
+    [
+      "a number parameter passed on from another number parameter",
+      "function money(n: number) { return n.toFixed(2); }\nfunction row(p: number) { return money(p + 1); }\nexport const out = `<p>${row(3)}</p>`;\n",
+      "${row(3)}",
+    ],
+    [
+      "Date and Math results",
+      "export const out = `<p>${new Date(0).getUTCFullYear()} ${Math.max(1, 2)}</p>`;\n",
+      "${new Date(0).getUTCFullYear()}",
+    ],
+    [
+      "a Date method with a plain locale and an options object",
+      'export const out = `<p>${new Date(0).toLocaleDateString("en-US", { month: "long", day: 2 })}</p>`;\n',
+      '${new Date(0).toLocaleDateString("en-US", { month: "long", day: 2 })}',
+    ],
+    [
+      "an html value chosen by a condition",
+      `${HTML}const h = html\`<b>Hi</b>\`;\nconst on = process.env.ON === "1";\nexport const out = \`<p>\${process.env.A}\${on ? h : ""}</p>\`;\n`,
+      "${process.env.A}",
+    ],
+    [
+      "a URL of the request's own URL",
+      'export default function (request) { return `<p>${new URL(request.url).searchParams.get("q")}</p>`; }\n',
+      '${new URL(request.url).searchParams.get("q")}',
+      server,
+    ],
+    [
+      "request data read in a script that hands a header's value on",
+      'export default function (request) {\n  const name = request.headers.get("x-name") ?? "-";\n  audit(name);\n  return `<p>${request.method}</p>`;\n}\n',
+      "${request.method}",
+      server,
     ],
   ])("%s keeps the fix", (_name, body, hole, opts) => {
     for (const d of diagsAt(body, hole, opts ?? { directive: "module" }))

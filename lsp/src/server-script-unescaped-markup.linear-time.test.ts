@@ -527,3 +527,76 @@ describe("entities, escapes, changed built-ins and parameter owners: linear time
     LINEAR_TIME_TIMEOUT_MS,
   );
 });
+
+describe("call arguments, html as text, URLs, changed request data and number arguments: linear time (fix round 8)", () => {
+  const run = (body: string, directive: "module" | "server") =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive,
+      requestTime: directive === "server",
+    });
+  const growthOfBodies = (
+    small: string,
+    large: string,
+    directive: "module" | "server",
+  ): number =>
+    growthOf(
+      () => run(small, directive),
+      () => run(large, directive),
+    );
+
+  it(
+    "one helper with thousands of number parameters, called thousands of times, reads in linear time (CPU growth under 8x for 4x the size)",
+    () => {
+      // Each call's arguments are read once for every position, not once
+      // per parameter.
+      const shape = (n: number) => {
+        const names = Array.from({ length: n }, (_, i) => `p${i}`);
+        return (
+          `function big(${names.map((p) => `${p}: number = 1`).join(", ")}) { return \`<p>${names.map((p) => `\${${p}}`).join("")}</p>\`; }\n` +
+          Array.from(
+            { length: n },
+            (_, i) =>
+              `export const c${i} = big(${i % 3 === 0 ? "" : `${i}, Math.max(${i}, 2)`});\n`,
+          ).join("")
+        );
+      };
+      const diags = run(shape(50), "module").filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(growthOfBodies(shape(500), shape(2_000), "module")).toBeLessThan(
+        8,
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "thousands of number helpers, request aliases, Date calls with options and html helpers read in linear time (CPU growth under 8x for 4x the size)",
+    () => {
+      const shapes = (n: number) =>
+        `import { html } from "@bascik/bascik/html";\nconst T = { price: 12 };\n` +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `function f${i}(n: number, k: number = T.price) { return \`<b>\${n}\${k}</b>\`; }\n` +
+            `function g${i}(n: number) { return f${i}(n + 1, n.toString().length) + f${i}(Number(process.env.N${i}) * 2); }\n` +
+            `const h${i} = () => html\`<i>${i}</i>\`;\n` +
+            `export const s${i} = g${i}(${i}) + \`<p>\${new Date(0).toLocaleDateString("en-US", { month: "long" })}\${h${i}()}</p>\`;\n`,
+        ).join("") +
+        `export default function (request, context) {\n` +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `  const u${i} = new URL(request.url);\n  const hd${i} = request.headers;\n  const { params: p${i} } = context;\n` +
+            `  const v${i} = \`<li>\${u${i}.searchParams.get("q")}\${hd${i}.get("x")}\${p${i}.id}\${request.method.replace?.("GET", "get")}</li>\`;\n`,
+        ).join("") +
+        `  return "";\n}\n`;
+      const diags = run(shapes(50), "server").filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(growthOfBodies(shapes(500), shapes(2_000), "server")).toBeLessThan(
+        8,
+      );
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
