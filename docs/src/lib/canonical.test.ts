@@ -20,7 +20,7 @@ describe("canonical", () => {
   });
 
   it("generates canonical link for a standard page", async () => {
-    const link = await canonical();
+    const link = String(await canonical());
     expect(link).toBe(
       '<link rel="canonical" href="https://bascik.dev/about" />',
     );
@@ -28,13 +28,13 @@ describe("canonical", () => {
 
   it("generates canonical link for index page", async () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/index.html";
-    const link = await canonical();
+    const link = String(await canonical());
     expect(link).toBe('<link rel="canonical" href="https://bascik.dev/" />');
   });
 
   it("generates canonical link for sub-directory index page", async () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/blog/index.html";
-    const link = await canonical();
+    const link = String(await canonical());
     expect(link).toBe(
       '<link rel="canonical" href="https://bascik.dev/blog/" />',
     );
@@ -43,14 +43,14 @@ describe("canonical", () => {
   it("falls back to BASCIK_PAGE_FILE if BASCIK_SOURCE_FILE is unset", async () => {
     delete process.env.BASCIK_SOURCE_FILE;
     process.env.BASCIK_PAGE_FILE = "/app/src/pages/about.html";
-    const link = await canonical();
+    const link = String(await canonical());
     expect(link).toBe(
       '<link rel="canonical" href="https://bascik.dev/about" />',
     );
   });
 
   it("uses routeOverride when provided", async () => {
-    const link = await canonical("custom-route");
+    const link = String(await canonical("custom-route"));
     expect(link).toBe(
       '<link rel="canonical" href="https://bascik.dev/custom-route" />',
     );
@@ -58,10 +58,10 @@ describe("canonical", () => {
 
   it("includes BASCIK_BASE for page paths and route overrides", async () => {
     process.env.BASCIK_BASE = "/docs/";
-    expect(await canonical()).toBe(
+    expect(String(await canonical())).toBe(
       '<link rel="canonical" href="https://bascik.dev/docs/about" />',
     );
-    expect(await canonical("/custom-route")).toBe(
+    expect(String(await canonical("/custom-route"))).toBe(
       '<link rel="canonical" href="https://bascik.dev/docs/custom-route" />',
     );
   });

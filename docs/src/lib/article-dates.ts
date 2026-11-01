@@ -13,6 +13,7 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { json } from "@bascik/bascik/html";
 import type { PageCommitTimes } from "./sitemap-lastmod.ts";
 
 const JSON_LD_RE =
@@ -53,7 +54,7 @@ export function injectArticleDates(
       if (times.published !== undefined)
         dated.datePublished = formatDateTime(times.published);
       dated.dateModified = formatDateTime(times.modified);
-      return `${open}\n${JSON.stringify(dated, null, 2).replace(/</g, "\\u003c")}\n${close}`;
+      return `${open}\n${json(dated)}\n${close}`;
     },
   );
 }

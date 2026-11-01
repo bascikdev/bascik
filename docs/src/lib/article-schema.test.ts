@@ -4,6 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { articleSchema } from "./article-schema.js";
 
+const schemaData = (html: string): Record<string, unknown> => {
+  const body = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(
+    html,
+  )?.[1];
+  if (!body) throw new Error("Missing JSON-LD script");
+  return JSON.parse(body);
+};
+
 describe("articleSchema", () => {
   let tempDir: string;
   const originalEnv = { ...process.env };
@@ -42,15 +50,15 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await articleSchema();
+    const result = String(await articleSchema());
     expect(result).toContain('<script type="application/ld+json">');
-    expect(result).toContain('"headline": "Test Title - Bascik Docs"');
-    expect(result).toContain(
-      '"description": "A test description for the page."',
-    );
-    expect(result).toContain('"url": "https://bascik.dev/"');
-    expect(result).toContain('"mainEntityOfPage": "https://bascik.dev/"');
-    expect(result).toContain('"inLanguage": "en-US"');
+    expect(schemaData(result)).toMatchObject({
+      headline: "Test Title - Bascik Docs",
+      description: "A test description for the page.",
+      url: "https://bascik.dev/",
+      mainEntityOfPage: "https://bascik.dev/",
+      inLanguage: "en-US",
+    });
   });
 
   it("points image at a generated social card, never the removed og-image.jpg", async () => {
@@ -64,9 +72,9 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await articleSchema();
-    expect(result).toContain(
-      '"image": "https://bascik.dev/assets/og/components.jpg"',
+    const result = String(await articleSchema());
+    expect(schemaData(result).image).toBe(
+      "https://bascik.dev/assets/og/components.jpg",
     );
     expect(result).not.toContain("og-image.jpg");
   });
@@ -82,7 +90,7 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await articleSchema();
+    const result = String(await articleSchema());
     expect(result).toContain('"sameAs"');
     expect(result).toContain("https://github.com/bascikdev/bascik");
     expect(result).toContain("https://www.npmjs.com/package/@bascik/bascik");
@@ -106,10 +114,12 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await articleSchema();
-    expect(result).toContain('"headline": "Topic Page"');
-    expect(result).toContain('"description": "Single quote description."');
-    expect(result).toContain('"url": "https://bascik.dev/topic"');
+    const result = String(await articleSchema());
+    expect(schemaData(result)).toMatchObject({
+      headline: "Topic Page",
+      description: "Single quote description.",
+      url: "https://bascik.dev/topic",
+    });
   });
 
   async function schemaDescription(metaTag: string): Promise<unknown> {
@@ -128,7 +138,7 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
-    const result = await articleSchema();
+    const result = String(await articleSchema());
     const json =
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(result);
     return json ? JSON.parse(json[1]).description : undefined;
@@ -174,7 +184,7 @@ describe("articleSchema", () => {
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
-    const result = await articleSchema();
+    const result = String(await articleSchema());
     const json =
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(result);
     expect(JSON.parse(json![1]).headline).toBe(

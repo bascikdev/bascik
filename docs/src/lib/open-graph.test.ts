@@ -22,7 +22,7 @@ describe("openGraph", () => {
     delete process.env.BASCIK_PAGE_FILE;
     delete process.env.BASCIK_PAGES_DIR;
 
-    const result = await openGraph();
+    const result = String(await openGraph());
     expect(result).toBe("");
   });
 
@@ -44,7 +44,7 @@ describe("openGraph", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await openGraph();
+    const result = String(await openGraph());
     expect(result).toContain('<meta property="og:type" content="website" />');
     expect(result).toContain(
       '<meta property="og:site_name" content="Bascik" />',
@@ -106,7 +106,7 @@ describe("openGraph", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await openGraph();
+    const result = String(await openGraph());
     expect(result).toContain('<meta property="og:title" content="Search" />');
     expect(result).toContain(
       '<meta property="og:image" content="https://bascik.dev/assets/og/home.jpg" />',
@@ -134,7 +134,7 @@ describe("openGraph", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await openGraph();
+    const result = String(await openGraph());
     expect(result).toContain(
       '<meta property="og:title" content="Getting Started" />',
     );
@@ -162,7 +162,7 @@ describe("openGraph", () => {
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
-    const result = await openGraph();
+    const result = String(await openGraph());
     return [
       ...result.matchAll(
         /<meta (?:property="og|name="twitter):description" content="([^"]*)" \/>/g,
@@ -218,7 +218,7 @@ describe("openGraph", () => {
     process.env.BASCIK_PAGE_FILE = pageFile;
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
-    const result = await openGraph();
+    const result = String(await openGraph());
     expect(result).toContain(
       '<meta property="og:title" content="Benchmarking &amp; Profiling" />',
     );
@@ -226,5 +226,22 @@ describe("openGraph", () => {
       '<meta name="twitter:title" content="Benchmarking &amp; Profiling" />',
     );
     expect(result).not.toContain("&amp;amp;");
+  });
+
+  it("uses the HTML helper to keep title text inside metadata attributes", async () => {
+    const pageFile = join(tempDir, "getting-started.html");
+    await writeFile(
+      pageFile,
+      `<title>Acme " onfocus="alert(1) - Bascik Docs</title><meta name="description" content="A safe description." />`,
+    );
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
+
+    const result = String(await openGraph());
+    expect(result).toContain(
+      '<meta property="og:title" content="Acme &quot; onfocus=&quot;alert(1)" />',
+    );
+    expect(result).not.toContain('content="Acme " onfocus=');
   });
 });
