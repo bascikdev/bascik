@@ -15,7 +15,7 @@
  * `bascik --check`.
  */
 import * as fs from "node:fs";
-import { createRequire } from "node:module";
+import { builtinModules, createRequire } from "node:module";
 import * as path from "node:path";
 import type * as TS from "typescript-6";
 import {
@@ -102,8 +102,41 @@ export interface TypeScriptProjectOptions {
 const BROWSER_LIBS = ["lib.dom.d.ts", "lib.dom.iterable.d.ts"];
 const BROWSER_ONLY_LIB = /^lib\.(dom|webworker|scripthost)\b/i;
 
+/**
+ * The web-standard globals a server-side block has without `@types/node`: `Request`, `Response`, `URL`, `fetch`,
+ * `Headers`, `AbortSignal`, streams, `crypto` and `import.meta.url`, which Node and workerd both provide. A web
+ * worker's library has them and, unlike the browser's, no `document` or `window`.
+ */
+export const SERVER_WEB_LIBS = [
+  "lib.webworker.d.ts",
+  "lib.webworker.iterable.d.ts",
+];
+
+/**
+ * Node's globals and built-in modules, untyped, for server-side blocks in a project without `@types/node`. Code
+ * that runs in Node is never reported for using them; installing `@types/node` gives them their types.
+ */
+export function untypedNodeDeclarations(): string {
+  const modules = builtinModules
+    .filter((name) => !name.startsWith("_") && !name.startsWith("node:"))
+    .map((name) => `declare module ${JSON.stringify(name)};`);
+  return [
+    "// Node's globals and modules, untyped: the project has no @types/node.",
+    "declare var process: any;",
+    "declare var Buffer: any;",
+    "declare var global: any;",
+    "declare var require: any;",
+    "declare var module: any;",
+    "declare var __dirname: string;",
+    "declare var __filename: string;",
+    'declare module "node:*";',
+    ...modules,
+    "",
+  ].join("\n");
+}
+
 /** Whether `@types/node` can be found from the project, so server-side blocks get Node's globals and modules. */
-function hasNodeTypes(projectRoot: string): boolean {
+export function hasNodeTypes(projectRoot: string): boolean {
   try {
     createRequire(path.join(projectRoot, "package.json")).resolve(
       "@types/node/package.json",
@@ -123,6 +156,7 @@ export function compilerOptionsFor(
   projectRoot: string,
   importRoot: string,
   program: TypeScriptProgramKind,
+  nodeTypes = hasNodeTypes(projectRoot),
 ): TS.CompilerOptions {
   let base: TS.CompilerOptions = {};
   const configPath = path.join(projectRoot, "tsconfig.json");
@@ -183,11 +217,13 @@ export function compilerOptionsFor(
     options.lib = [...new Set([...languageLibs, ...BROWSER_LIBS])];
     // Explicit, so `@types/node` (picked up automatically otherwise) never gives browser code `process`.
     options.types = projectTypes ?? [];
-  } else {
+  } else if (nodeTypes) {
     options.lib = languageLibs;
-    const types = [...(projectTypes ?? [])];
-    if (hasNodeTypes(projectRoot)) types.push("node");
-    options.types = types;
+    options.types = [...(projectTypes ?? []), "node"];
+  } else {
+    // Without Node's types, the web globals Node shares with workerd (Node's own are declared untyped).
+    options.lib = [...new Set([...languageLibs, ...SERVER_WEB_LIBS])];
+    options.types = projectTypes ?? [];
   }
   return options;
 }
@@ -347,6 +383,9 @@ export class TypeScriptProject {
    * footer fails to resolve (no `@bascik/bascik`, or one from before the types), until the project is made again.
    */
   private scriptTypes = true;
+  /** Node's untyped globals and modules for the server program, when the project has no `@types/node`. */
+  private readonly nodeDeclarations:
+    { fileName: string; text: string } | undefined;
 
   constructor(options: TypeScriptProjectOptions) {
     // TypeScript keys files by absolute path; a relative root would make every relative import miss.
@@ -367,6 +406,13 @@ export class TypeScriptProject {
           throw new this.ts.OperationCanceledException();
       },
     };
+    const nodeTypes = hasNodeTypes(this.projectRoot);
+    this.nodeDeclarations = nodeTypes
+      ? undefined
+      : {
+          fileName: path.join(this.projectRoot, "__bascik-node-globals.d.ts"),
+          text: untypedNodeDeclarations(),
+        };
     const createService = (program: TypeScriptProgramKind) =>
       this.ts.createLanguageService(
         this.host(
@@ -376,6 +422,7 @@ export class TypeScriptProject {
             this.projectRoot,
             this.importRoot,
             program,
+            nodeTypes,
           ),
           cancellationToken,
         ),
@@ -396,10 +443,14 @@ export class TypeScriptProject {
     return {
       getProjectVersion: () => String(this.projectVersion),
       getCompilationSettings: () => options,
-      getScriptFileNames: () =>
-        [...this.files.values()]
+      getScriptFileNames: () => {
+        const names = [...this.files.values()]
           .filter((file) => file.program === program)
-          .map((file) => file.fileName),
+          .map((file) => file.fileName);
+        if (program === "server" && this.nodeDeclarations)
+          names.push(this.nodeDeclarations.fileName);
+        return names;
+      },
       getScriptVersion: (fileName) =>
         String(
           this.files.get(fileName)?.version ??
@@ -417,6 +468,7 @@ export class TypeScriptProject {
         ts.getDefaultLibFilePath(compilerOptions),
       fileExists: (fileName) =>
         this.files.has(fileName) ||
+        fileName === this.nodeDeclarations?.fileName ||
         this.readOpenFile(fileName) !== undefined ||
         ts.sys.fileExists(fileName),
       readFile: (fileName) => this.readFile(fileName),
@@ -432,6 +484,8 @@ export class TypeScriptProject {
   private readFile(fileName: string): string | undefined {
     const virtual = this.files.get(fileName);
     if (virtual) return virtual.text;
+    if (fileName === this.nodeDeclarations?.fileName)
+      return this.nodeDeclarations.text;
     return this.readOpenFile(fileName) ?? this.ts.sys.readFile(fileName);
   }
 

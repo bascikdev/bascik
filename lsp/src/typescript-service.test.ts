@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compilerOptionsFor,
+  SERVER_WEB_LIBS,
   TypeScriptProject,
   TypeScriptProjects,
   type TypeScriptDiagnostic,
@@ -276,14 +277,44 @@ describe("TypeScriptProject diagnostics", () => {
     expect(server.map((d) => d.text)).toEqual(["document"]);
   });
 
-  it("without @types/node, a server block reports Node's globals as unknown", () => {
-    const root = fixture();
-    const server = check(
-      root,
-      "src/pages/server.html",
-      page("const port = process.env.PORT;", " data-bascik-build"),
+  it("without @types/node, a server block gets the web globals Node and workerd share, and Node's untyped", () => {
+    const root = fixture({
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { paths: BASCIK_TYPES_PATHS },
+      }),
+    });
+    const html = page(
+      [
+        'import { readFile } from "node:fs/promises";',
+        'import path from "path";',
+        "const port = process.env.PORT;",
+        "const here = new URL(import.meta.url);",
+        "export default async function (request, context, { signal }) {",
+        "  const url = new URL(request.url);",
+        "  const body = await fetch(url, { signal }).then((r) => r.text());",
+        "  const headers = new Headers({ 'x-frother': String(port) });",
+        "  for (const [name] of headers) console.log(name, context.remoteIp);",
+        "  return new Response(body + path.join(String(here), String(readFile)), { headers });",
+        "}",
+      ].join("\n"),
+      " data-bascik-server",
     );
-    expect(server.map((d) => d.text)).toEqual(["process"]);
+    expect(check(root, "src/pages/server.html", html)).toEqual([]);
+    expect(
+      compilerOptionsFor(ts, root.root, root.file("src"), "server", false).lib,
+    ).toEqual(["lib.es2022.d.ts", ...SERVER_WEB_LIBS]);
+    // Still checked: a type error, a DOM-only global, and a module that is not one of Node's.
+    const wrong = page(
+      'import { frother } from "node-frother";\nconst n: number = "x";\ndocument.title = String(frother);\nexport default () => String(n);',
+      " data-bascik-build",
+    );
+    expect(
+      check(root, "src/pages/build.html", wrong).map((d) => [d.code, d.text]),
+    ).toEqual([
+      [2307, '"node-frother"'],
+      [2322, "n"],
+      [2584, "document"],
+    ]);
   });
 
   it("types a server script's default export from @bascik/bascik", () => {

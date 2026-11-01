@@ -218,4 +218,14 @@ const VALID_FILES: Record<string, string> = {
   document.title = frotherLabel(3);
 </script>
 `,
+  // Server-side blocks in a project without @types/node: Node's globals and the web globals Node shares.
+  "src/pages/no-node-types.html": `<main>Milk frother</main>
+<script data-bascik-build type="text/typescript">
+  import { readFile } from "node:fs/promises";
+  export default async () => String(process.env.PORT ?? new URL(import.meta.url).pathname) + String(readFile);
+</script>
+<script data-bascik-server type="text/typescript">
+  export default async (request: Request) => new Response(new URL(request.url).pathname);
+</script>
+`,
 };
