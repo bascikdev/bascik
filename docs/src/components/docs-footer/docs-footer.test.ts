@@ -15,7 +15,7 @@ describe("docs-footer component", () => {
   it("renders footer sitemap build script, logo, and copyright year script", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('<footer class="dfooter">');
+    expect(html).toContain("<footer>");
     expect(html).toMatch(/<docs-logo\s*\/>/);
     expect(html).toContain("data-bascik-build");
     expect(html).toContain('<a href="/sponsor">Sponsor</a>');

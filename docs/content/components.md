@@ -472,10 +472,10 @@ Create a `.css` file or companion script files alongside the `.html` file if you
 <!-- demo:source-html-card -->
 
 ```html
-<div class="fcard">
+<article>
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-desc></p>
-</div>
+</article>
 ```
 
 The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component, and `data-bascik-preserve` for keeping selected `id`, `name` (when name scoping is on), or `class` values literal. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, slots for consumer-authored markup, and [Preserve Scoping](/preserve) only when an external system must bypass normal scoping.
@@ -483,7 +483,7 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 <!-- demo:source-css-card -->
 
 ```css
-.fcard {
+article {
   padding: 24px;
   background: #242628;
   border: 1px solid #3a3d40;
@@ -507,18 +507,18 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 <!-- demo:output-html-card -->
 
 ```html
-<div class="bascik__feature-card__fcard">
+<article class="b_el_feature-card_article">
   <h3 class="b_el_feature-card_h3">Build-time Components</h3>
   <p class="b_el_feature-card_p">
     Bascik resolves tags and ships vanilla HTML.
   </p>
-</div>
+</article>
 ```
 
 <!-- demo:output-css-card -->
 
 ```css
-.bascik__feature-card__fcard {
+.b_el_feature-card_article {
   padding: 24px;
   background: #242628;
   border: 1px solid #3a3d40;
@@ -800,8 +800,8 @@ Placing the skip link at the top of a `<site-nav>` component guarantees it is re
 ```html
 <!-- src/components/site-nav.html (First focusable element in DOM) -->
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<nav class="dnav" aria-label="Main">
-  <a href="/" class="dnav-logo">Logo</a>
+<nav aria-label="Main">
+  <a href="/" class="logo">Logo</a>
   <!-- Navigation links... -->
 </nav>
 

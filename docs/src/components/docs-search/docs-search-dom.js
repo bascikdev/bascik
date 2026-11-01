@@ -1,11 +1,11 @@
 /* bascik-disable js-attribute-selector, js-document-class-query */
-var btn = document.querySelector(".dnav-search-btn");
-var overlay = document.querySelector(".search-overlay");
-var backdrop = document.querySelector(".search-backdrop");
-var input = document.querySelector(".search-input");
-var list = document.querySelector(".search-results");
-var empty = document.querySelector(".search-empty");
-var hint = document.querySelector(".search-hint");
+var btn = document.querySelector(".button");
+var overlay = document.querySelector(".overlay");
+var backdrop = document.querySelector(".backdrop");
+var input = document.querySelector(".input");
+var list = document.querySelector(".results");
+var empty = document.querySelector(".empty");
+var hint = document.querySelector(".hint");
 var statusEl = document.getElementById("docs-search-status");
 var lastFocused = null;
 var preloaded = new Set();
@@ -145,7 +145,7 @@ function runSearch(query) {
 
   function resultLink(e) {
     var separator = el("span", {}, ["\u203a"]);
-    separator.className = "sr-sep";
+    separator.className = "separator";
     var label = e.heading
       ? [e.navLabel, " ", separator, " ", e.heading]
       : [e.navLabel];
@@ -153,19 +153,19 @@ function runSearch(query) {
     var section = el("span", { "data-testid": "search-result-section" }, [
       e.section || "",
     ]);
-    section.className = "sr-section";
+    section.className = "section";
     var title = el("span", { "data-testid": "search-result-label" }, label);
-    title.className = "sr-label";
+    title.className = "label";
     var text = snip
       ? el("span", { "data-testid": "search-result-text" }, [snip])
       : null;
-    if (text) text.className = "sr-text";
+    if (text) text.className = "snippet";
     var link = el("a", { href: e.path, "data-testid": "search-result-link" }, [
       section,
       title,
       text,
     ]);
-    link.className = "sr-link";
+    link.className = "result-link";
     return link;
   }
 
@@ -175,13 +175,13 @@ function runSearch(query) {
       var link = el("a", { href: s.path, "data-testid": "search-sitelink" }, [
         s.navLabel,
       ]);
-      link.className = "sr-sitelink";
+      link.className = "sitelink";
       return el("li", { role: "option" }, [link]);
     });
     var nested = items.length
       ? el("ul", { role: "presentation" }, items)
       : null;
-    if (nested) nested.className = "sr-sitelinks";
+    if (nested) nested.className = "sitelinks";
     return el(
       "li",
       {
@@ -301,7 +301,7 @@ document.addEventListener("keydown", function (e) {
 });
 
 // Adjust keyboard shortcut label for non-Mac
-var kbd = document.querySelector(".search-btn-kbd");
+var kbd = document.querySelector(".button-shortcut");
 if (kbd && !/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
   kbd.textContent = "Ctrl+K";
 }

@@ -143,11 +143,11 @@ A common pattern is a card component with a configurable label, title, and descr
 
 ```html
 <!-- src/components/feature-card.html -->
-<div class="card">
-  <span class="card-label" data-bascik-prop-label></span>
+<article>
+  <span data-bascik-prop-label></span>
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-desc></p>
-</div>
+</article>
 ```
 
 ```html
@@ -176,16 +176,16 @@ This example passes values directly into the `feature-card` component via `data-
 <!-- demo:source-html -->
 
 ```html
-<div class="fcard">
+<article>
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-desc></p>
-</div>
+</article>
 ```
 
 <!-- demo:source-css -->
 
 ```css
-.fcard {
+article {
   padding: 24px;
   background: #242628;
   border: 1px solid #3a3d40;
@@ -209,10 +209,10 @@ This example passes values directly into the `feature-card` component via `data-
 <!-- demo:output-html -->
 
 ```html
-<div class="bascik__feature-card__fcard">
+<article class="b_el_feature-card_article">
   <h3 class="b_el_feature-card_h3">Component Props</h3>
   <p class="b_el_feature-card_p">
     These values are injected into the component template at build time.
   </p>
-</div>
+</article>
 ```

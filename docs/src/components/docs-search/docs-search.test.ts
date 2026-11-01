@@ -15,7 +15,7 @@ describe("docs-search component template", () => {
   it("renders search button, modal dialog, and build script for search logic and DOM", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('class="dnav-search-btn"');
+    expect(html).toContain('class="button"');
     expect(html).toContain('id="docs-search-input"');
     expect(html).toContain('role="combobox"');
     expect(html).toContain('aria-expanded="false"');
@@ -31,8 +31,8 @@ describe("docs-search component template", () => {
   it("styles the nested Home sitelinks", async () => {
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".sr-sitelinks");
-    expect(css).toContain(".sr-sitelink");
+    expect(css).toContain(".sitelinks");
+    expect(css).toContain(".sitelink");
   });
 
   it("wires Home sitelink rendering in the DOM script", async () => {
@@ -79,10 +79,10 @@ describe("docs-search component template", () => {
     expect(dom).toContain('window.addEventListener("load"');
   });
 
-  it("contains sr-only styles for search status live region", async () => {
+  it("contains visually-hidden styles for the search status live region", async () => {
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".sr-only");
+    expect(css).toContain(".visually-hidden");
     expect(css).toContain("clip: rect(0, 0, 0, 0);");
   });
 });

@@ -65,8 +65,8 @@ test.describe("Migrating with Coding Agents", () => {
     });
     expect(layout.width).toBeLessThanOrEqual(1200);
     expect(Math.abs(layout.left - layout.right)).toBeLessThanOrEqual(2);
-    // Scoped: the authored class name is rewritten.
-    expect(layout.className).not.toBe("press");
+    // The section selector produces a scoped class even though the markup has none.
+    expect(layout.className).not.toBe("");
   });
 
   test("Source and Output tabs show the component and the compiled result", async ({
@@ -74,13 +74,15 @@ test.describe("Migrating with Coding Agents", () => {
   }) => {
     await page.goto(PATH);
     const box = gridBox(page);
-    const code = (
+    const source = (
       await box.getByTestId("demo-pane-code").allTextContents()
     ).join("\n");
-    expect(code).toContain("src/components/press-list/press-list.html");
-    expect(code).toMatch(/min\(100%,\s*1200px\)/);
-    // The Output's class attribute is the scoped form, not the bare authored name.
-    expect(code).toMatch(/class="[^"]*press[^"]*"/);
+    expect(source).toContain("src/components/press-list/press-list.html");
+    expect(source).toMatch(/min\(100%,\s*1200px\)/);
+    const output = (
+      await box.getByTestId("demo-pane-output").allTextContents()
+    ).join("\n");
+    expect(output).toMatch(/class="[^"]*b_el_press-list_section[^"]*"/);
   });
 
   test("no horizontal scroll at 375 px", async ({ page }) => {

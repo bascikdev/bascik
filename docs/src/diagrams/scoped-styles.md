@@ -1,13 +1,13 @@
 <!-- demo:scoped-styles-global-classes-in -->
 
 ```html
-<a class="skip-link dnav-logo"></a>
+<a class="skip-link logo"></a>
 ```
 
 <!-- demo:scoped-styles-global-classes-out -->
 
 ```html
-<a class="skip-link bascik__site-nav__dnav-logo"></a>
+<a class="skip-link bascik__site-nav__logo"></a>
 ```
 
 <!-- demo:scoped-styles-custom-properties-local-in -->

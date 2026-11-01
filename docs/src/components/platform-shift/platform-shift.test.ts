@@ -11,15 +11,15 @@ describe("platform-shift component", () => {
   it("captions an ordered list of eras ending with the open gap", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('<figcaption class="shift-caption">');
-    expect(html).toContain('<ol class="shift-list">');
-    expect(html.match(/class="shift-row[" ]/g)).toHaveLength(5);
-    expect(html).toContain('class="shift-row shift-row-open"');
+    expect(html).toContain('<figcaption class="caption">');
+    expect(html).toContain('<ol class="list">');
+    expect(html.match(/class="row[" ]/g)).toHaveLength(5);
+    expect(html).toContain('class="row row-open"');
   });
 
   it("hides the decorative arrows from assistive technology", async () => {
     const html = await readFile(componentPath, "utf8");
-    const arrows = html.match(/<span class="shift-arrow"[^>]*>/g) ?? [];
+    const arrows = html.match(/<span class="arrow"[^>]*>/g) ?? [];
 
     expect(arrows).toHaveLength(5);
     for (const arrow of arrows) expect(arrow).toContain('aria-hidden="true"');

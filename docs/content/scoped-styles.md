@@ -233,13 +233,13 @@ This applies to every component, including one with no stylesheet at all. A head
 
 ```html
 <!-- src/components/site-nav.html -->
-<a href="#main-content" class="skip-link dnav-logo">Skip to main content</a>
+<a href="#main-content" class="skip-link logo">Skip to main content</a>
 ```
 
 ```css
 /* src/components/site-nav.css */
-/* .dnav-logo is declared locally → Bascik scopes it */
-.dnav-logo {
+/* .logo is declared locally → Bascik scopes it */
+.logo {
   display: inline-flex;
   align-items: center;
 }
@@ -259,7 +259,7 @@ This applies to every component, including one with no stylesheet at all. A head
 
 ```html
 <!-- dist/index.html (compiled output) -->
-<a href="#main-content" class="skip-link bascik__site-nav__dnav-logo">
+<a href="#main-content" class="skip-link bascik__site-nav__logo">
   Skip to main content
 </a>
 ```
@@ -345,12 +345,12 @@ Define your design tokens once in a global stylesheet, then consume them inside 
     border-top: 3px solid var(--brand);
     border-radius: 10px;
   }
-  .card-label {
+  .label {
     color: var(--text-muted);
   }
 </style>
 <div class="card">
-  <p class="card-label" data-bascik-prop-label></p>
+  <p class="label" data-bascik-prop-label></p>
   <div data-bascik-slot></div>
 </div>
 ```
@@ -363,7 +363,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
   border-top: 3px solid var(--brand);
   border-radius: 10px;
 }
-.bascik__brand-card__card-label {
+.bascik__brand-card__label {
   color: var(--text-muted);
 }
 ```

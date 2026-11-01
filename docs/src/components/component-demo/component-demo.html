@@ -27,23 +27,23 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     injected via extractDemoBlock at build time, so they also feed llms.txt
     and SKILL.md.
 -->
-<div class="demo-box" data-defer-render="demo" data-testid="component-demo">
+<div class="box" data-defer-render="demo" data-testid="component-demo">
   <span
-    class="demo-no-preview-marker"
+    class="no-preview-marker"
     data-bascik-prop-no-preview
     data-bascik-prop-hide-preview
     hidden
   ></span>
-  <span class="demo-no-output-marker" data-bascik-prop-no-output hidden></span>
-  <div class="demo-nav">
+  <span class="no-output-marker" data-bascik-prop-no-output hidden></span>
+  <div class="nav">
     <!-- Each radio group sits in a form of its own: name ships as written,
          and radios with one name and no form owner are one group across the
          page, so two demos would otherwise share one tab choice. -->
-    <form class="demo-tabs">
-      <label class="demo-tab" data-testid="demo-tab-preview">
+    <form class="tabs">
+      <label class="tab" data-testid="demo-tab-preview">
         <input
           type="radio"
-          class="demo-tab-radio"
+          class="radio"
           name="pane"
           value="preview"
           checked
@@ -51,48 +51,36 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
         />
         <span>Preview</span>
       </label>
-      <label class="demo-tab" data-testid="demo-tab-code">
-        <input
-          type="radio"
-          class="demo-tab-radio"
-          name="pane"
-          value="code"
-          hidden
-        />
+      <label class="tab" data-testid="demo-tab-code">
+        <input type="radio" class="radio" name="pane" value="code" hidden />
         <span>Source</span>
       </label>
-      <label class="demo-tab" data-testid="demo-tab-output">
-        <input
-          type="radio"
-          class="demo-tab-radio"
-          name="pane"
-          value="output"
-          hidden
-        />
+      <label class="tab" data-testid="demo-tab-output">
+        <input type="radio" class="radio" name="pane" value="output" hidden />
         <span>Output</span>
       </label>
     </form>
-    <div class="demo-meta" data-bascik-prop-file></div>
+    <div class="meta" data-bascik-prop-file></div>
   </div>
 
-  <div class="demo-panes">
-    <div class="demo-pane" data-pane="preview" data-testid="demo-pane-preview">
-      <div class="demo-preview-content" data-demo-theme="dark">
+  <div class="panes">
+    <div class="pane" data-pane="preview" data-testid="demo-pane-preview">
+      <div class="preview" data-demo-theme="dark">
         <div data-bascik-slot="example"></div>
       </div>
     </div>
     <div
-      class="demo-pane"
+      class="pane"
       data-pane="code"
       data-demo-pane
       data-testid="demo-pane-code"
     >
-      <form class="demo-language-form">
-        <tab-bar class="demo-language-tabs" aria-label="Source language">
-          <label class="demo-language-tab" data-language="usage">
+      <form class="language-form">
+        <tab-bar class="language-tabs" aria-label="Source language">
+          <label class="language-tab" data-language="usage">
             <input
               type="radio"
-              class="demo-lang-radio"
+              class="language-radio"
               name="source-lang"
               value="usage"
               checked
@@ -100,30 +88,30 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
             />
             <span>Usage</span>
           </label>
-          <label class="demo-language-tab" data-language="html">
+          <label class="language-tab" data-language="html">
             <input
               type="radio"
-              class="demo-lang-radio"
+              class="language-radio"
               name="source-lang"
               value="html"
               hidden
             />
             <span>HTML</span>
           </label>
-          <label class="demo-language-tab" data-language="css">
+          <label class="language-tab" data-language="css">
             <input
               type="radio"
-              class="demo-lang-radio"
+              class="language-radio"
               name="source-lang"
               value="css"
               hidden
             />
             <span>CSS</span>
           </label>
-          <label class="demo-language-tab" data-language="js">
+          <label class="language-tab" data-language="js">
             <input
               type="radio"
-              class="demo-lang-radio"
+              class="language-radio"
               name="source-lang"
               value="js"
               hidden
@@ -132,33 +120,33 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
           </label>
         </tab-bar>
       </form>
-      <div class="demo-language-pane" data-language-pane="usage">
+      <div class="language-pane" data-language-pane="usage">
         <div data-bascik-slot="source-usage"></div>
       </div>
-      <div class="demo-language-pane" data-language-pane="html">
+      <div class="language-pane" data-language-pane="html">
         <div data-bascik-slot="source-html"></div>
       </div>
-      <div class="demo-language-pane" data-language-pane="css">
+      <div class="language-pane" data-language-pane="css">
         <div data-bascik-slot="source-css"></div>
       </div>
-      <div class="demo-language-pane" data-language-pane="js">
+      <div class="language-pane" data-language-pane="js">
         <div data-bascik-slot="source-js"></div>
       </div>
       <div data-bascik-slot="code"></div>
     </div>
     <div
-      class="demo-pane"
+      class="pane"
       data-pane="output"
       data-demo-pane
       data-testid="demo-pane-output"
     >
-      <div class="demo-output-header">
-        <form class="demo-language-form">
-          <tab-bar class="demo-language-tabs" aria-label="Output language">
-            <label class="demo-language-tab" data-language="html">
+      <div class="output-header">
+        <form class="language-form">
+          <tab-bar class="language-tabs" aria-label="Output language">
+            <label class="language-tab" data-language="html">
               <input
                 type="radio"
-                class="demo-lang-radio"
+                class="language-radio"
                 name="output-lang"
                 value="html"
                 checked
@@ -166,20 +154,20 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
               />
               <span>HTML</span>
             </label>
-            <label class="demo-language-tab" data-language="css">
+            <label class="language-tab" data-language="css">
               <input
                 type="radio"
-                class="demo-lang-radio"
+                class="language-radio"
                 name="output-lang"
                 value="css"
                 hidden
               />
               <span>CSS</span>
             </label>
-            <label class="demo-language-tab" data-language="js">
+            <label class="language-tab" data-language="js">
               <input
                 type="radio"
-                class="demo-lang-radio"
+                class="language-radio"
                 name="output-lang"
                 value="js"
                 hidden
@@ -189,11 +177,11 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
           </tab-bar>
         </form>
         <label
-          class="demo-info-btn"
+          class="info-button"
           aria-label="Output formatting information"
           title="Show output format details"
         >
-          <input type="checkbox" class="demo-info-toggle" hidden />
+          <input type="checkbox" class="info-toggle" hidden />
           <svg
             width="14"
             height="14"
@@ -211,26 +199,26 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
           </svg>
         </label>
       </div>
-      <div class="demo-info-notice">
+      <div class="info-notice">
         Output is shown unminified (HTML, CSS, JS, and identifier names) for
         readability.
       </div>
-      <div class="demo-language-pane" data-language-pane="html">
+      <div class="language-pane" data-language-pane="html">
         <div data-bascik-slot="output-html"></div>
       </div>
-      <div class="demo-language-pane" data-language-pane="css">
+      <div class="language-pane" data-language-pane="css">
         <div data-bascik-slot="output-css"></div>
       </div>
-      <div class="demo-language-pane" data-language-pane="js">
+      <div class="language-pane" data-language-pane="js">
         <div data-bascik-slot="output-js"></div>
       </div>
-      <div class="demo-output-fallback" data-bascik-slot="output"></div>
+      <div class="output-fallback" data-bascik-slot="output"></div>
     </div>
   </div>
 </div>
 
 <style>
-  .demo-box {
+  .box {
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border);
@@ -240,7 +228,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     background: var(--bg);
   }
 
-  .demo-nav {
+  .nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -252,22 +240,22 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     scrollbar-width: none;
   }
 
-  .demo-nav::-webkit-scrollbar {
+  .nav::-webkit-scrollbar {
     display: none;
   }
 
-  .demo-tabs {
+  .tabs {
     display: flex;
     flex-shrink: 0;
     margin: 0;
   }
 
   /* A form only to give the language radios their own group per demo. */
-  .demo-language-form {
+  .language-form {
     display: contents;
   }
 
-  .demo-tab {
+  .tab {
     display: inline-flex;
     align-items: center;
     padding: 12px 16px;
@@ -286,7 +274,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     user-select: none;
   }
 
-  .demo-tab::before {
+  .tab::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -295,25 +283,25 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   }
 
   @media (hover: hover) {
-    .demo-tab:hover {
+    .tab:hover {
       color: var(--text);
     }
 
-    .demo-tab:hover:not(:has(.demo-tab-radio:checked))::before {
+    .tab:hover:not(:has(.radio:checked))::before {
       background: var(--elevated);
     }
   }
 
-  .demo-tab:has(.demo-tab-radio:checked) {
+  .tab:has(.radio:checked) {
     color: #18191b;
     font-weight: 600;
   }
 
-  .demo-tab:has(.demo-tab-radio:checked)::before {
+  .tab:has(.radio:checked)::before {
     background: var(--accent);
   }
 
-  .demo-meta {
+  .meta {
     font-size: 0.75rem;
     color: var(--text-muted);
     font-family: var(--mono);
@@ -322,7 +310,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     padding-left: 16px;
   }
 
-  .demo-panes {
+  .panes {
     position: relative;
     display: flex;
     flex: 1;
@@ -330,72 +318,61 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     min-height: 0;
   }
 
-  .demo-pane {
+  .pane {
     display: none;
     min-height: 0;
   }
 
-  .demo-box:has(.demo-no-output-marker:not(:empty))
-    .demo-tab[data-testid="demo-tab-output"],
-  .demo-box:not(
-      :has(.demo-pane[data-pane="output"] .demo-language-pane > *)
-    ):not(:has(.demo-output-fallback > *))
-    .demo-tab[data-testid="demo-tab-output"] {
+  .box:has(.no-output-marker:not(:empty)) .tab[data-testid="demo-tab-output"],
+  .box:not(:has(.pane[data-pane="output"] .language-pane > *)):not(
+      :has(.output-fallback > *)
+    )
+    .tab[data-testid="demo-tab-output"] {
     display: none;
   }
 
   /* When no-preview prop is set, hide the preview tab and pane. The box keeps
      its margin so the heading after it has room; a page that sets the box
      flush in its own layout zeroes the margin there. */
-  .demo-box:has(.demo-no-preview-marker:not(:empty))
-    .demo-tab[data-testid="demo-tab-preview"] {
+  .box:has(.no-preview-marker:not(:empty))
+    .tab[data-testid="demo-tab-preview"] {
     display: none;
   }
 
-  .demo-box:has(.demo-no-preview-marker:not(:empty))
-    .demo-pane[data-pane="preview"] {
+  .box:has(.no-preview-marker:not(:empty)) .pane[data-pane="preview"] {
     display: none !important;
   }
 
-  .demo-box:has(.demo-tab-radio[value="preview"]:checked)
-    .demo-pane[data-pane="preview"] {
+  .box:has(.radio[value="preview"]:checked) .pane[data-pane="preview"] {
     display: block;
   }
 
-  .demo-box:has(.demo-tab-radio[value="code"]:checked)
-    .demo-pane[data-pane="code"],
-  .demo-box:has(.demo-no-preview-marker:not(:empty)):has(
-      .demo-tab-radio[value="preview"]:checked
-    )
-    .demo-pane[data-pane="code"] {
+  .box:has(.radio[value="code"]:checked) .pane[data-pane="code"],
+  .box:has(.no-preview-marker:not(:empty)):has(.radio[value="preview"]:checked)
+    .pane[data-pane="code"] {
     display: flex;
     flex: 1;
     flex-direction: column;
   }
 
-  .demo-box:has(.demo-no-preview-marker:not(:empty)):has(
-      .demo-tab-radio[value="preview"]:checked
-    )
-    .demo-tab[data-testid="demo-tab-code"] {
+  .box:has(.no-preview-marker:not(:empty)):has(.radio[value="preview"]:checked)
+    .tab[data-testid="demo-tab-code"] {
     color: #18191b;
     font-weight: 600;
   }
 
-  .demo-box:has(.demo-no-preview-marker:not(:empty)):has(
-      .demo-tab-radio[value="preview"]:checked
-    )
-    .demo-tab[data-testid="demo-tab-code"]::before {
+  .box:has(.no-preview-marker:not(:empty)):has(.radio[value="preview"]:checked)
+    .tab[data-testid="demo-tab-code"]::before {
     background: var(--accent);
   }
 
-  .demo-box:has(.demo-tab-radio[value="output"]:checked)
-    .demo-pane[data-pane="output"] {
+  .box:has(.radio[value="output"]:checked) .pane[data-pane="output"] {
     display: flex;
     flex: 1;
     flex-direction: column;
   }
 
-  .demo-language-tab {
+  .language-tab {
     display: inline-flex;
     align-items: center;
     min-width: 48px;
@@ -413,7 +390,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     user-select: none;
   }
 
-  .demo-language-tab::before {
+  .language-tab::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -421,152 +398,152 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     z-index: -1;
   }
 
-  .demo-language-tab:hover {
+  .language-tab:hover {
     color: var(--text);
   }
 
-  .demo-language-tab:hover:not(:has(.demo-lang-radio:checked))::before {
+  .language-tab:hover:not(:has(.language-radio:checked))::before {
     background: var(--elevated);
   }
 
-  .demo-language-tab:has(.demo-lang-radio:checked) {
+  .language-tab:has(.language-radio:checked) {
     color: #18191b;
   }
 
-  .demo-language-tab:has(.demo-lang-radio:checked)::before {
+  .language-tab:has(.language-radio:checked)::before {
     background: var(--accent);
   }
 
-  .demo-language-pane {
+  .language-pane {
     display: none;
   }
 
-  .demo-language-pane:has(> *) {
+  .language-pane:has(> *) {
     flex: 1;
     min-height: 0;
   }
 
-  .demo-language-pane:has(> *) > * {
+  .language-pane:has(> *) > * {
     height: 100%;
   }
 
-  .demo-pane:has(.demo-lang-radio[value="usage"]:checked)
-    .demo-language-pane[data-language-pane="usage"] {
+  .pane:has(.language-radio[value="usage"]:checked)
+    .language-pane[data-language-pane="usage"] {
     display: block;
   }
 
-  .demo-pane:has(.demo-lang-radio[value="html"]:checked)
-    .demo-language-pane[data-language-pane="html"] {
+  .pane:has(.language-radio[value="html"]:checked)
+    .language-pane[data-language-pane="html"] {
     display: block;
   }
 
-  .demo-pane:has(.demo-lang-radio[value="css"]:checked)
-    .demo-language-pane[data-language-pane="css"] {
+  .pane:has(.language-radio[value="css"]:checked)
+    .language-pane[data-language-pane="css"] {
     display: block;
   }
 
-  .demo-pane:has(.demo-lang-radio[value="js"]:checked)
-    .demo-language-pane[data-language-pane="js"] {
+  .pane:has(.language-radio[value="js"]:checked)
+    .language-pane[data-language-pane="js"] {
     display: block;
   }
 
   /* Hide empty language tabs. Components expand to their root markup, so test for any child element. */
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *))
-    .demo-language-tab[data-language="usage"] {
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *))
+    .language-tab[data-language="usage"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="html"] > *))
-    .demo-language-tab[data-language="html"] {
+  .pane:not(:has(.language-pane[data-language-pane="html"] > *))
+    .language-tab[data-language="html"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="css"] > *))
-    .demo-language-tab[data-language="css"] {
+  .pane:not(:has(.language-pane[data-language-pane="css"] > *))
+    .language-tab[data-language="css"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="js"] > *))
-    .demo-language-tab[data-language="js"] {
+  .pane:not(:has(.language-pane[data-language-pane="js"] > *))
+    .language-tab[data-language="js"] {
     display: none;
   }
 
   /* Hide tablist if all language panes are empty */
-  .demo-pane:not(:has(.demo-language-pane > *)) .demo-language-tabs {
+  .pane:not(:has(.language-pane > *)) .language-tabs {
     display: none;
   }
 
   /* Fallback activation when default checked tab is empty */
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-pane[data-language-pane="html"]:has(> *) {
+    .language-pane[data-language-pane="html"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-tab[data-language="html"] {
+    .language-tab[data-language="html"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-tab[data-language="html"]::before {
+    .language-tab[data-language="html"]::before {
     background: var(--accent);
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):has(.demo-lang-radio[value="usage"]:checked)
-    .demo-language-pane[data-language-pane="css"]:has(> *) {
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):has(.language-radio[value="usage"]:checked)
+    .language-pane[data-language-pane="css"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):has(.demo-lang-radio[value="usage"]:checked)
-    .demo-language-tab[data-language="css"] {
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):has(.language-radio[value="usage"]:checked)
+    .language-tab[data-language="css"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):has(.demo-lang-radio[value="usage"]:checked)
-    .demo-language-tab[data-language="css"]::before {
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):has(.language-radio[value="usage"]:checked)
+    .language-tab[data-language="css"]::before {
     background: var(--accent);
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):not(:has(.language-pane[data-language-pane="css"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-pane[data-language-pane="js"]:has(> *) {
+    .language-pane[data-language-pane="js"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):not(:has(.language-pane[data-language-pane="css"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-tab[data-language="js"] {
+    .language-tab[data-language="js"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(
-      :has(.demo-language-pane[data-language-pane="html"] > *)
-    ):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(
-      .demo-lang-radio[value="usage"]:checked
+  .pane:not(:has(.language-pane[data-language-pane="usage"] > *)):not(
+      :has(.language-pane[data-language-pane="html"] > *)
+    ):not(:has(.language-pane[data-language-pane="css"] > *)):has(
+      .language-radio[value="usage"]:checked
     )
-    .demo-language-tab[data-language="js"]::before {
+    .language-tab[data-language="js"]::before {
     background: var(--accent);
   }
 
-  .demo-preview-content {
+  .preview {
     padding: 32px;
     background-color: var(--bg);
     background-image:
@@ -587,13 +564,13 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
 
   /* The checkerboard behind a preview is screen-only */
   @media print {
-    .demo-preview-content {
+    .preview {
       background: none;
     }
   }
 
   /* An example stage (see examples.ts) is its own page background, so the checkerboard and padding step aside. */
-  .demo-preview-content:has(> [data-example-stage]) {
+  .preview:has(> [data-example-stage]) {
     padding: 0;
     background: none;
     align-items: stretch;
@@ -602,15 +579,15 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   /* Page-level examples (site-header, site-footer) span the box instead of shrinking to their content. Element names
      inside :is() stay unscoped, so this matches the example's own <header> and <footer>. */
   /* bascik-ignore css-is-element-names */
-  .demo-preview-content > :is(header, footer) {
+  .preview > :is(header, footer) {
     flex: 1;
   }
 
-  .demo-pane code-block {
+  .pane code-block {
     margin: 0;
   }
 
-  .demo-output-header {
+  .output-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -618,7 +595,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     background: var(--bg-muted);
   }
 
-  .demo-info-btn {
+  .info-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -639,21 +616,21 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     user-select: none;
   }
 
-  .demo-info-btn:hover {
+  .info-button:hover {
     color: var(--text);
     background: var(--elevated);
   }
 
-  .demo-info-btn:has(.demo-info-toggle:checked) {
+  .info-button:has(.info-toggle:checked) {
     color: var(--text);
     background: var(--elevated);
   }
 
-  .demo-pane:not(:has(.demo-info-toggle:checked)) .demo-info-notice {
+  .pane:not(:has(.info-toggle:checked)) .info-notice {
     display: none;
   }
 
-  .demo-info-notice {
+  .info-notice {
     padding: 10px 16px;
     font-size: 0.75rem;
     color: var(--text-muted);

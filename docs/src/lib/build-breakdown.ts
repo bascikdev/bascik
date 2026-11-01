@@ -108,24 +108,24 @@ function renderRun(
   const bar = segments
     .map(
       (segment) =>
-        `<span class="bb-seg bb-seg-${segment.id}" style="flex-grow:${segment.seconds}"></span>`,
+        `<span class="segment segment-${segment.id}" style="flex-grow:${segment.seconds}"></span>`,
     )
     .join("");
   const legend = segments
     .map(
       (segment) =>
-        `<li class="bb-legend-row"><span class="bb-swatch bb-seg-${segment.id}" aria-hidden="true"></span>` +
-        `<span class="bb-legend-label">${esc(segment.label)}</span>` +
-        `<span class="bb-legend-time">${formatSeconds(segment.seconds)}</span>` +
-        `<span class="bb-legend-detail">${esc(segment.detail)}</span></li>`,
+        `<li class="legend-row"><span class="swatch segment-${segment.id}" aria-hidden="true"></span>` +
+        `<span class="legend-label">${esc(segment.label)}</span>` +
+        `<span class="legend-time">${formatSeconds(segment.seconds)}</span>` +
+        `<span class="legend-detail">${esc(segment.detail)}</span></li>`,
     )
     .join("");
   return (
-    `<div class="bb-run">` +
-    `<div class="bb-run-head"><h4 class="bb-run-name">${esc(name)}</h4><span class="bb-run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
-    `<p class="bb-run-note">${esc(note)}</p>` +
-    `<div class="bb-bar" role="img" aria-label="${esc(barLabel(name, run, segments))}" style="width:${width.toFixed(1)}%">${bar}</div>` +
-    `<ul class="bb-legend">${legend}</ul>` +
+    `<div class="run">` +
+    `<div class="run-head"><h4 class="run-name">${esc(name)}</h4><span class="run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
+    `<p class="run-note">${esc(note)}</p>` +
+    `<div class="bar" role="img" aria-label="${esc(barLabel(name, run, segments))}" style="width:${width.toFixed(1)}%">${bar}</div>` +
+    `<ul class="legend">${legend}</ul>` +
     `</div>`
   );
 }
@@ -145,7 +145,7 @@ function renderPerPage(timings: BuildTimings): string {
 }
 
 function renderFact(value: string, label: string): string {
-  return `<div class="bb-fact"><span class="bb-fact-value">${esc(value)}</span><span class="bb-fact-label">${esc(label)}</span></div>`;
+  return `<div class="fact"><span class="fact-value">${esc(value)}</span><span class="fact-label">${esc(label)}</span></div>`;
 }
 
 /** The scripts that run alongside page compilation, each with how long it took in the cold build. */
@@ -157,13 +157,13 @@ function renderParallel(timings: BuildTimings): string {
   const chips = parallel
     .map(
       (script) =>
-        `<li class="bb-chip"><span class="bb-chip-name">${esc(scriptName(script.script))}</span><span class="bb-chip-time">${formatSeconds(script.seconds)}</span></li>`,
+        `<li class="chip"><span class="chip-name">${esc(scriptName(script.script))}</span><span class="chip-time">${formatSeconds(script.seconds)}</span></li>`,
     )
     .join("");
   return (
-    `<div class="bb-parallel"><h4 class="bb-parallel-title">Also running during the page compile</h4>` +
-    `<p class="bb-parallel-note">These ${parallel.length} exec scripts run in parallel with the pages, so they add no time of their own: the longest is ${formatSeconds(parallel[0].seconds)}.</p>` +
-    `<ul class="bb-chips">${chips}</ul></div>`
+    `<div class="parallel"><h4 class="parallel-title">Also running during the page compile</h4>` +
+    `<p class="parallel-note">These ${parallel.length} exec scripts run in parallel with the pages, so they add no time of their own: the longest is ${formatSeconds(parallel[0].seconds)}.</p>` +
+    `<ul class="chips">${chips}</ul></div>`
   );
 }
 
@@ -177,7 +177,7 @@ export async function renderBuildBreakdown(
   // `yarn docs:measure-build` runs a full build to produce this file, so that build must not need it. The
   // unit tests fail when the file is missing or stale, which is where that is enforced.
   if (!timings?.cold || !timings.warm) {
-    return '<p class="bb-foot">Build timings have not been measured yet. Run <code>yarn docs:measure-build</code>.</p>';
+    return '<p class="foot">Build timings have not been measured yet. Run <code>yarn docs:measure-build</code>.</p>';
   }
   const components =
     paths.components ?? (await countComponents(paths.componentDirs));
@@ -186,8 +186,8 @@ export async function renderBuildBreakdown(
   const scale = Math.max(timings.cold.wallSeconds, timings.warm.wallSeconds);
 
   return (
-    `<div class="bb">` +
-    `<div class="bb-facts">` +
+    `<div class="breakdown">` +
+    `<div class="facts">` +
     renderFact(
       `${timings.oneWorker?.pageMedianMs ?? timings.warm.pageMedianMs}ms`,
       timings.oneWorker
@@ -201,12 +201,12 @@ export async function renderBuildBreakdown(
         )
       : "") +
     `</div>` +
-    `<div class="bb-facts bb-facts-scale">` +
+    `<div class="facts facts-scale">` +
     renderFact(String(pages), "pages") +
     renderFact(String(components), "components") +
     renderFact(String(timings.buildScripts), "build scripts run") +
     `</div>` +
-    `<div class="bb-runs">` +
+    `<div class="runs">` +
     renderRun(
       "cold",
       "Cold build",
@@ -225,7 +225,7 @@ export async function renderBuildBreakdown(
     ) +
     `</div>` +
     renderParallel(timings) +
-    `<p class="bb-foot">${renderPerPage(timings)} ` +
+    `<p class="foot">${renderPerPage(timings)} ` +
     (timings.devContentEdit
       ? `The dev edit figure is the median of ${timings.devContentEdit.samples} warm-cache saves to this site's getting-started Markdown page, measured ${esc(timings.devContentEdit.measuredOn)} in a private site copy; it includes watching, rebuild, and disk publication, but not browser reload. `
       : "") +

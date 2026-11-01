@@ -1,6 +1,6 @@
 /* Docs Nav: all styles live here so bascik scopes them alongside the HTML */
 
-.dnav {
+nav {
   background: var(--nav-bg);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
@@ -10,7 +10,7 @@
   z-index: 100;
 }
 
-.dnav-banner {
+.banner {
   max-width: var(--site-max-width);
   margin: 0 auto;
   background: var(--accent-dim);
@@ -22,7 +22,7 @@
   text-align: center;
 }
 
-.dnav-banner-inner {
+.banner-inner {
   max-width: var(--site-max-width);
   margin: 0 auto;
   padding: 6px 28px;
@@ -36,7 +36,7 @@
   line-height: 1.4;
 }
 
-.dnav-banner-badge {
+.badge {
   display: inline-flex;
   align-items: center;
   padding: 1px 7px;
@@ -50,8 +50,8 @@
   flex-shrink: 0;
 }
 
-/* dnav-inner doubles as the container: max-width + centering baked in */
-.dnav-inner {
+/* The inner container sets the maximum width and centers the navigation. */
+.container {
   max-width: var(--site-max-width);
   margin: 0 auto;
   padding: 0 28px;
@@ -62,7 +62,7 @@
   gap: 16px;
 }
 
-.dnav-logo {
+.logo {
   text-decoration: none;
   flex-shrink: 0;
   display: inline-flex;
@@ -71,45 +71,45 @@
   transition: none;
 }
 
-.dnav-logo:hover {
+.logo:hover {
   opacity: 1;
 }
 
 /* Icon visibility driven by data-theme / system preference */
-.theme-icon {
+.icon {
   display: none;
   pointer-events: none;
 }
 
-.theme-icon-sun {
+.sun {
   display: block;
 }
 
 @media (prefers-color-scheme: light) {
-  html:not([data-theme="dark"]) .theme-icon-sun {
+  html:not([data-theme="dark"]) .sun {
     display: none;
   }
 
-  html:not([data-theme="dark"]) .theme-icon-moon {
+  html:not([data-theme="dark"]) .moon {
     display: block;
   }
 }
 
-:root[data-theme="light"] .theme-icon-sun {
+:root[data-theme="light"] .sun {
   display: none;
 }
 
-:root[data-theme="light"] .theme-icon-moon {
+:root[data-theme="light"] .moon {
   display: block;
 }
 
-.dnav-right {
+.controls {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.dnav-theme-toggle {
+.theme-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -125,21 +125,21 @@
   flex-shrink: 0;
 }
 
-.dnav-theme-toggle:hover {
+.theme-toggle:hover {
   background: var(--elevated);
   color: var(--text);
 }
 
 /* Desktop: links wrapper always visible; order:-1 keeps it left of search (which moved first in DOM for mobile) */
 @media (min-width: 769px) {
-  .dnav-links-wrapper {
+  .links-wrapper {
     display: flex;
     align-items: center;
     order: -1;
   }
 }
 
-.dnav-links {
+.links {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -149,7 +149,7 @@
   flex-wrap: wrap;
 }
 
-.dnav-links li a {
+.links li a {
   color: var(--text-muted);
   font-size: 0.875rem;
   font-weight: 500;
@@ -162,7 +162,7 @@
 }
 
 /* Parallelogram background: matches the logo's exact angle (7px / 28px ≈ 14°) */
-.dnav-links li a::before {
+.links li a::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -171,26 +171,26 @@
   transition: background 0.15s;
 }
 
-.dnav-links li a:hover {
+.links li a:hover {
   color: var(--text);
   opacity: 1;
 }
 
-.dnav-links li a:hover::before {
+.links li a:hover::before {
   background: var(--elevated);
 }
 
-.dnav-links li a[aria-current="page"] {
+.links li a[aria-current="page"] {
   color: #18191b;
   border: none;
 }
 
-.dnav-links li a[aria-current="page"]::before {
+.links li a[aria-current="page"]::before {
   background: var(--accent);
 }
 
 /* Mobile hamburger button */
-.dnav-toggle {
+.menu-toggle {
   display: none;
   align-items: center;
   justify-content: center;
@@ -206,11 +206,11 @@
   transition: background 0.15s;
 }
 
-.dnav-toggle:hover {
+.menu-toggle:hover {
   background: var(--elevated);
 }
 
-.dnav-toggle-icon {
+.toggle-icon {
   display: block;
   width: 20px;
   height: 2px;
@@ -219,8 +219,8 @@
   transition: background 0.15s;
 }
 
-.dnav-toggle-icon::before,
-.dnav-toggle-icon::after {
+.toggle-icon::before,
+.toggle-icon::after {
   content: "";
   display: block;
   width: 20px;
@@ -233,51 +233,51 @@
     top 0.15s;
 }
 
-.dnav-toggle-icon::before {
+.toggle-icon::before {
   top: -6px;
 }
 
-.dnav-toggle-icon::after {
+.toggle-icon::after {
   top: 6px;
 }
 
 /* Hamburger → X when expanded */
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon {
+.menu-toggle[aria-expanded="true"] .toggle-icon {
   background: transparent;
 }
 
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::before {
+.menu-toggle[aria-expanded="true"] .toggle-icon::before {
   top: 0;
   transform: rotate(45deg);
   background: var(--text);
 }
 
-.dnav-toggle[aria-expanded="true"] .dnav-toggle-icon::after {
+.menu-toggle[aria-expanded="true"] .toggle-icon::after {
   top: 0;
   transform: rotate(-45deg);
   background: var(--text);
 }
 
-.mobile-only-sections {
+.mobile-sections {
   display: none;
 }
 
 @media (max-width: 768px) {
-  .dnav-toggle {
+  .menu-toggle {
     display: flex;
   }
 
-  .dnav-theme-toggle {
+  .theme-toggle {
     display: none;
   }
 
   /* Hide compact top-level links on mobile; full list is in the overlay */
-  .dnav-links {
+  .links {
     display: none;
   }
 
   /* Full-screen overlay */
-  .dnav-links-wrapper {
+  .links-wrapper {
     display: none;
     flex-direction: column;
     position: absolute;
@@ -292,23 +292,23 @@
     z-index: 99;
   }
 
-  .dnav-toggle[aria-expanded="true"] ~ .dnav-links-wrapper {
+  .menu-toggle[aria-expanded="true"] ~ .links-wrapper {
     display: flex;
   }
 
-  .mobile-only-sections {
+  .mobile-sections {
     display: block;
     width: 100%;
     padding: 0 28px;
   }
 
-  .mobile-sep {
+  .separator {
     border: none;
     border-top: 1px solid var(--border);
     margin: 16px 0 20px;
   }
 
-  .mobile-sec-heading {
+  .section-heading {
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -318,11 +318,11 @@
     margin-top: 24px;
   }
 
-  .mobile-sec-heading:first-of-type {
+  .section-heading:first-of-type {
     margin-top: 0;
   }
 
-  .mobile-sec-nav {
+  .section-links {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -331,11 +331,11 @@
     gap: 4px;
   }
 
-  .mobile-sec-nav li {
+  .section-links li {
     width: 100%;
   }
 
-  .mobile-sec-nav li a {
+  .section-links li a {
     display: block;
     padding: 8px 12px;
     border-radius: var(--r-sm);
@@ -347,19 +347,19 @@
       background 0.15s;
   }
 
-  .mobile-sec-nav li a:hover {
+  .section-links li a:hover {
     color: var(--text);
     background: var(--elevated);
   }
 
-  .mobile-sec-nav li a[aria-current="page"] {
+  .section-links li a[aria-current="page"] {
     color: #18191b !important;
     background: var(--accent);
     font-weight: 600;
     text-decoration: none;
   }
 
-  .mobile-theme-btn {
+  .mobile-theme {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -377,7 +377,7 @@
       background 0.15s;
   }
 
-  .mobile-theme-btn:hover {
+  .mobile-theme:hover {
     color: var(--text);
     background: var(--elevated);
   }
@@ -385,7 +385,7 @@
 
 /* Print: keep only the logo, in grayscale, as the page header */
 @media print {
-  .dnav {
+  nav {
     position: static;
     background: none;
     border: 0;
@@ -393,19 +393,19 @@
     backdrop-filter: none;
   }
 
-  .dnav-banner,
-  .dnav-right {
+  .banner,
+  .controls {
     display: none !important;
   }
 
-  .dnav-inner {
+  .container {
     max-width: 100%;
     padding: 0;
     height: auto;
     margin-bottom: 8pt;
   }
 
-  .dnav-logo {
+  .logo {
     filter: grayscale(1);
   }
 }

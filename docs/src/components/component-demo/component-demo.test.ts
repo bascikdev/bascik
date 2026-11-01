@@ -16,7 +16,7 @@ describe("component-demo component", () => {
 
     // 2. Should use CSS :has() for state-driven styling and pane visibility
     expect(html).toContain(":has(");
-    expect(html).toContain(".demo-tab-radio");
+    expect(html).toContain(".radio");
 
     // 3. Should not contain any client runtime <script> tag
     const clientScriptRegex =
@@ -49,34 +49,32 @@ describe("component-demo component", () => {
 
     expect(html).toContain("data-bascik-prop-no-preview");
     expect(html).toContain("data-bascik-prop-hide-preview");
-    expect(html).toContain(".demo-no-preview-marker:not(:empty)");
+    expect(html).toContain(".no-preview-marker:not(:empty)");
   });
 
   it("hides language tabs when slot expansion leaves an empty pane", async () => {
     const html = await readFile(componentPath, "utf8");
 
     expect(html).toMatch(
-      /\.demo-pane:not\(:has\(\.demo-language-pane\[data-language-pane="css"\] > \*\)\)\s+\.demo-language-tab\[data-language="css"\]/,
+      /\.pane:not\(:has\(\.language-pane\[data-language-pane="css"\] > \*\)\)\s+\.language-tab\[data-language="css"\]/,
     );
     expect(html).toContain(
-      ".demo-pane:not(:has(.demo-language-pane > *)) .demo-language-tabs",
+      ".pane:not(:has(.language-pane > *)) .language-tabs",
     );
     // Component tags are replaced by their root markup, so a `code-block` type selector never matches.
     expect(html).not.toContain("code-block))");
     expect(html).not.toContain(
-      '.demo-language-pane[data-language-pane="css"]:empty',
+      '.language-pane[data-language-pane="css"]:empty',
     );
   });
 
   it("hides the Output tab when no output slots have content", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain(
-      '.demo-pane[data-pane="output"] .demo-language-pane > *',
-    );
-    expect(html).toContain(".demo-output-fallback > *");
+    expect(html).toContain('.pane[data-pane="output"] .language-pane > *');
+    expect(html).toContain(".output-fallback > *");
     expect(html).toMatch(
-      /\.demo-box:not\([\s\S]*?:has\(\.demo-pane\[data-pane="output"\] \.demo-language-pane > \*\)[\s\S]*?\):not\(:has\(\.demo-output-fallback > \*\)\)\s+\.demo-tab\[data-testid="demo-tab-output"\]/,
+      /\.box:not\(:has\(\.pane\[data-pane="output"\] \.language-pane > \*\)\):not\(\s*:has\(\.output-fallback > \*\)\s*\)\s*\.tab\[data-testid="demo-tab-output"\]/,
     );
   });
 
@@ -87,8 +85,6 @@ describe("component-demo component", () => {
     expect(html).toContain(
       "display: flex;\n    flex: 1;\n    flex-direction: column;",
     );
-    expect(html).toContain(
-      ".demo-language-pane:has(> *) > * {\n    height: 100%;",
-    );
+    expect(html).toContain(".language-pane:has(> *) > * {\n    height: 100%;");
   });
 });

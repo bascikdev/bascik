@@ -276,12 +276,12 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 
 ```html
 <!-- src/components/press-list/press-list.html -->
-<section class="press" data-testid="press-list">
-  <h2 class="title">In the press</h2>
-  <ul class="items">
-    <li class="item">Example Daily: A faster site in a week</li>
-    <li class="item">Web Weekly: Plans for every team</li>
-    <li class="item">Tech Notes: Lighthouse 100 everywhere</li>
+<section data-testid="press-list">
+  <h2>In the press</h2>
+  <ul>
+    <li>Example Daily: A faster site in a week</li>
+    <li>Web Weekly: Plans for every team</li>
+    <li>Tech Notes: Lighthouse 100 everywhere</li>
   </ul>
 </section>
 ```
@@ -290,7 +290,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 
 ```css
 /* src/components/press-list/press-list.css */
-.press {
+section {
   box-sizing: border-box;
   width: min(100%, 1200px);
   margin: 0 auto;
@@ -298,12 +298,12 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
   padding: 32px calc(min(100%, 1200px) / 12);
 }
 
-.title {
+h2 {
   margin: 0 0 16px;
   font-size: 1.5rem;
 }
 
-.items {
+ul {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
@@ -312,7 +312,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
   list-style: none;
 }
 
-.item {
+li {
   padding: 16px;
   border: 1px solid currentColor;
   border-radius: 8px;
@@ -322,16 +322,12 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 <!-- demo:migration-grid-output-html -->
 
 ```html
-<section class="bascik__press-list__press" data-testid="press-list">
-  <h2 class="bascik__press-list__title">In the press</h2>
-  <ul class="bascik__press-list__items">
-    <li class="bascik__press-list__item">
-      Example Daily: A faster site in a week
-    </li>
-    <li class="bascik__press-list__item">Web Weekly: Plans for every team</li>
-    <li class="bascik__press-list__item">
-      Tech Notes: Lighthouse 100 everywhere
-    </li>
+<section class="b_el_press-list_section" data-testid="press-list">
+  <h2 class="b_el_press-list_h2">In the press</h2>
+  <ul class="b_el_press-list_ul">
+    <li class="b_el_press-list_li">Example Daily: A faster site in a week</li>
+    <li class="b_el_press-list_li">Web Weekly: Plans for every team</li>
+    <li class="b_el_press-list_li">Tech Notes: Lighthouse 100 everywhere</li>
   </ul>
 </section>
 ```
@@ -339,7 +335,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
 <!-- demo:migration-grid-output-css -->
 
 ```css
-.bascik__press-list__press {
+.b_el_press-list_section {
   box-sizing: border-box;
   width: min(100%, 1200px);
   margin: 0 auto;
@@ -347,12 +343,12 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
   padding: 32px calc(min(100%, 1200px) / 12);
 }
 
-.bascik__press-list__title {
+.b_el_press-list_h2 {
   margin: 0 0 16px;
   font-size: 1.5rem;
 }
 
-.bascik__press-list__items {
+.b_el_press-list_ul {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
@@ -361,7 +357,7 @@ Measure the result instead of copying the wrappers. Span 20 with offset 2 leaves
   list-style: none;
 }
 
-.bascik__press-list__item {
+.b_el_press-list_li {
   padding: 16px;
   border: 1px solid currentColor;
   border-radius: 8px;

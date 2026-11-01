@@ -1,25 +1,25 @@
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<nav class="dnav" aria-label="Main">
-  <div class="dnav-banner">
-    <div class="dnav-banner-inner">
-      <span class="dnav-banner-badge">Notice</span>
+<nav aria-label="Main">
+  <div class="banner">
+    <div class="banner-inner">
+      <span class="badge">Notice</span>
       <span>Bascik v1.0.0 is scheduled to release November 12, 2026.</span>
     </div>
   </div>
-  <div class="dnav-inner">
-    <a href="/" class="dnav-logo" aria-label="Bascik home"><docs-logo /></a>
-    <div class="dnav-right">
+  <div class="container">
+    <a href="/" class="logo" aria-label="Bascik home"><docs-logo /></a>
+    <div class="controls">
       <docs-search />
       <button
         type="button"
-        class="dnav-toggle"
+        class="menu-toggle"
         aria-label="Toggle navigation"
         aria-expanded="false"
       >
-        <span class="dnav-toggle-icon"></span>
+        <span class="toggle-icon"></span>
       </button>
-      <div class="dnav-links-wrapper">
-        <ul class="dnav-links">
+      <div class="links-wrapper">
+        <ul class="links">
           <li><a href="/why-bascik">Why Bascik</a></li>
           <li><a href="/getting-started">Docs</a></li>
           <li>
@@ -31,17 +31,17 @@
             >
           </li>
         </ul>
-        <div class="mobile-only-sections">
+        <div class="mobile-sections">
           <!-- The section links repeat the sidebar, about 300 elements on every page. They wait in a template
                until the menu first opens, so pages do not lay out a menu that is rarely shown. -->
-          <template class="mobile-sections-template">
+          <template class="sections-template">
             <script data-bascik-build-once>
               import { NAV } from "@/lib/nav.ts";
               import { renderNavListItem } from "@/lib/nav-helpers.ts";
               export default async function () {
                 let html = "";
                 for (const section of NAV) {
-                  html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
+                  html += `<p class="section-heading">${section.section}</p><ul class="section-links">`;
                   for (const page of section.pages) {
                     html += renderNavListItem(page);
                   }
@@ -51,8 +51,8 @@
               }
             </script>
           </template>
-          <hr class="mobile-sep" />
-          <ul class="mobile-sec-nav">
+          <hr class="separator" />
+          <ul class="section-links">
             <li>
               <a
                 href="https://github.com/bascikdev/bascik"
@@ -62,9 +62,9 @@
               >
             </li>
             <li>
-              <button type="button" class="mobile-theme-btn">
+              <button type="button" class="mobile-theme">
                 <svg
-                  class="theme-icon theme-icon-sun"
+                  class="icon sun"
                   width="16"
                   height="16"
                   viewBox="0 0 24 24"
@@ -86,7 +86,7 @@
                   <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                 </svg>
                 <svg
-                  class="theme-icon theme-icon-moon"
+                  class="icon moon"
                   width="16"
                   height="16"
                   viewBox="0 0 24 24"
@@ -99,7 +99,7 @@
                 >
                   <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                 </svg>
-                <span class="mobile-theme-label">Light</span>
+                <span class="theme-label">Light</span>
               </button>
             </li>
           </ul>
@@ -107,12 +107,12 @@
       </div>
       <button
         type="button"
-        class="dnav-theme-toggle"
+        class="theme-toggle"
         aria-label="Switch to light theme"
       >
         <!-- Sun: shown in dark mode, click to go light -->
         <svg
-          class="theme-icon theme-icon-sun"
+          class="icon sun"
           width="16"
           height="16"
           viewBox="0 0 24 24"
@@ -135,7 +135,7 @@
         </svg>
         <!-- Moon: shown in light mode, click to go dark -->
         <svg
-          class="theme-icon theme-icon-moon"
+          class="icon moon"
           width="16"
           height="16"
           viewBox="0 0 24 24"
@@ -155,11 +155,11 @@
 <script>
   /* bascik-disable js-document-class-query */
   (function () {
-    var toggle = document.querySelector(".dnav-toggle");
-    var wrapper = document.querySelector(".dnav-links-wrapper");
+    var toggle = document.querySelector(".menu-toggle");
+    var wrapper = document.querySelector(".links-wrapper");
     if (toggle && wrapper) {
       toggle.addEventListener("click", function () {
-        var sections = wrapper.querySelector(".mobile-sections-template");
+        var sections = wrapper.querySelector(".sections-template");
         if (sections) {
           var links = sections.content.cloneNode(true);
           markCurrentLinks(links);
@@ -171,8 +171,8 @@
       });
     }
 
-    var themeBtn = document.querySelector(".dnav-theme-toggle");
-    var mobileThemeBtn = document.querySelector(".mobile-theme-btn");
+    var themeBtn = document.querySelector(".theme-toggle");
+    var mobileThemeBtn = document.querySelector(".mobile-theme");
     if (themeBtn || mobileThemeBtn) {
       function effectiveTheme() {
         return document.documentElement.getAttribute("data-theme") || "dark";
@@ -185,7 +185,7 @@
             isDark ? "Switch to light theme" : "Switch to dark theme",
           );
         if (mobileThemeBtn) {
-          var span = mobileThemeBtn.querySelector(".mobile-theme-label");
+          var span = mobileThemeBtn.querySelector(".theme-label");
           if (span) span.textContent = isDark ? "Light" : "Dark";
         }
       }
@@ -215,7 +215,7 @@
       var current = false;
       if (href === "/why-bascik") {
         current = path === "/why-bascik";
-      } else if (href === "/getting-started" && a.closest(".dnav-links")) {
+      } else if (href === "/getting-started" && a.closest(".links")) {
         current =
           path !== "" &&
           path !== "/" &&
@@ -227,6 +227,6 @@
       }
       if (current) a.setAttribute("aria-current", "page");
     }
-    document.querySelectorAll(".dnav a").forEach(markCurrent);
+    document.querySelectorAll(".logo, .links-wrapper a").forEach(markCurrent);
   })();
 </script>

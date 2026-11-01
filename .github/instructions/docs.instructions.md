@@ -98,7 +98,7 @@ Code shown in a panel is written once, as a demo block in `docs/src/diagrams/<pa
 ````markdown
 <!-- demo:scoped-styles-global-classes-in -->
 ```html
-<a class="skip-link dnav-logo">
+<a class="skip-link logo">
 ```
 ````
 
@@ -194,9 +194,9 @@ Place an HTML comment marker immediately before the fenced code block:
 ```markdown
 <!-- demo:source-html -->
 ` ` `html
-<div class="fcard">
-  <p class="fcard-label" data-bascik-prop-label></p>
-</div>
+<article>
+  <p data-bascik-prop-label></p>
+</article>
 ` ` `
 ```
 
