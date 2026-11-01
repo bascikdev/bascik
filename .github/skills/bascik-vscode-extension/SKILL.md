@@ -75,8 +75,9 @@ yarn ext:compile       # regenerate compatibility rules, then build.mjs: tsc, bu
 yarn ext:typecheck
 yarn ext:unit          # includes server-bundle.test.ts, which builds and starts the real server bundle
 yarn ext:e2e           # compiles, then runs the real-editor configurations in .vscode-test.cjs (out/test,
-                       # out/test-typescript-off with TypeScript checks off, and out/test-no-html with the
-                       # built-in HTML language features disabled)
+                       # out/test-typescript-off with TypeScript checks off, out/test-typescript-settings for
+                       # the bascik.typescript settings, and out/test-no-html with the built-in HTML language
+                       # features disabled)
 yarn lsp:unit          # the analysis itself
 ```
 
@@ -85,6 +86,9 @@ Yarn 4 does not run npm's implicit `pre<name>`/`post<name>` scripts, so the exte
 - Diagnostics are published by a server process after a document opens, not before the call returns. Integration tests that expect a diagnostic use `waitForDiagnostic()`; a test that expects none opens the file with `openWorkspaceDocument()`, which waits for the server.
 - Definition results can be a `Location` or a `LocationLink`. Use `firstLocationPath()` or `locationUri()`.
 - Scoping-rule fixtures go in `src/components/`, via `openWorkspaceDocument({ directory: 'src/components', ... })`.
+- The `typescript-settings` configuration sets `bascik.typescript.path` to a wrapper package that marks when the server loads it, then to a TypeScript 7 shaped package and a missing folder (both fall back to VS Code's copy), and changes two settings close together (the extension's `RestartQueue` runs one restart at a time, so the second change is applied, not lost). The `no-html-features` configuration also checks that TypeScript errors are published at their exact ranges with VS Code's HTML support disabled.
+- A long worktree path can overflow macOS's socket path limit. Run the same configurations through a temporary wrapper config that adds `--user-data-dir=/tmp/<short>` to each one's `launchArgs` (`@vscode/test-electron` then skips its own), and delete it afterwards.
+- `.vscode-test.cjs` runs the VS Code version `@vscode/test-cli` downloads (the current one). The minimum, VS Code 1.91, cannot run it: its Electron's Node 20 cannot `require()` mocha 12, which is ESM only (the root `resolutions` pin mocha 12), so `@vscode/test-cli` fails with `ERR_REQUIRE_ESM`. Check 1.91 by hand with a runner that loads mocha 10.
 - The TypeScript checks have their own real-editor configuration, `typescript-off`, the control run: the same fixture page with `bascik.typescript.enabled` off shows no TypeScript error, so `out/test/typescript.test.js` checks what the feature adds. `server-bundle-typescript.test.ts` runs the bundle's worker with TypeScript 6 (the `typescript-6` dev alias; the repo itself builds with TypeScript 7, which has no language service).
 - A bug that only shows in the bundle (a missing data file, a startup crash) is caught by `server-bundle.test.ts`. A bug that only shows against a real editor (late file events) is caught by `ext:e2e`. Run both when you change `lsp/src/server.ts`.
 

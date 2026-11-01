@@ -488,7 +488,7 @@ Pass `--typescript` to also report TypeScript errors in `<script type="text/type
 bascik --check --typescript
 ```
 
-Each error is a per-file finding at its line and column, with TypeScript's error number as its category, such as `TS2322`, and makes the command exit with code 1. TypeScript is not a dependency of Bascik: the check uses the project's own `typescript` package, which must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`). TypeScript 7 publishes no language service for other programs, so it is skipped. Without a usable TypeScript, the report has one line saying why, the rest of the check runs, and the exit code is unchanged. Without `--typescript`, TypeScript errors are never reported, so an existing project's check does not start failing.
+Each error is a per-file finding at its line and column, with TypeScript's error number as its category, such as `TS2322`, and makes the command exit with code 1. TypeScript is not a dependency of Bascik: the check uses the project's own `typescript` package, which must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`). TypeScript 7 publishes no language service for other programs, and TypeScript 4 cannot resolve `.ts` imports as Bascik does, so both are skipped. Without a usable TypeScript, the report has one line saying why, the rest of the check runs, and the exit code is unchanged. Without `--typescript`, TypeScript errors are never reported, so an existing project's check does not start failing.
 
 ### Auto-fixing with `--fix`
 

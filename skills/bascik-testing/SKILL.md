@@ -22,7 +22,7 @@ Run cheapest first and stop at the first failure:
 
 CI gate: `bascik --check && vitest run && bascik --build && playwright test`. `bascik --check` already runs the per-file checks, so there is no separate linter step. Add `bascik-language-server --check <dir>` only for a component folder outside the project.
 
-Bascik strips types without checking them. To fail CI on type errors in `<script type="text/typescript">` blocks, add `--typescript` (`bascik --check --typescript`); it needs the project's own `typescript` 5 or 6 (TypeScript 7 is skipped with a note) and is off by default. Read `read-doc.mjs /cli#typescript-errors-with-typescript`.
+Bascik strips types without checking them. To fail CI on type errors in `<script type="text/typescript">` blocks, add `--typescript` (`bascik --check --typescript`); it needs the project's own `typescript` 5 or 6 (TypeScript 7 and versions before 5 are skipped with a note) and is off by default. Read `read-doc.mjs /cli#typescript-errors-with-typescript`.
 
 ## Unit tests: extract pure logic
 

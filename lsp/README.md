@@ -51,7 +51,7 @@ bascik-language-server --stdio
 
 ## TypeScript
 
-TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: a `typescript` package folder the client passes in `initializationOptions.typescript.path` (the VS Code extension passes the `bascik.typescript.path` setting), the editor's own copy in `initializationOptions.typescript.editorPath` (the VS Code extension passes VS Code's), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped. Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
+TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. The server uses, in order: a `typescript` package folder the client passes in `initializationOptions.typescript.path` (the VS Code extension passes the `bascik.typescript.path` setting), the editor's own copy in `initializationOptions.typescript.editorPath` (the VS Code extension passes VS Code's), the project's `typescript`, then one beside this package. TypeScript 7 publishes no JavaScript language service, so a TypeScript 7 install is skipped, and so is one older than TypeScript 5 (no `bundler` module resolution, so every `.ts` import would be an error). Without a usable TypeScript, TypeScript checks are off and the server logs why, once per project.
 
 `initializationOptions`, all optional:
 
@@ -60,7 +60,8 @@ TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. 
   "typescript": {
     "enabled": true,
     "path": "/path/to/node_modules/typescript",
-    "editorPath": "/path/to/editor/typescript"
+    "editorPath": "/path/to/editor/typescript",
+    "releaseDelayMs": 30000
   },
   "editorHasEmbeddedTypeScript": false
 }
@@ -68,7 +69,9 @@ TypeScript is an optional peer dependency (`typescript` 5 or 6), never bundled. 
 
 `path` is used first; `editorPath`, the editor's own copy, is used when `path` is missing or cannot be used, before the project's `typescript`. When `path` cannot be used, the server shows the reason once with `window/showMessageRequest` and logs it.
 
-`editorHasEmbeddedTypeScript` tells the server the editor already answers completion and hover inside these blocks (VS Code's HTML support does). The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first. A page edit checks that page only; a change to a file the blocks may import, a `tsconfig.json`, a `package.json` or the Bascik config checks every open page. Until a page is checked again, its TypeScript errors move with their blocks, and an edited block's errors are left out rather than shown on the wrong code.
+`editorHasEmbeddedTypeScript` tells the server the editor already answers completion and hover inside these blocks (VS Code's HTML support does). The server checks TypeScript in a worker thread after a short pause in typing, so its own diagnostics are published first. A page edit checks that page only; a change to a file the blocks may import, a `tsconfig.json`, a `package.json` or the Bascik config checks every open page. Until a page is checked again, its TypeScript errors move with their blocks, and an edited block's errors are left out rather than shown on the wrong code. Pages due a check are given to TypeScript together, so its programs are built once for all of them. Once no open page has TypeScript blocks for `releaseDelayMs` (default 30000), the worker ends and its memory is freed; the next page with blocks starts it again.
+
+A page's browser blocks are checked as one classic script: the names its plain `<script>` elements declare, and those of the component scripts in its scope (with `scoping.scriptBlocks` off), are known as `any`; top-level names are never reported unused; a top-level `interface Window { ... }` adds to the global interface; and a block with a syntax error is reported alone and left out, as a browser skips it.
 
 ## Project Config Discovery
 
