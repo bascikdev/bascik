@@ -81,11 +81,25 @@ if (directory) {
         return Reflect.apply(target, receiver, [
           event,
           event === "message"
-            ? (input: string | { pagePath: string } | { kind: string }) => {
+            ? (
+                input:
+                  | string
+                  | { pagePath: string }
+                  | { kind: string }
+                  | { stop: true },
+              ) => {
                 // Settings, not a task (see `page-worker-messages.ts`): no
                 // reply follows, so no per-task profile is started for it.
                 if (typeof input === "object" && "kind" in input) {
                   journal("settings", { kind: input.kind });
+                  listener(input);
+                  return;
+                }
+                // The pool's stop message (`WorkerPool` `stopSignal`): the
+                // worker ends itself instead of replying, so no profile
+                // starts for it either.
+                if (typeof input === "object" && "stop" in input) {
+                  journal("stop-received", { taskId });
                   listener(input);
                   return;
                 }
