@@ -116,4 +116,28 @@ describe("RestartQueue", () => {
     await queue.request();
     expect(restart).not.toHaveBeenCalled();
   });
+
+  it("does not restart after disposal while waiting for the client's first start", async () => {
+    let ready!: () => void;
+    const starting = new Promise<void>((resolve) => (ready = resolve));
+    const restart = vi.fn(async () => {});
+    const queue = new RestartQueue(restart, vi.fn(), starting);
+    const pending = queue.request();
+    queue.dispose();
+    ready();
+    await pending;
+    await queue.settled();
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it("lets an active restart finish but cancels its queued restart on disposal", async () => {
+    const { restart, finish } = controlledRestart();
+    const queue = new RestartQueue(restart, vi.fn());
+    const active = queue.request();
+    const pending = queue.request();
+    queue.dispose();
+    finish();
+    await Promise.all([active, pending, queue.settled()]);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
 });

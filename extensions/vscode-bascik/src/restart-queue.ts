@@ -42,6 +42,7 @@ export class RestartQueue {
     while (this.running || this.next) await (this.next ?? this.running);
   }
 
+  /** Prevents pending restarts from starting; a restart already in progress may finish. */
   dispose(): void {
     this.disposed = true;
   }
@@ -49,6 +50,7 @@ export class RestartQueue {
   private async run(): Promise<void> {
     try {
       if (this.ready) await this.ready;
+      if (this.disposed) return;
       await this.restart();
     } catch (error) {
       this.log(
