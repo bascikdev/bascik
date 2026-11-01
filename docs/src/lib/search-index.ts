@@ -55,9 +55,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * 1.36 MB: TypeScript checks of type="text/typescript" blocks, documented on the VS Code extension, linter and
  * CLI pages (errors, --typescript, imports in script tags; about 20 KB of text).
  * 1.39 MB: all of the above merged (the trial fixes, the build-code lint, the editor linter config and
- * TypeScript blocks) measures 1,386,661 bytes.
+ * TypeScript blocks) measures 1,386,661 bytes. 1.41 MB: the local responsive-image how-to adds searchable
+ * workflow guidance and code examples (the built index measures 1,399,032 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_390_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_410_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

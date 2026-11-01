@@ -41,8 +41,6 @@ The parity checks prove the page looks and behaves like production; they do not 
 
 ## Scripts
 
-For responsive images, use `node <skills-dir>/bascik-components/scripts/responsive-webp.mjs` from the existing component skill. Read `/how-to/optimizing-images` for the local generation and native HTML workflow.
-
 | Script                                                                     | Use                                                                    |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | [`scripts/breakpoint-matrix.mjs`](scripts/breakpoint-matrix.mjs)           | Legacy breakpoints to `breakpoints.json` (B - 1, B, B + 1, midpoints)  |
