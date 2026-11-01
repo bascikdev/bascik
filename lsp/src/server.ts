@@ -41,12 +41,21 @@ import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
 import {
   mayHaveTypeScriptBlocks,
   relocateBlockRanges,
+  typeScriptBlockAt,
 } from "./typescript-blocks.js";
 import type {
   TypeScriptCheckRequest,
   TypeScriptEngine,
   TypeScriptEngineSettings,
+  TypeScriptFeatureAnswers,
+  TypeScriptFeatureKind,
 } from "./typescript-engine.js";
+import {
+  toLspCompletionItem,
+  toLspHover,
+  toLspLocation,
+  toLspSignatureHelp,
+} from "./typescript-lsp.js";
 import {
   TYPESCRIPT_DIAGNOSTIC_SOURCE,
   type TypeScriptDiagnostic,
@@ -75,6 +84,12 @@ interface TypeScriptPageCheck {
 /** Files an edit to which can change a TypeScript block's errors. */
 const TYPESCRIPT_INPUT_FILE =
   /\.(?:[mc]?ts|[mc]?js)$|(?:^|[\\/])(?:tsconfig|package)\.json$/i;
+
+/**
+ * Completion trigger characters only TypeScript blocks use (a member after `.`, an import path after `/`). Bascik's
+ * own completions are for markup, so a request these trigger asks TypeScript alone.
+ */
+const TYPESCRIPT_TRIGGER_CHARACTERS = [".", "/"];
 
 /** Quiet period after an edit before TypeScript checks the open pages again. Bascik's diagnostics do not wait. */
 const TYPESCRIPT_DELAY_MS = 150;
@@ -105,9 +120,10 @@ export interface BascikInitializationOptions {
     releaseDelayMs?: number;
   };
   /**
-   * The editor answers hover, completion and definition inside quoted `type="text/typescript"` blocks itself
-   * (VS Code's HTML support does, and cannot be turned off), so the server answers only what the editor cannot.
-   * TypeScript errors are sent either way.
+   * The editor answers hover, completion, definition and signature help inside quoted `type="text/typescript"`
+   * blocks itself, for what the page declares (VS Code's HTML support does, and cannot be turned off), so the
+   * server answers only what the editor cannot: symbols, members and calls from other files, and import paths.
+   * TypeScript errors are sent either way. Default `false`: the server answers everything.
    */
   editorHasEmbeddedTypeScript?: boolean;
 }
@@ -238,7 +254,7 @@ export class BascikLanguageServer {
   private readonly reportedNonBascikRoots = new Set<string>();
   /** The TypeScript engine, when the client left TypeScript checks on and the host can start one. */
   private typeScript: TypeScriptEngine | undefined;
-  /** Whether the editor answers language features inside TypeScript blocks itself (stage two reads it). */
+  /** Whether the editor answers language features about a page's own names inside TypeScript blocks itself. */
   public editorHasEmbeddedTypeScript = false;
   /** The last diagnostics of each kind per open document; a publish sends both, since it replaces the list. */
   private readonly bascikDiagnostics = new Map<string, Diagnostic[]>();
@@ -321,8 +337,19 @@ export class BascikLanguageServer {
             },
             textDocumentSync: TextDocumentSyncKind.Incremental,
             completionProvider: {
-              triggerCharacters: ["<", " ", '"', "'", "-"],
+              triggerCharacters: [
+                "<",
+                " ",
+                '"',
+                "'",
+                "-",
+                ...TYPESCRIPT_TRIGGER_CHARACTERS,
+              ],
               resolveProvider: false,
+            },
+            signatureHelpProvider: {
+              triggerCharacters: ["(", ","],
+              retriggerCharacters: [")"],
             },
             hoverProvider: true,
             definitionProvider: true,
@@ -374,13 +401,32 @@ export class BascikLanguageServer {
       }
     });
 
+    // Bascik's own answers first; inside a TypeScript block, TypeScript's (see `typeScriptFeature`).
     this.connection.onCompletion(async (params) => {
       const document = this.documents.get(params.textDocument.uri);
       if (!document) return undefined;
       const fsPath = uriToFsPath(document.uri);
-      const snapshot = await this.getSnapshotForFile(fsPath);
-      if (!snapshot) return undefined;
-      return createCompletions(document, params.position, snapshot);
+      const trigger = params.context?.triggerCharacter;
+      const typeScriptOnly =
+        trigger !== undefined &&
+        TYPESCRIPT_TRIGGER_CHARACTERS.includes(trigger);
+      const snapshot = typeScriptOnly
+        ? undefined
+        : await this.getSnapshotForFile(fsPath);
+      const bascik = snapshot
+        ? createCompletions(document, params.position, snapshot)
+        : undefined;
+      const typeScript = await this.typeScriptFeature(
+        document,
+        params.position,
+        "completion",
+        trigger,
+      );
+      if (!typeScript?.length) return bascik;
+      return [
+        ...(bascik ?? []),
+        ...typeScript.map((entry) => toLspCompletionItem(document, entry)),
+      ];
     });
 
     this.connection.onHover(async (params) => {
@@ -388,8 +434,16 @@ export class BascikLanguageServer {
       if (!document) return undefined;
       const fsPath = uriToFsPath(document.uri);
       const snapshot = await this.getSnapshotForFile(fsPath);
-      if (!snapshot) return undefined;
-      return createHover(document, params.position, snapshot);
+      const bascik = snapshot
+        ? createHover(document, params.position, snapshot)
+        : undefined;
+      if (bascik) return bascik;
+      const typeScript = await this.typeScriptFeature(
+        document,
+        params.position,
+        "hover",
+      );
+      return typeScript ? toLspHover(document, typeScript) : undefined;
     });
 
     this.connection.onDefinition(async (params) => {
@@ -397,8 +451,28 @@ export class BascikLanguageServer {
       if (!document) return undefined;
       const fsPath = uriToFsPath(document.uri);
       const snapshot = await this.getSnapshotForFile(fsPath);
-      if (!snapshot) return undefined;
-      return createDefinition(document, params.position, snapshot, fsPath);
+      const bascik = snapshot
+        ? createDefinition(document, params.position, snapshot, fsPath)
+        : undefined;
+      // Bascik's own (an import path in a directive script, a component) is the one answer: never both.
+      if (bascik?.length) return bascik;
+      const typeScript = await this.typeScriptFeature(
+        document,
+        params.position,
+        "definition",
+      );
+      return typeScript?.length ? typeScript.map(toLspLocation) : bascik;
+    });
+
+    this.connection.onSignatureHelp(async (params) => {
+      const document = this.documents.get(params.textDocument.uri);
+      if (!document) return undefined;
+      const typeScript = await this.typeScriptFeature(
+        document,
+        params.position,
+        "signatureHelp",
+      );
+      return typeScript ? toLspSignatureHelp(typeScript) : undefined;
     });
 
     // Find All References for a component. Every failure is an empty list, never an error.
@@ -1115,6 +1189,47 @@ export class BascikLanguageServer {
     this.reportedTypeScriptRoots.delete(projectRoot);
     this.publishTypeScript(document, text, result.diagnostics);
     return true;
+  }
+
+  /**
+   * A language feature from TypeScript at a position inside one of a page's `type="text/typescript"` blocks, or
+   * `undefined` (TypeScript off, outside a block, nothing to say, or the page edited meanwhile). With an editor
+   * that answers about the page's own names itself, only what it cannot answer is asked for.
+   */
+  private async typeScriptFeature<K extends TypeScriptFeatureKind>(
+    document: TextDocument,
+    position: { line: number; character: number },
+    kind: K,
+    triggerCharacter?: string,
+  ): Promise<TypeScriptFeatureAnswers[K] | undefined> {
+    const engine = this.typeScript;
+    if (!engine || document.languageId !== "html") return undefined;
+    if (!document.uri.startsWith("file:")) return undefined;
+    const text = document.getText();
+    const offset = document.offsetAt(position);
+    if (!typeScriptBlockAt(text, offset)) return undefined;
+    const projectRoot = this.findProjectRoot(uriToFsPath(document.uri));
+    if (!projectRoot) return undefined;
+    const { version } = document;
+    const { request } = await this.typeScriptPageCheck(projectRoot, document);
+    if (!request || this.documents.get(document.uri)?.version !== version)
+      return undefined;
+    const result = await engine.feature({
+      ...request,
+      query: {
+        kind,
+        offset,
+        crossFileOnly: this.editorHasEmbeddedTypeScript,
+        triggerCharacter,
+      },
+    });
+    // Edited meanwhile: the answer is for a text the editor no longer shows.
+    if (this.documents.get(document.uri)?.version !== version) return undefined;
+    if (result.status === "failed")
+      this.connection.console.error(
+        `Bascik could not answer a TypeScript ${kind} request in ${request.htmlPath}: ${result.message}`,
+      );
+    return result.status === "ok" ? result.answer : undefined;
   }
 
   /**

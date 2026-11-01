@@ -9,6 +9,7 @@ import {
   toGeneratedOffset,
   toSourceOffset,
   virtualBlockText,
+  typeScriptBlockAt,
 } from "./typescript-blocks.js";
 
 describe("extractTypeScriptBlocks", () => {
@@ -371,5 +372,29 @@ describe("relocateBlockRanges", () => {
     expect(relocateBlockRanges(html, edited, [{ ...a, code: 2322 }])).toEqual([
       { ...rangeOf(edited, "a:"), code: 2322 },
     ]);
+  });
+});
+
+describe("typeScriptBlockAt", () => {
+  const html =
+    '<p>Milk frother</p>\n<script type="text/typescript">\n  const rpm = 1200;\n</script>\n<script>\n  const plain = 1;\n</script>\n';
+  const start = html.indexOf("\n  const rpm");
+  const end = html.indexOf("</script>");
+
+  it("finds the block at its first character, inside it and at its end", () => {
+    for (const offset of [start, start + 5, end])
+      expect(typeScriptBlockAt(html, offset)?.index).toBe(0);
+  });
+
+  it("finds nothing in markup, in the open tag, past the close tag or in a plain script", () => {
+    for (const offset of [
+      0,
+      html.indexOf("text/typescript"),
+      end + 1,
+      html.indexOf("plain"),
+      -1,
+      html.length + 5,
+    ])
+      expect(typeScriptBlockAt(html, offset)).toBeUndefined();
   });
 });

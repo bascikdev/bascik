@@ -158,6 +158,21 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
   return blocks;
 }
 
+/**
+ * The TypeScript block whose content holds `offset` (its end included, where the cursor sits after the last
+ * character), or `undefined` when the offset is outside every block.
+ */
+export function typeScriptBlockAt(
+  html: string,
+  offset: number,
+): TypeScriptBlock | undefined {
+  return extractTypeScriptBlocks(html).find(
+    (block) =>
+      block.contentStart <= offset &&
+      offset <= block.contentStart + block.content.length,
+  );
+}
+
 /** The `type` values a browser runs as a classic script (the HTML standard's JavaScript MIME type essences). */
 const CLASSIC_SCRIPT_TYPES = new Set([
   "",

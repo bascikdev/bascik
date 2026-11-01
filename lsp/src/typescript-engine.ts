@@ -13,17 +13,24 @@
  * cancellation check, so typing never builds a queue.
  */
 import { Worker } from "node:worker_threads";
+import type {
+  TypeScriptFeatureKind,
+  TypeScriptFeatureQuery,
+} from "./typescript-features.js";
 import {
   TypeScriptProjects,
   type TypeScriptDiagnosticsResult,
+  type TypeScriptFeatureResult,
   type TypeScriptPagesRequest,
 } from "./typescript-service.js";
 
 export type {
   TypeScriptDiagnosticsResult,
+  TypeScriptFeatureResult,
   TypeScriptPagesRequest,
   TypeScriptPageText,
 } from "./typescript-service.js";
+export type * from "./typescript-features.js";
 
 export interface TypeScriptCheckRequest {
   projectRoot: string;
@@ -38,10 +45,22 @@ export interface TypeScriptCheckRequest {
   pageScopeHtml?: string[];
 }
 
+/** A language feature at an offset of a page, with the page's current text. */
+export type TypeScriptFeatureRequest<
+  K extends TypeScriptFeatureKind = TypeScriptFeatureKind,
+> = TypeScriptCheckRequest & { query: TypeScriptFeatureQuery<K> };
+
 export interface TypeScriptEngine {
   diagnostics(
     request: TypeScriptCheckRequest,
   ): Promise<TypeScriptDiagnosticsResult>;
+  /**
+   * Hover, definition, completion or signature help inside the page's TypeScript blocks. It goes stale, like a
+   * check, when the project's next edit arrives first.
+   */
+  feature<K extends TypeScriptFeatureKind>(
+    request: TypeScriptFeatureRequest<K>,
+  ): Promise<TypeScriptFeatureResult<K>>;
   /**
    * Gives the engine the current text of several pages before they are checked one by one, so TypeScript builds
    * its programs once for all of them rather than once per page.
@@ -107,7 +126,7 @@ export function readEpoch(buffer: SharedArrayBuffer, slot: number): number {
   return Atomics.load(new Int32Array(buffer), slot);
 }
 
-const failure = (error: unknown): TypeScriptDiagnosticsResult => ({
+const failure = (error: unknown): { status: "failed"; message: string } => ({
   status: "failed",
   message:
     error instanceof Error ? (error.stack ?? error.message) : String(error),
@@ -142,6 +161,20 @@ export function createInProcessTypeScriptEngine(
         running = undefined;
       }
     },
+    async feature(request) {
+      const slot = epochs.slot(request.projectRoot);
+      const epoch = epochs.current(slot);
+      await new Promise((resolve) => setImmediate(resolve));
+      if (epochs.current(slot) !== epoch) return { status: "cancelled" };
+      running = { slot, epoch };
+      try {
+        return projects.feature(request, request.query);
+      } catch (error) {
+        return failure(error);
+      } finally {
+        running = undefined;
+      }
+    },
     preparePages: (request) => projects.preparePages(request),
     cancel: (projectRoot) => epochs.bump(projectRoot),
     setOpenFile: (fsPath, text) => projects.setOpenFile(fsPath, text),
@@ -166,6 +199,12 @@ export type TypeScriptWorkerRequest =
       slot: number;
       epoch: number;
     } & TypeScriptCheckRequest)
+  | ({
+      type: "feature";
+      id: number;
+      slot: number;
+      epoch: number;
+    } & TypeScriptFeatureRequest)
   | ({ type: "preparePages" } & TypeScriptPagesRequest)
   | { type: "openFile"; fsPath: string; text: string | undefined }
   | { type: "fileChanged"; fsPath: string }
@@ -176,7 +215,7 @@ export type TypeScriptWorkerRequest =
 
 export interface TypeScriptWorkerResponse {
   id: number;
-  result: TypeScriptDiagnosticsResult;
+  result: TypeScriptDiagnosticsResult | TypeScriptFeatureResult;
 }
 
 /** What the worker is started with. The flag tells a bundle that holds both entry points which one to run. */
@@ -209,7 +248,7 @@ export function createWorkerTypeScriptEngine(
   const openFiles = new Map<string, string>();
   const pending = new Map<
     number,
-    (result: TypeScriptDiagnosticsResult) => void
+    (result: TypeScriptWorkerResponse["result"]) => void
   >();
   let worker: Worker | undefined;
   let crashes = 0;
@@ -217,7 +256,12 @@ export function createWorkerTypeScriptEngine(
   let lastCrash = "";
   let nextId = 1;
 
-  const settleAll = (result: TypeScriptDiagnosticsResult) => {
+  const settleAll = (
+    result: Extract<
+      TypeScriptDiagnosticsResult,
+      { status: "failed" | "cancelled" }
+    >,
+  ) => {
     for (const resolve of pending.values()) resolve(result);
     pending.clear();
   };
@@ -292,33 +336,70 @@ export function createWorkerTypeScriptEngine(
     if (running) await stop(running);
   };
 
+  const unavailable = () =>
+    Promise.resolve({
+      status: "unavailable" as const,
+      message: disposed
+        ? "TypeScript checks are off: the language server is stopping"
+        : `TypeScript checks are off: the TypeScript worker stopped ${MAX_WORKER_CRASHES} times (${lastCrash})`,
+    });
+
+  /** Sends a request the worker answers, stamped with the project's current epoch. */
+  const ask = <Result>(
+    running: Worker,
+    request: TypeScriptCheckRequest,
+    message: (
+      id: number,
+      slot: number,
+      epoch: number,
+      page: TypeScriptCheckRequest,
+    ) => TypeScriptWorkerRequest,
+  ): Promise<Result> => {
+    const id = nextId++;
+    const slot = epochs.slot(request.projectRoot);
+    // Only the fields the worker reads: a caller's request may carry more, which must not be cloned across.
+    const page: TypeScriptCheckRequest = {
+      projectRoot: request.projectRoot,
+      importRoot: request.importRoot,
+      htmlPath: request.htmlPath,
+      text: request.text,
+      isolatedClientBlocks: request.isolatedClientBlocks,
+      pageScopeHtml: request.pageScopeHtml,
+    };
+    return new Promise((resolve) => {
+      pending.set(id, resolve as (result: unknown) => void);
+      running.postMessage(message(id, slot, epochs.current(slot), page));
+    });
+  };
+
   return {
     diagnostics(request) {
       const running = start();
-      if (!running)
-        return Promise.resolve({
-          status: "unavailable",
-          message: disposed
-            ? "TypeScript checks are off: the language server is stopping"
-            : `TypeScript checks are off: the TypeScript worker stopped ${MAX_WORKER_CRASHES} times (${lastCrash})`,
-        });
-      const id = nextId++;
-      const slot = epochs.slot(request.projectRoot);
-      return new Promise((resolve) => {
-        pending.set(id, resolve);
-        running.postMessage({
-          type: "diagnostics",
-          id,
-          slot,
-          epoch: epochs.current(slot),
-          projectRoot: request.projectRoot,
-          importRoot: request.importRoot,
-          htmlPath: request.htmlPath,
-          text: request.text,
-          isolatedClientBlocks: request.isolatedClientBlocks,
-          pageScopeHtml: request.pageScopeHtml,
-        } satisfies TypeScriptWorkerRequest);
-      });
+      if (!running) return unavailable();
+      return ask(running, request, (id, slot, epoch, page) => ({
+        type: "diagnostics",
+        id,
+        slot,
+        epoch,
+        ...page,
+      }));
+    },
+    feature(request) {
+      const running = start();
+      if (!running) return unavailable();
+      return ask(running, request, (id, slot, epoch, page) => ({
+        type: "feature",
+        id,
+        slot,
+        epoch,
+        ...page,
+        query: {
+          kind: request.query.kind,
+          offset: request.query.offset,
+          crossFileOnly: request.query.crossFileOnly,
+          triggerCharacter: request.query.triggerCharacter,
+        },
+      }));
     },
     preparePages(request) {
       // Started here too: the pages are the first thing a new worker parses.

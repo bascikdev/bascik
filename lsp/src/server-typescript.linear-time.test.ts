@@ -45,6 +45,9 @@ function measuredEngine() {
         stats.running--;
       }
     },
+    async feature(request) {
+      return projects.feature(request, request.query);
+    },
     preparePages: (request) => projects.preparePages(request),
     cancel: () => undefined,
     setOpenFile: (fsPath, text) => projects.setOpenFile(fsPath, text),

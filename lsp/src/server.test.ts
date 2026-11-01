@@ -15,6 +15,8 @@ import {
   type TypeScriptCheckRequest,
   type TypeScriptDiagnosticsResult,
   type TypeScriptEngine,
+  type TypeScriptFeatureRequest,
+  type TypeScriptFeatureResult,
   type TypeScriptPagesRequest,
 } from "./typescript-engine.js";
 import { createFakeConnection } from "./server.test.util.js";
@@ -728,6 +730,14 @@ function recordingEngine(
     diagnostics: vi.fn(async (request: TypeScriptCheckRequest) =>
       answer(request),
     ),
+    feature: vi.fn(
+      async (
+        _request: TypeScriptFeatureRequest,
+      ): Promise<TypeScriptFeatureResult<never>> => ({
+        status: "ok",
+        answer: undefined,
+      }),
+    ),
     preparePages: vi.fn((_request: TypeScriptPagesRequest) => undefined),
     cancel: vi.fn(),
     setOpenFile: vi.fn(),
@@ -1329,6 +1339,252 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     open(outside, PAGE);
     await pause(400);
     expect(engine.diagnostics).not.toHaveBeenCalled();
+  });
+
+  describe("language features in TypeScript blocks", () => {
+    const FEATURE_PAGE = `<main>Milk frother</main>
+<script type="text/typescript">
+  import { froth, frother } from "@/lib/frother.ts";
+  import { steamTemperature } from "../lib/steam.ts";
+  const rpm: number = frother.speed + steamTemperature;
+  function warm(degrees: number): number {
+    return degrees + rpm;
+  }
+  warm(froth(2, ));
+  frother.
+</script>
+<script>
+  const plain = "not TypeScript";
+</script>
+`;
+    const FROTHER_TS = `export interface Frother {
+  /** Revolutions per minute. */
+  speed: number;
+}
+export const frother: Frother = { speed: 1200 };
+/** Froths milk. */
+export function froth(level: number, foam = true): string {
+  return foam ? "foam" : String(level);
+}
+`;
+
+    /** The position of `needle` (plus `delta`) in the page. */
+    const at = (needle: string, delta = 0) => {
+      const offset = FEATURE_PAGE.indexOf(needle) + delta;
+      const before = FEATURE_PAGE.slice(0, offset).split("\n");
+      return { line: before.length - 1, character: before.at(-1)!.length };
+    };
+
+    const setup = async (initializationOptions: Record<string, unknown>) => {
+      await start(realEngine, {
+        ...withTypeScript6,
+        ...initializationOptions,
+      });
+      const frother = await write("src/lib/frother.ts", FROTHER_TS);
+      const steam = await write(
+        "src/lib/steam.ts",
+        "export const steamTemperature = 65;\n",
+      );
+      const page = await write("src/pages/index.html", FEATURE_PAGE);
+      open(page, FEATURE_PAGE);
+      const ask = (
+        name: "hover" | "definition" | "completion" | "signatureHelp",
+        position: { line: number; character: number },
+        context?: Record<string, unknown>,
+      ) =>
+        fake.handlers.get(name)!({
+          textDocument: { uri: uri(page) },
+          position,
+          ...(context ? { context } : {}),
+        });
+      return { page, frother, steam, ask };
+    };
+
+    it("answers everything for a client without its own TypeScript mode", async () => {
+      const { page, frother, steam, ask } = await setup({});
+      const hover = await ask("hover", at("froth(2", 1));
+      expect(hover.contents.value).toContain("froth(level: number");
+      expect(hover.contents.value).toContain("Froths milk.");
+      // The page's own name too.
+      expect((await ask("hover", at("rpm;"))).contents.value).toContain(
+        "const rpm: number",
+      );
+      expect(await ask("definition", at("froth(2", 1))).toEqual([
+        {
+          uri: uri(frother),
+          range: {
+            start: { line: 6, character: 16 },
+            end: { line: 6, character: 21 },
+          },
+        },
+      ]);
+      const [toSteam] = await ask("definition", at("../lib/steam", 2));
+      expect(toSteam.uri).toBe(uri(steam));
+      const [toWarm] = await ask("definition", at("warm(froth", 1));
+      expect(toWarm).toMatchObject({
+        uri: uri(page),
+        range: { start: at("warm(degrees", 0) },
+      });
+      const members = await ask("completion", at("frother.\n", 8), {
+        triggerKind: 2,
+        triggerCharacter: ".",
+      });
+      expect(members.map((item: { label: string }) => item.label)).toContain(
+        "speed",
+      );
+      const speed = members.find(
+        (item: { label: string }) => item.label === "speed",
+      );
+      expect(speed).toMatchObject({
+        kind: 5, // Field
+        detail: "(property) Frother.speed: number",
+        documentation: { kind: "markdown", value: "Revolutions per minute." },
+      });
+      const help = await ask("signatureHelp", at("froth(2, )", 9));
+      expect(help).toMatchObject({
+        signatures: [
+          {
+            label: "froth(level: number, foam?: boolean): string",
+            parameters: [{ label: [6, 19] }, { label: [21, 35] }],
+          },
+        ],
+        activeParameter: 1,
+      });
+    });
+
+    it("answers only what VS Code's own mode cannot, with the editor's flag", async () => {
+      const { frother, ask } = await setup({
+        editorHasEmbeddedTypeScript: true,
+      });
+      expect((await ask("hover", at("froth(2", 1))).contents.value).toContain(
+        "froth(level: number",
+      );
+      expect(await ask("hover", at("rpm;"))).toBeUndefined();
+      expect(await ask("hover", at("warm(froth"))).toBeUndefined();
+      expect((await ask("definition", at("froth(2", 1)))[0].uri).toBe(
+        uri(frother),
+      );
+      expect(await ask("definition", at("warm(froth", 1))).toBeUndefined();
+      const members = await ask("completion", at("frother.\n", 8), {
+        triggerKind: 2,
+        triggerCharacter: ".",
+      });
+      expect(members.map((item: { label: string }) => item.label)).toEqual([
+        "speed",
+      ]);
+      expect(
+        await ask("signatureHelp", at("froth(2, )", 9)),
+      ).not.toBeUndefined();
+      expect(await ask("signatureHelp", at("warm(froth", 5))).toBeUndefined();
+    });
+
+    it("completes @/ import paths, with the trigger only TypeScript blocks use", async () => {
+      const { page, ask } = await setup({ editorHasEmbeddedTypeScript: true });
+      const text = FEATURE_PAGE.replace('"@/lib/frother.ts"', '"@/lib/"');
+      change(page, text, 2);
+      const offset = text.indexOf('"@/lib/"') + 7;
+      const before = text.slice(0, offset).split("\n");
+      const items = await ask(
+        "completion",
+        { line: before.length - 1, character: before.at(-1)!.length },
+        { triggerKind: 2, triggerCharacter: "/" },
+      );
+      const labels = items.map((item: { label: string }) => item.label);
+      expect(labels).toEqual(
+        expect.arrayContaining(["frother.ts", "steam.ts"]),
+      );
+      expect(
+        items.find((item: { label: string }) => item.label === "frother.ts"),
+      ).toMatchObject({ kind: 17 /* File */ });
+    });
+
+    it("answers nothing in markup or a plain script, and keeps Bascik's own answers there", async () => {
+      const { ask } = await setup({});
+      expect(await ask("hover", at("plain ="))).toBeUndefined();
+      expect(await ask("definition", at("plain ="))).toBeUndefined();
+      expect(await ask("signatureHelp", at("plain ="))).toBeUndefined();
+      // A `.` typed in markup asks TypeScript alone, which has nothing to say there.
+      expect(
+        await ask("completion", at("Milk frother", 4), {
+          triggerKind: 2,
+          triggerCharacter: ".",
+        }),
+      ).toBeUndefined();
+      // Bascik's own completion in a script's open tag still answers.
+      const items = await ask("completion", at('type="text/typescript"'));
+      expect(
+        items.some((item: { label: string }) =>
+          item.label.startsWith("data-bascik-"),
+        ),
+      ).toBe(true);
+    });
+
+    it("answers nothing when TypeScript is off or unavailable", async () => {
+      const engine = recordingEngine();
+      await start({ createTypeScriptEngine: () => engine });
+      const page = await write("src/pages/index.html", FEATURE_PAGE);
+      open(page, FEATURE_PAGE);
+      engine.feature.mockResolvedValue({
+        status: "unavailable",
+        message: "no TypeScript",
+      });
+      const result = await fake.handlers.get("hover")!({
+        textDocument: { uri: uri(page) },
+        position: at("froth(2", 1),
+      });
+      expect(result).toBeUndefined();
+      expect(engine.feature).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.objectContaining({
+            kind: "hover",
+            crossFileOnly: false,
+          }),
+        }),
+      );
+    });
+
+    it("drops an answer for a page edited while TypeScript worked on it", async () => {
+      let release: () => void = () => undefined;
+      const engine = recordingEngine();
+      engine.feature.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({
+                status: "ok",
+                answer: { markdown: "stale", start: 0, end: 1 },
+              } as never);
+          }),
+      );
+      await start({ createTypeScriptEngine: () => engine });
+      const page = await write("src/pages/index.html", FEATURE_PAGE);
+      open(page, FEATURE_PAGE);
+      const pending = fake.handlers.get("hover")!({
+        textDocument: { uri: uri(page) },
+        position: at("froth(2", 1),
+      });
+      await eventually(() => expect(engine.feature).toHaveBeenCalled());
+      change(page, FEATURE_PAGE.replace("rpm", "speed"), 2);
+      release();
+      expect(await pending).toBeUndefined();
+    });
+
+    it("logs a TypeScript failure and answers nothing", async () => {
+      const engine = recordingEngine();
+      engine.feature.mockResolvedValue({ status: "failed", message: "boom" });
+      await start({ createTypeScriptEngine: () => engine });
+      const page = await write("src/pages/index.html", FEATURE_PAGE);
+      open(page, FEATURE_PAGE);
+      expect(
+        await fake.handlers.get("definition")!({
+          textDocument: { uri: uri(page) },
+          position: at("froth(2", 1),
+        }),
+      ).toBeUndefined();
+      expect(fake.connection.console.error).toHaveBeenCalledWith(
+        expect.stringContaining("boom"),
+      );
+    });
   });
 });
 

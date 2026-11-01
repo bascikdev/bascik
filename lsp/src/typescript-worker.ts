@@ -61,6 +61,31 @@ export function runTypeScriptWorker(
         port.postMessage(response);
         break;
       }
+      case "feature": {
+        let result: TypeScriptWorkerResponse["result"];
+        if (isStale(message)) result = { status: "cancelled" };
+        else {
+          running = message;
+          try {
+            result = projects.feature(message, message.query);
+          } catch (error) {
+            result = {
+              status: "failed",
+              message:
+                error instanceof Error
+                  ? (error.stack ?? error.message)
+                  : String(error),
+            };
+          } finally {
+            running = undefined;
+          }
+        }
+        port.postMessage({
+          id: message.id,
+          result,
+        } satisfies TypeScriptWorkerResponse);
+        break;
+      }
       case "preparePages":
         projects.preparePages(message);
         break;

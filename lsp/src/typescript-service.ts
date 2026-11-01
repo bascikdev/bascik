@@ -27,10 +27,20 @@ import {
   type TypeScriptBlock,
   type TypeScriptProgramKind,
   sharedScriptText,
+  toGeneratedOffset,
   toSourceOffset,
   virtualBlockText,
   type VirtualBlockText,
 } from "./typescript-blocks.js";
+import {
+  answerFeature,
+  everyFile,
+  type TypeScriptFeatureAnswers,
+  type TypeScriptFeatureKind,
+  type TypeScriptFeatureQuery,
+  type TypeScriptLocation,
+  type TypeScriptPosition,
+} from "./typescript-features.js";
 import {
   type LoadedTypeScript,
   resolveTypeScript,
@@ -63,6 +73,15 @@ export type TypeScriptDiagnosticsResult =
   /** TypeScript threw (a bug, or a broken install); `message` is for the log. */
   | { status: "failed"; message: string };
 
+/** What a language feature request returns: the answer (or none), or why there is none. */
+export type TypeScriptFeatureResult<
+  K extends TypeScriptFeatureKind = TypeScriptFeatureKind,
+> =
+  | { status: "ok"; answer: TypeScriptFeatureAnswers[K] | undefined }
+  | { status: "unavailable"; message: string }
+  | { status: "cancelled" }
+  | { status: "failed"; message: string };
+
 /** The source tag on every published TypeScript diagnostic, so they read apart from Bascik's own. */
 export const TYPESCRIPT_DIAGNOSTIC_SOURCE = "ts (bascik)";
 
@@ -85,6 +104,12 @@ interface Page {
   fileNames: string[];
   /** Syntax errors of client blocks left out of the shared scope, located in the HTML. */
   blockErrors: TypeScriptDiagnostic[];
+  /**
+   * The virtual file language features use in a client block left out of the shared scope for a syntax error (an
+   * unfinished `frother.` while typing): every client block, the broken ones too. Made on first need, dropped with
+   * the page's next edit.
+   */
+  editingFileName?: string;
 }
 
 /** How an HTML file's blocks are checked, from where it sits in the project (see `hasIsolatedClientBlocks`). */
@@ -581,6 +606,30 @@ function topLevelAwaits(
   return found;
 }
 
+/** The offset where each line of `text` starts. */
+function lineStarts(text: string): number[] {
+  const starts = [0];
+  for (
+    let index = text.indexOf("\n");
+    index >= 0;
+    index = text.indexOf("\n", index + 1)
+  )
+    starts.push(index + 1);
+  return starts;
+}
+
+/** The line and character of an offset, from `lineStarts`. */
+function positionIn(starts: number[], offset: number): TypeScriptPosition {
+  let low = 0;
+  let high = starts.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (starts[middle] <= offset) low = middle;
+    else high = middle - 1;
+  }
+  return { line: low, character: offset - starts[low] };
+}
+
 /**
  * The TypeScript blocks of one project: two LanguageServices (client and server), the virtual files of every
  * HTML file it was given, and the versions that tell TypeScript what changed.
@@ -892,6 +941,11 @@ export class TypeScriptProject {
       this.files.delete(fileName);
       changed = true;
     }
+    if (
+      previous?.editingFileName &&
+      this.files.delete(previous.editingFileName)
+    )
+      changed = true;
     this.pages.set(htmlPath, {
       text,
       isolatedClientBlocks,
@@ -985,6 +1039,7 @@ export class TypeScriptProject {
     const page = this.pages.get(htmlPath);
     if (!page) return;
     for (const fileName of page.fileNames) this.files.delete(fileName);
+    if (page.editingFileName) this.files.delete(page.editingFileName);
     this.pages.delete(htmlPath);
     this.projectVersion++;
   }
@@ -1129,6 +1184,140 @@ export class TypeScriptProject {
     return result.sort((a, b) => a.start - b.start || a.end - b.end);
   }
 
+  /**
+   * Answers a language feature at an offset of an HTML file, inside one of its TypeScript blocks; `undefined`
+   * outside them or with nothing to say. See `typescript-features.ts`.
+   */
+  feature<K extends TypeScriptFeatureKind>(
+    htmlPath: string,
+    text: string,
+    options: PageCheckOptions,
+    query: TypeScriptFeatureQuery<K>,
+  ): TypeScriptFeatureAnswers[K] | undefined {
+    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    this.updatePage(htmlPath, text, options);
+    const at = this.virtualOffset(htmlPath, text, query.offset);
+    if (!at) return undefined;
+    const { file, generated } = at;
+    const service = this.services[file.program];
+    const libDir = path.dirname(
+      this.ts.getDefaultLibFilePath(this.programOptions[0]),
+    );
+    const isVirtual = (fileName: string) =>
+      this.files.has(fileName) || fileName === this.nodeDeclarations?.fileName;
+    const isForeign = query.crossFileOnly
+      ? (fileName: string) =>
+          !isVirtual(fileName) &&
+          path.dirname(path.resolve(fileName)) !== libDir
+      : everyFile;
+    const lines = lineStarts(text);
+    return answerFeature(
+      {
+        ts: this.ts,
+        service,
+        fileName: file.fileName,
+        generated,
+        file,
+        isForeign,
+        toSource: (offset) =>
+          offset > file.footerStart ? undefined : toSourceOffset(file, offset),
+        locate: (fileName, start, end) => {
+          const virtual = this.files.get(fileName);
+          if (virtual) {
+            if (virtual.htmlPath !== htmlPath || start >= virtual.footerStart)
+              return undefined;
+            return {
+              fsPath: htmlPath,
+              start: positionIn(lines, toSourceOffset(virtual, start)),
+              end: positionIn(
+                lines,
+                toSourceOffset(virtual, Math.min(end, virtual.footerStart)),
+              ),
+            };
+          }
+          if (isVirtual(fileName)) return undefined;
+          return this.locateInFile(service, fileName, start, end);
+        },
+      },
+      query,
+    );
+  }
+
+  /** Where an HTML offset is in the page's virtual files, or `undefined` outside its blocks. */
+  private virtualOffset(
+    htmlPath: string,
+    text: string,
+    offset: number,
+  ): { file: VirtualFile; generated: number } | undefined {
+    const page = this.pages.get(htmlPath);
+    if (!page) return undefined;
+    for (const fileName of page.fileNames) {
+      const file = this.files.get(fileName)!;
+      const generated = toGeneratedOffset(file, offset);
+      if (generated !== undefined) return { file, generated };
+    }
+    // A client block left out of the shared scope for a syntax error, as a block mid-edit often is.
+    const broken = page.blockErrors.length > 0 && !page.isolatedClientBlocks;
+    if (!broken) return undefined;
+    const file = this.editingFile(htmlPath, text, page);
+    const generated = file && toGeneratedOffset(file, offset);
+    return file && generated !== undefined ? { file, generated } : undefined;
+  }
+
+  /** The page's client blocks, broken ones included, in one virtual file for language features (see `Page`). */
+  private editingFile(
+    htmlPath: string,
+    text: string,
+    page: Page,
+  ): VirtualFile | undefined {
+    if (page.editingFileName) return this.files.get(page.editingFileName);
+    const blocks = extractTypeScriptBlocks(text).filter(
+      (block) => block.program === "client",
+    );
+    if (blocks.length === 0) return undefined;
+    const declared = new Set(
+      blocks.flatMap((block) => this.classicScript(block.content, true).names),
+    );
+    const ambient = new Set<string>();
+    for (const script of [
+      ...extractPageScopeScripts(text).filter((script) => !script.typed),
+      ...page.pageScopeHtml.flatMap((html) => extractPageScopeScripts(html)),
+    ])
+      for (const name of this.classicScript(script.content, script.typed).names)
+        if (!declared.has(name)) ambient.add(name);
+    const fileName = `${htmlPath}.bascik-client-editing.ts`;
+    const file: VirtualFile = {
+      ...sharedScriptText(blocks, { ambientNames: [...ambient] }),
+      fileName,
+      htmlPath,
+      program: "client",
+      sharedScope: true,
+      version: this.nextFileVersion++,
+    };
+    this.files.set(fileName, file);
+    page.editingFileName = fileName;
+    this.projectVersion++;
+    return file;
+  }
+
+  /** A span of a real file by line and character, read from the program (or the file, if it holds none). */
+  private locateInFile(
+    service: TS.LanguageService,
+    fileName: string,
+    start: number,
+    end: number,
+  ): TypeScriptLocation | undefined {
+    const source = service.getProgram()?.getSourceFile(fileName);
+    const text = source?.text ?? this.readFile(fileName);
+    if (text === undefined) return undefined;
+    const lines = lineStarts(text);
+    return {
+      fsPath: path.resolve(fileName),
+      start: positionIn(lines, start),
+      end: positionIn(lines, end),
+    };
+  }
+
   dispose(): void {
     this.services.client.dispose();
     this.services.server.dispose();
@@ -1268,6 +1457,41 @@ export class TypeScriptProjects {
             isolatedClientBlocks: request.isolatedClientBlocks,
             pageScopeHtml: request.pageScopeHtml,
           },
+        ),
+      };
+    } catch (error) {
+      const { ts } = this.resolution(projectRoot) as LoadedTypeScript;
+      if (error instanceof ts.OperationCanceledException)
+        return { status: "cancelled" };
+      throw error;
+    }
+  }
+
+  /** Answers a language feature inside a page's TypeScript blocks (see `TypeScriptProject.feature`). */
+  feature<K extends TypeScriptFeatureKind>(
+    request: {
+      projectRoot: string;
+      importRoot: string;
+      htmlPath: string;
+      text: string;
+    } & PageCheckOptions,
+    query: TypeScriptFeatureQuery<K>,
+  ): TypeScriptFeatureResult<K> {
+    const projectRoot = path.resolve(request.projectRoot);
+    const project = this.project(projectRoot, request.importRoot);
+    if (typeof project === "string")
+      return { status: "unavailable", message: project };
+    try {
+      return {
+        status: "ok",
+        answer: project.feature(
+          path.resolve(projectRoot, request.htmlPath),
+          request.text,
+          {
+            isolatedClientBlocks: request.isolatedClientBlocks,
+            pageScopeHtml: request.pageScopeHtml,
+          },
+          query,
         ),
       };
     } catch (error) {
