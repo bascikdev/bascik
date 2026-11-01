@@ -35,6 +35,44 @@ describe("server-script-unescaped-markup: linear time", () => {
     );
 
   it(
+    "a Markdown template with thousands of fenced blocks reads in linear time (CPU growth under 8x for 4x the blocks)",
+    () => {
+      // Each fence is blanked in one pass over the template (fix round 1).
+      const block = (i: number) =>
+        `\\\`\\\`\\\`html\n<p class="\${a${i}}">\${b}</p>\n\\\`\\\`\\\`\n<li>\${c${i}}</li>\n`;
+      const script = (blocks: number) =>
+        `export const md = (b, ...rest) => \`${Array.from({ length: blocks }, (_, i) => block(i)).join("")}\`;\n`;
+      const small = analyzeServerScriptSource(script(2_500), {
+        hasSrcAttribute: false,
+        directive: "module",
+      });
+      const large = script(10_000);
+      expect(
+        analyzeServerScriptSource(large, {
+          hasSrcAttribute: false,
+          directive: "module",
+        }).filter((d) => d.code === RULE),
+      ).toHaveLength(10_000);
+      expect(small.length).toBe(2_500);
+      expect(
+        growthOf(
+          () =>
+            analyzeServerScriptSource(script(2_500), {
+              hasSrcAttribute: false,
+              directive: "module",
+            }),
+          () =>
+            analyzeServerScriptSource(large, {
+              hasSrcAttribute: false,
+              directive: "module",
+            }),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
     "templates nested deep read in linear time, with no stack overflow (CPU growth under 8x for 4x the depth)",
     () => {
       // The template finder and the tokenizer keep the open templates on an

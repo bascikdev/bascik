@@ -834,13 +834,19 @@ function isArithmeticExempt(
  * message names an element (`<${tag}> needs a src attribute`), and a hole
  * after `<` followed by neither is a comparison or a regex source.
  */
-const holeNamesTag = (parts: readonly string[]): boolean => {
+const holeNamesTag = (
+  parts: readonly string[],
+  skipCodeSpans = false,
+): boolean => {
   const last = parts.length - 1;
   let startThenClose = false;
   let endTag = false;
   for (let p = 0; p < last; p++) {
     const part = parts[p];
     const next = parts[p + 1];
+    // In a Markdown code span (`` `<${tag} class="..."> ``), as a fixed tag
+    // right after a backtick is.
+    if (skipCodeSpans && /`<\/?$/.test(part)) continue;
     if (part.endsWith("</")) {
       if (/^\s*>/.test(next)) endTag = true;
     } else if (!part.endsWith("<")) continue;
@@ -894,33 +900,104 @@ const HOLE_THEN_ATTRIBUTE =
  * `<meta ${attr}="...">`, `</h${level}>`). A tag right after a
  * backtick is in a Markdown code span and does not count. One pass per part.
  */
-export const markupInCode = (parts: readonly string[]): boolean =>
-  holeNamesTag(parts) ||
-  parts.some((part, p) => {
-    for (const m of part.matchAll(CODE_TAG)) {
-      if (m.index > 0 && part[m.index - 1] === "`") continue;
-      if (m[3] !== undefined && m[1] !== "/") return true;
-      if (m[4] !== undefined) {
-        if (m[1] === "/") return true;
-        // A bare start tag counts where markup goes: at the start of the
-        // template or right after a hole, or after another tag. After a
-        // word it is prose that names the element (`Found <p> inside`).
-        if (BARE_MARKUP_ELEMENTS.has(m[2]) && afterTagOrStart(part, m.index))
+export const markupInCode = (source: readonly string[]): boolean => {
+  const { parts } = markdownFences(source);
+  return (
+    holeNamesTag(parts, true) ||
+    parts.some((part, p) => {
+      for (const m of part.matchAll(CODE_TAG)) {
+        if (m.index > 0 && part[m.index - 1] === "`") continue;
+        if (m[3] !== undefined && m[1] !== "/") return true;
+        if (m[4] !== undefined) {
+          if (m[1] === "/") return true;
+          // A bare start tag counts where markup goes: at the start of the
+          // template or right after a hole, or after another tag. After a
+          // word it is prose that names the element (`Found <p> inside`).
+          if (BARE_MARKUP_ELEMENTS.has(m[2]) && afterTagOrStart(part, m.index))
+            return true;
+          continue;
+        }
+        // A tag that a hole continues, with an attribute or an end tag's `>`
+        // after the hole: `<h${level} id="`, `<meta ${attr}="`, `</h${level}>`.
+        // A bare `<h${n}>` is how a message names a heading level.
+        if (
+          p < parts.length - 1 &&
+          /^\s*$/.test(part.slice(m.index + m[0].length)) &&
+          (m[1] === "/" ? /^\s*>/ : HOLE_THEN_ATTRIBUTE).test(parts[p + 1])
+        )
           return true;
-        continue;
       }
-      // A tag that a hole continues, with an attribute or an end tag's `>`
-      // after the hole: `<h${level} id="`, `<meta ${attr}="`, `</h${level}>`.
-      // A bare `<h${n}>` is how a message names a heading level.
-      if (
-        p < parts.length - 1 &&
-        /^\s*$/.test(part.slice(m.index + m[0].length)) &&
-        (m[1] === "/" ? /^\s*>/ : HOLE_THEN_ATTRIBUTE).test(parts[p + 1])
+      return false;
+    })
+  );
+};
+
+/** A Markdown fence line's start, as template source writes it: \`\`\` or ~~~. */
+const FENCE = /^[ \t]*(?:\\`\\`\\`|```|~~~)/;
+
+/** A template's parts with its Markdown fenced blocks blanked. */
+export interface MarkdownFences {
+  /** The parts, each fenced line blanked (holes stay where they are). */
+  parts: readonly string[];
+  /** The holes (1-based) inside a fenced block. */
+  fencedHoles: ReadonlySet<number>;
+  /** Whether the template has a fence line at all. */
+  hasFence: boolean;
+}
+
+const NO_FENCED_HOLES: ReadonlySet<number> = new Set();
+
+/**
+ * Blanks each Markdown fenced block: from a line that starts with three
+ * backticks (written \`\`\` in a template) or three tildes, through the
+ * line that closes it, or the template's end. Code in a fence is text the
+ * Markdown renderer escapes, not markup. A line ends at a newline or a
+ * `\n` escape. One pass.
+ */
+export const markdownFences = (parts: readonly string[]): MarkdownFences => {
+  if (!parts.some((part) => part.includes("`\\`") || part.includes("~~~")))
+    return { parts, fencedHoles: NO_FENCED_HOLES, hasFence: false };
+  const text = parts.join(HOLE_CHAR);
+  let out = "";
+  let inFence = false;
+  let hasFence = false;
+  let lineStart = 0;
+  let holesBefore = 0;
+  const fencedHoles = new Set<number>();
+  const endLine = (end: number, next: number): void => {
+    const line = text.slice(lineStart, end);
+    const fence = FENCE.test(line);
+    if (inFence || fence) {
+      hasFence = true;
+      out += line.replace(/[^\u0000]/g, " ") + text.slice(end, next);
+      for (
+        let k = line.indexOf(HOLE_CHAR);
+        k !== -1;
+        k = line.indexOf(HOLE_CHAR, k + 1)
       )
-        return true;
+        fencedHoles.add(++holesBefore);
+      if (fence) inFence = !inFence;
+    } else {
+      out += text.slice(lineStart, next);
+      for (
+        let k = line.indexOf(HOLE_CHAR);
+        k !== -1;
+        k = line.indexOf(HOLE_CHAR, k + 1)
+      )
+        holesBefore++;
     }
-    return false;
-  });
+    lineStart = next;
+  };
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") endLine(i, i + 1);
+    else if (text[i] === "\\") {
+      if (text[i + 1] === "n") endLine(i, i + 2);
+      i++;
+    }
+  }
+  endLine(text.length, text.length);
+  return { parts: out.split(HOLE_CHAR), fencedHoles, hasFence };
+};
 
 /** Whether only whitespace, or a tag's `>` then whitespace, comes before `at` in `part`. */
 const afterTagOrStart = (part: string, at: number): boolean => {

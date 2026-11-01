@@ -19,6 +19,7 @@ import {
   looksLikeMarkup,
   parseImportSpecifier,
   markupInCode,
+  markdownFences,
   scanTemplateHtml,
   REGEX_AFTER_KEYWORD,
   skipRegexLiteral,
@@ -456,6 +457,11 @@ export function analyzeServerScriptSource(
     // no fix.
     const throwsAt = scanned.throwsAt;
     let fixable = markup && !plainTag && !xml && throwsAt === -1;
+    // Markdown with fenced blocks: a hole in a fence is text the Markdown
+    // renderer escapes, and html would escape the fence's code as well.
+    const fences =
+      markup && !requestTime ? markdownFences(literal.parts) : undefined;
+    if (fences?.hasFence) fixable = false;
     for (const hole of literal.holes) {
       const context = scanned.holes[hole.index - 1];
       const inner = wholeTemplateIn(hole);
@@ -466,6 +472,7 @@ export function analyzeServerScriptSource(
       const shown = quoteHole(hole.expr);
       // A placeholder inside a <!-- --> comment within the literal is skipped.
       if (context.kind === "comment") continue;
+      if (fences?.fencedHoles.has(hole.index)) continue;
       // A name set to a markup string in this file (`icon = '<svg>...'`,
       // `shape: '<path ... />'`): wrapping would escape it, fine or not.
       const markupString =
@@ -679,7 +686,9 @@ export function analyzeServerScriptSource(
               ? "it ends inside a tag"
               : undefined;
         let message: string;
-        if (throwsReason !== undefined)
+        if (fences?.hasFence && escaper === undefined)
+          message = `${head} The template also holds a Markdown code fence, whose code html would escape as well, so build the markup outside the fence with html\`...\` from @bascik/bascik/html, or escape the value with esc() from the same module.`;
+        else if (throwsReason !== undefined)
           message =
             escaper !== undefined
               ? `${head} ${escaper.name}() looks like a hand-written escaper. html\`...\` cannot build this template as it is (${throwsReason}), so call esc() from @bascik/bascik/html in its place, or list ${escaper.name}() in diagnostics.escapeFunctions if it is a trusted escaper.`

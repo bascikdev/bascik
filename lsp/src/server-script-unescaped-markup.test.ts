@@ -1614,3 +1614,52 @@ describe("templates nested thousands deep do not overflow the stack (fix round 1
     expect(comments).toEqual([{ start: 75, end: 89 }]);
   });
 });
+
+describe("Markdown code spans and fences hold no markup, tag-name holes too (fix round 1)", () => {
+  const moduleCovered = (body: string) =>
+    unescaped(body, { directive: "module" }).map((d) =>
+      body.slice(d.start, d.end),
+    );
+
+  it.each([
+    // A code span whose tag name is a hole, like the fixed-tag spans.
+    'export const f = (tag: string, attr: string) => `Use \\`<${tag} class="${attr}">\\` here`;',
+    "export const f = (tag: string, attr: string) => `Use \\`<${tag}>${attr}</${tag}>\\` here`;",
+    // A fenced block in Markdown: the renderer escapes its text.
+    'export const f = (tag: string, attr: string) => `\\`\\`\\`html\n<${tag} class="${attr}"></${tag}>\n\\`\\`\\``;',
+    'export const f = (attr: string) => `\\`\\`\\`html\n<x-card class="${attr}"></x-card>\n\\`\\`\\``;',
+    "export const f = (attr: string) => `Example:\\n\\n\\`\\`\\`html\\n<p>${attr}</p>\\n\\`\\`\\`\\n`;",
+    "export const f = (attr: string) => `~~~html\n<p>${attr}</p>\n~~~\n`;",
+    // A fence opened in one part and closed after a hole.
+    "export const f = (lang: string, attr: string) => `\\`\\`\\`${lang}\n<p>${attr}</p>\n\\`\\`\\``;",
+  ])("not reported: %s", (body) => {
+    expect(moduleCovered(body)).toEqual([]);
+  });
+
+  it.each([
+    // Markup after a closed fence is still markup.
+    [
+      'export const f = (attr: string, t: string) => `\\`\\`\\`html\n<p>x</p>\n\\`\\`\\`\n<div class="${attr}">${t}</div>`;',
+      ["${attr}", "${t}"],
+    ],
+    // A tag-name hole outside a code span is still markup.
+    [
+      'export const f = (tag: string, attr: string) => `Use <${tag} class="${attr}"> here`;',
+      ["${attr}"],
+    ],
+    // Three backticks in the middle of a line open no fence.
+    ["export const f = (t: string) => `<p>a \\`\\`\\` b ${t}</p>`;", ["${t}"]],
+  ])("still reported: %s", (body, holes) => {
+    expect(moduleCovered(body)).toEqual(holes);
+  });
+
+  it("a hole in a fence of a template with markup outside it is skipped, and the wrap fix is withheld", () => {
+    const body =
+      'export const f = (code: string, t: string) => `<section>${t}</section>\\n\\n\\`\\`\\`html\\n<p class="${code}"></p>\\n\\`\\`\\`\\n`;';
+    const diags = unescaped(body, { directive: "module" });
+    expect(diags.map((d) => body.slice(d.start, d.end))).toEqual(["${t}"]);
+    expect(diags[0].template?.fixable).toBe(false);
+    expect(diags[0].message).toContain("Markdown code fence");
+    expect(diags[0].message).toContain("esc()");
+  });
+});
