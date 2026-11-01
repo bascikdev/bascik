@@ -1716,6 +1716,70 @@ const esc = (s: string) =>
     ).toEqual([]);
   });
 
+  it("judges each function that reads a shared entity map by its own name, so an escapeXml read first never hides an escapeHtml", () => {
+    const found = (code: string) =>
+      handWrittenEscapers(code).map(
+        (e: { line: number; name?: string }) => `${e.line} ${e.name}`,
+      );
+    // The map between the two readers.
+    expect(
+      found(`function escapeXml(s) { return s.replace(/[&<]/g, (c) => X[c]); }
+const X = { "&": "&amp;" };
+function escapeHtml(s) { return s.replace(/[&<]/g, (c) => X[c]); }`),
+    ).toEqual(["3 escapeHtml"]);
+    // The map above both, no comment.
+    expect(
+      found(`const ENT = { "&": "&amp;", "<": "&lt;" };
+export function escapeXml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}
+export function escapeHtml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}`),
+    ).toEqual(["5 escapeHtml"]);
+    // An XML comment on the map, blank lines between the functions.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+
+export function escapeXml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}
+
+export function escapeHtml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}`),
+    ).toEqual(["8 escapeHtml"]);
+    // One-line arrow functions.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeHtml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["4 escapeHtml"]);
+    // In the other order the HTML escaper is still the one reported, and the XML one stays hidden.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["2 escapeHtml"]);
+    // A second reader with a neutral name takes no XML explanation from the first reader's map.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeText = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["4 escapeText"]);
+    // Two XML readers of an XML map stay hidden.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeSvg = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual([]);
+  });
+
   it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
     const found =
       handWrittenEscapers(`const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);
@@ -1825,6 +1889,21 @@ export const card = (c: Card) => \`<h2>\${escapeHtml(c.title)}</h2>\`;
     );
     expect(found[0].suggestion).toMatch(/raw\(\)/);
     expect(found[0].suggestion).toMatch(/json\(\)/);
+  });
+
+  it("warns about an escapeHtml that reads the same entity map as an escapeXml above it", async () => {
+    const root = withFiles({
+      "src/scripts/shared.ts": `function escapeXml(s: string) { return s.replace(/[&<]/g, (c) => X[c]); }
+const X: Record<string, string> = { "&": "&amp;", "<": "&lt;" };
+export function escapeHtml(s: string) { return s.replace(/[&<]/g, (c) => X[c]); }
+export const feed = (t: string) => escapeXml(t);
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/scripts/shared.ts:3",
+    ]);
+    expect(found[0].message).toMatch(/escapeHtml\(\)/);
   });
 
   it("warns about an escaper in a component's .ts companion that a build script imports", async () => {

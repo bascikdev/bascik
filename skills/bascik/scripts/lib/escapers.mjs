@@ -195,8 +195,9 @@ export function handWrittenEscapers(code) {
     }
   // Each hit is judged on its own: its function's name and whether it explains itself as XML. Hits close together
   // join one escaper only in two cases: two lines of the same function (same name, same explanation), or an entity
-  // map and the function that reads it. Only that map case shares an XML explanation, so a replace chain beside an
-  // escapeXml never hides behind it, and an escapeXml beside an escapeHtml never hides the HTML one.
+  // map and the first function that reads it. Only that map case shares an XML explanation, so a replace chain beside
+  // an escapeXml never hides behind it, and an escapeXml beside an escapeHtml never hides the HTML one, even when both
+  // read one map.
   const out = [];
   for (const hit of [...hits.keys()].sort((a, b) => a - b)) {
     const { kind, map, reader } = hits.get(hit);
@@ -210,20 +211,31 @@ export function handWrittenEscapers(code) {
     // An entity map and a character-class replace join only when the replace's statement names the map's declared
     // variable (ENTITIES[c], ENTITIES.get(c)), in either order. A replace that writes its own entities names no map,
     // so it never joins one, and never shares an XML explanation with one.
+    // A map read by two functions joins only the first: a second reader of another name stands on its own name and
+    // its own comment, so an escapeXml that read the map first never hides an escapeHtml beside it.
+    const otherReader =
+      reader && last?.readers.length > 0 && last.readerName !== name;
     const mapCase =
       near &&
       ((variable !== undefined &&
         last.readers.some((t) => readsMap(t, variable))) ||
-        (reader && last.variables.some((v) => readsMap(text, v))));
+        (reader &&
+          !otherReader &&
+          last.variables.some((v) => readsMap(text, v))));
     const sameFunction = near && name === last.name && xml === last.xml;
     if (mapCase || sameFunction) {
       last.hit = hit;
       last.name ??= name;
       // The map's XML explanation reaches the replace that reads it, unless that replace's own name says HTML.
       if (mapCase)
-        last.xml = (last.xml || xml) && !HTML_NAME.test(last.name ?? "");
+        last.xml =
+          (last.xml || xml) &&
+          !HTML_NAME.test((reader ? name : last.readerName) ?? "");
       if (variable !== undefined) last.variables.push(variable);
-      if (reader) last.readers.push(text);
+      if (reader) {
+        last.readers.push(text);
+        last.readerName = name;
+      }
       if (kind === "escape") last.kind = "escape";
       continue;
     }
@@ -235,6 +247,7 @@ export function handWrittenEscapers(code) {
       xml,
       variables: variable === undefined ? [] : [variable],
       readers: reader ? [text] : [],
+      readerName: reader ? name : undefined,
     });
   }
   return out
