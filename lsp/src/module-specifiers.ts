@@ -39,199 +39,237 @@ interface DelimiterContext {
   allowsRegexAfterClose: boolean;
 }
 
+/** A code frame: the top level, or the code in one template hole. */
+interface CodeFrame {
+  kind: "code";
+  stopAtClosingBrace: boolean;
+  braceDepth: number;
+  canStartRegex: boolean;
+  statementExpected: boolean;
+  delimiters: DelimiterContext[];
+}
+
+/** A template literal's text, between its holes. */
+interface TemplateFrame {
+  kind: "template";
+  tokenStart: number;
+  holes: boolean;
+}
+
 /**
  * The tokens of a script in source order, and its comments. Strings,
  * template text and regular expression literals are skipped as units, so a
- * quote inside `/"/g` opens no string. One linear pass.
+ * quote inside `/"/g` opens no string. One linear pass, with the templates
+ * and holes still open kept on an explicit stack, so templates nested
+ * thousands deep cannot overflow the call stack.
  */
 export const scanJavaScript = (
   source: string,
 ): { tokens: Token[]; comments: Comment[] } => {
   const tokens: Token[] = [];
   const comments: Comment[] = [];
-
-  const scanCode = (start: number, stopAtClosingBrace: boolean): number => {
-    let index = start;
-    let braceDepth = 0;
-    let canStartRegex = true;
-    let statementExpected = true;
-    const delimiters: DelimiterContext[] = [];
-
-    while (index < source.length) {
-      const character = source[index];
-      const next = source[index + 1];
-      if (/\s/.test(character)) {
-        index++;
-        continue;
-      }
-      if (character === "/" && next === "/") {
-        const commentStart = index;
-        index += 2;
-        while (index < source.length && source[index] !== "\n") index++;
-        comments.push({ start: commentStart, end: index });
-        continue;
-      }
-      if (character === "/" && next === "*") {
-        const commentStart = index;
-        index += 2;
-        while (
-          index < source.length &&
-          !(source[index] === "*" && source[index + 1] === "/")
-        )
-          index++;
-        index = Math.min(index + 2, source.length);
-        comments.push({ start: commentStart, end: index });
-        continue;
-      }
-      if (character === "'" || character === '"') {
-        const quote = character;
-        const tokenStart = index++;
-        while (index < source.length) {
-          if (source[index] === "\\") index += 2;
-          else if (source[index] === quote) {
-            index++;
-            break;
-          } else index++;
-        }
-        tokens.push({
-          type: "string",
-          value: source.slice(tokenStart + 1, index - 1),
-          start: tokenStart + 1,
-          end: index - 1,
-        });
-        canStartRegex = false;
-        statementExpected = false;
-        continue;
-      }
-      if (character === "`") {
-        const tokenStart = index++;
-        let holes = false;
-        while (index < source.length) {
-          if (source[index] === "\\") index += 2;
-          else if (source[index] === "`") {
-            index++;
-            break;
-          } else if (source[index] === "$" && source[index + 1] === "{") {
-            holes = true;
-            index = scanCode(index + 2, true);
-          } else index++;
-        }
-        if (!holes)
-          tokens.push({
-            type: "template",
-            value: source.slice(tokenStart + 1, index - 1),
-            start: tokenStart + 1,
-            end: index - 1,
-          });
-        canStartRegex = false;
-        statementExpected = false;
-        continue;
-      }
-      if (character === "/" && canStartRegex) {
-        index++;
-        let inCharacterClass = false;
-        while (index < source.length) {
-          if (source[index] === "\\") index += 2;
-          else if (source[index] === "[") {
-            inCharacterClass = true;
-            index++;
-          } else if (source[index] === "]") {
-            inCharacterClass = false;
-            index++;
-          } else if (source[index] === "/" && !inCharacterClass) {
-            index++;
-            while (/[A-Za-z]/.test(source[index] ?? "")) index++;
-            break;
-          } else index++;
-        }
-        canStartRegex = false;
-        statementExpected = false;
-        continue;
-      }
-      if (isIdentifierStart(character)) {
-        const tokenStart = index++;
-        while (index < source.length && isIdentifierPart(source[index]))
-          index++;
-        const value = source.slice(tokenStart, index);
-        tokens.push({
-          type: "identifier",
-          value,
-          start: tokenStart,
-          end: index,
-        });
-        canStartRegex = [
-          "case",
-          "delete",
-          "return",
-          "throw",
-          "typeof",
-          "void",
-          "yield",
-        ].includes(value);
-        statementExpected = STATEMENT_PREFIX_KEYWORDS.has(value);
-        continue;
-      }
-      if (/[0-9]/.test(character)) {
-        index++;
-        while (index < source.length && /[A-Za-z0-9_.]/.test(source[index]))
-          index++;
-        canStartRegex = false;
-        statementExpected = false;
-        continue;
-      }
-      if (character === "{" && stopAtClosingBrace) braceDepth++;
-      else if (character === "}" && stopAtClosingBrace) {
-        if (braceDepth === 0) return index + 1;
-        braceDepth--;
-      }
+  const codeFrame = (stopAtClosingBrace: boolean): CodeFrame => ({
+    kind: "code",
+    stopAtClosingBrace,
+    braceDepth: 0,
+    canStartRegex: true,
+    statementExpected: true,
+    delimiters: [],
+  });
+  const stack: (CodeFrame | TemplateFrame)[] = [codeFrame(false)];
+  /** Closes the innermost template, which ends just before `end`. */
+  const closeTemplate = (frame: TemplateFrame, end: number): void => {
+    if (!frame.holes)
       tokens.push({
-        type: "punctuation",
-        value: character,
-        start: index,
-        end: index + 1,
+        type: "template",
+        value: source.slice(frame.tokenStart + 1, end),
+        start: frame.tokenStart + 1,
+        end,
       });
-      const previousToken = tokens[tokens.length - 2];
-      if (character === "(") {
-        delimiters.push({
-          character,
-          allowsRegexAfterClose:
-            previousToken?.type === "identifier" &&
-            CONTROL_HEAD_KEYWORDS.has(previousToken.value),
-        });
-        canStartRegex = true;
-        statementExpected = false;
-      } else if (character === "{") {
-        const isStatementBlock =
-          statementExpected ||
-          previousToken?.value === ")" ||
-          (previousToken?.value === ">" &&
-            tokens[tokens.length - 3]?.value === "=");
-        delimiters.push({ character, allowsRegexAfterClose: isStatementBlock });
-        canStartRegex = true;
-        statementExpected = true;
-      } else if (character === "[") {
-        delimiters.push({ character, allowsRegexAfterClose: false });
-        canStartRegex = true;
-        statementExpected = false;
-      } else if (character === ")" || character === "}" || character === "]") {
-        const expectedOpen =
-          character === ")" ? "(" : character === "}" ? "{" : "[";
-        const delimiter =
-          delimiters.at(-1)?.character === expectedOpen
-            ? delimiters.pop()
-            : undefined;
-        canStartRegex = delimiter?.allowsRegexAfterClose ?? false;
-        statementExpected = canStartRegex;
-      } else {
-        canStartRegex = true;
-        statementExpected = character === ";";
-      }
-      index++;
+    const outer = stack[stack.length - 1];
+    if (outer?.kind === "code") {
+      outer.canStartRegex = false;
+      outer.statementExpected = false;
     }
-    return index;
   };
 
-  scanCode(0, false);
+  let index = 0;
+  while (index < source.length) {
+    const top = stack[stack.length - 1];
+    if (top.kind === "template") {
+      if (source[index] === "\\") index += 2;
+      else if (source[index] === "`") {
+        index++;
+        stack.pop();
+        closeTemplate(top, index - 1);
+      } else if (source[index] === "$" && source[index + 1] === "{") {
+        top.holes = true;
+        index += 2;
+        stack.push(codeFrame(true));
+      } else index++;
+      continue;
+    }
+    const frame = top;
+    const character = source[index];
+    const next = source[index + 1];
+    if (/\s/.test(character)) {
+      index++;
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      const commentStart = index;
+      index += 2;
+      while (index < source.length && source[index] !== "\n") index++;
+      comments.push({ start: commentStart, end: index });
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      const commentStart = index;
+      index += 2;
+      while (
+        index < source.length &&
+        !(source[index] === "*" && source[index + 1] === "/")
+      )
+        index++;
+      index = Math.min(index + 2, source.length);
+      comments.push({ start: commentStart, end: index });
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      const quote = character;
+      const tokenStart = index++;
+      while (index < source.length) {
+        if (source[index] === "\\") index += 2;
+        else if (source[index] === quote) {
+          index++;
+          break;
+        } else index++;
+      }
+      tokens.push({
+        type: "string",
+        value: source.slice(tokenStart + 1, index - 1),
+        start: tokenStart + 1,
+        end: index - 1,
+      });
+      frame.canStartRegex = false;
+      frame.statementExpected = false;
+      continue;
+    }
+    if (character === "`") {
+      stack.push({ kind: "template", tokenStart: index++, holes: false });
+      continue;
+    }
+    if (character === "/" && frame.canStartRegex) {
+      index++;
+      let inCharacterClass = false;
+      while (index < source.length) {
+        if (source[index] === "\\") index += 2;
+        else if (source[index] === "[") {
+          inCharacterClass = true;
+          index++;
+        } else if (source[index] === "]") {
+          inCharacterClass = false;
+          index++;
+        } else if (source[index] === "/" && !inCharacterClass) {
+          index++;
+          while (/[A-Za-z]/.test(source[index] ?? "")) index++;
+          break;
+        } else index++;
+      }
+      frame.canStartRegex = false;
+      frame.statementExpected = false;
+      continue;
+    }
+    if (isIdentifierStart(character)) {
+      const tokenStart = index++;
+      while (index < source.length && isIdentifierPart(source[index])) index++;
+      const value = source.slice(tokenStart, index);
+      tokens.push({
+        type: "identifier",
+        value,
+        start: tokenStart,
+        end: index,
+      });
+      frame.canStartRegex = [
+        "case",
+        "delete",
+        "return",
+        "throw",
+        "typeof",
+        "void",
+        "yield",
+      ].includes(value);
+      frame.statementExpected = STATEMENT_PREFIX_KEYWORDS.has(value);
+      continue;
+    }
+    if (/[0-9]/.test(character)) {
+      index++;
+      while (index < source.length && /[A-Za-z0-9_.]/.test(source[index]))
+        index++;
+      frame.canStartRegex = false;
+      frame.statementExpected = false;
+      continue;
+    }
+    if (character === "{" && frame.stopAtClosingBrace) frame.braceDepth++;
+    else if (character === "}" && frame.stopAtClosingBrace) {
+      if (frame.braceDepth === 0) {
+        // The `}` that closes a hole: back to its template's text.
+        index++;
+        stack.pop();
+        continue;
+      }
+      frame.braceDepth--;
+    }
+    tokens.push({
+      type: "punctuation",
+      value: character,
+      start: index,
+      end: index + 1,
+    });
+    const previousToken = tokens[tokens.length - 2];
+    const delimiters = frame.delimiters;
+    if (character === "(") {
+      delimiters.push({
+        character,
+        allowsRegexAfterClose:
+          previousToken?.type === "identifier" &&
+          CONTROL_HEAD_KEYWORDS.has(previousToken.value),
+      });
+      frame.canStartRegex = true;
+      frame.statementExpected = false;
+    } else if (character === "{") {
+      const isStatementBlock =
+        frame.statementExpected ||
+        previousToken?.value === ")" ||
+        (previousToken?.value === ">" &&
+          tokens[tokens.length - 3]?.value === "=");
+      delimiters.push({ character, allowsRegexAfterClose: isStatementBlock });
+      frame.canStartRegex = true;
+      frame.statementExpected = true;
+    } else if (character === "[") {
+      delimiters.push({ character, allowsRegexAfterClose: false });
+      frame.canStartRegex = true;
+      frame.statementExpected = false;
+    } else if (character === ")" || character === "}" || character === "]") {
+      const expectedOpen =
+        character === ")" ? "(" : character === "}" ? "{" : "[";
+      const delimiter =
+        delimiters.at(-1)?.character === expectedOpen
+          ? delimiters.pop()
+          : undefined;
+      frame.canStartRegex = delimiter?.allowsRegexAfterClose ?? false;
+      frame.statementExpected = frame.canStartRegex;
+    } else {
+      frame.canStartRegex = true;
+      frame.statementExpected = character === ";";
+    }
+    index++;
+  }
+  // Templates still open at the end of the source end there.
+  while (stack.length > 1) {
+    const frame = stack.pop()!;
+    if (frame.kind === "template") closeTemplate(frame, index - 1);
+  }
   return {
     tokens: tokens.sort((left, right) => left.start - right.start),
     comments: comments.sort((left, right) => left.start - right.start),

@@ -6,6 +6,25 @@ import { pathToFileURL } from "node:url";
 import { FileChangeType, type Diagnostic } from "vscode-languageserver";
 import { BascikLanguageServer, uriToFsPath } from "./server.js";
 
+// A file Bascik cannot analyze: the scanners no longer overflow on deep
+// nesting, so the analysis-failed fallback is reached through a marker that
+// makes the server-script analysis throw as an overflow would.
+const ANALYSIS_THROWS = "/* bascik-test: analysis throws */";
+vi.mock("./server-script-rules.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./server-script-rules.js")>();
+  return {
+    ...actual,
+    analyzeServerScriptSource: (
+      ...args: Parameters<typeof actual.analyzeServerScriptSource>
+    ) => {
+      if (args[0].includes(ANALYSIS_THROWS))
+        throw new RangeError("Maximum call stack size exceeded");
+      return actual.analyzeServerScriptSource(...args);
+    },
+  };
+});
+
 type Handler = (...args: any[]) => any;
 
 /** The slice of a language server connection that the server uses, recording the handlers it registers. */
@@ -629,14 +648,13 @@ describe("BascikLanguageServer", () => {
       expect(codes(b)).toEqual(["hand-written-html-escaper"]);
     });
 
-    it("publishes analysis-failed for a module too deeply nested to analyze, and keeps running", async () => {
+    it("publishes analysis-failed for a module it cannot analyze, and keeps running", async () => {
       await initialize();
       await write(
         "src/pages/index.html",
         '<script data-bascik-build>import { t } from "@/lib/deep.ts"; export default () => t;</script>\n',
       );
-      const depth = 30_000;
-      const DEEP = `export const t = \`${"${`".repeat(depth)}x${"`}".repeat(depth)}\`;\n`;
+      const DEEP = `${ANALYSIS_THROWS}\nexport const t = \`\${\`x\`}\`;\n`;
       const deep = await write("src/lib/deep.ts", DEEP);
       open(deep, DEEP, "typescript");
       await settle();

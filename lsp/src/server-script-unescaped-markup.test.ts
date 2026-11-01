@@ -15,6 +15,8 @@ import {
   analyzeServerScriptSource,
   type AnalyzeOptions,
 } from "./server-script-rules.js";
+import { scanJavaScript } from "./module-specifiers.js";
+import { findTemplateLiterals } from "./server-script-templates.js";
 
 const RULE = "server-script-unescaped-markup";
 const IMPORT = `import { html, raw, esc, safeUrl, json } from "@bascik/bascik/html";\n`;
@@ -1506,5 +1508,109 @@ describe("a long alias chain does not overflow the stack (review round 3)", () =
         (d) => d.code === RULE,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("templates nested thousands deep do not overflow the stack (fix round 1)", () => {
+  const nested = (depth: number) =>
+    "export const first = (q: string) => `<p>${q}</p>`;\nexport const deep = (q: string) => " +
+    "`<b>${".repeat(depth) +
+    "q" +
+    "}</b>`".repeat(depth) +
+    ";\n";
+
+  it("20000 nested templates: the analysis finishes and the file's other diagnostics survive", () => {
+    const body = nested(20_000);
+    let diags: ReturnType<typeof analyze> = [];
+    expect(() => {
+      diags = analyze(body, { directive: "module" });
+    }).not.toThrow();
+    const holes = diags
+      .filter((d) => d.code === RULE)
+      .map((d) => body.slice(d.start, d.end));
+    expect(holes[0]).toBe("${q}");
+    expect(holes).toContain("${q}");
+    expect(holes.length).toBeGreaterThan(1);
+  });
+
+  it("the template finder and the tokenizer read 20000 nested templates whole", () => {
+    const body = nested(20_000);
+    const literals = findTemplateLiterals(body);
+    expect(literals).toHaveLength(20_001);
+    expect(literals[1].parts[0]).toBe("<b>");
+    expect(literals[20_000].holes[0].expr).toBe("q");
+    expect(literals[1].end).toBe(body.lastIndexOf("`") + 1);
+    const { tokens } = scanJavaScript(body);
+    expect(tokens.filter((t) => t.value === "q")).toHaveLength(4);
+    expect(tokens.at(-1)?.value).toBe(";");
+  });
+
+  it("the iterative scanners read nesting, regexes, strings and unclosed templates as before", () => {
+    const body =
+      "const a = `x${ {k: `y${/}`/.test(s) ? '`' : \"}\"}z`}.k }w`; const b = /`/g; // `\\n`t${1}`;\nlet c = `u${`v`}${'}'}` + `open${ x";
+    expect(
+      findTemplateLiterals(body).map((l) => [
+        l.start,
+        l.end,
+        l.tag,
+        l.parts,
+        l.holes.map((h) => [h.start, h.end, h.expr]),
+      ]),
+    ).toEqual([
+      [
+        10,
+        57,
+        null,
+        ["x", "w"],
+        [[12, 55, " {k: `y${/}`/.test(s) ? '`' : \"}\"}z`}.k "]],
+      ],
+      [19, 50, null, ["y", "z"], [[21, 48, "/}`/.test(s) ? '`' : \"}\""]]],
+      [
+        98,
+        113,
+        null,
+        ["u", "", ""],
+        [
+          [100, 106, "`v`"],
+          [106, 112, "'}'"],
+        ],
+      ],
+      [102, 105, null, ["v"], []],
+      [116, 125, null, ["open", ""], [[121, 125, " x"]]],
+    ]);
+    const { tokens, comments } = scanJavaScript(body);
+    expect(tokens.map((t) => [t.type, t.value, t.start, t.end])).toEqual([
+      ["identifier", "const", 0, 5],
+      ["identifier", "a", 6, 7],
+      ["punctuation", "=", 8, 9],
+      ["punctuation", "{", 15, 16],
+      ["identifier", "k", 16, 17],
+      ["punctuation", ":", 17, 18],
+      ["punctuation", ".", 27, 28],
+      ["identifier", "test", 28, 32],
+      ["punctuation", "(", 32, 33],
+      ["identifier", "s", 33, 34],
+      ["punctuation", ")", 34, 35],
+      ["punctuation", "?", 36, 37],
+      ["string", "`", 39, 40],
+      ["punctuation", ":", 42, 43],
+      ["string", "}", 45, 46],
+      ["punctuation", "}", 50, 51],
+      ["punctuation", ".", 51, 52],
+      ["identifier", "k", 52, 53],
+      ["punctuation", ";", 57, 58],
+      ["identifier", "const", 59, 64],
+      ["identifier", "b", 65, 66],
+      ["punctuation", "=", 67, 68],
+      ["punctuation", ";", 73, 74],
+      ["identifier", "let", 90, 93],
+      ["identifier", "c", 94, 95],
+      ["punctuation", "=", 96, 97],
+      ["template", "v", 103, 104],
+      ["string", "}", 109, 110],
+      ["punctuation", "+", 114, 115],
+      ["identifier", "x", 124, 125],
+    ]);
+    expect(comments).toEqual([{ start: 75, end: 89 }]);
   });
 });

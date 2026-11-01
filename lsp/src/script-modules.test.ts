@@ -7,7 +7,7 @@
  * and line), the editor path with unsaved buffers, configuration and
  * suppression, and the quick fixes in a .ts file.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,6 +22,25 @@ import {
   normalizeModulePath,
   scriptModulesOf,
 } from "./script-modules.js";
+
+// A file Bascik cannot analyze: the scanners no longer overflow on deep
+// nesting, so the analysis-failed fallback is reached through a marker that
+// makes the server-script analysis throw as an overflow would.
+const ANALYSIS_THROWS = "/* bascik-test: analysis throws */";
+vi.mock("./server-script-rules.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./server-script-rules.js")>();
+  return {
+    ...actual,
+    analyzeServerScriptSource: (
+      ...args: Parameters<typeof actual.analyzeServerScriptSource>
+    ) => {
+      if (args[0].includes(ANALYSIS_THROWS))
+        throw new RangeError("Maximum call stack size exceeded");
+      return actual.analyzeServerScriptSource(...args);
+    },
+  };
+});
 
 const MARKUP = "server-script-unescaped-markup";
 const ESCAPER = "hand-written-html-escaper";
@@ -747,9 +766,10 @@ describe("review 2026-10-31: the editor reuses the module set while imports stay
 });
 
 describe("review 2026-10-31: a file too deep to analyze does not stop the check", () => {
-  // Templates nested thousands deep overflow the recursive scanners. That
+  // Templates nested thousands deep overflowed the recursive scanners. That
   // ended `bascik --check` with no other output, and would end the
-  // language server.
+  // language server. The scanners are iterative now (fix round 1), and a
+  // file that still throws gets analysis-failed.
   const deep = (depth: number) =>
     `export const t = \`${"${`".repeat(depth)}Milk frother${"`}".repeat(depth)}\`;\n`;
 
@@ -762,7 +782,7 @@ describe("review 2026-10-31: a file too deep to analyze does not stop the check"
       export default () => escapeHtml(t);
     </script>`),
     );
-    write("src/lib/deep.ts", deep(30_000));
+    write("src/lib/deep.ts", ANALYSIS_THROWS + "\n" + deep(3));
     write("src/lib/escape.ts", ESCAPE_HTML);
     const result = await checkFiles({
       cwd: root,
@@ -776,5 +796,30 @@ describe("review 2026-10-31: a file too deep to analyze does not stop the check"
       "src/lib/escape.ts hand-written-html-escaper warning",
     );
     expect(got).toContain("src/lib/deep.ts analysis-failed warning");
+  });
+
+  it("a file with templates nested 30000 deep is analyzed like any other (fix round 1)", async () => {
+    write(
+      "src/pages/index.html",
+      PAGE(`<script data-bascik-build>
+      import { t } from "@/lib/deep.ts";
+      export default () => t;
+    </script>`),
+    );
+    write(
+      "src/lib/deep.ts",
+      "export const card = (name: string) => `<li>${name}</li>`;\n" +
+        deep(30_000),
+    );
+    const result = await checkFiles({
+      cwd: root,
+      targets: [{ path: "src/pages", extensions: ["html"] }],
+      projectPath: root,
+    });
+    const got = result.diagnostics.map(
+      (d) => `${d.filePath.replace(/\\/g, "/")}:${d.line} ${d.code}`,
+    );
+    expect(got).toContain("src/lib/deep.ts:1 server-script-unescaped-markup");
+    expect(got.some((g) => g.includes("analysis-failed"))).toBe(false);
   });
 });

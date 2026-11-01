@@ -531,7 +531,7 @@ The linter found a function that turns `&` and `<` into entities with a `.replac
 
 ### `analysis-failed`: Bascik could not analyze this file
 
-The language server stopped reading the file, usually because a template literal or a bracket is nested thousands deep, which overflows its scanners. The file gets this one warning and no other Bascik diagnostics; every other file is still checked. Flatten the nesting (build the inner parts in a loop or with `.map()`), and the file's diagnostics come back.
+The language server hit an error while reading the file. The file gets this one warning and no other Bascik diagnostics; every other file is still checked. Deep nesting does not cause it: templates nested tens of thousands deep are read like any other. It is a bug in Bascik, so please report it with the file, or the smallest part of it that still shows the warning.
 
 ### `html-escaped-twice`: esc() inside html`...` escapes twice
 

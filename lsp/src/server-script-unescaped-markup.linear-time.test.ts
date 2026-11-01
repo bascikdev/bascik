@@ -35,6 +35,25 @@ describe("server-script-unescaped-markup: linear time", () => {
     );
 
   it(
+    "templates nested deep read in linear time, with no stack overflow (CPU growth under 8x for 4x the depth)",
+    () => {
+      // The template finder and the tokenizer keep the open templates on an
+      // explicit stack (fix round 1): recursion overflowed past ~5000.
+      const nested = (depth: number) =>
+        "export default (q) => " +
+        "`<b>${".repeat(depth) +
+        "q" +
+        "}</b>`".repeat(depth) +
+        ";\n";
+      const small = nested(5_000);
+      const large = nested(20_000);
+      expect(covered(large)).toHaveLength(20_000);
+      expect(growthOfBodies(small, large)).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
     "a 10k-line script of markup templates lints in linear time (CPU growth under 8x for 4x the lines)",
     () => {
       const line = (i: number) =>

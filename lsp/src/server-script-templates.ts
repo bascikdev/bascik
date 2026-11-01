@@ -112,7 +112,9 @@ export function skipRegexLiteral(source: string, start: number): number {
  * in their holes. A `/` where an operand goes starts a regex literal, which
  * is skipped whole, so a quote, brace or backtick inside `/"/g` opens
  * nothing. Whether an operand goes there is read from the token before it,
- * kept as the scan goes, so the pass stays linear.
+ * kept as the scan goes, so the pass stays linear. The literals and holes
+ * still open are kept on an explicit stack, so templates nested thousands
+ * deep cannot overflow the call stack.
  */
 export function findTemplateLiterals(source: string): TemplateLiteral[] {
   const literals: TemplateLiteral[] = [];
@@ -129,89 +131,127 @@ export function findTemplateLiterals(source: string): TemplateLiteral[] {
     return i;
   };
 
-  /** Scan code from `i`; with `inHole`, stop at the `}` that closes the hole. */
-  const scanCode = (i: number, inHole: boolean): number => {
-    let depth = 0;
+  /** Code: the top level, or a hole's (which stops at the `}` that closes it). */
+  interface Code {
+    kind: "code";
+    inHole: boolean;
+    depth: number;
     // Whether a `/` here starts a regex: true where an operand goes.
-    let regexOk = true;
+    regexOk: boolean;
     // The last non-space character, to tell `x.return` from `return`.
-    let before = "";
-    while (i < source.length) {
-      const c = source[i];
-      if (c === "'" || c === '"') {
-        i = skipString(i);
-        regexOk = false;
-        before = c;
-      } else if (c === "/" && source[i + 1] === "/") {
-        while (i < source.length && source[i] !== "\n") i++;
-      } else if (c === "/" && source[i + 1] === "*") {
-        const close = source.indexOf("*/", i + 2);
-        i = close === -1 ? source.length : close + 2;
-      } else if (c === "/" && regexOk) {
-        i = skipRegexLiteral(source, i);
-        regexOk = false;
-        before = "/";
-      } else if (c === "`") {
-        i = scanTemplate(i);
-        regexOk = false;
-        before = c;
-      } else if (/[\w$]/.test(c)) {
-        const wordStart = i;
-        while (i < source.length && /[\w$]/.test(source[i])) i++;
-        regexOk =
-          before !== "." && REGEX_AFTER_KEYWORD.has(source.slice(wordStart, i));
-        before = "w";
-      } else if (/\s/.test(c)) i++;
-      else {
-        if (c === "{") depth++;
-        else if (c === "}") {
-          if (depth === 0 && inHole) return i;
-          if (depth > 0) depth--;
-        }
-        regexOk = OPERAND_FOLLOWS.has(c);
-        before = c;
-        i++;
-      }
-    }
-    return i;
-  };
+    before: string;
+    /** In a hole: the offset of its `${`. */
+    holeStart: number;
+  }
+  /** A template's text, between its holes. */
+  interface Text {
+    kind: "text";
+    literal: TemplateLiteral;
+    partStart: number;
+  }
+  const code = (inHole: boolean, holeStart: number): Code => ({
+    kind: "code",
+    inHole,
+    depth: 0,
+    regexOk: true,
+    before: "",
+    holeStart,
+  });
+  const stack: (Code | Text)[] = [code(false, -1)];
 
-  const scanTemplate = (start: number): number => {
-    const literal: TemplateLiteral = {
-      start,
-      end: source.length,
-      tag: tagBefore(source, start),
-      parts: [],
-      holes: [],
-    };
-    literals.push(literal);
-    let i = start + 1;
-    let partStart = i;
-    while (i < source.length) {
+  let i = 0;
+  while (i < source.length) {
+    const top = stack[stack.length - 1];
+    if (top.kind === "text") {
       const c = source[i];
       if (c === "\\") i += 2;
       else if (c === "`") {
-        literal.parts.push(source.slice(partStart, i));
-        literal.end = i + 1;
-        return i + 1;
+        top.literal.parts.push(source.slice(top.partStart, i));
+        top.literal.end = i + 1;
+        i++;
+        stack.pop();
+        const outer = stack[stack.length - 1] as Code;
+        outer.regexOk = false;
+        outer.before = c;
       } else if (c === "$" && source[i + 1] === "{") {
-        literal.parts.push(source.slice(partStart, i));
-        const close = scanCode(i + 2, true);
-        literal.holes.push({
-          start: i,
-          end: Math.min(close + 1, source.length),
-          expr: source.slice(i + 2, close),
-          index: literal.holes.length + 1,
-        });
-        i = close + 1;
-        partStart = i;
+        top.literal.parts.push(source.slice(top.partStart, i));
+        stack.push(code(true, i));
+        i += 2;
       } else i++;
+      continue;
     }
-    literal.parts.push(source.slice(partStart));
-    return source.length;
-  };
-
-  scanCode(0, false);
+    const c = source[i];
+    if (c === "'" || c === '"') {
+      i = skipString(i);
+      top.regexOk = false;
+      top.before = c;
+    } else if (c === "/" && source[i + 1] === "/") {
+      while (i < source.length && source[i] !== "\n") i++;
+    } else if (c === "/" && source[i + 1] === "*") {
+      const close = source.indexOf("*/", i + 2);
+      i = close === -1 ? source.length : close + 2;
+    } else if (c === "/" && top.regexOk) {
+      i = skipRegexLiteral(source, i);
+      top.regexOk = false;
+      top.before = "/";
+    } else if (c === "`") {
+      const literal: TemplateLiteral = {
+        start: i,
+        end: source.length,
+        tag: tagBefore(source, i),
+        parts: [],
+        holes: [],
+      };
+      literals.push(literal);
+      stack.push({ kind: "text", literal, partStart: i + 1 });
+      i++;
+    } else if (/[\w$]/.test(c)) {
+      const wordStart = i;
+      while (i < source.length && /[\w$]/.test(source[i])) i++;
+      top.regexOk =
+        top.before !== "." &&
+        REGEX_AFTER_KEYWORD.has(source.slice(wordStart, i));
+      top.before = "w";
+    } else if (/\s/.test(c)) i++;
+    else {
+      if (c === "{") top.depth++;
+      else if (c === "}") {
+        if (top.depth === 0 && top.inHole) {
+          // The `}` that closes a hole: back to its template's text.
+          stack.pop();
+          const text = stack[stack.length - 1] as Text;
+          text.literal.holes.push({
+            start: top.holeStart,
+            end: i + 1,
+            expr: source.slice(top.holeStart + 2, i),
+            index: text.literal.holes.length + 1,
+          });
+          i++;
+          text.partStart = i;
+          continue;
+        }
+        if (top.depth > 0) top.depth--;
+      }
+      top.regexOk = OPERAND_FOLLOWS.has(c);
+      top.before = c;
+      i++;
+    }
+  }
+  // Holes and templates still open at the end of the source end there.
+  while (stack.length > 1) {
+    const frame = stack.pop()!;
+    if (frame.kind === "code") {
+      const text = stack[stack.length - 1] as Text;
+      const close = Math.min(i, source.length);
+      text.literal.holes.push({
+        start: frame.holeStart,
+        end: Math.min(close + 1, source.length),
+        expr: source.slice(frame.holeStart + 2, close),
+        index: text.literal.holes.length + 1,
+      });
+      text.partStart = close + 1;
+    } else frame.literal.parts.push(source.slice(frame.partStart));
+  }
   return literals;
 }
 
