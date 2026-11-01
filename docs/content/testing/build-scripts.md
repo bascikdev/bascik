@@ -151,7 +151,9 @@ export function getCanonicalUrl(): SafeHtml | "" {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = route ? `/${route}` : "/";
 
-  return html`<link rel="canonical" href="${siteUrl}${urlPath}" />`;
+  // One hole per URL attribute: html refuses two side by side.
+  const href = `${siteUrl}${urlPath}`;
+  return html`<link rel="canonical" href="${href}" />`;
 }
 ```
 

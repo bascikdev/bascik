@@ -42,7 +42,9 @@ export async function canonical(): Promise<SafeHtml | ""> {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = route ? `/${route}` : "/";
 
-  return html`<link rel="canonical" href="${siteUrl}${urlPath}" />`;
+  // Build the whole URL in code, then give html one hole for it.
+  const href = `${siteUrl}${urlPath}`;
+  return html`<link rel="canonical" href="${href}" />`;
 }
 ```
 
@@ -118,8 +120,10 @@ That means shared components can derive navigation state, breadcrumbs, canonical
   import { html } from "@bascik/bascik/html";
   import { pagePath, siteOrigin } from "@/lib/site.ts";
 
-  export default () =>
-    html`<link rel="canonical" href="${siteOrigin()}${pagePath()}">`;
+  export default () => {
+    const href = `${siteOrigin()}${pagePath()}`;
+    return html`<link rel="canonical" href="${href}">`;
+  };
 </script>
 ```
 
