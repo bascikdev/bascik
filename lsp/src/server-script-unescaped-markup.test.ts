@@ -3556,3 +3556,114 @@ describe("html helper results bound to a name count like the call itself", () =>
     ]);
   });
 });
+
+describe("the wrap fix is withheld where the template's value is typed string", () => {
+  const H = "${process.env.SITE_NAME}";
+  const T = `\`<p class="site">${H}</p>\``;
+  const fixable = (body: string, opts: Partial<AnalyzeOptions> = {}) => {
+    const found = unescaped(body, { directive: "module", ...opts }).filter(
+      (d) => body.slice(d.start, d.end) === H,
+    );
+    expect(found, body).toHaveLength(1);
+    return found[0];
+  };
+
+  it.each([
+    [
+      "a function returning string",
+      `function site(): string {\n  return ${T};\n}\n`,
+    ],
+    [
+      "an exported one",
+      `export function site(): string {\n  return ${T};\n}\n`,
+    ],
+    ["an arrow typed string", `const site = (): string => ${T};\n`],
+    [
+      "an arrow with a block",
+      `const site = (): string => {\n  return ${T};\n};\n`,
+    ],
+    [
+      "a union with undefined",
+      `function site(): string | undefined {\n  return (${T});\n}\n`,
+    ],
+    [
+      "an async Promise<string>",
+      `async function site(): Promise<string> {\n  return ${T};\n}\n`,
+    ],
+    [
+      "a ternary branch",
+      `function site(ok: boolean): string {\n  if (ok) {\n    return ok ? ${T} : "";\n  }\n  return "";\n}\n`,
+    ],
+    [
+      "after ||",
+      `function site(x?: string): string {\n  return x || ${T};\n}\n`,
+    ],
+    [
+      "a method",
+      `class Site {\n  render(): string {\n    return ${T};\n  }\n}\n`,
+    ],
+    [
+      "a getter",
+      `const site = {\n  get markup(): string {\n    return ${T};\n  },\n};\n`,
+    ],
+    ["a const typed string", `const site: string = ${T};\n`],
+    ["a let typed string, assigned later", `let site: string;\nsite = ${T};\n`],
+    ["a class field", `class Site {\n  markup: string = ${T};\n}\n`],
+    [
+      "a const then returned as string",
+      `function site(): string {\n  const markup = ${T};\n  return markup;\n}\n`,
+    ],
+    ["as string", `const site = () => ${T} as string;\n`],
+    ["satisfies string", `const site = ${T} satisfies string;\n`],
+  ])("%s", (_name, body) => {
+    const d = fixable(body);
+    expect(d.template?.fixable).toBe(false);
+    expect(d.message).toContain("SafeHtml");
+    expect(d.message).toContain("string");
+  });
+
+  it.each([
+    ["no annotation", `function site() {\n  return ${T};\n}\n`],
+    [
+      "SafeHtml",
+      `import type { SafeHtml } from "@bascik/bascik/html";\nfunction site(): SafeHtml {\n  return ${T};\n}\n`,
+    ],
+    [
+      "joined to a string",
+      `function site(): string {\n  return "<!-- site -->" + ${T};\n}\n`,
+    ],
+    [
+      "an argument of a call",
+      `function site(): string {\n  return String(${T});\n}\n`,
+    ],
+    [
+      "an inner callback's return",
+      `function site(): string {\n  const parts = [1].map(() => {\n    return ${T};\n  });\n  return String(parts.length);\n}\n`,
+    ],
+    [
+      "a string in an if condition",
+      `function site(): string {\n  if (${T}) return "x";\n  return "";\n}\n`,
+    ],
+    [
+      "a nested template",
+      `function site(): string {\n  return \`<div>\${${T}}</div>\`;\n}\n`,
+    ],
+    [
+      "a const used as a number elsewhere",
+      `const markup = ${T};\nexport const size: number = 1;\n`,
+    ],
+    [
+      "an object property typed elsewhere",
+      `const box: { markup: unknown } = { markup: ${T} };\n`,
+    ],
+  ])("keeps the fix: %s", (_name, body) => {
+    expect(fixable(body).template?.fixable).toBe(true);
+  });
+
+  it("names the annotation in the message", () => {
+    const d = fixable(`export const page = (): string | null => ${T};\n`);
+    expect(d.message).toBe(
+      'This markup template (line 1) interpolates ${process.env.SITE_NAME} (hole 1) without html. Wrapping this template in html is not offered as a fix: its value goes where the code declares `: string | null`, and html makes a SafeHtml value, so type checking would fail. Change that type to SafeHtml (import type { SafeHtml } from "@bascik/bascik/html"), then wrap the template in html`...` from @bascik/bascik/html yourself.',
+    );
+  });
+});

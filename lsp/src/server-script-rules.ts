@@ -4,6 +4,7 @@ import {
   type Token,
 } from "./module-specifiers.js";
 import { holdsMarkupCharacter, plainHoleChecker } from "./plain-holes.js";
+import { stringTypedFlow } from "./string-typed-flow.js";
 import {
   HAND_WRITTEN_ESCAPER_RULE,
   findHandWrittenEscapers,
@@ -638,6 +639,7 @@ export function analyzeServerScriptSource(
     }
     return known;
   };
+  const stringTypedAt = stringTypedFlow(body, tokens);
   const xmlOf: boolean[] = [];
   const open: number[] = [];
   /**
@@ -692,6 +694,13 @@ export function analyzeServerScriptSource(
       ? withholdReason(literal, scanned.holes, fences?.fencedHoles)
       : undefined;
     if (reason !== undefined) fixable = false;
+    // A value typed string (`): string`, `const x: string =`, `as string`):
+    // as an html value it would fail type checking, so no fix.
+    const typedAs =
+      fixable && literal.tag === null && parent === -1
+        ? stringTypedAt(literal.start, literal.end)
+        : undefined;
+    if (typedAs !== undefined) fixable = false;
     for (const hole of literal.holes) {
       const context = scanned.holes[hole.index - 1];
       const inner = wholeTemplateIn(hole);
@@ -934,11 +943,13 @@ export function analyzeServerScriptSource(
               ? `${head} ${escaper.name}() looks like a hand-written escaper, and html escapes too, so wrapping this template in html would show &amp;lt; on the page. Wrap it in html\`...\` and pass the value as it is: \${${escaper.args}}. If ${escaper.name}() is a trusted escaper, list it in diagnostics.escapeFunctions.`
               : inner === undefined && isJoined(hole.expr, joined)
                 ? `${head} It joins markup into one string, which html would escape, so wrapping only this template would show the inner tags as text. Wrap the inner templates in html\`...\`, drop .join(""), and pass the array; then wrap this template in html\`...\` from @bascik/bascik/html.`
-                : reason === undefined
-                  ? `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`
-                  : reason.hole === hole.index
-                    ? `${head} It ${reason.text}`
-                    : `${head} Wrapping this template in html is not offered as a fix: ${reason.shown} ${reason.text}`;
+                : typedAs !== undefined
+                  ? `${head} Wrapping this template in html is not offered as a fix: its value goes where the code declares \`: ${typedAs}\`, and html makes a SafeHtml value, so type checking would fail. Change that type to SafeHtml (import type { SafeHtml } from "@bascik/bascik/html"), then wrap the template in html\`...\` from @bascik/bascik/html yourself.`
+                  : reason === undefined
+                    ? `${head} Wrap the template in html\`...\` from @bascik/bascik/html, which escapes each value for where it lands.`
+                    : reason.hole === hole.index
+                      ? `${head} It ${reason.text}`
+                      : `${head} Wrapping this template in html is not offered as a fix: ${reason.shown} ${reason.text}`;
         pending.push({
           code: UNESCAPED_MARKUP_RULE,
           message,
