@@ -188,6 +188,14 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
 }
 
 /**
+ * Whether an HTML file has a TypeScript block, so checking it needs TypeScript. A page that only names the type (in
+ * prose, a `<pre>`, a comment or a data block) has none, and must never load TypeScript or keep it loaded.
+ */
+export function hasTypeScriptBlocks(html: string): boolean {
+  return extractTypeScriptBlocks(html).length > 0;
+}
+
+/**
  * The TypeScript block whose content holds `offset` (its end included, where the cursor sits after the last
  * character), or `undefined` when the offset is outside every block.
  */

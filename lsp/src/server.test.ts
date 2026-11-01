@@ -1201,6 +1201,35 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     expect(engine.release).toHaveBeenCalledTimes(1);
   });
 
+  it("never asks the engine about a page that names text/typescript without a TypeScript block, and lets it release", async () => {
+    const engine = recordingEngine();
+    await start({
+      createTypeScriptEngine: () => engine,
+      typeScriptReleaseDelayMs: 100,
+    });
+    const mentions = {
+      "src/pages/prose.html":
+        "<p>Write a block with type text/typescript to get checks.</p>\n",
+      "src/pages/pre.html":
+        '<pre>&lt;script type="text/typescript"&gt;</pre>\n',
+      "src/pages/comment.html":
+        '<!-- <script type="text/typescript">const speed: number = "fast";</script> -->\n<p>Milk frother</p>\n',
+      "src/pages/data.html":
+        '<script type="application/json">{"type": "text/typescript"}</script>\n',
+    };
+    for (const [relative, text] of Object.entries(mentions))
+      open(await write(relative, text), text);
+    await eventually(() => expect(engine.release).toHaveBeenCalled());
+    expect(engine.diagnostics).not.toHaveBeenCalled();
+    expect(engine.preparePages).not.toHaveBeenCalled();
+    // A hover inside the commented-out script is outside every block: TypeScript is not asked either.
+    await fake.handlers.get("hover")!({
+      textDocument: { uri: uri(path.join(root, "src/pages/comment.html")) },
+      position: { line: 0, character: 45 },
+    });
+    expect(engine.feature).not.toHaveBeenCalled();
+  });
+
   /** An answer with one error on the first `speed` in the checked text. */
   const errorOnSpeed = (
     request: TypeScriptCheckRequest,

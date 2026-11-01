@@ -20,7 +20,7 @@ import {
   type ProjectSnapshot,
 } from "./project.js";
 import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
-import { mayHaveTypeScriptBlocks } from "./typescript-blocks.js";
+import { hasTypeScriptBlocks } from "./typescript-blocks.js";
 import { TypeScriptProjects } from "./typescript-service.js";
 
 /**
@@ -261,7 +261,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   // check rather than once per page.
   const typeScriptPages = (typeScript === undefined ? [] : documents).flatMap(
     ({ filePath, languageId, document }) =>
-      languageId === "html" && mayHaveTypeScriptBlocks(document.getText())
+      languageId === "html" && hasTypeScriptBlocks(document.getText())
         ? [
             {
               htmlPath: filePath,

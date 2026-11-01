@@ -39,7 +39,7 @@ import {
 import { createReferences } from "./references.js";
 import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
 import {
-  mayHaveTypeScriptBlocks,
+  hasTypeScriptBlocks,
   relocateBlockRanges,
   typeScriptBlockAt,
 } from "./typescript-blocks.js";
@@ -1103,8 +1103,8 @@ export class BascikLanguageServer {
     const { version } = document;
     const text = document.getText();
     const check: TypeScriptPageCheck = { document, version, text };
-    // A page that never mentions TypeScript costs nothing: TypeScript is not even loaded for it.
-    if (!mayHaveTypeScriptBlocks(text)) return check;
+    // A page without a TypeScript block costs nothing: TypeScript is not even loaded for it.
+    if (!hasTypeScriptBlocks(text)) return check;
     const fsPath = uriToFsPath(document.uri);
     if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root)))
       return check;
@@ -1142,9 +1142,10 @@ export class BascikLanguageServer {
     const { uri } = document;
     const previous = this.typeScriptResults.get(uri)?.diagnostics;
     if (!request) {
-      if (!mayHaveTypeScriptBlocks(text) && previous?.length)
+      const hasBlocks = hasTypeScriptBlocks(text);
+      if (!hasBlocks && previous?.length)
         this.publishTypeScript(document, text, []);
-      if (!mayHaveTypeScriptBlocks(text)) this.scheduleTypeScriptRelease();
+      if (!hasBlocks) this.scheduleTypeScriptRelease();
       return true;
     }
     // Edited meanwhile: it is checked again.
@@ -1248,7 +1249,7 @@ export class BascikLanguageServer {
           (document) =>
             document.languageId === "html" &&
             document.uri.startsWith("file:") &&
-            mayHaveTypeScriptBlocks(document.getText()),
+            hasTypeScriptBlocks(document.getText()),
         );
       if (needed) return;
       void engine
