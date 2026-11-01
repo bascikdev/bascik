@@ -20,6 +20,7 @@ import * as path from "node:path";
 import type * as TS from "typescript-6";
 import {
   extractTypeScriptBlocks,
+  type FooterCheck,
   SCRIPT_TYPE_CHECK,
   type Insertion,
   type TypeScriptBlock,
@@ -180,11 +181,42 @@ export function compilerOptionsFor(
   return options;
 }
 
-/** Where Bascik passes a directive script's default export to its typed check function. */
-function defaultExportInsertions(
+/** How Bascik checks a directive script's default export: the text it inserts, or the name its footer checks. */
+interface DefaultExportPlan {
+  insertions: Insertion[];
+  check?: FooterCheck;
+}
+
+/** Whether `name` appears anywhere in the block outside `declaration` (a call, an `export { }`, an overload). */
+function isNameUsedOutside(
+  ts: TypeScriptModule,
+  source: TS.SourceFile,
+  declaration: TS.Node,
+  name: string,
+): boolean {
+  let found = false;
+  const visit = (node: TS.Node): void => {
+    if (found || node === declaration) return;
+    if (ts.isIdentifier(node) && node.text === name) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return found;
+}
+
+/**
+ * Where Bascik passes a directive script's default export to its typed check function. Passing it as an argument
+ * gives an untyped parameter its type from the call. A named function declaration stays a declaration when the
+ * block uses its name anywhere else, and the footer checks it by name instead: wrapping would make it an
+ * expression, whose name the rest of the module cannot see.
+ */
+function defaultExportPlan(
   ts: TypeScriptModule,
   content: string,
-): Insertion[] {
+): DefaultExportPlan {
   const source = ts.createSourceFile(
     "block.ts",
     content,
@@ -195,10 +227,12 @@ function defaultExportInsertions(
   const opening = `${SCRIPT_TYPE_CHECK}(`;
   for (const statement of source.statements) {
     if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
-      return [
-        { at: statement.expression.getStart(source), text: opening },
-        { at: statement.expression.end, text: ")" },
-      ];
+      return {
+        insertions: [
+          { at: statement.expression.getStart(source), text: opening },
+          { at: statement.expression.end, text: ")" },
+        ],
+      };
     }
     if (ts.isFunctionDeclaration(statement) && statement.body) {
       const modifiers = statement.modifiers ?? [];
@@ -211,15 +245,28 @@ function defaultExportInsertions(
           (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
         )
       ) {
+        const name = statement.name;
+        if (name && isNameUsedOutside(ts, source, statement, name.text)) {
+          return {
+            insertions: [],
+            check: {
+              name: name.text,
+              start: name.getStart(source),
+              end: name.end,
+            },
+          };
+        }
         // `export default async function f() {}` becomes `export default __bascikScript( async function f() {})`.
-        return [
-          { at: defaultKeyword.end, text: ` ${opening}` },
-          { at: statement.end, text: ")" },
-        ];
+        return {
+          insertions: [
+            { at: defaultKeyword.end, text: ` ${opening}` },
+            { at: statement.end, text: ")" },
+          ],
+        };
       }
     }
   }
-  return [];
+  return { insertions: [] };
 }
 
 /**
@@ -356,6 +403,7 @@ export class TypeScriptProject {
         // Same text; only the offsets moved (an edit above the block).
         existing.segments = virtual.segments;
         existing.footerStart = virtual.footerStart;
+        existing.footerCheck = virtual.footerCheck;
         return;
       }
       changed = true;
@@ -376,11 +424,15 @@ export class TypeScriptProject {
   }
 
   private virtualFile(block: TypeScriptBlock): VirtualBlockText {
-    const insertions =
-      block.directive === undefined
-        ? []
-        : defaultExportInsertions(this.ts, block.content);
-    return virtualBlockText(block, insertions, this.scriptTypes);
+    if (block.directive === undefined)
+      return virtualBlockText(block, [], this.scriptTypes);
+    const plan = defaultExportPlan(this.ts, block.content);
+    return virtualBlockText(
+      block,
+      plan.insertions,
+      this.scriptTypes,
+      plan.check,
+    );
   }
 
   /** Rewrites every directive block with the untyped footer, after the typed one failed to resolve. */
@@ -419,12 +471,19 @@ export class TypeScriptProject {
       const semantic = service.getSemanticDiagnostics(fileName);
       // A type error in Bascik's footer means @bascik/bascik's script types are not there: check without them.
       // Not while the block has a syntax error, which can swallow the footer (an unclosed brace or comment).
+      const inFooterCheck = (diagnostic: TS.Diagnostic) =>
+        file.footerCheck !== undefined &&
+        diagnostic.start !== undefined &&
+        diagnostic.start >= file.footerCheck.generatedStart &&
+        diagnostic.start < file.footerCheck.generatedEnd;
       if (
         this.scriptTypes &&
         file.program === "server" &&
         syntactic.length === 0 &&
         semantic.some(
-          (diagnostic) => (diagnostic.start ?? 0) >= file.footerStart,
+          (diagnostic) =>
+            (diagnostic.start ?? 0) >= file.footerStart &&
+            !inFooterCheck(diagnostic),
         )
       ) {
         this.dropScriptTypes();
@@ -438,6 +497,26 @@ export class TypeScriptProject {
           diagnostic.category !== this.ts.DiagnosticCategory.Warning
         )
           continue;
+        const message = this.ts.flattenDiagnosticMessageText(
+          diagnostic.messageText,
+          "\n",
+        );
+        const category =
+          diagnostic.category === this.ts.DiagnosticCategory.Error
+            ? "error"
+            : "warning";
+        // The footer's check of a named default export: the function does not fit the script's type. It is the
+        // author's error, located on the function's name.
+        if (file.footerCheck && inFooterCheck(diagnostic)) {
+          result.push({
+            start: file.footerCheck.sourceStart,
+            end: file.footerCheck.sourceEnd,
+            message,
+            code: diagnostic.code,
+            category,
+          });
+          continue;
+        }
         // A syntax error found in the footer is the author's (an unclosed brace runs past the block's end): it is
         // reported at the end of the block. A type error there is Bascik's, not theirs to fix.
         const inFooter = diagnostic.start >= file.footerStart;
@@ -450,15 +529,9 @@ export class TypeScriptProject {
         result.push({
           start: toSourceOffset(file, start),
           end: toSourceOffset(file, Math.max(start, end)),
-          message: this.ts.flattenDiagnosticMessageText(
-            diagnostic.messageText,
-            "\n",
-          ),
+          message,
           code: diagnostic.code,
-          category:
-            diagnostic.category === this.ts.DiagnosticCategory.Error
-              ? "error"
-              : "warning",
+          category,
         });
       }
     }

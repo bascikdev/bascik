@@ -49,9 +49,9 @@ const link = (target: string, at: string) => {
   symlinkSync(target, at, "junction");
 };
 
-const check = (args: string[]) => {
+const check = (args: string[], cwd = project) => {
   const result = spawnSync(process.execPath, [cliPath, "--check", ...args], {
-    cwd: project,
+    cwd,
     env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
     encoding: "utf8",
   });
@@ -175,4 +175,38 @@ describe("bascik --check --typescript", () => {
       rmSync(join(project, "node_modules/typescript"), { force: true });
     }
   }, 60_000);
+
+  it("misuse: code that runs reports no TypeScript errors", () => {
+    // A second project beside the first, sharing its language server, with only valid scripts.
+    const valid = join(work, "valid");
+    for (const [relative, text] of Object.entries(VALID_FILES)) {
+      mkdirSync(dirname(join(valid, relative)), { recursive: true });
+      writeFileSync(join(valid, relative), text);
+    }
+    link(
+      join(project, "node_modules/@bascik/language-server"),
+      join(valid, "node_modules/@bascik/language-server"),
+    );
+    link(packageDir("typescript-6"), join(valid, "node_modules/typescript"));
+    const result = check(["--typescript"], valid);
+    expect(result.stdout).not.toMatch(/\(TS\d+\)/);
+    expect(result.status, result.output).toBe(0);
+  }, 60_000);
 });
+
+/** Pages whose TypeScript is valid where Bascik runs it, each a false error the check once reported. */
+const VALID_FILES: Record<string, string> = {
+  "bascik.config.js": "export default {};\n",
+  "package.json": JSON.stringify({
+    name: "valid",
+    private: true,
+    type: "module",
+  }),
+  // A named default export whose name the block uses elsewhere.
+  "src/pages/named-default.html": `<main>Milk frother</main>
+<script data-bascik-build type="text/typescript">
+  export default function build(): string { return helper(); }
+  function helper() { return build.name; }
+</script>
+`,
+};

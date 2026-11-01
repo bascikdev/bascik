@@ -229,6 +229,44 @@ describe("TypeScriptProject diagnostics", () => {
     expect(routes.map((d) => d.code)).toEqual([2353]);
   });
 
+  it("keeps a named default export function in the module's scope when the block uses its name", () => {
+    const root = nodeProject();
+    const service = project(root);
+    const referenced = page(
+      "export default function build(): string { return helper(); }\nfunction helper() { return build.name; }",
+      " data-bascik-build",
+    );
+    expect(check(root, "src/pages/a.html", referenced, service)).toEqual([]);
+    const hoisted = page(
+      'const early = build();\nexport { build };\nexport default function build() { return "Milk frother"; }\nconsole.log(early);',
+      " data-bascik-build",
+    );
+    expect(check(root, "src/pages/b.html", hoisted, service)).toEqual([]);
+  });
+
+  it("misuse: a named default export of the wrong type is located on its name, wrapped or not", () => {
+    const root = nodeProject();
+    const service = project(root);
+    const referenced = page(
+      "export default function build() { return 42; }\nconsole.log(build.name);",
+      " data-bascik-build-once",
+    );
+    const diagnostics = check(root, "src/pages/a.html", referenced, service);
+    expect(diagnostics.map((d) => [d.code, d.text])).toEqual([[2345, "build"]]);
+    expect(diagnostics[0].start).toBe(referenced.indexOf("build()"));
+    // Not used elsewhere, it is still wrapped, so an untyped parameter gets its type.
+    const alone = page(
+      "export default async function handle(request) {\n  return request.frother;\n}",
+      " data-bascik-server",
+    );
+    expect(
+      check(root, "src/pages/b.html", alone, service).map((d) => [
+        d.code,
+        d.text,
+      ]),
+    ).toEqual([[2339, "frother"]]);
+  });
+
   it("misuse: without @bascik/bascik's types, a directive script reports nothing it cannot know", () => {
     const root = fixture();
     const html = page(

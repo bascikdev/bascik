@@ -146,6 +146,28 @@ export interface VirtualBlockText {
   segments: Segment[];
   /** Offset in the virtual text where Bascik's footer starts. A diagnostic from there on is Bascik's, not the author's. */
   footerStart: number;
+  /**
+   * The footer's check of a named default export function (see `FooterCheck`): the argument's range in the virtual
+   * text, and the function name's range in the HTML, where an error in that argument is the author's to fix.
+   */
+  footerCheck?: {
+    generatedStart: number;
+    generatedEnd: number;
+    sourceStart: number;
+    sourceEnd: number;
+  };
+}
+
+/**
+ * A named default export function checked from the footer (`__bascikScript(build);`) instead of being wrapped
+ * in the call. Wrapping turns the declaration into an expression, which takes its name out of the module's scope,
+ * so it is used whenever the block refers to that name outside the function. `start` and `end` are the name's
+ * offsets in the block's content.
+ */
+export interface FooterCheck {
+  name: string;
+  start: number;
+  end: number;
 }
 
 /** A place in the block where Bascik inserts text, found by the caller's parser. */
@@ -188,11 +210,18 @@ export function blockFooter(
   );
 }
 
+/** The footer line that checks a named default export function, and where its argument starts in that line. */
+function footerCheckLine(name: string): { line: string; argumentAt: number } {
+  const opening = `${SCRIPT_TYPE_CHECK}(`;
+  return { line: `${opening}${name});\n`, argumentAt: opening.length };
+}
+
 /** The virtual text for a block: its content with the insertions made, then the footer. */
 export function virtualBlockText(
   block: TypeScriptBlock,
   insertions: Insertion[],
   typed = true,
+  check?: FooterCheck,
 ): VirtualBlockText {
   const sorted = [...insertions].sort((a, b) => a.at - b.at);
   const segments: Segment[] = [];
@@ -215,7 +244,21 @@ export function virtualBlockText(
   text += block.content.slice(cursor);
   const footerStart = text.length;
   text += blockFooter(block.directive, typed);
-  return { text, segments, footerStart };
+  if (check === undefined) return { text, segments, footerStart };
+  const { line, argumentAt } = footerCheckLine(check.name);
+  const generatedStart = text.length + argumentAt;
+  text += line;
+  return {
+    text,
+    segments,
+    footerStart,
+    footerCheck: {
+      generatedStart,
+      generatedEnd: generatedStart + check.name.length,
+      sourceStart: block.contentStart + check.start,
+      sourceEnd: block.contentStart + check.end,
+    },
+  };
 }
 
 /**

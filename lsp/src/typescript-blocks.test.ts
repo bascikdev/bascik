@@ -189,4 +189,31 @@ describe("virtualBlockText and offset mapping", () => {
     expect(toGeneratedOffset(virtual, 0)).toBeUndefined();
     expect(toGeneratedOffset(virtual, html.length)).toBeUndefined();
   });
+
+  it("checks a named default export from the footer, leaving the declaration as written", () => {
+    const named =
+      '<script type="text/typescript" data-bascik-build>\nexport default function build() { return build.name; }\n</script>';
+    const [namedBlock] = extractTypeScriptBlocks(named);
+    const nameAt = namedBlock.content.indexOf("build(");
+    const checked = virtualBlockText(namedBlock, [], true, {
+      name: "build",
+      start: nameAt,
+      end: nameAt + 5,
+    });
+    expect(checked.text.startsWith(namedBlock.content)).toBe(true);
+    expect(checked.text.slice(checked.footerStart)).toBe(
+      `${blockFooter("build")}__bascikScript(build);\n`,
+    );
+    const { footerCheck } = checked;
+    expect(
+      checked.text.slice(
+        footerCheck!.generatedStart,
+        footerCheck!.generatedEnd,
+      ),
+    ).toBe("build");
+    expect(named.slice(footerCheck!.sourceStart, footerCheck!.sourceEnd)).toBe(
+      "build",
+    );
+    expect(footerCheck!.sourceStart).toBe(named.indexOf("build("));
+  });
 });
