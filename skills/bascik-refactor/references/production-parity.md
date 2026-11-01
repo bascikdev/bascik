@@ -140,7 +140,9 @@ list is part of the production cache key, the interval is not.
    add the library's documented breakpoints with `--add`.
 2. For every threshold B, test B - 1, B and B + 1 CSS pixels.
 3. Add one width inside every interval, plus the narrowest and widest supported widths.
-4. Width and height are a pair.
+4. Width and height are a pair. For viewport-sized sections, test short portrait and landscape heights as well as
+   tall screens. Add the reported failing pair and nearby pairs to the canonical matrix; width-only sampling misses
+   content that overflows a fixed `vh` height.
 5. Add hover, orientation and reduced-motion cases where the site uses them.
 6. Sample scroll-driven states at the threshold minus 1 and plus 1, in both directions.
 
@@ -289,6 +291,43 @@ the ledger. A control whose write is refused may also show an error state on pro
 skip it the same way.
 
 ### Production defects
+
+#### Responsive defect investigation
+
+Do not treat pixel parity, zero horizontal scroll or Lighthouse 100 as proof that a layout works. They can all pass
+while a headline sits behind a fixed header or a CTA spills below its hero. Use this procedure before copying a
+section and whenever a screenshot or visitor report suggests clipping, overlap or a misplaced control:
+
+1. Reproduce on production at the exact CSS viewport width and height, at the top of the page and at the relevant
+   scroll or open state. Wait for fonts and images using the capture settings above. Save the screenshot and case
+   id. If it only fails on the target, it is a migration regression, not a production defect.
+2. Measure the owning section, actual text and CTA bounds, the image/background container and the fixed/sticky
+   header with Playwright locators and `getBoundingClientRect()` via `locator.evaluate()`. Inspect computed height,
+   min/max-height, font size, line height, padding, gap, flex alignment, wrapping, overflow and positioning. Use
+   text range bounds when the element box does not explain clipped glyphs. Check ancestor clipping and painted
+   layers as well as box intersections: a text box can be intact but covered by the header. Zero sideways scroll
+   does not rule out vertical overflow.
+3. Trace those measurements to the owning legacy CSS. For example, a fixed `80vh` hero with large wrapping text,
+   centered flex content and a large text-to-button gap can be shorter than its contents: centering pushes the
+   heading above the hero and the CTA below it. Confirm the relationship rather than adjusting random offsets.
+4. Fix that layout constraint in the target: let content determine the required height, use a viewport-based
+   minimum where appropriate, make the background cover the resulting section, scale phone typography and
+   spacing without making it unreadable, and wrap CTA rows. Preserve the intended design and unaffected desktop
+   geometry. Do not hide overflow, truncate copy, shrink everything with a transform, absolutely position the
+   button or add JavaScript resizing to conceal a CSS layout defect. An intentional overlay or decorative overlap
+   is not a bug merely because boxes intersect.
+5. Add a focused Playwright regression test before the fix and run it to prove it fails. After the fix, assert the
+   visible heading clears the header, text and CTA fit within their intended section with the design's padding,
+   the CTA follows the text with the intended gap, and the page has no sideways scroll. Allow only a small stated
+   rounding tolerance. Test the failing pair, short and tall phones, landscape, breakpoint edges and unaffected
+   desktop cases on every route using the component. Verify the built site visually too: bounding boxes alone
+   cannot prove content is unobscured. Expand the canonical matrix before the full acceptance run.
+
+Record the measured cause, corrected expectation, failing and passing evidence, affected routes and width-height
+cases in the decisions ledger. The automatic correction handling below applies only to recognized `PD-` defects.
+For a manually discovered defect the scripts do not recognize, use the normal narrow `accepted.json` pixel
+difference entry and ledger row, inspect every remaining geometry/style finding, and obtain visual and human
+review. Do not invent a `PD-` id or assume a ledger row alone makes a parity check pass.
 
 Production is the truth for geometry, not for bugs. `production-defects.mjs` runs on production before a route is
 written, at every matrix case. Each defect (a squished image, an icon misaligned with its heading, text overflow,
