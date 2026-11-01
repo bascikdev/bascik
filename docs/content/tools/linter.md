@@ -250,7 +250,7 @@ lspconfig.bascik.setup{
 }
 ```
 
-`editorHasEmbeddedTypeScript = true` is for an editor that already answers about a page's own names in these blocks, as VS Code's HTML support does: the server then answers only for other files and import paths, so nothing is listed twice. Leave it out in Neovim.
+`editorHasEmbeddedTypeScript = true` is for an editor that already answers about a page's own names in these blocks, as VS Code's HTML support does: the server then answers only for other files, import paths and what reaches the page through an import, so nothing is listed twice. Leave it out in Neovim.
 
 ## Suppressing Warnings
 

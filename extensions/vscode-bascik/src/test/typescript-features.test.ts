@@ -135,6 +135,96 @@ suite("TypeScript language features across files", () => {
     );
   });
 
+  test("completes a module's exports inside an import's braces once", async () => {
+    await replaceUnsaved(
+      document,
+      document
+        .getText()
+        .replace(
+          "import { frotherSettings, froth }",
+          "import { frotherSettings, froth,  }",
+        ),
+    );
+    const labels = await eventuallyAnswered(
+      () => completionLabels(document, positionOf(document, "froth,  }", 7)),
+      (all) => all.includes("FrotherSettings"),
+      "Completion in an import's braces should offer the module's exports",
+    );
+    assert.strictEqual(
+      countOf(labels, "FrotherSettings"),
+      1,
+      JSON.stringify(labels),
+    );
+    // TypeScript leaves out a name the braces already import.
+    assert.strictEqual(
+      countOf(labels, "frotherSettings"),
+      0,
+      JSON.stringify(labels),
+    );
+  });
+
+  test("completes and signs the library methods of a value from an import once", async () => {
+    await replaceUnsaved(
+      document,
+      document
+        .getText()
+        .replace(
+          "  const jug",
+          "  froth(1).;\n  froth(1).padStart();\n  const jug",
+        ),
+    );
+    const labels = await eventuallyAnswered(
+      () =>
+        completionLabels(document, positionOf(document, "froth(1).;", 9), "."),
+      (all) => all.includes("toUpperCase"),
+      "Completion after froth(1). should offer the string's methods",
+    );
+    assert.strictEqual(
+      countOf(labels, "toUpperCase"),
+      1,
+      JSON.stringify(labels),
+    );
+    const signatures = await eventuallyAnswered(
+      () => signatureLabels(document, positionOf(document, "padStart()", 9)),
+      (all) => all.some((label) => label.includes("padStart(")),
+      "Signature help in froth(1).padStart( should show its parameters",
+    );
+    assert.strictEqual(
+      signatures.filter((label) => label.includes("padStart(")).length,
+      1,
+      JSON.stringify(signatures),
+    );
+  });
+
+  test("answers a page's own names in a block whose type VS Code does not recognize", async () => {
+    await replaceUnsaved(
+      document,
+      document
+        .getText()
+        .replace(
+          '<script type="text/typescript">',
+          '<script type="text/TypeScript">',
+        )
+        .replace("  document.title", "  jug.\n  document.title"),
+    );
+    const hovers = await eventuallyAnswered(
+      () => hoverTexts(document, positionOf(document, "steamTemperature +", 2)),
+      (all) => all.some((text) => text.includes("steamTemperature")),
+      "Bascik should hover a page name where VS Code's mode does not read the block",
+    );
+    assert.strictEqual(
+      hovers.filter((text) => text.includes("steamTemperature")).length,
+      1,
+      JSON.stringify(hovers),
+    );
+    const labels = await completionLabels(
+      document,
+      positionOf(document, "jug.\n", 4),
+      ".",
+    );
+    assert.strictEqual(countOf(labels, "size"), 1, JSON.stringify(labels));
+  });
+
   test("leaves the page's own names to VS Code's HTML support, answered once", async () => {
     // Wait until Bascik answers in this page at all, so a missing duplicate is not just a slow server.
     await eventuallyAnswered(
