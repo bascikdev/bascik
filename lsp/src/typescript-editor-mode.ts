@@ -18,7 +18,7 @@ import {
   memberReceiver,
   nodeAt,
 } from "./typescript-features.js";
-import type { TypeScriptModule } from "./typescript-loader.js";
+import { tsPath, type TypeScriptModule } from "./typescript-loader.js";
 
 /** The library VS Code's HTML support gives its in-file TypeScript mode. */
 export const EDITOR_MODE_LIB = "lib.es2020.full.d.ts";
@@ -72,12 +72,10 @@ export class EditorModeMirror {
   constructor(ts: TypeScriptModule, language: EditorLanguage = "typescript") {
     this.ts = ts;
     this.language = language;
-    this.libDir = path.dirname(ts.getDefaultLibFilePath({}));
-    this.fileName = path.join(
-      this.libDir,
-      `__bascik-editor-mode.${language === "typescript" ? "ts" : "js"}`,
-    );
-    const libFile = path.join(this.libDir, EDITOR_MODE_LIB);
+    // Spelled TypeScript's way (forward slashes), as TypeScript asks for the file by that name.
+    this.libDir = tsPath(path.dirname(ts.getDefaultLibFilePath({})));
+    this.fileName = `${this.libDir}/__bascik-editor-mode.${language === "typescript" ? "ts" : "js"}`;
+    const libFile = `${this.libDir}/${EDITOR_MODE_LIB}`;
     // A TypeScript without the library cannot mirror the editor: every question then gets "it does not know".
     if (!ts.sys.fileExists(libFile)) return;
     const options: TS.CompilerOptions = {
@@ -131,7 +129,7 @@ export class EditorModeMirror {
   /** A library file of the resolved TypeScript (not the mirror's own page, which sits beside them). */
   private isLib(fileName: string): boolean {
     return (
-      path.dirname(fileName) === this.libDir &&
+      tsPath(path.dirname(fileName)) === this.libDir &&
       path.basename(fileName).startsWith("lib.")
     );
   }

@@ -294,9 +294,34 @@ const HTML: Kind = { k: "html" };
 const HTML_AS_TEXT =
   "an html value turned into text (by String(), a string method, + or a template), which html would escape";
 
-/** The text between tokens of a number: digits, a radix or exponent, white space and comments. */
-const NUMBER_TEXT =
-  /^(?:\s|[\d._xXoObBnaAbBcCdDeEfF]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*$/;
+/**
+ * Whether the text between tokens of a number holds only digits, a radix or exponent, white space and
+ * comments (and, with `signs`, + and -). A hand-written scan: a regular expression with comments in a
+ * repeated group backtracks exponentially on a run of slashes.
+ */
+export function isNumberText(text: string, signs = false): boolean {
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "/" && text[i + 1] === "/") {
+      const end = text.indexOf("\n", i + 2);
+      if (end === -1) return true;
+      i = end;
+    } else if (c === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      if (end === -1) return false;
+      i = end + 2;
+    } else if (
+      /[\s\d._xXoObBnaAcCdDeEfF]/.test(c) ||
+      (signs && (c === "+" || c === "-"))
+    ) {
+      i++;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
 
 const MARKUP_CHARACTER =
   "a literal with & or < in its value (written out or as an escape such as \\x3c), which html would escape, so an entity or a tag in it would show as text";
@@ -1213,12 +1238,7 @@ export function plainHoleChecker(
       let gap = body.slice(tokens[j].end, tokens[j + 1].start);
       if (tokens[j].type === "string") gap = gap.slice(1);
       if (tokens[j + 1].type === "string") gap = gap.slice(0, -1);
-      if (
-        !/^(?:\s|[\d._xXoObBnaAbBcCdDeEfF+-]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(
-          gap,
-        )
-      )
-        return false;
+      if (!isNumberText(gap, true)) return false;
     }
     return true;
   };
@@ -1295,7 +1315,7 @@ export function plainHoleChecker(
           const text = body.slice(tokens[j + 1].end, tokens[next].start);
           const isNumber =
             (punct(next, ",") || next === close) &&
-            NUMBER_TEXT.test(text) &&
+            isNumberText(text) &&
             /\d/.test(text);
           map.set(
             tokens[j].value,
@@ -1351,7 +1371,7 @@ export function plainHoleChecker(
     let at = from;
     for (let j = a; j <= b; j++) {
       const gap = body.slice(at, j < b ? tokens[j].start : to);
-      if (!NUMBER_TEXT.test(gap)) return false;
+      if (!isNumberText(gap)) return false;
       if (/\d/.test(gap.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")))
         digits = true;
       if (j < b) at = tokens[j].end;

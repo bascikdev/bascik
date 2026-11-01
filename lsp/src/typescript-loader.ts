@@ -26,6 +26,15 @@ import type * as TS from "typescript-6";
 
 export type TypeScriptModule = typeof TS;
 
+/**
+ * An absolute path spelled the way TypeScript names files: forward slashes on every platform. TypeScript
+ * normalizes the names a host gives it and asks the host for files by the normalized name, so a host that
+ * keys its files by a Windows path with backslashes never finds them.
+ */
+export function tsPath(...segments: string[]): string {
+  return path.resolve(...segments).replace(/\\/g, "/");
+}
+
 /** Where a TypeScript copy was found. */
 export type TypeScriptSource = "client" | "editor" | "project";
 
@@ -174,7 +183,7 @@ function tryLoad(
   );
   if (missing.length > 0) {
     skipped.push(
-      `TypeScript ${version} in ${packageDir} is missing library files in ${libDir}: ${missing.join(", ")}`,
+      `TypeScript ${version} in ${packageDir} is missing library files in ${path.normalize(libDir)}: ${missing.join(", ")}`,
     );
     return undefined;
   }

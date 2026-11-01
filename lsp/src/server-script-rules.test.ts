@@ -606,3 +606,24 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
     });
   });
 });
+
+describe("project import names", () => {
+  const analyze = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "server",
+    });
+
+  it("reads a long import clause that never reaches a from in linear time", () => {
+    // The former clause pattern backtracked quadratically on this text before giving up.
+    const body = `import ${"{{|".repeat(20_000)}\nexport default () => "";`;
+    expect(analyze(body).map((d) => d.code)).not.toContain(
+      "server-script-missing-default-export",
+    );
+  });
+
+  it("misuse: an import clause broken by a quote or semicolon binds no helper", () => {
+    const body = `import { card ; } from "./card.js";\nexport default () => card(1);`;
+    expect(() => analyze(body)).not.toThrow();
+  });
+});

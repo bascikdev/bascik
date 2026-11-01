@@ -53,6 +53,7 @@ import { editorModeMirror } from "./typescript-editor-mode.js";
 import {
   type LoadedTypeScript,
   resolveTypeScript,
+  tsPath,
   type TypeScriptModule,
   type TypeScriptResolution,
 } from "./typescript-loader.js";
@@ -157,7 +158,10 @@ export interface TypeScriptProjectOptions {
   projectRoot: string;
   /** `scripts.importRoot`, resolved: where `@/` points. */
   importRoot: string;
-  /** The unsaved text of a file open in an editor, or `undefined` to read it from disk. */
+  /**
+   * The unsaved text of a file open in an editor, or `undefined` to read it from disk. Asked with the file's
+   * absolute path spelled with forward slashes (`tsPath`), on every platform.
+   */
   readOpenFile?: (fsPath: string) => string | undefined;
   /** Polled by TypeScript while it checks; `true` stops the check with `OperationCanceledException`. */
   isCancellationRequested?: () => boolean;
@@ -226,7 +230,10 @@ export function compilerOptionsFor(
   nodeTypes = hasNodeTypes(projectRoot),
 ): TS.CompilerOptions {
   let base: TS.CompilerOptions = {};
-  const configPath = path.join(projectRoot, "tsconfig.json");
+  projectRoot = tsPath(projectRoot);
+  importRoot = tsPath(importRoot);
+  // TypeScript asserts the config path it is given is already in its own spelling.
+  const configPath = `${projectRoot}/tsconfig.json`;
   if (fs.existsSync(configPath)) {
     const read = ts.readConfigFile(configPath, ts.sys.readFile);
     // A tsconfig that does not parse is the editor's to report; the blocks are still checked with the defaults.
@@ -277,7 +284,7 @@ export function compilerOptionsFor(
     paths: {
       ...base.paths,
       // Bascik resolves `@/` against `scripts.importRoot`; the project's own `@/*` cannot point elsewhere.
-      "@/*": [`${importRoot.split(path.sep).join("/")}/*`],
+      "@/*": [`${importRoot}/*`],
     },
   };
   if (program === "client") {
@@ -791,9 +798,10 @@ export class TypeScriptProject {
   private readonly clientDeclarations: { fileName: string; text: string };
 
   constructor(options: TypeScriptProjectOptions) {
-    // TypeScript keys files by absolute path; a relative root would make every relative import miss.
-    this.projectRoot = path.resolve(options.projectRoot);
-    this.importRoot = path.resolve(this.projectRoot, options.importRoot);
+    // TypeScript keys files by absolute path with forward slashes; a relative root would make every relative
+    // import miss, and a Windows spelling would make TypeScript ask for files the host does not know.
+    this.projectRoot = tsPath(options.projectRoot);
+    this.importRoot = tsPath(this.projectRoot, options.importRoot);
     this.ts = options.ts;
     this.readOpenFile = options.readOpenFile ?? (() => undefined);
     this.registry =
@@ -813,11 +821,11 @@ export class TypeScriptProject {
     this.nodeDeclarations = nodeTypes
       ? undefined
       : {
-          fileName: path.join(this.projectRoot, "__bascik-node-globals.d.ts"),
+          fileName: `${this.projectRoot}/__bascik-node-globals.d.ts`,
           text: untypedNodeDeclarations(),
         };
     this.clientDeclarations = {
-      fileName: path.join(this.projectRoot, "__bascik-client-globals.d.ts"),
+      fileName: `${this.projectRoot}/__bascik-client-globals.d.ts`,
       text: `// The real globalThis, for pages that redeclare it with their classic globals.\ntype ${GLOBAL_THIS_TYPE} = typeof globalThis;\n`,
     };
     this.clientOptions = compilerOptionsFor(
@@ -928,7 +936,8 @@ export class TypeScriptProject {
     const cancellationToken = this.cancellationToken;
     const ts = this.ts;
     // TypeScript's own library files, wherever the copy sits (a client path need not be under node_modules).
-    const libDir = path.dirname(ts.getDefaultLibFilePath(options)) + path.sep;
+    const libDir =
+      tsPath(path.dirname(ts.getDefaultLibFilePath(options))) + "/";
     return {
       getProjectVersion: () => String(this.projectVersion),
       getCompilationSettings: () => options,
@@ -946,7 +955,7 @@ export class TypeScriptProject {
       getScriptVersion: (fileName) => {
         const version =
           this.files.get(fileName)?.version ??
-          this.fileVersions.get(fileName) ??
+          this.fileVersions.get(tsPath(fileName)) ??
           0;
         return isPackageFile(fileName) || fileName.startsWith(libDir)
           ? String(version)
@@ -966,7 +975,7 @@ export class TypeScriptProject {
           this.files.has(fileName) ||
           fileName === this.nodeDeclarations?.fileName ||
           fileName === this.clientDeclarations.fileName ||
-          this.readOpenFile(fileName) !== undefined ||
+          this.readOpenFile(tsPath(fileName)) !== undefined ||
           ts.sys.fileExists(fileName);
         this.recordLookup(fileName, exists);
         return exists;
@@ -999,7 +1008,9 @@ export class TypeScriptProject {
       return this.nodeDeclarations.text;
     if (fileName === this.clientDeclarations.fileName)
       return this.clientDeclarations.text;
-    return this.readOpenFile(fileName) ?? this.ts.sys.readFile(fileName);
+    return (
+      this.readOpenFile(tsPath(fileName)) ?? this.ts.sys.readFile(fileName)
+    );
   }
 
   /** What a client script declares and how it parses, cached by its text. */
@@ -1132,7 +1143,7 @@ export class TypeScriptProject {
       virtual: VirtualBlockText;
     }[] = [];
     for (const component of usedComponents) {
-      const fsPath = path.resolve(this.projectRoot, component.fsPath);
+      const fsPath = tsPath(this.projectRoot, component.fsPath);
       for (const block of extractTypeScriptBlocks(component.text)) {
         if (block.program !== "client") continue;
         const info = this.classicScript(block.content, true);
@@ -1172,7 +1183,7 @@ export class TypeScriptProject {
     text: string,
     options: PageCheckOptions = {},
   ): void {
-    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    htmlPath = tsPath(this.projectRoot, htmlPath);
     const isolatedClientBlocks = options.isolatedClientBlocks === true;
     const pageScopeHtml = isolatedClientBlocks
       ? []
@@ -1409,7 +1420,7 @@ export class TypeScriptProject {
 
   /** Forgets an HTML file, so its blocks are no longer part of either program. */
   removePage(htmlPath: string): void {
-    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    htmlPath = tsPath(this.projectRoot, htmlPath);
     const page = this.pages.get(htmlPath);
     if (!page) return;
     for (const fileName of page.fileNames) this.files.delete(fileName);
@@ -1437,7 +1448,7 @@ export class TypeScriptProject {
   /** A file the blocks may import changed, appeared or disappeared, in an editor buffer or on disk. */
   fileChanged(fsPath: string): void {
     fsPath = path.resolve(fsPath);
-    this.fileVersions.set(fsPath, this.nextFileVersion++);
+    this.fileVersions.set(tsPath(fsPath), this.nextFileVersion++);
     this.projectVersion++;
     let appeared = false;
     for (let current = fsPath; !appeared; current = path.dirname(current)) {
@@ -1446,7 +1457,7 @@ export class TypeScriptProject {
     }
     const disappeared =
       this.foundFiles.has(fsPath) &&
-      this.readOpenFile(fsPath) === undefined &&
+      this.readOpenFile(tsPath(fsPath)) === undefined &&
       !this.ts.sys.fileExists(fsPath);
     if (appeared || disappeared) {
       this.resolutionGeneration++;
@@ -1462,7 +1473,7 @@ export class TypeScriptProject {
     text: string,
     options: PageCheckOptions = {},
   ): TypeScriptDiagnostic[] {
-    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    htmlPath = tsPath(this.projectRoot, htmlPath);
     this.updatePage(htmlPath, text, options);
     const page = this.pages.get(htmlPath);
     const result: TypeScriptDiagnostic[] = [...(page?.blockErrors ?? [])];
@@ -1588,14 +1599,14 @@ export class TypeScriptProject {
     options: PageCheckOptions,
     query: TypeScriptFeatureQuery<K>,
   ): TypeScriptFeatureAnswers[K] | undefined {
-    htmlPath = path.resolve(this.projectRoot, htmlPath);
+    htmlPath = tsPath(this.projectRoot, htmlPath);
     this.updatePage(htmlPath, text, options);
     const at = this.virtualOffset(htmlPath, text, query.offset);
     if (!at) return undefined;
     const { file, generated } = at;
     const service = this.serviceFor(file.service);
-    const libDir = path.dirname(
-      this.ts.getDefaultLibFilePath(this.clientOptions),
+    const libDir = tsPath(
+      path.dirname(this.ts.getDefaultLibFilePath(this.clientOptions)),
     );
     const isVirtual = (fileName: string) =>
       this.files.has(fileName) ||
@@ -1610,8 +1621,7 @@ export class TypeScriptProject {
     const crossFileOnly = editorLanguage !== undefined;
     const isForeign = crossFileOnly
       ? (fileName: string) =>
-          !isVirtual(fileName) &&
-          path.dirname(path.resolve(fileName)) !== libDir
+          !isVirtual(fileName) && tsPath(path.dirname(fileName)) !== libDir
       : everyFile;
     const lines = lineStarts(text);
     return answerFeature(
@@ -1795,10 +1805,7 @@ export class TypeScriptProjects {
     const resolution = this.resolution(projectRoot);
     if (!resolution.ok) return resolution.message;
     let project = this.projects.get(projectRoot);
-    if (
-      project &&
-      project.importRoot !== path.resolve(projectRoot, importRoot)
-    ) {
+    if (project && project.importRoot !== tsPath(projectRoot, importRoot)) {
       project.dispose();
       project = undefined;
     }
@@ -1930,8 +1937,9 @@ export class TypeScriptProjects {
   /** Records (or, with `undefined`, drops) the unsaved text of an editor buffer. */
   setOpenFile(fsPath: string, text: string | undefined): void {
     fsPath = path.resolve(fsPath);
-    if (text === undefined) this.openFiles.delete(fsPath);
-    else this.openFiles.set(fsPath, text);
+    // Keyed the way TypeScript asks for files, so a buffer is found on Windows too.
+    if (text === undefined) this.openFiles.delete(tsPath(fsPath));
+    else this.openFiles.set(tsPath(fsPath), text);
     this.fileChanged(fsPath);
   }
 

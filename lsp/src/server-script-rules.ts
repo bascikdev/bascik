@@ -10,6 +10,7 @@ import {
   findHandWrittenEscapers,
 } from "./hand-written-escaper.js";
 import { maskCommentsAndStrings } from "./api-rules.js";
+import { escapeRegExp } from "./analyzer.js";
 import {
   HTML_MODULE,
   boundTo,
@@ -652,7 +653,7 @@ export function analyzeServerScriptSource(
     return ctx.htmlTags.some(
       (tag) =>
         e.startsWith(`${tag}\``) ||
-        new RegExp(`=>\\s*${tag.replace(/[$]/g, "\\$")}\``).test(e),
+        new RegExp(`=>\\s*${escapeRegExp(tag)}\``).test(e),
     );
   };
   const markupStrings = markupStringNames(body);
@@ -1067,10 +1068,17 @@ export function analyzeServerScriptSource(
  */
 function projectImportNames(body: string): Set<string> {
   const names = new Set<string>();
-  for (const m of body.matchAll(
-    /\bimport\s+(?!type\s)([^;'"`]{1,1000}?)\s+from\s*["'](?:\.\.?\/|@\/)/g,
-  )) {
-    const clause = m[1];
+  // Each `import` is read forward to its `from` by hand: a single regular expression with a bounded clause before
+  // `\s+from` backtracks quadratically on a long clause.
+  const from = /\s+from\s*["'](?:\.\.?\/|@\/)/g;
+  for (const m of body.matchAll(/\bimport\s+(?!type\s)/g)) {
+    const start = m.index + m[0].length;
+    from.lastIndex = start;
+    const end = from.exec(body);
+    if (!end) break;
+    const clause = body.slice(start, end.index);
+    if (clause.length === 0 || clause.length > 1000 || /[;'"`]/.test(clause))
+      continue;
     const brace = /\{([^}]*)\}/.exec(clause);
     if (brace)
       for (const entry of brace[1].split(",")) {

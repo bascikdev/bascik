@@ -17,6 +17,7 @@ import {
   offsetOf,
   typescript6 as ts,
 } from "./typescript.test.util.js";
+import { tsPath } from "./typescript-loader.js";
 
 const fixtures: Fixture[] = [];
 /** Shared across the tests, as the language server shares it across projects, so lib files parse once. */
@@ -525,7 +526,7 @@ describe("TypeScriptProject diagnostics", () => {
 
     // The imported file's buffer changes, unsaved.
     buffers.set(
-      root.file("src/pages/speed.ts"),
+      tsPath(root.file("src/pages/speed.ts")),
       "export const speed: number = 3;\n",
     );
     service.fileChanged(root.file("src/pages/speed.ts"));
