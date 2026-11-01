@@ -106,6 +106,35 @@ describe("server-script-unescaped-markup: linear time", () => {
   );
 
   it(
+    "a lint script with thousands of messages to its reporting function reads in linear time (CPU growth under 8x for 4x the calls)",
+    () => {
+      // The innermost call around each literal is found in one sweep over
+      // the tokens (fix round 1).
+      const script = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `findings.push(finding(CHECK, "part", \`\${file}:\${line}: <\${tag} data-testid="\${id${i}}"> is a part\`, { file }));\nout.push(\`<li>\${name${i}}</li>\`);\n`,
+        ).join("");
+      const run = (body: string) =>
+        analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive: "module",
+        });
+      const small = script(2_500);
+      const large = script(10_000);
+      expect(run(large).filter((d) => d.code === RULE)).toHaveLength(10_000);
+      expect(
+        growthOf(
+          () => run(small),
+          () => run(large),
+        ),
+      ).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
     "templates nested deep read in linear time, with no stack overflow (CPU growth under 8x for 4x the depth)",
     () => {
       // The template finder and the tokenizer keep the open templates on an

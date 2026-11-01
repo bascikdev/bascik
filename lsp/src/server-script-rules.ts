@@ -369,6 +369,13 @@ export function analyzeServerScriptSource(
         : markupInCode(literal.parts))
     );
   });
+  const { tokens } = scanJavaScript(body);
+  // Build-time lint and CLI code passes messages that name elements to its
+  // own reporting functions: finding(..., `<${t.tag} data-testid="..."> is
+  // a part of ...`). At request time such a function may write a page.
+  const messageCalls = requestTime
+    ? new Set<number>()
+    : messageCallArguments(tokens, literals);
   const markupOf = literals.map((literal, k) => {
     // String.raw and common-tags style tags join their values as they are.
     const plainTag = literal.tag !== null && PLAIN_STRING_TAGS.has(literal.tag);
@@ -376,6 +383,8 @@ export function analyzeServerScriptSource(
       !opts.hasSrcAttribute &&
       (literal.tag === null || plainTag) &&
       markupLikeOf[k] &&
+      !FILE_LINE_MESSAGE.test(literal.parts.slice(0, 4).join("\u0000")) &&
+      !messageCalls.has(literal.start) &&
       !isMessageArgument(body, literal.start) &&
       !isPatternArgument(body, literal.start) &&
       !errorSuperArgument(body, literal.start, errorClasses)
@@ -394,7 +403,6 @@ export function analyzeServerScriptSource(
     0;
   // What may hold markup built as a string: wrapping a template whose hole
   // holds one in html would escape it, so the page would show its tags.
-  const { tokens } = scanJavaScript(body);
   const functions = localFunctions(body, tokens);
   const markupSources = markupSourceStarts(
     body,
@@ -1137,6 +1145,59 @@ function localFunctions(
     }
     return { name: f.name, start, end };
   });
+}
+
+/**
+ * A template that starts like a lint or compiler message: `${file}:${line}: `
+ * or `${file}:${line}:${column}: ` (the parts joined with \u0000 for holes).
+ */
+const FILE_LINE_MESSAGE = /^\u0000:\u0000(?::\u0000)?:\s/;
+
+/** Words in a callee's name that make it a reporting function. */
+const MESSAGE_WORDS = new Set(
+  "diagnostic diagnostics error errors fail failure finding findings info issue issues lint log logs message messages notice problem problems report warn warning warnings".split(
+    " ",
+  ),
+);
+
+/**
+ * The template literals (by start) passed straight to a function whose
+ * name has a reporting word in it, split at camelCase and `.`: finding(),
+ * addWarning(), ctx.report(), logger.warn(). The innermost open bracket
+ * around each literal is read in one sweep over the tokens, so a literal
+ * nested in an arrow's body (`items.map((p) => \`...\`)`) belongs to that
+ * call (map) and not to one further out.
+ */
+function messageCallArguments(
+  tokens: readonly Token[],
+  literals: readonly TemplateLiteral[],
+): Set<number> {
+  const found = new Set<number>();
+  const open: number[] = [];
+  let t = 0;
+  for (const literal of literals) {
+    for (; t < tokens.length && tokens[t].start < literal.start; t++) {
+      const token = tokens[t];
+      if (token.type !== "punctuation") continue;
+      if (token.value === "(" || token.value === "[" || token.value === "{")
+        open.push(t);
+      else if (
+        (token.value === ")" || token.value === "]" || token.value === "}") &&
+        open.length > 0
+      )
+        open.pop();
+    }
+    const paren = open.length > 0 ? open[open.length - 1] : -1;
+    if (paren < 1 || tokens[paren].value !== "(") continue;
+    const callee = tokens[paren - 1];
+    if (callee.type !== "identifier") continue;
+    const words = callee.value
+      .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .split(/[\s_$]+/);
+    if (words.some((w) => MESSAGE_WORDS.has(w))) found.add(literal.start);
+  }
+  return found;
 }
 
 /** A quoted string that holds a tag, or a lone `<` or `</` that starts one. */

@@ -1771,3 +1771,44 @@ describe("the wrap fix is offered only when no hole can hold markup (fix round 1
     expect(fixableAt(body, hole).fixable).toBe(true);
   });
 });
+
+describe("lint and CLI messages that name elements are not markup (fix round 1)", () => {
+  const moduleCovered = (body: string, opts: Partial<AnalyzeOptions> = {}) =>
+    unescaped(body, { directive: "module", ...opts }).map((d) =>
+      body.slice(d.start, d.end),
+    );
+
+  it.each([
+    // A message passed to a project's own reporting function.
+    'findings.push(\n  finding(\n    CHECK,\n    "part-name",\n    `${file}:${t.line}: <${t.tag} data-testid="${id}"> is a part of ${name}; name it ${name}-<part>, such as "${name}-${id}"`,\n    { file, line: t.line },\n  ),\n);',
+    'report(`<${tag} class="${cls}"> needs a data-testid`);',
+    'ctx.report({ node, message: "x" }, `<img src="${src}"> has no alt`);',
+    'logger.warn(`<div class="${c}"> is empty`);',
+    'addWarning(`<a href="${href}"> opens a new tab without rel`);',
+    // The file:line: message shape, wherever it goes.
+    'lines.push(`${file}:${line}: <img src="${src}"> needs alt text`);',
+    'const text = `${file}:${line}:${col}: <a href="${href}"> has no text`;',
+  ])("not reported: %s", (body) => {
+    expect(moduleCovered(body)).toEqual([]);
+  });
+
+  it.each([
+    ["out.push(`<td>${title}</td>`);", ["${title}"]],
+    ['dialog(`<p class="note">${text}</p>`);', ["${text}"]],
+    ["catalog(`<li>${name}</li>`);", ["${name}"]],
+    [
+      "const row = `${label}: <strong>${value}</strong>`;",
+      ["${label}", "${value}"],
+    ],
+  ])("still reported: %s", (body, holes) => {
+    expect(moduleCovered(body)).toEqual(holes);
+  });
+
+  it("request-time code still reports markup passed to a reporting function", () => {
+    expect(
+      moduleCovered('report(`<p class="${cls}">${q}</p>`);', {
+        requestTime: true,
+      }),
+    ).toEqual(["${cls}", "${q}"]);
+  });
+});
