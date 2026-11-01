@@ -8,7 +8,12 @@
 import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
-import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
+import {
+  hintReportLines,
+  vscodeReportLines,
+  writeHintFiles,
+  writeVscodeFiles,
+} from "./vscode-settings.js";
 
 /**
  * The `@bascik/bascik` release a new project depends on. The agent skills are
@@ -268,6 +273,7 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
 export const GITIGNORE = `node_modules/
 dist/
 coverage/
+hint-report/
 *.pem
 .env
 .env.*
@@ -389,6 +395,22 @@ code {
   letter-spacing: .1em; color: var(--accent); margin-bottom: 8px;
 }
 .page-intro { font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin-bottom: 40px; }
+.mt-28 { margin-top: 28px; }
+.mt-32 { margin-top: 32px; }
+.mt-40 { margin-top: 40px; }
+.counter-row { display: flex; gap: 48px; flex-wrap: wrap; margin-top: 24px; }
+
+/* ── 404 ── */
+.not-found { text-align: center; }
+.not-found h1 { margin-bottom: 12px; }
+.not-found-code {
+  font-size: clamp(4rem, 12vw, 8rem); font-weight: 800; line-height: 1;
+  color: var(--accent); margin-bottom: 8px;
+}
+.not-found-text { margin-bottom: 32px; }
+
+/* ── Edge ── */
+.edge-greeting { max-width: 520px; margin-top: 16px; }
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
@@ -442,8 +464,8 @@ export const SITE_HEADER_CSS = `.skip-link {
   top: 0;
   z-index: 100;
   background: rgba(24, 25, 27, 0.9);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 
@@ -896,11 +918,11 @@ const pageShell = (
   brand: string,
   body: string,
   page: string,
-): string => `<!DOCTYPE html>
+): string => `<!doctype html>
 <html lang="en">
 <head>
-  <title>${title}</title>
   <site-meta />
+  <title>${title}</title>
 </head>
 <body>
   <site-header data-bascik-prop-brand="${brand}" />
@@ -945,7 +967,7 @@ export const indexPage = (
         <p class="section-label">Features</p>
         <h2>Why Bascik</h2>
         <p>Each card below is a <code>&lt;feat-card&gt;</code> component with three named slots: <code>header</code>, default, and <code>footer</code>.</p>
-        <div class="grid-3" style="margin-top:28px;">
+        <div class="grid-3 mt-28">
           <feat-card data-testid="feature-zero-runtime">
             <div data-bascik-slot="header">Zero runtime</div>
             <h3>No framework overhead</h3>
@@ -973,7 +995,7 @@ export const indexPage = (
         <p class="section-label">Interactive</p>
         <h2>Counter component</h2>
         <p>Each instance holds its own state. Place the same component twice, and they stay independent.</p>
-        <div style="display:flex;gap:48px;flex-wrap:wrap;margin-top:24px;">
+        <div class="counter-row">
           <my-counter />
           <my-counter />
         </div>
@@ -992,7 +1014,7 @@ export const aboutPage = (brand: string): string =>
         <h1>About us</h1>
         <p class="page-intro">This is the about page. Tell visitors who you are and what you do.</p>
 
-        <div class="grid-2" style="margin-top:32px;">
+        <div class="grid-2 mt-32">
           <feat-card data-testid="about-mission">
             <div data-bascik-slot="header">Mission</div>
             <h2>Our mission</h2>
@@ -1005,7 +1027,7 @@ export const aboutPage = (brand: string): string =>
           </feat-card>
         </div>
 
-        <div class="callout" style="margin-top:40px;">
+        <div class="callout mt-40">
           <p>Want to work together? <a href="/contact">Get in touch →</a></p>
         </div>
       </section>
@@ -1034,11 +1056,11 @@ export const notFoundPage = (brand: string): string =>
     `404 - ${brand}`,
     brand,
     `    <div class="container">
-      <section class="section" style="text-align:center;">
+      <section class="section not-found">
         <p class="section-label">Error</p>
-        <p style="font-size:clamp(4rem,12vw,8rem);font-weight:800;line-height:1;color:var(--accent);margin-bottom:8px;">404</p>
-        <h1 style="margin-bottom:12px;">Page not found</h1>
-        <p style="margin-bottom:32px;">The page you're looking for doesn't exist.</p>
+        <p class="not-found-code">404</p>
+        <h1>Page not found</h1>
+        <p class="not-found-text">The page you're looking for doesn't exist.</p>
         <a href="/" class="btn btn-primary">Go home</a>
       </section>
     </div>`,
@@ -1066,8 +1088,8 @@ export const edgePage = (brand: string): string =>
         <h1>Rendered per request</h1>
         <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feat-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
 
-        <h2 style="margin-top:28px;">Your greeting</h2>
-        <div style="max-width:520px;margin-top:16px;">
+        <h2 class="mt-28">Your greeting</h2>
+        <div class="edge-greeting">
           <script data-bascik-server type="text/typescript">
             import { html } from "@bascik/bascik/html";
 
@@ -1084,7 +1106,7 @@ export const edgePage = (brand: string): string =>
           </script>
         </div>
 
-        <div class="callout" style="margin-top:40px;">
+        <div class="callout mt-40">
           <p>The same Worker answers <a href="/api/hello">/api/hello</a>, an API route in <code>src/api/hello.ts</code>.</p>
         </div>
       </section>
@@ -1212,6 +1234,11 @@ export async function scaffold(
       }
     }),
 
+    // webhint: scoped to what Bascik builds, merged into a config the folder already has
+    writeHintFiles(root).then((report) => {
+      notes.push(...hintReportLines(report));
+    }),
+
     // Everything else is the starter's own and is new.
     ...files.map(([path, data]) =>
       typeof data === "string"
@@ -1239,7 +1266,7 @@ const starterDirectories = (template: Template): string[] => [
 
 /**
  * The files the starter writes as its own, relative to the project root. AGENTS.md,
- * CLAUDE.md and the .vscode files are not here: they are merged into what the folder has.
+ * CLAUDE.md, the .vscode files and .hintrc are not here: they are merged into what the folder has.
  */
 const starterFiles = (
   siteName: string,
@@ -1330,7 +1357,7 @@ const entryAt = async (path: string): Promise<"directory" | "other" | null> => {
  * Refuse a target that cannot take the starter without losing something: a file
  * where the project folder goes, or a project folder that already has one of the
  * starter's own files (or a file where one of its folders goes). A folder that
- * holds only files the starter merges into, such as AGENTS.md or .vscode/, is fine.
+ * holds only files the starter merges into, such as AGENTS.md, .hintrc or .vscode/, is fine.
  */
 async function assertScaffoldTarget(
   projectName: string,

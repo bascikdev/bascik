@@ -43,7 +43,12 @@ import {
   validateProjectName,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
-import { parseJsonc } from "./vscode-settings.js";
+import {
+  DEFAULT_SOURCE_DIRECTORIES,
+  hintDistJson,
+  hintrcJson,
+  parseJsonc,
+} from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -628,6 +633,10 @@ describe("GITIGNORE", () => {
     expect(CLOUDFLARE_GITIGNORE.split("\n")).toContain(".env");
   });
 
+  it("ignores hint-report/, which a webhint run with the editor .hintrc writes", () => {
+    expect(GITIGNORE.split("\n")).toContain("hint-report/");
+  });
+
   it("does not ignore .wrangler/ in the default template", () => {
     expect(GITIGNORE).not.toContain(".wrangler/");
   });
@@ -1002,6 +1011,69 @@ describe("MY_COUNTER_CSS", () => {
   });
 });
 
+describe("the starter passes the linters the docs give, unchanged", () => {
+  const pages = {
+    index: indexPage("My App"),
+    cloudflareIndex: indexPage("My App", { template: "cloudflare" }),
+    about: aboutPage("My App"),
+    contact: contactPage("My App"),
+    notFound: notFoundPage("My App"),
+    edge: edgePage("My App"),
+  };
+
+  it("has no inline style attributes, which webhint's no-inline-styles reports", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html, name).not.toMatch(/\sstyle=/);
+    }
+  });
+
+  it("writes the doctype in lowercase, as Prettier does and html-validate's doctype-style asks", () => {
+    for (const [name, html] of Object.entries(pages)) {
+      expect(html.startsWith("<!doctype html>\n"), name).toBe(true);
+    }
+  });
+
+  it("puts <site-meta />, which starts with the charset, before <title>, so the built charset comes first", () => {
+    expect(SITE_META_HTML.trimStart()).toMatch(/^<meta charset=/);
+    for (const [name, html] of Object.entries(pages)) {
+      const meta = html.indexOf("<site-meta />");
+      expect(meta, name).toBeGreaterThan(-1);
+      expect(meta, name).toBeLessThan(html.indexOf("<title>"));
+    }
+  });
+
+  it("gives every class the pages use for spacing a rule in STYLES_CSS", () => {
+    for (const name of [
+      "counter-row",
+      "mt-28",
+      "mt-32",
+      "mt-40",
+      "not-found",
+      "not-found-code",
+      "edge-greeting",
+    ]) {
+      expect(STYLES_CSS, name).toContain(`.${name} `);
+    }
+  });
+
+  it("lists a vendor-prefixed property before the standard one, as webhint's css-prefix-order asks", () => {
+    const css = [
+      SITE_HEADER_CSS,
+      STYLES_CSS,
+      SITE_FOOTER_CSS,
+      FEAT_CARD_CSS,
+      MY_COUNTER_CSS,
+      CONTACT_FORM_CSS,
+    ].join("\n");
+    for (const match of css.matchAll(/-(?:webkit|moz|ms)-([a-z-]+)\s*:/g)) {
+      const prefixed = match.index!;
+      const standard = css.slice(0, prefixed).lastIndexOf(`\n  ${match[1]}:`);
+      const block = css.lastIndexOf("{", prefixed);
+      expect(standard < block, match[0]).toBe(true);
+    }
+  });
+});
+
 describe("page templates", () => {
   it("indexPage uses feat-card with named slots for the features section", () => {
     const html = indexPage("My App");
@@ -1168,9 +1240,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 31 expected files", async () => {
+  it("writes all 33 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(31);
+    expect(mockWriteFile.mock.calls.length).toBe(33);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -1229,7 +1301,9 @@ describe("scaffold", () => {
     expect(writtenTo("vite.config.ts")).toBeDefined();
     expect(writtenTo("vite.config.js")).toBeUndefined();
     expect(writtenTo(".gitignore")).toBeDefined();
-    expect(writtenTo(".hintrc")).toBeUndefined();
+    // Scopes webhint's charset, viewport and title checks to what Bascik builds.
+    expect(writtenTo(".hintrc")).toBe(hintrcJson(DEFAULT_SOURCE_DIRECTORIES));
+    expect(writtenTo(".hintrc.dist.json")).toBe(hintDistJson());
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
     const extensionsJson = writtenTo(".vscode/extensions.json");
     expect(extensionsJson).toBeDefined();
@@ -1448,6 +1522,7 @@ describe("scaffold", () => {
         "CLAUDE.md",
         ".vscode/",
         ".vscode/settings.json",
+        ".hintrc",
         "README.md",
         ".git/",
         "src/",
@@ -1455,7 +1530,7 @@ describe("scaffold", () => {
       ]);
       await scaffold("my-app", "/tmp");
       expect(writtenTo("/tmp/my-app/package.json")).toBeDefined();
-      expect(mockWriteFile.mock.calls.length).toBe(31);
+      expect(mockWriteFile.mock.calls.length).toBe(33);
     });
   });
 
@@ -1515,8 +1590,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
 
-    it("writes the 31 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(33);
+    it("writes the 33 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(35);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");

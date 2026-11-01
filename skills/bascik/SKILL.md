@@ -192,7 +192,7 @@ npx @bascik/language-server --check   # the per-file checks on their own (bascik
 
 `bascik --check` and the linter are not two overlapping tools. `bascik --check` answers project questions (duplicate routes, unused components, config), and the linter answers per-file questions (attribute typos, CSS that cannot be scoped). `bascik --check` runs the linter too, so use it, and reach for the linter alone only on a folder outside the project.
 
-New project: `npm create bascik@rc my-site -y`. It and `bascik init` both write `.vscode/settings.json` with `"html.validate.scripts": false` and recommend the Bascik extension in `.vscode/extensions.json`, merging into files the folder already has. A project set up any other way (a migration, or files copied in with `add-example.mjs`) needs that setting added by hand, or VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports". The setting turns off only VS Code's own check of inline scripts, not Bascik's checks. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
+New project: `npm create bascik@rc my-site -y`. It and `bascik init` both write `.vscode/settings.json` with `"html.validate.scripts": false`, recommend the Bascik extension in `.vscode/extensions.json`, and write the scoped webhint `.hintrc` and `.hintrc.dist.json`, merging into files the folder already has. A project set up any other way (a migration, or files copied in with `add-example.mjs`) needs that setting added by hand, or VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports". The setting turns off only VS Code's own check of inline scripts, not Bascik's checks. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
 ## Verify every change
 
@@ -206,6 +206,23 @@ Do not stop at "the file looks right". Run these from the project root:
 A page is not done until `verify.mjs` passes and `audit-components.mjs` exits 0. Fix each warning, or tell the person which one you kept and why (for example, a long legal page that is all prose). "The content differs" is not a reason to keep a repeated block: different text is what props and slots are for. Neither is "the fields belong to their form" when two forms repeat them.
 
 `<skill-dir>` is the directory containing this file, for example `.agents/skills/bascik`.
+
+## Editor linters read source; Bascik writes `dist/`
+
+webhint, axe, html-validate, HTMLHint, and VS Code's HTML checker read `src/`. Bascik overrules some of what they report, because the answer is only in the built page:
+
+- **Composed at build time:** a missing charset or viewport `<meta>` (a head component adds them), an `apple-touch-icon` link "should be specified in the `<head>`" (a head component is a fragment with no `<head>`), a missing `<title>` (a build script writes it), an `<img>` with no `alt` or `src` and an empty heading whose value comes from a `data-bascik-attr-*` or `data-bascik-prop-*` prop.
+- **Bascik syntax:** self-closed component tags, component files with no doctype, and several `<script>` blocks in one file (`"html.validate.scripts": false`).
+
+Rules:
+
+- **Never "fix" one of these by adding the tag to a source page.** Open the built page in `dist/` first. If the tag is there, the warning is false and a second copy would ship twice; if it is missing there too, fix the head component or build script.
+- **Everything else is real:** a `<button>` with no `type`, `<html>` with no `lang`, a literal `<img>` with no `alt`. The scoped `.hintrc` turns `image-alt` off in the editor, so a literal missing `alt` shows only in `audit-components.mjs` and the built-site check: run them. The documented `src/.htmlvalidate.json` makes `<img>` `src` optional, so a literal `<img>` with no `src` shows only when html-validate checks `dist/`; never turn `element-required-attributes` off for all of `src/`, which also hides a missing `lang`.
+- **Scope the exceptions to source files; keep `dist/` strict.** `npm create bascik` and `bascik init` write `.hintrc` (the webhint extension reads it only at the workspace root) and `.hintrc.dist.json` as plain JSON: no comments, because the webhint extension's quick fixes `JSON.parse` `.hintrc` and VS Code flags comments in a `.json` file. `.hintrc.dist.json` must not extend `.hintrc` (webhint joins `ignoredUrls` lists, so source patterns would skip built pages). Other linters get a `src/` config file; HTMLHint's must list its default rules with the exceptions set to `false`, because a file that names only two rules turns the rest off.
+- **The checks that decide run on built output:** `bascik --check` for Bascik syntax and WHATWG parsing, then `bascik --build` and `npx hint -c .hintrc.dist.json $(find dist -name '*.html')` (files, not the folder; the `directory.out` folder if it is not `dist`) or Lighthouse on `bascik --server`. webhint does not check local links: run `check-links.mjs`.
+- **cSpell `Unknown word` on a brand or product name is real:** add the name to the project's `cspell.json` `"words"`, not to a user setting.
+
+Every warning, its setting, and the config files: `read-doc.mjs /testing/linting#editor-linters-read-source`.
 
 ## Bundled scripts
 

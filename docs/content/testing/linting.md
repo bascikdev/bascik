@@ -3,74 +3,205 @@
 Bascik projects use two complementary linting tools:
 
 1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules in your editor, and from the command line through [`bascik --check`](/cli#static-analysis-with-bascik-check), which is what `npm run lint` runs in a scaffolded project. `bascik --check` adds the project-wide checks, so one CI step covers both. See the [Linter](/tools/linter) guide.
-2. **Web Standards & Accessibility Linter (`webhint`)**: Audits HTML templates for W3C web standards, cross-browser compatibility, and accessibility.
+2. **Web Standards & Accessibility Linter (`webhint`)**: Audits HTML for W3C web standards, cross-browser compatibility, and accessibility, in the editor through the [webhint VS Code extension](https://marketplace.visualstudio.com/items?itemName=webhint.vscode-webhint) and on the built site through the `hint` CLI (`npx hint`).
 
 Neither tool decides which elements you use. [Component Best Practices](/component-best-practices#use-htmls-elements) covers picking them, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a wrapper `<div>` root, a skipped heading level, missing `alt`, an unlabeled control, and a page with no `<main>`.
 
-## Webhint Integration
+## Editor Linters Read Source
 
-The **[Webhint VS Code Extension](https://marketplace.visualstudio.com/items?itemName=webhint.vscode-webhint)** (`webhint.vscode-webhint`) and the `hint` CLI (`npx hint`) provide real-time standards auditing.
+Editor linters such as webhint, the axe Accessibility Linter, html-validate, HTMLHint, and VS Code's built-in HTML checker read the files in `src/`. Bascik writes the files in `dist/`, and some of what a page needs is only there:
 
-Bascik projects structure HTML as modular components and layout partials. Because component templates are standalone partials expanded into complete HTML documents at build time, a standard `.hintrc` configuration helps avoid false positives while catching genuine standards issues.
+- **A page's `<head>` is composed at build time.** The charset and viewport `<meta>` tags usually come from a head component such as `<site-head />`, and the `<title>` from a build script such as the SEO example's `seo()` helper. The source page has none of them, so linters report `'charset' meta element was not specified`, `A 'viewport' meta element was not specified`, and `Documents must have <title> element`. The built page has all three.
+- **Head components are fragments.** A component such as `<site-meta />` that holds the `<link rel="apple-touch-icon">` has no `<head>` of its own, so webhint reports `The 'apple-touch-icon' link element should be specified in the '<head>'`. In the built page the link is in `<head>`.
+- **Props fill in attributes and text.** `<img data-bascik-attr-alt="alt">` gets its `alt` from the prop, and `<h1 data-bascik-prop-heading>` gets its text from it, so a linter sees an image with no `alt` and an empty heading.
+- **Components are fragments in Bascik syntax.** A component file has no doctype, and a page writes component tags self-closed (`<site-head />`), which strict HTML linters reject.
 
-## Recommended `.hintrc` Configuration
+These warnings are false for a Bascik project. Do not "fix" one by adding a second charset, viewport, or `<title>` to a source page: the built page would then have two. Open the built page in `dist/` first. If the tag is there, the warning is false; if it is missing there too, fix the head component or build script.
 
-Place a `.hintrc` file in your project root:
+Everything else a linter reports is real. A `<button>` with no `type`, an `<html>` with no `lang`, and an `<img>` with a literal `src` and no `alt` are wrong in `dist/` too. Two exceptions below are wider than the false warning, because the linter has no narrower setting:
+
+- The `.hintrc` turns webhint's `image-alt` check off for every source file, so the webhint extension does not show a literal `<img>` with no `alt` either.
+- `src/.htmlvalidate.json` stops html-validate requiring `src` on an `<img>`, so it does not show an `<img>` with no `src` at all. It still reports a missing `alt`, and a missing `lang` on `<html>`.
+
+The [built-site check](#check-the-built-site) and the `bascik` skill's `audit-components.mjs` report a missing `alt`, and html-validate's root config reports a missing `src` when you run it on `dist/`.
+
+| Tool          | Warning                                                                                               | Why it is false in source                                 | What to set                                                                                                                                                                             |
+| ------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| webhint       | `meta-viewport`, `meta-charset-utf-8`, `apple-touch-icons`                                            | A head component adds the tags at build time              | `.hintrc` `ignoredUrls` for source files (written for you)                                                                                                                              |
+| webhint       | `axe/text-alternatives`: `document-title`                                                             | A build script writes `<title>` at build time             | `.hintrc` hint option `"document-title": "off"` (written for you)                                                                                                                       |
+| webhint       | `axe/text-alternatives`: `image-alt`                                                                  | `alt` comes from a `data-bascik-attr-alt` prop            | `.hintrc` hint option `"image-alt": "off"` (written for you). The editor then misses a literal `<img>` with no `alt` too; the built-site check and the `bascik` skill's audit report it |
+| html-validate | `element-required-content` (a `<head>` needs a `<title>`)                                             | Composed at build time                                    | `"off"` in `src/.htmlvalidate.json`                                                                                                                                                     |
+| html-validate | `element-required-attributes` (`<img>` `src`)                                                         | The value comes from a `data-bascik-attr-src` prop        | `src/.htmlvalidate.json` `elements` makes `src` optional on `<img>` only. A literal `<img>` with no `src` then shows only when html-validate checks `dist/`                             |
+| html-validate | `wcag/h37` (`<img>` `alt`)                                                                            | The value comes from a `data-bascik-attr-alt` prop        | `src/.htmlvalidate.json` option `"alias": ["data-bascik-attr-alt"]`, which still reports a literal `<img>` with no `alt`                                                                |
+| html-validate | `empty-heading`                                                                                       | The text comes from a `data-bascik-prop-*` prop           | `"off"` in `src/.htmlvalidate.json`                                                                                                                                                     |
+| html-validate | `no-self-closing`                                                                                     | Self-closed component tags are Bascik syntax              | `"off"` in `src/.htmlvalidate.json`                                                                                                                                                     |
+| html-validate | `doctype-style`, `void-style`                                                                         | Prettier writes `<!doctype html>` and `<meta />`          | `{ "style": "lowercase" }` and `{ "style": "selfclose" }`                                                                                                                               |
+| HTMLHint      | `title-require`                                                                                       | Composed at build time                                    | `false` in `src/.htmlhintrc`, which lists the default rules too                                                                                                                         |
+| HTMLHint      | `doctype-first`                                                                                       | Components are fragments                                  | `false` in `src/.htmlhintrc`, which lists the default rules too                                                                                                                         |
+| axe Linter    | `document-title`, `image-alt`, where it checks them                                                   | As for webhint                                            | `axe-linter.yml` `rules`                                                                                                                                                                |
+| VS Code HTML  | `A module cannot have multiple default exports`, TypeScript errors in `type="text/typescript"` blocks | Bascik compiles each script on its own and resolves `@/`  | `"html.validate.scripts": false` (written for you)                                                                                                                                      |
+| cSpell        | `Unknown word` on a brand, product, or person's name                                                  | Not false: the name is real but unknown to the dictionary | Add it to the project word list (`cspell.json` `"words"`)                                                                                                                               |
+
+None of these linters reports `data-bascik-*` attributes or `type="text/typescript"`: `data-` attributes are valid HTML.
+
+### The Files `npm create bascik` Writes
+
+`npm create bascik` and `bascik init` write a `.hintrc` that the webhint VS Code extension and the `hint` CLI read, and a `.hintrc.dist.json` for the built site:
+
+`.hintrc`:
 
 ```json
 {
   "extends": ["development"],
   "hints": {
-    "apple-touch-icons": "off",
-    "meta-viewport": "off",
-    "meta-charset-utf-8": "off",
-    "detect-css-reflows/paint": "off",
-    "detect-css-reflows/composite": "off",
-    "compat-api/css": [
+    "axe/text-alternatives": [
       "default",
-      {
-        "ignore": ["scrollbar-width", "scrollbar-width: none"]
-      }
-    ],
-    "compat-api/html": [
-      "default",
-      {
-        "ignore": ["meta[name=theme-color]"]
-      }
+      { "document-title": "off", "image-alt": "off" }
     ]
   },
   "ignoredUrls": [
     {
-      "domain": ".*(e2e|dist|test-results|coverage|hint-report).*",
+      "domain": "/(?:src/pages|src/components)/[^?#]*\\.html$",
+      "hints": ["meta-viewport", "meta-charset-utf-8", "apple-touch-icons"]
+    }
+  ]
+}
+```
+
+`.hintrc.dist.json`:
+
+```json
+{
+  "extends": ["development"],
+  "formatters": ["stylish"]
+}
+```
+
+A new project passes both checks unchanged: webhint with `.hintrc` on `src/`, and the [built-site check](#check-the-built-site) on `dist/`.
+
+- **Both files are plain JSON, with no comments.** The webhint extension's quick fixes, such as "Ignore hint in this project" and "Edit .hintrc for current project", read `.hintrc` with `JSON.parse`, so a comment or trailing comma makes them fail, and a quick fix that succeeds writes the file back without comments. VS Code opens `.hintrc.dist.json` as plain JSON and marks a comment there as an error. Keep the reasons on this page, not in the files.
+- **The charset, viewport, and touch icon hints are skipped for source files only.** webhint tests each `ignoredUrls` pattern, without regard to case, against the file's absolute, percent-encoded `file:///` URL. The pattern starts at a `/` and ends at `.html`, so it skips HTML files in folders named like the pages and components folders. A folder name with a space or a non-ASCII letter matches both as written and encoded: `site pages` becomes `site(?: |%20)pages`.
+- **The pattern cannot be anchored to the project.** Because it runs on the absolute path, a folder of the same name anywhere in the path matches it too: a project inside a parent folder named `src/pages`, or, with `directory.pages: "pages"`, a built route such as `dist/pages/a.html` opened in the editor. That affects only `.hintrc`: the built-site check does not read it.
+- **`.hintrc.dist.json` stands on its own.** webhint joins the `ignoredUrls` lists of every config in an `extends` chain, so a config that extended `.hintrc` would skip the source pattern, and any entry of yours that skips `dist/`, on the built pages. It extends `development` with every hint on, and its `stylish` formatter prints to the terminal instead of writing a `hint-report/` folder. A hint you turn off for the whole project in `.hintrc` needs the same line here.
+- **`document-title` and `image-alt` are options of one hint.** `ignoredUrls` can only skip whole hints, and `axe/text-alternatives` holds a dozen other checks worth keeping, so `.hintrc` turns the two options off for every file. The editor then shows no `<img>` with a missing `alt`, even a literal one; the built-site check does.
+- **Custom folders.** `bascik init` builds the pattern from `directory.pages` and `directory.components` in `bascik.config`, and prints the built-site command for a `directory.out` other than `dist`. If you change those folders later, edit the pattern.
+- **Existing files are merged.** An existing `.hintrc` or `.hintrc.json` keeps its comments and settings, and the merge adds no comment of its own. If the file has comments or trailing commas, the command notes that the webhint extension's quick fixes cannot read it. A value you set for `axe/text-alternatives` is kept; unless it already turns both options off, the command prints what to add: `{ "document-title": "off", "image-alt": "off" }` as the hint's options, for example `["error", { "document-title": "off", "image-alt": "off" }]`. A `.hintrc.js` or a `package.json` `hintConfig` is left alone, and a file that is not valid JSON, or whose `hints` or `ignoredUrls` is not the object or list webhint documents, is left as it is; in each case the command prints what to add. An existing `.hintrc.dist.json` is kept.
+- **If you copied the earlier Bascik `.hintrc`.** It turned `meta-viewport` and `meta-charset-utf-8` off in `hints` for every file. Remove those two lines: the `ignoredUrls` entry now skips them for source files only. `npm create bascik` and `bascik init` print a note when they find them. An old `ignoredUrls` entry that skips every hint in `dist/` quiets only the editor now, since `.hintrc.dist.json` does not read `.hintrc`.
+- **Open the project folder itself.** The webhint extension reads `.hintrc` only from the workspace folder (then your home folder), so opening a parent folder ignores the project's file.
+
+The webhint extension checks a file when you open or edit it, not every file in the workspace.
+
+### Check the Built Site
+
+The checks that decide whether a page is right run on the built output:
+
+```sh
+npx bascik --check
+npx bascik --build
+npx hint -c .hintrc.dist.json $(find dist -name '*.html')
+```
+
+`bascik --check` covers Bascik syntax (component tags, props, slots, and scoping) and parses every built page against the WHATWG HTML spec. `hint` with `.hintrc.dist.json` checks the built pages with every hint on. Pass it files, not the `dist` folder: given a folder, webhint skips some hints, including `axe/text-alternatives`. If `directory.out` in `bascik.config` is not `dist`, use that folder in `find`; `bascik init` prints the right command. Lighthouse on the served build (`bascik --server`) checks the same head tags and accessibility rules in a browser.
+
+Neither webhint config checks links: the `development` config has no hint for a broken link between local files. The `bascik` skill's `check-links.mjs` checks them.
+
+### Other Editor Linters
+
+Each of these merges config files up the folder tree or reads one per folder, so the source exceptions go in `src/` and the root config stays strict for `dist/`.
+
+html-validate, at the project root:
+
+```json
+{
+  "root": true,
+  "extends": ["html-validate:recommended"],
+  "rules": {
+    "doctype-style": ["error", { "style": "lowercase" }],
+    "void-style": ["error", { "style": "selfclose" }]
+  }
+}
+```
+
+and in `src/.htmlvalidate.json`:
+
+```json
+{
+  "elements": [
+    "html5",
+    { "img": { "attributes": { "src": { "required": false } } } }
+  ],
+  "rules": {
+    "no-self-closing": "off",
+    "element-required-content": "off",
+    "empty-heading": "off",
+    "wcag/h37": ["error", { "alias": ["data-bascik-attr-alt"] }]
+  }
+}
+```
+
+`no-self-closing` has no option for custom elements, so it is off in `src/`. The `elements` entry makes `src` optional on `<img>` only, so `element-required-attributes` still reports an `<html>` with no `lang`; it no longer reports an `<img>` with no `src` at all, which the root config still does on `dist/` (`npx html-validate "dist/**/*.html"`). `wcag/h37` counts `data-bascik-attr-alt` as an `alt` and still reports a literal `<img>` with neither.
+
+HTMLHint, in `src/.htmlhintrc`. The HTMLHint VS Code extension reads the nearest one, and the `htmlhint` CLI finds it too when run as `npx htmlhint "src/**/*.html"`, so `--config` is needed only for a file kept somewhere else. HTMLHint does not merge a config file with its defaults: it runs only the rules the file lists, so a file with just the two exceptions turns every check off. List the default rules and set the two to `false`:
+
+```json
+{
+  "tagname-lowercase": true,
+  "attr-lowercase": true,
+  "attr-value-double-quotes": true,
+  "doctype-first": false,
+  "tag-pair": true,
+  "spec-char-escape": true,
+  "id-unique": true,
+  "src-not-empty": true,
+  "attr-no-duplication": true,
+  "title-require": false
+}
+```
+
+The axe Accessibility Linter reads `axe-linter.yml` at the project root. Its `exclude` setting skips whole files, so turn the two rules off instead:
+
+```yaml
+rules:
+  document-title: false
+  image-alt: false
+```
+
+cSpell reports `Unknown word` for names it has never seen. That is not a Bascik exception: add the site's brand, product, and people names to a project word list so every editor and CI run shares it:
+
+```json
+{
+  "version": "0.2",
+  "words": ["bascik", "frother"]
+}
+```
+
+## More Webhint Settings
+
+These are not Bascik exceptions, but projects often add them to `.hintrc`:
+
+```json
+{
+  "hints": {
+    "detect-css-reflows/paint": "off",
+    "detect-css-reflows/composite": "off",
+    "compat-api/css": [
+      "default",
+      { "ignore": ["scrollbar-width", "scrollbar-width: none"] }
+    ],
+    "compat-api/html": ["default", { "ignore": ["meta[name=theme-color]"] }]
+  },
+  "ignoredUrls": [
+    {
+      "domain": "/(e2e|test-results|coverage|hint-report)/",
       "hints": ["*"]
     }
   ]
 }
 ```
 
-## Configuration Breakdown
-
-### 1. Document-Level Metadata Hints (`meta-*`, `apple-touch-icons`)
-
-In Bascik, document metadata like `<meta charset="UTF-8">`, `<meta name="viewport">`, and `<link rel="apple-touch-icon">` are usually centralized in a reusable head component (such as `<site-head />`) or page layout.
-
-- **`meta-charset-utf-8: "off"`**: Turns off warnings for source templates where character encoding is injected dynamically via a component.
-- **`meta-viewport: "off"`**: Prevents warnings in individual component templates that do not contain top-level `<head>` tags.
-- **`apple-touch-icons: "off"`**: Touch icons belong in global head components rather than individual component partials.
-
-### 2. CSS Reflow Hints (`detect-css-reflows/*`)
-
-- **`detect-css-reflows/paint` & `detect-css-reflows/composite`: `"off"`**: Modern interactive components often animate opacity, transform, or border colors. Disabling these hints reduces noise while retaining core accessibility and compatibility auditing.
-
-### 3. Progressive CSS Compatibility (`compat-api/css`)
-
-- **`compat-api/css`**: Allows specific modern CSS properties (such as `scrollbar-width`) where progressive enhancement is intentional and browsers without support gracefully fall back.
-
-### 4. Ignoring Build Output and Test Directories (`ignoredUrls`)
-
-By default, the Webhint VS Code extension scans every HTML file in your open workspace. Without URL filtering, Webhint will attempt to parse compiled output in `dist/`, test artifacts in `e2e/`, and test coverage HTML reports.
-
-- **`ignoredUrls`**: Matches any path containing `dist`, `e2e`, `test-results`, `coverage`, or `hint-report` and disables all hints for those files, ensuring Webhint only validates your raw source templates.
+- **`detect-css-reflows/*`**: interactive components often animate opacity, transform, or colors; these hints are noisy for that.
+- **`compat-api/css` and `compat-api/html`**: allow a feature used as progressive enhancement, where browsers without support fall back.
+- **`ignoredUrls`**: skips test output and reports. Wrap the folder names in `/` so the pattern matches a folder, not any path that contains the word: `".*(dist|e2e).*"` would also match a project stored under `~/distro-site/` and turn every hint off there.
 
 ## Component Authoring Best Practices
 
@@ -122,28 +253,28 @@ Custom component tags must contain a hyphen and start with a lowercase letter ac
 
 ## Running Lint Checks in CI
 
-Add Webhint to your project scripts:
+Run the standards check on the built pages, next to Bascik's own checks (`hint` is a dev dependency: `npm install -D hint`):
 
 ```json
 {
   "scripts": {
-    "check:standards": "npx hint src/pages"
+    "check:standards": "bascik --build && hint -c .hintrc.dist.json $(find dist -name '*.html')"
   }
 }
 ```
 
-Run standards checks alongside Bascik's structural validator:
-
 ```sh
-npm run check:standards && npx bascik --check
+npx bascik --check && npm run check:standards
 ```
+
+`$(find ...)` needs a POSIX shell (macOS, Linux, Git Bash, or WSL). On Windows `cmd`, list the files or run Lighthouse instead. Use your `directory.out` folder in place of `dist` if you changed it.
 
 ### Strict CI Gates with `--strict`
 
 To fail CI pipelines if any warnings exist (such as unmatched tags or unused components), pass `--strict`:
 
 ```sh
-npm run check:standards && npx bascik --check --strict
+npx bascik --check --strict && npm run check:standards
 ```
 
 ## CI Gating Strategy for `bascik --check`
