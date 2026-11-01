@@ -115,10 +115,13 @@ const NEGATED_AFTER =
 
 /**
  * A clause about the `html` helper, from a lower-case `html` to the end of
- * its sentence: `html does not build XML`, `html builds HTML, not XML`.
+ * its sentence: `html does not build XML`, `html builds HTML, not XML`,
+ * and the way the warnings write it, `` html`...` builds HTML ``: a
+ * backtick chunk with no space in it (`...`) does not end the sentence.
  * It says what the helper does, not what the escaper is for.
  */
-const HTML_HELPER_CLAUSE = /(?<![\w/@.-])`?html\b`?[^.;:!?\n]*/g;
+const HTML_HELPER_CLAUSE =
+  /(?<![\w/@.-])`?html\b(?:`[^`\s]*`|`)?(?:`[^`\s]*`|[^.;:!?\n`])*/g;
 
 /**
  * Whether a comment says its escaper is for XML: once clauses about the
@@ -193,7 +196,59 @@ function isOutputEntity(tokens: Token[], i: number): boolean {
   // A constant (`const prev = "&lt;"`) or a comparison (`=== "&lt;"`) is
   // not a replacement; `out += "&lt;"` is.
   if (is(prev, "=") && !is(tokens[i - 2], "+")) return false;
+  // A property named by a word (`{ amp: "&amp;" }`) lists entities by
+  // name; a character map's keys are strings or char codes.
+  if (
+    is(prev, ":") &&
+    isWord(tokens[i - 2]) &&
+    (is(tokens[i - 3], "{") || is(tokens[i - 3], ","))
+  )
+    return false;
   return true;
+}
+
+/**
+ * Entities written by computing them, at token `i`: a numeric entity built
+ * from a character's code (`"&#" + c.charCodeAt(0) + ";"`, the template
+ * `` `&#${c.charCodeAt(0)};` ``), which writes `&` and `<` as `&#38;` and
+ * `&#60;` like any other character, or a named one built from a lookup
+ * (`"&" + { "&": "amp", "<": "lt" }[c] + ";"`).
+ */
+function computedEntities(
+  source: string,
+  tokens: Token[],
+  partner: Int32Array,
+  i: number,
+): string[] {
+  const t = tokens[i];
+  if (
+    (isWord(t, "charCodeAt") || isWord(t, "codePointAt")) &&
+    is(tokens[i - 1], ".") &&
+    isWord(tokens[i - 2])
+  ) {
+    const receiver = tokens[i - 2].start;
+    const before = source.slice(Math.max(0, receiver - 16), receiver);
+    return /(?:(["'])&#x?\1\s*\+\s*|`&#x?\$\{\s*)$/i.test(before)
+      ? ["&amp;", "&lt;"]
+      : [];
+  }
+  if (
+    t.type === "string" &&
+    t.value === "&" &&
+    is(tokens[i + 1], "+") &&
+    is(tokens[i + 2], "{")
+  ) {
+    const close = partner[i + 2];
+    if (close === -1) return [];
+    const found: string[] = [];
+    for (let k = i + 3; k < close; k++)
+      if (is(tokens[k], ":") && tokens[k + 1]?.type === "string") {
+        const entity = entityOf(`&${tokens[k + 1].value};`);
+        if (entity) found.push(entity);
+      }
+    return found;
+  }
+  return [];
 }
 
 type Owner = {
@@ -520,7 +575,10 @@ export function findHandWrittenEscapers(
     { owner: Owner; entities: Set<string>; positions: number[] }
   >();
   for (let i = 0; i < tokens.length; i++) {
-    if (!isOutputEntity(tokens, i)) continue;
+    const written = isOutputEntity(tokens, i)
+      ? [entityOf(tokens[i].value)!]
+      : computedEntities(source, tokens, partner, i);
+    if (written.length === 0) continue;
     const owner = ownerOf(tokens, partner, enclosing, arrowBefore, memo, i);
     if (!owner) continue;
     let entry = owners.get(owner.nameAt);
@@ -528,7 +586,7 @@ export function findHandWrittenEscapers(
       entry = { owner, entities: new Set(), positions: [] };
       owners.set(owner.nameAt, entry);
     }
-    entry.entities.add(entityOf(tokens[i].value)!);
+    for (const entity of written) entry.entities.add(entity);
     entry.positions.push(i);
   }
 

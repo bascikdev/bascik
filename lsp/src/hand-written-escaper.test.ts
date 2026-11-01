@@ -457,3 +457,51 @@ describe("review round 2: a comment that names HTML too, and an XML-named escape
     expect(plain.xmlName).toBeUndefined();
   });
 });
+
+describe("hand-written-html-escaper: review round 3", () => {
+  it.each([
+    'export function escapeHtmlSO(str: string): string {\n  return str.replace(/[\\u00A0-\\u9999<>\\&]/g, (i) => "&#" + i.charCodeAt(0) + ";");\n}',
+    "export function e6(s: string): string {\n  return s.replace(/[&<>\"']/g, (c) => `&#${c.charCodeAt(0)};`);\n}",
+    "export function e6x(s: string): string {\n  return s.replace(/[&<>]/g, (c) => `&#x${c.codePointAt(0)!.toString(16)};`);\n}",
+    'export function e13(s: string): string {\n  return String(s).replace(/[&<>]/g, (c) => "&" + { "&": "amp", "<": "lt", ">": "gt" }[c] + ";");\n}',
+  ])("a computed entity is an escaper: %s", (source) => {
+    expect(findHandWrittenEscapers(source)).toHaveLength(1);
+  });
+
+  it("a table that lists entity names by name is no escaper", () => {
+    expect(
+      names(
+        'export function entityDocs(): string[] {\n  const rows = { amp: "&amp;", lt: "&lt;" };\n  return Object.entries(rows).map(([k, v]) => `${k}: ${v}`);\n}',
+      ),
+    ).toEqual([]);
+    expect(names('const map = { "&": "&amp;", "<": "&lt;" };')).toEqual([
+      "map",
+    ]);
+    expect(names('const byCode = { 38: "&amp;", 60: "&lt;" };')).toEqual([
+      "byCode",
+    ]);
+  });
+
+  it("a CSS escaper that writes code points is no HTML escaper", () => {
+    expect(
+      names(
+        'export function cssEscape(s: string): string {\n  return s.replace(/[<>&"]/g, (c) => "\\\\" + c.charCodeAt(0).toString(16) + " ");\n}',
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    "// Escapes text for the sitemap (html`...` builds HTML, not XML).",
+    "/** Escapes text for the sitemap; html`...` builds HTML, not XML. */",
+    "// Escapes text for the sitemap. `html` builds HTML, not XML.",
+  ])("a comment that writes the helper as the messages do: %s", (comment) => {
+    const xml: string[] = [];
+    expect(
+      findHandWrittenEscapers(
+        `${comment}\nexport function d4(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }`,
+        xml,
+      ),
+    ).toEqual([]);
+    expect(xml).toEqual(["d4"]);
+  });
+});
