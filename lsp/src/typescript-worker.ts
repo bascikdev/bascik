@@ -61,6 +61,16 @@ export function runTypeScriptWorker(
         port.postMessage(response);
         break;
       }
+      case "preparePages":
+        projects.preparePages(message);
+        break;
+      case "stop":
+        projects.dispose();
+        // Nothing else holds the thread open, so it exits once the port is closed.
+        port.close();
+        // A safety net for a handle something left open; unref'd, so it never delays a clean exit.
+        setTimeout(() => process.exit(0), 1000).unref();
+        break;
       case "openFile":
         projects.setOpenFile(message.fsPath, message.text);
         break;

@@ -219,6 +219,12 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
   let typeScript: TypeScriptProjects | undefined = options.typescript
     ? new TypeScriptProjects({ fallbackFrom: import.meta.url })
     : undefined;
+  const documents: {
+    filePath: string;
+    relative: string;
+    languageId: ReturnType<typeof languageIdFor>;
+    document: TextDocument;
+  }[] = [];
   for (const filePath of files) {
     let content: string;
     try {
@@ -248,7 +254,39 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
         );
       }
     }
+    documents.push({ filePath, relative, languageId, document });
+  }
 
+  // Every page with TypeScript blocks is given to TypeScript first, so it builds its programs once for the whole
+  // check rather than once per page.
+  const typeScriptPages = (typeScript === undefined ? [] : documents).flatMap(
+    ({ filePath, languageId, document }) =>
+      languageId === "html" && mayHaveTypeScriptBlocks(document.getText())
+        ? [
+            {
+              htmlPath: filePath,
+              text: document.getText(),
+              isolatedClientBlocks: hasIsolatedClientBlocks(filePath, snapshot),
+              pageScopeHtml: pageScopeComponentHtml(
+                filePath,
+                document.getText(),
+                snapshot,
+              ),
+            },
+          ]
+        : [],
+  );
+  if (typeScript && typeScriptPages.length > 1)
+    typeScript.preparePages({
+      projectRoot,
+      importRoot: snapshot.importRoot,
+      pages: typeScriptPages,
+    });
+  const typeScriptPageByPath = new Map(
+    typeScriptPages.map((page) => [page.htmlPath, page]),
+  );
+
+  for (const { filePath, relative, document } of documents) {
     for (const diagnostic of createDiagnostics(document, filePath, snapshot)) {
       const severity =
         diagnostic.severity === DiagnosticSeverity.Error
@@ -272,22 +310,12 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
       });
     }
 
-    if (
-      typeScript &&
-      languageId === "html" &&
-      mayHaveTypeScriptBlocks(document.getText())
-    ) {
+    const typeScriptPage = typeScriptPageByPath.get(filePath);
+    if (typeScript && typeScriptPage) {
       const result = typeScript.diagnostics({
         projectRoot,
         importRoot: snapshot.importRoot,
-        htmlPath: filePath,
-        text: document.getText(),
-        isolatedClientBlocks: hasIsolatedClientBlocks(filePath, snapshot),
-        pageScopeHtml: pageScopeComponentHtml(
-          filePath,
-          document.getText(),
-          snapshot,
-        ),
+        ...typeScriptPage,
       });
       if (result.status === "unavailable") {
         // One note for the whole check, which then goes on without TypeScript.

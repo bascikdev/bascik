@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import {
   createMessageConnection,
   DidChangeTextDocumentNotification,
+  DidCloseTextDocumentNotification,
   DidOpenTextDocumentNotification,
   ExitNotification,
   InitializedNotification,
@@ -236,6 +237,70 @@ describe("the bundled language server's TypeScript checks", () => {
       await server.stop();
     }
   }, 30_000);
+
+  it("ends its TypeScript worker once no open page has blocks, and starts it again for the next one", async () => {
+    const root = await project("released");
+    const server = await startServer(serverFile, root, {
+      typescript: { path: TYPESCRIPT_6_DIR, releaseDelayMs: 200 },
+      editorHasEmbeddedTypeScript: true,
+    });
+    const released = () =>
+      server.logs.filter((log) => log.includes("gave their memory back"))
+        .length;
+    const waitForLog = async (count: number) => {
+      const deadline = Date.now() + 15_000;
+      while (released() < count && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(released()).toBe(count);
+    };
+    try {
+      const file = join(root, "src/pages/index.html");
+      const uri = pathToFileURL(file).toString();
+      await open(server, file, PAGE);
+      await server.waitFor(uri, (all) => all.some(isTypeScript));
+      await server.connection.sendNotification(
+        DidCloseTextDocumentNotification.type,
+        { textDocument: { uri } },
+      );
+      await waitForLog(1);
+      // A new worker checks the page when it is opened again.
+      await open(server, file, PAGE.replace('"fast"', '"faster"'), 2);
+      const again = await server.waitFor(uri, (all) =>
+        all.some(
+          (diagnostic) => isTypeScript(diagnostic) && diagnostic.code === 2322,
+        ),
+      );
+      expect(again.filter(isTypeScript)).toHaveLength(1);
+      expect(released()).toBe(1);
+    } finally {
+      await server.stop();
+    }
+  }, 40_000);
+
+  it("checks every page of many opened together, each at its exact error", async () => {
+    const root = await project("many-pages");
+    const server = await startServer(serverFile, root, {
+      typescript: { path: TYPESCRIPT_6_DIR },
+      editorHasEmbeddedTypeScript: true,
+    });
+    try {
+      const files = Array.from({ length: 12 }, (_, index) =>
+        join(root, `src/pages/page-${index}.html`),
+      );
+      for (const file of files) await open(server, file, PAGE);
+      for (const file of files) {
+        const diagnostics = await server.waitFor(
+          pathToFileURL(file).toString(),
+          (all) => all.some(isTypeScript),
+        );
+        expect(diagnostics.filter(isTypeScript).map((d) => d.code)).toEqual([
+          2322,
+        ]);
+      }
+    } finally {
+      await server.stop();
+    }
+  }, 40_000);
 
   it("misuse: a mistyped TypeScript path setting falls back to the editor's own TypeScript, with a warning", async () => {
     const root = await project("mistyped-setting");

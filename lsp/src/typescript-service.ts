@@ -597,6 +597,8 @@ export class TypeScriptProject {
   private readonly services: Record<TypeScriptProgramKind, TS.LanguageService>;
   private projectVersion = 0;
   private nextFileVersion = 1;
+  /** How many times a program was brought up to date with a changed project (see `programUpdates`). */
+  private updates = 0;
   /**
    * Whether directive scripts get their types from `@bascik/bascik`. It turns false the first time the typed
    * footer fails to resolve (no `@bascik/bascik`, or one from before the types), until the project is made again.
@@ -699,6 +701,8 @@ export class TypeScriptProject {
       getProjectVersion: () => String(this.projectVersion),
       getCompilationSettings: () => options,
       getScriptFileNames: () => {
+        // TypeScript asks only when the project version changed, before it builds the program again.
+        this.updates++;
         const names = [...this.files.values()]
           .filter((file) => file.program === program)
           .map((file) => file.fileName);
@@ -985,6 +989,15 @@ export class TypeScriptProject {
     this.projectVersion++;
   }
 
+  /**
+   * How many times either program was brought up to date with a changed project. Each one makes TypeScript build
+   * a new program and type checker, and work out the libraries' globals again, so pages are given to the project
+   * together (`updatePage` for each, then `diagnostics`) rather than one per check.
+   */
+  get programUpdates(): number {
+    return this.updates;
+  }
+
   /** A file the blocks may import changed, appeared or disappeared, in an editor buffer or on disk. */
   fileChanged(fsPath: string): void {
     fsPath = path.resolve(fsPath);
@@ -1122,6 +1135,21 @@ export class TypeScriptProject {
   }
 }
 
+/** One page's current text and how its blocks are checked. */
+export interface TypeScriptPageText extends PageCheckOptions {
+  htmlPath: string;
+  /** The page's current text, which may be unsaved. */
+  text: string;
+}
+
+/** Several pages of one project, given together (see `TypeScriptProjects.preparePages`). */
+export interface TypeScriptPagesRequest {
+  projectRoot: string;
+  /** `scripts.importRoot`, resolved. */
+  importRoot: string;
+  pages: TypeScriptPageText[];
+}
+
 export interface TypeScriptProjectsOptions {
   /** The TypeScript the client asked for (a package folder); see `typescript-loader.ts`. */
   clientPath?: string;
@@ -1250,6 +1278,26 @@ export class TypeScriptProjects {
     }
   }
 
+  /**
+   * Records the current text of several pages before any of them is checked, so the programs are brought up to
+   * date once for all of them instead of once per page. Without a usable TypeScript it does nothing.
+   */
+  preparePages(request: TypeScriptPagesRequest): void {
+    const projectRoot = path.resolve(request.projectRoot);
+    const project = this.project(projectRoot, request.importRoot);
+    if (typeof project === "string") return;
+    for (const page of request.pages)
+      project.updatePage(path.resolve(projectRoot, page.htmlPath), page.text, {
+        isolatedClientBlocks: page.isolatedClientBlocks,
+        pageScopeHtml: page.pageScopeHtml,
+      });
+  }
+
+  /** How many times the project's programs were brought up to date (see `TypeScriptProject.programUpdates`). */
+  programUpdates(projectRoot: string): number {
+    return this.projects.get(path.resolve(projectRoot))?.programUpdates ?? 0;
+  }
+
   /** Records (or, with `undefined`, drops) the unsaved text of an editor buffer. */
   setOpenFile(fsPath: string, text: string | undefined): void {
     fsPath = path.resolve(fsPath);
@@ -1287,8 +1335,10 @@ export class TypeScriptProjects {
     this.projects.delete(projectRoot);
   }
 
+  /** Drops every project and the parsed files they share, which frees TypeScript's memory until the next check. */
   dispose(): void {
     for (const project of this.projects.values()) project.dispose();
     this.projects.clear();
+    this.registries.clear();
   }
 }

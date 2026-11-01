@@ -16,9 +16,14 @@ import { Worker } from "node:worker_threads";
 import {
   TypeScriptProjects,
   type TypeScriptDiagnosticsResult,
+  type TypeScriptPagesRequest,
 } from "./typescript-service.js";
 
-export type { TypeScriptDiagnosticsResult } from "./typescript-service.js";
+export type {
+  TypeScriptDiagnosticsResult,
+  TypeScriptPagesRequest,
+  TypeScriptPageText,
+} from "./typescript-service.js";
 
 export interface TypeScriptCheckRequest {
   projectRoot: string;
@@ -37,6 +42,11 @@ export interface TypeScriptEngine {
   diagnostics(
     request: TypeScriptCheckRequest,
   ): Promise<TypeScriptDiagnosticsResult>;
+  /**
+   * Gives the engine the current text of several pages before they are checked one by one, so TypeScript builds
+   * its programs once for all of them rather than once per page.
+   */
+  preparePages(request: TypeScriptPagesRequest): void;
   /** Makes every running or queued request for the project stale. */
   cancel(projectRoot: string): void;
   /** Records (or, with `undefined`, drops) an editor buffer of a file the blocks may import. */
@@ -47,6 +57,11 @@ export interface TypeScriptEngine {
   closePage(projectRoot: string, htmlPath: string): void;
   /** The project's settings may have changed (its Bascik config): it is made again on the next request. */
   forgetProject(projectRoot: string): void;
+  /**
+   * Frees TypeScript's memory while no page needs it: every project is dropped and a worker ends. The next
+   * request starts again (with the open buffers it was given), so a release is never a crash.
+   */
+  release(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -104,6 +119,7 @@ export function createInProcessTypeScriptEngine(
 ): TypeScriptEngine {
   const epochs = new Epochs();
   let running: { slot: number; epoch: number } | undefined;
+  // Projects are dropped on release; the open buffers are kept, as a restarted worker gets them again.
   const projects = new TypeScriptProjects({
     clientPath: settings.clientPath,
     editorPath: settings.editorPath,
@@ -126,12 +142,16 @@ export function createInProcessTypeScriptEngine(
         running = undefined;
       }
     },
+    preparePages: (request) => projects.preparePages(request),
     cancel: (projectRoot) => epochs.bump(projectRoot),
     setOpenFile: (fsPath, text) => projects.setOpenFile(fsPath, text),
     fileChanged: (fsPath) => projects.fileChanged(fsPath),
     closePage: (projectRoot, htmlPath) =>
       projects.closePage(projectRoot, htmlPath),
     forgetProject: (projectRoot) => projects.forgetProject(projectRoot),
+    async release() {
+      projects.dispose();
+    },
     async dispose() {
       projects.dispose();
     },
@@ -146,10 +166,13 @@ export type TypeScriptWorkerRequest =
       slot: number;
       epoch: number;
     } & TypeScriptCheckRequest)
+  | ({ type: "preparePages" } & TypeScriptPagesRequest)
   | { type: "openFile"; fsPath: string; text: string | undefined }
   | { type: "fileChanged"; fsPath: string }
   | { type: "closePage"; projectRoot: string; htmlPath: string }
-  | { type: "forgetProject"; projectRoot: string };
+  | { type: "forgetProject"; projectRoot: string }
+  /** Ends the worker: it drops its projects and closes its port, so its thread exits on its own. */
+  | { type: "stop" };
 
 export interface TypeScriptWorkerResponse {
   id: number;
@@ -164,12 +187,19 @@ export interface TypeScriptWorkerData {
 }
 
 /** After this many crashes the worker is not started again, and TypeScript checks stay off. */
-const MAX_WORKER_STARTS = 3;
+const MAX_WORKER_CRASHES = 3;
+
+/**
+ * How long a worker asked to stop has to exit before it is terminated. An external `terminate()` stops a thread
+ * wherever it is, which Node 24's V8 can abort the process for (see the page worker pool), so it is the fallback.
+ */
+const STOP_GRACE_MS = 3000;
 
 /**
  * Runs the engine in a worker thread started from `workerFile`: `typescript-worker.js`, or a bundle that runs it
  * when its `workerData` says so. The worker starts on the first request, so a project without TypeScript blocks
- * never loads TypeScript. A crashed worker is started again (with the open buffers sent again) on the next request.
+ * never loads TypeScript, and ends on `release`, which gives its memory back. A crashed or released worker is
+ * started again (with the open buffers sent again) on the next request.
  */
 export function createWorkerTypeScriptEngine(
   workerFile: string | URL,
@@ -182,7 +212,8 @@ export function createWorkerTypeScriptEngine(
     (result: TypeScriptDiagnosticsResult) => void
   >();
   let worker: Worker | undefined;
-  let starts = 0;
+  let crashes = 0;
+  let disposed = false;
   let lastCrash = "";
   let nextId = 1;
 
@@ -193,8 +224,7 @@ export function createWorkerTypeScriptEngine(
 
   const start = (): Worker | undefined => {
     if (worker) return worker;
-    if (starts >= MAX_WORKER_STARTS) return undefined;
-    starts++;
+    if (disposed || crashes >= MAX_WORKER_CRASHES) return undefined;
     const data: TypeScriptWorkerData = {
       bascikTypeScriptWorker: true,
       settings,
@@ -208,8 +238,10 @@ export function createWorkerTypeScriptEngine(
       pending.delete(response.id);
     });
     const stopped = (reason: string) => {
+      // A worker that was released or disposed is not a crash.
       if (worker !== started) return;
       worker = undefined;
+      crashes++;
       lastCrash = reason;
       settleAll({
         status: "failed",
@@ -231,13 +263,44 @@ export function createWorkerTypeScriptEngine(
   const post = (message: TypeScriptWorkerRequest) =>
     worker?.postMessage(message);
 
+  /** Asks a worker to end itself, and terminates it only if it has not exited after `STOP_GRACE_MS`. */
+  const stop = (stopping: Worker): Promise<void> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        void stopping.terminate().finally(resolve);
+      }, STOP_GRACE_MS);
+      timer.unref();
+      stopping.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      try {
+        stopping.postMessage({
+          type: "stop",
+        } satisfies TypeScriptWorkerRequest);
+      } catch {
+        clearTimeout(timer);
+        void stopping.terminate().finally(resolve);
+      }
+    });
+
+  /** Stops the worker without counting it as a crash; the next request starts a new one. */
+  const end = async () => {
+    const running = worker;
+    worker = undefined;
+    settleAll({ status: "cancelled" });
+    if (running) await stop(running);
+  };
+
   return {
     diagnostics(request) {
       const running = start();
       if (!running)
         return Promise.resolve({
           status: "unavailable",
-          message: `TypeScript checks are off: the TypeScript worker stopped ${MAX_WORKER_STARTS} times (${lastCrash})`,
+          message: disposed
+            ? "TypeScript checks are off: the language server is stopping"
+            : `TypeScript checks are off: the TypeScript worker stopped ${MAX_WORKER_CRASHES} times (${lastCrash})`,
         });
       const id = nextId++;
       const slot = epochs.slot(request.projectRoot);
@@ -257,6 +320,15 @@ export function createWorkerTypeScriptEngine(
         } satisfies TypeScriptWorkerRequest);
       });
     },
+    preparePages(request) {
+      // Started here too: the pages are the first thing a new worker parses.
+      start()?.postMessage({
+        type: "preparePages",
+        projectRoot: request.projectRoot,
+        importRoot: request.importRoot,
+        pages: request.pages,
+      } satisfies TypeScriptWorkerRequest);
+    },
     cancel: (projectRoot) => epochs.bump(projectRoot),
     setOpenFile(fsPath, text) {
       if (text === undefined) openFiles.delete(fsPath);
@@ -268,12 +340,10 @@ export function createWorkerTypeScriptEngine(
       post({ type: "closePage", projectRoot, htmlPath }),
     forgetProject: (projectRoot) =>
       post({ type: "forgetProject", projectRoot }),
+    release: end,
     async dispose() {
-      const running = worker;
-      worker = undefined;
-      settleAll({ status: "cancelled" });
-      starts = MAX_WORKER_STARTS;
-      await running?.terminate();
+      disposed = true;
+      await end();
     },
   };
 }

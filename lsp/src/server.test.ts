@@ -15,6 +15,7 @@ import {
   type TypeScriptCheckRequest,
   type TypeScriptDiagnosticsResult,
   type TypeScriptEngine,
+  type TypeScriptPagesRequest,
 } from "./typescript-engine.js";
 import { createFakeConnection } from "./server.test.util.js";
 import { TYPESCRIPT_6_DIR } from "./typescript.test.util.js";
@@ -727,11 +728,13 @@ function recordingEngine(
     diagnostics: vi.fn(async (request: TypeScriptCheckRequest) =>
       answer(request),
     ),
+    preparePages: vi.fn((_request: TypeScriptPagesRequest) => undefined),
     cancel: vi.fn(),
     setOpenFile: vi.fn(),
     fileChanged: vi.fn(),
     closePage: vi.fn(),
     forgetProject: vi.fn(),
+    release: vi.fn(async () => undefined),
     dispose: vi.fn(async () => undefined),
   } satisfies TypeScriptEngine;
   return engine;
@@ -1133,6 +1136,61 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     );
   });
 
+  it("gives the engine every owed page together before checking them one by one", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const pages = await Promise.all(
+      ["a", "b", "c"].map((name) => write(`src/pages/${name}.html`, PAGE)),
+    );
+    const plain = await write("src/pages/plain.html", "<p>Milk frother</p>\n");
+    for (const page of pages) open(page, PAGE);
+    open(plain, "<p>Milk frother</p>\n");
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(3));
+    expect(engine.preparePages).toHaveBeenCalledTimes(1);
+    const [prepared] = engine.preparePages.mock.calls[0];
+    expect(prepared).toMatchObject({ projectRoot: root });
+    // Only pages with TypeScript blocks, each with its text and scope.
+    expect(prepared.pages.map((p) => [p.htmlPath, p.text])).toEqual(
+      pages.map((page) => [page, PAGE]),
+    );
+    expect(prepared.pages.every((p) => p.isolatedClientBlocks === false)).toBe(
+      true,
+    );
+    expect(engine.preparePages.mock.invocationCallOrder[0]).toBeLessThan(
+      engine.diagnostics.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("releases the engine once no open page has TypeScript blocks, and starts it again on the next one", async () => {
+    const engine = recordingEngine();
+    await start({
+      createTypeScriptEngine: () => engine,
+      typeScriptReleaseDelayMs: 100,
+    });
+    const first = await write("src/pages/a.html", PAGE);
+    const second = await write("src/pages/b.html", PAGE);
+    const plain = await write("src/pages/plain.html", "<p>Milk frother</p>\n");
+    open(first, PAGE);
+    open(second, PAGE);
+    open(plain, "<p>Milk frother</p>\n");
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    // One TypeScript page is still open: nothing is released.
+    close(first);
+    await pause(400);
+    expect(engine.release).not.toHaveBeenCalled();
+    // Typing the blocks away counts as no TypeScript page, like closing it.
+    change(second, "<p>no blocks now</p>\n", 2);
+    await eventually(() => expect(engine.release).toHaveBeenCalledTimes(1));
+    // A page with blocks again: checked as before, and a quick close and reopen does not release.
+    engine.diagnostics.mockClear();
+    change(second, PAGE, 3);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(1));
+    close(second);
+    open(second, PAGE);
+    await pause(400);
+    expect(engine.release).toHaveBeenCalledTimes(1);
+  });
+
   /** An answer with one error on the first `speed` in the checked text. */
   const errorOnSpeed = (
     request: TypeScriptCheckRequest,
@@ -1280,17 +1338,24 @@ describe("readInitializationOptions", () => {
       typescriptEnabled: true,
       typescriptPath: undefined,
       typescriptEditorPath: undefined,
+      typescriptReleaseDelayMs: undefined,
       editorHasEmbeddedTypeScript: false,
     });
     expect(
       readInitializationOptions({
-        typescript: { enabled: true, path: "/ts", editorPath: " /editor/ts " },
+        typescript: {
+          enabled: true,
+          path: "/ts",
+          editorPath: " /editor/ts ",
+          releaseDelayMs: 0,
+        },
         editorHasEmbeddedTypeScript: true,
       }),
     ).toEqual({
       typescriptEnabled: true,
       typescriptPath: "/ts",
       typescriptEditorPath: "/editor/ts",
+      typescriptReleaseDelayMs: 0,
       editorHasEmbeddedTypeScript: true,
     });
   });
@@ -1313,13 +1378,19 @@ describe("readInitializationOptions", () => {
     }
     expect(
       readInitializationOptions({
-        typescript: { enabled: "false", path: "   ", editorPath: 3 },
+        typescript: {
+          enabled: "false",
+          path: "   ",
+          editorPath: 3,
+          releaseDelayMs: "100",
+        },
         editorHasEmbeddedTypeScript: "yes",
       }),
     ).toEqual({
       typescriptEnabled: true,
       typescriptPath: undefined,
       typescriptEditorPath: undefined,
+      typescriptReleaseDelayMs: undefined,
       editorHasEmbeddedTypeScript: false,
     });
     expect(
@@ -1328,5 +1399,9 @@ describe("readInitializationOptions", () => {
       typescriptEnabled: false,
       typescriptPath: undefined,
     });
+    for (const releaseDelayMs of [-1, Number.NaN, Infinity])
+      expect(
+        readInitializationOptions({ typescript: { releaseDelayMs } }),
+      ).toMatchObject({ typescriptReleaseDelayMs: undefined });
   });
 });

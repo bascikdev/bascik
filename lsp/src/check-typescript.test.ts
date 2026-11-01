@@ -10,6 +10,7 @@ import {
 } from "vitest";
 import { checkFiles, supportsTypeScript } from "./check.js";
 import { runCliCheck } from "./cli.js";
+import { TypeScriptProjects } from "./typescript-service.js";
 import {
   createFixture,
   type Fixture,
@@ -117,6 +118,35 @@ describe("checkFiles with TypeScript", () => {
     );
     const unscoped = await checkFiles({ cwd: root.root, typescript: true });
     expect(unscoped.diagnostics).toEqual([]);
+  });
+
+  it("gives TypeScript every page first, so it builds its programs once for the whole check", async () => {
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    for (const name of ["a", "b", "c"])
+      root.write(`src/pages/${name}.html`, PAGE);
+    const prepare = vi.spyOn(TypeScriptProjects.prototype, "preparePages");
+    const check = vi.spyOn(TypeScriptProjects.prototype, "diagnostics");
+    try {
+      const result = await checkFiles({ cwd: root.root, typescript: true });
+      expect(result.diagnostics.map((d) => [d.filePath, d.code])).toEqual(
+        ["a", "b", "c", "index"].map((name) => [
+          path.join("src", "pages", `${name}.html`),
+          "TS2322",
+        ]),
+      );
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(
+        prepare.mock.calls[0][0].pages.map((page) =>
+          path.basename(page.htmlPath),
+        ),
+      ).toEqual(["a.html", "b.html", "c.html", "index.html"]);
+      expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        check.mock.invocationCallOrder[0],
+      );
+    } finally {
+      prepare.mockRestore();
+      check.mockRestore();
+    }
   });
 
   it("misuse: a project with TypeScript 7 gets the note, naming why its copy was skipped", async () => {

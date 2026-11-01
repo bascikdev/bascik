@@ -45,12 +45,16 @@ function measuredEngine() {
         stats.running--;
       }
     },
+    preparePages: (request) => projects.preparePages(request),
     cancel: () => undefined,
     setOpenFile: (fsPath, text) => projects.setOpenFile(fsPath, text),
     fileChanged: (fsPath) => projects.fileChanged(fsPath),
     closePage: (projectRoot, htmlPath) =>
       projects.closePage(projectRoot, htmlPath),
     forgetProject: (projectRoot) => projects.forgetProject(projectRoot),
+    async release() {
+      projects.dispose();
+    },
     async dispose() {
       projects.dispose();
     },

@@ -873,6 +873,68 @@ describe("TypeScriptProjects", () => {
     });
   });
 
+  it("brings each program up to date once for pages prepared together, not once per page", () => {
+    // With @bascik/bascik's types, so the server program is not made again without them.
+    const root = nodeProject();
+    const make = () =>
+      new TypeScriptProjects({
+        resolve: () => ({
+          ok: true,
+          ts,
+          version: ts.version,
+          source: "project",
+          packageDir: "",
+          skipped: [],
+        }),
+      });
+    const pages = ["a", "b", "c", "d"].map((name) => {
+      const text =
+        page('const speed: number = "fast";') +
+        page('export default () => "Milk frother";', " data-bascik-build");
+      return {
+        htmlPath: root.write(`src/pages/${name}.html`, text),
+        text,
+      };
+    });
+    const base = { projectRoot: root.root, importRoot: root.file("src") };
+
+    const oneByOne = make();
+    for (const one of pages)
+      expect(oneByOne.diagnostics({ ...base, ...one })).toMatchObject({
+        status: "ok",
+      });
+    const unbatched = oneByOne.programUpdates(root.root);
+
+    const batched = make();
+    batched.preparePages({ ...base, pages });
+    for (const one of pages) {
+      const result = batched.diagnostics({ ...base, ...one });
+      expect(
+        result.status === "ok" && result.diagnostics.map((d) => d.code),
+      ).toEqual([2322]);
+    }
+    // One update per program (client and server), however many pages.
+    expect(batched.programUpdates(root.root)).toBe(2);
+    expect(unbatched).toBeGreaterThanOrEqual(pages.length * 2);
+    oneByOne.dispose();
+    batched.dispose();
+  });
+
+  it("misuse: preparing pages without a usable TypeScript, or for a page closed since, does nothing harmful", () => {
+    const root = fixture();
+    const missing = new TypeScriptProjects({
+      resolve: () => ({ ok: false, message: "none", skipped: [] }),
+    });
+    expect(() =>
+      missing.preparePages({
+        projectRoot: root.root,
+        importRoot: root.file("src"),
+        pages: [{ htmlPath: root.file("src/pages/a.html"), text: page("1;") }],
+      }),
+    ).not.toThrow();
+    expect(missing.programUpdates(root.root)).toBe(0);
+  });
+
   it("reads unsaved buffers, and remakes a project when its tsconfig or import root changes", () => {
     const root = fixture({ "src/lib/a.ts": "export const a: number = 1;\n" });
     const projects = new TypeScriptProjects({ resolve: loaded(root) });

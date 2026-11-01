@@ -43,6 +43,7 @@ import {
   relocateBlockRanges,
 } from "./typescript-blocks.js";
 import type {
+  TypeScriptCheckRequest,
   TypeScriptEngine,
   TypeScriptEngineSettings,
 } from "./typescript-engine.js";
@@ -63,12 +64,27 @@ const TYPESCRIPT_WATCHED_FILE_PATTERNS = [
   "**/{tsconfig,package}.json",
 ];
 
+/** A page about to be checked with TypeScript: the text it is checked at, and the engine's request, if any. */
+interface TypeScriptPageCheck {
+  document: TextDocument;
+  version: number;
+  text: string;
+  request?: TypeScriptCheckRequest;
+}
+
 /** Files an edit to which can change a TypeScript block's errors. */
 const TYPESCRIPT_INPUT_FILE =
   /\.(?:[mc]?ts|[mc]?js)$|(?:^|[\\/])(?:tsconfig|package)\.json$/i;
 
 /** Quiet period after an edit before TypeScript checks the open pages again. Bascik's diagnostics do not wait. */
 const TYPESCRIPT_DELAY_MS = 150;
+
+/**
+ * How long no open page may have TypeScript blocks before the TypeScript engine is released. Its programs hold
+ * the DOM library and Node's types (a few hundred megabytes); a page closed and opened again soon should not pay
+ * for building them twice.
+ */
+export const TYPESCRIPT_RELEASE_DELAY_MS = 30_000;
 
 /** What the client may pass in `initializationOptions`. */
 export interface BascikInitializationOptions {
@@ -82,6 +98,11 @@ export interface BascikInitializationOptions {
      * project's own (VS Code passes its bundled copy).
      */
     editorPath?: string;
+    /**
+     * Milliseconds TypeScript stays loaded once no open page has TypeScript blocks, before its memory is given
+     * back. Default 30000.
+     */
+    releaseDelayMs?: number;
   };
   /**
    * The editor answers hover, completion and definition inside quoted `type="text/typescript"` blocks itself
@@ -96,6 +117,7 @@ export function readInitializationOptions(value: unknown): {
   typescriptEnabled: boolean;
   typescriptPath: string | undefined;
   typescriptEditorPath: string | undefined;
+  typescriptReleaseDelayMs: number | undefined;
   editorHasEmbeddedTypeScript: boolean;
 } {
   const options =
@@ -112,6 +134,12 @@ export function readInitializationOptions(value: unknown): {
     typescriptEnabled: typescript.enabled !== false,
     typescriptPath: pathOption(typescript.path),
     typescriptEditorPath: pathOption(typescript.editorPath),
+    typescriptReleaseDelayMs:
+      typeof typescript.releaseDelayMs === "number" &&
+      Number.isFinite(typescript.releaseDelayMs) &&
+      typescript.releaseDelayMs >= 0
+        ? typescript.releaseDelayMs
+        : undefined,
     editorHasEmbeddedTypeScript: options.editorHasEmbeddedTypeScript === true,
   };
 }
@@ -124,6 +152,11 @@ export interface BascikLanguageServerOptions {
   createTypeScriptEngine?: (
     settings: TypeScriptEngineSettings,
   ) => TypeScriptEngine;
+  /**
+   * How long no open page may have TypeScript blocks before the engine is released, giving TypeScript's memory
+   * back. Default `TYPESCRIPT_RELEASE_DELAY_MS`.
+   */
+  typeScriptReleaseDelayMs?: number;
 }
 
 /**
@@ -229,6 +262,9 @@ export class BascikLanguageServer {
   >();
   /** Bumped per project on every TypeScript input change, so a check of several pages stops once it is stale. */
   private readonly typeScriptGenerations = new Map<string, number>();
+  /** Releases the TypeScript engine once no open page has TypeScript blocks (see `scheduleTypeScriptRelease`). */
+  private typeScriptReleaseTimer: NodeJS.Timeout | undefined;
+  private typeScriptReleaseDelayMs = TYPESCRIPT_RELEASE_DELAY_MS;
   /** Project roots whose missing TypeScript has been noted in the output panel. */
   private readonly reportedTypeScriptRoots = new Set<string>();
   /** Whether the client's unusable TypeScript path has been shown, which happens once: it is one setting. */
@@ -267,6 +303,10 @@ export class BascikLanguageServer {
         );
         this.editorHasEmbeddedTypeScript =
           clientOptions.editorHasEmbeddedTypeScript;
+        this.typeScriptReleaseDelayMs =
+          clientOptions.typescriptReleaseDelayMs ??
+          this.options.typeScriptReleaseDelayMs ??
+          TYPESCRIPT_RELEASE_DELAY_MS;
         if (clientOptions.typescriptEnabled) {
           this.typeScript = this.options.createTypeScriptEngine?.({
             clientPath: clientOptions.typescriptPath,
@@ -850,6 +890,7 @@ export class BascikLanguageServer {
     const projectRoot = this.findProjectRoot(fsPath);
     if (document.languageId === "html") {
       if (closed && projectRoot) this.typeScript.closePage(projectRoot, fsPath);
+      if (closed) this.scheduleTypeScriptRelease();
       if (!closed && projectRoot) {
         // A page edit only changes that page's blocks, unless it is a component whose scripts run in the scope
         // of the pages that use it (`scoping.scriptBlocks` off): their names are those pages' globals.
@@ -942,15 +983,37 @@ export class BascikLanguageServer {
         : []),
     ];
     const generation = this.typeScriptGenerations.get(projectRoot);
-    for (let index = 0; index < pages.length; index++) {
+    const checks: TypeScriptPageCheck[] = [];
+    for (const document of pages)
+      checks.push(await this.typeScriptPageCheck(projectRoot, document));
+    // Every page the engine will check, given together, so TypeScript builds its programs once rather than once
+    // per page (opening many pages at once otherwise rebuilt them for each).
+    const requests = checks.flatMap((check) =>
+      check.request === undefined ? [] : [check.request],
+    );
+    if (
+      requests.length > 1 &&
+      this.typeScriptGenerations.get(projectRoot) === generation
+    )
+      engine.preparePages({
+        projectRoot,
+        importRoot: requests[0].importRoot,
+        pages: requests.map((request) => ({
+          htmlPath: request.htmlPath,
+          text: request.text,
+          isolatedClientBlocks: request.isolatedClientBlocks,
+          pageScopeHtml: request.pageScopeHtml,
+        })),
+      });
+    for (let index = 0; index < checks.length; index++) {
       // A newer change scheduled a check; the pages this one had yet to check go to it.
       const stale =
         this.typeScriptGenerations.get(projectRoot) !== generation ||
-        !(await this.checkTypeScriptPage(engine, projectRoot, pages[index]));
+        !(await this.checkTypeScriptPage(engine, projectRoot, checks[index]));
       if (stale) {
         this.oweTypeScriptCheck(
           projectRoot,
-          pages.slice(index).map((document) => document.uri),
+          checks.slice(index).map((check) => check.document.uri),
           false,
         );
         return;
@@ -958,29 +1021,22 @@ export class BascikLanguageServer {
     }
   }
 
-  /**
-   * Checks one page with TypeScript and publishes the result. False when the check went stale (cancelled by a
-   * newer change, or the page was edited meanwhile), so the caller owes it again.
-   */
-  private async checkTypeScriptPage(
-    engine: TypeScriptEngine,
+  /** What checking a page with TypeScript takes: the engine's request, or none for a page it has nothing to say on. */
+  private async typeScriptPageCheck(
     projectRoot: string,
     document: TextDocument,
-  ): Promise<boolean> {
-    const { uri, version } = document;
+  ): Promise<TypeScriptPageCheck> {
+    const { version } = document;
     const text = document.getText();
-    const previous = this.typeScriptResults.get(uri)?.diagnostics;
+    const check: TypeScriptPageCheck = { document, version, text };
     // A page that never mentions TypeScript costs nothing: TypeScript is not even loaded for it.
-    if (!mayHaveTypeScriptBlocks(text)) {
-      if (previous?.length) this.publishTypeScript(document, text, []);
-      return true;
-    }
-    const fsPath = uriToFsPath(uri);
+    if (!mayHaveTypeScriptBlocks(text)) return check;
+    const fsPath = uriToFsPath(document.uri);
     if (!this.workspaceFolders.some((root) => isPathInside(fsPath, root)))
-      return true;
-    if (!this.isBascikProject(projectRoot)) return true;
+      return check;
+    if (!this.isBascikProject(projectRoot)) return check;
     const snapshot = await this.getSnapshotForFile(fsPath);
-    const result = await engine.diagnostics({
+    check.request = {
       projectRoot,
       importRoot: snapshot?.importRoot ?? path.join(projectRoot, "src"),
       htmlPath: fsPath,
@@ -995,7 +1051,33 @@ export class BascikLanguageServer {
                 .get(pathToFileURL(componentPath).toString())
                 ?.getText(),
             ),
-    });
+    };
+    return check;
+  }
+
+  /**
+   * Checks one page with TypeScript and publishes the result. False when the check went stale (cancelled by a
+   * newer change, or the page was edited meanwhile), so the caller owes it again.
+   */
+  private async checkTypeScriptPage(
+    engine: TypeScriptEngine,
+    projectRoot: string,
+    check: TypeScriptPageCheck,
+  ): Promise<boolean> {
+    const { document, version, text, request } = check;
+    const { uri } = document;
+    const previous = this.typeScriptResults.get(uri)?.diagnostics;
+    if (!request) {
+      if (!mayHaveTypeScriptBlocks(text) && previous?.length)
+        this.publishTypeScript(document, text, []);
+      if (!mayHaveTypeScriptBlocks(text)) this.scheduleTypeScriptRelease();
+      return true;
+    }
+    // Edited meanwhile: it is checked again.
+    if (this.documents.get(uri)?.version !== version) return false;
+    this.cancelTypeScriptRelease();
+    const result = await engine.diagnostics(request);
+    const fsPath = request.htmlPath;
     // Closed meanwhile: there is nothing to show.
     const current = this.documents.get(uri);
     if (!current) return true;
@@ -1033,6 +1115,41 @@ export class BascikLanguageServer {
     this.reportedTypeScriptRoots.delete(projectRoot);
     this.publishTypeScript(document, text, result.diagnostics);
     return true;
+  }
+
+  /**
+   * Releases the TypeScript engine after `typeScriptReleaseDelayMs` if, by then, no open page has TypeScript
+   * blocks: it holds a few hundred megabytes, which nothing needs then. The next page with blocks starts it again.
+   */
+  private scheduleTypeScriptRelease(): void {
+    if (!this.typeScript || this.typeScriptReleaseTimer) return;
+    this.typeScriptReleaseTimer = setTimeout(() => {
+      this.typeScriptReleaseTimer = undefined;
+      const engine = this.typeScript;
+      if (!engine) return;
+      const needed = this.documents
+        .all()
+        .some(
+          (document) =>
+            document.languageId === "html" &&
+            document.uri.startsWith("file:") &&
+            mayHaveTypeScriptBlocks(document.getText()),
+        );
+      if (needed) return;
+      void engine
+        .release()
+        .then(() =>
+          this.connection.console.info(
+            "TypeScript checks gave their memory back: no open page has TypeScript blocks. They start again with the next one.",
+          ),
+        );
+    }, this.typeScriptReleaseDelayMs);
+    this.typeScriptReleaseTimer.unref?.();
+  }
+
+  private cancelTypeScriptRelease(): void {
+    clearTimeout(this.typeScriptReleaseTimer);
+    this.typeScriptReleaseTimer = undefined;
   }
 
   /** Records a page's TypeScript result for `text` and sends it with Bascik's, unless that changes nothing. */
@@ -1098,6 +1215,7 @@ export class BascikLanguageServer {
     for (const { timer } of this.typeScriptPending.values())
       clearTimeout(timer);
     this.typeScriptPending.clear();
+    this.cancelTypeScriptRelease();
     void this.typeScript?.dispose();
     this.typeScript = undefined;
     this.watcherRegistration?.dispose();
