@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blockFooter,
+  sharedScriptText,
   extractTypeScriptBlocks,
   mayHaveTypeScriptBlocks,
   toGeneratedOffset,
@@ -215,5 +216,33 @@ describe("virtualBlockText and offset mapping", () => {
       "build",
     );
     expect(footerCheck!.sourceStart).toBe(named.indexOf("build("));
+  });
+});
+
+describe("sharedScriptText", () => {
+  const html =
+    '<script type="text/typescript">\nfunction a() {}\n</script>\n<p>Milk frother</p>\n<script type="text/typescript">\na();\n</script>';
+  const blocks = extractTypeScriptBlocks(html);
+  const shared = sharedScriptText(blocks);
+
+  it("joins the blocks as separate statements, then makes the text a module", () => {
+    expect(shared.text).toBe(
+      `${blocks[0].content}\n;\n${blocks[1].content}${blockFooter(undefined)}`,
+    );
+    expect(shared.text.slice(shared.footerStart)).toBe(blockFooter(undefined));
+  });
+
+  it("maps each block's characters back to its own place in the HTML", () => {
+    for (const block of blocks) {
+      for (let offset = 0; offset < block.content.length; offset++) {
+        const source = block.contentStart + offset;
+        const generated = toGeneratedOffset(shared, source)!;
+        expect(shared.text[generated]).toBe(html[source]);
+        expect(toSourceOffset(shared, generated)).toBe(source);
+      }
+    }
+    // The separator stands for the start of the next block.
+    const separator = blocks[0].content.length + 1;
+    expect(toSourceOffset(shared, separator)).toBe(blocks[1].contentStart);
   });
 });

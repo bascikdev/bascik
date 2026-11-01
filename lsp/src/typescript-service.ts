@@ -25,6 +25,7 @@ import {
   type Insertion,
   type TypeScriptBlock,
   type TypeScriptProgramKind,
+  sharedScriptText,
   toSourceOffset,
   virtualBlockText,
   type VirtualBlockText,
@@ -71,7 +72,17 @@ interface VirtualFile extends VirtualBlockText {
 
 interface Page {
   text: string;
+  isolatedClientBlocks: boolean;
   fileNames: string[];
+}
+
+/** How an HTML file's blocks are checked, from where it sits in the project (see `hasIsolatedClientBlocks`). */
+export interface PageCheckOptions {
+  /**
+   * Each client block runs in its own scope (a component with `scoping.scriptBlocks` on). Otherwise, as in a
+   * page, the client blocks share one scope. Default `false`.
+   */
+  isolatedClientBlocks?: boolean;
 }
 
 export interface TypeScriptProjectOptions {
@@ -269,6 +280,52 @@ function defaultExportPlan(
   return { insertions: [] };
 }
 
+const CLASSIC_SCRIPT_NOTE =
+  'A type="text/typescript" block runs in the browser as a classic script, not a module.';
+
+/** The `await` keywords at the top level of a client block's virtual file, before its footer. */
+function topLevelAwaits(
+  ts: TypeScriptModule,
+  source: TS.SourceFile,
+  footerStart: number,
+): {
+  start: number;
+  end: number;
+  report: Pick<TypeScriptDiagnostic, "message" | "code" | "category">;
+}[] {
+  const found: ReturnType<typeof topLevelAwaits> = [];
+  const visit = (node: TS.Node): void => {
+    // Inside a function `await` is the function's business, which TypeScript checks.
+    if (ts.isFunctionLike(node) || node.pos >= footerStart) return;
+    if (ts.isAwaitExpression(node)) {
+      const start = node.getStart(source);
+      found.push({
+        start,
+        end: start + "await".length,
+        report: {
+          // TypeScript's own message and number for `await` outside an async function and a module.
+          message: `'await' expressions are only allowed within async functions and at the top levels of modules. ${CLASSIC_SCRIPT_NOTE}`,
+          code: 1308,
+          category: "error",
+        },
+      });
+    } else if (ts.isForOfStatement(node) && node.awaitModifier) {
+      found.push({
+        start: node.awaitModifier.getStart(source),
+        end: node.awaitModifier.end,
+        report: {
+          message: `'for await' loops are only allowed within async functions and at the top levels of modules. ${CLASSIC_SCRIPT_NOTE}`,
+          code: 1103,
+          category: "error",
+        },
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return found;
+}
+
 /**
  * The TypeScript blocks of one project: two LanguageServices (client and server), the virtual files of every
  * HTML file it was given, and the versions that tell TypeScript what changed.
@@ -379,47 +436,77 @@ export class TypeScriptProject {
   }
 
   /**
-   * Records an HTML file's text. Only blocks whose virtual text changed get a new version, so TypeScript reuses
+   * Records an HTML file's text. Only virtual files whose text changed get a new version, so TypeScript reuses
    * what it knows about the rest.
    */
-  updatePage(htmlPath: string, text: string): void {
+  updatePage(
+    htmlPath: string,
+    text: string,
+    options: PageCheckOptions = {},
+  ): void {
     htmlPath = path.resolve(this.projectRoot, htmlPath);
+    const isolatedClientBlocks = options.isolatedClientBlocks === true;
     const previous = this.pages.get(htmlPath);
-    if (previous?.text === text) return;
+    if (
+      previous?.text === text &&
+      previous.isolatedClientBlocks === isolatedClientBlocks
+    )
+      return;
     const blocks = extractTypeScriptBlocks(text);
-    const fileNames = blocks.map(
-      (block) => `${htmlPath}.bascik-${block.index}.ts`,
-    );
+    const units: {
+      fileName: string;
+      program: TypeScriptProgramKind;
+      virtual: VirtualBlockText;
+    }[] = [];
+    const sharedClient = isolatedClientBlocks
+      ? []
+      : blocks.filter((block) => block.program === "client");
+    if (sharedClient.length > 0) {
+      units.push({
+        fileName: `${htmlPath}.bascik-client.ts`,
+        program: "client",
+        virtual: sharedScriptText(sharedClient),
+      });
+    }
+    for (const block of blocks) {
+      if (block.program === "client" && !isolatedClientBlocks) continue;
+      units.push({
+        fileName: `${htmlPath}.bascik-${block.index}.ts`,
+        program: block.program,
+        virtual: this.virtualFile(block),
+      });
+    }
     let changed = false;
-    blocks.forEach((block, index) => {
-      const fileName = fileNames[index];
-      const virtual = this.virtualFile(block);
+    for (const { fileName, program, virtual } of units) {
       const existing = this.files.get(fileName);
       if (
         existing &&
         existing.text === virtual.text &&
-        existing.program === block.program
+        existing.program === program
       ) {
         // Same text; only the offsets moved (an edit above the block).
         existing.segments = virtual.segments;
         existing.footerStart = virtual.footerStart;
         existing.footerCheck = virtual.footerCheck;
-        return;
+        continue;
       }
       changed = true;
       this.files.set(fileName, {
         ...virtual,
         fileName,
         htmlPath,
-        program: block.program,
+        program,
         version: this.nextFileVersion++,
       });
-    });
-    for (const fileName of previous?.fileNames.slice(fileNames.length) ?? []) {
+    }
+    const fileNames = units.map((unit) => unit.fileName);
+    const kept = new Set(fileNames);
+    for (const fileName of previous?.fileNames ?? []) {
+      if (kept.has(fileName)) continue;
       this.files.delete(fileName);
       changed = true;
     }
-    this.pages.set(htmlPath, { text, fileNames });
+    this.pages.set(htmlPath, { text, isolatedClientBlocks, fileNames });
     if (changed) this.projectVersion++;
   }
 
@@ -440,7 +527,8 @@ export class TypeScriptProject {
     this.scriptTypes = false;
     const pages = [...this.pages];
     this.pages.clear();
-    for (const [htmlPath, page] of pages) this.updatePage(htmlPath, page.text);
+    for (const [htmlPath, page] of pages)
+      this.updatePage(htmlPath, page.text, page);
   }
 
   /** Forgets an HTML file, so its blocks are no longer part of either program. */
@@ -460,9 +548,13 @@ export class TypeScriptProject {
   }
 
   /** The TypeScript errors and warnings of an HTML file's blocks, located in its text. */
-  diagnostics(htmlPath: string, text: string): TypeScriptDiagnostic[] {
+  diagnostics(
+    htmlPath: string,
+    text: string,
+    options: PageCheckOptions = {},
+  ): TypeScriptDiagnostic[] {
     htmlPath = path.resolve(this.projectRoot, htmlPath);
-    this.updatePage(htmlPath, text);
+    this.updatePage(htmlPath, text, options);
     const result: TypeScriptDiagnostic[] = [];
     for (const fileName of this.pages.get(htmlPath)?.fileNames ?? []) {
       const file = this.files.get(fileName)!;
@@ -487,7 +579,7 @@ export class TypeScriptProject {
         )
       ) {
         this.dropScriptTypes();
-        return this.diagnostics(htmlPath, text);
+        return this.diagnostics(htmlPath, text, options);
       }
       const syntacticSet = new Set<TS.Diagnostic>(syntactic);
       for (const diagnostic of [...syntactic, ...semantic]) {
@@ -534,8 +626,21 @@ export class TypeScriptProject {
           category,
         });
       }
+      // A client block runs as a classic script (wrapped in a function in a component), never as a module, so
+      // top-level `await` fails in the browser although TypeScript accepts it in the module the block is checked as.
+      if (file.program === "client" && syntactic.length === 0) {
+        const source = service.getProgram()?.getSourceFile(fileName);
+        if (source) {
+          for (const found of topLevelAwaits(this.ts, source, file.footerStart))
+            result.push({
+              start: toSourceOffset(file, found.start),
+              end: toSourceOffset(file, found.end),
+              ...found.report,
+            });
+        }
+      }
     }
-    return result;
+    return result.sort((a, b) => a.start - b.start || a.end - b.end);
   }
 
   dispose(): void {
@@ -630,12 +735,14 @@ export class TypeScriptProjects {
     return this.resolution(path.resolve(projectRoot));
   }
 
-  diagnostics(request: {
-    projectRoot: string;
-    importRoot: string;
-    htmlPath: string;
-    text: string;
-  }): TypeScriptDiagnosticsResult {
+  diagnostics(
+    request: {
+      projectRoot: string;
+      importRoot: string;
+      htmlPath: string;
+      text: string;
+    } & PageCheckOptions,
+  ): TypeScriptDiagnosticsResult {
     const projectRoot = path.resolve(request.projectRoot);
     const project = this.project(projectRoot, request.importRoot);
     if (typeof project === "string")
@@ -646,6 +753,7 @@ export class TypeScriptProjects {
         diagnostics: project.diagnostics(
           path.resolve(projectRoot, request.htmlPath),
           request.text,
+          { isolatedClientBlocks: request.isolatedClientBlocks },
         ),
       };
     } catch (error) {

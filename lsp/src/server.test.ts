@@ -1086,6 +1086,24 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     );
   });
 
+  it("asks for a scoped component's client blocks one by one and a page's in one scope", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    const component = await write("src/components/frother-card.html", PAGE);
+    open(page, PAGE);
+    open(component, PAGE);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    const scopes = new Map(
+      engine.diagnostics.mock.calls.map(([request]) => [
+        request.htmlPath,
+        request.isolatedClientBlocks,
+      ]),
+    );
+    expect(scopes.get(page)).toBe(false);
+    expect(scopes.get(component)).toBe(true);
+  });
+
   it("gives a page outside every workspace folder no TypeScript diagnostics", async () => {
     const engine = recordingEngine();
     await start({ createTypeScriptEngine: () => engine });

@@ -59,9 +59,10 @@ function check(
   relative: string,
   html: string,
   service = project(root),
+  options: { isolatedClientBlocks?: boolean } = {},
 ): (TypeScriptDiagnostic & { text: string })[] {
   const file = root.write(relative, html);
-  return service.diagnostics(file, html).map((diagnostic) => ({
+  return service.diagnostics(file, html, options).map((diagnostic) => ({
     ...diagnostic,
     text: html.slice(diagnostic.start, diagnostic.end),
   }));
@@ -86,17 +87,106 @@ describe("TypeScriptProject diagnostics", () => {
     ]);
   });
 
-  it("checks each block as its own module", () => {
+  it("checks each block of a scoped component as its own module", () => {
     const root = fixture();
     const html =
       page("const frother = 1;\nexport const shared = 2;") +
       page("const frother = 'two';\nconsole.log(shared);");
-    const diagnostics = check(root, "src/pages/index.html", html);
+    const diagnostics = check(
+      root,
+      "src/components/frother-card.html",
+      html,
+      project(root),
+      { isolatedClientBlocks: true },
+    );
     // No redeclaration error for `frother`; `shared` from the first block is not visible in the second.
     expect(diagnostics.map((d) => [d.code, d.text])).toEqual([
       [2304, "shared"],
     ]);
     expect(diagnostics[0].start).toBe(html.lastIndexOf("shared"));
+  });
+
+  it("checks a page's client blocks in one scope, as the browser runs them", () => {
+    const root = fixture({
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { noUnusedLocals: true },
+      }),
+    });
+    const html =
+      page(
+        "function frotherLabel(speed: number): string {\n  return `Milk frother ${speed}`;\n}",
+      ) +
+      page("document.title = frotherLabel(3);") +
+      page(
+        "const frotherLabel = () => 'built';\nexport default frotherLabel;",
+        " data-bascik-build",
+      );
+    // The second block calls the first block's function, so it is neither unknown nor unused; the build block,
+    // a module of its own, may use the same name.
+    expect(check(root, "src/pages/index.html", html)).toEqual([]);
+  });
+
+  it("misuse: a const declared again in a later page block is reported there", () => {
+    const root = fixture();
+    const html =
+      page("const speed = 1;\nconsole.log(speed);") +
+      page("const speed = 2;\nconsole.log(speed);");
+    const diagnostics = check(root, "src/pages/index.html", html);
+    expect(diagnostics.map((d) => [d.code, d.text])).toEqual([
+      [2451, "speed"],
+      [2451, "speed"],
+    ]);
+    expect(diagnostics.map((d) => d.start)).toEqual([
+      html.indexOf("speed"),
+      html.indexOf("speed", html.indexOf("</script>")),
+    ]);
+  });
+
+  it("misuse: top-level await in a client block is reported, in a page and in a component", () => {
+    const root = fixture();
+    const html = page(
+      "const response = await fetch('/frother');\nfor await (const chunk of [response]) console.log(chunk);\nasync function later() { await fetch('/ok'); }\nconsole.log(later);",
+    );
+    for (const isolatedClientBlocks of [false, true]) {
+      const diagnostics = check(
+        root,
+        isolatedClientBlocks
+          ? "src/components/frother-card.html"
+          : "src/pages/index.html",
+        html,
+        project(root),
+        { isolatedClientBlocks },
+      );
+      expect(diagnostics.map((d) => [d.code, d.text])).toEqual([
+        [1308, "await"],
+        [1103, "await"],
+      ]);
+      expect(diagnostics[0].message).toContain("classic script");
+    }
+    // A server-side block runs as a module, where top-level await is allowed.
+    expect(
+      check(
+        root,
+        "src/pages/build.html",
+        page(
+          "const name = await Promise.resolve('Milk frother');\nexport default () => name;",
+          " data-bascik-build",
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("maps errors in every block of a page's shared scope back to their own block", () => {
+    const root = fixture();
+    const html =
+      page('const a: number = "one";') +
+      "<p>Milk frother</p>\n" +
+      page("const b: string = 2;\nconsole.log(a, b);");
+    const diagnostics = check(root, "src/pages/index.html", html);
+    expect(diagnostics.map((d) => [d.code, d.text])).toEqual([
+      [2322, "a"],
+      [2322, "b"],
+    ]);
   });
 
   it("misuse: a syntax error is reported, not thrown", () => {
@@ -316,10 +406,10 @@ describe("TypeScriptProject diagnostics", () => {
       "src/lib/name.ts": "export const name = 'Milk frother';\n",
     });
     const html = page(
-      'import { speed } from "~frother/speed.ts";\nimport { name } from "@/lib/name.ts";\nfunction loose(value) { return value; }\nconst s: string = speed;\nawait Promise.resolve(name);',
+      'import { speed } from "~frother/speed.ts";\nimport { name } from "@/lib/name.ts";\nfunction loose(value) { return value; }\nconst s: string = speed;\nconsole.log(name, loose);',
     );
     const diagnostics = check(root, "src/pages/index.html", html);
-    // strict: false allows the untyped parameter; the project's alias resolves; Bascik's @/ wins; top-level await works.
+    // strict: false allows the untyped parameter; the project's alias resolves; Bascik's @/ wins.
     expect(diagnostics.map((d) => [d.code, d.text])).toEqual([[2322, "s"]]);
   });
 

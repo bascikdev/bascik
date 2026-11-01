@@ -482,7 +482,7 @@ bascik --check --strict
 
 ### TypeScript errors with `--typescript`
 
-Pass `--typescript` to also report TypeScript errors in `<script type="text/typescript">` blocks, checked as the [VS Code extension](/tools/vscode-extension#typescript-errors-in-script-tags) checks them: each block as its own module, browser blocks with the DOM, server-side blocks with Node.js, `@/` resolved against `scripts.importRoot`, and the project's `tsconfig.json` as the base:
+Pass `--typescript` to also report TypeScript errors in `<script type="text/typescript">` blocks, checked as the [VS Code extension](/tools/vscode-extension#typescript-errors-in-script-tags) checks them: each block in the scope it runs in, browser blocks with the DOM, server-side blocks with Node.js, `@/` resolved against `scripts.importRoot`, and the project's `tsconfig.json` as the base:
 
 ```sh
 bascik --check --typescript

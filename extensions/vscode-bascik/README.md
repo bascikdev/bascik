@@ -119,7 +119,7 @@ Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and ser
 
 A `<script type="text/typescript">` block is colored with VS Code's own TypeScript grammar instead of as plain text, in any attribute order and in Prettier-wrapped tags, and VS Code's editing commands treat it as TypeScript: **Toggle Line Comment** adds `//`, and brackets, auto-closing pairs, and TypeScript snippets follow TypeScript's rules. Other script types are unchanged.
 
-Type errors in those blocks are underlined with TypeScript's message (source `ts (bascik)`), checked with VS Code's own TypeScript: each block as its own module, browser blocks with the DOM, server-side blocks with Node.js, `@/` imports resolved against `scripts.importRoot`, and your `tsconfig.json` applied. Unsaved edits to the page and to the `.ts` files it imports count. Turn the check off with `bascik.typescript.enabled`, or point `bascik.typescript.path` (a user setting) at another TypeScript 5 or 6. The extension never bundles TypeScript.
+Type errors in those blocks are underlined with TypeScript's message (source `ts (bascik)`), checked with VS Code's own TypeScript: each block in the scope it runs in (a page's browser blocks share one), browser blocks with the DOM, server-side blocks with Node.js, `@/` imports resolved against `scripts.importRoot`, and your `tsconfig.json` applied. Unsaved edits to the page and to the `.ts` files it imports count. Turn the check off with `bascik.typescript.enabled`, or point `bascik.typescript.path` (a user setting) at another TypeScript 5 or 6. The extension never bundles TypeScript.
 
 ## Diagnostics That Understand Bascik
 

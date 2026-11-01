@@ -9,6 +9,8 @@ import {
   parseImportRoot,
   parsePagesRoot,
   parseScopesName,
+  parseScriptBlocks,
+  hasIsolatedClientBlocks,
   readConfigSource,
   resolveComponentRoots,
 } from "./project.js";
@@ -124,6 +126,45 @@ describe("config readers skip commented-out settings, as the compiler does", () 
     );
     expect(parseComponentRoots(source)).toEqual(["src/parts"]);
     expect(parsePagesRoot(source)).toBe("site//pages");
+  });
+
+  it("reads scoping.scriptBlocks, on unless set to false outside a comment", () => {
+    expect(parseScriptBlocks(undefined)).toBe(true);
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlocks: true },")),
+    ).toBe(true);
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlocks: false },")),
+    ).toBe(false);
+    expect(
+      parseScriptBlocks(config('  scoping: { "scriptBlocks": false },')),
+    ).toBe(false);
+    expect(
+      parseScriptBlocks(config("  // scoping: { scriptBlocks: false },")),
+    ).toBe(true);
+    // misuse: a typo'd key is not the setting.
+    expect(
+      parseScriptBlocks(config("  scoping: { scriptBlock: false },")),
+    ).toBe(true);
+  });
+
+  it("isolates client blocks only in components whose script blocks are scoped", () => {
+    const snapshot = {
+      componentRoots: ["/site/src/components"],
+      scopesScriptBlocks: true,
+    };
+    expect(
+      hasIsolatedClientBlocks("/site/src/components/card.html", snapshot),
+    ).toBe(true);
+    expect(
+      hasIsolatedClientBlocks("/site/src/pages/index.html", snapshot),
+    ).toBe(false);
+    expect(
+      hasIsolatedClientBlocks("/site/src/components/card.html", {
+        ...snapshot,
+        scopesScriptBlocks: false,
+      }),
+    ).toBe(false);
   });
 
   it("reads the live setting after a commented copy of it", () => {

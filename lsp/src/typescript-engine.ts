@@ -27,6 +27,8 @@ export interface TypeScriptCheckRequest {
   htmlPath: string;
   /** The page's current text, which may be unsaved. */
   text: string;
+  /** Each client block runs in its own scope (a scoped component); otherwise, as in a page, they share one. */
+  isolatedClientBlocks?: boolean;
 }
 
 export interface TypeScriptEngine {
@@ -245,6 +247,7 @@ export function createWorkerTypeScriptEngine(
           importRoot: request.importRoot,
           htmlPath: request.htmlPath,
           text: request.text,
+          isolatedClientBlocks: request.isolatedClientBlocks,
         } satisfies TypeScriptWorkerRequest);
       });
     },

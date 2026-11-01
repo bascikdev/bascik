@@ -28,6 +28,11 @@ export interface ProjectSnapshot {
    * default, when every `name` ships as written.
    */
   scopesName?: boolean;
+  /**
+   * `scoping.scriptBlocks`: whether each client script block of a component is wrapped in its own function, so
+   * its top-level names stay in that block. On by default. Page scripts are never wrapped.
+   */
+  scopesScriptBlocks?: boolean;
 }
 
 /**
@@ -103,6 +108,28 @@ export function parseScopesName(source: string | undefined): boolean {
   const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
   if (!attributes) return false;
   return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
+}
+
+/** Reads `scoping.scriptBlocks` from the config source: on unless it is set to `false`. */
+export function parseScriptBlocks(source: string | undefined): boolean {
+  return !/(?<![\w$-])["']?scriptBlocks["']?\s*:\s*false\b/.test(
+    stripConfigComments(source),
+  );
+}
+
+/**
+ * Whether each client script block of an HTML file runs in its own scope: true in a component when
+ * `scoping.scriptBlocks` is on, where Bascik wraps every block in a function. A page's blocks, and a component's
+ * when the setting is off, become plain `<script>` elements that share the page's global scope.
+ */
+export function hasIsolatedClientBlocks(
+  fsPath: string,
+  snapshot: Pick<ProjectSnapshot, "componentRoots" | "scopesScriptBlocks">,
+): boolean {
+  return (
+    snapshot.scopesScriptBlocks !== false &&
+    isInsideComponentRoots(fsPath, snapshot.componentRoots)
+  );
 }
 
 /** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */
@@ -304,6 +331,7 @@ export async function buildSnapshot(
     htmlUsageByFile,
     componentSourceByFile,
     scopesName: parseScopesName(configSource),
+    scopesScriptBlocks: parseScriptBlocks(configSource),
   };
 }
 

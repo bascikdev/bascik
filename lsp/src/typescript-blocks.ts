@@ -1,10 +1,12 @@
 /**
  * The `<script type="text/typescript">` blocks of an HTML file, and the virtual TypeScript file each one becomes.
  *
- * Every block is its own module: it is checked on its own, as Bascik compiles it, so two blocks never share a
- * top-level name. A client block (no directive) runs in the browser; a block with a Bascik directive
- * (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) runs in Node. The two kinds are checked
- * in different programs, with different libraries.
+ * Blocks are checked in the scope Bascik runs them in. A block with a Bascik directive (`data-bascik-build`,
+ * `-build-once`, `-routes`, `-server`, `-stream`) runs in Node as its own module. A client block (no directive)
+ * runs in the browser as a classic script: in a component with `scoping.scriptBlocks` on, each block is wrapped
+ * in its own function, so it is checked on its own; otherwise (a page) the blocks share the page's scope, so they
+ * are checked together, as one text (`sharedScriptText`). Client and server blocks are checked in different
+ * programs, with different libraries.
  *
  * Offsets map back to the HTML through segments: the virtual text is the block's own text, with a few inserted
  * characters (the call that gives a directive script's default export its type) and a footer after it.
@@ -259,6 +261,30 @@ export function virtualBlockText(
       sourceEnd: block.contentStart + check.end,
     },
   };
+}
+
+/** What goes between two blocks of a shared scope: a new statement, as a new `<script>` element starts one. */
+const SHARED_SCOPE_SEPARATOR = "\n;\n";
+
+/**
+ * The virtual text for client blocks that share one scope (a page's): their contents in order, then the footer
+ * that makes the text a module of its own, so two pages never share a name.
+ */
+export function sharedScriptText(blocks: TypeScriptBlock[]): VirtualBlockText {
+  const segments: Segment[] = [];
+  let text = "";
+  blocks.forEach((block, index) => {
+    if (index > 0) text += SHARED_SCOPE_SEPARATOR;
+    segments.push({
+      generated: text.length,
+      source: block.contentStart,
+      length: block.content.length,
+    });
+    text += block.content;
+  });
+  const footerStart = text.length;
+  text += blockFooter(undefined);
+  return { text, segments, footerStart };
 }
 
 /**

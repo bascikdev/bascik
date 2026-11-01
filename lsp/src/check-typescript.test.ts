@@ -74,6 +74,28 @@ describe("checkFiles with TypeScript", () => {
     ]);
   });
 
+  it("checks a page's client blocks in one scope and a scoped component's one by one", async () => {
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    const blocks =
+      '<script type="text/typescript">\n  function frotherLabel(): string { return "Milk frother"; }\n</script>\n' +
+      '<script type="text/typescript">\n  document.title = frotherLabel();\n</script>\n';
+    root.write("src/pages/index.html", blocks);
+    root.write("src/components/frother-card.html", blocks);
+    const result = await checkFiles({ cwd: root.root, typescript: true });
+    // The page's second block sees the first block's function; the component's is wrapped on its own.
+    expect(result.diagnostics.map((d) => [d.filePath, d.code])).toEqual([
+      [path.join("src", "components", "frother-card.html"), "TS2304"],
+    ]);
+
+    // With scoping.scriptBlocks off, a component's blocks share the page's scope too.
+    root.write(
+      "bascik.config.ts",
+      "export default { scoping: { scriptBlocks: false } };\n",
+    );
+    const unscoped = await checkFiles({ cwd: root.root, typescript: true });
+    expect(unscoped.diagnostics).toEqual([]);
+  });
+
   it("misuse: a project with TypeScript 7 gets the note, naming why its copy was skipped", async () => {
     root.link("node_modules/typescript", TYPESCRIPT_7_DIR);
     const result = await checkFiles({ cwd: root.root, typescript: true });

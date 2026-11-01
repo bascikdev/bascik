@@ -23,6 +23,7 @@ import {
   type ProjectSnapshot,
   isConfigFile,
   isExcludedProjectPath,
+  hasIsolatedClientBlocks,
   isInsideComponentRoots,
   isPathInside,
   isUsageSourcePath,
@@ -873,6 +874,8 @@ export class BascikLanguageServer {
       importRoot: snapshot?.importRoot ?? path.join(projectRoot, "src"),
       htmlPath: fsPath,
       text,
+      isolatedClientBlocks:
+        snapshot !== undefined && hasIsolatedClientBlocks(fsPath, snapshot),
     });
     // Edited or closed meanwhile: a newer check follows, or there is nothing to show.
     if (this.documents.get(uri)?.version !== version) return;

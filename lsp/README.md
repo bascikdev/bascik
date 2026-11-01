@@ -27,7 +27,7 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
   - Misplaced `data-bascik-slot` attributes.
   - Scoping compatibility checks in CSS and JavaScript.
   - In-file ignore comment support (`<!-- bascik-ignore -->`, `/* bascik-ignore */`, `// bascik-ignore`).
-  - TypeScript errors in `<script type="text/typescript">` blocks, from TypeScript's own language service, with the source `ts (bascik)`. Each block is its own module; browser blocks get the DOM and server-side blocks (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) get Node.js; `@/` resolves against `scripts.importRoot`, and the project's `tsconfig.json` is the base. See [TypeScript](#typescript) below.
+  - TypeScript errors in `<script type="text/typescript">` blocks, from TypeScript's own language service, with the source `ts (bascik)`. Each block is checked in the scope it runs in (a page's browser blocks share one scope, a scoped component's and every server-side block are on their own); browser blocks get the DOM and server-side blocks (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) get Node.js; `@/` resolves against `scripts.importRoot`, and the project's `tsconfig.json` is the base. See [TypeScript](#typescript) below.
   - Configuration support via `bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`. The `.ts` and `.js` forms are read without running them (literal values only), and a config that cannot be read is logged to stderr with its file and line.
 - **Quick Fixes (`textDocument/codeAction`)**:
   - Adds the missing `data-bascik-prop-` prefix to a prop attribute (`missing-prop-prefix`).

@@ -209,4 +209,13 @@ const VALID_FILES: Record<string, string> = {
   function helper() { return build.name; }
 </script>
 `,
+  // A page's client blocks share one scope: the second calls the first's function.
+  "src/pages/shared-scope.html": `<main>Milk frother</main>
+<script type="text/typescript">
+  function frotherLabel(speed: number): string { return \`Milk frother \${speed}\`; }
+</script>
+<script type="text/typescript">
+  document.title = frotherLabel(3);
+</script>
+`,
 };
