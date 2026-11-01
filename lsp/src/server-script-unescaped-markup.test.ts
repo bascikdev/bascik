@@ -1812,3 +1812,162 @@ describe("lint and CLI messages that name elements are not markup (fix round 1)"
     ).toEqual(["${cls}", "${q}"]);
   });
 });
+
+describe("the wrap fix follows typed bindings, parameters, file reads and unknown calls (fix round 2)", () => {
+  const fixableAt = (body: string, hole: string) => {
+    const diags = unescaped(body, { directive: "module" });
+    const d = diags.find((x) => body.slice(x.start, x.end) === hole);
+    expect(d, `${hole} is reported`).toBeDefined();
+    return { fixable: d!.template?.fixable, message: d!.message };
+  };
+
+  it.each([
+    [
+      "a constant with a type annotation",
+      "const ICONS2: Record<string, string> = { ok: '<svg class=\"ok\"></svg>' };\nexport function st2(s: string, l: string) { return `<td>${ICONS2[s]}${l}</td>`; }",
+      "${l}",
+      "ICONS2",
+    ],
+    [
+      "a typed let accumulator",
+      'let out: string = "";\nexport function e(t: string) { out += `<li>${t}</li>`; return `<ul>${out}</ul>`; }',
+      "${out}",
+      "out",
+    ],
+    [
+      "a typed let declared without a value",
+      "let out: string;\nexport function e(t: string) { out = `<li>${t}</li>`; return `<ul>${out}</ul>`; }",
+      "${out}",
+      "out",
+    ],
+    [
+      "a typed markup constant",
+      'const sep: string = "<br>";\nexport function f(a: string) { return `<p>${a}${sep}</p>`; }',
+      "${a}",
+      "sep",
+    ],
+    [
+      "a typed array of markup strings",
+      'export function e(items: string[]) { const lis: string[] = items.map((i) => "<li>" + i + "</li>"); return `<ul>${lis}</ul>`; }',
+      "${lis}",
+      "lis",
+    ],
+    [
+      "an arrow with a function type annotation",
+      'const ital: (t: string) => string = (t) => "<i>" + t + "</i>";\nexport function c(t: string) { return `<p>${ital(t)}</p>`; }',
+      "${ital(t)}",
+      "ital",
+    ],
+    [
+      "a typed arrow with a generic annotation",
+      'const b: Map<string, () => string> = new Map([["a", () => "<b>x</b>"]]);\nexport function c(t: string) { return `<p>${b.get(t)}</p>`; }',
+      "${b.get(t)}",
+      "b",
+    ],
+    [
+      "a destructured binding",
+      "const { icon } = { icon: '<svg class=\"i\"></svg>' };\nexport function c(t: string) { return `<p>${icon}${t}</p>`; }",
+      "${t}",
+      "icon",
+    ],
+    [
+      "an array destructured binding",
+      "const [first] = ['<svg class=\"i\"></svg>'];\nexport function c(t: string) { return `<p>${first}${t}</p>`; }",
+      "${t}",
+      "first",
+    ],
+    [
+      "a parameter a local call fills with a markup string",
+      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport const home = layout("Home", "<p>Welcome</p>");',
+      "${title}",
+      "body",
+    ],
+    [
+      "a parameter a local call fills with a markup template",
+      'function layout(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport function page(y: string) { return layout("Home", `<p>${y}</p>`); }',
+      "${title}",
+      "body",
+    ],
+    [
+      "a callback parameter",
+      'export function wrap(render: () => string) { return `<div class="w">${render()}</div>`; }',
+      "${render()}",
+      "render",
+    ],
+    [
+      "a function imported from a package",
+      'import { marked } from "marked";\nexport function post(md: string, t: string) { return `<article><h1>${t}</h1>${marked(md)}</article>`; }',
+      "${t}",
+      "marked",
+    ],
+    [
+      "a file read",
+      'import fs from "node:fs";\nexport function withHeader(c: string) { const header = fs.readFileSync("partials/header.html", "utf8"); return `<body>${header}<p>${c}</p></body>`; }',
+      "${c}",
+      "header",
+    ],
+    [
+      "a file read in the hole",
+      'import { readFileSync } from "node:fs";\nexport function withHeader(c: string) { return `<body>${readFileSync("h.html", "utf8")}<p>${c}</p></body>`; }',
+      "${c}",
+      "readFileSync",
+    ],
+    [
+      "a fetched response's text",
+      'export async function part(c: string) { const res = await fetch("https://example.com/p"); const body = await res.text(); return `<div>${body}<p>${c}</p></div>`; }',
+      "${c}",
+      "body",
+    ],
+  ])("%s: no fix, and the message says why", (_name, body, hole, culprit) => {
+    const { fixable, message } = fixableAt(body, hole);
+    expect(fixable).toBe(false);
+    expect(message).not.toContain(
+      "Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.",
+    );
+    expect(message).toContain(culprit);
+  });
+
+  it.each([
+    [
+      "a typed binding to plain data",
+      'export const g = (p: { n: string }) => { const label: string = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      "${label}",
+    ],
+    [
+      "a parameter local calls fill with plain data",
+      'function heading(title: string) { return `<h1>${title}</h1>`; }\nexport const home = heading("Home");\nexport const about = heading(`About ${"us"}`);',
+      "${title}",
+    ],
+    [
+      "a global conversion call",
+      "export const g = (n: string) => `<p>${String(n)} ${encodeURIComponent(n)}</p>`;",
+      "${String(n)}",
+    ],
+    [
+      "a local helper with no markup, typed",
+      "const upper: (s: string) => string = (s) => s.toUpperCase();\nexport const g = (t: string) => `<p>${upper(t)}</p>`;",
+      "${upper(t)}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole) => {
+    expect(fixableAt(body, hole).fixable).toBe(true);
+  });
+});
+
+describe("report writers and unclosed fences (fix round 2)", () => {
+  const moduleCovered = (body: string) =>
+    unescaped(body, { directive: "module" }).map((d) =>
+      body.slice(d.start, d.end),
+    );
+
+  it("a whole page passed to a function named for a report is markup", () => {
+    const body =
+      'export function gen(title: string, rows: string) {\n  writeReport("report.html", `<html><head><title>${title}</title></head><body>${rows}</body></html>`);\n}';
+    expect(moduleCovered(body)).toEqual(["${title}", "${rows}"]);
+  });
+
+  it("a fence that never closes hides no markup after it", () => {
+    const body =
+      'export function code(lang: string, src: string, user: string) {\n  return `<div class="post">\n\\`\\`\\`${lang}\n${src}\n<p class="by">${user}</p>\n</div>`;\n}';
+    expect(moduleCovered(body)).toEqual(["${lang}", "${src}", "${user}"]);
+  });
+});

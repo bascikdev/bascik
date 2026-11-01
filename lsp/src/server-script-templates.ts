@@ -466,16 +466,20 @@ function nameVerdict(
 
 /**
  * `const|let|var NAME = EXPR` bindings, each EXPR up to `;`, `,` or the line
- * end at its own depth, or the bracket that closes the one it is in. A let
- * or var name also collects every later plain assignment (`NAME = EXPR`,
- * `NAME += EXPR`, `NAME ||= EXPR`, `NAME ??= EXPR`), so a name reassigned
- * from request data is not trusted from its declaration. Every value's end
- * is found in one pass (valueEnds), so nested declarations, each of which
- * runs to the end of the ones around it, are not each scanned again.
+ * end at its own depth, or the bracket that closes the one it is in. A
+ * TypeScript annotation (`const NAME: Record<string, string> = EXPR`) is
+ * skipped. A let or var name also collects every later plain assignment
+ * (`NAME = EXPR`, `NAME += EXPR`, `NAME ||= EXPR`, `NAME ??= EXPR`), so a
+ * name reassigned from request data is not trusted from its declaration.
+ * Destructured names (`const { icon } = EXPR`) are left out: EXPR is not
+ * their value. Every value's end is found in one pass (valueEnds), so
+ * nested declarations, each of which runs to the end of the ones around
+ * it, are not each scanned again.
  */
 export function findBindings(body: string): Map<string, string[]> {
   const bindings = new Map<string, string[]>();
-  for (const { name, from, end } of findBindingRanges(body)) {
+  for (const { name, from, end, destructured } of findBindingRanges(body)) {
+    if (destructured) continue;
     const list = bindings.get(name) ?? [];
     list.push(body.slice(from, end));
     bindings.set(name, list);
@@ -483,20 +487,139 @@ export function findBindings(body: string): Map<string, string[]> {
   return bindings;
 }
 
-/** The bindings findBindings reads, each with its value's offsets, in no set order. */
-export function findBindingRanges(
+/** A binding findBindingRanges found: the value's offsets in the body. */
+export interface BindingRange {
+  name: string;
+  from: number;
+  end: number;
+  /** A name in a destructuring pattern: the value holds it somewhere. */
+  destructured?: true;
+}
+
+/**
+ * How far a type annotation or a destructuring pattern is read. Past it
+ * the declaration is not followed, so a run of unclosed annotations
+ * cannot make the scan quadratic.
+ */
+const MAX_DECLARATION_HEAD = 2_000;
+
+/**
+ * From just after a declared name or pattern: the offset just past the
+ * `=` that starts its value (a TypeScript annotation skipped), "none" for
+ * a declaration with no value (`let out: string;`), or undefined (`for
+ * (const x of xs)`, or past MAX_DECLARATION_HEAD).
+ */
+function declarationValueStart(
   body: string,
-): { name: string; from: number; end: number }[] {
-  const found: { name: string; from: number }[] = [];
-  const reassignable = new Set<string>();
-  for (const m of body.matchAll(
-    /\b(const|let|var)\s+([\w$]+)\s*=(?![=>])\s*/g,
-  )) {
-    found.push({ name: m[2], from: (m.index ?? 0) + m[0].length });
-    if (m[1] !== "const") reassignable.add(m[2]);
+  at: number,
+): number | "none" | undefined {
+  let i = at;
+  while (i < body.length && /\s/.test(body[i])) i++;
+  if (body[i] === "=" && body[i + 1] !== "=" && body[i + 1] !== ">")
+    return i + 1;
+  if (body[i] === ";" || body[i] === "," || i >= body.length) return "none";
+  if (body[i] !== ":") {
+    // A newline ends a declaration with no value (`let out\n`).
+    return /\n/.test(body.slice(at, i)) ? "none" : undefined;
   }
-  for (const m of body.matchAll(/\b(?:let|var)\s+([\w$]+)\s*[;,\n]/g))
-    reassignable.add(m[1]);
+  let depth = 0;
+  let last = ":";
+  const limit = Math.min(body.length, i + MAX_DECLARATION_HEAD);
+  for (i++; i < limit; i++) {
+    const c = body[i];
+    if (c === '"' || c === "'") {
+      i = stringEnd(body, i) - 1;
+      last = c;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{" || c === "<") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (--depth < 0) return undefined;
+    } else if (c === ">") {
+      if (depth > 0) depth--;
+    } else if (c === "=") {
+      if (body[i + 1] === ">") {
+        i++;
+        last = ">";
+        continue;
+      }
+      if (body[i + 1] === "=") return undefined;
+      if (depth === 0) return i + 1;
+    } else if (depth === 0 && (c === ";" || c === ",")) return "none";
+    else if (depth === 0 && c === "\n") {
+      // Prettier wraps a long union after the colon or before a `|`.
+      let k = i + 1;
+      while (k < body.length && /\s/.test(body[k])) k++;
+      if (!/[:|&]/.test(last) && !/[|&=]/.test(body[k] ?? "")) return "none";
+    }
+    if (!/\s/.test(c)) last = c;
+  }
+  return undefined;
+}
+
+/**
+ * The names a destructuring pattern starting at `open` (`{` or `[`)
+ * declares, and the offset past its closing bracket; undefined when it
+ * does not close within MAX_DECLARATION_HEAD. Property keys (`{ a: b }`
+ * declares b) are left out; a name in a default value is kept, which
+ * only makes the fix more careful.
+ */
+function patternNames(
+  body: string,
+  open: number,
+): { names: string[]; end: number } | undefined {
+  let depth = 0;
+  const limit = Math.min(body.length, open + MAX_DECLARATION_HEAD);
+  for (let i = open; i < limit; i++) {
+    const c = body[i];
+    if (c === '"' || c === "'") i = stringEnd(body, i) - 1;
+    else if (c === "{" || c === "[" || c === "(") depth++;
+    else if (c === "}" || c === "]" || c === ")") {
+      if (--depth === 0) {
+        const pattern = body.slice(open, i + 1);
+        const names: string[] = [];
+        for (const m of pattern.matchAll(
+          /(?<![\w$.'"])([A-Za-z_$][\w$]*)(?![\w$])(?!\s*:)/g,
+        ))
+          names.push(m[1]);
+        return { names, end: i + 1 };
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The bindings findBindings reads, each with its value's offsets, in no set order. */
+export function findBindingRanges(body: string): BindingRange[] {
+  const found: { name: string; from: number; destructured?: true }[] = [];
+  const reassignable = new Set<string>();
+  for (const m of body.matchAll(/(?<![\w$.])(const|let|var)\s+/g)) {
+    const at = (m.index ?? 0) + m[0].length;
+    let names: string[];
+    let after: number;
+    let destructured = false;
+    const name = /^[A-Za-z_$][\w$]*/.exec(body.slice(at, at + 256));
+    if (name) {
+      names = [name[0]];
+      after = at + name[0].length;
+    } else if (body[at] === "{" || body[at] === "[") {
+      const pattern = patternNames(body, at);
+      if (!pattern) continue;
+      names = pattern.names;
+      after = pattern.end;
+      destructured = true;
+    } else continue;
+    const start = declarationValueStart(body, after);
+    if (start === undefined) continue;
+    if (m[1] !== "const") for (const n of names) reassignable.add(n);
+    if (start === "none") continue;
+    let from = start;
+    while (from < body.length && /[ \t\r\n]/.test(body[from])) from++;
+    for (const n of names)
+      found.push(
+        destructured ? { name: n, from, destructured } : { name: n, from },
+      );
+  }
   if (reassignable.size > 0)
     // Plain assignments: not after `.` (a property) or a declaration keyword
     // (counted above); `-=`, `*=` and the like always store a number.
@@ -512,12 +635,14 @@ export function findBindingRanges(
     body,
     [...new Set(found.map((f) => f.from))].sort((x, y) => x - y),
   );
-  const ranges: { name: string; from: number; end: number }[] = [];
-  for (const { name, from } of found) {
+  const ranges: BindingRange[] = [];
+  for (const { name, from, destructured } of found) {
     const end = ends.get(from);
     // Inside a string, comment or template text: not code.
     if (end === undefined) continue;
-    ranges.push({ name, from, end });
+    ranges.push(
+      destructured ? { name, from, end, destructured } : { name, from, end },
+    );
   }
   return ranges;
 }
@@ -961,7 +1086,8 @@ const NO_FENCED_HOLES: ReadonlySet<number> = new Set();
 /**
  * Blanks each Markdown fenced block: from a line that starts with three
  * backticks (written \`\`\` in a template) or three tildes, through the
- * line that closes it, or the template's end. Code in a fence is text the
+ * line that closes it. A fence that never closes opens no block: a stray
+ * \`\`\` would otherwise hide every real markup hole after it. Code in a fence is text the
  * Markdown renderer escapes, not markup. A line ends at a newline or a
  * `\n` escape. One pass.
  */
@@ -969,15 +1095,36 @@ export const markdownFences = (parts: readonly string[]): MarkdownFences => {
   if (!parts.some((part) => part.includes("`\\`") || part.includes("~~~")))
     return { parts, fencedHoles: NO_FENCED_HOLES, hasFence: false };
   const text = parts.join(HOLE_CHAR);
+  // Lines, as [end, next]; a fence that never closes opens no block, so
+  // the markup after it is still read as markup.
+  const lines: [number, number][] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") lines.push([i, i + 1]);
+    else if (text[i] === "\\") {
+      if (text[i + 1] === "n") lines.push([i, i + 2]);
+      i++;
+    }
+  }
+  lines.push([text.length, text.length]);
+  let unclosed = -1;
+  let open = false;
+  let sawFence = false;
+  for (let l = 0, start = 0; l < lines.length; start = lines[l][1], l++)
+    if (FENCE.test(text.slice(start, lines[l][0]))) {
+      sawFence = true;
+      open = !open;
+      if (open) unclosed = start;
+    }
+  if (!open) unclosed = -1;
   let out = "";
   let inFence = false;
-  let hasFence = false;
+  let hasFence = sawFence;
   let lineStart = 0;
   let holesBefore = 0;
   const fencedHoles = new Set<number>();
   const endLine = (end: number, next: number): void => {
     const line = text.slice(lineStart, end);
-    const fence = FENCE.test(line);
+    const fence = lineStart !== unclosed && FENCE.test(line);
     if (inFence || fence) {
       hasFence = true;
       out += line.replace(/[^\u0000]/g, " ") + text.slice(end, next);
@@ -999,14 +1146,7 @@ export const markdownFences = (parts: readonly string[]): MarkdownFences => {
     }
     lineStart = next;
   };
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "\n") endLine(i, i + 1);
-    else if (text[i] === "\\") {
-      if (text[i + 1] === "n") endLine(i, i + 2);
-      i++;
-    }
-  }
-  endLine(text.length, text.length);
+  for (const [end, next] of lines) endLine(end, next);
   return { parts: out.split(HOLE_CHAR), fencedHoles, hasFence };
 };
 

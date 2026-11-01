@@ -418,12 +418,22 @@ export function analyzeServerScriptSource(
     findBindingRanges(body),
     sourceWithin,
     projectNames,
+    (name) =>
+      htmlExportOf(name, imports) !== undefined ||
+      ctx.escapeFunctions.includes(name),
   );
   // Local functions that build a markup string: a hole that calls one
   // holds markup, which wrapping the template in html would escape.
   const localHelpers = new Set<string>();
   for (const fn of functions)
-    if (producers.names.has(fn.name)) localHelpers.add(fn.name);
+    if (producers.markupNames.has(fn.name)) localHelpers.add(fn.name);
+  /** The first call in `from`..`to` whose result this file cannot see into. */
+  const opaqueWithin = (from: number, to: number): string | undefined => {
+    const k = firstAtOrAfter(producers.opaqueStarts, from);
+    return k < producers.opaqueStarts.length && producers.opaqueStarts[k] < to
+      ? producers.opaqueValues[k]
+      : undefined;
+  };
   /** The first name in `from`..`to` that may hold markup, or undefined. */
   const producerWithin = (from: number, to: number): string | undefined => {
     const k = firstAtOrAfter(producers.starts, from);
@@ -462,11 +472,19 @@ export function analyzeServerScriptSource(
           ...at,
           text: `builds markup as a string, which html would escape, so the page would show its tags as text. Build that markup with html\`...\` first, since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
         };
+      const opaque = opaqueWithin(hole.start + 2, hole.end - 1);
+      if (opaque !== undefined)
+        return {
+          ...at,
+          text: `calls ${opaque}(), whose result this file cannot see into (a callback, a package function, a file or a response); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+        };
       const name = producerWithin(hole.start + 2, hole.end - 1);
       if (name !== undefined)
         return {
           ...at,
-          text: `reads ${name}, which may hold markup built as a string in this file; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+          text: producers.markupNames.has(name)
+            ? `reads ${name}, which may hold markup built as a string in this file; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+            : `reads ${name}, which holds what a call this file cannot see into returns (a callback, a package function, a file or a response); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
         };
     }
     return undefined;
@@ -982,6 +1000,14 @@ function markupStringIn(expr: string, names: Set<string>): string | undefined {
   return last && names.has(last[1]) ? e : undefined;
 }
 
+/** A function defined in a script: its name, the span of its code, and its parameters' names by position. */
+interface LocalFunction {
+  name: string;
+  start: number;
+  end: number;
+  params: string[][];
+}
+
 /**
  * The functions defined in a script with the span of their code: function
  * declarations, methods, and functions or arrows bound to a name or a
@@ -991,7 +1017,7 @@ function markupStringIn(expr: string, names: Set<string>): string | undefined {
 function localFunctions(
   body: string,
   tokens: readonly Token[] = scanJavaScript(body).tokens,
-): { name: string; start: number; end: number }[] {
+): LocalFunction[] {
   const n = tokens.length;
   const punct = (k: number, v: string): boolean =>
     k >= 0 &&
@@ -1024,6 +1050,8 @@ function localFunctions(
     nameAt: number;
     body: number;
     arrow: boolean;
+    /** The parameter list's `(`, or the lone parameter of `x => ...`, as a token index. */
+    params: number;
   }[] = [];
   /** After `)` of a parameter list at `close`: the body's `{`, or the token after `=>` (arrow). */
   const bodyAfter = (
@@ -1039,6 +1067,34 @@ function localFunctions(
     }
     return undefined;
   };
+  /**
+   * For `const|let|var NAME: Type =` at NAME (`k`), the `=` token's index,
+   * the annotation's brackets skipped; -1 otherwise. Read for at most 200
+   * tokens, so the pass stays linear.
+   */
+  const typedBindingEquals = (k: number): number => {
+    if (
+      !punct(k + 1, ":") ||
+      !(word(k - 1, "const") || word(k - 1, "let") || word(k - 1, "var"))
+    )
+      return -1;
+    let angle = 0;
+    for (let j = k + 2; j < n && j <= k + 200; j++) {
+      if (tokens[j].type !== "punctuation") continue;
+      const v = tokens[j].value;
+      if (v === "(" || v === "[" || v === "{") {
+        if (partner[j] === -1) return -1;
+        j = partner[j];
+      } else if (v === "<") angle++;
+      else if (v === ">") angle = Math.max(0, angle - 1);
+      else if (v === "=") {
+        if (punct(j + 1, ">")) j++;
+        else if (punct(j + 1, "=")) return -1;
+        else if (angle === 0) return j;
+      } else if (v === ";" || v === ")" || v === "]" || v === "}") return -1;
+    }
+    return -1;
+  };
   for (let k = 0; k < n; k++) {
     if (word(k, "function") && word(k + 1) && punct(k + 2, "(")) {
       const close = partner[k + 2];
@@ -1049,17 +1105,21 @@ function localFunctions(
           nameAt: k + 1,
           body: b.at,
           arrow: false,
+          params: k + 2,
         });
       continue;
     }
     if (!word(k)) continue;
-    // NAME = ..., NAME: ... (a property), or a method NAME(...) {.
+    // NAME = ..., NAME: Type = ..., NAME: ... (a property), or a method
+    // NAME(...) {.
+    const typedEq = typedBindingEquals(k);
     const isBinding =
-      punct(k + 1, "=") && !punct(k + 2, "=") && !punct(k + 2, ">");
+      (punct(k + 1, "=") && !punct(k + 2, "=") && !punct(k + 2, ">")) ||
+      typedEq !== -1;
     const isProperty =
       punct(k + 1, ":") && (punct(k - 1, "{") || punct(k - 1, ","));
     if (isBinding || isProperty) {
-      let v = k + 2;
+      let v = typedEq !== -1 ? typedEq + 1 : k + 2;
       if (word(v, "async")) v++;
       if (word(v, "function")) {
         const paren = word(v + 1) ? v + 2 : v + 1;
@@ -1071,6 +1131,7 @@ function localFunctions(
             nameAt: k,
             body: b.at,
             arrow: false,
+            params: paren,
           });
       } else if (punct(v, "(") && partner[v] !== -1) {
         const b = bodyAfter(partner[v], true);
@@ -1080,6 +1141,7 @@ function localFunctions(
             nameAt: k,
             body: b.at,
             arrow: true,
+            params: v,
           });
       } else if (word(v) && punct(v + 1, "=") && punct(v + 2, ">"))
         found.push({
@@ -1087,6 +1149,7 @@ function localFunctions(
           nameAt: k,
           body: v + 3,
           arrow: true,
+          params: v,
         });
       continue;
     }
@@ -1108,6 +1171,7 @@ function localFunctions(
           nameAt: k,
           body: b.at,
           arrow: false,
+          params: k + 1,
         });
     }
   }
@@ -1133,6 +1197,51 @@ function localFunctions(
       pending[pending.length - 1] = [];
     }
   }
+  /**
+   * Each parameter's names, by position: `a`, `a = 1` and `...a` give a;
+   * a pattern (`{ icon, t }`) gives every name in it before its type or
+   * default. Types after `:` are left out.
+   */
+  const parameterNames = (at: number): string[][] => {
+    if (!punct(at, "(")) return word(at) ? [[tokens[at].value]] : [];
+    const close = partner[at];
+    const params: string[][] = [];
+    let current: string[] = [];
+    let skipping = false;
+    for (let j = at + 1; j < close; j++) {
+      const t = tokens[j];
+      if (t.type === "punctuation") {
+        if (t.value === ",") {
+          params.push(current);
+          current = [];
+          skipping = false;
+        } else if (t.value === ":" || t.value === "=") skipping = true;
+        else if (t.value === "{" || t.value === "[" || t.value === "(") {
+          if (skipping) j = partner[j] === -1 ? close : partner[j];
+          // A pattern: the names in it, keys (followed by `:`) left out.
+          else if (t.value !== "(")
+            for (let q = j + 1; q < partner[j]; q++)
+              if (
+                tokens[q].type === "identifier" &&
+                !punct(q + 1, ":") &&
+                !punct(q - 1, ".")
+              )
+                current.push(tokens[q].value);
+          if (!skipping && partner[j] !== -1) j = partner[j];
+        }
+      } else if (t.type === "identifier" && !skipping) {
+        if (
+          !METHOD_MODIFIERS.has(t.value) ||
+          punct(j + 1, ",") ||
+          punct(j + 1, ":") ||
+          punct(j + 1, ")")
+        )
+          current.push(t.value);
+      }
+    }
+    if (current.length > 0 || params.length > 0) params.push(current);
+    return params;
+  };
   return found.map((f) => {
     const start = tokens[f.nameAt].start;
     let end: number;
@@ -1143,7 +1252,7 @@ function localFunctions(
       const stop = stopOf.get(f.body);
       end = stop === undefined ? body.length : tokens[stop].start;
     }
-    return { name: f.name, start, end };
+    return { name: f.name, start, end, params: parameterNames(f.params) };
   });
 }
 
@@ -1163,7 +1272,9 @@ const MESSAGE_WORDS = new Set(
 /**
  * The template literals (by start) passed straight to a function whose
  * name has a reporting word in it, split at camelCase and `.`: finding(),
- * addWarning(), ctx.report(), logger.warn(). The innermost open bracket
+ * addWarning(), ctx.report(), logger.warn(), unless it starts with a tag
+ * and holds an end tag (writeReport("r.html", `<html>...</html>`) saves a
+ * page). The innermost open bracket
  * around each literal is read in one sweep over the tokens, so a literal
  * nested in an arrow's body (`items.map((p) => \`...\`)`) belongs to that
  * call (map) and not to one further out.
@@ -1187,6 +1298,13 @@ function messageCallArguments(
       )
         open.pop();
     }
+    // A whole document or element (`<html>...</html>`) is markup a
+    // report writer saves, not a message that names a tag.
+    if (
+      /^\s*</.test(literal.parts[0]) &&
+      literal.parts.some((p) => p.includes("</"))
+    )
+      continue;
     const paren = open.length > 0 ? open[open.length - 1] : -1;
     if (paren < 1 || tokens[paren].value !== "(") continue;
     const callee = tokens[paren - 1];
@@ -1225,26 +1343,61 @@ function markupSourceStarts(
   return starts.sort((x, y) => x - y);
 }
 
+/** Globals that return plain data, and syntax that looks like a call. */
+const PLAIN_CALLEES = new Set(
+  "String Number Boolean BigInt Symbol Array Object Date RegExp Map Set WeakMap WeakSet Promise Error TypeError RangeError URL URLSearchParams parseInt parseFloat isNaN isFinite encodeURIComponent encodeURI decodeURIComponent decodeURI structuredClone setTimeout clearTimeout setInterval clearInterval queueMicrotask require import super if for while switch catch with function return typeof void delete await yield new async in of instanceof case do else".split(
+    " ",
+  ),
+);
+
+/** Calls that read a file or a response: what they return may be markup. */
+const READER_METHODS = new Set(["readFileSync", "readFile", "text"]);
+
+/**
+ * A callee whose name says it returns markup: marked(), md.render(),
+ * DOMPurify.sanitize(), hljs.highlight(), renderToString(). Other package
+ * and global functions (slugify(), format()) are taken to return text.
+ */
+const MARKUP_CALLEE =
+  /render|markdown|marked|markup|html|sanitize|highlight|svg/i;
+
+/** What markupProducers found. */
+interface MarkupProducers {
+  /** Names that may hold markup: built as a string here, or a value this file cannot see into. */
+  names: Set<string>;
+  /** The names among them that hold markup built as a string in this file. */
+  markupNames: Set<string>;
+  /** Identifiers that read one of `names`, ascending, with their names. */
+  starts: number[];
+  values: string[];
+  /** Calls whose result this file cannot see into (`render()`, `marked()`, `fs.readFileSync()`), ascending. */
+  opaqueStarts: number[];
+  opaqueValues: string[];
+}
+
 /**
  * The names that may hold or return markup built as a string: a local
- * function, a binding (`let out = ""; out += \`<li>...\``), or an array
- * filled with .push() or .unshift(), whose code holds a markup literal,
- * calls a project import, or reads another such name. Names are merged
- * across scopes, so a name that holds markup anywhere counts everywhere:
- * the fix is withheld when unsure. Each identifier counts for the
- * innermost region around it, and a region counts for the ones around it,
- * so the pass stays linear in the tokens.
- *
- * Returns the names, and the identifiers that read one (ascending
- * `starts` with their `values`).
+ * function, a binding (`let out = ""; out += \`<li>...\``), an array
+ * filled with .push() or .unshift(), or a parameter of a local function
+ * that a call in this file passes such a value, whose code holds a markup
+ * literal, calls a project import, or reads another such name. A region
+ * that calls a function this file cannot see into and that may return
+ * markup (a callback parameter, a function named for markup such as
+ * marked() or md.render(), a file read or a response's text()) may hold
+ * markup too. Names
+ * are merged across scopes, so a name that holds markup anywhere counts
+ * everywhere: the fix is withheld when unsure. Each identifier counts for
+ * the innermost region around it, and a region counts for the ones around
+ * it, so the pass stays linear in the tokens.
  */
 function markupProducers(
   tokens: readonly Token[],
-  functions: readonly { name: string; start: number; end: number }[],
+  functions: readonly LocalFunction[],
   bindings: readonly { name: string; from: number; end: number }[],
   sourceWithin: (from: number, to: number) => boolean,
   projectNames: ReadonlySet<string>,
-): { names: Set<string>; starts: number[]; values: string[] } {
+  isTrustedCallee: (name: string) => boolean,
+): MarkupProducers {
   const n = tokens.length;
   const isPunct = (k: number, v: string): boolean =>
     k >= 0 &&
@@ -1260,7 +1413,6 @@ function markupProducers(
     ...functions,
     ...bindings.map((b) => ({ name: b.name, start: b.from, end: b.end })),
   ];
-  // NAME.push(...) and NAME.unshift(...): the arguments fill NAME.
   const opens: number[] = [];
   const partner = new Int32Array(n).fill(-1);
   for (let k = 0; k < n; k++) {
@@ -1270,29 +1422,119 @@ function markupProducers(
     else if ((v === ")" || v === "]" || v === "}") && opens.length > 0)
       partner[opens.pop()!] = k;
   }
-  for (let k = 0; k + 3 < n; k++)
+  /**
+   * Each top-level argument of the call whose `(` is at `open`, as source
+   * offsets between its separators (a template argument has no token of
+   * its own, only its holes do).
+   */
+  const argumentsOf = (open: number): [number, number][] => {
+    const close = partner[open];
+    const spans: [number, number][] = [];
+    let from = tokens[open].end;
+    for (let j = open + 1; j <= close; j++) {
+      if (j === close || isPunct(j, ",")) {
+        spans.push([from, tokens[j].start]);
+        from = tokens[j].end;
+      } else if (partner[j] !== -1) j = partner[j];
+    }
+    return spans;
+  };
+  const paramsOf = new Map<string, string[][]>();
+  for (const fn of functions)
+    if (fn.params.length > 0) {
+      const list = paramsOf.get(fn.name) ?? [];
+      fn.params.forEach(
+        (names, i) => (list[i] = [...(list[i] ?? []), ...names]),
+      );
+      paramsOf.set(fn.name, list);
+    }
+  const localNames = new Set(functions.map((f) => f.name));
+  /** Every local function's parameter names: a call of one runs a callback. */
+  const parameters = new Set(functions.flatMap((f) => f.params.flat()));
+  const opaqueStarts: number[] = [];
+  const opaqueValues: string[] = [];
+  for (let k = 0; k + 1 < n; k++) {
+    if (tokens[k].type !== "identifier" || !isPunct(k + 1, "(")) continue;
+    if (partner[k + 1] === -1) continue;
+    const name = tokens[k].value;
+    const after = partner[k + 1] + 1;
+    // A definition, not a call: function name(...) {, a method name(...) {.
+    const before = k > 0 ? tokens[k - 1] : undefined;
     if (
-      tokens[k].type === "identifier" &&
-      !isPunct(k - 1, ".") &&
-      isPunct(k + 1, ".") &&
-      (tokens[k + 2].value === "push" || tokens[k + 2].value === "unshift") &&
-      isPunct(k + 3, "(") &&
-      partner[k + 3] !== -1
+      (before?.type === "identifier" &&
+        (before.value === "function" || METHOD_MODIFIERS.has(before.value))) ||
+      isPunct(after, "{") ||
+      (isPunct(after, ":") &&
+        (before === undefined ||
+          isPunct(k - 1, "{") ||
+          isPunct(k - 1, "}") ||
+          isPunct(k - 1, ";") ||
+          isPunct(k - 1, ",")))
     )
-      regions.push({
-        name: tokens[k].value,
-        start: tokens[k + 3].start,
-        end: tokens[partner[k + 3]].end,
+      continue;
+    if (isPunct(k - 1, ".")) {
+      // fs.readFileSync(...), res.text(): a file or a response; md.render().
+      if (READER_METHODS.has(name) || MARKUP_CALLEE.test(name)) {
+        opaqueStarts.push(tokens[k].start);
+        opaqueValues.push(name);
+      }
+      // NAME.push(...) and NAME.unshift(...): the arguments fill NAME.
+      if (
+        (name === "push" || name === "unshift") &&
+        k >= 2 &&
+        tokens[k - 2].type === "identifier" &&
+        !isPunct(k - 3, ".")
+      )
+        regions.push({
+          name: tokens[k - 2].value,
+          start: tokens[k + 1].start,
+          end: tokens[partner[k + 1]].end,
+        });
+      continue;
+    }
+    if (
+      k > 0 &&
+      tokens[k - 1].type === "identifier" &&
+      tokens[k - 1].value === "new"
+    )
+      continue;
+    // A local function's parameters hold what its callers pass them.
+    const params = paramsOf.get(name);
+    if (params)
+      argumentsOf(k + 1).forEach(([start, end], i) => {
+        for (const param of params[i] ?? [])
+          regions.push({ name: param, start, end });
       });
+    if (
+      !localNames.has(name) &&
+      !projectNames.has(name) &&
+      !PLAIN_CALLEES.has(name) &&
+      !isTrustedCallee(name) &&
+      (parameters.has(name) ||
+        MARKUP_CALLEE.test(name) ||
+        (READER_METHODS.has(name) && name !== "text"))
+    ) {
+      opaqueStarts.push(tokens[k].start);
+      opaqueValues.push(name);
+    }
+  }
   regions.sort((x, y) => x.start - y.start || y.end - x.end);
 
   const names = new Set<string>();
+  const markupNames = new Set<string>();
   const usedBy = new Map<string, Set<string>>();
   const queue: string[] = [];
+  const markupQueue: string[] = [];
   const mark = (name: string): void => {
     if (names.has(name)) return;
     names.add(name);
     queue.push(name);
+  };
+  const markMarkup = (name: string): void => {
+    mark(name);
+    if (markupNames.has(name)) return;
+    markupNames.add(name);
+    markupQueue.push(name);
   };
   const edge = (from: string, to: string): void => {
     if (from === to) return;
@@ -1300,6 +1542,7 @@ function markupProducers(
     if (!set) usedBy.set(from, (set = new Set()));
     set.add(to);
   };
+  const opaqueAt = new Set(opaqueStarts);
   const stack: { name: string; end: number }[] = [];
   let r = 0;
   for (let k = 0; k <= n; k++) {
@@ -1308,19 +1551,23 @@ function markupProducers(
       const region = regions[r++];
       while (stack.length > 0 && stack[stack.length - 1].end <= region.start)
         stack.pop();
-      if (sourceWithin(region.start, region.end)) mark(region.name);
+      if (sourceWithin(region.start, region.end)) markMarkup(region.name);
       if (stack.length > 0) edge(region.name, stack[stack.length - 1].name);
       stack.push(region);
     }
     if (k === n) break;
     while (stack.length > 0 && stack[stack.length - 1].end <= at) stack.pop();
-    if (stack.length === 0 || !reads(k)) continue;
-    const value = tokens[k].value;
+    if (stack.length === 0) continue;
     const owner = stack[stack.length - 1].name;
+    if (opaqueAt.has(at)) mark(owner);
+    if (!reads(k)) continue;
+    const value = tokens[k].value;
     // A project import that is called or passed on may return markup.
-    if (projectNames.has(value)) mark(owner);
+    if (projectNames.has(value)) markMarkup(owner);
     else edge(value, owner);
   }
+  while (markupQueue.length > 0)
+    for (const next of usedBy.get(markupQueue.pop()!) ?? []) markMarkup(next);
   while (queue.length > 0)
     for (const next of usedBy.get(queue.pop()!) ?? []) mark(next);
 
@@ -1331,7 +1578,7 @@ function markupProducers(
       starts.push(tokens[k].start);
       values.push(tokens[k].value);
     }
-  return { names, starts, values };
+  return { names, markupNames, starts, values, opaqueStarts, opaqueValues };
 }
 
 const CONTROL_WORDS = new Set([

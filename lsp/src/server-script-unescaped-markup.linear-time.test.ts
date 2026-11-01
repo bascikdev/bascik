@@ -289,4 +289,47 @@ describe("build-time code and Node modules: linear time (review round 2)", () =>
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
+  it(
+    "type annotations, patterns, parameters and callback calls are read in linear time when deciding the fix (CPU growth under 8x for 4x the input)",
+    () => {
+      // Fix round 2: typed and destructured declarations, the arguments of
+      // calls to local functions, and calls of callback parameters.
+      const typed = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `const v${i}: Record<string, (t: string) => string> = { a: (t) => "<b>" + t + "</b>" };\nconst { a${i}, b${i} }: { a${i}: string; b${i}: string } = v${i} as never;\nexport const p${i} = (t: string) => \`<p>\${v${i}.a(t)}\${a${i}}</p>\`;\n`,
+        ).join("");
+      // Unclosed annotations and patterns, each read only a bounded way.
+      const unclosed = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) => `const u${i}: Map<(\nlet { w${i}, [\n`,
+        ).join("");
+      const calls = (n: number) =>
+        "function layout(title: string, body: string, render: () => string) { return `<main>${title}${body}${render()}</main>`; }\n" +
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `export const p${i} = layout("T${i}", layout("A", "<b>${i}</b>", () => "x"), () => \`<i>\${${i}}</i>\`);\n`,
+        ).join("");
+      const run = (body: string) =>
+        analyzeServerScriptSource(body, {
+          hasSrcAttribute: false,
+          directive: "module",
+        });
+      const growthOfModules = (small: string, large: string): number =>
+        growthOf(
+          () => run(small),
+          () => run(large),
+        );
+      const diags = run(typed(100)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(diags.every((d) => d.template?.fixable === false)).toBe(true);
+      expect(growthOfModules(typed(1_000), typed(4_000))).toBeLessThan(8);
+      expect(growthOfModules(unclosed(1_000), unclosed(4_000))).toBeLessThan(8);
+      expect(growthOfModules(calls(1_000), calls(4_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
 });
