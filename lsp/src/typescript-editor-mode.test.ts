@@ -56,6 +56,26 @@ describe("editorModeText", () => {
     expect(text).not.toContain("unquoted");
   });
 
+  it("reads JavaScript as VS Code's JavaScript mode does: plain scripts and blocks with an uppercase TYPE", () => {
+    const html =
+      '<script type="text/typescript">const typed = 1;</script>\n' +
+      "<script>var plainScript = 1;</script>\n" +
+      '<script type="module">const moduleScript = 1;</script>\n' +
+      '<script TYPE="text/typescript">const upperType = 1;</script>\n' +
+      '<script type="application/json">{"jsonData": 1}</script>\n' +
+      '<script type="text/TypeScript">const mixedCase = 1;</script>\n';
+    const javascript = editorModeText(html, "javascript");
+    expect(javascript.length).toBe(html.length);
+    for (const name of ["plainScript", "moduleScript", "upperType"])
+      expect(javascript).toContain(name);
+    for (const name of ["typed", "jsonData", "mixedCase"])
+      expect(javascript).not.toContain(name);
+    const typescript = editorModeText(html);
+    expect(typescript).toContain("typed");
+    for (const name of ["plainScript", "upperType", "mixedCase"])
+      expect(typescript).not.toContain(name);
+  });
+
   it("is all blanks for a page without TypeScript blocks", () => {
     expect(editorModeText("<p>Frother</p>\n").trim()).toBe("");
   });

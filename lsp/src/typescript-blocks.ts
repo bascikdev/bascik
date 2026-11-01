@@ -18,6 +18,9 @@ import { readOpenTagAttributes } from "./analyzer.js";
 /** Which program checks a block: the browser one (DOM, no Node types) or the server one (Node, no DOM). */
 export type TypeScriptProgramKind = "client" | "server";
 
+/** The language VS Code's HTML support embeds a script as, or `undefined` for one it leaves alone. */
+export type EditorScriptLanguage = "typescript" | "javascript" | undefined;
+
 /** The Bascik directive on a block's script tag, or `undefined` for a client script. */
 export type TypeScriptBlockDirective =
   "build" | "build-once" | "routes" | "server" | "stream";
@@ -31,10 +34,11 @@ export interface TypeScriptBlock {
   contentStart: number;
   content: string;
   /**
-   * VS Code's HTML support embeds the block as TypeScript, so its own in-file mode answers about it: the open tag's
-   * lowercase `type` attribute is exactly `"text/typescript"` or `'text/typescript'` (see `editorEmbedsTypeScript`).
+   * The language VS Code's HTML support embeds the block as, so its own in-file mode answers about it, or
+   * `undefined` when it embeds nothing (see `editorScriptLanguage`). An uppercase `TYPE="text/typescript"` leaves
+   * the block JavaScript there: its JavaScript mode reads it with the page's plain scripts.
    */
-  editorEmbedded: boolean;
+  editorLanguage: EditorScriptLanguage;
 }
 
 /** In the order Bascik's compiler resolves a tag that (wrongly) carries more than one. */
@@ -146,20 +150,43 @@ const directiveOf = (
   DIRECTIVES.find((candidate) => attributes.has(`data-bascik-${candidate}`));
 
 /**
- * Whether VS Code's HTML support reads a script as TypeScript. Its scanner compares the attribute's name as written
- * with `type` (an uppercase `TYPE` makes the block JavaScript) and tests the value as written, quotes included,
- * against `/["']text\/typescript["']/`; the last `type` attribute wins. So `type="text/TypeScript"`,
- * `type=text/typescript` and `type=" text/typescript"`, which Bascik compiles as TypeScript, get nothing from it.
+ * The language VS Code's HTML support embeds a script as. Its scanner starts every script as JavaScript, and an
+ * attribute whose name is `type` as written (so not `TYPE`) with a value changes that: the value as written, quotes
+ * included, matching `/["'](module|(text|application)\/(java|ecma)script|text\/babel)["']/` makes it JavaScript,
+ * `/["']text\/typescript["']/` TypeScript, and anything else nothing. The last such attribute wins. So
+ * `type="text/TypeScript"`, `type=text/typescript` and `type=" text/typescript"`, which Bascik compiles as
+ * TypeScript, are embedded as nothing, and `TYPE="text/typescript"` as JavaScript.
  */
-export function editorEmbedsTypeScript(openTag: string): boolean {
+export function editorScriptLanguage(openTag: string): EditorScriptLanguage {
   const insideTag = openTag.replace(/^<[^\s/>]+/, "").replace(/\/?>$/, "");
   const attributeRe =
     /([^\s"'=<>`/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'][^\s]*))?/g;
-  let embedded = false;
-  for (const [, name, value] of insideTag.matchAll(attributeRe))
-    if (name === "type")
-      embedded = value !== undefined && /["']text\/typescript["']/.test(value);
-  return embedded;
+  let language: EditorScriptLanguage = "javascript";
+  for (const [, name, value] of insideTag.matchAll(attributeRe)) {
+    if (name !== "type" || value === undefined) continue;
+    if (
+      /["'](module|(text|application)\/(java|ecma)script|text\/babel)["']/.test(
+        value,
+      )
+    )
+      language = "javascript";
+    else if (/["']text\/typescript["']/.test(value)) language = "typescript";
+    else language = undefined;
+  }
+  return language;
+}
+
+/**
+ * The text of every script VS Code's HTML support embeds as `language`, in source order: the scripts its mode for
+ * that language reads together as one file.
+ */
+export function editorEmbeddedScripts(
+  html: string,
+  language: "typescript" | "javascript",
+): { contentStart: number; content: string }[] {
+  return scanScripts(html).filter(
+    (script) => editorScriptLanguage(script.openTag) === language,
+  );
 }
 
 /**
@@ -181,7 +208,7 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
       program: directive === undefined ? "client" : "server",
       contentStart,
       content,
-      editorEmbedded: editorEmbedsTypeScript(openTag),
+      editorLanguage: editorScriptLanguage(openTag),
     });
   }
   return blocks;

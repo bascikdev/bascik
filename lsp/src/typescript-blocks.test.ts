@@ -105,25 +105,34 @@ describe("extractTypeScriptBlocks", () => {
     }
   });
 
-  it("marks the blocks VS Code's HTML support embeds as TypeScript: a quoted, lowercase type attribute only", () => {
-    const embedded = (openTag: string) =>
+  it("marks the language VS Code's HTML support embeds each block as: its last lowercase type attribute decides", () => {
+    const language = (openTag: string) =>
       extractTypeScriptBlocks(`${openTag}let a = 1;</script>`).map(
-        (block) => block.editorEmbedded,
+        (block) => block.editorLanguage,
       );
-    expect(embedded('<script type="text/typescript">')).toEqual([true]);
-    expect(embedded("<script type='text/typescript'>")).toEqual([true]);
+    expect(language('<script type="text/typescript">')).toEqual(["typescript"]);
+    expect(language("<script type='text/typescript'>")).toEqual(["typescript"]);
     expect(
-      embedded('<script data-bascik-server\n  type="text/typescript"\n>'),
-    ).toEqual([true]);
-    // Bascik reads these as TypeScript too, but VS Code's regex does not, so its mode gives them nothing.
+      language('<script data-bascik-server\n  type="text/typescript"\n>'),
+    ).toEqual(["typescript"]);
+    // Bascik reads these as TypeScript too, but VS Code's regex does not match the value: no mode answers.
     for (const openTag of [
       '<script type="text/TypeScript">',
       "<script type=text/typescript>",
       '<script type=" text/typescript">',
       '<script type="text/typescript ">',
-      '<script TYPE="text/typescript">',
     ])
-      expect(embedded(openTag)).toEqual([false]);
+      expect(language(openTag)).toEqual([undefined]);
+    // VS Code compares the attribute's name as written: without a lowercase `type`, the block stays JavaScript.
+    for (const openTag of [
+      '<script TYPE="text/typescript">',
+      '<script Type="text/typescript">',
+      "<SCRIPT TYPE='text/typescript'>",
+    ])
+      expect(language(openTag)).toEqual(["javascript"]);
+    expect(
+      language('<script TYPE="text/typescript" type="text/typescript">'),
+    ).toEqual(["typescript"]);
   });
 
   it("skips a script with src, and script text inside style, textarea and title", () => {

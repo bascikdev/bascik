@@ -1207,10 +1207,13 @@ export class TypeScriptProject {
     );
     const isVirtual = (fileName: string) =>
       this.files.has(fileName) || fileName === this.nodeDeclarations?.fileName;
-    // A block VS Code's HTML support does not embed as TypeScript gets nothing from its mode: every answer is Bascik's.
-    const crossFileOnly =
-      query.crossFileOnly === true &&
-      typeScriptBlockAt(text, query.offset)?.editorEmbedded === true;
+    // A block VS Code's HTML support does not embed gets nothing from its modes: every answer is Bascik's. One it
+    // embeds as JavaScript (an uppercase `TYPE`) gets the page-local answers from its JavaScript mode.
+    const editorLanguage =
+      query.crossFileOnly === true
+        ? typeScriptBlockAt(text, query.offset)?.editorLanguage
+        : undefined;
+    const crossFileOnly = editorLanguage !== undefined;
     const isForeign = crossFileOnly
       ? (fileName: string) =>
           !isVirtual(fileName) &&
@@ -1225,9 +1228,10 @@ export class TypeScriptProject {
         generated,
         file,
         isForeign,
-        editor: crossFileOnly
-          ? editorModeMirror(this.ts).at(text, query.offset)
-          : undefined,
+        editor:
+          editorLanguage === undefined
+            ? undefined
+            : editorModeMirror(this.ts, editorLanguage).at(text, query.offset),
         toSource: (offset) =>
           offset > file.footerStart ? undefined : toSourceOffset(file, offset),
         locate: (fileName, start, end) => {

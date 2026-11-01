@@ -11,7 +11,7 @@
  */
 import * as path from "node:path";
 import type * as TS from "typescript-6";
-import { extractTypeScriptBlocks } from "./typescript-blocks.js";
+import { editorEmbeddedScripts } from "./typescript-blocks.js";
 import {
   type EditorModeAnswers,
   involvesAny,
@@ -24,42 +24,59 @@ import type { TypeScriptModule } from "./typescript-loader.js";
 export const EDITOR_MODE_LIB = "lib.es2020.full.d.ts";
 
 /**
- * The page as VS Code's mode reads it: the text of the blocks it embeds as TypeScript in place (not a block whose
- * `type` it does not recognize, see `editorEmbedsTypeScript`), every other character a space.
+ * The page as VS Code's mode for `language` reads it: the scripts it embeds as that language in place, every other
+ * character a space. Its TypeScript mode reads the blocks whose `type` it recognizes as TypeScript (see
+ * `editorScriptLanguage`); its JavaScript mode reads the page's plain scripts and a block with an uppercase `TYPE`.
  */
-export function editorModeText(html: string): string {
+export function editorModeText(
+  html: string,
+  language: EditorLanguage = "typescript",
+): string {
   const chars = html.replace(/[^\r\n]/g, " ").split("");
-  for (const block of extractTypeScriptBlocks(html))
-    if (block.editorEmbedded)
-      for (let i = 0; i < block.content.length; i++)
-        chars[block.contentStart + i] = block.content[i];
+  for (const script of editorEmbeddedScripts(html, language))
+    for (let i = 0; i < script.content.length; i++)
+      chars[script.contentStart + i] = script.content[i];
   return chars.join("");
 }
 
-/** One mirror per loaded TypeScript, shared by every project: its library is parsed once. */
-const mirrors = new WeakMap<TypeScriptModule, EditorModeMirror>();
+/** The languages VS Code's HTML support has an in-file mode for. */
+export type EditorLanguage = "typescript" | "javascript";
 
-export function editorModeMirror(ts: TypeScriptModule): EditorModeMirror {
-  let mirror = mirrors.get(ts);
-  if (!mirror) {
-    mirror = new EditorModeMirror(ts);
-    mirrors.set(ts, mirror);
+/** One mirror per loaded TypeScript and language, shared by every project: its library is parsed once. */
+const mirrors = new WeakMap<
+  TypeScriptModule,
+  Partial<Record<EditorLanguage, EditorModeMirror>>
+>();
+
+export function editorModeMirror(
+  ts: TypeScriptModule,
+  language: EditorLanguage = "typescript",
+): EditorModeMirror {
+  let byLanguage = mirrors.get(ts);
+  if (!byLanguage) {
+    byLanguage = {};
+    mirrors.set(ts, byLanguage);
   }
-  return mirror;
+  return (byLanguage[language] ??= new EditorModeMirror(ts, language));
 }
 
 export class EditorModeMirror {
   private readonly ts: TypeScriptModule;
   private readonly libDir: string;
   private readonly fileName: string;
+  private readonly language: EditorLanguage;
   private readonly service: TS.LanguageService | undefined;
   private text = "";
   private version = 0;
 
-  constructor(ts: TypeScriptModule) {
+  constructor(ts: TypeScriptModule, language: EditorLanguage = "typescript") {
     this.ts = ts;
+    this.language = language;
     this.libDir = path.dirname(ts.getDefaultLibFilePath({}));
-    this.fileName = path.join(this.libDir, "__bascik-editor-mode.ts");
+    this.fileName = path.join(
+      this.libDir,
+      `__bascik-editor-mode.${language === "typescript" ? "ts" : "js"}`,
+    );
     const libFile = path.join(this.libDir, EDITOR_MODE_LIB);
     // A TypeScript without the library cannot mirror the editor: every question then gets "it does not know".
     if (!ts.sys.fileExists(libFile)) return;
@@ -77,7 +94,10 @@ export class EditorModeMirror {
     this.service = ts.createLanguageService({
       getCompilationSettings: () => options,
       getScriptFileNames: () => [this.fileName],
-      getScriptKind: () => ts.ScriptKind.TS,
+      getScriptKind: (fileName) =>
+        fileName === this.fileName && language === "javascript"
+          ? ts.ScriptKind.JS
+          : ts.ScriptKind.TS,
       getScriptVersion: (fileName) =>
         fileName === this.fileName ? String(this.version) : "1",
       getScriptSnapshot: (fileName) => {
@@ -120,7 +140,7 @@ export class EditorModeMirror {
   at(html: string, offset: number): EditorModeAnswers {
     const service = this.service;
     if (!service) return NOTHING_KNOWN;
-    const text = editorModeText(html);
+    const text = editorModeText(html, this.language);
     // Another page may have used the mirror since: each answer puts this page's text back first.
     const use = () => {
       if (text !== this.text) {

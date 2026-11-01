@@ -225,6 +225,47 @@ suite("TypeScript language features across files", () => {
     assert.strictEqual(countOf(labels, "size"), 1, JSON.stringify(labels));
   });
 
+  test("answers once in a block VS Code embeds as JavaScript (an uppercase TYPE attribute)", async () => {
+    await replaceUnsaved(
+      document,
+      document
+        .getText()
+        .replace(
+          '<script type="text/typescript">',
+          '<script TYPE="text/typescript">',
+        )
+        .replace("  document.title", "  fro;\n  jug.\n  document.title"),
+    );
+    // Bascik still answers what needs another file there, so a missing duplicate is not just a slow server.
+    await eventuallyAnswered(
+      () =>
+        hoverTexts(document, positionOf(document, "frotherSettings.rpm", 2)),
+      (all) => all.some((text) => text.includes("FrotherSettings")),
+      "Bascik should answer an imported name in a block with an uppercase TYPE",
+    );
+    const hovers = await hoverTexts(
+      document,
+      positionOf(document, "steamTemperature +", 2),
+    );
+    assert.strictEqual(
+      hovers.filter((text) => text.includes("steamTemperature")).length,
+      1,
+      `VS Code's JavaScript mode answers a page name there; got ${JSON.stringify(hovers)}`,
+    );
+    const labels = await completionLabels(
+      document,
+      positionOf(document, "jug.\n", 4),
+      ".",
+    );
+    assert.strictEqual(countOf(labels, "size"), 1, JSON.stringify(labels));
+    const names = await completionLabels(
+      document,
+      positionOf(document, "fro;", 3),
+    );
+    for (const name of ["froth", "frotherSettings", "document"])
+      assert.strictEqual(countOf(names, name), 1, JSON.stringify(names));
+  });
+
   test("leaves the page's own names to VS Code's HTML support, answered once", async () => {
     // Wait until Bascik answers in this page at all, so a missing duplicate is not just a slow server.
     await eventuallyAnswered(

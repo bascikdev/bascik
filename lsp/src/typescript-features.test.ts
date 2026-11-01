@@ -400,18 +400,16 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
     ).toBeUndefined();
   });
 
-  it("answers everything in a block VS Code does not embed as TypeScript (its type not quoted and lowercase)", () => {
+  it("answers everything in a block VS Code does not embed at all (a lowercase type whose value it does not recognize)", () => {
     const setup = project();
     for (const type of [
       '"text/TypeScript"',
       "text/typescript",
       '" text/typescript"',
-      'TYPE="text/typescript"',
     ]) {
-      const attribute = type.startsWith("TYPE") ? type : `type=${type}`;
       const html = PAGE.replace(
         '<script type="text/typescript">',
-        `<script ${attribute}>`,
+        `<script type=${type}>`,
       ).replace(
         "document.title = frother.label;",
         "const jug = { size: 1 };\n  jug.",
@@ -427,6 +425,47 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
           }),
         ),
       ).toContain("size");
+    }
+  });
+
+  it("answers only what needs another file in a block VS Code embeds as JavaScript (an uppercase TYPE attribute)", () => {
+    const setup = project();
+    for (const openTag of [
+      '<script TYPE="text/typescript">',
+      '<script Type="text/typescript" data-bascik-x>',
+    ]) {
+      const html = PAGE.replace('<script type="text/typescript">', openTag)
+        .replace(
+          "document.title = frother.label;",
+          "const jug = { size: 1 };\n  jug.;\n  plainName;",
+        )
+        .replace("<script>", "<script>\n  var plainLegacy = 1;");
+      // VS Code's JavaScript mode reads the block with the page's plain scripts, and answers their names itself.
+      expect(
+        ask(setup, html, "hover", "rpm;", 0, crossFileOnly),
+      ).toBeUndefined();
+      expect(
+        ask(setup, html, "hover", "plainName;", 0, crossFileOnly),
+      ).toBeUndefined();
+      expect(
+        names(
+          ask(setup, html, "completion", "jug.;", 4, {
+            ...crossFileOnly,
+            triggerCharacter: ".",
+          }),
+        ),
+      ).not.toContain("size");
+      expect(
+        names(ask(setup, html, "completion", "plainName;", 0, crossFileOnly)),
+      ).not.toContain("rpm");
+      // What it types with any, the imports, is still Bascik's.
+      expect(
+        ask(setup, html, "hover", "froth(2)", 1, crossFileOnly)?.markdown,
+      ).toContain("froth(level: number");
+      expect(
+        ask(setup, html, "definition", "froth(2)", 1, crossFileOnly)?.[0]
+          ?.fsPath,
+      ).toBe(setup.root.file("src/lib/frother.ts"));
     }
   });
 
