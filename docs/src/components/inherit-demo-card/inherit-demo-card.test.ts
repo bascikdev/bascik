@@ -11,7 +11,7 @@ describe("inherit-demo-card component", () => {
   it("renders article container demonstrating attribute inheritance", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('class="inherit-card"');
+    expect(html).toContain("<article>");
     expect(html).toContain("Attribute inheritance");
   });
 });

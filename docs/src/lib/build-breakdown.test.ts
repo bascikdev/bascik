@@ -109,7 +109,7 @@ describe("build-breakdown", () => {
     expect(html).toContain("Cold build");
     expect(html).toContain("Warm build");
     const widths = [
-      ...html.matchAll(/class="bb-bar"[^>]*style="width:([\d.]+)%"/g),
+      ...html.matchAll(/class="bar"[^>]*style="width:([\d.]+)%"/g),
     ].map((match) => Number(match[1]));
     expect(widths).toEqual([100, 23.8]);
   });
@@ -121,13 +121,13 @@ describe("build-breakdown", () => {
       components: 41,
     });
     expect(html).toContain(
-      '<span class="bb-fact-value">102</span><span class="bb-fact-label">pages</span>',
+      '<span class="fact-value">102</span><span class="fact-label">pages</span>',
     );
     expect(html).toContain(
-      '<span class="bb-fact-value">41</span><span class="bb-fact-label">components</span>',
+      '<span class="fact-value">41</span><span class="fact-label">components</span>',
     );
     expect(html).toContain(
-      '<span class="bb-fact-value">971</span><span class="bb-fact-label">build scripts run</span>',
+      '<span class="fact-value">971</span><span class="fact-label">build scripts run</span>',
     );
   });
 
@@ -153,10 +153,10 @@ describe("build-breakdown", () => {
       components: 41,
     });
     expect(html).toContain(
-      '<span class="bb-fact-value">20ms</span><span class="bb-fact-label">median page, warm, one worker</span>',
+      '<span class="fact-value">20ms</span><span class="fact-label">median page, warm, one worker</span>',
     );
     expect(html).toContain(
-      '<span class="bb-fact-value">570ms</span><span class="bb-fact-label">dev Markdown edit → updated page on disk</span>',
+      '<span class="fact-value">570ms</span><span class="fact-label">dev Markdown edit → updated page on disk</span>',
     );
     expect(html).toContain("median of 3 warm-cache saves");
     expect(html).toContain("not browser reload");

@@ -27,7 +27,7 @@ a[data-pg="next"] {
   text-align: right;
 }
 
-.pg-dir {
+small {
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -35,12 +35,12 @@ a[data-pg="next"] {
   color: var(--text-muted);
 }
 
-.pg-section {
+span {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.pg-label {
+strong {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--pagination-label);

@@ -9,18 +9,18 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { SafeHtml } from "@bascik/bascik/html";
+import { renderJsonLd } from "./json-ld.ts";
 
 function stripMd(text: string): string {
   return text
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // [text](url) → text
     .replace(/`([^`]+)`/g, "$1") // `code` → code
     .replace(/\*\*([^*]+)\*\*/g, "$1") // **bold** → bold
-    .replace(/\*([^*]+)\*/g, "$1") // *italic* → italic
-    .replace(/</g, "&lt;") // < → &lt;
-    .replace(/>/g, "&gt;"); // > → &gt;
+    .replace(/\*([^*]+)\*/g, "$1"); // *italic* → italic
 }
 
-export async function faqSchema(mdPath: string): Promise<string> {
+export async function faqSchema(mdPath: string): Promise<SafeHtml | ""> {
   let md: string;
   try {
     md = await readFile(join(process.cwd(), mdPath), "utf8");
@@ -64,5 +64,5 @@ export async function faqSchema(mdPath: string): Promise<string> {
     })),
   };
 
-  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, "\\u003c")}\n</script>`;
+  return renderJsonLd(schema);
 }

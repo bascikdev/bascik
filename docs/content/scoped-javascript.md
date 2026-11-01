@@ -139,23 +139,21 @@ The toggle below applies its scoped `is-open` class at runtime.
 <!-- demo:runtime-class-html -->
 
 ```html
-<section class="state-toggle">
+<section>
   <div class="is-open" hidden></div>
   <p id="status">Panel closed</p>
   <button id="toggle" type="button">Toggle panel</button>
-  <div class="state-toggle-panel" id="panel">
-    Only this component instance changes.
-  </div>
+  <div class="panel" id="panel">Only this component instance changes.</div>
 </section>
 ```
 
 <!-- demo:runtime-class-css -->
 
 ```css
-.state-toggle-panel {
+.panel {
   opacity: 0.55;
 }
-.state-toggle-panel.is-open {
+.panel.is-open {
   border-color: #d3ff8d;
   opacity: 1;
 }
@@ -177,14 +175,14 @@ toggle.addEventListener("click", () => {
 <!-- demo:runtime-class-output-html -->
 
 ```html
-<section class="bascik__state-toggle__state-toggle">
+<section class="b_el_state-toggle_section">
   <div class="bascik__state-toggle__is-open" hidden></div>
   <p id="bascik__state-toggle__a1b2__status">Panel closed</p>
   <button id="bascik__state-toggle__a1b2__toggle" type="button">
     Toggle panel
   </button>
   <div
-    class="bascik__state-toggle__state-toggle-panel"
+    class="bascik__state-toggle__panel"
     id="bascik__state-toggle__a1b2__panel"
   >
     Only this component instance changes.

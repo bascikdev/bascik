@@ -59,9 +59,9 @@ Running `npx create-bascik <name>` writes this structure:
       site-footer/
         site-footer.html
         site-footer.test.ts
-      feat-card/
-        feat-card.html
-        feat-card.test.ts
+      feature-card/
+        feature-card.html
+        feature-card.test.ts
       my-counter/
         my-counter.html
         my-counter.test.ts
@@ -70,7 +70,7 @@ Running `npx create-bascik <name>` writes this structure:
         contact-form.test.ts
 ```
 
-The `feat-card` component demonstrates named slots. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, and `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors. `vite.config.ts` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling. Third-party linters such as Webhint are opt-in: setup creates no config or dependency for them. The [linting guide](/testing/linting#editor-linters-read-source) has copyable settings.
+The `feature-card` component demonstrates named slots and semantic selectors, with only a short `.body` class where a class is useful. The `my-counter` component demonstrates scoped JS with two independent instances on the home page, and `contact-form` a contact form. Component scripts are written in TypeScript (`<script type="text/typescript">`). Every component includes co-located unit tests, `package.json` includes `npm run lint` (`bascik --check`, which runs the `@bascik/language-server` linter and the project-wide checks), `.vscode/extensions.json` recommends the official Bascik VS Code extension, and `.vscode/settings.json` sets `"html.validate.scripts": false` so VS Code does not join a page's separate `<script>` blocks into one file and report false errors. `vite.config.ts` configures Vitest with V8 code coverage, and `e2e/` includes Playwright browser specs testing page navigation, counter interaction, and mobile menu toggling. Third-party linters such as Webhint are opt-in: setup creates no config or dependency for them. The [linting guide](/testing/linting#editor-linters-read-source) has copyable settings.
 
 After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one. The dev server question is skipped when the install is, and `npm run dev` runs only when `npm install` exits 0; otherwise the CLI prints the next steps, `npm install` included.
 

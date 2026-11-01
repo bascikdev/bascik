@@ -6,6 +6,7 @@ name: Release
 # Tag only commits on main: every job fails before building when the tagged commit is not an ancestor of
 # origin/main (.github/scripts/release-on-main.mjs), so a tag on an unmerged branch publishes nothing.
 # Run `git fetch origin main` first; each example tags origin/main, not the current checkout.
+# npm jobs use OIDC trusted publishing; configure each package on npmjs.com as documented in RELEASING.md.
 # pkg:      git tag v1.0.0-rc.1 origin/main && git push origin v1.0.0-rc.1
 # create:   git tag create-v1.0.0-rc.1 origin/main && git push origin create-v1.0.0-rc.1
 # adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 origin/main && git push origin adapter-cloudflare-v1.0.0-rc.1
@@ -63,8 +64,6 @@ jobs:
       - name: Publish to npm
         working-directory: pkg
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh v
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-create:
     name: Publish create-bascik to npm
@@ -111,8 +110,6 @@ jobs:
       - name: Publish to npm
         working-directory: create
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh create-v
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-adapter-cloudflare:
     name: Publish @bascik/adapter-cloudflare to npm
@@ -154,8 +151,6 @@ jobs:
       - name: Publish to npm
         working-directory: adapters/cloudflare
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh adapter-cloudflare-v
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-language-server:
     name: Publish @bascik/language-server to npm
@@ -197,8 +192,6 @@ jobs:
       - name: Publish to npm
         working-directory: lsp
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh lsp-v
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-extension:
     name: Publish Bascik VS Code extension to the Marketplace

@@ -1,4 +1,4 @@
-.slot-panel {
+section {
   width: min(100%, 34rem);
   background: var(--elevated);
   border: 1px solid var(--border);
@@ -6,14 +6,14 @@
   padding: 24px;
 }
 
-.slot-panel-header {
+header {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 16px;
 }
 
-.slot-panel-eyebrow {
+.eyebrow {
   margin: 0;
   font-size: 0.72rem;
   font-weight: 700;
@@ -22,26 +22,26 @@
   color: var(--accent);
 }
 
-.slot-panel-title {
+h3 {
   margin: 0;
   font-size: 1.1rem;
 }
 
-.slot-panel-body > *:first-child {
+.body > *:first-child {
   margin-top: 0;
 }
 
-.slot-panel-body > *:last-child {
+.body > *:last-child {
   margin-bottom: 0;
 }
 
-.slot-panel-actions {
+footer {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
 
-.slot-panel-actions a {
+footer a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -50,6 +50,6 @@
   text-decoration: none;
 }
 
-.slot-panel-actions a:hover {
+footer a:hover {
   text-decoration: underline;
 }

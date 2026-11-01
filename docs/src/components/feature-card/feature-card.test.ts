@@ -8,10 +8,10 @@ describe("feature-card component", () => {
     "src/components/feature-card/feature-card.html",
   );
 
-  it("renders title and desc props inside fcard container", async () => {
+  it("renders title and desc props inside an article", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('class="fcard"');
+    expect(html).toContain("<article>");
     expect(html).toContain("data-bascik-prop-title");
     expect(html).toContain("data-bascik-prop-desc");
   });

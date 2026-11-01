@@ -89,7 +89,7 @@ describe("migration grid demo: source blocks", () => {
     expect(css).toMatch(/width:\s*min\(100%,\s*1200px\)/);
     expect(css).toMatch(/margin:\s*0 auto/);
     const html = await block("migration-grid-source-html");
-    expect(html).toMatch(/<section\b[^>]*class="press"/);
+    expect(html).toMatch(/<section\b[^>]*data-testid="press-list"/);
     // No framework grid classes survive into the Bascik component.
     expect(html).not.toMatch(/\b(row|col|ant-row|ant-col)[-"\s]/);
   });

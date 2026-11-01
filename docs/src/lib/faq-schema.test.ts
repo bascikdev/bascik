@@ -40,11 +40,11 @@ It transpiles HTML templates at build time.
     await writeFile(mdFile, mdContent);
     process.chdir(tempDir);
 
-    const result = await faqSchema("faq.md");
+    const result = String(await faqSchema("faq.md"));
     expect(result).toContain('<script type="application/ld+json">');
-    expect(result).toContain('"@type": "FAQPage"');
 
     const parsed = JSON.parse(jsonLdBody(result));
+    expect(parsed["@type"]).toBe("FAQPage");
     expect(parsed.mainEntity).toHaveLength(2);
     expect(parsed.mainEntity[0].name).toBe("What is Bascik?");
     expect(parsed.mainEntity[0].acceptedAnswer.text).toBe(
@@ -66,7 +66,7 @@ It transpiles HTML templates at build time.
     expect(result).toBe("");
   });
 
-  it("escapes HTML tags (< and >) to &lt; and &gt; to prevent breaking the script tag", async () => {
+  it("preserves literal HTML text while keeping the JSON-LD script safe", async () => {
     const mdContent = `
 # FAQ Header
 
@@ -78,13 +78,34 @@ When a component \`.html\` file includes a \`<script src="counter.ts"></script>\
     await writeFile(mdFile, mdContent);
     process.chdir(tempDir);
 
-    const result = await faqSchema("faq.md");
+    const result = String(await faqSchema("faq.md"));
     const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.mainEntity[0].name).toBe(
-      'How do local script references (&lt;script src="..."&gt;) work?',
+      'How do local script references (<script src="...">) work?',
     );
     expect(parsed.mainEntity[0].acceptedAnswer.text).toBe(
-      'When a component .html file includes a &lt;script src="counter.ts"&gt;&lt;/script&gt; tag.',
+      'When a component .html file includes a <script src="counter.ts"></script> tag.',
+    );
+  });
+
+  it("uses safe JSON script output without changing literal markup in FAQ text", async () => {
+    const mdContent = `
+## Can content include \`</script><script>\`?
+
+The answer may contain \`</script><script>alert(1)</script>\`.
+`;
+    const mdFile = join(tempDir, "faq.md");
+    await writeFile(mdFile, mdContent);
+    process.chdir(tempDir);
+
+    const result = String(await faqSchema("faq.md"));
+    expect(result).not.toContain("</script><script>alert");
+    const parsed = JSON.parse(jsonLdBody(result));
+    expect(parsed.mainEntity[0].name).toBe(
+      "Can content include </script><script>?",
+    );
+    expect(parsed.mainEntity[0].acceptedAnswer.text).toBe(
+      "The answer may contain </script><script>alert(1)</script>.",
     );
   });
 });

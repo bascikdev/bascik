@@ -43,17 +43,17 @@
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/components.md", {
-                to: "HTML-Only Components",
+                to: "HTML with Companion CSS",
               });
           </script>
 
-          <!-- Section: HTML-only -->
+          <!-- Section: HTML with companion CSS -->
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange(
                 "./content/components.md",
-                { from: "HTML-Only Components", to: "HTML with CSS" },
+                { from: "HTML with Companion CSS", to: "HTML with Inline CSS" },
                 { stripDemoBlocks: true },
               );
           </script>
@@ -86,6 +86,18 @@
                 </script>
               </code-block>
             </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-css-hello",
+                    );
+                </script>
+              </code-block>
+            </div>
             <div data-bascik-slot="output-html">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
@@ -100,13 +112,13 @@
             </div>
           </component-demo>
 
-          <!-- Section: HTML with CSS -->
+          <!-- Section: HTML with inline CSS -->
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange(
                 "./content/components.md",
-                { from: "HTML with CSS", to: "HTML with JavaScript" },
+                { from: "HTML with Inline CSS", to: "HTML with JavaScript" },
                 { stripDemoBlocks: true },
               );
           </script>

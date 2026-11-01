@@ -11,7 +11,9 @@
  *   export default async () => await breadcrumbLd();
  */
 import { readFile } from "node:fs/promises";
+import type { SafeHtml } from "@bascik/bascik/html";
 import { NAV } from "./nav.ts";
+import { renderJsonLd } from "./json-ld.ts";
 
 // Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment, /lighthouse, /example-components)
 export const SECTIONS_WITH_PAGE = new Set([
@@ -34,7 +36,7 @@ const SECTION_LABELS: Record<string, string> = {
   resources: "Resources",
 };
 
-export async function breadcrumbLd(): Promise<string> {
+export async function breadcrumbLd(): Promise<SafeHtml | ""> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
@@ -73,13 +75,11 @@ export async function breadcrumbLd(): Promise<string> {
     (titleM
       ? titleM[1].replace(/ - Bascik.*$/, "").trim()
       : parts[parts.length - 1]);
-  const pageLabel = rawPageLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const pageLabel = rawPageLabel;
 
   const rawSectionLabel =
     SECTION_LABELS[section] ?? section[0].toUpperCase() + section.slice(1);
-  const sectionLabel = rawSectionLabel
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const sectionLabel = rawSectionLabel;
 
   const items: Array<{
     "@type": string;
@@ -108,5 +108,5 @@ export async function breadcrumbLd(): Promise<string> {
     itemListElement: items,
   };
 
-  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, "\\u003c")}\n</script>`;
+  return renderJsonLd(schema);
 }

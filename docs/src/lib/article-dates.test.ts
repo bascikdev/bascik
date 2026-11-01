@@ -2,15 +2,20 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { html, json } from "@bascik/bascik/html";
 import {
   builtPageFor,
   formatDateTime,
   injectArticleDates,
 } from "./article-dates.ts";
 
-/** JSON-LD as the docs schema helpers emit it, with `<` escaped. */
+/** JSON-LD as the docs schema helpers emit it. */
 const ldScript = (data: object) =>
-  `<script type="application/ld+json">\n${JSON.stringify(data, null, 2).replace(/</g, "\\u003c")}\n</script>`;
+  String(
+    html`<script type="application/ld+json">
+      ${json(data)}
+    </script>`,
+  );
 
 const article = {
   "@context": "https://schema.org",

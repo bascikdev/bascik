@@ -1,11 +1,11 @@
 <button
   type="button"
-  class="dnav-search-btn"
+  class="button"
   aria-label="Search docs"
   aria-expanded="false"
 >
   <svg
-    class="search-btn-icon"
+    class="button-icon"
     width="14"
     height="14"
     viewBox="0 0 24 24"
@@ -19,21 +19,21 @@
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
-  <span class="search-btn-text">Search docs…</span>
-  <kbd class="search-btn-kbd" aria-hidden="true">⌘K</kbd>
+  <span class="button-text">Search docs…</span>
+  <kbd class="button-shortcut" aria-hidden="true">⌘K</kbd>
 </button>
 
-<div class="search-overlay" data-testid="search-overlay" hidden>
-  <div class="search-backdrop"></div>
+<div class="overlay" data-testid="search-overlay" hidden>
+  <div class="backdrop"></div>
   <div
-    class="search-panel"
+    class="panel"
     role="dialog"
     aria-modal="true"
     aria-label="Search documentation"
   >
-    <div class="search-input-row">
+    <div class="input-row">
       <svg
-        class="search-icon"
+        class="icon"
         width="16"
         height="16"
         viewBox="0 0 24 24"
@@ -51,7 +51,7 @@
         type="search"
         id="docs-search-input"
         name="search"
-        class="search-input"
+        class="input"
         placeholder="Search docs…"
         aria-label="Search docs"
         role="combobox"
@@ -62,22 +62,22 @@
         autocomplete="off"
         spellcheck="false"
       />
-      <kbd class="search-esc">Esc</kbd>
+      <kbd class="escape">Esc</kbd>
     </div>
     <div
       id="docs-search-status"
-      class="sr-only"
+      class="visually-hidden"
       role="status"
       aria-live="polite"
     ></div>
     <ul
       id="docs-search-results"
-      class="search-results"
+      class="results"
       role="listbox"
       aria-label="Search results"
     ></ul>
-    <p class="search-empty" hidden>No results.</p>
-    <p class="search-hint">Start typing to search all docs pages.</p>
+    <p class="empty" hidden>No results.</p>
+    <p class="hint">Start typing to search all docs pages.</p>
   </div>
 </div>
 <script data-bascik-build-once>

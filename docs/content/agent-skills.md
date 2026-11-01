@@ -2,104 +2,35 @@
 
 Install the Bascik agent skills so GitHub Copilot, Claude Code, Cursor, Codex, or any assistant that supports Agent Skills knows how to build with Bascik, and can run scripts that check its own work.
 
-Most Bascik sites are now written with an AI assistant, so the assistant has to understand Bascik as well as you do. The Bascik skills follow the open [Agent Skills](https://agentskills.io) format. Each one covers one area, loads only when a task needs it, and ships Node.js scripts the assistant runs to compile a preview, inventory components, lint, audit config, and look up the live docs.
+The skills follow the open [Agent Skills](https://agentskills.io) format. Each covers one area and loads when a task needs it. Start with the CLI install below, then choose the skills that fit your project.
 
 ## Install
 
-Run one of these from the root of your project.
-
-### With the skills CLI
+Run this from the root of your project:
 
 ```sh
 npx skills add bascikdev/bascik
 ```
 
-The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Add `--skill bascik` to install only the core skill, or `--skill '*' -y` to install all of them without prompts.
+The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Choose skills interactively, or use a command from the table below to install one. To install all nine without prompts, run `npx skills add bascikdev/bascik --skill '*' -y`.
 
-You can also install from this site instead of GitHub. Every release of the docs publishes an [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615) skills index at `https://bascik.dev/.well-known/agent-skills/index.json`, and the skills CLI reads it:
-
-```sh
-npx skills add https://bascik.dev
-```
-
-### With curl
-
-Download every skill into the shared `.agents/skills/` folder, which GitHub Copilot, Cursor, Codex, Gemini CLI, and OpenCode read:
-
-```sh
-mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
-```
-
-Claude Code reads `.claude/skills/` instead:
-
-```sh
-mkdir -p .claude/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .claude/skills
-```
-
-VS Code also reads `.github/skills/`, so you can extract into that folder if your repository keeps its Copilot customizations there.
-
-On Windows, `curl.exe` and `tar` ship with Windows 10 and later. Download the archive to a file first, because older PowerShell versions do not pipe binary data:
-
-```sh
-mkdir .agents\skills -Force
-curl.exe -fsSLo skills.tar.gz https://bascik.dev/assets/skills.tar.gz
-tar -xzf skills.tar.gz -C .agents/skills
-del skills.tar.gz
-```
-
-### New projects
-
-After setting up the files, `npm create bascik@rc` and `bascik init` ask:
-
-```text
-Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
-```
-
-Press Enter, or pass `-y`, and they run the skills CLI for you, which installs every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and records them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found. Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
-
-```sh
-npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
-```
-
-If that tag is not found, run the same command without `#v1.0.0-rc.10` to install from the default branch.
-
-Add `bascik-refactor` when you want coding agents to refactor a live site, as [Migrating with Coding Agents](/how-to/agent-migration) describes:
-
-```sh
-npx skills add bascikdev/bascik --skill bascik-refactor
-# or from this site:
-npx skills add https://bascik.dev --skill bascik-refactor
-```
-
-### Project Brief
-
-New projects also get an `AGENTS.md` at the root, a short brief that GitHub Copilot, Cursor, Codex, and other assistants read before they start: the commands to run (`npm run dev`, `npm run build` and the site URL it needs, `npx bascik --check`, and a preview), the house rules (pages that read like a list of component tags without splitting too far, TypeScript for new code including browser scripts, `html` from `@bascik/bascik/html` for visitor data, semantic HTML, `data-testid` on component roots and controls, and `bascik --check` before calling work done), and where the skills live. It links to these docs instead of repeating them.
-
-Claude Code reads `CLAUDE.md` and skips `AGENTS.md` when both exist, so new projects also get a `CLAUDE.md` whose first line imports the brief:
-
-```md
-@AGENTS.md
-```
-
-Both commands add to files you already have instead of replacing them: an existing `AGENTS.md` gets a `## Bascik` section appended, and an existing `CLAUDE.md` gets the `@AGENTS.md` line. When `bascik init` finds `dev` or `build` scripts that run another tool, it keeps them and the brief names `npx bascik` and `npx bascik --build` instead. Running them again changes nothing. Add notes only Claude Code needs below the import line in `CLAUDE.md`.
-
-### Single file
-
-The core skill is also available on its own at [https://bascik.dev/assets/SKILL.md](https://bascik.dev/assets/SKILL.md), for tools that accept one instruction file. It tells the assistant how to install the rest when the companion skills or scripts are missing.
+To install a skill from the docs site instead, use `npx skills add https://bascik.dev --skill <skill-name>`. For example, install the opt-in `bascik-refactor` skill with `npx skills add https://bascik.dev --skill bascik-refactor`.
 
 ## The Skills
 
-| Skill                  | The assistant loads it when                                                                                                                              |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bascik`               | Working in any Bascik project: layout, components, slots, props, the CLI, checking output, copying examples, and building a new site. Start here         |
-| `bascik-components`    | Writing component CSS or `<script>` code, adding interactivity, setting up theming, or compiled class and ID names look wrong                            |
-| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature is safe to use, in browsers and inside a component                                                  |
-| `bascik-scripts`       | Using build, routes, server, or stream scripts, API routes, Markdown, or a blog                                                                          |
-| `bascik-seo`           | Writing titles, descriptions, canonical URLs, social cards, JSON-LD, or `llms.txt`                                                                       |
-| `bascik-config`        | Creating or editing `bascik.config.ts`, adding exec scripts, deploying, or setting up a monorepo                                                         |
-| `bascik-testing`       | Writing unit or E2E tests, debugging, validating `dist/`, or tuning Lighthouse scores                                                                    |
-| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                                                      |
-| `bascik-refactor`      | Opt-in. Having coding agents refactor a live site so every route matches production at every breakpoint and scores 100 in all five Lighthouse categories |
+| Skill                  | Use it for                                                                                                               | Install command                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `bascik`               | **Start here.** Project layout, components, slots, props, the CLI, checking output, and copying examples                 | `npx skills add bascikdev/bascik --skill bascik`               |
+| `bascik-components`    | Component CSS and JavaScript, interactivity, theming, and scoped class and ID names                                      | `npx skills add bascikdev/bascik --skill bascik-components`    |
+| `bascik-compatibility` | Checking HTML, CSS, and JavaScript support in browsers and Bascik's scoping engine                                       | `npx skills add bascikdev/bascik --skill bascik-compatibility` |
+| `bascik-scripts`       | Build, routes, server, and stream scripts, API routes, Markdown, and blogs                                               | `npx skills add bascikdev/bascik --skill bascik-scripts`       |
+| `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, and `llms.txt`                                              | `npx skills add bascikdev/bascik --skill bascik-seo`           |
+| `bascik-config`        | Configuration, exec scripts, deployment, and monorepos                                                                   | `npx skills add bascikdev/bascik --skill bascik-config`        |
+| `bascik-testing`       | Unit and E2E tests, debugging, validating output, and Lighthouse                                                         | `npx skills add bascikdev/bascik --skill bascik-testing`       |
+| `bascik-migrate`       | Moving from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                             | `npx skills add bascikdev/bascik --skill bascik-migrate`       |
+| `bascik-refactor`      | **Opt-in.** Refactoring a live site with production parity at every breakpoint and 100 in all five Lighthouse categories | `npx skills add bascikdev/bascik --skill bascik-refactor`      |
+
+New projects created with `npm create bascik@rc` or `bascik init` offer to install the eight general-purpose skills automatically. Add `bascik-refactor` separately when you need the workflow in [Migrating with Coding Agents](/how-to/agent-migration).
 
 The skills hold only what an assistant must not get wrong: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`. For everything else they point to the page on this site that explains it, and `read-doc.mjs` prints that page, so the skills and the docs never disagree.
 
@@ -185,3 +116,74 @@ You can also ask your assistant to do this. Add an instruction like the followin
 > Before working on Bascik code, make sure the Bascik agent skills are installed and current. Run `npx skills update` if they were installed with the skills CLI. Otherwise run `mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills`.
 
 > **Source.** The skills live in the [`skills/` folder](https://github.com/bascikdev/bascik/tree/main/skills) of the Bascik repository and are published with each docs release. Tests keep the skills' defaults, scripts, and links in step with the compiler.
+
+## Other Install Methods
+
+### From this site
+
+To use the skills CLI without GitHub:
+
+```sh
+npx skills add https://bascik.dev
+```
+
+Add `--skill <name>` to select a skill, just as with the GitHub commands above. Each docs release publishes an [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615) discovery index at `https://bascik.dev/.well-known/agent-skills/index.json`, which the CLI reads.
+
+### With curl
+
+Download every skill into the shared `.agents/skills/` folder, which GitHub Copilot, Cursor, Codex, Gemini CLI, and OpenCode read:
+
+```sh
+mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
+```
+
+Claude Code reads `.claude/skills/` instead:
+
+```sh
+mkdir -p .claude/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .claude/skills
+```
+
+VS Code also reads `.github/skills/`, so you can extract into that folder if your repository keeps its Copilot customizations there. The archive includes the opt-in `bascik-refactor` skill.
+
+On Windows, `curl.exe` and `tar` ship with Windows 10 and later. Download the archive to a file first, because older PowerShell versions do not pipe binary data:
+
+```sh
+mkdir .agents\skills -Force
+curl.exe -fsSLo skills.tar.gz https://bascik.dev/assets/skills.tar.gz
+tar -xzf skills.tar.gz -C .agents/skills
+del skills.tar.gz
+```
+
+### New projects
+
+After setting up the files, `npm create bascik@rc` and `bascik init` ask:
+
+```text
+Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
+```
+
+Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found.
+
+Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
+
+```sh
+npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
+```
+
+If that tag is not found, run the same command without `#v1.0.0-rc.10` to install from the default branch.
+
+### Project Brief
+
+New projects also get an `AGENTS.md` at the root, a short brief that GitHub Copilot, Cursor, Codex, and other assistants read before they start: the commands to run (`npm run dev`, `npm run build` and the site URL it needs, `npx bascik --check`, and a preview), the house rules (pages that read like a list of component tags without splitting too far, TypeScript for new code including browser scripts, `html` from `@bascik/bascik/html` for visitor data, semantic HTML, `data-testid` on component roots and controls, and `bascik --check` before calling work done), and where the skills live. It links to these docs instead of repeating them.
+
+Claude Code reads `CLAUDE.md` and skips `AGENTS.md` when both exist, so new projects also get a `CLAUDE.md` whose first line imports the brief:
+
+```md
+@AGENTS.md
+```
+
+Both commands add to files you already have instead of replacing them: an existing `AGENTS.md` gets a `## Bascik` section appended, and an existing `CLAUDE.md` gets the `@AGENTS.md` line. When `bascik init` finds `dev` or `build` scripts that run another tool, it keeps them and the brief names `npx bascik` and `npx bascik --build` instead. Running them again changes nothing. Add notes only Claude Code needs below the import line in `CLAUDE.md`.
+
+### Single file
+
+The core skill is also available on its own at [https://bascik.dev/assets/SKILL.md](https://bascik.dev/assets/SKILL.md), for tools that accept one instruction file. It tells the assistant how to install the rest when the companion skills or scripts are missing.

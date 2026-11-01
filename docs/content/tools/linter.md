@@ -40,7 +40,7 @@ npm run lint
 
 Each finding gives the file, line and column, a rule name, and a suggested fix. This is a real run against a project with four problems planted in it:
 
-![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feature-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
 To run only the linter, without the project-wide checks, call the language server directly on any directory or file with `npx`:
 

@@ -21,11 +21,9 @@ A receiver on a `<script>` or `<style>` element is never filled: escaping cannot
 <!-- demo:basic-props-html -->
 
 ```html
-<aside class="alert-box">
-  <strong class="alert-box-title" data-bascik-prop-title>Notice</strong>
-  <p class="alert-box-message" data-bascik-prop-message>
-    Props replace this text at build time.
-  </p>
+<aside>
+  <strong data-bascik-prop-title>Notice</strong>
+  <p data-bascik-prop-message>Props replace this text at build time.</p>
 </aside>
 ```
 
@@ -52,11 +50,9 @@ A receiver on a `<script>` or `<style>` element is never filled: escaping cannot
 <!-- demo:basic-props-output-html -->
 
 ```html
-<aside class="bascik__alert-box__alert-box">
-  <strong class="bascik__alert-box__alert-box-title">Success</strong>
-  <p class="bascik__alert-box__alert-box-message">
-    Your changes have been saved.
-  </p>
+<aside class="b_el_alert-box_aside">
+  <strong class="b_el_alert-box_strong">Success</strong>
+  <p class="b_el_alert-box_p">Your changes have been saved.</p>
 </aside>
 ```
 
@@ -147,11 +143,11 @@ A common pattern is a card component with a configurable label, title, and descr
 
 ```html
 <!-- src/components/feature-card.html -->
-<div class="card">
-  <span class="card-label" data-bascik-prop-label></span>
+<article>
+  <span data-bascik-prop-label></span>
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-desc></p>
-</div>
+</article>
 ```
 
 ```html
@@ -180,16 +176,16 @@ This example passes values directly into the `feature-card` component via `data-
 <!-- demo:source-html -->
 
 ```html
-<div class="fcard">
+<article>
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-desc></p>
-</div>
+</article>
 ```
 
 <!-- demo:source-css -->
 
 ```css
-.fcard {
+article {
   padding: 24px;
   background: #242628;
   border: 1px solid #3a3d40;
@@ -213,10 +209,10 @@ This example passes values directly into the `feature-card` component via `data-
 <!-- demo:output-html -->
 
 ```html
-<div class="bascik__feature-card__fcard">
+<article class="b_el_feature-card_article">
   <h3 class="b_el_feature-card_h3">Component Props</h3>
   <p class="b_el_feature-card_p">
     These values are injected into the component template at build time.
   </p>
-</div>
+</article>
 ```

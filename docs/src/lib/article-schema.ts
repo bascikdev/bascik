@@ -11,7 +11,9 @@
  *   export default async () => await articleSchema();
  */
 import { readFile } from "node:fs/promises";
+import type { SafeHtml } from "@bascik/bascik/html";
 import { pageDescription, pageTitle } from "./meta-tags.ts";
+import { renderJsonLd } from "./json-ld.ts";
 import { socialImageUrl } from "./open-graph.ts";
 
 /** Official Bascik profiles. Lets search engines connect the site to the same entity. */
@@ -23,7 +25,7 @@ export const BRAND_SAME_AS = [
   "https://www.instagram.com/bascik.dev/",
 ] as const;
 
-export async function articleSchema(): Promise<string> {
+export async function articleSchema(): Promise<SafeHtml | ""> {
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? "";
@@ -43,9 +45,6 @@ export async function articleSchema(): Promise<string> {
   const pageText = pageDescription(html);
   if (!title || !pageText) return "";
 
-  const headline = title.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const description = pageText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
   const relPath = pageFile.startsWith(pagesDir)
     ? pageFile
         .slice(pagesDir.length)
@@ -62,8 +61,8 @@ export async function articleSchema(): Promise<string> {
     "@context": "https://schema.org",
     "@type": "TechArticle",
     mainEntityOfPage: url,
-    headline,
-    description,
+    headline: title,
+    description: pageText,
     image: socialImageUrl(siteUrl, urlPath, withoutExt),
     inLanguage: "en-US",
     url,
@@ -84,5 +83,5 @@ export async function articleSchema(): Promise<string> {
     },
   };
 
-  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, "\\u003c")}\n</script>`;
+  return renderJsonLd(schema);
 }

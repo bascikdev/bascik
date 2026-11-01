@@ -52,9 +52,9 @@ my-project/
       site-footer/
         site-footer.html
         site-footer.test.ts
-      feat-card/
-        feat-card.html
-        feat-card.test.ts
+      feature-card/
+        feature-card.html
+        feature-card.test.ts
       my-counter/
         my-counter.html
         my-counter.test.ts

@@ -1,4 +1,4 @@
-.docs-pagination {
+nav {
   display: flex;
   gap: 12px;
   margin-top: 64px;
@@ -7,7 +7,7 @@
 }
 
 @media print {
-  .docs-pagination {
+  nav {
     display: none !important;
   }
 }

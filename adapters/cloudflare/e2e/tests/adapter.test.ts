@@ -325,6 +325,30 @@ const classOf = async (page: Page, testid: string): Promise<string> => {
 };
 
 test.describe("cloudflare adapter: components returned by server scripts (prompt 157)", () => {
+  for (const width of [1280, 390]) {
+    test(`the catalog next links have breathing room above the footer at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/catalog");
+      const next = page.getByTestId("catalog-next-nav");
+      const footer = page.getByTestId("catalog-footer");
+      await expect(next).toBeVisible();
+      const gap = await next.evaluate((el) => {
+        const doc = el.ownerDocument;
+        const range = doc.createRange();
+        range.selectNodeContents(el);
+        const textBottom = range.getBoundingClientRect().bottom;
+        const footerTop = doc
+          .querySelector('[data-testid="catalog-footer"]')!
+          .getBoundingClientRect().top;
+        return footerTop - textBottom;
+      });
+      expect(gap).toBeGreaterThanOrEqual(20);
+      await expect(footer).toHaveCSS("padding-top", "20px");
+    });
+  }
+
   test("the catalog response carries rendered markup, never the literal tags, and no internal marker", async ({
     request,
   }) => {

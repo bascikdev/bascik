@@ -27,7 +27,7 @@ describe("breadcrumbLd", () => {
     delete process.env.BASCIK_PAGE_FILE;
     delete process.env.BASCIK_PAGES_DIR;
 
-    const result = await breadcrumbLd();
+    const result = String(await breadcrumbLd());
     expect(result).toBe("");
   });
 
@@ -42,7 +42,7 @@ describe("breadcrumbLd", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await breadcrumbLd();
+    const result = String(await breadcrumbLd());
     expect(result).toBe("");
   });
 
@@ -60,11 +60,9 @@ describe("breadcrumbLd", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await breadcrumbLd();
-    expect(result).toContain('"@type": "BreadcrumbList"');
-    expect(result).toContain('"name": "Bascik"');
-    expect(result).toContain('"name": "Server Scripts"');
+    const result = String(await breadcrumbLd());
     const parsed = JSON.parse(jsonLdBody(result));
+    expect(parsed["@type"]).toBe("BreadcrumbList");
     expect(parsed.itemListElement).toHaveLength(2);
     expect(parsed.itemListElement[0].name).toBe("Bascik");
     expect(parsed.itemListElement[1].name).toBe("Server Scripts");
@@ -84,7 +82,7 @@ describe("breadcrumbLd", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const result = await breadcrumbLd();
+    const result = String(await breadcrumbLd());
     const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.itemListElement).toHaveLength(3);
     expect(parsed.itemListElement[0].name).toBe("Bascik");
@@ -107,7 +105,7 @@ describe("breadcrumbLd", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const parsed = JSON.parse(jsonLdBody(await breadcrumbLd()));
+    const parsed = JSON.parse(jsonLdBody(String(await breadcrumbLd())));
     expect(
       parsed.itemListElement.map((item: { name: string }) => item.name),
     ).toEqual(["Bascik", "Lighthouse 100s", "SEO"]);
@@ -145,7 +143,7 @@ describe("breadcrumbLd", () => {
     process.env.BASCIK_PAGES_DIR = tempDir;
     process.env.BASCIK_SITE_URL = "https://bascik.dev";
 
-    const parsed = JSON.parse(jsonLdBody(await breadcrumbLd()));
+    const parsed = JSON.parse(jsonLdBody(String(await breadcrumbLd())));
     expect(parsed.itemListElement.at(-1).name).toBe("From React");
   });
 });

@@ -6,9 +6,9 @@ import {
   CLOUDFLARE_E2E_APP_SPEC,
   CLOUDFLARE_GITIGNORE,
   E2E_APP_SPEC,
-  FEAT_CARD_CSS,
-  FEAT_CARD_HTML,
-  FEAT_CARD_TEST,
+  FEATURE_CARD_CSS,
+  FEATURE_CARD_HTML,
+  FEATURE_CARD_TEST,
   GITIGNORE,
   HELLO_API_ROUTE,
   MY_COUNTER_CSS,
@@ -540,7 +540,7 @@ describe("E2E_APP_SPEC", () => {
     const markup = [
       SITE_HEADER_HTML,
       SITE_FOOTER_HTML,
-      FEAT_CARD_HTML,
+      FEATURE_CARD_HTML,
       MY_COUNTER_HTML,
       CONTACT_FORM_HTML,
       indexPage("My App", { template: "cloudflare" }),
@@ -578,14 +578,14 @@ describe("CLOUDFLARE_E2E_APP_SPEC", () => {
     expect(CLOUDFLARE_E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
   });
 
-  it("asserts the <feat-card> the server script returns is rendered, not sent as a tag", () => {
+  it("asserts the <feature-card> the server script returns is rendered, not sent as a tag", () => {
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-card')");
-    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    // The component's scoped CSS reaches the browser: its article is a flex column.
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
       "toHaveCSS('flex-direction', 'column')",
     );
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
-      "expect(html).not.toContain('<feat-card')",
+      "expect(html).not.toContain('<feature-card')",
     );
   });
 });
@@ -666,25 +666,25 @@ describe("edgePage", () => {
     expect(html).toContain('data-testid="edge-greeting"');
   });
 
-  it("returns the starter's <feat-card> around the greeting, so the Worker renders a component per request", () => {
+  it("returns the starter's <feature-card> around the greeting, so the Worker renders a component per request", () => {
     // The tag is only in the script's returned string: this page does not
-    // use <feat-card> in its own markup, so the card is rendered at request
+    // use <feature-card> in its own markup, so the card is rendered at request
     // time, with the header, default, and footer slots filled.
     const script = html.slice(
       html.indexOf('<script data-bascik-server type="text/typescript">'),
       html.indexOf("</script>"),
     );
-    expect(script).toContain('<feat-card data-testid="edge-card">');
+    expect(script).toContain('<feature-card data-testid="edge-card">');
     expect(script).toContain('<div data-bascik-slot="header">');
     expect(script).toContain('<div data-bascik-slot="footer">');
-    expect(script).toContain("</feat-card>");
+    expect(script).toContain("</feature-card>");
     expect(script.indexOf('data-testid="edge-greeting"')).toBeGreaterThan(
-      script.indexOf("<feat-card"),
+      script.indexOf("<feature-card"),
     );
     expect(script.indexOf('data-testid="edge-greeting"')).toBeLessThan(
-      script.indexOf("</feat-card>"),
+      script.indexOf("</feature-card>"),
     );
-    expect(html.replace(script, "")).not.toContain("<feat-card");
+    expect(html.replace(script, "")).not.toContain("<feature-card");
   });
 
   it("does not skip a heading level between the page h1 and the card's h3", () => {
@@ -752,7 +752,7 @@ describe("semantic HTML in the starter", () => {
     }
   });
 
-  it("no page skips a heading level, counting the headings it passes into <feat-card>", () => {
+  it("no page skips a heading level, counting the headings it passes into <feature-card>", () => {
     for (const [name, html] of Object.entries(pages)) {
       let previous = 1;
       for (const level of levels(html)) {
@@ -779,7 +779,7 @@ describe("semantic HTML in the starter", () => {
       /<a href="#main" class="skip-link"[^>]*>Skip to content<\/a>/,
     );
     expect(SITE_HEADER_CSS).toMatch(/\.skip-link:focus/);
-    expect(SITE_HEADER_HTML).toMatch(/<nav class="nav" aria-label="Main"[\s>]/);
+    expect(SITE_HEADER_HTML).toMatch(/<nav aria-label="Main"[\s>]/);
     const toggle = /<button id="nav-toggle"[^>]*>/.exec(SITE_HEADER_HTML)![0];
     expect(toggle).toContain('type="button"');
     expect(toggle).toContain('aria-controls="nav-menu"');
@@ -801,7 +801,7 @@ describe("semantic HTML in the starter", () => {
   });
 
   it("the card styles the h2 and h3 that pages pass into its body", () => {
-    expect(FEAT_CARD_CSS).toMatch(/\.fcard-body :is\(h2, h3\) \{/);
+    expect(FEATURE_CARD_CSS).toMatch(/\.body :is\(h2, h3\) \{/);
   });
 });
 
@@ -842,8 +842,8 @@ describe("component test templates", () => {
     expect(SITE_FOOTER_TEST).toContain("getFullYear");
   });
 
-  it("FEAT_CARD_TEST asserts slot zones", () => {
-    expect(FEAT_CARD_TEST).toContain('data-bascik-slot="header"');
+  it("FEATURE_CARD_TEST asserts slot zones", () => {
+    expect(FEATURE_CARD_TEST).toContain('data-bascik-slot="header"');
   });
 
   it("MY_COUNTER_TEST asserts counter controls", () => {
@@ -884,7 +884,7 @@ describe("SITE_HEADER_HTML", () => {
   });
 
   it("interpolates SITE_HEADER_CSS inside style block without escaping", () => {
-    expect(SITE_HEADER_HTML).toContain(".header {");
+    expect(SITE_HEADER_HTML).toContain("header {");
     expect(SITE_HEADER_HTML).not.toContain("${SITE_HEADER_CSS}");
   });
 
@@ -920,7 +920,7 @@ describe("SITE_FOOTER_HTML", () => {
   });
 
   it("interpolates SITE_FOOTER_CSS inside style block without escaping", () => {
-    expect(SITE_FOOTER_HTML).toContain(".footer {");
+    expect(SITE_FOOTER_HTML).toContain("footer {");
     expect(SITE_FOOTER_HTML).not.toContain("${SITE_FOOTER_CSS}");
   });
 
@@ -935,8 +935,8 @@ describe("SITE_FOOTER_HTML", () => {
 
 describe("SITE_FOOTER_CSS", () => {
   it("has footer layout rules", () => {
-    expect(SITE_FOOTER_CSS).toContain(".footer");
-    expect(SITE_FOOTER_CSS).toContain(".footer-inner");
+    expect(SITE_FOOTER_CSS).toContain("footer {");
+    expect(SITE_FOOTER_CSS).toContain(".inner");
   });
 });
 
@@ -963,39 +963,41 @@ describe("MY_COUNTER_HTML", () => {
   });
 });
 
-describe("FEAT_CARD_HTML", () => {
-  it("interpolates FEAT_CARD_CSS inside style block without escaping", () => {
-    expect(FEAT_CARD_HTML).toContain(".fcard {");
-    expect(FEAT_CARD_HTML).not.toContain("${FEAT_CARD_CSS}");
+describe("FEATURE_CARD_HTML", () => {
+  it("interpolates FEATURE_CARD_CSS inside style block without escaping", () => {
+    expect(FEATURE_CARD_HTML).toContain('<article data-testid="feature-card">');
+    expect(FEATURE_CARD_HTML).not.toContain("${FEATURE_CARD_CSS}");
   });
 
   it("defines three slot zones: header, default, and footer", () => {
-    expect(FEAT_CARD_HTML).toContain('data-bascik-slot="header"');
-    expect(FEAT_CARD_HTML).toContain("data-bascik-slot>");
-    expect(FEAT_CARD_HTML).toContain('data-bascik-slot="footer"');
+    expect(FEATURE_CARD_HTML).toContain('data-bascik-slot="header"');
+    expect(FEATURE_CARD_HTML).toContain("data-bascik-slot>");
+    expect(FEATURE_CARD_HTML).toContain('data-bascik-slot="footer"');
   });
 });
 
-describe("FEAT_CARD_CSS", () => {
-  it("styles all three card zones", () => {
-    expect(FEAT_CARD_CSS).toContain(".fcard-header");
-    expect(FEAT_CARD_CSS).toContain(".fcard-body");
-    expect(FEAT_CARD_CSS).toContain(".fcard-footer");
+describe("FEATURE_CARD_CSS", () => {
+  it("styles the semantic card zones and uses a concise body class", () => {
+    expect(FEATURE_CARD_CSS).toContain("article {");
+    expect(FEATURE_CARD_CSS).toContain("header {");
+    expect(FEATURE_CARD_CSS).toContain(".body");
+    expect(FEATURE_CARD_CSS).toContain("footer {");
+    expect(FEATURE_CARD_CSS).not.toMatch(/\.(?:feature-card|fcard)-[a-z-]+/);
   });
 
   it("has hover lift effect", () => {
-    expect(FEAT_CARD_CSS).toContain("translateY");
+    expect(FEATURE_CARD_CSS).toContain("translateY");
   });
 
-  it("misuse: styles the slot content's h3 and p through :is(), since scoping turns a bare element selector into a class the usage site's elements never carry", () => {
-    // `.fcard-body h3` scopes to `.<fcard-body> .<h3>`, a class only the
+  it("styles the slot content's h3 and p through :is(), since scoping turns a bare element selector into a class the usage site's elements never carry", () => {
+    // `.body h3` scopes to `.<body> .<h3>`, a class only the
     // component's own <h3> elements get; slot content keeps plain tags.
-    expect(FEAT_CARD_CSS).not.toMatch(/\.fcard-[a-z]+ +[a-z][a-z0-9]* *[{,]/);
-    expect(FEAT_CARD_CSS).toMatch(
-      /\.fcard-body :is\(h2, h3\) \{[^}]*font-size: 1rem/,
+    expect(FEATURE_CARD_CSS).not.toMatch(/\.body +[a-z][a-z0-9]* *[{,]/);
+    expect(FEATURE_CARD_CSS).toMatch(
+      /\.body :is\(h2, h3\) \{[^}]*font-size: 1rem/,
     );
-    expect(FEAT_CARD_CSS).toMatch(
-      /\.fcard-body :is\(p\) \{[^}]*font-size: 0\.88rem/,
+    expect(FEATURE_CARD_CSS).toMatch(
+      /\.body :is\(p\) \{[^}]*font-size: 0\.88rem/,
     );
   });
 });
@@ -1056,7 +1058,7 @@ describe("the starter passes the linters the docs give, unchanged", () => {
       SITE_HEADER_CSS,
       STYLES_CSS,
       SITE_FOOTER_CSS,
-      FEAT_CARD_CSS,
+      FEATURE_CARD_CSS,
       MY_COUNTER_CSS,
       CONTACT_FORM_CSS,
     ].join("\n");
@@ -1070,9 +1072,9 @@ describe("the starter passes the linters the docs give, unchanged", () => {
 });
 
 describe("page templates", () => {
-  it("indexPage uses feat-card with named slots for the features section", () => {
+  it("indexPage uses feature-card with named slots for the features section", () => {
     const html = indexPage("My App");
-    expect(html).toContain('<feat-card data-testid="feature-zero-runtime">');
+    expect(html).toContain('<feature-card data-testid="feature-zero-runtime">');
     expect(html).toContain('data-bascik-slot="header"');
     expect(html).toContain('data-bascik-slot="footer"');
   });
@@ -1090,21 +1092,21 @@ describe("page templates", () => {
     const plain = indexPage("My App");
     const cloudflare = indexPage("My App", { template: "cloudflare" });
     expect(plain).not.toContain('href="/edge"');
-    expect(plain.match(/<feat-card /g)).toHaveLength(3);
+    expect(plain.match(/<feature-card /g)).toHaveLength(3);
     expect(indexPage("My App", { template: "default" })).toBe(plain);
     expect(cloudflare).toContain('href="/edge"');
-    expect(cloudflare.match(/<feat-card /g)).toHaveLength(4);
+    expect(cloudflare.match(/<feature-card /g)).toHaveLength(4);
     // The extra card is an insertion: everything else on the page is unchanged.
     const edgeCard =
-      /\n\s*<feat-card data-testid="feature-edge">\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feat-card>/;
+      /\n\s*<feature-card data-testid="feature-edge">\s*<div data-bascik-slot="header">Edge<\/div>[\s\S]*?<\/feature-card>/;
     expect(cloudflare.replace(edgeCard, "")).toBe(plain);
   });
 
-  it("aboutPage composes two <feat-card> components with test ids", () => {
+  it("aboutPage composes two <feature-card> components with test ids", () => {
     const html = aboutPage("My App");
     expect(html).toContain("<site-header");
-    expect(html).toContain('<feat-card data-testid="about-mission">');
-    expect(html).toContain('<feat-card data-testid="about-approach">');
+    expect(html).toContain('<feature-card data-testid="about-mission">');
+    expect(html).toContain('<feature-card data-testid="about-approach">');
     expect(html).not.toContain('class="card"');
     expect(html).toContain("/contact");
   });
@@ -1176,10 +1178,8 @@ describe("page templates", () => {
     },
   );
 
-  it("gives <feat-card>'s root a data-testid, which each usage's own data-testid replaces", () => {
-    expect(FEAT_CARD_HTML).toMatch(
-      /<article class="fcard" data-testid="feat-card">/,
-    );
+  it("gives <feature-card>'s root a data-testid, which each usage's own data-testid replaces", () => {
+    expect(FEATURE_CARD_HTML).toMatch(/<article data-testid="feature-card">/);
   });
 
   it("writes every component script in TypeScript", () => {
@@ -1392,7 +1392,7 @@ describe("scaffold", () => {
     expect(paths.some((p) => p.includes("site-meta"))).toBe(true);
     expect(paths.some((p) => p.includes("site-header"))).toBe(true);
     expect(paths.some((p) => p.includes("site-footer"))).toBe(true);
-    expect(paths.some((p) => p.includes("feat-card"))).toBe(true);
+    expect(paths.some((p) => p.includes("feature-card"))).toBe(true);
     expect(paths.some((p) => p.includes("my-counter"))).toBe(true);
     expect(paths.some((p) => p.endsWith(".css"))).toBe(true);
     expect(paths.some((p) => p.endsWith(".test.ts"))).toBe(true);

@@ -76,7 +76,7 @@ Bascik injects a lightweight, zero-dependency SSE client into HTML pages served 
 - Browsers reload seamlessly without requiring browser extensions or external polling tools.
 - Live reload scripts are completely stripped from production builds (`bascik --build`).
 
-Here it is on a new project. The first edit changes a page. The second changes the `feat-card` component, and every card on the page updates because they all use it:
+Here it is on a new project. The first edit changes a page. The second changes the `feature-card` component, and every card on the page updates because they all use it:
 
 ![An editor above a browser. A heading edited in the editor and saved changes in the browser. A border color edited in a component and saved changes on every card](/assets/demos/live-reload-stacked@2x.webp)
 

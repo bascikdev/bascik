@@ -11,18 +11,16 @@
  *   import { homeSchema } from '@/lib/home-schema.ts';
  *   export default async () => await homeSchema();
  */
+import type { SafeHtml } from "@bascik/bascik/html";
 import { BRAND_SAME_AS } from "./article-schema.ts";
+import { renderJsonLd } from "./json-ld.ts";
 import { readStableVersion } from "./package-version.ts";
 
 const SITE_URL = "https://bascik.dev";
 const DESCRIPTION =
   "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote.";
 
-function jsonLdScript(schema: object): string {
-  return `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2).replace(/</g, "\\u003c")}\n</script>`;
-}
-
-export async function homeSchema(packageJsonPath?: string): Promise<string> {
+export async function homeSchema(packageJsonPath?: string): Promise<SafeHtml> {
   const softwareVersion = await readStableVersion(packageJsonPath);
 
   const software = {
@@ -55,5 +53,5 @@ export async function homeSchema(packageJsonPath?: string): Promise<string> {
     sameAs: [...BRAND_SAME_AS],
   };
 
-  return `${jsonLdScript(software)}\n${jsonLdScript(organization)}`;
+  return renderJsonLd(software, organization);
 }

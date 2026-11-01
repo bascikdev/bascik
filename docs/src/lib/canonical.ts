@@ -13,7 +13,10 @@
  */
 
 import { composeSiteUrl } from "@bascik/bascik";
-export async function canonical(routeOverride?: string): Promise<string> {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+export async function canonical(
+  routeOverride?: string,
+): Promise<SafeHtml | ""> {
   const siteUrl = process.env.BASCIK_SITE_URL ?? "";
   const base = process.env.BASCIK_BASE ?? "/";
   const pageFile =
@@ -26,7 +29,8 @@ export async function canonical(routeOverride?: string): Promise<string> {
     const normalizedOverride = routeOverride.startsWith("/")
       ? routeOverride
       : `/${routeOverride}`;
-    return `<link rel="canonical" href="${composeSiteUrl(siteUrl, base, normalizedOverride)}" />`;
+    const url = composeSiteUrl(siteUrl, base, normalizedOverride);
+    return html`<link rel="canonical" href="${url}" />`;
   }
 
   const relPath = pageFile.startsWith(pagesDir)
@@ -43,5 +47,6 @@ export async function canonical(routeOverride?: string): Promise<string> {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = routePath ? `/${routePath}` : "/";
 
-  return `<link rel="canonical" href="${composeSiteUrl(siteUrl, base, urlPath)}" />`;
+  const url = composeSiteUrl(siteUrl, base, urlPath);
+  return html`<link rel="canonical" href="${url}" />`;
 }

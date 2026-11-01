@@ -64,7 +64,7 @@ describe("below-the-fold rendering", () => {
     ],
     [
       "src/components/component-demo/component-demo.html",
-      'class="demo-box" data-defer-render="demo"',
+      'class="box" data-defer-render="demo"',
     ],
   ])("%s marks its root for the rule", async (file, root) => {
     const html = await read(file);

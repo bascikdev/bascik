@@ -15,7 +15,7 @@ describe("docs-nav component", () => {
     expect(html).toContain(
       '<a href="#main-content" class="skip-link">Skip to main content</a>',
     );
-    expect(html).toContain('<nav class="dnav" aria-label="Main">');
+    expect(html).toContain('<nav aria-label="Main">');
     expect(html).toContain("<docs-logo />");
     expect(html).toContain("<docs-search />");
     expect(html).toContain('from "@/lib/nav.ts"');
@@ -57,14 +57,23 @@ describe("docs-nav component", () => {
     expect(html).toContain('path !== "/press"');
   });
 
-  it("constrains banner and dnav-inner to max-width", async () => {
+  it("uses rewriteable selectors to mark the main navigation links", async () => {
+    const html = await readFile(componentPath, "utf8");
+
+    expect(html).toContain(
+      'document.querySelectorAll(".logo, .links-wrapper a")',
+    );
+    expect(html).not.toContain('nav[aria-label="Main"] a');
+  });
+
+  it("constrains the banner and navigation container to max-width", async () => {
     const css = await readFile(cssPath, "utf8");
 
     expect(css).toContain(
-      ".dnav-banner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
+      ".banner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
     );
     expect(css).toContain(
-      ".dnav-inner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
+      ".container {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
     );
   });
 

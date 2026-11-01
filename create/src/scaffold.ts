@@ -250,17 +250,17 @@ export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
     await expect(page.getByTestId('edge-greeting')).toContainText('Ada');
   });
 
-  test('edge page renders the <feat-card> its server script returns', async ({ page }) => {
+  test('edge page renders the <feature-card> its server script returns', async ({ page }) => {
     await page.goto('/edge?name=Ada');
     const card = page.getByTestId('edge-card');
     await expect(card).toBeVisible();
     await expect(card).toContainText('Hello, Ada');
-    // The component's scoped CSS reached the browser: .fcard is a flex column.
+    // The component's scoped CSS reaches the browser: its article is a flex column.
     await expect(card).toHaveCSS('flex-direction', 'column');
     // The card's title rule reaches the <h3> the script passes through the slot.
     await expect(page.getByTestId('edge-greeting')).toHaveCSS('font-size', '16px');
     const html = await page.content();
-    expect(html).not.toContain('<feat-card');
+    expect(html).not.toContain('<feature-card');
   });
 `);
 
@@ -454,7 +454,7 @@ export const SITE_HEADER_CSS = `.skip-link {
 }
 .skip-link:focus { top: 8px; }
 
-.header {
+header {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -466,7 +466,7 @@ export const SITE_HEADER_CSS = `.skip-link {
 
 .container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
 
-.nav {
+nav {
   display: flex;
   align-items: center;
   height: 60px;
@@ -482,14 +482,14 @@ export const SITE_HEADER_CSS = `.skip-link {
 }
 .logo:hover { opacity: 0.8; }
 
-.nav-menu {
+.menu {
   list-style: none;
   margin: 0 0 0 auto;
   padding: 0;
   display: flex;
   gap: 4px;
 }
-.nav-menu a {
+.menu a {
   display: block;
   padding: 6px 12px;
   font-size: 0.9rem;
@@ -497,9 +497,9 @@ export const SITE_HEADER_CSS = `.skip-link {
   border-radius: var(--r-sm);
   transition: color .15s, background .15s;
 }
-.nav-menu a:hover { color: var(--text); background: var(--elevated); opacity: 1; }
+.menu a:hover { color: var(--text); background: var(--elevated); opacity: 1; }
 
-.nav-toggle {
+.toggle {
   display: none;
   flex-direction: column;
   justify-content: center;
@@ -513,7 +513,7 @@ export const SITE_HEADER_CSS = `.skip-link {
   margin-left: auto;
   border-radius: var(--r-sm);
 }
-.nav-toggle span {
+.toggle span {
   display: block;
   height: 2px;
   background: var(--text);
@@ -521,9 +521,9 @@ export const SITE_HEADER_CSS = `.skip-link {
 }
 
 @media (max-width: 640px) {
-  .nav-toggle { display: flex; }
+  .toggle { display: flex; }
 
-  .nav-menu {
+  .menu {
     display: none;
     position: absolute;
     top: 60px;
@@ -535,24 +535,24 @@ export const SITE_HEADER_CSS = `.skip-link {
     border-bottom: 1px solid var(--border);
     padding: 8px 16px;
   }
-  .nav-menu.is-open { display: flex; }
-  .nav-menu li { width: 100%; }
-  .nav-menu a { padding: 10px 4px; }
+  .menu.is-open { display: flex; }
+  .menu li { width: 100%; }
+  .menu a { padding: 10px 4px; }
 }
 `;
 
 /** Sticky top nav with logo (brand prop) and mobile hamburger. */
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
-<header class="header" data-testid="site-header">
+<header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <div class="container">
-    <nav class="nav" aria-label="Main" data-testid="site-header-nav">
+    <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
-      <button id="nav-toggle" type="button" class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
+      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
         <span></span><span></span><span></span>
       </button>
-      <ul id="nav-menu" class="nav-menu" data-testid="site-header-nav-menu">
+      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
         <li><a href="/" data-testid="site-header-home">Home</a></li>
         <li><a href="/about" data-testid="site-header-about">About</a></li>
         <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
@@ -571,14 +571,14 @@ ${SITE_HEADER_CSS}</style>
 </script>
 `;
 
-export const SITE_FOOTER_CSS = `.footer {
+export const SITE_FOOTER_CSS = `footer {
   border-top: 1px solid var(--border);
   padding: 28px 0;
 }
 
 .container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
 
-.footer-inner {
+.inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -586,34 +586,34 @@ export const SITE_FOOTER_CSS = `.footer {
   flex-wrap: wrap;
 }
 
-.footer-copy { font-size: 0.85rem; color: var(--text-muted); }
+.copy { font-size: 0.85rem; color: var(--text-muted); }
 
-.footer-nav {
+nav {
   display: flex;
   gap: 20px;
 }
-.footer-nav a {
+nav a {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
-.footer-nav a:hover { color: var(--text); opacity: 1; }
+nav a:hover { color: var(--text); opacity: 1; }
 
 @media (max-width: 480px) {
-  .footer-inner { flex-direction: column; align-items: flex-start; }
+  .inner { flex-direction: column; align-items: flex-start; }
 }
 `;
 
 /** Footer with brand prop and build-time year. */
 export const SITE_FOOTER_HTML = `<style>
 ${SITE_FOOTER_CSS}</style>
-<footer class="footer" data-testid="site-footer">
+<footer data-testid="site-footer">
   <div class="container">
-    <div class="footer-inner">
-      <span class="footer-copy">
+    <div class="inner">
+      <span class="copy">
         &copy; <script data-bascik-build-once type="text/typescript">export default (): string => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
-      <nav class="footer-nav" aria-label="Footer navigation" data-testid="site-footer-nav">
+      <nav aria-label="Footer navigation" data-testid="site-footer-nav">
         <a href="/" data-testid="site-footer-home">Home</a>
         <a href="/about" data-testid="site-footer-about">About</a>
         <a href="/contact" data-testid="site-footer-contact">Contact</a>
@@ -623,7 +623,7 @@ ${SITE_FOOTER_CSS}</style>
 </footer>
 `;
 
-export const FEAT_CARD_CSS = `.fcard {
+export const FEATURE_CARD_CSS = `article {
   background: var(--elevated);
   border: 1px solid var(--border);
   border-radius: var(--r);
@@ -633,34 +633,34 @@ export const FEAT_CARD_CSS = `.fcard {
   gap: 12px;
   transition: border-color .2s, box-shadow .2s, transform .2s;
 }
-.fcard:hover {
+article:hover {
   border-color: var(--border-hover);
   box-shadow: 0 0 0 1px var(--accent-dim), 0 8px 32px rgba(0,0,0,0.3);
   transform: translateY(-2px);
 }
 
-.fcard-header {
+header {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .1em;
   color: var(--accent);
 }
-.fcard-header:empty { display: none; }
+header:empty { display: none; }
 
-.fcard-body { flex: 1; }
+.body { flex: 1; }
 /* The h3 and p arrive through the slot from the usage site. Scoping turns a
    bare element selector into a class only this template's own elements get;
    an element name inside :is() is left as written, so these match. */
-.fcard-body :is(h2, h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
-.fcard-body :is(p) { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
+.body :is(h2, h3) { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
+.body :is(p) { margin: 0; font-size: 0.88rem; color: var(--text-muted); }
 
-.fcard-footer {
+footer {
   padding-top: 12px;
   border-top: 1px solid var(--border);
   margin-top: auto;
 }
-.fcard-footer:empty { display: none; }
+footer:empty { display: none; }
 `;
 
 /**
@@ -670,12 +670,12 @@ export const FEAT_CARD_CSS = `.fcard {
  * included, so each styled zone wraps its marker instead of carrying it.
  * An unfilled slot leaves its zone empty, and `:empty` hides it.
  */
-export const FEAT_CARD_HTML = `<style>
-${FEAT_CARD_CSS}</style>
-<article class="fcard" data-testid="feat-card">
-  <div class="fcard-header"><div data-bascik-slot="header"></div></div>
-  <div class="fcard-body"><div data-bascik-slot></div></div>
-  <div class="fcard-footer"><div data-bascik-slot="footer"></div></div>
+export const FEATURE_CARD_HTML = `<style>
+${FEATURE_CARD_CSS}</style>
+<article data-testid="feature-card">
+  <header><div data-bascik-slot="header"></div></header>
+  <div class="body"><div data-bascik-slot></div></div>
+  <footer><div data-bascik-slot="footer"></div></footer>
 </article>
 `;
 
@@ -686,7 +686,7 @@ export const MY_COUNTER_CSS = `.counter {
   font-size: 1.25rem;
 }
 
-.count-val {
+output {
   font-family: var(--mono);
   font-size: 1.5rem;
   min-width: 2ch;
@@ -713,7 +713,7 @@ export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
   <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
-  <output id="count-val" class="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
+  <output id="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
   <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
 <script type="text/typescript">
@@ -853,12 +853,12 @@ describe('site-footer component', () => {
 });
 `;
 
-export const FEAT_CARD_TEST = `import { describe, it, expect } from 'vitest';
+export const FEATURE_CARD_TEST = `import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-describe('feat-card component', () => {
-  const path = join(process.cwd(), 'src/components/feat-card/feat-card.html');
+describe('feature-card component', () => {
+  const path = join(process.cwd(), 'src/components/feature-card/feature-card.html');
 
   it('defines header, default, and footer slots', async () => {
     const html = await readFile(path, 'utf8');
@@ -930,13 +930,13 @@ ${body}
 `;
 
 /** The extra feature card the Cloudflare template adds, linking to the page the Worker renders. */
-const EDGE_FEAT_CARD = `
-          <feat-card data-testid="feature-edge">
+const EDGE_FEATURE_CARD = `
+          <feature-card data-testid="feature-edge">
             <div data-bascik-slot="header">Edge</div>
             <h3>Rendered per request</h3>
             <p>Server scripts and API routes run in a Cloudflare Worker. Static pages stay on the CDN.</p>
             <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">See it run →</a></div>
-          </feat-card>`;
+          </feature-card>`;
 
 export const indexPage = (
   brand: string,
@@ -961,26 +961,26 @@ export const indexPage = (
       <div class="container">
         <p class="section-label">Features</p>
         <h2>Why Bascik</h2>
-        <p>Each card below is a <code>&lt;feat-card&gt;</code> component with three named slots: <code>header</code>, default, and <code>footer</code>.</p>
+        <p>Each card below is a <code>&lt;feature-card&gt;</code> component with three named slots: <code>header</code>, default, and <code>footer</code>.</p>
         <div class="grid-3 mt-28">
-          <feat-card data-testid="feature-zero-runtime">
+          <feature-card data-testid="feature-zero-runtime">
             <div data-bascik-slot="header">Zero runtime</div>
             <h3>No framework overhead</h3>
             <p>Components compile at build time. Nothing extra ships to the browser.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feat-card>
-          <feat-card data-testid="feature-scoped-css">
+          </feature-card>
+          <feature-card data-testid="feature-scoped-css">
             <div data-bascik-slot="header">Scoped CSS</div>
             <h3>Styles that never leak</h3>
             <p>Each component's class names are automatically namespaced at build time.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feat-card>
-          <feat-card data-testid="feature-named-slots">
+          </feature-card>
+          <feature-card data-testid="feature-named-slots">
             <div data-bascik-slot="header">Named slots</div>
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feat-card>${options.template === "cloudflare" ? EDGE_FEAT_CARD : ""}
+          </feature-card>${options.template === "cloudflare" ? EDGE_FEATURE_CARD : ""}
         </div>
       </div>
     </section>
@@ -1010,16 +1010,16 @@ export const aboutPage = (brand: string): string =>
         <p class="page-intro">This is the about page. Tell visitors who you are and what you do.</p>
 
         <div class="grid-2 mt-32">
-          <feat-card data-testid="about-mission">
+          <feature-card data-testid="about-mission">
             <div data-bascik-slot="header">Mission</div>
             <h2>Our mission</h2>
             <p>Describe your mission or purpose here. Keep it concise and genuine.</p>
-          </feat-card>
-          <feat-card data-testid="about-approach">
+          </feature-card>
+          <feature-card data-testid="about-approach">
             <div data-bascik-slot="header">Approach</div>
             <h2>Our approach</h2>
             <p>Explain how you work or what makes you different from others.</p>
-          </feat-card>
+          </feature-card>
         </div>
 
         <div class="callout mt-40">
@@ -1067,7 +1067,7 @@ export const notFoundPage = (brand: string): string =>
 /**
  * A page with a `data-bascik-server` script. The Cloudflare adapter keeps it out
  * of `public/` and renders it in the Worker on every request; `bascik --server`
- * renders it on Node. The script returns the starter's `<feat-card>` around its
+ * renders it on Node. The script returns the starter's `<feature-card>` around its
  * greeting, and the host renders that tag into the component's markup and
  * scoped CSS per request: this page does not use the card in its own markup.
  * The script builds its markup with `html` from @bascik/bascik/html, which
@@ -1081,7 +1081,7 @@ export const edgePage = (brand: string): string =>
       <section class="section">
         <p class="section-label">Edge</p>
         <h1>Rendered per request</h1>
-        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feat-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
+        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feature-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
 
         <h2 class="mt-28">Your greeting</h2>
         <div class="edge-greeting">
@@ -1091,12 +1091,12 @@ export const edgePage = (brand: string): string =>
             export default function (request: Request): string {
               // Query parameters are untrusted: html escapes each value for where it lands.
               const name = new URL(request.url).searchParams.get("name") ?? "visitor";
-              return html\`<feat-card data-testid="edge-card">
+              return html\`<feature-card data-testid="edge-card">
                 <div data-bascik-slot="header">Server script</div>
                 <h3 data-testid="edge-greeting">Hello, \${name}</h3>
                 <p>Rendered at <code>\${new Date().toISOString()}</code></p>
                 <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">Reload →</a></div>
-              </feat-card>\`;
+              </feature-card>\`;
             }
           </script>
         </div>
@@ -1249,7 +1249,7 @@ const starterDirectories = (template: Template): string[] => [
   "src/components/site-meta",
   "src/components/site-header",
   "src/components/site-footer",
-  "src/components/feat-card",
+  "src/components/feature-card",
   "src/components/my-counter",
   "src/components/contact-form",
 ];
@@ -1310,8 +1310,8 @@ const starterFiles = (
     ["src/components/site-header/site-header.test.ts", SITE_HEADER_TEST],
     ["src/components/site-footer/site-footer.html", SITE_FOOTER_HTML],
     ["src/components/site-footer/site-footer.test.ts", SITE_FOOTER_TEST],
-    ["src/components/feat-card/feat-card.html", FEAT_CARD_HTML],
-    ["src/components/feat-card/feat-card.test.ts", FEAT_CARD_TEST],
+    ["src/components/feature-card/feature-card.html", FEATURE_CARD_HTML],
+    ["src/components/feature-card/feature-card.test.ts", FEATURE_CARD_TEST],
     ["src/components/my-counter/my-counter.html", MY_COUNTER_HTML],
     ["src/components/my-counter/my-counter.test.ts", MY_COUNTER_TEST],
     ["src/components/contact-form/contact-form.html", CONTACT_FORM_HTML],

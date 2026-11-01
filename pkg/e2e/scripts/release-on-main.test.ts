@@ -284,6 +284,30 @@ describe("release.yml publishes only commits on main", () => {
     expect(unguardedJobs(workflow)).toEqual([]);
   });
 
+  it("uses tokenless npm trusted publishing for all four npm jobs", () => {
+    const npmJobs = workflow
+      .split(/(?=^ {2}[\w-]+:\s*$)/m)
+      .filter((job) => /publish-npm\.sh/.test(job));
+    expect(npmJobs).toHaveLength(4);
+    for (const job of npmJobs) {
+      expect(job).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
+      expect(job).toMatch(/^ {6}id-token: write$/m);
+      expect(job).toMatch(/^ {10}node-version: 24$/m);
+      expect(job).toMatch(
+        /^ {10}registry-url: "https:\/\/registry\.npmjs\.org"$/m,
+      );
+      expect(job).not.toMatch(/NODE_AUTH_TOKEN|NPM_TOKEN/);
+      expect(job).not.toMatch(/^ {4}environment:/m);
+    }
+    const publishScript = readFileSync(
+      join(repoDir, ".github/scripts/publish-npm.sh"),
+      "utf8",
+    );
+    expect(publishScript).toContain(
+      'npm publish --provenance --access public --tag "${channel}"',
+    );
+  });
+
   it("misuse: flags a publish job added without the guard, with a shallow checkout, or with a conditional guard", () => {
     const job = (id: string, checkout: string[], guard: string[]) =>
       [

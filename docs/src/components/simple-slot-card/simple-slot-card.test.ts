@@ -11,8 +11,8 @@ describe("simple-slot-card component", () => {
   it("renders default slot with fallback content", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('class="simple-slot-card"');
+    expect(html).toContain("<section>");
     expect(html).toContain("data-bascik-slot");
-    expect(html).toContain("simple-slot-fallback");
+    expect(html).toContain('class="fallback"');
   });
 });

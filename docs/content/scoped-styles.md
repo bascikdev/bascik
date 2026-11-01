@@ -100,7 +100,7 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
 <!-- demo:scope-lab-html -->
 
 ```html
-<section class="scope-lab">
+<section class="lab">
   <div>
     <h3>Scoped selectors are active</h3>
     <p>
@@ -108,21 +108,21 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
       component.
     </p>
   </div>
-  <span class="scope-lab-meter" id="signal" aria-hidden="true"></span>
+  <span class="meter" id="signal" aria-hidden="true"></span>
 </section>
 ```
 
 <!-- demo:scope-lab-css -->
 
 ```css
-.scope-lab {
+.lab {
   --signal-color: #d3ff8d;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.scope-lab-meter {
+.meter {
   height: 4px;
   background: var(--signal-color);
   transform-origin: left center;
@@ -150,7 +150,7 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scope-lab-meter {
+  .meter {
     animation: none;
   }
 }
@@ -159,7 +159,7 @@ p {
 <!-- demo:scope-lab-output-html -->
 
 ```html
-<section class="bascik__scope-lab__scope-lab">
+<section class="bascik__scope-lab__lab">
   <div>
     <h3 class="b_el_scope-lab_h3">Scoped selectors are active</h3>
     <p class="b_el_scope-lab_p">
@@ -168,7 +168,7 @@ p {
     </p>
   </div>
   <span
-    class="bascik__scope-lab__scope-lab-meter b_id_scope-lab_signal"
+    class="bascik__scope-lab__meter b_id_scope-lab_signal"
     id="bascik__scope-lab__a1b2__signal"
     aria-hidden="true"
   ></span>
@@ -178,11 +178,11 @@ p {
 <!-- demo:scope-lab-output-css -->
 
 ```css
-.bascik__scope-lab__scope-lab {
+.bascik__scope-lab__lab {
   --bascik__scope-lab__signal-color: #d3ff8d;
 }
 
-.bascik__scope-lab__scope-lab-meter {
+.bascik__scope-lab__meter {
   background: var(--bascik__scope-lab__signal-color);
   animation: bascik__scope-lab__keyframe__scope-sweep 1.6s ease-in-out infinite
     alternate;
@@ -209,7 +209,7 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bascik__scope-lab__scope-lab-meter {
+  .bascik__scope-lab__meter {
     animation: none;
   }
 }
@@ -233,13 +233,13 @@ This applies to every component, including one with no stylesheet at all. A head
 
 ```html
 <!-- src/components/site-nav.html -->
-<a href="#main-content" class="skip-link dnav-logo">Skip to main content</a>
+<a href="#main-content" class="skip-link logo">Skip to main content</a>
 ```
 
 ```css
 /* src/components/site-nav.css */
-/* .dnav-logo is declared locally → Bascik scopes it */
-.dnav-logo {
+/* .logo is declared locally → Bascik scopes it */
+.logo {
   display: inline-flex;
   align-items: center;
 }
@@ -259,7 +259,7 @@ This applies to every component, including one with no stylesheet at all. A head
 
 ```html
 <!-- dist/index.html (compiled output) -->
-<a href="#main-content" class="skip-link bascik__site-nav__dnav-logo">
+<a href="#main-content" class="skip-link bascik__site-nav__logo">
   Skip to main content
 </a>
 ```
@@ -276,7 +276,7 @@ The selector and animation lab above uses this exact pattern. Its Source CSS con
 
 Media queries work normally. Class names inside them are scoped like any other rule:
 
-The selector and animation lab includes a `prefers-reduced-motion` media query. Open Output → CSS to see its `.scope-lab-meter` selector rewritten inside the unchanged `@media` wrapper.
+The selector and animation lab includes a `prefers-reduced-motion` media query. Open Output → CSS to see its `.meter` selector rewritten inside the unchanged `@media` wrapper.
 
 ## @keyframes Scoping
 
@@ -345,12 +345,12 @@ Define your design tokens once in a global stylesheet, then consume them inside 
     border-top: 3px solid var(--brand);
     border-radius: 10px;
   }
-  .card-label {
+  .label {
     color: var(--text-muted);
   }
 </style>
 <div class="card">
-  <p class="card-label" data-bascik-prop-label></p>
+  <p class="label" data-bascik-prop-label></p>
   <div data-bascik-slot></div>
 </div>
 ```
@@ -363,7 +363,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
   border-top: 3px solid var(--brand);
   border-radius: 10px;
 }
-.bascik__brand-card__card-label {
+.bascik__brand-card__label {
   color: var(--text-muted);
 }
 ```

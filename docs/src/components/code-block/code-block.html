@@ -3,15 +3,15 @@
   this component has no script: a script here would be copied into every block on the page. One handler in
   docs-footer copies a block's plain text when its button is clicked, found through the data-cblock-* hooks.
 -->
-<div class="cblock" data-testid="code-block">
-  <div class="cblock-header">
-    <span class="cblock-lang" data-bascik-prop-lang>html</span>
-    <span class="cblock-file" data-bascik-prop-file></span>
+<div class="block" data-testid="code-block">
+  <div class="header">
+    <span class="language" data-bascik-prop-lang>html</span>
+    <span class="file" data-bascik-prop-file></span>
   </div>
-  <div class="cblock-pre-wrap">
-    <pre><code class="cblock-body" data-cblock-code><span data-bascik-slot></span></code></pre>
+  <div class="pre-wrap">
+    <pre><code class="body" data-cblock-code><span data-bascik-slot></span></code></pre>
     <button
-      class="cblock-copy"
+      class="copy"
       type="button"
       data-cblock-copy
       data-testid="code-block-copy"
@@ -19,7 +19,7 @@
       title="Copy"
     >
       <svg
-        class="cblock-copy-icon"
+        class="copy-icon"
         width="14"
         height="14"
         viewBox="0 0 24 24"
@@ -36,7 +36,7 @@
         ></path>
       </svg>
       <svg
-        class="cblock-check-icon"
+        class="check-icon"
         width="14"
         height="14"
         viewBox="0 0 24 24"
@@ -51,7 +51,7 @@
       </svg>
     </button>
     <span
-      class="cblock-status sr-only"
+      class="status visually-hidden"
       role="status"
       aria-live="polite"
       data-cblock-status

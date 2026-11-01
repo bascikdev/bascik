@@ -1780,6 +1780,15 @@ export const escapeSvg = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
     ).toEqual([]);
   });
 
+  it("matches an entity map whose name contains a regex metacharacter", () => {
+    expect(
+      handWrittenEscapers(`const $ENTITIES = { "&": "&amp;", "<": "&lt;" };
+const escapeHtml = (s) => s.replace(/[&<]/g, (c) => $ENTITIES[c]);`).map(
+        (e: { line: number; name?: string }) => [e.line, e.name],
+      ),
+    ).toEqual([[1, "escapeHtml"]]);
+  });
+
   it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
     const found =
       handWrittenEscapers(`const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);

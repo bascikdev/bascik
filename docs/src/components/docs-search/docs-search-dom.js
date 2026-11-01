@@ -1,11 +1,11 @@
 /* bascik-disable js-attribute-selector, js-document-class-query */
-var btn = document.querySelector(".dnav-search-btn");
-var overlay = document.querySelector(".search-overlay");
-var backdrop = document.querySelector(".search-backdrop");
-var input = document.querySelector(".search-input");
-var list = document.querySelector(".search-results");
-var empty = document.querySelector(".search-empty");
-var hint = document.querySelector(".search-hint");
+var btn = document.querySelector(".button");
+var overlay = document.querySelector(".overlay");
+var backdrop = document.querySelector(".backdrop");
+var input = document.querySelector(".input");
+var list = document.querySelector(".results");
+var empty = document.querySelector(".empty");
+var hint = document.querySelector(".hint");
 var statusEl = document.getElementById("docs-search-status");
 var lastFocused = null;
 var preloaded = new Set();
@@ -144,52 +144,52 @@ function runSearch(query) {
   }
 
   function resultLink(e) {
+    var separator = el("span", {}, ["\u203a"]);
+    separator.className = "separator";
     var label = e.heading
-      ? [
-          e.navLabel,
-          " ",
-          el("span", { class: "sr-sep" }, ["\u203a"]),
-          " ",
-          e.heading,
-        ]
+      ? [e.navLabel, " ", separator, " ", e.heading]
       : [e.navLabel];
     var snip = snippet(e.text, q, toks);
-    return el("a", { href: e.path, class: "sr-link" }, [
-      el("span", { class: "sr-section" }, [e.section || ""]),
-      el("span", { class: "sr-label" }, label),
-      snip ? el("span", { class: "sr-text" }, [snip]) : null,
+    var section = el("span", { "data-testid": "search-result-section" }, [
+      e.section || "",
     ]);
+    section.className = "section";
+    var title = el("span", { "data-testid": "search-result-label" }, label);
+    title.className = "label";
+    var text = snip
+      ? el("span", { "data-testid": "search-result-text" }, [snip])
+      : null;
+    if (text) text.className = "snippet";
+    var link = el("a", { href: e.path, "data-testid": "search-result-link" }, [
+      section,
+      title,
+      text,
+    ]);
+    link.className = "result-link";
+    return link;
   }
 
   // Home result with its popular pages nested under it, in the same result.
   function homeGroup(e) {
     var items = sitelinks.map(function (s) {
-      return el("li", { role: "option" }, [
-        el(
-          "a",
-          {
-            href: s.path,
-            class: "sr-sitelink",
-            "data-testid": "search-sitelink",
-          },
-          [s.navLabel],
-        ),
+      var link = el("a", { href: s.path, "data-testid": "search-sitelink" }, [
+        s.navLabel,
       ]);
+      link.className = "sitelink";
+      return el("li", { role: "option" }, [link]);
     });
+    var nested = items.length
+      ? el("ul", { role: "presentation" }, items)
+      : null;
+    if (nested) nested.className = "sitelinks";
     return el(
       "li",
       {
         role: "group",
         "aria-label": "Bascik home and popular pages",
-        class: "sr-group",
         "data-testid": "search-home-result",
       },
-      [
-        el("div", { role: "option" }, [resultLink(e)]),
-        items.length
-          ? el("ul", { class: "sr-sitelinks", role: "presentation" }, items)
-          : null,
-      ],
+      [el("div", { role: "option" }, [resultLink(e)]), nested],
     );
   }
 
@@ -301,7 +301,7 @@ document.addEventListener("keydown", function (e) {
 });
 
 // Adjust keyboard shortcut label for non-Mac
-var kbd = document.querySelector(".search-btn-kbd");
+var kbd = document.querySelector(".button-shortcut");
 if (kbd && !/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
   kbd.textContent = "Ctrl+K";
 }

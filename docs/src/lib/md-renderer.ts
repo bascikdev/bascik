@@ -349,7 +349,7 @@ interface RenderRange {
  *
  *   <!-- demo:source-html -->
  *   ```html
- *   <div class="fcard">…</div>
+ *   <article>…</article>
  *   ```
  *
  * Use inside a `data-bascik-build` script in a slot to keep code examples

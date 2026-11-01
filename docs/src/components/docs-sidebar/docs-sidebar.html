@@ -1,5 +1,5 @@
-<div class="docs-sidebar">
-  <nav class="docs-sidebar-nav" aria-label="Documentation">
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
     <script data-bascik-build-once>
       import { NAV } from "@/lib/nav.ts";
       import { renderNavListItem } from "@/lib/nav-helpers.ts";
@@ -16,9 +16,9 @@
       }
     </script>
   </nav>
-  <nav class="docs-toc" aria-label="On this page" hidden>
-    <p class="docs-toc-title">On this page</p>
-    <ol class="docs-toc-list">
+  <nav class="toc" aria-label="On this page" hidden>
+    <p class="toc-title">On this page</p>
+    <ol class="toc-list">
       <!-- Per page, not build-once: the contents come from this page's own Markdown (BASCIK_PAGE_FILE),
            content/<route>.md or content/<route>/index.md (content-path.ts). -->
       <script data-bascik-build>
@@ -38,7 +38,7 @@
   /* bascik-disable js-document-class-query */
   (function () {
     var path = window.location.pathname;
-    var sidebar = document.querySelector(".docs-sidebar-nav");
+    var sidebar = document.querySelector(".sidebar");
     if (!sidebar) return;
 
     var links = Array.from(sidebar.querySelectorAll("a"));
@@ -142,8 +142,8 @@
   /* bascik-disable js-document-class-query */
   (function () {
     function initializeTableOfContents() {
-      var toc = document.querySelector(".docs-toc");
-      var list = toc && toc.querySelector(".docs-toc-list");
+      var toc = document.querySelector(".toc");
+      var list = toc && toc.querySelector(".toc-list");
       if (!toc || !list) return;
 
       var links = new Map();
@@ -237,7 +237,7 @@
             if (
               event.target &&
               event.target.closest &&
-              event.target.closest(".docs-toc")
+              event.target.closest(".toc")
             )
               return;
             releaseNavigationTarget();

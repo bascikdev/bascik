@@ -13,12 +13,10 @@ Place default content inside the marker and it renders whenever the component ta
 <!-- demo:basic-slot-html -->
 
 ```html
-<section class="simple-slot-card">
-  <p class="simple-slot-label">Default slot</p>
+<section>
+  <p class="label">Default slot</p>
   <div data-bascik-slot>
-    <p class="simple-slot-fallback">
-      Fallback content appears when the tag is empty.
-    </p>
+    <p class="fallback">Fallback content appears when the tag is empty.</p>
   </div>
 </section>
 ```
@@ -26,7 +24,7 @@ Place default content inside the marker and it renders whenever the component ta
 <!-- demo:basic-slot-css -->
 
 ```css
-.simple-slot-card {
+section {
   min-height: 9rem;
   padding: 20px;
   border: 1px solid #3a3d40;
@@ -46,14 +44,14 @@ Place default content inside the marker and it renders whenever the component ta
 <!-- demo:basic-slot-output-html -->
 
 ```html
-<section class="bascik__simple-slot-card__simple-slot-card">
-  <p class="bascik__simple-slot-card__simple-slot-label">Default slot</p>
+<section class="b_el_simple-slot-card_section">
+  <p class="bascik__simple-slot-card__label">Default slot</p>
   <p>Custom content replaces the fallback.</p>
 </section>
 
-<section class="bascik__simple-slot-card__simple-slot-card">
-  <p class="bascik__simple-slot-card__simple-slot-label">Default slot</p>
-  <p class="bascik__simple-slot-card__simple-slot-fallback">
+<section class="b_el_simple-slot-card_section">
+  <p class="bascik__simple-slot-card__label">Default slot</p>
+  <p class="bascik__simple-slot-card__fallback">
     Fallback content appears when the tag is empty.
   </p>
 </section>
@@ -134,23 +132,23 @@ This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the
 <!-- demo:source-html -->
 
 ```html
-<section class="slot-panel">
-  <header class="slot-panel-header">
-    <p class="slot-panel-eyebrow">
+<section>
+  <header>
+    <p class="eyebrow">
       <span data-bascik-slot="eyebrow">Overview</span>
     </p>
-    <h3 class="slot-panel-title">
+    <h3>
       <span data-bascik-slot="title">Fallback title</span>
     </h3>
   </header>
 
-  <div class="slot-panel-body">
+  <div class="body">
     <div data-bascik-slot>
       <p>Fallback body copy.</p>
     </div>
   </div>
 
-  <footer class="slot-panel-actions">
+  <footer>
     <div data-bascik-slot="actions">
       <a href="/getting-started">Read docs</a>
     </div>
@@ -161,7 +159,7 @@ This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the
 <!-- demo:source-css -->
 
 ```css
-.slot-panel {
+section {
   width: min(100%, 34rem);
   background: #242628;
   border: 1px solid #3a3d40;
@@ -169,14 +167,14 @@ This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the
   padding: 24px;
 }
 
-.slot-panel-header {
+header {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 16px;
 }
 
-.slot-panel-eyebrow {
+.eyebrow {
   margin: 0;
   font-size: 0.72rem;
   font-weight: 700;
@@ -185,18 +183,18 @@ This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the
   color: #d3ff8d;
 }
 
-.slot-panel-title {
+h3 {
   margin: 0;
   font-size: 1.1rem;
 }
 
-.slot-panel-actions {
+footer {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid #3a3d40;
 }
 
-.slot-panel-actions a {
+footer a {
   display: inline-flex;
   font-weight: 600;
   color: #d3ff8d;
@@ -207,21 +205,19 @@ This example uses three named slots (`eyebrow`, `title`, and `actions`) plus the
 <!-- demo:output-html -->
 
 ```html
-<section class="bascik__slot-layout-demo__slot-panel">
-  <header class="bascik__slot-layout-demo__slot-panel-header">
-    <p class="bascik__slot-layout-demo__slot-panel-eyebrow">Named slot</p>
-    <h3 class="bascik__slot-layout-demo__slot-panel-title">
-      Build-time slot layout
-    </h3>
+<section class="b_el_slot-layout-demo_section">
+  <header class="b_el_slot-layout-demo_header">
+    <p class="bascik__slot-layout-demo__eyebrow">Named slot</p>
+    <h3 class="b_el_slot-layout-demo_h3">Build-time slot layout</h3>
   </header>
 
-  <div class="bascik__slot-layout-demo__slot-panel-body">
+  <div class="bascik__slot-layout-demo__body">
     <p>
       Use named slots for fixed regions and the default slot for body content.
     </p>
   </div>
 
-  <footer class="bascik__slot-layout-demo__slot-panel-actions">
+  <footer class="b_el_slot-layout-demo_footer">
     <a href="/configuration">Read configuration</a>
   </footer>
 </section>

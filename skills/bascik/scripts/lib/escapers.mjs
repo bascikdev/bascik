@@ -165,7 +165,7 @@ function readerText(lines, hit) {
 const readsMap = (text, variable) =>
   variable !== undefined &&
   new RegExp(
-    `(?<![\\w$.])${variable.replace(/\$/g, "\\$")}\\s*(?:\\[|\\.get\\()`,
+    `(?<![\\w$.])${variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*(?:\\[|\\.get\\()`,
   ).test(text);
 
 /**

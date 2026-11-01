@@ -43,5 +43,5 @@ export function renderSocialLinks(): string {
       `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="${path}" /></svg>` +
       `</a></li>`,
   );
-  return `<ul class="dfooter-social" aria-label="Bascik on social media">${items.join("")}</ul>`;
+  return `<ul class="social" aria-label="Bascik on social media">${items.join("")}</ul>`;
 }

@@ -431,7 +431,19 @@ jobs:
         run: npx playwright install chromium
 
       - name: Run framework integration tests
+        id: framework-integration
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: yarn pkg:integration
+
+      - name: Upload failed profiling diagnostics
+        if: ${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: profiling-diagnostics-node24
+          path: ${{ runner.temp }}/bascik-profile-test-*
+          if-no-files-found: ignore
+          retention-days: 7
 
   integration-docs:
     name: Docs Integration Tests
@@ -566,7 +578,19 @@ jobs:
         run: npx playwright install chromium
 
       - name: Framework integration tests
+        id: framework-integration
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: yarn pkg:integration
+
+      - name: Upload failed profiling diagnostics
+        if: ${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: profiling-diagnostics-node22.22
+          path: ${{ runner.temp }}/bascik-profile-test-*
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Create-Bascik unit tests
         run: yarn create:unit

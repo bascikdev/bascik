@@ -54,7 +54,7 @@ For one or two components without npm packaging, copying files manually is strai
 <!-- src/components/marketing/hero-card.html -->
 <!-- Component names derive from the filename, regardless of subfolder nesting. -->
 <div class="hero-card" data-testid="hero-card">
-  <p class="hero-card-title" data-bascik-prop-title></p>
+  <p data-bascik-prop-title></p>
   <p>Shared marketing card</p>
 </div>
 ```

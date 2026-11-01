@@ -12,9 +12,7 @@ describe("docs-sidebar component", () => {
     const html = await readFile(componentPath, "utf8");
 
     // A navigation landmark, named "Documentation" (screen readers add "navigation"), not a complementary <aside>.
-    expect(html).toContain(
-      '<nav class="docs-sidebar-nav" aria-label="Documentation">',
-    );
+    expect(html).toContain('<nav class="sidebar" aria-label="Documentation">');
     expect(html).not.toContain("<aside");
     expect(html).toContain('from "@/lib/nav.ts"');
     expect(html).toContain('link.rel = "prefetch"');
@@ -51,7 +49,7 @@ describe("docs-sidebar component", () => {
     const html = await readFile(componentPath, "utf8");
 
     expect(html).toContain(
-      '<nav class="docs-toc" aria-label="On this page" hidden>',
+      '<nav class="toc" aria-label="On this page" hidden>',
     );
     expect(html).toContain("<script data-bascik-build>");
     expect(html).toContain("renderPageTableOfContents");

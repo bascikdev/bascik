@@ -9,7 +9,7 @@
  *   export default async () => await openGraph();
  */
 import { readFile } from "node:fs/promises";
-import { esc } from "@bascik/bascik/html";
+import { html, type SafeHtml } from "@bascik/bascik/html";
 import { pageDescription, pageTitle } from "./meta-tags.ts";
 import { NAV } from "./nav.ts";
 
@@ -32,7 +32,7 @@ export function socialImageUrl(
   return `${siteUrl}/assets/og/${imageSlug}.jpg`;
 }
 
-export async function openGraph(): Promise<string> {
+export async function openGraph(): Promise<SafeHtml | ""> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
@@ -40,17 +40,17 @@ export async function openGraph(): Promise<string> {
 
   if (!siteUrl || !pageFile || !pagesDir) return "";
 
-  let html: string;
+  let pageSource: string;
   try {
-    html = await readFile(pageFile, "utf8");
+    pageSource = await readFile(pageFile, "utf8");
   } catch (err) {
     console.warn(
       `[open-graph] Warning: Could not read page file "${pageFile}": ${(err as Error).message}`,
     );
     return "";
   }
-  const rawTitle = pageTitle(html);
-  const description = pageDescription(html);
+  const rawTitle = pageTitle(pageSource);
+  const description = pageDescription(pageSource);
 
   const relPath = pageFile.startsWith(pagesDir)
     ? pageFile
@@ -76,38 +76,37 @@ export async function openGraph(): Promise<string> {
 
   const imageUrl = socialImageUrl(siteUrl, urlPath, withoutExt);
 
-  const tags = [
-    `<meta property="og:type" content="website" />`,
-    `<meta property="og:site_name" content="Bascik" />`,
-    `<meta property="og:url" content="${esc(url)}" />`,
-    `<meta property="og:locale" content="en_US" />`,
+  const tags: SafeHtml[] = [
+    html`<meta property="og:type" content="website" />`,
+    html`<meta property="og:site_name" content="Bascik" />`,
+    html`<meta property="og:url" content="${url}" />`,
+    html`<meta property="og:locale" content="en_US" />`,
   ];
   if (cleanTitle)
-    tags.push(`<meta property="og:title" content="${esc(cleanTitle)}" />`);
+    tags.push(html`<meta property="og:title" content="${cleanTitle}" />`);
   if (description) {
     tags.push(
-      `<meta property="og:description" content="${esc(description)}" />`,
+      html`<meta property="og:description" content="${description}" />`,
     );
   }
-  tags.push(`<meta property="og:image" content="${esc(imageUrl)}" />`);
-  tags.push(`<meta property="og:image:type" content="image/jpeg" />`);
-  tags.push(`<meta property="og:image:width" content="1200" />`);
-  tags.push(`<meta property="og:image:height" content="630" />`);
+  tags.push(html`<meta property="og:image" content="${imageUrl}" />`);
+  tags.push(html`<meta property="og:image:type" content="image/jpeg" />`);
+  tags.push(html`<meta property="og:image:width" content="1200" />`);
+  tags.push(html`<meta property="og:image:height" content="630" />`);
   if (cleanTitle) {
-    tags.push(
-      `<meta property="og:image:alt" content="${esc(cleanTitle)} open graph social card" />`,
-    );
+    const imageAlt = `${cleanTitle} open graph social card`;
+    tags.push(html`<meta property="og:image:alt" content="${imageAlt}" />`);
   }
-  tags.push(`<meta name="twitter:card" content="summary_large_image" />`);
-  tags.push(`<meta name="twitter:site" content="@bascikdev" />`);
+  tags.push(html`<meta name="twitter:card" content="summary_large_image" />`);
+  tags.push(html`<meta name="twitter:site" content="@bascikdev" />`);
   if (cleanTitle)
-    tags.push(`<meta name="twitter:title" content="${esc(cleanTitle)}" />`);
+    tags.push(html`<meta name="twitter:title" content="${cleanTitle}" />`);
   if (description) {
     tags.push(
-      `<meta name="twitter:description" content="${esc(description)}" />`,
+      html`<meta name="twitter:description" content="${description}" />`,
     );
   }
-  tags.push(`<meta name="twitter:image" content="${esc(imageUrl)}" />`);
+  tags.push(html`<meta name="twitter:image" content="${imageUrl}" />`);
 
-  return tags.join("\n");
+  return html`${tags}`;
 }

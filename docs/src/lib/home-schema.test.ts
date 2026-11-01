@@ -8,7 +8,7 @@ import { homeSchema } from "./home-schema.js";
 const parseBlocks = (html: string): Array<Record<string, unknown>> =>
   [
     ...html.matchAll(
-      /<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/g,
+      /<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g,
     ),
   ].map((m) => JSON.parse(m[1]));
 
@@ -30,7 +30,7 @@ describe("homeSchema", () => {
       JSON.stringify({ name: "@bascik/bascik", version: "9.8.7" }),
     );
 
-    const [software] = parseBlocks(await homeSchema(packageJson));
+    const [software] = parseBlocks(String(await homeSchema(packageJson)));
     expect(software["@type"]).toBe("SoftwareApplication");
     expect(software.softwareVersion).toBe("9.8.7");
   });
@@ -39,7 +39,9 @@ describe("homeSchema", () => {
     const packageJson = join(tempDir, "package.json");
     await writeFile(packageJson, JSON.stringify({ version: "1.0.0" }));
 
-    const [software, organization] = parseBlocks(await homeSchema(packageJson));
+    const [software, organization] = parseBlocks(
+      String(await homeSchema(packageJson)),
+    );
     expect(organization["@type"]).toBe("Organization");
     expect(organization.sameAs).toEqual(software.sameAs);
     expect(software.sameAs).toContain("https://github.com/bascikdev/bascik");
@@ -47,7 +49,7 @@ describe("homeSchema", () => {
 
   it("omits softwareVersion rather than guessing when package.json is unreadable", async () => {
     const [software] = parseBlocks(
-      await homeSchema(join(tempDir, "missing.json")),
+      String(await homeSchema(join(tempDir, "missing.json"))),
     );
     expect(software).not.toHaveProperty("softwareVersion");
   });
@@ -56,7 +58,7 @@ describe("homeSchema", () => {
     const packageJson = join(tempDir, "package.json");
     await writeFile(packageJson, JSON.stringify({ version: "1.0.0-rc.6" }));
 
-    const [software] = parseBlocks(await homeSchema(packageJson));
+    const [software] = parseBlocks(String(await homeSchema(packageJson)));
     expect(software.softwareVersion).toBe("1.0.0");
   });
 
@@ -64,13 +66,13 @@ describe("homeSchema", () => {
     const packageJson = join(tempDir, "package.json");
     for (const body of ["{}", '{"version":""}', '{"version":1}', "not json"]) {
       await writeFile(packageJson, body);
-      const [software] = parseBlocks(await homeSchema(packageJson));
+      const [software] = parseBlocks(String(await homeSchema(packageJson)));
       expect(software, body).not.toHaveProperty("softwareVersion");
     }
   });
 
   it("reads the real workspace package by default", async () => {
-    const [software] = parseBlocks(await homeSchema());
+    const [software] = parseBlocks(String(await homeSchema()));
     expect(software.softwareVersion).toMatch(/^\d+\.\d+\.\d+/);
   });
 });

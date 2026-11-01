@@ -23,7 +23,7 @@
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
  * 9. The Cloudflare template compiles with the plain `--build` (no adapter installed) and, with the
  *    workspace adapter linked into `node_modules`, with `--build --target cloudflare`; the emitted
- *    Worker, run in Miniflare, renders the `<feat-card>` the edge page's server script returns.
+ *    Worker, run in Miniflare, renders the `<feature-card>` the edge page's server script returns.
  */
 
 import { describe, it, expect, afterEach, beforeAll } from "vitest";
@@ -142,14 +142,13 @@ async function fetchFromWorker(
 }
 
 /**
- * The scoped class names of <feat-card>'s header and footer wrappers, read
- * from the stylesheet the page carries (the build hashes them under
+ * The scoped class names generated for <feature-card>'s header and footer
+ * elements, read from its stylesheet (the build hashes them under
  * minify.identifiers), and whether `slotText` sits directly inside an element
- * that carries each one. The template's wrappers are the elements its CSS
- * styles (.fcard-header: uppercase accent label; .fcard-footer: a top
- * border), so a card whose slot content lost them is unstyled.
+ * that carries each one. Those semantic wrappers receive their styles through
+ * element selectors in the component template.
  */
-function featCardWrappers(html: string): { header: string; footer: string } {
+function featureCardWrappers(html: string): { header: string; footer: string } {
   const header =
     /\.([\w-]+)\{[^}]*text-transform:uppercase;letter-spacing:\.1em;color:var\(--accent\)/.exec(
       html,
@@ -160,11 +159,11 @@ function featCardWrappers(html: string): { header: string; footer: string } {
     )?.[1];
   expect(
     header,
-    "the .fcard-header rule in the page's stylesheet",
+    "the scoped header rule in the page's stylesheet",
   ).toBeDefined();
   expect(
     footer,
-    "the .fcard-footer rule in the page's stylesheet",
+    "the scoped footer rule in the page's stylesheet",
   ).toBeDefined();
   return { header: header!, footer: footer! };
 }
@@ -289,11 +288,11 @@ describe("scaffold-to-compiler integration", () => {
     // my-counter expanded to counter button/UI
     expect(indexHtml).toContain('data-testid="my-counter-inc"');
     expect(indexHtml).toContain('data-testid="my-counter-dec"');
-    // A usage tag's data-testid replaces <feat-card>'s own on the root.
+    // A usage tag's data-testid replaces <feature-card>'s own on the root.
     expect(indexHtml).toMatch(
       /<article class="[^"]+" data-testid="feature-zero-runtime">/,
     );
-    expect(indexHtml).not.toContain('data-testid="feat-card"');
+    expect(indexHtml).not.toContain('data-testid="feature-card"');
 
     // 5. Verify build script executed in site-footer (current year)
     const currentYear = String(new Date().getFullYear());
@@ -395,9 +394,9 @@ describe("scaffold-to-compiler integration", () => {
   }, 45_000);
 
   it.each(["default", "cloudflare"] as const)(
-    "misuse: the %s template's <feat-card> header and footer slot content is wrapped in the styled .fcard-header and .fcard-footer elements after --build",
+    "the %s template's <feature-card> header and footer slot content is wrapped in the styled semantic elements after --build",
     async (template) => {
-      const parentDir = await createTempDir(`feat-card-${template}`);
+      const parentDir = await createTempDir(`feature-card-${template}`);
       const projectName = "slot-site";
       const projectDir = join(parentDir, projectName);
       await scaffold(projectName, parentDir, { template });
@@ -408,7 +407,7 @@ describe("scaffold-to-compiler integration", () => {
         `Build failed with stderr: ${buildResult.stderr}`,
       ).toBe(0);
       const html = await readFile(join(projectDir, "dist/index.html"), "utf8");
-      const { header, footer } = featCardWrappers(html);
+      const { header, footer } = featureCardWrappers(html);
       // A named slot's content replaces its marker element, so a class on
       // the marker never reaches the page; the styled wrapper must survive.
       expect(
@@ -432,7 +431,7 @@ describe("scaffold-to-compiler integration", () => {
         )?.[1];
       expect(
         body,
-        "the .fcard-body :is(h2, h3) rule in the page's stylesheet",
+        "the scoped .body :is(h2, h3) rule in the page's stylesheet",
       ).toBeDefined();
       expect(html).toMatch(
         new RegExp(`\\.${body} :is\\(p\\)\\{margin:0;font-size:0\\.88rem`),
@@ -491,7 +490,7 @@ describe("scaffold-to-compiler integration", () => {
     ).resolves.toBeUndefined();
     expect(existsSync(join(publicDir, "edge.html"))).toBe(false);
 
-    // The edge page's server script returns a <feat-card>, so the build
+    // The edge page's server script returns a <feature-card>, so the build
     // records the starter's components for request-time rendering and the
     // adapter bundles them: no "not rendered on this host" warning.
     const output = `${buildResult.stdout}\n${buildResult.stderr}`;
@@ -502,14 +501,14 @@ describe("scaffold-to-compiler integration", () => {
     ) as {
       components: Record<string, { template: unknown; unsupported?: unknown }>;
     };
-    expect(manifest.components["feat-card"]).toBeDefined();
-    expect(manifest.components["feat-card"].unsupported).toBeUndefined();
+    expect(manifest.components["feature-card"]).toBeDefined();
+    expect(manifest.components["feature-card"].unsupported).toBeUndefined();
 
     // Run the emitted Worker in workerd and request the edge page: the card
     // arrives rendered, with its scoped stylesheet, around the greeting.
     const html = await fetchFromWorker(targetDir, "/edge?name=Ada");
     expect(html).toContain("Hello, Ada");
-    expect(html).not.toContain("<feat-card");
+    expect(html).not.toContain("<feature-card");
     expect(html).not.toContain("data-bascik-slot");
     // The component's stylesheet is emitted once, in the body, right before
     // the card; the card's root carries the scoped class and the usage's
@@ -522,7 +521,7 @@ describe("scaffold-to-compiler integration", () => {
     expect(card![1]).toContain(`.${card![2]}{`);
     expect(html.split(card![1]).length - 1).toBe(1);
     // The slot wrappers are styled at request time exactly as at build time.
-    const { header, footer } = featCardWrappers(html);
+    const { header, footer } = featureCardWrappers(html);
     expect(
       wrapsContent(html, header, "Server script"),
       `"Server script" inside an element with the header class ${header}`,

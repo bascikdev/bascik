@@ -41,7 +41,7 @@ describe("code-block component", () => {
     // Component class names are renamed per component, so state set from docs-footer is an attribute.
     expect(footer).toContain('button.setAttribute("data-copied", "")');
     const css = await readFile(cssPath, "utf8");
-    expect(css).toContain(".cblock-copy[data-copied]");
+    expect(css).toContain(".copy[data-copied]");
     expect(css).not.toContain("--done");
   });
 
@@ -135,10 +135,10 @@ describe("code-block component", () => {
     );
   });
 
-  it("contains sr-only / cblock-status styles for screen reader announcements", async () => {
+  it("contains visually-hidden / status styles for screen reader announcements", async () => {
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".cblock-status");
+    expect(css).toContain(".status");
     expect(css).toContain("clip: rect(0, 0, 0, 0);");
   });
 });
