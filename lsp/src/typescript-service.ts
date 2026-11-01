@@ -605,6 +605,20 @@ export class TypeScriptProject {
   private readonly programOptions: TS.CompilerOptions[] = [];
   /** `readClassicScript` results by kind and text: most scripts do not change between edits. */
   private readonly scriptInfo = new Map<string, ClassicScriptInfo>();
+  /**
+   * Files and folders TypeScript looked for and did not find, while resolving an import. Creating one of them
+   * (or a file inside one of the folders) can make a failed import resolve, which TypeScript does not notice on
+   * its own: a block whose text did not change keeps its old resolutions.
+   */
+  private readonly missingPaths = new Set<string>();
+  /** Files TypeScript read: deleting one can make an import fail. */
+  private readonly foundFiles = new Set<string>();
+  /** Bumped when a file TypeScript looked for appears or disappears, so every program resolves its imports again. */
+  private resolutionGeneration = 0;
+  private readonly resolvedAt: Record<TypeScriptProgramKind, number> = {
+    client: 0,
+    server: 0,
+  };
   /** The interfaces the client program's libraries declare globally, such as `Window`; read on first need. */
   private clientGlobalInterfaces: Set<string> | undefined;
 
@@ -701,19 +715,36 @@ export class TypeScriptProject {
       getCurrentDirectory: () => this.projectRoot,
       getDefaultLibFileName: (compilerOptions) =>
         ts.getDefaultLibFilePath(compilerOptions),
-      fileExists: (fileName) =>
-        this.files.has(fileName) ||
-        fileName === this.nodeDeclarations?.fileName ||
-        this.readOpenFile(fileName) !== undefined ||
-        ts.sys.fileExists(fileName),
+      fileExists: (fileName) => {
+        const exists =
+          this.files.has(fileName) ||
+          fileName === this.nodeDeclarations?.fileName ||
+          this.readOpenFile(fileName) !== undefined ||
+          ts.sys.fileExists(fileName);
+        this.recordLookup(fileName, exists);
+        return exists;
+      },
       readFile: (fileName) => this.readFile(fileName),
       readDirectory: ts.sys.readDirectory,
-      directoryExists: ts.sys.directoryExists,
+      directoryExists: (directoryName) => {
+        const exists = ts.sys.directoryExists(directoryName);
+        this.recordLookup(directoryName, exists);
+        return exists;
+      },
+      hasInvalidatedResolutions: () =>
+        this.resolvedAt[program] !== this.resolutionGeneration,
       getDirectories: ts.sys.getDirectories,
       realpath: ts.sys.realpath,
       useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
       getCancellationToken: () => cancellationToken,
     };
+  }
+
+  private recordLookup(fsPath: string, exists: boolean): void {
+    // Library and package files never appear mid-session in a way that matters here.
+    if (fsPath.includes(`${path.sep}node_modules${path.sep}`)) return;
+    if (exists) this.foundFiles.add(path.resolve(fsPath));
+    else this.missingPaths.add(path.resolve(fsPath));
   }
 
   private readFile(fileName: string): string | undefined {
@@ -947,10 +978,26 @@ export class TypeScriptProject {
     this.projectVersion++;
   }
 
-  /** A file the blocks may import changed in an editor buffer or on disk. */
+  /** A file the blocks may import changed, appeared or disappeared, in an editor buffer or on disk. */
   fileChanged(fsPath: string): void {
-    this.fileVersions.set(path.resolve(fsPath), this.nextFileVersion++);
+    fsPath = path.resolve(fsPath);
+    this.fileVersions.set(fsPath, this.nextFileVersion++);
     this.projectVersion++;
+    let appeared = false;
+    for (let current = fsPath; !appeared; current = path.dirname(current)) {
+      appeared = this.missingPaths.has(current);
+      if (path.dirname(current) === current) break;
+    }
+    const disappeared =
+      this.foundFiles.has(fsPath) &&
+      this.readOpenFile(fsPath) === undefined &&
+      !this.ts.sys.fileExists(fsPath);
+    if (appeared || disappeared) {
+      this.resolutionGeneration++;
+      // Recorded again as the programs resolve their imports anew.
+      this.missingPaths.clear();
+      this.foundFiles.clear();
+    }
   }
 
   /** The TypeScript errors and warnings of an HTML file's blocks, located in its text. */
@@ -966,7 +1013,10 @@ export class TypeScriptProject {
     for (const fileName of page?.fileNames ?? []) {
       const file = this.files.get(fileName)!;
       const service = this.services[file.program];
+      const generation = this.resolutionGeneration;
       const syntactic = service.getSyntacticDiagnostics(fileName);
+      // The program is up to date now, with its imports resolved again if a looked-for file came or went.
+      this.resolvedAt[file.program] = generation;
       let semantic = service.getSemanticDiagnostics(fileName);
       if (file.sharedScope && semantic.some((d) => UNUSED_CODES.has(d.code))) {
         const source = service.getProgram()?.getSourceFile(fileName);

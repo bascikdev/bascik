@@ -883,6 +883,25 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     await eventually(() => expect(typeScriptOf(page)).toEqual([]));
   });
 
+  it("misuse: clears a missing import's error once the file is created on disk, the page untouched", async () => {
+    await start(realEngine, withTypeScript6);
+    const text =
+      '<script type="text/typescript">\n  import { speed } from "./lib/missing-file.ts";\n  console.log(speed);\n</script>\n';
+    const page = await write("src/pages/index.html", text);
+    open(page, text);
+    await eventually(() =>
+      expect(typeScriptOf(page).map((d) => d.code)).toEqual([2307]),
+    );
+    const created = await write(
+      "src/pages/lib/missing-file.ts",
+      "export const speed = 3;\n",
+    );
+    await server.handleWatchedFileChanges([
+      { fsPath: created, type: FileChangeType.Created },
+    ]);
+    await eventually(() => expect(typeScriptOf(page)).toEqual([]));
+  });
+
   it("never asks the engine about a page without TypeScript blocks", async () => {
     const engine = recordingEngine();
     await start({ createTypeScriptEngine: () => engine });

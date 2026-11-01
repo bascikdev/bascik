@@ -543,6 +543,72 @@ describe("TypeScriptProject diagnostics", () => {
     ).toEqual([2322]);
   });
 
+  it("misuse: an import written before its file clears once the file is created, and returns when it is deleted", () => {
+    const root = fixture();
+    const service = project(root);
+    const html = page(
+      'import { frotherSpeed } from "./lib/missing-file.ts";\nimport { label } from "@/lib/also-missing.ts";\nconsole.log(frotherSpeed, label);',
+    );
+    const file = root.write("src/pages/index.html", html);
+    expect(service.diagnostics(file, html).map((d) => d.code)).toEqual([
+      2307, 2307,
+    ]);
+    // Created on disk, in folders that did not exist; the page itself is unchanged.
+    const created = root.write(
+      "src/pages/lib/missing-file.ts",
+      "export const frotherSpeed = 3;\n",
+    );
+    service.fileChanged(created);
+    expect(service.diagnostics(file, html).map((d) => d.code)).toEqual([2307]);
+    const alias = root.write(
+      "src/lib/also-missing.ts",
+      'export const label = "Milk frother";\n',
+    );
+    service.fileChanged(alias);
+    expect(service.diagnostics(file, html)).toEqual([]);
+    fs.rmSync(created);
+    service.fileChanged(created);
+    expect(service.diagnostics(file, html).map((d) => d.code)).toEqual([2307]);
+  });
+
+  it("misuse: an import of an unsaved new buffer resolves while the buffer is open", () => {
+    const root = fixture();
+    const projects = new TypeScriptProjects({
+      resolve: () => ({
+        ok: true,
+        ts,
+        version: ts.version,
+        source: "project",
+        packageDir: "",
+        skipped: [],
+      }),
+    });
+    const html = page(
+      'import { frotherSpeed } from "./draft.ts";\nconsole.log(frotherSpeed);',
+    );
+    const request = {
+      projectRoot: root.root,
+      importRoot: root.file("src"),
+      htmlPath: root.write("src/pages/index.html", html),
+      text: html,
+    };
+    const codes = () => {
+      const result = projects.diagnostics(request);
+      return result.status === "ok"
+        ? result.diagnostics.map((d) => d.code)
+        : result;
+    };
+    expect(codes()).toEqual([2307]);
+    projects.setOpenFile(
+      root.file("src/pages/draft.ts"),
+      "export const frotherSpeed = 3;\n",
+    );
+    expect(codes()).toEqual([]);
+    projects.setOpenFile(root.file("src/pages/draft.ts"), undefined);
+    expect(codes()).toEqual([2307]);
+    projects.dispose();
+  });
+
   it("moves diagnostics with an edit above the block without rechecking it as changed", () => {
     const root = fixture();
     const service = project(root);
