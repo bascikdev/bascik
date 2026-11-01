@@ -1069,15 +1069,21 @@ export function analyzeServerScriptSource(
 function projectImportNames(body: string): Set<string> {
   const names = new Set<string>();
   // Each `import` is read forward to its `from` by hand: a single regular expression with a bounded clause before
-  // `\s+from` backtracks quadratically on a long clause.
-  const from = /\s+from\s*["'](?:\.\.?\/|@\/)/g;
+  // `\s+from` backtracks quadratically on a long clause, and `\s+from` alone does so on a run of white space, so
+  // the white space before `from` is checked by hand too.
+  const from = /\bfrom\s*["'](?:\.\.?\/|@\/)/g;
   for (const m of body.matchAll(/\bimport\s+(?!type\s)/g)) {
     const start = m.index + m[0].length;
     from.lastIndex = start;
     const end = from.exec(body);
     if (!end) break;
-    const clause = body.slice(start, end.index);
-    if (clause.length === 0 || clause.length > 1000 || /[;'"`]/.test(clause))
+    const clause = body.slice(start, end.index).trimEnd();
+    if (
+      clause.length === 0 ||
+      clause.length === end.index - start ||
+      clause.length > 1000 ||
+      /[;'"`]/.test(clause)
+    )
       continue;
     const brace = /\{([^}]*)\}/.exec(clause);
     if (brace)

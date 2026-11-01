@@ -622,6 +622,11 @@ describe("project import names", () => {
     );
   });
 
+  it("reads a long run of white space inside an import clause in linear time", () => {
+    const body = `import {${"\t".repeat(20_000)}card${"\t".repeat(20_000)}} from "./card.js";\nexport default () => card(1);`;
+    expect(() => analyze(body)).not.toThrow();
+  });
+
   it("misuse: an import clause broken by a quote or semicolon binds no helper", () => {
     const body = `import { card ; } from "./card.js";\nexport default () => card(1);`;
     expect(() => analyze(body)).not.toThrow();
