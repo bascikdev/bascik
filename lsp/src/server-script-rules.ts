@@ -332,11 +332,27 @@ export function analyzeServerScriptSource(
 
   // Part C: sink rules and server-script-unescaped-markup, per template hole.
   const imports = findHtmlImports(body);
+  const htmlTags = htmlTagNames(imports);
+  const literals = findTemplateLiterals(body);
+  // Every Part C diagnostic is on a template's hole. In build-time code
+  // one needs markup, a `<` in the template's text, or an html tag, so a
+  // script without either is done here, before the costlier passes.
+  if (
+    !requestTime &&
+    !literals.some(
+      (l) =>
+        (l.tag !== null && htmlTags.includes(l.tag)) ||
+        l.parts.some((part) => part.includes("<")),
+    )
+  )
+    return diagnostics;
+  // Read once: the exemption checks and markupProducers both use them.
+  const bindingRanges = findBindingRanges(body);
   const ctx: ExemptContext = {
     imports,
-    htmlTags: htmlTagNames(imports),
+    htmlTags,
     escapeFunctions: [...(opts.escapeFunctions ?? []), ...xmlEscapers],
-    bindings: findBindings(body),
+    bindings: findBindings(body, bindingRanges),
     memo: newNameMemo(),
   };
   /**
@@ -368,7 +384,6 @@ export function analyzeServerScriptSource(
 
   const joined = joinedNames(body);
   const projectNames = projectImportNames(body);
-  const literals = findTemplateLiterals(body);
   const literalAt = new Map(literals.map((l) => [l.start, l]));
   const errorClasses = classesBefore(body);
   // Which literals are markup the code writes, read once: the markup
@@ -451,7 +466,7 @@ export function analyzeServerScriptSource(
   const producers = markupProducers(
     tokens,
     functions,
-    findBindingRanges(body),
+    bindingRanges,
     sourceWithin,
     projectNames,
     (name) =>

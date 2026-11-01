@@ -66,6 +66,32 @@ interface TemplateFrame {
 export const scanJavaScript = (
   source: string,
 ): { tokens: Token[]; comments: Comment[] } => {
+  const known = scanMemo.get(source);
+  if (known !== undefined) {
+    // Most recently used last, so the oldest is evicted first.
+    scanMemo.delete(source);
+    scanMemo.set(source, known);
+    return known;
+  }
+  const scanned = scanJavaScriptSource(source);
+  scanMemo.set(source, scanned);
+  if (scanMemo.size > SCAN_MEMO_SIZE)
+    scanMemo.delete(scanMemo.keys().next().value!);
+  return scanned;
+};
+
+/**
+ * How many scanned sources are kept. One file's script is scanned by the
+ * markup rule, the binding finder, the escaper rule and the import finder
+ * in turn; keeping the last few scans lets them share one. Callers never
+ * change the arrays they get.
+ */
+const SCAN_MEMO_SIZE = 16;
+const scanMemo = new Map<string, { tokens: Token[]; comments: Comment[] }>();
+
+const scanJavaScriptSource = (
+  source: string,
+): { tokens: Token[]; comments: Comment[] } => {
   const tokens: Token[] = [];
   const comments: Comment[] = [];
   const codeFrame = (stopAtClosingBrace: boolean): CodeFrame => ({

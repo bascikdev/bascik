@@ -83,12 +83,38 @@ function scriptTags(text: string): ScriptTag[] {
  * template nested thousands deep overflows the scanner's stack).
  */
 function specifiersOf(text: string): string[] {
+  const known = specifierMemo.get(text);
+  if (known !== undefined) return known;
+  let found: string[];
   try {
-    return findModuleSpecifiers(text).map((s) => s.value);
+    found = findModuleSpecifiers(text).map((s) => s.value);
   } catch {
-    return [];
+    found = [];
   }
+  if (
+    specifierMemo.size >= SPECIFIER_MEMO_ENTRIES ||
+    specifierMemoChars + text.length > SPECIFIER_MEMO_CHARS
+  ) {
+    specifierMemo.clear();
+    specifierMemoChars = 0;
+  }
+  specifierMemo.set(text, found);
+  specifierMemoChars += text.length;
+  return found;
 }
+
+/**
+ * Import specifiers by script text. A walk reads a module once per reach
+ * (build, request, browser), `bascik --check` walks twice (the checked
+ * files and the whole project), and the language server walks again after
+ * every module write, so the same texts are scanned many times; keyed by
+ * text, an edited file is simply scanned anew. Bounded by entries and by
+ * characters held, and cleared whole when full.
+ */
+const SPECIFIER_MEMO_ENTRIES = 8192;
+const SPECIFIER_MEMO_CHARS = 32 * 1024 * 1024;
+const specifierMemo = new Map<string, string[]>();
+let specifierMemoChars = 0;
 
 /** Forward slashes, so Windows and POSIX paths compare the same. */
 export const normalizeModulePath = (fsPath: string): string =>

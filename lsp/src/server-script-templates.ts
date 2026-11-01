@@ -483,11 +483,12 @@ function nameVerdict(
  * nested declarations, each of which runs to the end of the ones around
  * it, are not each scanned again.
  */
-export function findBindings(body: string): Map<string, string[]> {
+export function findBindings(
+  body: string,
+  ranges: readonly BindingRange[] = findBindingRanges(body),
+): Map<string, string[]> {
   const bindings = new Map<string, string[]>();
-  for (const { name, from, end, destructured, assigned } of findBindingRanges(
-    body,
-  )) {
+  for (const { name, from, end, destructured, assigned } of ranges) {
     // A destructuring declaration's value holds the name somewhere; a
     // destructuring assignment stores a value this file does not follow.
     if (destructured && !assigned) continue;
