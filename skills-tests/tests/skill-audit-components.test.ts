@@ -1667,6 +1667,55 @@ const out = list.map((c) => {
     ).toEqual([4]);
   });
 
+  it("joins an entity map only to a replace that names it, and never lends an XML explanation to an HTML escaper", () => {
+    // A character-class replace that writes its own entities reads no map, so an XML map below it explains nothing.
+    expect(
+      lines(`const escape = (s) => s.replace(/[<&]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+// rss xml entities
+const XML_ENTITIES = { "&": "&amp;" };`),
+    ).toEqual([1]);
+    // Nor does a replace with its own inline object, beside an XML map that a later escapeXml reads.
+    expect(
+      lines(`function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
+// sitemap xml
+const XML = { "&": "&amp;" };
+export const escapeXml = (s) => s.split("").map((c) => XML[c] ?? c).join("");`),
+    ).toEqual([1]);
+    // An escapeXml that reads another map does not take an HTML map below it.
+    expect(
+      lines(`function escapeXml(s) { return s.replace(/[&<>]/g, (c) => X[c]); }
+const ENTITIES = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([2]);
+    // Nor when the XML map it does read sits between them.
+    expect(
+      lines(`function escapeXml(s) { return s.replace(/[&<>]/g, (c) => X[c]); }
+const X = { "&": "&amp;", "<": "&lt;" };
+const ENTITIES = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([3]);
+    // A map above a replace that does not name it stays apart from it.
+    expect(
+      lines(`// The XML characters, for the feed.
+const XML_ENTITIES = { "&": "&amp;", "<": "&lt;" };
+const escape = (s) => s.replace(/[&<]/g, (c) => "&#" + c.charCodeAt(0) + ";");`),
+    ).toEqual([3]);
+    // A replace whose own name says HTML is reported even when it reads a map a comment calls XML.
+    expect(
+      lines(`// rss xml
+const M = { "&": "&amp;", "<": "&lt;" };
+const escapeHtml = (s) => s.replace(/[&<]/g, (c) => M[c]);`),
+    ).toEqual([2]);
+    // A map read through Map.get, and a reader wrapped onto the next line, still join.
+    expect(
+      lines(`// The XML characters, for sitemap.xml.
+const XML_ENTITIES = new Map([["&", "&amp;"], ["<", "&lt;"]]);
+const esc = (s: string) =>
+  s.replace(/[&<]/g, (c) =>
+    XML_ENTITIES.get(c));`),
+    ).toEqual([]);
+  });
+
   it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
     const found =
       handWrittenEscapers(`const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);

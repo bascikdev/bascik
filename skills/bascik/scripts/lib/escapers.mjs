@@ -59,6 +59,13 @@ const NAME =
 /** A line that starts a declaration, function or not: where a wrapped statement such as an entity map begins. */
 const DECLARATION = /^\s*(?:export\s+)?(?:const|let|var|function)\b/;
 
+/** A name that says HTML: such an escaper never takes an XML explanation from a map it reads. */
+const HTML_NAME = /html/i;
+/** The variable a declaration line declares: `const ENTITIES = {`, `export const M = new Map(`. */
+const DECLARED = /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)/;
+/** How many lines after a character-class replace its callback may still read a map. */
+const READER_LINES = 2;
+
 const lineAt = (code, index) => code.slice(0, index).split("\n").length;
 
 /** The comment text on one line of code: a `//` comment, or a line inside, opening or closing a block comment. */
@@ -137,6 +144,30 @@ function statementLine(lines, start) {
   return start;
 }
 
+/** The variable an entity map is declared as, from the first line of its statement, or undefined. */
+const mapVariable = (lines, hit) =>
+  DECLARED.exec(lines[statementLine(lines, hit) - 1] ?? "")?.[1];
+
+/**
+ * The text of a character-class replace's statement, where its callback reads a map: from the statement's first
+ * line through the replace's line and, when the statement goes on, up to READER_LINES lines after it.
+ */
+function readerText(lines, hit) {
+  const out = lines.slice(statementLine(lines, hit) - 1, hit);
+  for (let n = hit; n < hit + READER_LINES && n < lines.length; n++) {
+    if (/[;}]\s*$/.test(lines[n - 1])) break;
+    out.push(lines[n]);
+  }
+  return out.join("\n");
+}
+
+/** True when `text` reads the map `variable`: `ENTITIES[c]` or `ENTITIES.get(c)`. */
+const readsMap = (text, variable) =>
+  variable !== undefined &&
+  new RegExp(
+    `(?<![\\w$.])${variable.replace(/\$/g, "\\$")}\\s*(?:\\[|\\.get\\()`,
+  ).test(text);
+
 /**
  * The hand-written HTML escapers in `code`, each `{ line, name, kind }`: a 1-based line (the first line of the
  * escaper's statement, or of its entity map), the function's name when one is found, and `kind` "escape" for code
@@ -171,26 +202,40 @@ export function handWrittenEscapers(code) {
     const { kind, map, reader } = hits.get(hit);
     const name = nameAt(lines, hit);
     const xml = explainedAsXml(lines, statementLine(lines, hit), name);
+    const variable =
+      map && name === undefined ? mapVariable(lines, hit) : undefined;
+    const text = reader ? readerText(lines, hit) : "";
     const last = out.at(-1);
     const near = last && hit - last.hit <= SAME_ESCAPER_LINES;
-    // An unnamed entity map belongs to the character-class replace just above it that reads it, and a
-    // character-class replace reads the unnamed map just above it. A replace that writes its own entities reads no
-    // map, so it never joins one, and never shares an XML explanation with one.
+    // An entity map and a character-class replace join only when the replace's statement names the map's declared
+    // variable (ENTITIES[c], ENTITIES.get(c)), in either order. A replace that writes its own entities names no map,
+    // so it never joins one, and never shares an XML explanation with one.
     const mapCase =
       near &&
-      ((map && name === undefined && last.reader) ||
-        (last.map && last.name === undefined && reader));
+      ((variable !== undefined &&
+        last.readers.some((t) => readsMap(t, variable))) ||
+        (reader && last.variables.some((v) => readsMap(text, v))));
     const sameFunction = near && name === last.name && xml === last.xml;
     if (mapCase || sameFunction) {
       last.hit = hit;
       last.name ??= name;
-      if (mapCase) last.xml ||= xml;
-      last.map &&= map;
-      last.reader ||= reader;
+      // The map's XML explanation reaches the replace that reads it, unless that replace's own name says HTML.
+      if (mapCase)
+        last.xml = (last.xml || xml) && !HTML_NAME.test(last.name ?? "");
+      if (variable !== undefined) last.variables.push(variable);
+      if (reader) last.readers.push(text);
       if (kind === "escape") last.kind = "escape";
       continue;
     }
-    out.push({ start: hit, hit, kind, name, xml, map, reader });
+    out.push({
+      start: hit,
+      hit,
+      kind,
+      name,
+      xml,
+      variables: variable === undefined ? [] : [variable],
+      readers: reader ? [text] : [],
+    });
   }
   return out
     .filter(({ xml }) => !xml)
