@@ -372,6 +372,137 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
       )?.markdown,
     ).toContain("process");
   });
+
+  // VS Code's in-file mode ignores Bascik's directives: every block gets lib.es2020.full (the DOM), so Node globals
+  // the DOM also declares (console, setTimeout, fetch, URL, Response) are answered there already.
+  describe("a server script in a project with @types/node", () => {
+    const SERVER = `<script type="text/typescript" data-bascik-server>
+  import { froth } from "@/lib/frother.ts";
+  export default async function (request, context) {
+    console.log(froth(1), process.cwd());
+    setTimeout(() => {}, 1);
+    const url = new URL(request.url);
+    const reply = await fetch(url);
+    return url.pathname + reply.status + context.remoteIp;
+  }
+</script>
+`;
+    function serverProject() {
+      const setup = project();
+      setup.root.link("node_modules/@types/node", NODE_TYPES_DIR);
+      const service = new TypeScriptProject({
+        ts,
+        projectRoot: setup.root.root,
+        importRoot: setup.root.file("src"),
+        registry,
+      });
+      return { root: setup.root, service };
+    }
+
+    it("leaves globals the editor's DOM library declares to the editor, and answers Node's own", () => {
+      const setup = serverProject();
+      for (const [needle, delta] of [
+        ["console.log", 1],
+        ["setTimeout(", 1],
+        ["new URL", 5],
+        ["fetch(url", 1],
+      ] as const) {
+        expect(
+          ask(setup, SERVER, "hover", needle, delta, crossFileOnly),
+          needle,
+        ).toBeUndefined();
+        expect(
+          ask(setup, SERVER, "definition", needle, delta, crossFileOnly),
+          needle,
+        ).toEqual([]);
+      }
+      expect(
+        ask(setup, SERVER, "hover", "process.cwd", 1, crossFileOnly)?.markdown,
+      ).toContain("process");
+      expect(
+        ask(setup, SERVER, "definition", "process.cwd", 1, crossFileOnly)
+          ?.length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("leaves members of values the editor types itself to the editor", () => {
+      const setup = serverProject();
+      // console.log and url.pathname: the editor knows console and URL.
+      expect(
+        ask(setup, SERVER, "hover", "log(froth", 1, crossFileOnly),
+      ).toBeUndefined();
+      expect(
+        ask(setup, SERVER, "hover", "pathname", 1, crossFileOnly),
+      ).toBeUndefined();
+      expect(
+        ask(setup, SERVER, "hover", "url = new", 1, crossFileOnly),
+      ).toBeUndefined();
+      // request and context are untyped to the editor: Bascik's footer gives them their types.
+      expect(
+        ask(setup, SERVER, "hover", "request.url", 9, crossFileOnly)?.markdown,
+      ).toContain("url");
+      expect(
+        ask(setup, SERVER, "hover", "context.remoteIp", 1, crossFileOnly)
+          ?.markdown,
+      ).toContain("ServerScriptContext");
+      expect(
+        ask(setup, SERVER, "hover", "cwd()", 1, crossFileOnly)?.markdown,
+      ).toContain("cwd");
+    });
+
+    it("completes only the globals and members the editor does not offer", () => {
+      const setup = serverProject();
+      const statement = SERVER.replace(
+        "setTimeout(() => {}, 1);",
+        "setTimeout(() => {}, 1);\n    con",
+      );
+      const globals = names(
+        ask(setup, statement, "completion", "\n    con\n", 8, crossFileOnly),
+      );
+      for (const name of ["console", "setTimeout", "fetch", "URL", "Response"])
+        expect(globals).not.toContain(name);
+      for (const name of ["process", "Buffer"]) expect(globals).toContain(name);
+      const consoleMembers = SERVER.replace(
+        "setTimeout(() => {}, 1);",
+        "setTimeout(() => {}, 1);\n    console.",
+      );
+      // The DOM's console members are the editor's; the ones only Node's console has are Bascik's.
+      const members = names(
+        ask(setup, consoleMembers, "completion", "\n    console.\n", 13, {
+          ...crossFileOnly,
+          triggerCharacter: ".",
+        }),
+      );
+      for (const name of ["log", "error", "warn", "table"])
+        expect(members).not.toContain(name);
+      expect(members).toContain("Console");
+      const processMembers = SERVER.replace(
+        "setTimeout(() => {}, 1);",
+        "setTimeout(() => {}, 1);\n    process.",
+      );
+      expect(
+        names(
+          ask(setup, processMembers, "completion", "\n    process.\n", 13, {
+            ...crossFileOnly,
+            triggerCharacter: ".",
+          }),
+        ),
+      ).toContain("cwd");
+    });
+
+    it("gives signatures only for calls the editor cannot resolve", () => {
+      const setup = serverProject();
+      const html = SERVER.replace("setTimeout(() => {}, 1);", "setTimeout();");
+      expect(
+        ask(setup, html, "signatureHelp", "setTimeout()", 11, crossFileOnly),
+      ).toBeUndefined();
+      const imported = SERVER.replace("froth(1)", "froth()");
+      expect(
+        ask(setup, imported, "signatureHelp", "froth()", 6, crossFileOnly)
+          ?.signatures[0].label,
+      ).toContain("froth(level: number");
+    });
+  });
 });
 
 describe("TypeScriptProjects language features", () => {

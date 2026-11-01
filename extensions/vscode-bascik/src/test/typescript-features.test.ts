@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   activateExtension,
@@ -198,5 +199,113 @@ suite("TypeScript language features across files", () => {
       countOf(definitions, page.fsPath) <= 1,
       `Only VS Code's JavaScript support may answer in a plain script; got ${JSON.stringify(definitions)}`,
     );
+  });
+});
+
+// VS Code's HTML support reads a server-side block with the DOM library too, whatever its directive. So a global
+// Node and the DOM both declare (console, setTimeout, URL) is answered there, and Bascik answers only Node's own
+// (process) and what Bascik types (the default export's parameters).
+suite("TypeScript language features in a server-side block", () => {
+  const { serverPage } = typeScriptFeaturesFixture();
+  let document: vscode.TextDocument;
+
+  suiteSetup(async () => {
+    await activateExtension();
+    document = await vscode.workspace.openTextDocument(serverPage);
+    await vscode.window.showTextDocument(document);
+  });
+
+  teardown(async () => {
+    if (document.isDirty) {
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand("workbench.action.files.revert");
+    }
+  });
+
+  /** Waits until Bascik answers in the page, so a missing duplicate is not just a slow server. */
+  const bascikAnswering = () =>
+    eventuallyAnswered(
+      () => hoverTexts(document, positionOf(document, "context.remoteIp", 2)),
+      (all) => all.some((text) => text.includes("ServerScriptContext")),
+      "Bascik should hover context with the type @bascik/bascik gives it",
+    );
+
+  test("hovers a global Node and the DOM share once, and Node's own from Bascik", async () => {
+    await bascikAnswering();
+    for (const [needle, delta, name] of [
+      ["console.log", 2, "console"],
+      ["log(frother", 1, "log"],
+      ["setTimeout", 2, "setTimeout"],
+      ["new URL", 5, "URL"],
+      ["url.pathname", 5, "pathname"],
+    ] as const) {
+      const hovers = await hoverTexts(
+        document,
+        positionOf(document, needle, delta),
+      );
+      assert.strictEqual(
+        hovers.filter((text) => text.includes(name)).length,
+        1,
+        `One hover should describe ${name}; got ${JSON.stringify(hovers)}`,
+      );
+    }
+    const process = await hoverTexts(
+      document,
+      positionOf(document, "process.cwd", 2),
+    );
+    assert.ok(
+      process.some((text) => text.includes("NodeJS.Process")),
+      `Bascik should hover process with Node's type; got ${JSON.stringify(process)}`,
+    );
+  });
+
+  test("goes to a shared global's definition only in VS Code's library", async () => {
+    await bascikAnswering();
+    const definitions = await definitionPaths(
+      document,
+      positionOf(document, "console.log", 2),
+    );
+    assert.ok(
+      definitions.length > 0 &&
+        definitions.every(
+          (fsPath) => !fsPath.includes(`${path.sep}@types${path.sep}node`),
+        ),
+      `Only VS Code's definitions of console; got ${JSON.stringify(definitions)}`,
+    );
+  });
+
+  test("completes each global and console member once", async () => {
+    await bascikAnswering();
+    const original = document.getText();
+    await replaceUnsaved(
+      document,
+      original.replace("    setTimeout(", "    con\n    setTimeout("),
+    );
+    const globals = await eventuallyAnswered(
+      () => completionLabels(document, positionOf(document, "    con\n", 7)),
+      (all) => all.includes("process"),
+      "Completion should offer Node's process from Bascik",
+    );
+    for (const name of ["console", "setTimeout", "fetch", "URL", "process"])
+      assert.strictEqual(
+        countOf(globals, name),
+        1,
+        `${name} once; got ${JSON.stringify(globals)}`,
+      );
+    await replaceUnsaved(
+      document,
+      original.replace("    setTimeout(", "    console.\n    setTimeout("),
+    );
+    const members = await completionLabels(
+      document,
+      positionOf(document, "console.\n", 8),
+      ".",
+    );
+    for (const name of ["log", "error"])
+      assert.strictEqual(
+        countOf(members, name),
+        1,
+        `console.${name} once; got ${JSON.stringify(members)}`,
+      );
   });
 });

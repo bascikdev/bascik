@@ -6,7 +6,9 @@
  * already answers about names the page itself declares and the library's globals, but it resolves no import. With
  * `crossFileOnly`, only what that mode cannot know is answered, so nothing is shown twice: a symbol, member, global
  * or call whose declaration lies in another file (an `@/` or relative import, a package, `@types/node`, the types
- * `@bascik/bascik` gives a directive script), and import paths. Other editors get every answer.
+ * `@bascik/bascik` gives a directive script), and import paths. That mode reads every block with the DOM library,
+ * whatever its directive, so a name it types or resolves there itself (`console` or `URL` in a server script, which
+ * Bascik's server program declares from `@types/node`) is left to it too. Other editors get every answer.
  *
  * Results are located in the HTML (offsets in the request's text) or, for another file, by line and character.
  */
@@ -97,6 +99,12 @@ export interface FeatureContext {
   file: { segments: Segment[]; footerStart: number };
   /** Whether a declaration in this file is one the editor's in-file mode cannot see. */
   isForeign: (fileName: string) => boolean;
+  /**
+   * What the editor's in-file mode answers at the same place, beside it (`crossFileOnly`): a name it types or
+   * resolves to its library is left to it, although Bascik's program declares it in another file (a global
+   * `@types/node` shares with the DOM, such as `console`).
+   */
+  editor?: EditorModeAnswers;
   /** Where a span of a file is, for the editor; `undefined` for text the author did not write (a footer). */
   locate: (
     fileName: string,
@@ -105,6 +113,20 @@ export interface FeatureContext {
   ) => TypeScriptLocation | undefined;
   /** The HTML offset of a virtual offset, or `undefined` in the footer. */
   toSource: (generated: number) => number | undefined;
+}
+
+/** What the editor's in-file TypeScript mode answers at one place (see `typescript-editor-mode.ts`). */
+export interface EditorModeAnswers {
+  /** It gives the name here a type that is not built from `any`, so its own hover says what Bascik's would. */
+  typesName(): boolean;
+  /** Its Go to Definition here reaches its library. */
+  definesInLibrary(): boolean;
+  /** The names it completes here. */
+  completionNames(
+    triggerCharacter?: TS.CompletionsTriggerCharacter,
+  ): ReadonlySet<string>;
+  /** It shows a signature here. */
+  hasSignature(): boolean;
 }
 
 /** Names Bascik adds to the virtual files, never the author's. */
@@ -138,7 +160,7 @@ const TYPESCRIPT_TRIGGERS = new Set([
 ]);
 
 /** The innermost node of `source` that spans `position` (a token's end counts, as the cursor sits after it). */
-function nodeAt(
+export function nodeAt(
   ts: TypeScriptModule,
   source: TS.SourceFile,
   position: number,
@@ -208,7 +230,11 @@ function hover(context: FeatureContext): TypeScriptHover | undefined {
   const info = service.getQuickInfoAtPosition(fileName, generated);
   if (!info || info.textSpan.start >= context.file.footerStart)
     return undefined;
-  if (context.isForeign !== everyFile && !isCrossFile(context)) return;
+  if (
+    context.isForeign !== everyFile &&
+    (!isCrossFile(context) || context.editor?.typesName())
+  )
+    return;
   const start = context.toSource(info.textSpan.start);
   if (start === undefined) return undefined;
   const end =
@@ -258,6 +284,7 @@ function definition(context: FeatureContext): TypeScriptLocation[] {
   const { service, fileName, generated, isForeign } = context;
   const definitions =
     service.getDefinitionAtPosition(fileName, generated) ?? [];
+  if (definitions.length > 0 && context.editor?.definesInLibrary()) return [];
   return definitions.flatMap((found) => {
     if (!isForeign(found.fileName)) return [];
     const location = context.locate(
@@ -354,13 +381,19 @@ function completion(
     context.isForeign === everyFile
       ? undefined
       : foreignCompletionNames(context, info.isMemberCompletion);
+  // Names the editor completes here itself: a DOM global a server script has from `@types/node` too.
+  const editorNames =
+    crossFile === undefined
+      ? undefined
+      : context.editor?.completionNames(trigger);
   const entries = info.entries.filter(
     (entry) =>
       !isBascikName(entry.name) &&
       // An auto-import or another entry that needs an extra edit: quick fixes are not offered.
       entry.source === undefined &&
       !entry.hasAction &&
-      (crossFile === undefined || crossFile.has(entry.name)),
+      (crossFile === undefined ||
+        (crossFile.has(entry.name) && !editorNames?.has(entry.name))),
   );
   const described = entries.length <= DESCRIBED_COMPLETIONS;
   return entries.flatMap((entry): TypeScriptCompletionEntry[] => {
@@ -438,6 +471,7 @@ function signatureHelp(
       .getResolvedSignature(call)?.declaration;
     if (!declaration || !isForeign(declaration.getSourceFile().fileName))
       return undefined;
+    if (context.editor?.hasSignature()) return undefined;
   }
   return {
     signatures: items.items.map((item) => {

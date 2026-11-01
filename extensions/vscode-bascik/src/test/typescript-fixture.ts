@@ -88,6 +88,8 @@ export async function replaceUnsaved(
 /** The cross-file fixture: a page importing `@/lib/frother-settings.ts` and `../lib/frother-speed.ts`. */
 export function typeScriptFeaturesFixture(): {
   page: vscode.Uri;
+  /** A `data-bascik-server` block; the repository's `@types/node` gives it Node's globals. */
+  serverPage: vscode.Uri;
   settings: vscode.Uri;
   speed: vscode.Uri;
 } {
@@ -99,6 +101,7 @@ export function typeScriptFeaturesFixture(): {
     vscode.Uri.file(path.join(folder.uri.fsPath, ...parts));
   return {
     page: at("src", "features", "typescript-features.html"),
+    serverPage: at("src", "features", "typescript-server.html"),
     settings: at("src", "lib", "frother-settings.ts"),
     speed: at("src", "lib", "frother-speed.ts"),
   };

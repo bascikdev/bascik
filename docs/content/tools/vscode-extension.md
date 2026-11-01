@@ -198,7 +198,7 @@ In a `<script type="text/typescript">` block, what comes from another file works
 </script>
 ```
 
-VS Code's HTML support keeps answering for the names the page declares itself and for the DOM's globals, and the extension leaves those to it, so a suggestion or a signature is never listed twice. Hovering an imported name can show two cards, VS Code's (which sees the import as `any`) and the extension's. With VS Code's built-in HTML Language Features extension disabled, the extension answers for the page's own names too.
+VS Code's HTML support keeps answering for the names the page declares itself and for the DOM's globals, and the extension leaves those to it, so a suggestion or a signature is never listed twice. VS Code reads a server-side block with the DOM too, whatever its directive, so there a global that Node.js and the DOM both have (`console`, `setTimeout`, `fetch`, `URL`) and its members come from VS Code's library, and the extension adds only what VS Code does not know: Node.js's own globals and members (`process`, `Buffer`, `console.Console`) and the types Bascik gives the default export's parameters. Hovering an imported name can show two cards, VS Code's (which sees the import as `any`) and the extension's. With VS Code's built-in HTML Language Features extension disabled, the extension answers for the page's own names too.
 
 These features use the same TypeScript as the errors, so the [TypeScript settings](#typescript-settings) apply, and they need no setup. Scripts without `type="text/typescript"` get none of them. Rename, quick fixes, and adding a missing import are not offered.
 

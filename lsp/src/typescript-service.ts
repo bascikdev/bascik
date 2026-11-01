@@ -41,6 +41,7 @@ import {
   type TypeScriptLocation,
   type TypeScriptPosition,
 } from "./typescript-features.js";
+import { editorModeMirror } from "./typescript-editor-mode.js";
 import {
   type LoadedTypeScript,
   resolveTypeScript,
@@ -1219,6 +1220,9 @@ export class TypeScriptProject {
         generated,
         file,
         isForeign,
+        editor: query.crossFileOnly
+          ? editorModeMirror(this.ts).at(text, query.offset)
+          : undefined,
         toSource: (offset) =>
           offset > file.footerStart ? undefined : toSourceOffset(file, offset),
         locate: (fileName, start, end) => {
