@@ -1551,6 +1551,60 @@ const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
     ).toEqual([1, 22]);
   });
 
+  it("reports an HTML escaper even when an XML escaper sits a few lines below it", () => {
+    const found = handWrittenEscapers(`function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+
+function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([[1, "escapeHtml"]]);
+    // The other order too: the XML escaper first does not hide the HTML one after it.
+    expect(
+      lines(`const escapeXml = (s: string) => s.replace(/&/g, "&amp;");
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;");`),
+    ).toEqual([2]);
+  });
+
+  it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
+    const found =
+      handWrittenEscapers(`const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);
+const escapeAttr = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([
+      [1, "escapeText"],
+      [2, "escapeAttr"],
+    ]);
+  });
+
+  it("still reports an entity map and the function that reads it as one escaper", () => {
+    const found =
+      handWrittenEscapers(`const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};
+export function escapeHtml(s: string) {
+  return s.replace(/[&<]/g, (c) => ENTITIES[c]);
+}`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([[1, "escapeHtml"]]);
+    // A comment above the map that says XML explains the function that reads it.
+    expect(
+      lines(`// The five XML characters, for sitemap.xml.
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};
+const escape = (s: string) => s.replace(/[&<]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([]);
+  });
+
   it("leaves decoders, slug helpers, html, esc, and plain & alone", () => {
     expect(
       lines(`const decode = (text: string) =>

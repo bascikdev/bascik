@@ -131,25 +131,38 @@ export function handWrittenEscapers(code) {
         EMPTY_REPLACEMENT.test(code.slice(match.index + match[0].length));
       if (!strip || !hits.has(line)) hits.set(line, strip ? "strip" : "escape");
     }
+  // Each hit is judged on its own: its function's name and whether it explains itself as XML. Hits close together
+  // join one escaper (an entity map and the replace that reads it) only when they are not two different named
+  // functions, so an escapeXml beside an escapeHtml never hides it and two escapers keep their own lines.
   const out = [];
   for (const hit of [...hits.keys()].sort((a, b) => a - b)) {
     const kind = hits.get(hit);
+    const name = nameAt(lines, hit);
+    const xml = explainedAsXml(lines, statementLine(lines, hit), name);
     const last = out.at(-1);
-    if (last && hit - last.hit <= SAME_ESCAPER_LINES) {
+    const unnamed = name === undefined || last?.name === undefined;
+    if (
+      last &&
+      hit - last.hit <= SAME_ESCAPER_LINES &&
+      (unnamed || (name === last.name && xml === last.xml))
+    ) {
+      // An unnamed hit (an entity map) is part of the function beside it: a comment that explains either as XML
+      // explains the escaper.
       last.hit = hit;
+      last.name ??= name;
+      last.xml ||= xml;
       if (kind === "escape") last.kind = "escape";
       continue;
     }
-    out.push({ start: hit, hit, kind });
+    out.push({ start: hit, hit, kind, name, xml });
   }
   return out
-    .map(({ start, hit, kind }) => ({
+    .filter(({ xml }) => !xml)
+    .map(({ start, kind, name }) => ({
       line: statementLine(lines, start),
-      // Name it from its last line: the replace that reads an entity map sits in the function.
-      name: nameAt(lines, hit) ?? nameAt(lines, start),
+      name,
       kind,
-    }))
-    .filter(({ line, name }) => !explainedAsXml(lines, line, name));
+    }));
 }
 
 /** True for a test file, which may write an escaper to state the output it expects. */
