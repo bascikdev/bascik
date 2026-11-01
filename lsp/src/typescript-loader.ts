@@ -11,7 +11,7 @@
  *   3. none: TypeScript checks are off.
  *
  * A copy without `createLanguageService` (TypeScript 7, the native port, publishes no JavaScript language
- * service) is skipped like a missing one, with a note, and so is a copy whose library files are missing.
+ * service) is skipped like a missing one, with a note, and so is a copy missing any library file the checks load.
  */
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
@@ -56,8 +56,20 @@ export interface TypeScriptLookup {
   fallbackFrom?: string;
 }
 
-/** The library file every program needs. A copy without it cannot check anything. */
-const REQUIRED_LIB_FILE = "lib.es5.d.ts";
+/**
+ * The library files Bascik's programs always load: the language (ES5 and ES2022, the lowest target), the browser's
+ * for client blocks, and the web worker's for server-side blocks without `@types/node`. A copy missing any of them
+ * would report every use of those globals as an error, so it is not used. Libraries a project's `tsconfig.json`
+ * adds are checked when its project is made (`missingLibraryFiles` in `typescript-service.ts`).
+ */
+export const REQUIRED_LIB_FILES = [
+  "lib.es5.d.ts",
+  "lib.es2022.d.ts",
+  "lib.dom.d.ts",
+  "lib.dom.iterable.d.ts",
+  "lib.webworker.d.ts",
+  "lib.webworker.iterable.d.ts",
+];
 
 const loaded = new Map<string, TypeScriptModule>();
 
@@ -131,9 +143,12 @@ function tryLoad(
     return undefined;
   }
   const libDir = path.dirname(ts.getDefaultLibFilePath!({}));
-  if (!fs.existsSync(path.join(libDir, REQUIRED_LIB_FILE))) {
+  const missing = REQUIRED_LIB_FILES.filter(
+    (name) => !fs.existsSync(path.join(libDir, name)),
+  );
+  if (missing.length > 0) {
     skipped.push(
-      `TypeScript ${version} in ${packageDir} has no library files (${path.join(libDir, REQUIRED_LIB_FILE)} is missing)`,
+      `TypeScript ${version} in ${packageDir} is missing library files in ${libDir}: ${missing.join(", ")}`,
     );
     return undefined;
   }

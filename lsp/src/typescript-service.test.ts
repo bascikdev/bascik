@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -605,6 +606,44 @@ describe("TypeScriptProjects", () => {
     source: "project" as const,
     packageDir: root.root,
     skipped: [],
+  });
+
+  it("misuse: a library the tsconfig adds but the TypeScript copy lacks turns checks off with a note", () => {
+    const root = fixture({
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { lib: ["ES2023", "DOM"] },
+      }),
+    });
+    // A copy of the library folder without lib.es2023.d.ts.
+    const realLib = path.dirname(ts.getDefaultLibFilePath({}));
+    for (const name of fs.readdirSync(realLib)) {
+      if (name.startsWith("lib.") && name !== "lib.es2023.d.ts")
+        root.link(`partial-lib/${name}`, path.join(realLib, name));
+    }
+    const partial = {
+      ...ts,
+      getDefaultLibFilePath: () => root.file("partial-lib/lib.d.ts"),
+    };
+    const projects = new TypeScriptProjects({
+      resolve: () => ({
+        ok: true,
+        ts: partial,
+        version: ts.version,
+        source: "project",
+        packageDir: root.file("partial"),
+        skipped: [],
+      }),
+    });
+    const result = projects.diagnostics({
+      projectRoot: root.root,
+      importRoot: root.file("src"),
+      htmlPath: root.file("src/pages/index.html"),
+      text: page("document.title = 'Milk frother';"),
+    });
+    expect(result.status).toBe("unavailable");
+    expect(result.status === "unavailable" && result.message).toContain(
+      "is missing library files the project's settings need: lib.es2023.d.ts",
+    );
   });
 
   it("returns cancelled when the request goes stale mid-check", () => {

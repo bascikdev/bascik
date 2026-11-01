@@ -386,6 +386,8 @@ export class TypeScriptProject {
   /** Node's untyped globals and modules for the server program, when the project has no `@types/node`. */
   private readonly nodeDeclarations:
     { fileName: string; text: string } | undefined;
+  /** Each program's compiler options, for `missingLibraryFiles`. */
+  private readonly programOptions: TS.CompilerOptions[] = [];
 
   constructor(options: TypeScriptProjectOptions) {
     // TypeScript keys files by absolute path; a relative root would make every relative import miss.
@@ -413,25 +415,39 @@ export class TypeScriptProject {
           fileName: path.join(this.projectRoot, "__bascik-node-globals.d.ts"),
           text: untypedNodeDeclarations(),
         };
-    const createService = (program: TypeScriptProgramKind) =>
-      this.ts.createLanguageService(
-        this.host(
-          program,
-          compilerOptionsFor(
-            this.ts,
-            this.projectRoot,
-            this.importRoot,
-            program,
-            nodeTypes,
-          ),
-          cancellationToken,
-        ),
+    const createService = (program: TypeScriptProgramKind) => {
+      const compilerOptions = compilerOptionsFor(
+        this.ts,
+        this.projectRoot,
+        this.importRoot,
+        program,
+        nodeTypes,
+      );
+      this.programOptions.push(compilerOptions);
+      return this.ts.createLanguageService(
+        this.host(program, compilerOptions, cancellationToken),
         registry,
       );
+    };
     this.services = {
       client: createService("client"),
       server: createService("server"),
     };
+  }
+
+  /**
+   * The library files either program loads that the TypeScript copy does not have, such as one the project's
+   * `tsconfig.json` adds to `lib`. Checking without them would report every use of their globals.
+   */
+  missingLibraryFiles(): string[] {
+    const missing = new Set<string>();
+    for (const options of this.programOptions) {
+      const libDir = path.dirname(this.ts.getDefaultLibFilePath(options));
+      for (const name of options.lib ?? []) {
+        if (!this.ts.sys.fileExists(path.join(libDir, name))) missing.add(name);
+      }
+    }
+    return [...missing];
   }
 
   private host(
@@ -772,6 +788,9 @@ export class TypeScriptProjects {
       });
       this.projects.set(projectRoot, project);
     }
+    const missing = project.missingLibraryFiles();
+    if (missing.length > 0)
+      return `TypeScript checks of type="text/typescript" scripts are off: TypeScript ${resolution.version} in ${resolution.packageDir} is missing library files the project's settings need: ${missing.join(", ")}. Reinstall it, or point the editor at a complete copy.`;
     return project;
   }
 

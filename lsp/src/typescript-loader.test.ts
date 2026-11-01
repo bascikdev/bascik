@@ -20,8 +20,11 @@ function fixture(files: Record<string, string> = {}): Fixture {
   return created;
 }
 
-/** A package named typescript that loads but has no library files beside it. */
-function typescriptWithoutLibFiles(root: Fixture): string {
+/** A package named typescript that loads but has only the given library files beside it (none by default). */
+function typescriptWithoutLibFiles(
+  root: Fixture,
+  libFiles: string[] = [],
+): string {
   root.write(
     "broken-typescript/package.json",
     JSON.stringify({ name: "typescript", version: "6.0.0", main: "index.js" }),
@@ -30,6 +33,8 @@ function typescriptWithoutLibFiles(root: Fixture): string {
     "broken-typescript/index.js",
     'module.exports = { version: "6.0.0", createLanguageService() {}, getDefaultLibFilePath: () => __dirname + "/lib/lib.d.ts" };\n',
   );
+  for (const name of libFiles)
+    root.write(`broken-typescript/lib/${name}`, "// library\n");
   return root.file("broken-typescript");
 }
 
@@ -112,8 +117,27 @@ describe("resolveTypeScript", () => {
       projectRoot: root.root,
     });
     expect(result.ok).toBe(false);
-    expect(result.skipped[0]).toContain("has no library files");
-    expect(result.skipped[0]).toContain(path.join("lib", "lib.es5.d.ts"));
+    expect(result.skipped[0]).toContain("is missing library files");
+    expect(result.skipped[0]).toContain(path.join("broken-typescript", "lib"));
+    expect(result.skipped[0]).toContain("lib.es5.d.ts");
+  });
+
+  it("misuse: rejects a copy missing only the DOM library, which every browser block needs", () => {
+    const root = fixture();
+    const result = resolveTypeScript({
+      clientPath: typescriptWithoutLibFiles(root, [
+        "lib.es5.d.ts",
+        "lib.es2022.d.ts",
+        "lib.dom.iterable.d.ts",
+        "lib.webworker.d.ts",
+        "lib.webworker.iterable.d.ts",
+      ]),
+      projectRoot: root.root,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.skipped[0]).toMatch(
+      /is missing library files .*: lib\.dom\.d\.ts$/,
+    );
   });
 
   it("misuse: a client path that throws on load is skipped, not thrown", () => {
