@@ -32,8 +32,8 @@ Those four mechanisms cover everything a blog template does, but expect the logi
 Before (Eleventy)           After (Bascik)
 src/                        src/components/
   _includes/                  site-layout/
-  blog/                       site-header/
-    my-post.md                  links.ts ← nav only the header uses
+  blog/                       site-nav/
+    my-post.md                  links.ts ← links only site-nav uses
   index.njk                 src/pages/
   about.njk                   index.html
                               about/index.html
@@ -278,7 +278,7 @@ Bascik replaces only one plugin category natively: CSS and JS scoping. Each of t
 | `@11ty/eleventy-plugin-syntaxhighlight`  | Highlight code in your Markdown render step with `prismjs`                                                                                                         |
 | `IdAttributePlugin`, `<heading-anchors>` | Add heading ids and anchor links in your Markdown renderer, or keep the web component and declare it in [`components.external`](/configuration#componentsexternal) |
 | `@11ty/eleventy-img`                     | No built-in equivalent. Copy images with their `width` and `height`, or generate variants in your own exec script                                                  |
-| `@11ty/eleventy-navigation`              | A navigation array beside the header (`site-header/links.ts`) and a page-aware header that sets `aria-current` from `BASCIK_PAGE_PATH`                             |
+| `@11ty/eleventy-navigation`              | A navigation array beside the nav component (`site-nav/links.ts`) and a page-aware `<site-nav>` that sets `aria-current` from `BASCIK_PAGE_PATH`                   |
 | `HtmlBasePlugin` and `pathPrefix`        | The [`base`](/configuration#base) option. Not exercised by the tutorial                                                                                            |
 
 ## Before and After: Home Page
