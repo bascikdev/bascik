@@ -4,6 +4,7 @@
  * too), its tag, its static parts and its holes, in one linear pass. Strings
  * and comments are skipped, so a backtick inside them is not a template.
  */
+import { scanJavaScript } from "./module-specifiers.js";
 
 export interface TemplateHole {
   /** Offset of `${`. */
@@ -478,8 +479,12 @@ function nameVerdict(
  */
 export function findBindings(body: string): Map<string, string[]> {
   const bindings = new Map<string, string[]>();
-  for (const { name, from, end, destructured } of findBindingRanges(body)) {
-    if (destructured) continue;
+  for (const { name, from, end, destructured, assigned } of findBindingRanges(
+    body,
+  )) {
+    // A destructuring declaration's value holds the name somewhere; a
+    // destructuring assignment stores a value this file does not follow.
+    if (destructured && !assigned) continue;
     const list = bindings.get(name) ?? [];
     list.push(body.slice(from, end));
     bindings.set(name, list);
@@ -494,6 +499,8 @@ export interface BindingRange {
   end: number;
   /** A name in a destructuring pattern: the value holds it somewhere. */
   destructured?: true;
+  /** A destructuring assignment to a `let` or `var` (`[body] = [v]`), not a declaration. */
+  assigned?: true;
 }
 
 /**
@@ -591,7 +598,12 @@ function patternNames(
 
 /** The bindings findBindings reads, each with its value's offsets, in no set order. */
 export function findBindingRanges(body: string): BindingRange[] {
-  const found: { name: string; from: number; destructured?: true }[] = [];
+  const found: {
+    name: string;
+    from: number;
+    destructured?: true;
+    assigned?: true;
+  }[] = [];
   const reassignable = new Set<string>();
   for (const m of body.matchAll(/(?<![\w$.])(const|let|var)\s+/g)) {
     const at = (m.index ?? 0) + m[0].length;
@@ -631,20 +643,95 @@ export function findBindingRanges(body: string): BindingRange[] {
       if (/\b(?:const|let|var)\s+$/.test(before)) continue;
       found.push({ name: m[1], from: (m.index ?? 0) + m[0].length });
     }
+  if (reassignable.size > 0)
+    for (const { names, from } of patternAssignments(body))
+      for (const name of names)
+        if (reassignable.has(name))
+          found.push({ name, from, destructured: true, assigned: true });
   const ends = valueEnds(
     body,
     [...new Set(found.map((f) => f.from))].sort((x, y) => x - y),
   );
   const ranges: BindingRange[] = [];
-  for (const { name, from, destructured } of found) {
+  for (const { name, from, destructured, assigned } of found) {
     const end = ends.get(from);
     // Inside a string, comment or template text: not code.
     if (end === undefined) continue;
     ranges.push(
-      destructured ? { name, from, end, destructured } : { name, from, end },
+      assigned
+        ? { name, from, end, destructured: true, assigned }
+        : destructured
+          ? { name, from, end, destructured }
+          : { name, from, end },
     );
   }
   return ranges;
+}
+
+/**
+ * Destructuring assignments (`[a, b] = [b, a]`, `({ body } = o)`): the
+ * names in each pattern and where the assigned value starts. A pattern
+ * after `const`, `let` or `var` is a declaration, and `x[i] = v` an
+ * index, so neither counts. One pass over the tokens.
+ */
+function patternAssignments(body: string): { names: string[]; from: number }[] {
+  const { tokens } = scanJavaScript(body);
+  const n = tokens.length;
+  const punct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  const partner = new Int32Array(n).fill(-1);
+  const stack: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const v = tokens[k].type === "punctuation" ? tokens[k].value : "";
+    if (v === "(" || v === "[" || v === "{") stack.push(k);
+    else if ((v === ")" || v === "]" || v === "}") && stack.length > 0)
+      partner[k] = stack.pop()!;
+  }
+  const out: { names: string[]; from: number }[] = [];
+  for (let k = 1; k < n; k++) {
+    if (!punct(k, "=") || punct(k + 1, "=") || punct(k + 1, ">")) continue;
+    if (!punct(k - 1, "]") && !punct(k - 1, "}")) continue;
+    if (
+      tokens[k].start !== tokens[k - 1].end &&
+      /\S/.test(body.slice(tokens[k - 1].end, tokens[k].start))
+    )
+      continue;
+    const open = partner[k - 1];
+    if (open === -1) continue;
+    const before = open > 0 ? tokens[open - 1] : undefined;
+    if (
+      before?.type === "identifier" &&
+      /^(?:const|let|var)$/.test(before.value)
+    )
+      continue;
+    // x[i] = v, f()[0] = v and "s"[0] = v are indexes; `) {...} =` is no pattern.
+    if (
+      before !== undefined &&
+      (before.type === "string" ||
+        (before.type === "identifier" &&
+          !/^(?:return|typeof|void|in|of|case|await|yield|delete)$/.test(
+            before.value,
+          )) ||
+        punct(open - 1, ")") ||
+        punct(open - 1, "]"))
+    )
+      continue;
+    const names: string[] = [];
+    for (let q = open + 1; q < k - 1; q++)
+      if (
+        tokens[q].type === "identifier" &&
+        !punct(q - 1, ".") &&
+        !punct(q + 1, ":")
+      )
+        names.push(tokens[q].value);
+    let from = tokens[k].end;
+    while (from < body.length && /[ \t\r\n]/.test(body[from])) from++;
+    out.push({ names, from });
+  }
+  return out;
 }
 
 /**

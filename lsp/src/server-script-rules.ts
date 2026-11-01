@@ -3,6 +3,7 @@ import {
   scanJavaScript,
   type Token,
 } from "./module-specifiers.js";
+import { plainHoleChecker } from "./plain-holes.js";
 import {
   HAND_WRITTEN_ESCAPER_RULE,
   findHandWrittenEscapers,
@@ -455,6 +456,26 @@ export function analyzeServerScriptSource(
       ? producers.opaqueValues[k]
       : undefined;
   };
+  // The allowlist: a hole keeps the fix only when it is provably plain data.
+  const unprovenIn = plainHoleChecker(body, tokens, {
+    requestTime,
+    functions,
+    holes: literals.flatMap((l) =>
+      l.holes.map((h) => [h.start + 2, h.end - 1] as const),
+    ),
+    markupWithin: sourceWithin,
+    isHtmlValue: (name) => {
+      const exported = htmlExportOf(name, imports);
+      return (
+        exported === "html" ||
+        exported === "raw" ||
+        exported === "safeUrl" ||
+        exported === "json"
+      );
+    },
+    htmlTags: ctx.htmlTags,
+    templateEndAt: (start) => literalAt.get(start)?.end,
+  });
   /** The first name in `from`..`to` that may hold markup, or undefined. */
   const producerWithin = (from: number, to: number): string | undefined => {
     const k = firstAtOrAfter(producers.starts, from);
@@ -524,7 +545,40 @@ export function analyzeServerScriptSource(
         };
       }
     }
+    // Then the allowlist: every hole must be provably plain data.
+    for (const hole of literal.holes) {
+      if (contexts[hole.index - 1].kind === "comment") continue;
+      if (fenced?.has(hole.index)) continue;
+      if (isHtmlHole(hole.expr)) continue;
+      const unproven = unprovenIn(hole.start + 2, hole.end - 1);
+      if (unproven !== undefined)
+        return {
+          hole: hole.index,
+          shown: `${quoteHole(hole.expr)} (hole ${hole.index})`,
+          text: `reads ${unproven.what}, ${unproven.why}, so Bascik ${UNPROVEN_TEXT}`,
+        };
+    }
     return undefined;
+  };
+  /** A hole that is an html value: html inserts it as it is, so wrapping keeps it. */
+  const isHtmlHole = (expr: string): boolean => {
+    const e = expr.trim();
+    const callee = callOf(e);
+    if (callee !== undefined) {
+      const exported = htmlExportOf(callee, imports);
+      if (
+        exported === "html" ||
+        exported === "raw" ||
+        exported === "safeUrl" ||
+        exported === "json"
+      )
+        return true;
+    }
+    return ctx.htmlTags.some(
+      (tag) =>
+        e.startsWith(`${tag}\``) ||
+        new RegExp(`=>\\s*${tag.replace(/[$]/g, "\\$")}\``).test(e),
+    );
   };
   const markupStrings = markupStringNames(body);
   const helperMemo = new Map<string, string | undefined>();
@@ -1043,6 +1097,10 @@ interface LocalFunction {
   start: number;
   end: number;
   params: string[][];
+  /** The body's first offset: its `{`, or an arrow's expression. */
+  body: number;
+  /** An arrow whose body is an expression. */
+  expression: boolean;
 }
 
 /**
@@ -1289,7 +1347,15 @@ function localFunctions(
       const stop = stopOf.get(f.body);
       end = stop === undefined ? body.length : tokens[stop].start;
     }
-    return { name: f.name, start, end, params: parameterNames(f.params) };
+    const expression = !punct(f.body, "{");
+    return {
+      name: f.name,
+      start,
+      end,
+      params: parameterNames(f.params),
+      body: f.body < n ? tokens[f.body].start : body.length,
+      expression,
+    };
   });
 }
 
@@ -2453,6 +2519,10 @@ function quoteHole(expr: string): string {
   const e = expr.trim();
   return `\${${e.length > 60 ? `${e.slice(0, 57)}...` : e}}`;
 }
+
+/** How a withheld fix explains the allowlist. */
+const UNPROVEN_TEXT =
+  "cannot prove it is plain text. The fix is offered only when every hole is a literal, request data, an environment variable, a date, a Math result, a number, bigint or boolean parameter, an html value, or a const or local helper built only from those. If the value is text, wrap the template in html`...` from @bascik/bascik/html yourself; if it is markup, make it an html`...` value first (raw() for trusted markup).";
 
 /** A .join() of html values inside html: the joined string is escaped. */
 export const JOINED_RULE = "html-joined-string";

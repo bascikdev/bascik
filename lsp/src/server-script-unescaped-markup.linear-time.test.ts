@@ -409,7 +409,8 @@ describe("parameters whose callers this file cannot all see: linear time (fix ro
             `export function list${i}<T extends string>(items: T[], n: number) { let s = ""; for (const [k, item] of items.entries()) s += \`<i>\${item}</i>\`; return items.map((item) => \`<li>\${item}\${n}</li>\`).join("") + s; }\n` +
             `const up${i}: (s: string) => string = (s) => s.toUpperCase();\n` +
             `function row${i}(name: string) { return \`<td>\${name}</td>\`; }\nexport const r${i} = row${i}("Milk frother") + up${i}("x");\n` +
-            `export class C${i} { body = ""; set(b: string) { this.body = b; return this; } render() { return \`<p>\${this.body}\${arguments[0]}</p>\`; } }\n`,
+            `export class C${i} { body = ""; set(b: string) { this.body = b; return this; } render() { return \`<p>\${this.body}\${arguments[0]}</p>\`; } }\n` +
+            `export const count${i} = (n: number) => \`<b>\${n}</b>\`;\n`,
         ).join("");
       const diags = run(shapes(50)).filter((d) => d.code === RULE);
       expect(diags.length).toBeGreaterThan(0);
@@ -420,6 +421,56 @@ describe("parameters whose callers this file cannot all see: linear time (fix ro
         diags.filter((d) => d.template?.fixable === false).length,
       ).toBeGreaterThan(0);
       expect(growthOfModules(shapes(500), shapes(2_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
+describe("the plain-data allowlist: linear time (fix round 6)", () => {
+  const run = (body: string) =>
+    analyzeServerScriptSource(body, {
+      hasSrcAttribute: false,
+      directive: "module",
+      requestTime: true,
+    });
+  const growthOfModules = (small: string, large: string): number =>
+    growthOf(
+      () => run(small),
+      () => run(large),
+    );
+
+  it(
+    "thousands of const chains, tables, helpers, patterns and request reads read in linear time (CPU growth under 8x for 4x the size)",
+    () => {
+      const shapes = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `const t${i} = { ok: "Fine", bad: "Broken" };\n` +
+            `const a${i} = ${i === 0 ? "process.env.SITE" : `a${i - 1}`} + "-";\n` +
+            `function h${i}(n: number) { return ${i === 0 ? "n.toFixed(1)" : `h${i - 1}(n)`}; }\n` +
+            `let s${i} = ""; [s${i}] = [String(${i})]; ({ s${i} } = { s${i}: "x" });\n` +
+            `export async function GET${i}(request, context) { const u = new URL(request.url); const body = await request.json(); return \`<p>\${u.searchParams.get("q")}\${body.name}\${context.params.id}\${t${i}.ok}\${a${i}}\${h${i}(${i})}\${s${i}}</p>\`; }\n`,
+        ).join("");
+      const diags = run(shapes(50)).filter((d) => d.code === RULE);
+      expect(diags.length).toBeGreaterThan(0);
+      expect(growthOfModules(shapes(500), shapes(2_000))).toBeLessThan(8);
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+
+  it(
+    "a deep chain of consts and helpers is cut off without overflowing the stack, in linear time",
+    () => {
+      const chain = (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) =>
+            `const c${i} = ${i === 0 ? "1" : `c${i - 1}`};\nfunction f${i}(x: number) { return ${i === 0 ? "x" : `f${i - 1}(x)`}; }\n`,
+        ).join("") +
+        `export const out = (request) => \`<p>\${request.url}\${c${n - 1}}\${f${n - 1}(1)}</p>\`;\n`;
+      expect(() => run(chain(5_000))).not.toThrow();
+      expect(growthOfModules(chain(2_500), chain(10_000))).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

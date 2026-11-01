@@ -449,10 +449,14 @@ describe("hand-escaped holes: no quick fix that would escape twice", () => {
     expect(diags[0].template?.fixable).toBe(false);
   });
 
-  it("an ordinary call (q.trim(), format(q)) keeps the quick fix", () => {
-    const diags = unescaped(handler("`<p>${format(q)}</p>`"));
-    expect(diags).toHaveLength(1);
-    expect(diags[0].template?.fixable).toBe(true);
+  it("a string method on request data (q.trim()) keeps the quick fix; a global function this file cannot see (format(q)) withholds it", () => {
+    const trimmed = unescaped(handler("`<p>${q.trim()}</p>`"));
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].template?.fixable).toBe(true);
+    const formatted = unescaped(handler("`<p>${format(q)}</p>`"));
+    expect(formatted).toHaveLength(1);
+    expect(formatted[0].template?.fixable).toBe(false);
+    expect(formatted[0].message).toContain("format");
   });
 });
 
@@ -665,7 +669,7 @@ describe("server-script-unescaped-markup: build-time code (build, routes, module
   const codes = (body: string, directive?: "build" | "routes" | "module") =>
     build(body, directive).map((d) => d.code);
 
-  it("a Prettier-wrapped build script returning plain template markup: one warning per hole, with the fix", () => {
+  it("a Prettier-wrapped build script returning plain template markup: one warning per hole, no fix for loaded data", () => {
     const body = `export default async function () {
   const posts = await loadPosts();
   return posts
@@ -685,7 +689,8 @@ describe("server-script-unescaped-markup: build-time code (build, routes, module
       "${post.title}",
       "${post.summary}",
     ]);
-    expect(diags.every((d) => d.template?.fixable)).toBe(true);
+    // post comes from loadPosts(), which this file cannot see into.
+    expect(diags.every((d) => d.template?.fixable === false)).toBe(true);
   });
 
   it("a module exporting a helper that returns markup", () => {
@@ -788,8 +793,9 @@ describe("server-script-unescaped-markup: build-time code (build, routes, module
       "${r.name}",
     ]);
     // Wrapping the outer one would escape the joined string: no fix there.
+    // The inner one reads a callback's parameter: no fix either.
     expect(diags[0].template?.fixable).toBe(false);
-    expect(diags[1].template?.fixable).toBe(true);
+    expect(diags[1].template?.fixable).toBe(false);
   });
 
   it("a src= build script's inline body is out of scope (its file is checked as a module)", () => {
@@ -940,7 +946,7 @@ describe("server-script-unescaped-markup: holes where a tag or attribute name go
   });
 
   it("a fixable template keeps the wrap advice", () => {
-    const body = 'const p = (t: string) => `<p class="x">${t}</p>`;\n';
+    const body = 'const p = (t: number) => `<p class="x">${t}</p>`;\n';
     const [d] = module(body);
     expect(d.message).toContain("Wrap the template in html");
     expect(d.template?.fixable).toBe(true);
@@ -1198,7 +1204,7 @@ describe("XML templates get XML advice and no html fix (review round 2)", () => 
 
   it("an HTML template that mentions an item is still HTML", () => {
     const diags = module(
-      'const c = (x: string) => `<li class="item">${x}</li>`;',
+      'const c = (x: number) => `<li class="item">${x}</li>`;',
     );
     expect(diags[0].template?.fixable).toBe(true);
   });
@@ -1261,15 +1267,20 @@ describe("a hole that calls a project module's function gets no wrap fix (review
     expect(value.every((d) => !d.message.includes("comes from"))).toBe(true);
   });
 
-  it("a package's function and a local function keep the fix", () => {
+  it("a package's function and a local function of an untyped parameter withhold the fix; a local function of a number keeps it", () => {
     expect(
       diagsOf(
         'import slugify from "slugify";\nexport default (t) => `<main>${slugify(t)}</main>`;',
       )[0].template?.fixable,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       diagsOf(
         "const upper = (s) => s.toUpperCase();\nexport default (t) => `<main>${upper(t)}</main>`;",
+      )[0].template?.fixable,
+    ).toBe(false);
+    expect(
+      diagsOf(
+        "const fixed = (s: number) => s.toFixed(1);\nexport default (t: number) => `<main>${fixed(t)}</main>`;",
       )[0].template?.fixable,
     ).toBe(true);
   });
@@ -1468,7 +1479,7 @@ describe("review round 3", () => {
     it("a local helper that builds its markup with html keeps the fix", () => {
       const diags = moduleDiags(
         IMPORT +
-          "const item = (t: string) => html`<li>${t}</li>`;\nconst list = (title: string, x: string) => `<ul>${item(title)}${x}</ul>`;",
+          "const item = (t: string) => html`<li>${t}</li>`;\nconst list = (title: string, x: number) => `<ul>${item(title)}${x}</ul>`;",
       );
       expect(diags.every((d) => d.template?.fixable === true)).toBe(true);
     });
@@ -1746,29 +1757,31 @@ describe("the wrap fix is offered only when no hole can hold markup (fix round 1
   });
 
   it.each([
-    ["a parameter", "const g = (t: string) => `<p>${t}</p>`;", "${t}"],
+    ["a number parameter", "const g = (t: number) => `<p>${t}</p>`;", "${t}"],
     [
       "a local helper with no markup",
-      "const upper = (s: string) => s.toUpperCase();\nconst g = (t: string) => `<p>${upper(t)}</p>`;",
-      "${upper(t)}",
+      "const fixed = (s: number) => s.toFixed(1);\nconst g = (t: number) => `<p>${fixed(t)}</p>`;",
+      "${fixed(t)}",
     ],
     [
       "a local helper that builds its markup with html",
-      'import { html } from "@bascik/bascik/html";\nconst item = (t: string) => html`<li>${t}</li>`;\nconst g = (t: string, x: string) => `<ul>${item(t)}${x}</ul>`;',
+      'import { html } from "@bascik/bascik/html";\nconst item = (t: string) => html`<li>${t}</li>`;\nconst g = (t: string, x: number) => `<ul>${item(t)}${x}</ul>`;',
       "${x}",
     ],
     [
       "a name bound to plain data",
-      'const g = (p: { n: string }) => { const label = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      'const g = () => { const label = process.env.SITE_NAME + " (new)"; return `<p>${label}</p>`; };',
       "${label}",
-    ],
-    [
-      "a property of a parameter",
-      "const g = (p: { title: string }) => `<h2>${p.title}</h2>`;",
-      "${p.title}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
     expect(fixableAt(body, hole).fixable).toBe(true);
+  });
+
+  it("a property of an object parameter withholds it (allowlist, fix round 6)", () => {
+    const body = "const g = (p: { title: string }) => `<h2>${p.title}</h2>`;";
+    const { fixable, message } = fixableAt(body, "${p.title}");
+    expect(fixable).toBe(false);
+    expect(message).toContain("cannot prove it is plain text");
   });
 });
 
@@ -1930,26 +1943,27 @@ describe("the wrap fix follows typed bindings, parameters, file reads and unknow
   it.each([
     [
       "a typed binding to plain data",
-      'const g = (p: { n: string }) => { const label: string = p.n.trim() + " (new)"; return `<p>${label}</p>`; };',
+      'const g = () => { const label: string = process.env.SITE_NAME + " (new)"; return `<p>${label}</p>`; };',
       "${label}",
     ],
     [
-      "a parameter local calls fill with plain data",
-      'function heading(title: string) { return `<h1>${title}</h1>`; }\nconst home = heading("Home");\nconst about = heading(`About ${"us"}`);',
-      "${title}",
-    ],
-    [
       "a global conversion call",
-      "const g = (n: string) => `<p>${String(n)} ${encodeURIComponent(n)}</p>`;",
+      "const g = (n: number) => `<p>${String(n)} ${encodeURIComponent(n)}</p>`;",
       "${String(n)}",
     ],
     [
       "a local helper with no markup, typed",
-      "const upper: (s: string) => string = (s) => s.toUpperCase();\nconst g = (t: string) => `<p>${upper(t)}</p>`;",
-      "${upper(t)}",
+      "const fixed: (s: number) => string = (s: number) => s.toFixed(1);\nconst g = (t: number) => `<p>${fixed(t)}</p>`;",
+      "${fixed(t)}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
     expect(fixableAt(body, hole).fixable).toBe(true);
+  });
+
+  it("a string parameter that local calls fill with plain data withholds it (allowlist, fix round 6)", () => {
+    const body =
+      'function heading(title: string) { return `<h1>${title}</h1>`; }\nconst home = heading("Home");\nconst about = heading(`About ${"us"}`);';
+    expect(fixableAt(body, "${title}").fixable).toBe(false);
   });
 });
 
@@ -2038,33 +2052,46 @@ describe("the wrap fix follows markup across modules (fix round 3)", () => {
 
   it.each([
     [
-      "a name imported from a package",
-      'import { siteName } from "site-meta";\nconst c = (l: string) => `<p>${siteName}: ${l}</p>`;',
-      "${l}",
-    ],
-    [
       "an environment variable not named for markup",
-      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nconst c = (p: string) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
+      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nconst c = (p: number) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
       "${p}",
     ],
     [
       "a bracketed environment variable not named for markup",
-      'const c = (l: string) => `<p>${process.env["SITE_NAME"]}: ${l}</p>`;',
+      'const c = (l: number) => `<p>${process.env["SITE_NAME"]}: ${l}</p>`;',
       "${l}",
-    ],
-    [
-      "a type-only import",
-      'import type { Row } from "./types.ts";\nconst c = (r: Row) => `<p>${r.name}</p>`;',
-      "${r.name}",
-    ],
-    [
-      "an imported function's parameter name shadowed by nothing (a property named like an import)",
-      'import { footer } from "./icons.ts";\nconst c = (p: { footer: string }) => `<p>${p.footer}</p>`;',
-      "${p.footer}",
     ],
   ])("%s keeps the fix", (_name, body, hole) => {
     expect(fixableAt(body, hole).fixable).toBe(true);
   });
+
+  it.each([
+    [
+      "a name imported from a package",
+      'import { siteName } from "site-meta";\nconst c = (l: number) => `<p>${siteName}: ${l}</p>`;',
+      "${l}",
+      "siteName",
+    ],
+    [
+      "a type-only import's object",
+      'import type { Row } from "./types.ts";\nconst c = (r: Row) => `<p>${r.name}</p>`;',
+      "${r.name}",
+      "r",
+    ],
+    [
+      "a property named like an import",
+      'import { footer } from "./icons.ts";\nconst c = (p: { footer: string }) => `<p>${p.footer}</p>`;',
+      "${p.footer}",
+      "p",
+    ],
+  ])(
+    "%s withholds it (allowlist, fix round 6)",
+    (_name, body, hole, culprit) => {
+      const { fixable, message } = fixableAt(body, hole);
+      expect(fixable).toBe(false);
+      expect(message).toContain(culprit);
+    },
+  );
 });
 
 describe("a parameter other modules can fill withholds the wrap fix (fix round 4)", () => {
@@ -2252,9 +2279,13 @@ describe("a parameter other modules can fill withholds the wrap fix (fix round 4
       'export function list() { function row(name: string) { return `<li>${name}</li>`; } return row("Milk frother"); }',
       "${name}",
     ],
-  ])("%s keeps the fix", (_name, body, hole) => {
-    for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
-  });
+  ])(
+    "%s: a string parameter, so no fix (allowlist, fix round 6)",
+    (_name, body, hole) => {
+      for (const d of holes(body, hole))
+        expect(d.template?.fixable).toBe(false);
+    },
+  );
 
   it("a local function an exported one passes its parameter: no fix", () => {
     const body =
@@ -2452,11 +2483,6 @@ describe("every parameter whose callers this file cannot all see withholds the w
       'class Meter { render(value: number, open: boolean) { return `<meter data-open="${open}">${value}</meter>`; } }\nexport const m = new Meter();',
       "${value}",
     ],
-    [
-      "a local arrow whose callers pass plain data",
-      'const row = (name: string) => `<li>${name}</li>`;\nexport const list = row("Milk frother") + row("Kettle");',
-      "${name}",
-    ],
   ])("%s keeps the fix", (_name, body, hole) => {
     for (const d of holes(body, hole)) expect(d.template?.fixable).toBe(true);
   });
@@ -2468,5 +2494,314 @@ describe("every parameter whose callers this file cannot all see withholds the w
       (x) => body.slice(x.start, x.end) === "${product.name}",
     );
     expect(d?.template?.fixable).toBe(true);
+  });
+});
+
+describe("the wrap fix is offered only for holes that are provably plain data (allowlist, fix round 6)", () => {
+  const UNPROVEN = "cannot prove it is plain text";
+  const holes = (
+    body: string,
+    hole: string,
+    opts: Partial<AnalyzeOptions> = { directive: "module" },
+  ) => {
+    const found = unescaped(body, opts).filter(
+      (x) => body.slice(x.start, x.end) === hole,
+    );
+    expect(found.length, `${hole} is reported`).toBeGreaterThan(0);
+    return found;
+  };
+  const server = { directive: "server" } as const;
+  const apiRoute = { directive: "module", requestTime: true } as const;
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>]>([
+    [
+      "a query parameter",
+      'export default function (request) {\n  const q = new URL(request.url).searchParams.get("q") ?? "";\n  return `<p>${q}</p>`;\n}\n',
+      "${q}",
+      server,
+    ],
+    [
+      "a header",
+      'export default (request) => `<p>${request.headers.get("x-user")}</p>`;',
+      '${request.headers.get("x-user")}',
+      server,
+    ],
+    [
+      "a JSON body field through a const",
+      "export default async function (request) {\n  const body = await request.json();\n  return `<p>${body.name}</p>`;\n}\n",
+      "${body.name}",
+      server,
+    ],
+    [
+      "a request value through string methods",
+      "export default (request) => `<p>${new URL(request.url).pathname.slice(1).toUpperCase()}</p>`;",
+      "${new URL(request.url).pathname.slice(1).toUpperCase()}",
+      server,
+    ],
+    [
+      "an environment variable",
+      "export function footer() { return `<p>${process.env.SITE_NAME}</p>`; }",
+      "${process.env.SITE_NAME}",
+      { directive: "module" },
+    ],
+    [
+      "a date through a const",
+      "export function stamp() { const d = new Date(); return `<time>${d.toISOString()}</time>`; }",
+      "${d.toISOString()}",
+      { directive: "module" },
+    ],
+    [
+      "a year from new Date()",
+      "export function year() { return `<p>${new Date().getFullYear()}</p>`; }",
+      "${new Date().getFullYear()}",
+      { directive: "module" },
+    ],
+    [
+      "a number parameter",
+      "export function f(n: number) { return `<p>${n}</p>`; }",
+      "${n}",
+      { directive: "module" },
+    ],
+    [
+      "String() of a number parameter, padded",
+      'export function f(n: number) { return `<p>${String(n).padStart(3, "0")}</p>`; }',
+      '${String(n).padStart(3, "0")}',
+      { directive: "module" },
+    ],
+    [
+      "a const object of literals read by a literal key",
+      'const labels = { ok: "Fine", bad: "Broken" };\nexport function f(ok: boolean) { return `<p>${ok ? labels.ok : labels.bad}</p>`; }',
+      "${ok ? labels.ok : labels.bad}",
+      { directive: "module" },
+    ],
+    [
+      "a const array of literals read by a literal index",
+      'const sizes = ["Small", "Large"];\nexport function f(big: boolean) { return `<p>${big ? sizes[1] : sizes[0]}</p>`; }',
+      "${big ? sizes[1] : sizes[0]}",
+      { directive: "module" },
+    ],
+    [
+      "a local helper that returns plain data",
+      'function label(n: number) { return n === 1 ? "item" : "items"; }\nexport function f(n: number) { return `<p>${n} ${label(n)}</p>`; }',
+      "${label(n)}",
+      { directive: "module" },
+    ],
+    [
+      "a number guarded with Number.isFinite",
+      'export default (request) => {\n  const n = Number(new URL(request.url).searchParams.get("d") ?? 0);\n  const delay = Number.isFinite(n) ? Math.min(n, 5) : 0;\n  return `<p data-delay="${delay}">${request.method}</p>`;\n};\n',
+      "${request.method}",
+      server,
+    ],
+    [
+      "a const built from request data and literals",
+      'export default (request) => {\n  const who = "User " + request.headers.get("x-user");\n  return `<p>${who}</p>`;\n};\n',
+      "${who}",
+      server,
+    ],
+  ])("%s keeps the fix", (_name, body, hole, opts) => {
+    for (const d of holes(body, hole, opts)) {
+      expect(d.template?.fixable).toBe(true);
+      expect(d.message).toContain("Wrap the template in html");
+    }
+  });
+
+  it.each<[string, string, string, Partial<AnalyzeOptions>?]>([
+    [
+      "an object field a setter writes",
+      'const state = { body: "" };\nexport function set(v: string) { state.body = v; }\nexport function render() { return `<p>${state.body}</p>`; }',
+      "${state.body}",
+    ],
+    [
+      "an array slot written after creation",
+      'const items: string[] = ["a"];\nexport function add(v: string) { items[0] = v; }\nexport function render() { return `<li>${items[0]}</li>`; }',
+      "${items[0]}",
+    ],
+    [
+      "an object field written through an alias",
+      'const state = { body: "" };\nexport function set(v: string) { const s = state; s.body = v; }\nexport function render() { return `<p>${state.body}</p>`; }',
+      "${state.body}",
+    ],
+    [
+      "an object field written by Object.assign",
+      'const state = { body: "" };\nexport function set(v: string) { Object.assign(state, { body: v }); }\nexport function render() { return `<p>${state.body}</p>`; }',
+      "${state.body}",
+    ],
+    [
+      "an object field written by a bracket",
+      'const state: Record<string, string> = { body: "" };\nexport function set(v: string) { state["body"] = v; }\nexport function render() { return `<p>${state.body}</p>`; }',
+      "${state.body}",
+    ],
+    [
+      "a nested object field",
+      'const state = { a: { body: "" } };\nexport function set(v: string) { state.a.body = v; }\nexport function render() { return `<p>${state.a.body}</p>`; }',
+      "${state.a.body}",
+    ],
+    [
+      "an exported object's field",
+      'export const state = { body: "" };\nexport function render() { return `<p>${state.body}</p>`; }',
+      "${state.body}",
+    ],
+    [
+      "an object passed to an imported mutator",
+      'import { fill } from "./mut.ts";\nconst state = { body: "" };\nfill(state);\nexport const out = `<p>${state.body}</p>`;',
+      "${state.body}",
+    ],
+    [
+      "a Map read",
+      'const state = new Map<string, string>([["b", ""]]);\nexport function set(v: string) { state.set("b", v); }\nexport function render() { return `<p>${state.get("b")}</p>`; }',
+      '${state.get("b")}',
+    ],
+    [
+      "a Map in the same function",
+      'export function f(t: string) { const a = new Map<string, string>(); a.set("k", t); return `<p>${a.get("k")}</p>`; }',
+      '${a.get("k")}',
+    ],
+    [
+      "an array slot in the same function",
+      'export function f(t: string) { const a = [""]; a[0] = t; return `<p>${a[0]}</p>`; }',
+      "${a[0]}",
+    ],
+    [
+      "a static class field",
+      'export class C { static body = ""; static set(v: string) { C.body = v; } static render() { return `<p>${C.body}</p>`; } }',
+      "${C.body}",
+    ],
+    [
+      "a closure's object field",
+      'export function make() { const st = { b: "" }; return { set(v: string) { st.b = v; }, render() { return `<p>${st.b}</p>`; } }; }',
+      "${st.b}",
+    ],
+    [
+      "a catch binding",
+      "export function f(t: string) { try { throw new Error(t); } catch (e) { return `<p>${(e as Error).message}</p>`; } }",
+      "${(e as Error).message}",
+    ],
+    [
+      "a for await variable",
+      'export async function f(xs: string[]) { let s = ""; for await (const x of xs) s += `<li>${x}</li>`; return s; }',
+      "${x}",
+    ],
+    [
+      "globalThis",
+      "export function f() { return `<p>${(globalThis as any).V7}</p>`; }",
+      "${(globalThis as any).V7}",
+    ],
+    [
+      "a value imported from a package",
+      'import { tagline } from "some-package";\nexport const f = () => `<p>${tagline}</p>`;',
+      "${tagline}",
+    ],
+    [
+      "a string parameter of a local helper",
+      'const row = (name: string) => `<li>${name}</li>`;\nexport const list = row("Milk frother") + row("Kettle");',
+      "${name}",
+    ],
+    [
+      "a number parameter cast with as",
+      "export function f(n: number) { return `<p>${n as unknown as string}</p>`; }",
+      "${n as unknown as string}",
+    ],
+    [
+      "a number parameter reassigned through a cast",
+      "export function f(n: number) { n = window.name as any; return `<p>${n}</p>`; }",
+      "${n}",
+    ],
+    [
+      "a let",
+      'export function f(ok: boolean) { let label = "Fine"; if (!ok) label = "Broken"; return `<p>${label}</p><p>${process.env.SITE_NAME}</p>`; }',
+      "${process.env.SITE_NAME}",
+    ],
+    [
+      "a call to a package function",
+      'import { slugify } from "some-package";\nexport function f(n: number) { return `<p id="${slugify(String(n))}">${n}</p>`; }',
+      "${n}",
+    ],
+    [
+      "an exported local helper",
+      'export function label(n: number) { return n === 1 ? "item" : "items"; }\nexport function f(n: number) { return `<p>${label(n)}</p>`; }',
+      "${label(n)}",
+    ],
+    [
+      "a helper passed as a value",
+      'function label(n: number) { return n === 1 ? "item" : "items"; }\nexport const labels = [1, 2].map(label);\nexport function f(n: number) { return `<p>${label(n)}</p>`; }',
+      "${label(n)}",
+    ],
+    [
+      "a request JSON object passed to a helper that may change it",
+      "export default async function (request) {\n  const body = await request.json();\n  fill(body);\n  return `<p>${body.name}</p>`;\n}\n",
+      "${body.name}",
+      { directive: "server" },
+    ],
+    [
+      "the platform context",
+      "export default (request, context) => `<p>${context.platform.env.FOOTER}</p>`;",
+      "${context.platform.env.FOOTER}",
+      { directive: "server" },
+    ],
+  ])("%s: no fix, the warning says why", (_name, body, hole, opts) => {
+    for (const d of holes(body, hole, opts ?? { directive: "module" })) {
+      expect(d.template?.fixable).toBe(false);
+      expect(d.message).toContain(UNPROVEN);
+    }
+  });
+
+  it("an exported module function's request parameter, which other modules can call, gets no fix", () => {
+    const body =
+      "export async function GET(request, context) {\n  return new Response(`<p>${context.params.id}</p>`);\n}\n";
+    for (const d of holes(body, "${context.params.id}", apiRoute))
+      expect(d.template?.fixable).toBe(false);
+  });
+
+  it("the message names the value it cannot follow and why", () => {
+    const body =
+      'const state = { body: "" };\nexport function set(v: string) { state.body = v; }\nexport function render() { return `<p>${state.body}</p>`; }';
+    const [d] = holes(body, "${state.body}");
+    expect(d.message).toContain("state");
+    expect(d.message).toMatch(/change|written|assign/);
+  });
+
+  it("a long chain of consts names only the first value and the hole's own name", () => {
+    const chain = Array.from(
+      { length: 5 },
+      (_, i) => `const c${i} = ${i === 0 ? "state.body" : `c${i - 1}`};`,
+    ).join("\n");
+    const body = `const state = { body: "" };\nexport function set(v: string) { state.body = v; }\n${chain}\nexport const out = \`<p>\${c4}</p>\`;`;
+    const [d] = holes(body, "${c4}");
+    expect(d.message).toContain("reads state (through c4),");
+  });
+
+  it("an html value in another hole does not withhold the fix", () => {
+    const body = `${IMPORT}export default (request) => \`<p>\${request.headers.get("x")}</p>\${html\`<b>hi</b>\`}\`;`;
+    for (const d of holes(body, '${request.headers.get("x")}', server))
+      expect(d.template?.fixable).toBe(true);
+  });
+});
+
+describe("destructuring assignments into a module let are reassignments (fix round 6)", () => {
+  it.each([
+    [
+      "an array pattern",
+      'let body = "";\nexport function set(v: string) { [body] = [v]; }\nexport function render() { return `<p>${body}</p>`; }',
+    ],
+    [
+      "an object pattern",
+      'let body = "";\nexport function set(o: { body: string }) { ({ body } = o); }\nexport function render() { return `<p>${body}</p>`; }',
+    ],
+  ])("%s: the hole warns, with no fix", (_name, body) => {
+    const found = unescaped(body, { directive: "module" }).filter(
+      (x) => body.slice(x.start, x.end) === "${body}",
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].template?.fixable).toBe(false);
+  });
+
+  it("an index assignment is not a destructuring", () => {
+    const body =
+      'let body = "";\nconst parts = [""];\nexport function set(v: string) { parts[0] = v; }\nexport function render() { return `<p>${body}</p>`; }';
+    expect(
+      unescaped(body, { directive: "module" }).filter(
+        (x) => body.slice(x.start, x.end) === "${body}",
+      ),
+    ).toHaveLength(0);
   });
 });
