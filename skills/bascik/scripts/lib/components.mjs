@@ -114,7 +114,7 @@ export function analyzeTemplate(html) {
 
   const directives = new Set();
   for (const m of masked.matchAll(
-    /<script\b[^>]*\bdata-bascik-(build|routes|server|stream|dev)\b/gi,
+    /<script\b[^>]*\bdata-bascik-(build-once|build|routes|server|stream)(?![\w-])/gi,
   )) {
     directives.add(m[1].toLowerCase());
   }

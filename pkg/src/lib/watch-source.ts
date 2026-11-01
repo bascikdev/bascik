@@ -1,4 +1,5 @@
-import { basename, resolve, sep } from "node:path";
+import { basename, resolve } from "node:path";
+import { isSameOrInside } from "./path-containment.ts";
 import { loadChokidar } from "./dev-watcher.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
@@ -22,7 +23,7 @@ import {
   deleteDistDir,
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
-import { sourceWatchRoot } from "./watch-root.ts";
+import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
@@ -50,8 +51,6 @@ export const watchSourceCycles = async (
   // Bascik's private build folder beside the output (private-dir.ts) is
   // output too: a watch path over the project root must not see its writes.
   const privateRoot = privateDirFor(outRoot);
-  const inside = (path: string, root: string) =>
-    path === root || path.startsWith(root + sep);
   const changes = new Map<string, string>();
   const deferred = new Set<string>();
   let booted = false;
@@ -98,9 +97,9 @@ export const watchSourceCycles = async (
           });
           for (const path of paths) {
             const kind = batchChanges.get(path)!;
-            const inPages = inside(path, pagesRoot);
+            const inPages = isSameOrInside(path, pagesRoot);
             const inComponents = componentRoots.some((root) =>
-              inside(path, root),
+              isSameOrInside(path, root),
             );
             const isDirectPageHtmlEdit =
               inPages && path.endsWith(".html") && kind === "change";
@@ -147,9 +146,9 @@ export const watchSourceCycles = async (
           for (const path of paths) {
             const kind = batchChanges.get(path)!;
             invalidateRuntimeModule(path);
-            const inPages = inside(path, pagesRoot);
+            const inPages = isSameOrInside(path, pagesRoot);
             const inComponents = componentRoots.some((root) =>
-              inside(path, root),
+              isSameOrInside(path, root),
             );
             const extra =
               execWatchCoversPath(watchPaths, path) ||
@@ -217,31 +216,28 @@ export const watchSourceCycles = async (
   };
   eventEmitter.once("boot-done", onBoot);
   const chokidar = await loadChokidar();
-  const watcher = chokidar.watch(
-    [
-      ...new Set([
-        pagesRoot,
-        ...componentRoots,
-        ...watchPaths.map(sourceWatchRoot),
-        ...execPatterns.map(sourceWatchRoot),
-      ]),
-    ],
-    {
-      ignoreInitial: true,
-      followSymlinks: true,
-      atomic: true,
-      awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
-      ignored: (path) =>
-        inside(resolve(path), outRoot) || inside(resolve(path), privateRoot),
-    },
-  );
+  const watchRoots = [
+    ...new Set([
+      pagesRoot,
+      ...componentRoots,
+      ...watchPaths.map(sourceWatchRoot),
+      ...execPatterns.map(sourceWatchRoot),
+    ]),
+  ];
+  const watcher = chokidar.watch(watchRoots, {
+    ignoreInitial: true,
+    followSymlinks: true,
+    atomic: true,
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
+    ignored: createSourceWatchIgnore(watchRoots, [outRoot, privateRoot]),
+  });
   watcher.on("all", (kind, changed) => {
     if (!["add", "change", "unlink", "unlinkDir", "addDir"].includes(kind))
       return;
     const path = resolve(changed);
     const owned =
-      inside(path, pagesRoot) ||
-      componentRoots.some((root) => inside(path, root));
+      isSameOrInside(path, pagesRoot) ||
+      componentRoots.some((root) => isSameOrInside(path, root));
     if (!owned && !execWatchCoversPath([...watchPaths, ...execPatterns], path))
       return;
     changes.set(path, kind);

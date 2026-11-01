@@ -237,9 +237,18 @@ describe("repeated-sections: small bands and character references", () => {
     expect(decodeEntities("Froth, steam &amp; pour")).toBe(
       "Froth, steam & pour",
     );
+    // &nbsp; is U+00A0, as the browser decodes it (R2-05: it was a plain
+    // space). Source and rendered text both collapse whitespace before they
+    // are compared, so the match still sees one space.
     expect(decodeEntities("Don&rsquo;t &#8212; &#x2014; &nbsp;")).toBe(
-      "Don’t — —  ",
+      "Don’t — — \u00a0",
     );
+    expect(
+      decodeEntities("Don&rsquo;t &#8212; &#x2014; &nbsp;").replace(
+        /\s+/g,
+        " ",
+      ),
+    ).toBe("Don’t — — ");
     expect(decodeEntities("&unknown; stays")).toBe("&unknown; stays");
   });
 

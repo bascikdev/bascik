@@ -23,17 +23,7 @@ export default defineConfig({
 });
 ```
 
-You can also pass strings as shorthand for `{ script: '...' }` with default settings:
-
-```ts
-// Shorthand syntax
-pipeline: {
-  exec: [
-    'scripts/generate-sitemap.ts',
-    'scripts/generate-search-index.ts',
-  ],
-}
-```
+Every entry is an object with at least a `script` key. A bare string such as `exec: ['scripts/generate-sitemap.ts']` is rejected at startup, and the error shows the object form to write instead: `{ script: 'scripts/generate-sitemap.ts' }`.
 
 ## Lifecycle Execution Phases
 
@@ -61,15 +51,15 @@ export default defineConfig({
 
 Each exec entry in `pipeline.exec` accepts:
 
-| Property            | Type                            | Default         | Description                                                              |
-| :------------------ | :------------------------------ | :-------------- | :----------------------------------------------------------------------- |
-| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                    |
-| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                  |
-| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode |
-| `cwd`               | `string`                        | `process.cwd()` | Working directory for the script execution                               |
-| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                   |
-| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                          |
-| `timeout`           | `number`                        | `60000`         | Maximum execution time in milliseconds before terminating                |
+| Property            | Type                            | Default         | Description                                                                                                                                                                                                             |
+| :------------------ | :------------------------------ | :-------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `script` (required) | `string`                        | none            | Path to the script file, relative to the project root                                                                                                                                                                   |
+| `phase`             | `'pre' \| 'post' \| 'parallel'` | `'pre'`         | When the script executes relative to page transpilation                                                                                                                                                                 |
+| `watch`             | `string \| string[]`            | `[]`            | File or directory globs that trigger script re-execution during dev mode                                                                                                                                                |
+| `cwd`               | `string`                        | `process.cwd()` | Working directory the script starts in; `script` still resolves from the project root. A missing folder is a startup warning (none inside `directory.out`, which the build creates) and an error when the script starts |
+| `env`               | `Record<string, string>`        | `{}`            | Custom environment variables merged with `process.env`                                                                                                                                                                  |
+| `args`              | `string[]`                      | `[]`            | Command-line arguments passed as `process.argv`                                                                                                                                                                         |
+| `timeout`           | `number`                        | `60000`         | Maximum run time in milliseconds, in every phase including `parallel`; `0` means no limit. See [Timeouts and stopping](#timeouts-and-stopping)                                                                          |
 
 ```ts
 // Full exec entry configuration
@@ -84,9 +74,17 @@ Each exec entry in `pipeline.exec` accepts:
 }
 ```
 
+### Timeouts and stopping
+
+`timeout` applies to every phase, `parallel` included, so a script that keeps running (a CSS or content watcher started as a `parallel` entry) is stopped after 60 seconds unless it sets `timeout: 0`. A build still waits for every `parallel` script, so a script that never exits keeps `bascik --build` from finishing; start a long-running watcher only in dev, for example from a mode export.
+
+When a script times out, Bascik sends `SIGTERM` to the script and to every process it started (a wrapper's `tailwindcss --watch`, a shell), then `SIGKILL` 500 ms later to whatever is still running, even a process that outlived the script itself (each one is first checked to be the same process, by its start time, so a reused process ID is left alone; where `ps` reports no start times, as BusyBox `ps` on Alpine does, only a process whose chain of parents up to the still-running script is unchanged gets `SIGKILL`, and Bascik prints a warning naming the process IDs it left running, the first time this happens for each script), and reports `exec "<script>" timed out after <timeout>ms` once the script has exited. The rest of that phase does not run. On Windows the whole process tree is ended with `taskkill /T /F`; if `taskkill` cannot run, Bascik still stops the script itself and prints one warning that the processes it started may still be running. Bascik stops running scripts and their processes the same way whenever it exits: Ctrl+C, a failed build or dev boot, or an exec failure under `pipeline.onExecError: 'error'`. A process that detaches itself into its own session is outside that tree, so have the script keep its children attached.
+
 ### Watching source inputs
 
 `pipeline.exec[].watch` selects which scripts rerun after a matching source edit. That edit owns one phase-ordered rebuild cycle: matching pre scripts finish, parallel scripts start alongside associated page compilation, then matching post scripts run after compilation and its disk writes finish. Completion itself never queues a second compilation. Do not configure `pipeline.watchPaths` for generated outputs.
+
+List every source the script reads in its `watch`, including the local modules it imports (a page list in `src/lib/nav.ts`, for example). `pipeline.watchPaths` re-renders pages but never reruns a script, so an input missing from `watch` leaves the script's output stale until the dev server restarts.
 
 This illustrative configuration generates a catalog before compilation and observes its source inputs for subsequent updates:
 
@@ -181,7 +179,7 @@ A failing script follows [When a script fails](#when-a-script-fails) the same wa
 
 ### Parallel scripts in dev
 
-A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
+A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure, and it never fails a later edit's cycle: a script started by one edit that fails while a later edit's pages compile is reported on its own, and the later edit still reloads. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
 
 In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and under the default `onExecError: 'error'` reports any failure with a nonzero exit status.
 

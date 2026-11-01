@@ -6,6 +6,14 @@ export const MIME_MAP = new Map([
   [".txt", "text/plain; charset=utf-8"],
   [".xml", "text/xml; charset=utf-8"],
   [".ics", "text/calendar; charset=utf-8"],
+  // Feeds, caption tracks and other publishable text formats. Untyped, they
+  // fall back to application/octet-stream, and with nosniff a browser then
+  // downloads the feed or rejects the <track>.
+  [".rss", "application/rss+xml; charset=utf-8"],
+  [".atom", "application/atom+xml; charset=utf-8"],
+  [".vtt", "text/vtt; charset=utf-8"],
+  [".srt", "text/plain; charset=utf-8"],
+  [".xhtml", "application/xhtml+xml; charset=utf-8"],
   // RFC 9239: text/javascript is the current standard (application/javascript is deprecated)
   [".js", "text/javascript; charset=utf-8"],
   [".mjs", "text/javascript; charset=utf-8"],
@@ -14,6 +22,7 @@ export const MIME_MAP = new Map([
   // JSON / Data
   [".json", "application/json; charset=utf-8"],
   [".geojson", "application/geo+json; charset=utf-8"],
+  [".jsonld", "application/ld+json; charset=utf-8"],
 
   // Images
   [".png", "image/png"],

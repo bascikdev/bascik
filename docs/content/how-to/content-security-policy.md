@@ -73,6 +73,8 @@ The same option works on `bascik`: the dev server sends the header with the hash
 
 With `bascik --build --target cloudflare`, the Worker sends the header on every page it renders (pages with server or stream scripts). Static pages are served by Cloudflare's asset layer without the Worker, so the build writes one exact-path rule per static page into the generated `public/_headers`, right after the site-wide [security headers rule](/deployment/cloudflare#security-settings-on-cloudflare) and before your own rules. A page you already have a rule for gets the header in your rule. A `Content-Security-Policy` you set or remove with any rule that matches the page, `/blog/*` or `/*` as well as the exact path, wins there: Bascik writes no rule for that page, so it never sends two policies. Cloudflare reads at most 100 rules from `_headers` and skips any line over 2000 characters; a site whose static pages, own rules and the site-wide rule would need more rules, or a static page with so many inline scripts and styles that its policy line is over 2000 characters, fails the build with a message that names the count or the page. Such a site can send every page through the Worker by setting `"assets": { "run_worker_first": true }` in its Wrangler config: the build keeps that setting, writes no rules, and the Worker sends the header on every page, static ones included (Workers variant only; see [Sending every header from the Worker](/deployment/cloudflare#sending-every-header-from-the-worker)).
 
+Without that setting, a static `404.html` gets its policy at its own URL only: `_headers` rules match the request path, not the status, so a 404 for any other URL is served with the page but without the header, and the build warns. With `run_worker_first: true` the Worker sends the 404 page's policy on every 404, as `bascik --server` does.
+
 Check a deployed preview with `curl -I https://your-preview.pages.dev/`.
 
 ### Roll out with reportOnly
@@ -109,8 +111,11 @@ if (!outDir)
   );
 
 const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi;
+// The HTML parser turns CR LF and lone CR into LF before the browser hashes a body.
 const hash = (body) =>
-  `'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`;
+  `'sha256-${createHash("sha256")
+    .update(body.replace(/\r\n?/g, "\n"), "utf8")
+    .digest("base64")}'`;
 
 function policyFor(html) {
   const hashes = new Set();
@@ -150,7 +155,7 @@ for (const entry of await readdir(outDir, {
 
 The script writes into `BASCIK_OUT_DIR`, never into `src/`, per the [lifecycle output rule](/exec-scripts). It adds only `script-src`, plus `object-src 'none'` and `base-uri 'self'`, which cost nothing and close two common injection routes.
 
-> **Hash the emitted bytes.** The browser hashes the text between the `<script>` tags exactly as served. Run the script last, after any other `post` step that edits the pages, or the hashes will not match.
+> **Hash the emitted text.** The browser hashes the text between the `<script>` tags as served, after the HTML parser turns each CR LF or lone CR into LF. Bascik hashes that same LF text, so a page saved with Windows line endings gets the same hashes as its LF spelling; the recipe's `hash` does the same. Run the script last, after any other `post` step that edits the pages, or the hashes will not match.
 
 ## What a meta tag cannot do
 
@@ -164,7 +169,7 @@ Scripts injected by your host after the build are not in the emitted HTML, so th
 
 ## Styles
 
-Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and once a `style-src` lists any hash, the browser blocks every `style` attribute. The starter pages use a few `style` attributes, and so does the development server's error overlay.
+Inline `<style>` blocks can be hashed the same way with a `style-src` directive. Inline `style="..."` attributes are different: a plain hash does not match them, and once a `style-src` lists any hash, the browser blocks every `style` attribute. The starter pages use a few `style` attributes. The development server's error overlay and reconnect banner set their styles through `element.style`, which a policy does not block.
 
 Many sites tighten scripts first, where the risk is highest, and allow inline styles for now. With `contentSecurityPolicy`, list `'unsafe-inline'` in `style-src`; Bascik then adds no style hashes to it, so `style` attributes keep working:
 

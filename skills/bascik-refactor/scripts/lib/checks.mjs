@@ -33,8 +33,9 @@ export const normalize = (value) =>
 /**
  * The file and folder name of a route under --out and in docs/migration/review: "/" -> "index", "/pricing/team/" ->
  * "pricing_team". A route the readable name cannot tell apart from another ("/index", "/docs/a_b" next to
- * "/docs/a/b", upper case, non-ASCII) gets a hash of the route appended, as compare-route.mjs does for every folder,
- * so two routes never share a report, a review page or a sign-off.
+ * "/docs/a/b", upper case, non-ASCII) gets a hash of the route appended, as compare-route.mjs does for every folder.
+ * A route and the same route with a trailing slash ("/pricing", "/pricing/") share the name: validateRouteSet rejects
+ * the pair, so two routes of one run never share a report, a review page or a sign-off.
  */
 export function routeSlug(route) {
   const value = String(route);
@@ -52,6 +53,26 @@ export function routeSlug(route) {
   return `${slug}-${createHash("sha256").update(value).digest("hex").slice(0, 8)}`;
 }
 
+/**
+ * Rejects a list of routes that names one route twice, or two routes whose routeSlug is the same ("/pricing" and
+ * "/pricing/"): their reports, crops, review pages and sign-offs would overwrite each other.
+ */
+export function validateRouteSet(routes) {
+  const bySlug = new Map();
+  const seen = new Set();
+  for (const route of routes ?? []) {
+    if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
+    seen.add(route);
+    const slug = routeSlug(route);
+    const other = bySlug.get(slug);
+    if (other !== undefined)
+      throw new Error(
+        `--route ${other} and --route ${route} would share the report name "${slug}", so one would overwrite the other; they are usually one page (one redirects to the other), so pass one`,
+      );
+    bySlug.set(slug, route);
+  }
+}
+
 /** Rejects a route that is not a path on the site, as compare-route.mjs does. */
 export function validateRoute(route) {
   const path = String(route).split(/[?#]/, 1)[0];
@@ -67,13 +88,16 @@ export function validateRoute(route) {
 
 /**
  * Rejects a --mask value that cannot be a CSS selector (empty, or brackets, parentheses or quotes that do not close),
- * because the page would ignore it and the region it was meant to hide would be compared after all.
+ * because the page would ignore it and the region it was meant to hide would be compared after all. `flag` names the
+ * option in the message (--skip-control takes selectors too).
  */
-export function validateMask(selector) {
+export function validateMask(selector, flag = "--mask") {
   const value = String(selector ?? "").trim();
   if (!value)
     throw new Error(
-      "--mask needs a CSS selector for a documented dynamic region, such as '[data-testid=\"carousel\"]'",
+      flag === "--mask"
+        ? "--mask needs a CSS selector for a documented dynamic region, such as '[data-testid=\"carousel\"]'"
+        : `${flag} needs a CSS selector for a control with side effects, such as '[data-testid="add-to-cart"]'`,
     );
   const stack = [];
   let quote = null;
@@ -88,13 +112,13 @@ export function validateMask(selector) {
       const open = stack.pop();
       if ((ch === "]" && open !== "[") || (ch === ")" && open !== "("))
         throw new Error(
-          `--mask ${value}: not a CSS selector ("${ch}" closes nothing)`,
+          `${flag} ${value}: not a CSS selector ("${ch}" closes nothing)`,
         );
     }
   }
   if (quote || stack.length)
     throw new Error(
-      `--mask ${value}: not a CSS selector (${quote ? `the ${quote} quote` : `"${stack.at(-1)}"`} is never closed)`,
+      `${flag} ${value}: not a CSS selector (${quote ? `the ${quote} quote` : `"${stack.at(-1)}"`} is never closed)`,
     );
 }
 
@@ -113,6 +137,29 @@ export function casesOf(options) {
   if (Array.isArray(options.cases) && options.cases.length)
     return options.cases;
   return loadMatrix(options.matrix ?? DEFAULT_MATRIX);
+}
+
+/**
+ * The --skip-control option for the checks that activate controls (interaction-crawl, state-capture): the parseArgs
+ * option, and the validated list of its values.
+ */
+export const SKIP_CONTROL_OPTION = Object.freeze({
+  "skip-control": { type: "string", multiple: true },
+});
+export function skipControlsFrom(list) {
+  for (const selector of list ?? []) validateMask(selector, "--skip-control");
+  return list ?? [];
+}
+
+/**
+ * The controls a runCheck call must never activate, from `skipControls` (API and run-checks) or `skip-control`
+ * (a check's own CLI): a button whose handler posts to the live site (add to cart, subscribe, vote, start a chat).
+ */
+export function skipControlsOf(options) {
+  return [
+    ...(options?.skipControls ?? []),
+    ...(options?.["skip-control"] ?? []),
+  ];
 }
 
 /** The masks a runCheck call takes, from `masks` (API) or `mask` (CLI). */
@@ -291,12 +338,8 @@ export function parseArgsFor(
     } else if (!values[flag]) throw new Error(`--${flag} <url> is required`);
   }
   for (const selector of values.mask ?? []) validateMask(selector);
-  const seen = new Set();
-  for (const route of values.route ?? []) {
-    validateRoute(route);
-    if (seen.has(route)) throw new Error(`--route ${route} is given twice`);
-    seen.add(route);
-  }
+  for (const route of values.route ?? []) validateRoute(route);
+  validateRouteSet(values.route);
   const { "settle-ms": settle, ...rest } = values;
   return {
     ...rest,

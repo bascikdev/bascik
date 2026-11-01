@@ -40,7 +40,8 @@ describe("publish-agent-skill", () => {
     const dev = config.pipeline?.exec?.find(
       (entry) => entry.script === "scripts/publish-agent-skill.ts",
     );
-    expect(dev?.watch).toEqual(["../skills/"]);
+    // The authored skills and the bundle module the script imports (watch-paths.test.ts), never the outputs.
+    expect(dev?.watch).toEqual(["../skills/", "scripts/skill-bundle.ts"]);
   });
 
   it("publishes the core skill to dist/assets/SKILL.md byte for byte", async () => {

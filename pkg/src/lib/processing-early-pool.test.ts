@@ -13,7 +13,7 @@ const { pools, routesGate, WorkerPoolMock } = vi.hoisted(() => {
   const pools: Array<{
     size: number;
     env: Record<string, string | undefined>;
-    options: { readySignal?: boolean };
+    options: { readySignal?: boolean; stopSignal?: boolean };
     run: ReturnType<typeof vi.fn>;
     shrink: ReturnType<typeof vi.fn>;
     grow: ReturnType<typeof vi.fn>;
@@ -27,7 +27,11 @@ const { pools, routesGate, WorkerPoolMock } = vi.hoisted(() => {
     _script: string,
     size: number,
     _init: unknown,
-    options: { env: Record<string, string | undefined>; readySignal?: boolean },
+    options: {
+      env: Record<string, string | undefined>;
+      readySignal?: boolean;
+      stopSignal?: boolean;
+    },
   ) {
     this.size = size;
     this.env = options.env;
@@ -452,6 +456,14 @@ describe("processAllPages – early page worker pool", () => {
     expect(pools[0].options.readySignal).toBe(true);
   });
 
+  it("asks the pool to stop its workers by message, not by terminating them", async () => {
+    // An external terminate that lands while a worker allocates code can
+    // abort Node 24 ("Check failed: jit_page.has_value()").
+    vi.mocked(listPages).mockResolvedValue(staticPages(2));
+    await processAllPages();
+    expect(pools[0].options.stopSignal).toBe(true);
+  });
+
   // Cleanup must never mask the failure that made the build stop.
   describe("when stopping the pool itself fails", () => {
     const failingTerminate = () =>
@@ -552,6 +564,74 @@ describe("processAllPages – early page worker pool", () => {
       await expect(stopPagePools()).resolves.toBeUndefined();
       release();
       await build.catch(() => {});
+    });
+  });
+
+  // F049: the worker path must reject two sources that produce one output
+  // path, as the serial path does, instead of letting the last worker win.
+  describe("route conflicts", () => {
+    const routesFor = (byTemplate: Record<string, string[]>) =>
+      vi.mocked(executeRoutesScript).mockImplementation(async (_html, path) => {
+        const slugs = byTemplate[String(path)] ?? [];
+        const name = /\[([^\]]+)\]/.exec(String(path))?.[1] ?? "slug";
+        return {
+          cleanedHtml: "<html><body>route</body></html>",
+          routes: slugs.map((value) => ({ params: { [name]: value } })),
+        } as never;
+      });
+
+    const outputsRun = () =>
+      pools[0].run.mock.calls.map(([job]) => job.relativePagePath);
+
+    it.each([true, false])(
+      "fails when a static page and a template produce the same page (workers: %s)",
+      async (useWorkers) => {
+        vi.mocked(listPages).mockResolvedValue([
+          "src/pages/posts/hello.html",
+          "src/pages/posts/[slug].html",
+          "src/pages/about.html",
+        ]);
+        routesFor({ "src/pages/posts/[slug].html": ["hello", "other"] });
+        await expect(processAllPages({ useWorkers })).rejects.toThrow(
+          /Route conflict: "src\/pages\/posts\/hello\.html" and "src\/pages\/posts\/\[slug\]\.html" both produce output path "pages\/posts\/hello\.html"/,
+        );
+        if (useWorkers) {
+          // The first source keeps the path; the clash is never compiled, and
+          // the unrelated pages still are.
+          expect(outputsRun().sort()).toEqual([
+            "pages/about.html",
+            "pages/posts/hello.html",
+            "pages/posts/other.html",
+          ]);
+          expect(pools[0].terminate).toHaveBeenCalledOnce();
+        }
+      },
+    );
+
+    it("fails when two templates produce the same page", async () => {
+      vi.mocked(listPages).mockResolvedValue([
+        "src/pages/[a].html",
+        "src/pages/[b].html",
+      ]);
+      routesFor({
+        "src/pages/[a].html": ["milk-frother"],
+        "src/pages/[b].html": ["milk-frother"],
+      });
+      await expect(processAllPages()).rejects.toThrow(
+        /Route conflict: .*both produce output path "pages\/milk-frother\.html"/,
+      );
+      expect(outputsRun()).toEqual(["pages/milk-frother.html"]);
+    });
+
+    it("fails when two sources differ only in letter case", async () => {
+      vi.mocked(listPages).mockResolvedValue([
+        "src/pages/About.html",
+        "src/pages/about.html",
+      ]);
+      await expect(processAllPages()).rejects.toThrow(
+        /Route conflict: "src\/pages\/About\.html" and "src\/pages\/about\.html"/,
+      );
+      expect(outputsRun()).toEqual(["pages/About.html"]);
     });
   });
 

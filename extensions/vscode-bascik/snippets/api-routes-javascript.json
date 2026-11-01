@@ -1,0 +1,38 @@
+{
+  "Bascik API Route Handler": {
+    "prefix": "bascik-api",
+    "body": [
+      "export const ${1|GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD|} = async (${2:request}, ${3:context}) => {",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik API route handler function with request and context parameters"
+  },
+  "Bascik GET Handler": {
+    "prefix": "bascik-get",
+    "body": [
+      "export const GET = async (${1:request}, ${2:context}) => {",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik GET API route handler"
+  },
+  "Bascik POST Handler": {
+    "prefix": "bascik-post",
+    "body": [
+      "export const POST = async (${1:request}, ${2:context}) => {",
+      "  let ${3:data};",
+      "  try {",
+      "    ${3:data} = await ${1:request}.json();",
+      "  } catch {",
+      "    return Response.json({ error: \"Invalid JSON\" }, { status: 400 });",
+      "  }",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik POST API route handler that reads a JSON body and answers 400 when it is malformed"
+  }
+}

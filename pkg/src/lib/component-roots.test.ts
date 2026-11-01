@@ -10,7 +10,8 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-import { findComponentRoot } from "./component-roots.ts";
+import { posix, win32 } from "node:path";
+import { displayComponentRoot, findComponentRoot } from "./component-roots.ts";
 
 describe("findComponentRoot", () => {
   it("returns the configured root that contains the path", () => {
@@ -42,5 +43,43 @@ describe("findComponentRoot", () => {
     expect(findComponentRoot("\\project\\src\\components\\x.html")).toBe(
       "/project/src/components",
     );
+  });
+});
+
+describe("displayComponentRoot", () => {
+  it.each([
+    ["the project folder itself", "/a/b", "/a/b", "components"],
+    [
+      "a folder inside the project",
+      "/a/b/src/components",
+      "/a/b",
+      "components",
+    ],
+    ["the project's parent folder", "/a", "/a/b", ".."],
+    ["a grandparent folder", "/a", "/a/b/c", "../.."],
+    [
+      "a sibling folder",
+      "/a/shared/components",
+      "/a/b",
+      "../shared/components",
+    ],
+    [
+      "a folder whose name starts with two dots, inside the project",
+      "/a/b/..components",
+      "/a/b",
+      "components",
+    ],
+  ])("shows %s by where it is", (_case, root, cwd, expected) => {
+    expect(displayComponentRoot(root, cwd, posix)).toBe(expected);
+  });
+
+  it("shows a root on another Windows drive by its path, the only form that locates it", () => {
+    expect(
+      displayComponentRoot("D:\\shared\\components", "C:\\proj", win32),
+    ).toBe("D:/shared/components");
+  });
+
+  it("shows the parent of a Windows project as ..", () => {
+    expect(displayComponentRoot("C:\\proj", "C:\\proj\\app", win32)).toBe("..");
   });
 });

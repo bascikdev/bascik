@@ -9,6 +9,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import {
+  __cspRegexFallbackForTests,
   computePageCspHashes,
   cspHashCollector,
   widenRouteCspHashes,
@@ -106,6 +107,45 @@ describe("computePageCspHashes end tags", () => {
         "<script>never()",
     );
     expect(hashes.scripts).toEqual([sha("cloned()"), sha("svgRun()")].sort());
+  });
+});
+
+describe("computePageCspHashes line endings (F085)", () => {
+  const sha = (body: string) =>
+    `sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`;
+
+  // The HTML parser turns CR LF and lone CR into LF before a script or style
+  // body exists, and the browser hashes that text, so a page written on
+  // Windows must get the hash of the LF spelling.
+  it("hashes a CRLF or lone-CR script and style as the browser does, over LF", () => {
+    const lf = computePageCspHashes(
+      "<script>\nconst a = 1;\nrun(a);\n</script><style>\n.a { color: red }\n</style>",
+    );
+    expect(lf.scripts).toEqual([sha("\nconst a = 1;\nrun(a);\n")]);
+    expect(lf.styles).toEqual([sha("\n.a { color: red }\n")]);
+    const crlf = computePageCspHashes(
+      "<script>\r\nconst a = 1;\r\nrun(a);\r\n</script><style>\r\n.a { color: red }\r\n</style>",
+    );
+    const cr = computePageCspHashes(
+      "<script>\rconst a = 1;\rrun(a);\r</script><style>\r.a { color: red }\r</style>",
+    );
+    expect(crlf).toEqual(lf);
+    expect(cr).toEqual(lf);
+  });
+
+  it("misuse: mixed endings in one body (an editor that saved half the file) still hash the LF text", () => {
+    const hashes = computePageCspHashes(
+      "<script>a();\r\nb();\rc();\nd();\r\r\ne();</script>",
+    );
+    expect(hashes.scripts).toEqual([sha("a();\nb();\nc();\nd();\n\ne();")]);
+  });
+
+  it("the regex fallback normalizes the same way", () => {
+    const { scripts, styles } = __cspRegexFallbackForTests(
+      "<script>\r\nrun();\r\n</script><style>\r.a{}\r</style>",
+    );
+    expect([...scripts]).toEqual([sha("\nrun();\n")]);
+    expect([...styles]).toEqual([sha("\n.a{}\n")]);
   });
 });
 

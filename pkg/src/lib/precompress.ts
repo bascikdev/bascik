@@ -34,6 +34,7 @@ import {
   COMPRESSION_MIN_BYTES,
   getContentHashEtag,
   isCompressibleMime,
+  PRECOMPRESSED_SIDECAR_SUFFIX,
 } from "./caching.ts";
 import { MIME_MAP } from "./mime.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -110,11 +111,13 @@ const emitSidecarsFor = async (
     gzipAsync(raw, { level: zlib.constants.Z_BEST_COMPRESSION }),
   ]);
 
+  const brPath = `${distRelPath}${PRECOMPRESSED_SIDECAR_SUFFIX.br}`;
+  const gzPath = `${distRelPath}${PRECOMPRESSED_SIDECAR_SUFFIX.gzip}`;
   const outputs: Array<[string, Buffer | string]> = [
-    [`${distRelPath}.br`, br],
-    [`${distRelPath}.br.bmeta`, meta],
-    [`${distRelPath}.gz`, gz],
-    [`${distRelPath}.gz.bmeta`, meta],
+    [brPath, br],
+    [`${brPath}.bmeta`, meta],
+    [gzPath, gz],
+    [`${gzPath}.bmeta`, meta],
   ];
   for (const [rel, bytes] of outputs) {
     await atomicWriteBytes(resolve(outDir, rel), bytes);

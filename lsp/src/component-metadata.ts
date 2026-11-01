@@ -89,7 +89,8 @@ function inferMembers(source: string): {
   }
 
   for (const match of masked.matchAll(
-    /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
+    // The prop a data-bascik-attr-* binding reads. (No other data-bascik-* attribute takes a prop name.)
+    /data-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
   )) {
     const name = match[1] ?? match[2] ?? match[3];
     if (name) {

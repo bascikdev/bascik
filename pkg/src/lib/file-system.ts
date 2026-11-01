@@ -173,12 +173,16 @@ const displayRelativePath = (path: string): string => {
       return normalized;
     }
   }
-  const outDirRel =
-    relative(process.cwd(), BascikConfig.directory.out) || "dist";
-  return normalized
-    .replace(/^\.\//, "")
-    .replace(/^\//, "")
-    .replace(new RegExp(`^${outDirRel}/`), "");
+  // Compared as text, never compiled into a RegExp: a folder name such as
+  // `site (copy)` or `build+site` is not a pattern, and a Windows
+  // `build\site` is the same folder as `build/site`.
+  const outDirRel = (
+    relative(process.cwd(), BascikConfig.directory.out) || "dist"
+  ).replace(/\\/g, "/");
+  const display = normalized.replace(/^\.\//, "").replace(/^\//, "");
+  return display.startsWith(`${outDirRel}/`)
+    ? display.slice(outDirRel.length + 1)
+    : display;
 };
 
 /** Stream-hash a file using SHA-256. Only used for change detection. */

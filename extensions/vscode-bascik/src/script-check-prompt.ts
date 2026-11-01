@@ -6,6 +6,7 @@ import {
   decideFolder,
   DISMISS_BUTTON,
   DISMISSED_STATE_KEY,
+  HTML_LANGUAGE_FEATURES,
   promptMessage,
   type FolderDecision,
 } from "./script-check";
@@ -53,12 +54,14 @@ export class ScriptCheckPrompt implements vscode.Disposable {
   async check(): Promise<ScriptCheckResult> {
     const folders: Record<string, FolderDecision> = {};
     const toAsk: vscode.WorkspaceFolder[] = [];
+    const htmlRunning = htmlLanguageFeaturesRunning();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const decision = decideFolder(
         await isBascikFolder(folder),
         vscode.workspace
           .getConfiguration("html", folder)
           .inspect<boolean>("validate.scripts"),
+        htmlRunning,
       );
       folders[folder.name] = decision;
       if (decision === "ask") toAsk.push(folder);
@@ -101,7 +104,13 @@ export class ScriptCheckPrompt implements vscode.Disposable {
     for (const folder of folders) {
       const config = vscode.workspace.getConfiguration("html", folder);
       // Someone may have set it while the prompt was open; their value wins.
-      if (decideFolder(true, config.inspect("validate.scripts")) !== "ask") {
+      if (
+        decideFolder(
+          true,
+          config.inspect("validate.scripts"),
+          htmlLanguageFeaturesRunning(),
+        ) !== "ask"
+      ) {
         continue;
       }
       try {
@@ -139,6 +148,11 @@ export class ScriptCheckPrompt implements vscode.Disposable {
     for (const subscription of this.subscriptions) subscription.dispose();
     this.subscriptions.length = 0;
   }
+}
+
+/** A disabled extension is missing from `vscode.extensions`, so presence means VS Code checks inline scripts. */
+function htmlLanguageFeaturesRunning(): boolean {
+  return vscode.extensions.getExtension(HTML_LANGUAGE_FEATURES) !== undefined;
 }
 
 /** A folder is a Bascik project when it holds a Bascik config outside installed packages, build output, and git. */

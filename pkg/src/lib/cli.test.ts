@@ -267,6 +267,29 @@ describe("cli helper tests", () => {
       ).toBe("server");
     });
 
+    it("reports a leading Node option it ignores, so the caller can warn", () => {
+      expect(
+        resolveCliAction(["--max-old-space-size=4096", "--build"])
+          .ignoredNodeFlags,
+      ).toEqual(["--max-old-space-size=4096"]);
+      expect(resolveCliAction(["--build"]).ignoredNodeFlags).toBeUndefined();
+    });
+
+    // F101: a typo placed before the first bascik flag used to be dropped as
+    // if it were a Node flag, so `bascik --quite --check` ran at full
+    // verbosity without a word.
+    it.each([
+      [["--quite", "--check"], "--quiet"],
+      [["--quite=1", "--build"], undefined],
+      [["--dry", "--build"], undefined],
+      [["-x", "--server"], undefined],
+    ])("rejects the leading typo in %j", (args, hint) => {
+      const decision = resolveCliAction(args as string[]);
+      expect(decision.action).toBe("error");
+      expect(decision.unknownFlags).toEqual([(args as string[])[0]]);
+      if (hint) expect(decision.errorMessage).toContain(`"${hint}"`);
+    });
+
     it("still rejects unknown flags once a bascik flag is present", () => {
       const decision = resolveCliAction(["--build", "--bogus"]);
       expect(decision.action).toBe("error");
@@ -286,6 +309,67 @@ describe("cli helper tests", () => {
       const decision = resolveCliAction(["--build", "--port=70000"]);
       expect(decision.action).toBe("error");
       expect(decision.errorMessage).toContain("--port");
+    });
+
+    // F100: --host used to reach server.listen unchecked, which failed with
+    // Node's "getaddrinfo ENOTFOUND http://0.0.0.0" and no hint at the flag.
+    it.each(["http://0.0.0.0", "localhost/", "my host", "[::1]", "a\\b"])(
+      "rejects --host %s with the http.hostname rule",
+      (value) => {
+        for (const args of [
+          ["--server", "--host", value],
+          ["--server", `--host=${value}`],
+        ]) {
+          const decision = resolveCliAction(args);
+          expect(decision.action).toBe("error");
+          expect(decision.errorMessage).toContain("--host");
+          expect(decision.errorMessage).toContain(JSON.stringify(value));
+          expect(decision.errorMessage).toContain("not a URL or path");
+        }
+      },
+    );
+
+    // The F100 scenario itself: a host:port reached server.listen as
+    // getaddrinfo ENOTFOUND localhost:3000.
+    it.each(["localhost:3000", "0.0.0.0:8080", "localhost:"])(
+      "rejects --host %s and says to pass the port with --port",
+      (value) => {
+        for (const args of [
+          ["--server", "--host", value],
+          ["--server", `--host=${value}`],
+        ]) {
+          const decision = resolveCliAction(args);
+          expect(decision.action).toBe("error");
+          expect(decision.errorMessage).toContain("--host");
+          expect(decision.errorMessage).toContain(JSON.stringify(value));
+          expect(decision.errorMessage).toContain("without a port");
+          expect(decision.errorMessage).toContain("--port");
+        }
+      },
+    );
+
+    it.each([
+      "localhost",
+      "0.0.0.0",
+      "::1",
+      "::",
+      "fe80::1",
+      "fe80::1%en0",
+      "::ffff:127.0.0.1",
+      "example.com",
+      "my-box.local",
+    ])("accepts --host %s", (value) => {
+      const decision = resolveCliAction(["--server", "--host", value]);
+      expect(decision.action).toBe("server");
+      expect(decision.flags.host).toBe(value);
+    });
+
+    it("tells --host [::1] to drop the brackets", () => {
+      const decision = resolveCliAction(["--server", "--host", "[::1]"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain(
+        'write an IPv6 address without brackets, like "::1"',
+      );
     });
 
     it("rejects an unknown --log-level", () => {

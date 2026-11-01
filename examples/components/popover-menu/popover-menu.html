@@ -50,9 +50,10 @@ A dropdown menu with no JavaScript, using the HTML popover attribute. Escape and
   type="button"
   popovertarget="menu"
   data-bascik-prop-label
+  data-testid="popover-menu"
 >
   Menu
 </button>
-<div class="menu" id="menu" popover>
+<div class="menu" id="menu" popover data-testid="popover-menu-panel">
   <div data-bascik-slot></div>
 </div>

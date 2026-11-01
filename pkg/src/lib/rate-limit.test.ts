@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { RateLimiter, getClientIp } from "./rate-limit.ts";
+import { RateLimiter, getClientIp, rateLimitKey } from "./rate-limit.ts";
 import { nativeClock } from "./clock.ts";
 
 describe("getClientIp", () => {
@@ -100,27 +100,92 @@ describe("RateLimiter sliding window", () => {
     custom.destroy();
   });
 
-  it("tracking structure is bounded and fails closed (rejects) when capacity is reached", () => {
+  // R3-01 (Collin's decision on F075): a full table evicts the least
+  // recently seen identity instead of refusing every newcomer. A flood can
+  // reset other clients' counters, never deny them.
+  it("a full table admits a newcomer by evicting the least recently seen identity", () => {
+    const smallLimiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 1,
+      maxTrackedIps: 3,
+    });
+    expect(smallLimiter.isRateLimited("10.0.0.1", 1000)).toBe(false);
+    expect(smallLimiter.isRateLimited("10.0.0.2", 1000)).toBe(false);
+    expect(smallLimiter.isRateLimited("10.0.0.3", 1000)).toBe(false);
+
+    // All three are live; the newcomer still gets in.
+    expect(smallLimiter.isRateLimited("10.0.0.4", 1000)).toBe(false);
+    expect(smallLimiter.trackedCount).toBe(3);
+    // 10.0.0.3 is still tracked: its second request trips max = 1.
+    expect(smallLimiter.isRateLimited("10.0.0.3", 1000)).toBe(true);
+    // 10.0.0.1 (least recently seen) was evicted and starts a fresh bucket.
+    expect(smallLimiter.isRateLimited("10.0.0.1", 1000)).toBe(false);
+    smallLimiter.destroy();
+  });
+
+  it("10,000 live identities plus one newcomer: the newcomer is admitted and the oldest is gone", () => {
+    const big = new RateLimiter({ windowMs: 10_000, max: 1 });
+    for (let i = 0; i < 10_000; i++) {
+      expect(
+        big.isRateLimited(
+          `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`,
+          0,
+        ),
+      ).toBe(false);
+    }
+    expect(big.trackedCount).toBe(10_000);
+    expect(big.isRateLimited("198.51.100.1", 0)).toBe(false);
+    expect(big.trackedCount).toBe(10_000);
+    // The most recent identity kept its count (a second request trips max).
+    expect(big.isRateLimited("10.0.39.15", 0)).toBe(true);
+    // The first identity was evicted and returns with a fresh bucket.
+    expect(big.isRateLimited("10.0.0.0", 0)).toBe(false);
+    big.destroy();
+  });
+
+  it("eviction order follows the last request, not the first", () => {
+    const smallLimiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 2,
+      maxTrackedIps: 3,
+    });
+    smallLimiter.isRateLimited("a", 0);
+    smallLimiter.isRateLimited("b", 0);
+    smallLimiter.isRateLimited("c", 0);
+    // 'a' was inserted first but is now the most recently seen.
+    smallLimiter.isRateLimited("a", 1);
+    expect(smallLimiter.isRateLimited("d", 2)).toBe(false);
+    // 'a' kept its count of 2, so its third request trips max = 2.
+    expect(smallLimiter.isRateLimited("a", 3)).toBe(true);
+    // 'b' was the least recently seen and starts over.
+    expect(smallLimiter.isRateLimited("b", 4)).toBe(false);
+    expect(smallLimiter.isRateLimited("b", 4)).toBe(false);
+    expect(smallLimiter.isRateLimited("b", 4)).toBe(true);
+    smallLimiter.destroy();
+  });
+
+  it("a flooding identity still trips its limit at max while newcomers rotate through the table", () => {
     const smallLimiter = new RateLimiter({
       windowMs: 10_000,
       max: 5,
       maxTrackedIps: 3,
     });
-    // Add 3 distinct IPs at t = 1000
-    smallLimiter.isRateLimited("10.0.0.1", 1000);
-    smallLimiter.isRateLimited("10.0.0.2", 1000);
-    smallLimiter.isRateLimited("10.0.0.3", 1000);
-
-    // 4th IP exceeds bound while all 3 are active -> fails closed (true = rate limited / blocked)
-    expect(smallLimiter.isRateLimited("10.0.0.4", 1000)).toBe(true);
+    for (let i = 0; i < 5; i++) {
+      expect(smallLimiter.isRateLimited("6.6.6.6", 0)).toBe(false);
+      expect(smallLimiter.isRateLimited(`192.0.2.${i}`, 0)).toBe(false);
+      expect(smallLimiter.isRateLimited(`198.51.100.${i}`, 0)).toBe(false);
+    }
+    expect(smallLimiter.isRateLimited("6.6.6.6", 0)).toBe(true);
     smallLimiter.destroy();
   });
 
   it("reclaims expired entries under capacity pressure without requiring manual sweep", () => {
+    const warn = vi.fn();
     const smallLimiter = new RateLimiter({
       windowMs: 100,
       max: 5,
       maxTrackedIps: 2,
+      warn,
     });
     expect(smallLimiter.isRateLimited("a", 0)).toBe(false);
     expect(smallLimiter.isRateLimited("b", 0)).toBe(false);
@@ -129,31 +194,77 @@ describe("RateLimiter sliding window", () => {
     // A new identity 'c' arrives: capacity pressure triggers automatic expiry reclamation.
     expect(smallLimiter.isRateLimited("c", 10000)).toBe(false);
     expect(smallLimiter.isRateLimited("d", 10000)).toBe(false);
-    // Now 'c' and 'd' are active; 3rd identity 'e' at t = 10000 should fail closed.
-    expect(smallLimiter.isRateLimited("e", 10000)).toBe(true);
+    // Reclaiming expired identities is not pressure: nothing live was evicted.
+    expect(warn).not.toHaveBeenCalled();
+    // Now 'c' and 'd' are active; a 3rd identity 'e' evicts 'c' and gets in.
+    expect(smallLimiter.isRateLimited("e", 10000)).toBe(false);
+    expect(smallLimiter.trackedCount).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
     smallLimiter.destroy();
   });
 
   it("does not discard active entries prematurely during capacity pressure", () => {
     const smallLimiter = new RateLimiter({
       windowMs: 1000,
-      max: 5,
+      max: 2,
       maxTrackedIps: 2,
     });
     smallLimiter.isRateLimited("a", 100);
     smallLimiter.isRateLimited("b", 500);
+    smallLimiter.isRateLimited("b", 500);
 
     // At t = 600, 'a' (age 500) and 'b' (age 100) are both active (< 1000ms).
-    // Capacity is full of live entries -> new identity 'c' fails closed.
-    expect(smallLimiter.isRateLimited("c", 600)).toBe(true);
-
-    // At t = 1200, 'a' (started at 100, age 1100) has expired (> 1000ms), but 'b' (started at 500, age 700) is still active.
-    // 'c' should be admitted by reclaiming 'a'.
-    expect(smallLimiter.isRateLimited("c", 1200)).toBe(false);
-    // 'b' is still tracked and active
-    expect(smallLimiter.isRateLimited("b", 1200)).toBe(false);
+    // The new identity 'c' evicts only the least recently seen, 'a'.
+    expect(smallLimiter.isRateLimited("c", 600)).toBe(false);
+    // 'b' is still tracked with its count of 2, so it stays limited.
+    expect(smallLimiter.isRateLimited("b", 600)).toBe(true);
     smallLimiter.destroy();
   });
+
+  it("logs table pressure once per window, not once per request", () => {
+    const warn = vi.fn();
+    const smallLimiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 5,
+      maxTrackedIps: 3,
+      warn,
+    });
+    for (let i = 0; i < 100; i++) smallLimiter.isRateLimited(`10.0.0.${i}`, 0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "[bascik] rate limiter table full: 3 identities, evicting the least recently seen; raise http.rateLimit.maxTrackedIps or rate limit at the CDN",
+    );
+    // Still inside the same window: no second line.
+    for (let i = 0; i < 100; i++)
+      smallLimiter.isRateLimited(`10.0.1.${i}`, 9_999);
+    expect(warn).toHaveBeenCalledTimes(1);
+    // The next window under pressure logs once more.
+    for (let i = 0; i < 100; i++)
+      smallLimiter.isRateLimited(`10.0.2.${i}`, 10_000);
+    expect(warn).toHaveBeenCalledTimes(2);
+    smallLimiter.destroy();
+  });
+
+  it("a limiter without a warn callback evicts silently", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const smallLimiter = new RateLimiter({ max: 5, maxTrackedIps: 1 });
+    expect(smallLimiter.isRateLimited("a", 0)).toBe(false);
+    expect(smallLimiter.isRateLimited("b", 0)).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    smallLimiter.destroy();
+  });
+
+  it.each([0, -3, 0.5, Number.NaN])(
+    "maxTrackedIps %s still tracks at least one identity",
+    (maxTrackedIps) => {
+      const smallLimiter = new RateLimiter({ max: 1, maxTrackedIps });
+      expect(smallLimiter.isRateLimited("a", 0)).toBe(false);
+      expect(smallLimiter.isRateLimited("a", 0)).toBe(true);
+      expect(smallLimiter.trackedCount).toBe(1);
+      smallLimiter.destroy();
+    },
+  );
 
   it("sweep does not run during build (no auto timer if not started or when destroyed)", () => {
     const cleanLimiter = new RateLimiter({ windowMs: 10_000, max: 5 });
@@ -230,5 +341,47 @@ describe("RateLimiter - deterministic clock-driven bucket and sweep boundaries",
     // A fresh entry after destroy proves internal tracking was cleared, not
     // merely that the timer stopped.
     expect(limiter.isRateLimited("7.7.7.7", nativeClock.now())).toBe(false);
+  });
+});
+
+// F075: one host commonly holds a whole IPv6 /64, so counting each address
+// separately let a single sender fill the tracking table (and so lock out
+// every new visitor) by rotating through its own prefix.
+describe("rateLimitKey", () => {
+  it.each([
+    ["2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"],
+    ["2001:DB8:1:2::ffff", "2001:db8:1:2::/64"],
+    ["2001:db8::1", "2001:db8:0:0::/64"],
+    ["::1", "0:0:0:0::/64"],
+    ["fe80::1%eth0", "fe80:0:0:0::/64"],
+    ["64:ff9b::192.0.2.1", "64:ff9b:0:0::/64"],
+    ["::ffff:192.0.2.7", "192.0.2.7"],
+    ["192.0.2.7", "192.0.2.7"],
+    ["unknown", "unknown"],
+    ["", ""],
+  ])("%s counts as %s", (ip, key) => {
+    expect(rateLimitKey(ip)).toBe(key);
+  });
+
+  it("addresses in one IPv6 /64 share a limit; another /64 does not", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 2 });
+    expect(limiter.isRateLimited("2001:db8:1:2::1", 0)).toBe(false);
+    expect(limiter.isRateLimited("2001:db8:1:2::2", 0)).toBe(false);
+    expect(limiter.isRateLimited("2001:db8:1:2::3", 0)).toBe(true);
+    expect(limiter.isRateLimited("2001:db8:1:3::1", 0)).toBe(false);
+    limiter.destroy();
+  });
+
+  it("rotating addresses inside one /64 occupies one tracking slot, so new visitors still get in", () => {
+    const limiter = new RateLimiter({
+      windowMs: 10_000,
+      max: 1_000_000,
+      maxTrackedIps: 3,
+    });
+    for (let i = 1; i <= 50; i++)
+      limiter.isRateLimited(`2001:db8:dead:beef::${i.toString(16)}`, 0);
+    expect(limiter.isRateLimited("198.51.100.1", 0)).toBe(false);
+    expect(limiter.isRateLimited("198.51.100.2", 0)).toBe(false);
+    limiter.destroy();
   });
 });

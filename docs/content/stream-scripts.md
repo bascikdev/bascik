@@ -702,6 +702,8 @@ The author's placeholder remains visible on error, keeping page layout intact.
 
 A stream script that resolves its last chunk after `scripts.timeout` has passed, even inside its own `abort` listener, is a timeout under the policy above, not a late chunk.
 
+A stream script's return value follows the [server script rules](/server-scripts#return-values): an array is joined with no separator, so ``items.map((item) => html`...`)`` can be returned directly, and a value that is not markup (a plain object, a `Response`, a function, an array holding a Promise) leaves the slot empty. In dev that is a failure under the policy above, logged with the route, the script's file and line, and what was returned; in production it is a warning logged once per script.
+
 ### HTTP Headers & Caching Consequences
 
 Pages containing streaming scripts automatically adjust HTTP transport headers:

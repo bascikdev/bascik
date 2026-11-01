@@ -430,6 +430,32 @@ describe("Prompt 107 - static representation snapshot integrity (integration)", 
     },
   );
 
+  // F050: the server read `<asset>.gzip`, so a valid `.gz` sidecar was never
+  // served and the "corrupt" case above passed whether or not it was read.
+  runOnBothAdapters(
+    "valid gzip sidecar: the .gz bytes are served verbatim",
+    async (fetch) => {
+      await installRelease(dist, "gears.js", oldBody());
+      // A valid gzip member marked with an OS byte the on-the-fly codec never
+      // writes, so the response proves which bytes were served.
+      const sidecar = zlib.gzipSync(oldBody());
+      sidecar[9] = 0x0b;
+      await writeFile(join(dist, "gears.js.gz"), sidecar);
+      await writeFile(
+        join(dist, "gears.js.gz.bmeta"),
+        JSON.stringify({ rawHash: quotedHash(oldBody()) }),
+      );
+
+      const res = await fetch("/gears.js", {
+        headers: { "accept-encoding": "gzip" },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers["content-encoding"]).toBe("gzip");
+      expect(res.raw.equals(sidecar)).toBe(true);
+      expect(decodeBody(res).toString()).toBe("OLD".repeat(300));
+    },
+  );
+
   runOnBothAdapters(
     "corrupt gzip sidecar: garbage .gz bytes are not served",
     async (fetch) => {

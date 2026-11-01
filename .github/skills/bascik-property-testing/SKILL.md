@@ -96,6 +96,24 @@ describe("CSS Scoping Property Tests", () => {
 });
 ```
 
+### Bounding Every Property
+
+The skeletons above pass a bare `numRuns`. In this repository, pass `propertyBounds(ciRuns, runsVariable?)` from `pkg/src/lib/property-runs.test-helper.ts` instead: a fixed seed, a run count sized to finish well under a second locally, and a 30 s test timeout for the slow Node 22.22 floor runner on CI. An unbounded property (random seed, Vitest's 5 s default timeout) timed out there.
+
+```ts
+const BOUNDS = propertyBounds(150, "SCAN_ORACLE_RUNS");
+it(
+  "matches parse5 on random markup",
+  () => {
+    fc.assert(fc.property(soup, check), BOUNDS.options);
+  },
+  BOUNDS.timeoutMs,
+);
+```
+
+- Measure the test (`--reporter=json`, then read each test's `duration`) and size `ciRuns` from that. Do not weaken what the property checks; a vacuity guard such as `expect(hits).toBeGreaterThan(50)` must still pass at the CI count under other seeds (`PROPERTY_SEED=1`, `7`, `-5`).
+- A test with an existing deep-run variable (`MASK_ORACLE_RUNS`, `SCAN_ORACLE_RUNS`, `SCOPING_PROPERTY_RUNS`) passes its name; the helper validates it, because fast-check passes with zero cases for `numRuns` of `NaN` or 0.
+
 ---
 
 ## 4. Differential Fuzzing and Shrinking

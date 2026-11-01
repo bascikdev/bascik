@@ -8,6 +8,7 @@ import {
   findConfigFile,
 } from "./config-file-names.ts";
 import type { UserConfig } from "./types.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
 
 export { CONFIG_FILE_NAMES };
 
@@ -97,6 +98,65 @@ const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
   }
 };
 
+/** The exports Bascik reads from a config module. */
+const CONFIG_EXPORTS = ["default", "dev", "build", "server"] as const;
+
+const describeValue = (value: unknown): string =>
+  value === null
+    ? "null"
+    : Array.isArray(value)
+      ? "an array"
+      : typeof value === "function"
+        ? "a function (Bascik reads the object, it does not call it)"
+        : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
+
+/**
+ * A config file whose settings Bascik would never see is an error, not a
+ * zero config: every setting in it would be ignored and never validated.
+ * That is a read export that is not a plain object (a function, a string,
+ * null), or a module whose only exports are names Bascik does not read
+ * (`export const config = ...`). A module that exports nothing at all gets a
+ * warning: the defaults apply, as with no file.
+ */
+const assertReadableExports = (
+  mod: UserConfigModule,
+  configPath: string,
+): void => {
+  const exports = mod as Record<string, unknown>;
+  const problems: string[] = [];
+  for (const name of CONFIG_EXPORTS) {
+    const value = exports?.[name];
+    if (value === undefined) continue;
+    if (typeof value === "object" && value !== null && !Array.isArray(value))
+      continue;
+    const declaration =
+      name === "default" ? "export default" : `export const ${name} =`;
+    problems.push(
+      `  the ${name} export must be an object, not ${describeValue(value)}. ` +
+        `Write \`${declaration} defineConfig({ ... })\`.`,
+    );
+  }
+  if (problems.length > 0)
+    throw new Error(
+      `[bascik] error: ${configPath} does not export a configuration object:\n${problems.join("\n")}`,
+    );
+  if (CONFIG_EXPORTS.some((name) => exports?.[name] !== undefined)) return;
+  // Node adds a "module.exports" name to a CommonJS module's namespace.
+  const others = Object.keys(exports ?? {}).filter(
+    (name) => name !== "module.exports",
+  );
+  if (others.length > 0)
+    throw new Error(
+      `[bascik] error: ${configPath} exports ${others.map((name) => `\`${name}\``).join(", ")}, which Bascik does not read, and no default export, so none of its settings would apply.\n` +
+        `  Bascik reads \`export default\` and the mode exports \`dev\`, \`build\` and \`server\`. ` +
+        `Write \`export default defineConfig({ ... })\`.`,
+    );
+  console.warn(
+    `[bascik] warning: ${configPath} exports nothing, so the built-in defaults apply. ` +
+      `Add \`export default defineConfig({ ... })\` to configure Bascik, or delete the file.`,
+  );
+};
+
 /** Load and validate the project's bascik.config, if present. */
 export const loadUserConfig = async (
   configPath: string,
@@ -107,15 +167,17 @@ export const loadUserConfig = async (
   build: UserConfig;
   server: UserConfig;
 }> => {
-  // Probe first, in its own try. An ENOENT here means there is no config
-  // file: that is the zero-config default, so return silently. A warning
+  // Probe first, in its own try. A path that names no file here (ENOENT,
+  // or ENOTDIR and ENAMETOOLONG for a mistyped --config such as
+  // `package.json/bascik.config.ts`) means there is no config file: that is
+  // the zero-config default, so return silently. A warning
   // should mean something is wrong, and a missing config is not wrong.
   // An explicitly passed --config path, however, must exist (mirroring the
   // --env-file versus --env-file-if-exists distinction).
   try {
     await access(configPath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+    if (isNoSuchFileError(err)) {
       if (options.explicit) {
         throw new Error(
           `[bascik] error: --config "${configPath}" does not exist. ` +
@@ -149,17 +211,12 @@ export const loadUserConfig = async (
     );
   }
 
-  const rawConfig = mod?.default;
-  const rawDev = mod?.dev;
-  const rawBuild = mod?.build;
-  const rawServer = mod?.server;
+  assertReadableExports(mod, configPath);
   const result = {
-    config:
-      typeof rawConfig === "object" && rawConfig !== null ? rawConfig : {},
-    dev: typeof rawDev === "object" && rawDev !== null ? rawDev : {},
-    build: typeof rawBuild === "object" && rawBuild !== null ? rawBuild : {},
-    server:
-      typeof rawServer === "object" && rawServer !== null ? rawServer : {},
+    config: mod?.default ?? {},
+    dev: mod?.dev ?? {},
+    build: mod?.build ?? {},
+    server: mod?.server ?? {},
   };
   rejectRemovedKeys(result.config, "default");
   rejectRemovedKeys(result.dev, "dev");

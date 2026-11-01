@@ -24,6 +24,10 @@ import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
+import {
+  GeneratedIdClassCollisionError,
+  formatGeneratedIdClassCollision,
+} from "./generated-id-classes.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -45,7 +49,6 @@ import { config as userConfig, modeOverrides } from "./userConfig.ts";
 import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
 import {
   validateUserConfig,
-  type ConfigValidationError,
   PLAUSIBLE_TAG_NAME,
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
@@ -628,14 +631,6 @@ const BUILD_DIRECTIVE_RE = new RegExp(
   "i",
 );
 
-const mapConfigErrorSeverity = (
-  error: ConfigValidationError,
-): FindingSeverity => {
-  if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
-  if (error.key.startsWith("assets.inlineStyles[")) return "warning";
-  return "error";
-};
-
 const resolveConfigSourcePath = (): string => {
   const { path } = findConfigFile();
   if (!path) return CONFIG_FILE_NAMES[0];
@@ -721,7 +716,9 @@ export const checkProject = async (
         : ` (received ${formatConfigValue(error.value)})`;
     items.push({
       category: "config-validation",
-      severity: mapConfigErrorSeverity(error),
+      // Every one of these stops `bascik` and `bascik --build` at startup
+      // (config.ts), so the check fails on it too.
+      severity: "error",
       message: `${error.key}: ${error.message}${valueSuffix}`,
       locations: [{ filePath: configSource }],
     });
@@ -756,23 +753,29 @@ export const checkProject = async (
     }
   }
 
+  // A rejected directory.pages is already reported above; the check then
+  // runs on the default folder, which is not the user's to fix.
+  const pagesRejected = configErrors.some(
+    (error) => error.key === "directory.pages",
+  );
   let pageList: string[] = [];
   try {
     pageList = (await listPages()) ?? [];
   } catch (error) {
-    items.push({
-      category: "pages-directory",
-      severity: "error",
-      message: `could not read pages directory "${BascikConfig.directory?.pages ?? "src/pages"}": ${error instanceof Error ? error.message : String(error)}`,
-      locations: [{ filePath: configSource }],
-    });
+    if (!pagesRejected)
+      items.push({
+        category: "pages-directory",
+        severity: "error",
+        message: `could not read pages directory "${BascikConfig.directory?.pages ?? "src/pages"}": ${error instanceof Error ? error.message : String(error)}`,
+        locations: [{ filePath: configSource }],
+      });
   }
 
   const pagesDir = resolve(
     process.cwd(),
     BascikConfig.directory?.pages ?? "src/pages",
   );
-  if (existsSync(pagesDir) && pageList.length === 0) {
+  if (!pagesRejected && existsSync(pagesDir) && pageList.length === 0) {
     items.push({
       category: "pages-directory",
       severity: "error",
@@ -790,6 +793,26 @@ export const checkProject = async (
       .filter((f): f is string => Boolean(f));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    let matchedIdClassCollision = false;
+    if (error instanceof GeneratedIdClassCollisionError) {
+      matchedIdClassCollision = true;
+      for (const collision of error.collisions) {
+        const { className, first, second } = collision;
+        // The message's last two lines are the fix.
+        const fix = formatGeneratedIdClassCollision(collision)
+          .split("\n")
+          .slice(-2)
+          .map((line) => line.trim())
+          .join(" ");
+        items.push({
+          category: "generated-id-class-collision",
+          severity: "error",
+          message: `<${first.component}> #${first.idName} and <${second.component}> #${second.idName} both generate the class ${className}`,
+          locations: [collision.firstLocation, collision.secondLocation],
+          suggestion: fix,
+        });
+      }
+    }
     const duplicateBlockRegex =
       /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
     let matchedDuplicate = false;
@@ -809,7 +832,7 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate) {
+    if (!matchedDuplicate && !matchedIdClassCollision) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -1276,6 +1299,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
       "generate.cspHashes is on, but these components embed the instance id in\n" +
       "their stylesheet or client scripts, so a server or stream script that\n" +
       "returns them cannot satisfy a hash-only Content-Security-Policy.",
+  },
+  "generated-id-class-collision": {
+    title: "Components whose #id rules generate one class",
+    description:
+      "An #id rule becomes the class b_id_<component>_<id>, so an underscore in a\n" +
+      "component name or an id can let two components spell the same class, and\n" +
+      "each rule would style the other's element. Builds stop on it too.",
   },
   "unmatched-tag": {
     title: "Components with no matching file",

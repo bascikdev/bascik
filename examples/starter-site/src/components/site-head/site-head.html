@@ -3,7 +3,7 @@ Shared head markup for every page: charset, viewport, the saved theme, the globa
 
   <head>
     <site-head />
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { seo } from '@/lib/seo.ts';
       export default () => seo({ title: 'About - Example Site', description: '...' });
     </script>

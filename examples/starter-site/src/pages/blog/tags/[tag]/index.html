@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <site-head />
-    <script data-bascik-routes>
+    <script data-bascik-routes type="text/typescript">
       import { getPosts, groupByTag } from "@/lib/posts.ts";
       export default async () =>
         groupByTag(await getPosts()).map(({ tag, posts }) => ({
@@ -10,10 +10,12 @@
           data: { tag, posts },
         }));
     </script>
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { seo } from "@/lib/seo.ts";
       export default () => {
-        const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+        const { data }: { data: { tag: string } } = JSON.parse(
+          process.env.BASCIK_ROUTE || "{}",
+        );
         return seo({
           title: `Posts tagged "${data.tag}" - Example Site`,
           description: `Every post on the Example Site blog tagged ${data.tag}, newest first.`,
@@ -24,11 +26,13 @@
 
   <body>
     <site-header><theme-toggle /></site-header>
-    <main id="main" class="container">
-      <script data-bascik-build>
-        import { escapeHtml, postList } from "@/lib/posts.ts";
+    <main id="main" class="container" data-testid="blog-tag-main">
+      <script data-bascik-build type="text/typescript">
+        import { escapeHtml, postList, type Post } from "@/lib/posts.ts";
         export default () => {
-          const { data } = JSON.parse(process.env.BASCIK_ROUTE || "{}");
+          const { data }: { data: { tag: string; posts: Post[] } } = JSON.parse(
+            process.env.BASCIK_ROUTE || "{}",
+          );
           return `<h1>Posts tagged “${escapeHtml(data.tag)}”</h1>\n${postList(data.posts)}`;
         };
       </script>

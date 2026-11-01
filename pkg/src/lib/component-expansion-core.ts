@@ -37,7 +37,10 @@ import {
   replaceNamedSlots,
 } from "./component-slots.ts";
 import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
-import { __componentScanStatsForTests } from "./component-scan-stats.ts";
+import {
+  __componentScanStatsForTests,
+  __expansionProbeForTests,
+} from "./component-scan-stats.ts";
 import { getFirstComponent, replaceTag } from "./component-tags.ts";
 import type { ComponentSearchState } from "./component-attribute-scan.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
@@ -362,6 +365,94 @@ export const expandComponents = (
   // Whether the next search re-reads the attribute state from the start
   // (after a whole re-mask), for the request-time scan budget.
   let rescanFromStart = false;
+  /**
+   * Splice `transpiledTag` over the instance found last (at its offsets when
+   * known) and keep the mask, the search cursor and the mask checkpoints
+   * current for the next search.
+   */
+  const spliceInstance = (
+    component: BascikComponent,
+    transpiledTag: string,
+  ): void => {
+    const { startIndex: sIdx, endIndex: eIdx } = component as {
+      startIndex?: number;
+      endIndex?: number;
+    };
+    const offsets =
+      typeof sIdx === "number" && typeof eIdx === "number"
+        ? { startIndex: sIdx, endIndex: eIdx }
+        : undefined;
+    const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
+      ? spliceRawTextMask(
+          transpiledHtmlBody,
+          masked,
+          offsets.startIndex,
+          offsets.endIndex,
+          transpiledTag,
+          maskFromEnd && offsets.startIndex >= maskFromEnd.at
+            ? maskFromEnd
+            : (maskFrom ?? 0),
+          maskFacts,
+        )
+      : null;
+    transpiledHtmlBody = replaceTag(
+      transpiledHtmlBody,
+      component.name,
+      transpiledTag,
+      masked,
+      offsets,
+    );
+
+    // Mask the inserted template too. Without HTML minification (the dev server, or
+    // `minify.html: false`) a template keeps its comments, and a component tag named in
+    // one, such as a usage note, must stay text instead of being expanded. When the
+    // prefix, the replaced usage, and the template are each closed, the template's own
+    // mask is spliced in; otherwise a comment or raw-text element could cross the
+    // splice boundary, so the whole page is re-masked.
+    if (splicedMask?.masked != null && offsets) {
+      closeFacts?.splice(
+        masked,
+        offsets.startIndex,
+        offsets.endIndex,
+        splicedMask.masked.slice(
+          offsets.startIndex,
+          offsets.startIndex + transpiledTag.length,
+        ),
+      );
+      masked = splicedMask.masked;
+      searchFrom = offsets.startIndex;
+    } else {
+      closeFacts = undefined;
+      masked = maskRawTextContent(transpiledHtmlBody);
+      chargeScan(transpiledHtmlBody.length);
+      rescanFromStart = true;
+      searchState.attributeCheckpoint = undefined;
+      // A comment or raw-text element opened inside the new content could
+      // extend a mask region across the splice boundary only forward, never
+      // into the resolved prefix, so resuming at the instance start is still
+      // safe; without known indices, be conservative.
+      searchFrom = offsets ? offsets.startIndex : 0;
+    }
+    // Without offsets the edit position is unknown, so verify from the start again.
+    maskFrom = splicedMask ? splicedMask.checkpoint : null;
+    maskFromEnd = splicedMask?.endCheckpoint ?? null;
+    if (!splicedMask) maskFacts = {};
+    probeSplice(splicedMask?.masked != null && offsets !== undefined);
+  };
+  /** Report the loop's state to the test-only invariant oracle, when set. */
+  const probeSplice = (incremental: boolean): void => {
+    const { afterSplice } = __expansionProbeForTests;
+    if (!afterSplice) return;
+    const facts = closeFacts;
+    afterSplice({
+      html: transpiledHtmlBody,
+      masked,
+      searchFrom,
+      incremental,
+      lastCloseAt: facts && ((tagName) => facts.at(tagName)),
+      closerFacts: maskFacts.last && { ...maskFacts.last },
+    });
+  };
   let lastTag = "(unknown)";
   while (true) {
     // Request time only (component-scan-budget.ts): the rescans charged
@@ -387,6 +478,12 @@ export const expandComponents = (
       searchFrom,
       searchState,
     );
+    __expansionProbeForTests.afterSearch?.({
+      html: transpiledHtmlBody,
+      masked,
+      searchFrom,
+      found: partial,
+    });
     if (!partial.name) {
       return {
         transpiledHtmlBody: flatten(
@@ -429,19 +526,21 @@ export const expandComponents = (
     }
 
     if (!component.fileContent) {
-      return {
-        transpiledHtmlBody: flatten(
-          stripSourceFileComments(
-            transpiledHtmlBody.replace(component.content || "", ""),
-          ),
-        ),
-        usedComponents,
-      };
+      // An empty template (a component file created but not yet written)
+      // renders nothing: the usage and what it wraps are removed, and the
+      // search goes on to the rest of the page. It is not a used instance:
+      // with no markup there is nothing for its CSS or scripts to apply to.
+      spliceInstance(component, "");
+      substitutions++;
+      continue;
     }
 
     let currentStage: ExpansionStage = "";
     // Prop and binding diagnostics name the component file they are about.
+    // It also keeps the search's offsets, which a copy `scope` returns may not.
     const usage = component;
+    // The page the search read, so a failure knows the offsets still hold.
+    const searchedBody = transpiledHtmlBody;
     const propWarn = (message: string): void =>
       warn(`<${usage.name}> (${usage.fileName || "unknown file"}): ${message}`);
     try {
@@ -646,77 +745,38 @@ export const expandComponents = (
       if (component.fileName) {
         transpiledTag = `<!--bascik-source-file:${component.fileName}-->${transpiledTag}<!--bascik-source-file-end:${component.fileName}-->`;
       }
-      const { startIndex: sIdx, endIndex: eIdx } = component as {
-        startIndex?: number;
-        endIndex?: number;
-      };
-      const offsets =
-        typeof sIdx === "number" && typeof eIdx === "number"
-          ? { startIndex: sIdx, endIndex: eIdx }
-          : undefined;
-      const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
-        ? spliceRawTextMask(
-            transpiledHtmlBody,
-            masked,
-            offsets.startIndex,
-            offsets.endIndex,
-            transpiledTag,
-            maskFromEnd && offsets.startIndex >= maskFromEnd.at
-              ? maskFromEnd
-              : (maskFrom ?? 0),
-            maskFacts,
-          )
-        : null;
-      transpiledHtmlBody = replaceTag(
-        transpiledHtmlBody,
-        component.name,
-        transpiledTag,
-        masked,
-        offsets,
-      );
+      spliceInstance(component, transpiledTag);
 
-      // Mask the inserted template too. Without HTML minification (the dev server, or
-      // `minify.html: false`) a template keeps its comments, and a component tag named in
-      // one, such as a usage note, must stay text instead of being expanded. When the
-      // prefix, the replaced usage, and the template are each closed, the template's own
-      // mask is spliced in; otherwise a comment or raw-text element could cross the
-      // splice boundary, so the whole page is re-masked.
-      if (splicedMask?.masked != null && offsets) {
-        closeFacts?.splice(
-          masked,
-          offsets.startIndex,
-          offsets.endIndex,
-          splicedMask.masked.slice(
-            offsets.startIndex,
-            offsets.startIndex + transpiledTag.length,
-          ),
-        );
-        masked = splicedMask.masked;
-        searchFrom = offsets.startIndex;
-      } else {
-        closeFacts = undefined;
-        masked = maskRawTextContent(transpiledHtmlBody);
-        chargeScan(transpiledHtmlBody.length);
-        rescanFromStart = true;
-        searchState.attributeCheckpoint = undefined;
-        // A comment or raw-text element opened inside the new content could
-        // extend a mask region across the splice boundary only forward, never
-        // into the resolved prefix, so resuming at the instance start is still
-        // safe; without known indices, be conservative.
-        searchFrom = offsets ? offsets.startIndex : 0;
-      }
-      // Without offsets the edit position is unknown, so verify from the start again.
-      maskFrom = splicedMask ? splicedMask.checkpoint : null;
-      maskFromEnd = splicedMask?.endCheckpoint ?? null;
-      if (!splicedMask) maskFacts = {};
-
+      // The usage slices are slices of the page string, which is a fresh
+      // flat copy after each splice: kept, every recorded instance would pin
+      // one copy of the whole page, so memory would grow as instances times
+      // page size and a self-including component would exhaust the heap
+      // before the substitution limit. Nothing after the loop reads them.
+      delete component.content;
+      delete component.innerContent;
       usedComponents.push(component);
       substitutions++;
     } catch (error) {
       // The limit tripwire throws before the `try`, so nothing here can be a
       // ComponentExpansionLimitError unless a host callback made one.
       opts.onError(component, currentStage, error, transpiledHtmlBody);
-      if (component.content) {
+      const { startIndex, endIndex } = usage as {
+        startIndex?: number;
+        endIndex?: number;
+      };
+      if (
+        transpiledHtmlBody === searchedBody &&
+        typeof startIndex === "number" &&
+        typeof endIndex === "number"
+      ) {
+        // Strip the usage that failed where the search found it, like an
+        // empty template. A search by name from the start of the page would
+        // strip the first usage of that name instead, which may lie inside a
+        // usage `scope` declined (left as written), and the search would
+        // then decline that usage again, minting it a second id.
+        spliceInstance(usage, "");
+        substitutions++;
+      } else if (component.content) {
         transpiledHtmlBody = replaceTag(
           transpiledHtmlBody,
           component.name,
@@ -734,6 +794,7 @@ export const expandComponents = (
         maskFacts = {};
         closeFacts = undefined;
         searchState.attributeCheckpoint = undefined;
+        probeSplice(false);
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)

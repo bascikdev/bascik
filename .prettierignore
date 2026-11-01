@@ -5,6 +5,10 @@ coverage/
 test-results/
 hint-report/
 
+# Bascik's private output folder (sidecars, build state, scoping templates). Bascik writes a nested .gitignore into
+# it, which git honors but the Prettier CLI does not read, so after an e2e run `yarn check:format` saw its JSON.
+**/.bascik/
+
 # Externally sourced skills, verified against the hashes in skills-lock.json.
 .agents/
 

@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { NAV } from "./nav.ts";
+import { isExternalNavPage } from "./nav-helpers.ts";
 import {
   buildSearchEntries,
   compactSearchIndex,
@@ -102,6 +104,59 @@ describe("search index", () => {
       expect(snippet(hit!.text, query, tokens(query)).toLowerCase()).toContain(
         query,
       );
+    }
+  });
+
+  it("indexes every sidebar page with searchable text", () => {
+    const unsearchable = NAV.flatMap((section) => section.pages)
+      .filter((page) => !isExternalNavPage(page))
+      .filter(
+        (page) =>
+          !entries.some(
+            (entry) =>
+              entry.text.length > 0 &&
+              (entry.path === page.href ||
+                entry.path.startsWith(`${page.href}#`)),
+          ),
+      )
+      .map((page) => page.href);
+    expect(unsearchable).toEqual([]);
+  });
+
+  // /deployment's Markdown is content/deployment/index.md, not content/deployment.md.
+  it("indexes a page whose Markdown is a folder's index.md, with its title and sections", () => {
+    const deployment = entries.filter(
+      (entry) =>
+        entry.path === "/deployment" || entry.path.startsWith("/deployment#"),
+    );
+    expect(deployment[0]).toMatchObject({
+      title: "Deployment Overview",
+      heading: null,
+    });
+    expect(deployment[0].text.length).toBeGreaterThan(0);
+    expect(deployment.length).toBeGreaterThan(5);
+  });
+
+  it("warns, naming the files it tried, when a sidebar page has no Markdown", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const typoed = await buildSearchEntries([
+        {
+          section: "Overview",
+          pages: [{ href: "/getting-startd", label: "Getting Started" }],
+        },
+      ]);
+      expect(typoed.at(-1)).toMatchObject({
+        path: "/getting-startd",
+        text: "",
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "content/getting-startd.md or content/getting-startd/index.md",
+        ),
+      );
+    } finally {
+      warn.mockRestore();
     }
   });
 });

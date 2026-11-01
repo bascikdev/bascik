@@ -242,6 +242,8 @@ const REASONS = {
     `is where an attribute name goes, inside <${tag}>. A value never chooses which attributes an element has. Write the attribute in the template with a quoted value, or choose between fixed html\`...\` fragments in code.`,
   comment: () =>
     "is inside an HTML comment (or a <!...> declaration). Move the value out of the comment.",
+  "cdata-end": (n: number) =>
+    `follows a <![CDATA[ section with a > before its ]]>. HTML ends the section at the first >, SVG and MathML at ]]>, so html cannot tell where hole ${n} lands. Remove > from the CDATA section (or the CDATA wrapper).`,
   srcdoc: () =>
     "is inside srcdoc, an HTML document that runs with the page's origin. Set src to a URL instead.",
   "meta-http-equiv": () =>
@@ -445,7 +447,14 @@ const compile = (strings: readonly string[], mode = 0): Pass => {
   let foreignText = false;
   let foreignUnsafe = false;
   let ambiguous: string | null = null;
-  let cdata = false;
+  /**
+   * A `<![CDATA[` section had a > before its first ]]>. HTML content ends it
+   * at the first > (a bogus comment), foreign content at ]]>, and the scan
+   * cannot always tell which applies (after a tag that leaves SVG, or once
+   * the fragment is nested), so every later hole is refused. A section whose
+   * first > is the one in ]]> ends at the same place either way.
+   */
+  let cdataEndUnknown = false;
   let commentEnd = "";
 
   const startAttr = (name: string): void => {
@@ -789,10 +798,12 @@ const compile = (strings: readonly string[], mode = 0): Pass => {
               }
               if (state !== S.Comment) state = S.Data;
             } else if (/^\[CDATA\[/i.test(rest)) {
-              cdata = true;
               state = S.Comment;
               commentEnd = roots > 0 ? "]]>" : ">";
               i += 8;
+              const close = part.indexOf("]]>", i);
+              if (close === -1 || part.indexOf(">", i) !== close + 2)
+                cdataEndUnknown = true;
             } else {
               state = S.Bogus;
               i++;
@@ -970,8 +981,8 @@ const compile = (strings: readonly string[], mode = 0): Pass => {
           ? REASONS["style-body"]()
           : REASONS["script-body"](),
       );
-    if ((ambiguous !== null || cdata) && (state as S) !== S.Comment) {
-      if (cdata) refuse("comment", n, REASONS.comment());
+    if ((ambiguous !== null || cdataEndUnknown) && (state as S) !== S.Comment) {
+      if (cdataEndUnknown) refuse("comment", n, REASONS["cdata-end"](n));
       else
         refuse(
           "script-comment-ambiguous",

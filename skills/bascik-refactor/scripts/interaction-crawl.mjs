@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // Interaction crawl: find every interactive element on a production route, activate each one, record what it did,
 // and replay it on the Bascik target by stable anchors. Reports effects that are missing or different.
-// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. Read-only toward both
-// sites: plain navigation links and submit buttons are never activated.
+// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. NOT read-only toward
+// production: plain navigation links and submit buttons are never activated, but every other control (a
+// <button type="button">, a [role=button], an element with a click listener) is clicked from a fresh load, once per
+// matrix case and again per opened layer. A handler that posts to the live site (add to cart, subscribe, vote, start
+// a chat) runs each time: list those controls with --skip-control before running.
 //
 // Why: a hero button that scrolls to a section did nothing on the target, and a hand-written interactions.json only
 // compared open and closed states for the steps someone remembered to write down.
@@ -19,6 +22,9 @@ import {
   DEFAULT_SETTLE_MS,
   settleOf,
   runCli,
+  SKIP_CONTROL_OPTION,
+  skipControlsFrom,
+  skipControlsOf,
   withPage,
 } from "./lib/checks.mjs";
 import { routeUrl, settle } from "./lib/capture.mjs";
@@ -33,19 +39,30 @@ hover listener, found with CDP DOMDebugger.getEventListeners; with a delegated c
 window, the elements with a pointer cursor or a data attribute naming an in-page target; and the triggers of menus
 that open on CSS :hover), activates each one from a fresh load (a click, or a hover) and records the effect: scroll
 distance, the heading scrolled to and where it lands (a heading under a sticky header is a finding), location.hash,
-URL, aria-expanded, open and hidden changes, form values (a quantity stepper), content moved inside a clipped region
+URL (relative to the origin the route landed on, so a --prod that redirects to https or www still compares),
+aria-expanded, open and hidden changes, form values (a quantity stepper), content moved inside a clipped region
 (a carousel track that slides), newly visible elements and the focused element. A control that opens something (a
 dialog, a menu, a disclosure) is opened again and the controls inside it are crawled too, one level deep (a dialog's
 Close). What the page changes on its own with no activation (a carousel, a ticker, a late banner, a modal on a timer)
 is not counted as any control's effect. Then it finds the same element on the target by test id, role and accessible
-name, in-page href or text, does the same, and reports missing elements and missing or different effects. Exits 1 on
-any finding.
+name, in-page href or text, does the same, and reports missing elements and missing or different effects. An element
+whose selector finds nothing after the fresh load (an id that changes per load) is found again by the same anchors; a
+target element that still cannot be activated is reported as unmeasured, never passed. Exits 1 on any finding.
+
+Side effects: the crawl is not read-only toward production. Plain navigation links and submit buttons are never
+activated, but every other control is clicked (or hovered) from a fresh load, once per matrix case and once more per
+layer it opens, and state-capture does it again. A handler that posts to the live site (add to cart, subscribe through
+JavaScript, vote, like, start a chat, analytics events) runs every time. Review the site's controls first and pass each
+side-effecting one with --skip-control; compare those by hand.
 
 Options:
   --prod <url>      Live production origin
   --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>    Route to crawl (repeatable, required)
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
+  --skip-control <selector>
+                    A control with side effects on the live site to never activate, on either side, such as
+                    '[data-testid="add-to-cart"]' (repeatable)
   --settle-ms <ms>  Least time after navigation before measuring (default 5000)
   --matrix <file>   Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>       Report folder (default artifacts/checks)
@@ -54,7 +71,8 @@ Options:
 
 /**
  * Elements the crawl activates without needing a listener. Plain links (a[href] to another page) and submit buttons
- * are left out: activating them would navigate away or post a form.
+ * are left out: activating them would navigate away or post a form. Every other button is clicked, whatever its
+ * handler does; the controls passed with --skip-control are not (activatable).
  */
 export const INTERACTIVE_SELECTOR = [
   "button",
@@ -120,10 +138,14 @@ function anchorOf(el, mode) {
   };
 }
 
-/** In the page: whether the crawl may activate `el` at all (a hover never leaves the page, so any link may be hovered). */
-export function activatable(el, mode, masks) {
+/**
+ * In the page: whether the crawl may activate `el` at all (a hover never leaves the page, so any link may be hovered).
+ * An element inside one of `skip` (--skip-control: a control whose handler posts to the live site) never is.
+ */
+export function activatable(el, mode, masks, skip) {
   if (!isRendered(el)) return false;
   if (isMasked(el, masks)) return false;
+  if (isMasked(el, skip)) return false;
   if (el.closest("[disabled], [inert]")) return false;
   const tag = tagOf(el);
   const type = String(el.getAttribute("type") ?? "").toLowerCase();
@@ -165,7 +187,7 @@ function discoverBySelector(arg) {
     items.push({ selector, anchor: anchorOf(el, mode), reason });
   };
   const found = [...document.querySelectorAll(arg.selector)].filter((el) =>
-    activatable(el, "click", arg.masks),
+    activatable(el, "click", arg.masks, arg.skip),
   );
   for (const el of found) add(el, "selector", "click");
   if (arg.delegated) {
@@ -180,7 +202,7 @@ function discoverBySelector(arg) {
       const ownPointer =
         pointer(el) && !(el.parentElement && pointer(el.parentElement));
       if (!namesTarget && !ownPointer) continue;
-      if (!activatable(el, "click", arg.masks)) continue;
+      if (!activatable(el, "click", arg.masks, arg.skip)) continue;
       add(el, "delegated", "click");
     }
   }
@@ -193,7 +215,7 @@ function discoverBySelector(arg) {
     const trigger = [...parent.querySelectorAll("a, button")].find(
       (t) => !list.contains(t) && isRendered(t),
     );
-    if (trigger && activatable(trigger, "hover", arg.masks))
+    if (trigger && activatable(trigger, "hover", arg.masks, arg.skip))
       add(trigger, "css-hover", "hover");
   }
   return items;
@@ -204,9 +226,9 @@ function discoverBySelector(arg) {
  * listener handles, triggers of CSS :hover menus, then elements whose only sign of interactivity is a click or hover
  * listener on the element itself (found through CDP DOMDebugger.getEventListeners). Each item is
  * { selector, anchor: { mode: "click" | "hover", ... }, reason: "selector" | "delegated" | "css-hover" | "listener" }.
- * Elements inside a mask are left out.
+ * Elements inside a mask, and the controls in `skip` (--skip-control), are left out.
  */
-export async function discover(page, masks = []) {
+export async function discover(page, masks = [], skip = []) {
   const cdp = await page.context().newCDPSession(page);
   const listenerItems = [];
   let delegated = false;
@@ -252,8 +274,8 @@ export async function discover(page, masks = []) {
         objectId: object.objectId,
         returnByValue: true,
         functionDeclaration: onElementSource(
-          `function (el, arg) { ${anchorOf}\n${activatable}\nif (el.nodeType !== 1 || el === document.body || el === document.documentElement) return { delegated: arg.modes.includes("click") }; return arg.modes.filter((mode) => activatable(el, mode, arg.masks)).map((mode) => ({ selector: selectorOf(el), anchor: anchorOf(el, mode), reason: "listener" })); }`,
-          { modes: [...modes], masks },
+          `function (el, arg) { ${anchorOf}\n${activatable}\nif (el.nodeType !== 1 || el === document.body || el === document.documentElement) return { delegated: arg.modes.includes("click") }; return arg.modes.filter((mode) => activatable(el, mode, arg.masks, arg.skip)).map((mode) => ({ selector: selectorOf(el), anchor: anchorOf(el, mode), reason: "listener" })); }`,
+          { modes: [...modes], masks, skip },
         ),
       });
       const value = described?.value;
@@ -267,7 +289,7 @@ export async function discover(page, masks = []) {
   const found = await inPage(
     page,
     `function (arg) { ${anchorOf}\n${activatable}\nreturn (${discoverBySelector})(arg); }`,
-    { selector: INTERACTIVE_SELECTOR, masks, delegated },
+    { selector: INTERACTIVE_SELECTOR, masks, delegated, skip },
   );
   const seen = new Set(
     found.map((item) => `${item.anchor.mode} ${item.selector}`),
@@ -611,8 +633,36 @@ async function press(locator, mode) {
 }
 
 /**
+ * In the page: the selector of the one rendered element whose anchor is `arg.anchor` (the same test id; else the same
+ * role and accessible name; else the same in-page href; else the same text, always on the same tag), or null when no
+ * element or more than one matches (repeated cards whose ids change per load cannot be told apart).
+ */
+function relocate(arg) {
+  const want = arg.anchor;
+  const els = [...document.querySelectorAll("*")].filter(
+    (el) =>
+      tagOf(el) === want.tag && isRendered(el) && !isMasked(el, arg.masks),
+  );
+  const anchors = els.map((el) => anchorOf(el, want.mode));
+  const tries = [
+    (c) => want.testId && c.testId === want.testId,
+    (c) =>
+      norm(want.name) && c.role === want.role && c.name === norm(want.name),
+    (c) => want.href && c.href === want.href,
+    (c) => norm(want.text) && c.text === norm(want.text),
+  ];
+  for (const test of tries) {
+    const hits = els.filter((_, i) => test(anchors[i]));
+    if (hits.length === 1) return selectorOf(hits[0]);
+    if (hits.length > 1) return null;
+  }
+  return null;
+}
+
+/**
  * Activates `item` (a click, or a hover for anchor.mode "hover") from a fresh load of the route and returns its
- * effect, or null when the element is gone after the reload (it rendered late or at random). An item found inside an
+ * effect. When its selector finds nothing after the reload, the element is found again by its anchor (relocate); the
+ * effect is null when that fails too (it rendered late, or is one of several look-alikes whose ids change per load). An item found inside an
  * opened layer carries the controls that open it in `via`; they are activated first, without being measured. The
  * element is scrolled into view before the state is recorded, so the scroll a click causes is measured from where the
  * visitor clicks it (a "Back to top" link in the footer), and content that fades in as it scrolls into view is not
@@ -623,8 +673,15 @@ export async function activate(page, origin, route, item, options = {}) {
   const selector = typeof item === "string" ? item : item.selector;
   const mode =
     typeof item === "string" ? "click" : (item.anchor?.mode ?? "click");
-  const base = routeUrl(origin, "/");
   await reload(page, origin, route);
+  // URLs are recorded relative to the origin the route landed on: a --prod that redirects (http to https, a bare
+  // domain to www) would otherwise make every control "leave the page" at an absolute URL production never left.
+  const configured = new URL(routeUrl(origin, "/"));
+  const landed = await page.evaluate(() => location.origin).catch(() => null);
+  const base =
+    landed && landed !== "null"
+      ? `${landed}${configured.pathname}`
+      : configured.href;
   await parkPointer(page);
   for (const step of (typeof item === "string" ? [] : item.via) ?? []) {
     const opener = page.locator(step.selector).first();
@@ -632,8 +689,21 @@ export async function activate(page, origin, route, item, options = {}) {
     await press(opener, step.anchor?.mode ?? "click");
     await inPage(page, afterActivation, { masks }).catch(() => {});
   }
-  const locator = page.locator(selector).first();
-  if ((await locator.count()) === 0) return null;
+  let target = selector;
+  if ((await page.locator(target).count()) === 0) {
+    // The selector changed between loads (an id a script randomizes per load): find the element by its anchor.
+    const again =
+      typeof item === "string"
+        ? null
+        : await inPage(
+            page,
+            `function (arg) { ${anchorOf}\nreturn (${relocate})(arg); }`,
+            { anchor: item.anchor, masks },
+          ).catch(() => null);
+    if (!again) return null;
+    target = again;
+  }
+  const locator = page.locator(target).first();
   // An element production showed on a timer (a cookie banner's button, a timed modal's Close) is clicked once it shows,
   // on both sides, not before.
   await locator
@@ -643,7 +713,7 @@ export async function activate(page, origin, route, item, options = {}) {
   await inPage(page, afterActivation, { masks }).catch(() => {});
   const arg = {
     shown: SHOWN_SELECTOR,
-    trigger: selector,
+    trigger: target,
     base,
     masks,
     skip: volatile.shown ?? [],
@@ -756,8 +826,9 @@ function effectText(e) {
 
 /**
  * Compares production's recorded effects with the target's: [{ anchor, effect }] on each side. Returns findings of
- * kind missing-element (no matching target element), missing-effect (production does something the target does not)
- * and different-effect (both act, differently, or the target acts where production does not).
+ * kind missing-element (no matching target element), unmeasured (the target element was matched but could not be
+ * activated after a fresh load, effect null), missing-effect (production does something the target does not) and
+ * different-effect (both act, differently, or the target acts where production does not).
  */
 export function diffEffects(prod, target) {
   const findings = [];
@@ -781,7 +852,20 @@ export function diffEffects(prod, target) {
     used.add(i);
     const a = p.effect;
     const b = target[i].effect;
-    if (!a || !b) continue;
+    // Production unmeasured (its element was gone after the reload): nothing recorded to hold the target to. The target
+    // unmeasured while production did something is not a pass: its effect was never seen.
+    if (!a) continue;
+    if (!b) {
+      findings.push(
+        finding(
+          CHECK,
+          "unmeasured",
+          `${who} is on the target, but after a fresh load the crawl found it neither by its selector nor by its test id, role and name, href or text, so its effect was never measured${effectText(a)}; give it a stable id or data-testid`,
+          fields,
+        ),
+      );
+      continue;
+    }
     const add = (kind, message) =>
       findings.push(finding(CHECK, kind, `${who}: ${message}`, fields));
     if (scrolls(a) && !scrolls(b))
@@ -869,6 +953,7 @@ export async function crawl(
   matrixCase,
   masks = [],
   settleMs = DEFAULT_SETTLE_MS,
+  skip = [],
 ) {
   return withPage(
     browser,
@@ -876,7 +961,7 @@ export async function crawl(
     route,
     matrixCase,
     async (page) => {
-      const items = await discover(page, masks);
+      const items = await discover(page, masks, skip);
       const volatile = await observeVolatile(
         page,
         origin,
@@ -905,7 +990,7 @@ export async function crawl(
           { ...item, via: [] },
           { masks, settleMs },
         );
-        const fresh = (await discover(page, masks)).filter(
+        const fresh = (await discover(page, masks, skip)).filter(
           (n) => !known.has(`${n.anchor.mode} ${n.selector}`),
         );
         const keep = await inPage(page, insideOpened, {
@@ -938,17 +1023,26 @@ export async function crawl(
 
 /**
  * Runs the crawl on both sides (at once) for every route and case. Resolves to { check, ok, findings, crawled }.
- * Options: prod, target, routes, cases, masks.
+ * Options: prod, target, routes, cases, masks, skipControls.
  */
 export async function runCheck(browser, options) {
   const masks = masksOf(options);
+  const skip = skipControlsOf(options);
   const findings = [];
   const crawled = [];
   for (const route of routesOf(options))
     for (const c of casesOf(options)) {
       const [prod, target] = await Promise.all([
-        crawl(browser, options.prod, route, c, masks, settleOf(options)),
-        crawl(browser, options.target, route, c, masks, settleOf(options)),
+        crawl(browser, options.prod, route, c, masks, settleOf(options), skip),
+        crawl(
+          browser,
+          options.target,
+          route,
+          c,
+          masks,
+          settleOf(options),
+          skip,
+        ),
       ]);
       crawled.push({ route, width: c.width, prod, target });
       for (const f of diffEffects(prod, target))
@@ -958,7 +1052,10 @@ export async function runCheck(browser, options) {
 }
 
 export function parseCliArgs(argv) {
-  return parseArgsFor(argv);
+  const args = parseArgsFor(argv, { extra: SKIP_CONTROL_OPTION });
+  if (args.help) return args;
+  const { "skip-control": skipControls, ...rest } = args;
+  return { ...rest, skipControls: skipControlsFrom(skipControls) };
 }
 
 if (isMain(import.meta.url)) {

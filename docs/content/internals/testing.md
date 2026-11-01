@@ -85,14 +85,16 @@ yarn pkg:test:all
 
 ## Running Linear-Time Checks
 
-The checks that guard against super-linear work (see [Time-Boundary Testing Model](#time-boundary-testing-model)) live in `*.linear-time.test.ts` files next to the module's other tests, and run in their own Vitest project. Each check times several samples in CPU time, which Windows counts in ticks of about 15.6 ms, so a check takes seconds there and milliseconds on Linux and macOS. Keeping them out of the `unit` project keeps the unit suite fast on every operating system. CI runs them once, on Linux, in the integration stage.
+The checks that guard against super-linear work (see [Time-Boundary Testing Model](#time-boundary-testing-model)) live in `*.linear-time.test.ts` files next to the module's other tests, and run in their own Vitest project. Each check times several samples in CPU time, which Windows counts in ticks of about 15.6 ms, so a check takes seconds there and milliseconds on Linux and macOS. Keeping them out of the `unit` project keeps the unit suite fast on every operating system, and keeps them out of coverage runs, whose instrumentation skews a growth ratio. `pkg`, `lsp`, and `skills-tests` each have a `linear-time` project. CI runs them once, on Linux, in the integration stage.
 
 ```sh
 # Workspace-wide linear-time checks
 yarn linear-time:all
 
-# @bascik/bascik only
+# One workspace
 yarn pkg:linear-time
+yarn lsp:linear-time
+yarn skills:linear-time
 ```
 
 ## Running E2E Tests
@@ -224,7 +226,11 @@ This keeps ordinary feature tests robust while still verifying compiler transfor
 
 ### Repeated-instance scoping verification
 
-The Vitest projects in `pkg/` and `docs/`, and every Playwright config, set `BASCIK_VERIFY_SCOPING_TEMPLATES=1`. With it, each scoping result reused for a repeated component instance is also recomputed by the full pipeline, and any difference throws. `scoping-parametricity.test.ts` checks the underlying property directly: on random components (fast-check) and on every component in `docs/` and `pkg/e2e/`, renaming one instance's generated names must give exactly the full pipeline's output for another instance ID, with and without identifier minification. Set `SCOPING_PROPERTY_RUNS` to raise the number of random cases for a deeper local run. `scoping-template.test.ts` pins the component fields and config the pipeline reads and writes with recording proxies, so a new input fails a test instead of being left out of the reuse key.
+The Vitest projects in `pkg/`, `docs/`, and `adapters/cloudflare/`, and every Playwright config, set `BASCIK_VERIFY_SCOPING_TEMPLATES=1` (the builds those tests spawn inherit it). With it, each scoping result reused for a repeated component instance is also recomputed by the full pipeline, and any difference throws. `scoping-parametricity.test.ts` checks the underlying property directly: on random components (fast-check) and on every component in `docs/` and `pkg/e2e/`, renaming one instance's generated names must give exactly the full pipeline's output for another instance ID, with and without identifier minification. `scoping-template-adversarial.test.ts` does the same for the constructs the scoping engine reads by pattern (escaped and non-ASCII class selectors, dotted `@layer` names, `[id]` forms, multi-name containers, nested `&` chains, compound `querySelector` selectors, comparisons in scripts) and typo'd variants of each, and `request-render-node-scoping-parity.test.ts` and the Cloudflare adapter's `serverless-parity.integration.test.ts` check the request-time replay of the same templates against the build. Set `SCOPING_PROPERTY_RUNS` to raise the number of random cases for a deeper local run. `scoping-template.test.ts` pins the component fields and config the pipeline reads and writes with recording proxies, so a new input fails a test instead of being left out of the reuse key.
+
+### Incremental mask verification
+
+The component expansion loop keeps the page's mask (comments and raw-text element contents blanked) current across splices instead of re-masking the page, and resumes each component search at a cursor. `component-expansion-mask-oracle.test.ts` checks that against a whole re-read: a test-only probe (`__expansionProbeForTests` in `component-scan-stats.ts`) hands it the loop's state after every splice and every search, and on random pages from a grammar of nested components, slots, raw-text elements, comments, CDATA, multi-line tags and unclosed elements (fast-check) it compares the mask with `maskRawTextContent`, the last-close facts with the closes in that mask, and the search with one from the start of the page. A shrunk counterexample is pinned there as a fixed input. Set `MASK_ORACLE_RUNS` to raise the number of random pages for a deeper local run.
 
 ## E2E Test Files
 
@@ -361,6 +367,25 @@ describe("prefixElementAttribute", () => {
 
 > **Important.** Always import the module under test _after_ calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
+### Bounding Property Tests
+
+A fast-check property with no explicit bounds draws a new random seed on every run and runs under Vitest's 5 s default timeout, so its cost changes from run to run and a slow CI runner can time it out. Pass each `fc.assert` the options from `propertyBounds(ciRuns, runsVariable?)` in `pkg/src/lib/property-runs.test-helper.ts`, and its `timeoutMs` to `it`:
+
+```ts
+import { propertyBounds } from "./property-runs.test-helper.ts";
+
+const BOUNDS = propertyBounds(100, "MASK_ORACLE_RUNS");
+it(
+  "keeps the mask equal to a whole re-read",
+  () => {
+    fc.assert(fc.property(pageArb, checkPage), BOUNDS.options);
+  },
+  BOUNDS.timeoutMs,
+);
+```
+
+The property then runs `ciRuns` cases from a fixed seed with a 30 s timeout. Size `ciRuns` so the test takes well under a second on a developer machine; the timeout is the margin for a slow runner, such as the Node 22.22 floor job. The optional variable raises the count for a deeper local run (`MASK_ORACLE_RUNS=20000 yarn pkg:unit`), and the timeout grows with it. `PROPERTY_SEED` starts every bounded property from another seed. A variable that is empty or not a positive whole number throws with its name and value, because fast-check runs no case at all for a `numRuns` of `NaN` or 0 and passes.
+
 ## Boundary Test Patterns
 
 ### Real-Filesystem Watch Testing
@@ -377,7 +402,7 @@ Bascik uses five test mechanics for time-sensitive behavior. This keeps framewor
 4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
 5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
 
-Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth goes in a `*.linear-time.test.ts` file and sets `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there. The helper throws in a test of the `unit` project, and in a test with a shorter timeout. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`).
+Tests that guard against super-linear work on hostile input (masking, tag and attribute scans, request-time rendering) do not use fixed wall-clock bounds, which flaked on loaded CI runners. `linear-time.test-helper.ts` (`expectLinearTime`, `expectLinearTimeAsync`) times a quarter-size and a full-size input in this thread's CPU time, interleaved over several samples, keeps the fastest of each, and requires the growth ratio to stay under `MAX_GROWTH` (12): linear work grows about 4 times when the input quadruples, quadratic work about 16. A run too fast to time is repeated within a sample, a growth in the band that load reaches is sampled again, a fixed cost both sizes share is measured as a `baseline` and taken out, and a full-size ceiling still fails catastrophic regressions. Work that a cap keeps linear but slow is checked with `expectCostRatio` against reference work in the same process, with separate limits with and without coverage. A test that measures growth goes in a `*.linear-time.test.ts` file and sets `LINEAR_TIME_TIMEOUT_MS` as its timeout, because Windows counts CPU time in coarse ticks and the check takes seconds there. The helper throws in a test of the `unit` project, and in a test with a shorter timeout. The language server's tests share the same approach (`lsp/src/linear-time.test.util.ts`), and so do the agent skills' tests (`skills-tests/tests/linear-time.test-helper.ts`, which also throws in the `unit` project).
 
 For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
@@ -395,7 +420,7 @@ Exec scripts run in `pre`, `parallel`, and `post` phases around compilation. The
 
 Some integration tests measure the runtime itself rather than a single feature:
 
-- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#in-process-script-module-registry): clearing framework caches does not evict Node's ESM cache.
+- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#in-process-script-module-registry): clearing framework caches does not evict Node's ESM cache. The harness checks every sample itself, so a lane cannot pass by forgetting an assertion: superseded module entries and inline loads, and destroyed sockets, must be collected after GC (each tracked through a `WeakRef`, and each tracker must have observed something), active resources must match the baseline, and no heap snapshot may hold more `Timeout` objects than the first, which catches unref'd timers that `process.getActiveResourcesInfo()` does not list. Node's own HTTP `Date` header cache timer (`resetCache` in `node:internal/http`, identified by its script in the snapshot) is counted apart and may appear at most once: it lives until the next whole second after any response, so whether a snapshot holds it depends only on timing. The HTTP/2 rows need Node 24's TLS cleanup callback ordering; on the Node 22.22 floor they skip and print why, and the dev and HTTP/1.1 rows still run.
 - `profile-resource-boundaries.integration.test.ts` verifies that timers, descriptors, streams, child processes, and worker transfers are released at each boundary, using explicit producer and consumer gates and event-loop checkpoints.
 - `profile-workload.integration.test.ts` and `profile-fixture-tls.integration.test.ts` validate the profiling harness itself.
 
@@ -433,7 +458,7 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn check:all`: runs formatting (`check:format`), spelling (`check:spelling`), and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
-- `yarn linear-time:all`: runs the linear-time checks (`pkg` and `lsp`)
+- `yarn linear-time:all`: runs the linear-time checks (`pkg`, `lsp`, and `skills-tests`)
 - `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)
 - `yarn coverage:all`: generates and updates coverage reports across all packages
 - `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, linear-time checks, and E2E suites in sequence (coverage excluded)

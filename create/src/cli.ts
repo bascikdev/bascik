@@ -88,6 +88,14 @@ const unknownFlag = (arg: string): Error => {
 };
 
 /**
+ * npm keeps a `--no-<name>` written before `--` for itself and exports it as
+ * `npm_config_<name>`, set to the empty string (npm 11 writes a false boolean
+ * that way). `"false"` is accepted too, for `--<name>=false` on older npm.
+ */
+const npmConfigIsFalse = (value: string | undefined): boolean =>
+  value === "" || value === "false";
+
+/**
  * Parse the CLI arguments. `--template` takes its value either as the next token
  * or after `=`, so the project name is whichever positional is left over.
  * Throws on an unknown flag, naming the closest one, on an unknown or missing template value, and on a second positional
@@ -100,7 +108,8 @@ const unknownFlag = (arg: string): Error => {
  * prompt, which is why that flag belongs before `--`). `--template=<name>`
  * becomes `npm_config_template=<name>` and is honored too, while the two-token
  * form only yields `npm_config_template=true`, so that case is reported instead
- * of being guessed at.
+ * of being guessed at. `--no-skills` and `--no-install` are honored through
+ * `npm_config_skills` and `npm_config_install`; `--no-dev` leaves no trace.
  */
 export function parseCliOptions(
   args: string[],
@@ -151,11 +160,13 @@ export function parseCliOptions(
       args.includes("-y") ||
       args.includes("--yes") ||
       env.npm_config_yes === "true",
+    // npm consumes `--no-dev` written before `--` as its own deprecated `dev`
+    // setting and exports nothing, so only the form after `--` can be read.
     noDevFlag: args.includes("--no-dev"),
-    noInstallFlag: args.includes("--no-install"),
-    // npm keeps `--no-skills` written before `--` and sets npm_config_skills=false.
+    noInstallFlag:
+      args.includes("--no-install") || npmConfigIsFalse(env.npm_config_install),
     noSkillsFlag:
-      args.includes("--no-skills") || env.npm_config_skills === "false",
+      args.includes("--no-skills") || npmConfigIsFalse(env.npm_config_skills),
     template,
     projectName: positionals[0],
     helpFlag: false,
@@ -172,7 +183,7 @@ Options:
   -y, --yes          Answer every question with its default: the default template,
                      install the agent skills, install dependencies, start the dev server
   --no-skills        Do not install the Bascik agent skills
-  --no-install       Do not run npm install
+  --no-install       Do not run npm install (nor start the dev server, which needs it)
   --no-dev           Do not start the dev server
   -h, --help         Show this help text
 

@@ -145,4 +145,86 @@ describe("openGraph", () => {
       '<meta name="twitter:title" content="Getting Started" />',
     );
   });
+
+  async function ogDescription(metaTag: string): Promise<string[]> {
+    const pageFile = join(tempDir, "getting-started.html");
+    await writeFile(
+      pageFile,
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>Getting Started - Bascik Docs</title>
+  ${metaTag}
+</head>
+<body></body>
+</html>`,
+    );
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
+    const result = await openGraph();
+    return [
+      ...result.matchAll(
+        /<meta (?:property="og|name="twitter):description" content="([^"]*)" \/>/g,
+      ),
+    ].map((match) => match[1]);
+  }
+
+  it("keeps an apostrophe inside a double-quoted description", async () => {
+    expect(
+      await ogDescription(
+        `<meta name="description" content="Bascik's scoped CSS keeps selectors local." />`,
+      ),
+    ).toEqual([
+      "Bascik's scoped CSS keeps selectors local.",
+      "Bascik's scoped CSS keeps selectors local.",
+    ]);
+  });
+
+  it("keeps a double quote inside a single-quoted description, escaped once", async () => {
+    expect(
+      await ogDescription(
+        `<meta content='Say "frothy" milk.' name='description' />`,
+      ),
+    ).toEqual(["Say &quot;frothy&quot; milk.", "Say &quot;frothy&quot; milk."]);
+  });
+
+  // The page's own meta tag is already HTML, so its entities are decoded once before the OG tag escapes again.
+  it("does not double-escape entities written in the description", async () => {
+    expect(
+      await ogDescription(
+        `<meta name="description" content="Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;." />`,
+      ),
+    ).toEqual([
+      "Milk &amp; foam: Bascik's &lt;milk-frother&gt;.",
+      "Milk &amp; foam: Bascik's &lt;milk-frother&gt;.",
+    ]);
+  });
+
+  // pages/internals/benchmarking.html: <title>Benchmarking &amp; Profiling - Bascik Docs</title>.
+  it("escapes an entity in the title once, not twice", async () => {
+    const pageFile = join(tempDir, "getting-started.html");
+    await writeFile(
+      pageFile,
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>Benchmarking &amp; Profiling - Bascik Docs</title>
+  <meta name="description" content="Measure the frother build." />
+</head>
+<body></body>
+</html>`,
+    );
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = "https://bascik.dev";
+    const result = await openGraph();
+    expect(result).toContain(
+      '<meta property="og:title" content="Benchmarking &amp; Profiling" />',
+    );
+    expect(result).toContain(
+      '<meta name="twitter:title" content="Benchmarking &amp; Profiling" />',
+    );
+    expect(result).not.toContain("&amp;amp;");
+  });
 });

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Tells a deploy job whether the commit it built is still the newest one on
-// its branch. Concurrency groups keep two deploys of a branch from running at
-// once, but they do not order them: when commit X's tests finish after the
-// newer commit Y has already deployed, X would put older code live. The deploy
-// jobs run this inside their concurrency group, right before Wrangler, and skip
-// the upload or deploy when it prints `false`.
+// its branch. Runs finish in any order, and the deploy jobs have no
+// concurrency group of their own (on main a shared group would let an older
+// deploy that queued later cancel a newer pending one), so when commit X's
+// run reaches Wrangler after the newer commit Y's has deployed, X would put
+// older code live. Each deploy job runs this right before Wrangler and skips
+// the upload or deploy, and the smoke checks, when it prints `false`.
 //
 // Usage: node .github/scripts/newest-commit.mjs <ref> <sha>
 //   <ref>  github.ref of the push, such as refs/heads/main.

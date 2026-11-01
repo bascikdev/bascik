@@ -14,6 +14,10 @@ import { defineConfig } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
+// Recompute every reused scoping result and fail on any difference (pkg
+// scoping-template.ts); the fixture build the web server runs inherits it.
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= "1";
+
 const e2eDir = fileURLToPath(new URL(".", import.meta.url));
 const adapterDir = join(e2eDir, "..");
 const rootDir = join(adapterDir, "../..");

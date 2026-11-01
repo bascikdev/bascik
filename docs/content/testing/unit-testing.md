@@ -10,10 +10,10 @@ If your project was scaffolded with `create-bascik`, Vitest is pre-configured. T
 npm install -D vitest @vitest/coverage-v8
 ```
 
-Create a `vite.config.js` file in your project root:
+Create a `vite.config.ts` file in your project root. Import `defineConfig` from `vitest/config`: your project declares `vitest`, and `vite` is only Vitest's own dependency, which pnpm and Yarn Plug'n'Play do not let your config import.
 
-```js
-import { defineConfig } from "vite";
+```ts
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {

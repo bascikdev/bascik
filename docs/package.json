@@ -53,6 +53,7 @@
     "@vitest/coverage-v8": "^5.0.3",
     "@xterm/headless": "^6.0.0",
     "@zachleat/heading-anchors": "^1.0.5",
+    "axe-core": "^4.13.0",
     "canvas-confetti": "^1.9.4",
     "esbuild": "^0.28.2",
     "lighthouse": "^13.5.0",

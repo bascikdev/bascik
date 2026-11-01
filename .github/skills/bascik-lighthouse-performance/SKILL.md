@@ -24,6 +24,11 @@ docs/lighthouse/
 └── lighthouserc.test.ts         # Test suite verifying LHCI config consistency
 ```
 
+### Assertions: two rules the config tests enforce
+
+- **Assert only what lhci's Lighthouse reports.** `lhci autorun` runs the Lighthouse bundled with `@lhci/cli` (12.6 with lhci 0.15), not the repo's `lighthouse` 13 devDependency. Its `dom-size-insight` has no `numericValue`, so `maxNumericValue` on it reads NaN and fails every URL; the DOM budget uses the classic `dom-size` audit. `lighthouserc.test.ts` resolves lhci's Lighthouse and fails on an assertion naming an audit it lacks, or a numeric budget on an audit without a numeric value.
+- **`/search` is not SEO-scored.** The page is `noindex` on purpose. lhci evaluates each `assertMatrix` entry separately for every URL it matches, so turning an audit `off` in one entry does not cancel another's assertion: `categories:seo` lives in its own entry whose `matchingUrlPattern` skips `/search` (and only `/search`), and `/search` keeps the other categories from the `.*` entry. The pattern is `SEO_URL_PATTERN` in `docs/lighthouse/site.ts`: `generate-config.ts` writes it into the sweep configs, and `lighthouserc.test.ts` fails when `lighthouserc.json` uses another, so change it in both places together. Never lower the SEO threshold for other routes to get `/search` through.
+
 ---
 
 ## 2. Core Web Vitals Expectations for Bascik Pages

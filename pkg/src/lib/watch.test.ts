@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolve } from "node:path";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
@@ -283,12 +284,12 @@ const getHandler = (
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Default dev-mode watcher count: pages assets, pages html, components,
-// import root. Extra watchers (watchPaths, api, config) are
-// opt-in and asserted separately.
-const DEV_WATCHER_COUNT = 4;
+// import root, api (installed even before the api folder exists, F079).
+// Extra watchers (watchPaths, config) are opt-in and asserted separately.
+const DEV_WATCHER_COUNT = 5;
 
 describe("watchFiles – watcher setup", () => {
-  it("calls chokidar.watch four times in dev mode with default config", async () => {
+  it("calls chokidar.watch five times in dev mode with default config", async () => {
     await watchFiles();
     expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
   });
@@ -469,7 +470,13 @@ describe("watchFiles – import root watcher (watcher 3)", () => {
     mockWatch.mockClear();
     mockExistsSync.mockReturnValue(false);
     await watchFiles();
-    expect(mockWatch).toHaveBeenCalledTimes(3);
+    // pages assets, pages html, components, api: no import-root watcher.
+    expect(mockWatch).toHaveBeenCalledTimes(4);
+    expect(
+      mockWatch.mock.calls.some(
+        (c) => Array.isArray(c[0]) && c[0].includes(mockGetImportRoot()),
+      ),
+    ).toBe(false);
   });
 
   it("watches a custom import root outside the project", async () => {
@@ -940,6 +947,112 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
     await watchPromise;
   });
 
+  // F188: chokidar's `ready` fires before the boot compile ends. A page
+  // added in that window is not in the boot compile's page list, so it must
+  // be compiled once boot finishes, through the same coalesced rebuild.
+  const bootWithPausedCompile = async () => {
+    const captured: Record<string, (...args: any[]) => any> = {};
+    const pagesWatcher = {
+      on: vi.fn(function (this: any, event: string, handler: any) {
+        captured[event] = handler;
+        return this;
+      }),
+    };
+    const assetCaptured: Record<string, (...args: any[]) => any> = {};
+    const assetWatcher = {
+      on: vi.fn(function (this: any, event: string, handler: any) {
+        assetCaptured[event] = handler;
+        return this;
+      }),
+    };
+    const simpleWatcher = {
+      on: vi.fn(function (this: any) {
+        return this;
+      }),
+    };
+    mockWatch
+      .mockImplementationOnce(() => assetWatcher)
+      .mockImplementationOnce(() => pagesWatcher)
+      .mockImplementation(() => simpleWatcher);
+    const bootCompileRunning = Promise.withResolvers<void>();
+    const releaseBootCompile = Promise.withResolvers<void>();
+    mockProcessAllPages.mockImplementationOnce(async () => {
+      bootCompileRunning.resolve();
+      await releaseBootCompile.promise;
+    });
+    const watchPromise = watchFiles();
+    await new Promise((r) => setTimeout(r, 0));
+    await captured["ready"]?.();
+    await bootCompileRunning.promise;
+    return { captured, assetCaptured, releaseBootCompile, watchPromise };
+  };
+
+  it("compiles a page added after ready but during the boot compile, once boot ends", async () => {
+    const { captured, releaseBootCompile, watchPromise } =
+      await bootWithPausedCompile();
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+    captured["add"]?.("/project/src/pages/about.html");
+    // Not concurrently with the boot compile.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+    releaseBootCompile.resolve();
+    await watchPromise;
+    // One more full rebuild, finished before watchFiles (and boot) returns.
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+  });
+
+  it("folds several pages added during the boot compile into one rebuild", async () => {
+    const { captured, releaseBootCompile, watchPromise } =
+      await bootWithPausedCompile();
+    for (const name of ["a", "b", "c"])
+      captured["add"]?.(`/project/src/pages/${name}.html`);
+    releaseBootCompile.resolve();
+    await watchPromise;
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes a page deleted during the boot compile and rebuilds after boot, not alongside it", async () => {
+    const { captured, releaseBootCompile, watchPromise } =
+      await bootWithPausedCompile();
+    captured["unlink"]?.("/project/src/pages/old.html");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+    releaseBootCompile.resolve();
+    await watchPromise;
+    expect(removePage).toHaveBeenCalledWith("/project/src/pages/old.html");
+    // The boot compile may have stored the page after the first removal, so
+    // it is removed again once boot ends, before the rebuild.
+    expect(
+      mockRemovePage.mock.calls.filter(
+        ([path]) => path === "/project/src/pages/old.html",
+      ),
+    ).toHaveLength(2);
+    expect(processAllPages).toHaveBeenCalledTimes(2);
+  });
+
+  it("defers an inline stylesheet edit during the boot compile to one rebuild after it", async () => {
+    mockIsInlineStylesheet.mockReturnValue(true);
+    try {
+      const { assetCaptured, releaseBootCompile, watchPromise } =
+        await bootWithPausedCompile();
+      await assetCaptured["change"]?.("/project/src/pages/inlined.css");
+      await assetCaptured["add"]?.("/project/src/pages/inlined-2.css");
+      expect(processAllPages).toHaveBeenCalledTimes(1);
+      releaseBootCompile.resolve();
+      await watchPromise;
+      expect(processAllPages).toHaveBeenCalledTimes(2);
+    } finally {
+      mockIsInlineStylesheet.mockReturnValue(false);
+    }
+  });
+
+  it("rebuilds nothing extra when no page was added or removed during boot", async () => {
+    const { releaseBootCompile, watchPromise } = await bootWithPausedCompile();
+    releaseBootCompile.resolve();
+    await watchPromise;
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts a bootCompile hook so watcher installation stays outside publisher scope", async () => {
     const captured: Record<string, (...args: any[]) => any> = {};
     const deferredWatcher = {
@@ -1187,6 +1300,35 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
       ["/extra/watch/path/deleted.ts"],
     ]);
     expect(processAllPages).not.toHaveBeenCalled();
+  });
+});
+
+describe("watchFiles – root-level glob watch paths (F080, F187)", () => {
+  beforeEach(async () => {
+    (BascikConfig as any).pipeline = { watchPaths: ["**/*.json"] };
+    await watchFiles();
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).pipeline = { watchPaths: [] };
+  });
+
+  it("ignores node_modules, .git, the output and the private folder under a project-root glob", () => {
+    expect(mockWatch.mock.calls[3][0]).toEqual(["."]);
+    const ignored = mockWatch.mock.calls[3][1].ignored as (
+      path: string,
+    ) => boolean;
+    expect(typeof ignored).toBe("function");
+    // directory.out is "dist" in this suite's config.
+    for (const path of [
+      "node_modules/pkg/package.json",
+      ".git/config",
+      "dist/data/x.json",
+      ".bascik/dist/server-scripts.json",
+    ])
+      expect(ignored(resolve(path)), path).toBe(true);
+    expect(ignored(resolve("src/data/x.json"))).toBe(false);
+    expect(ignored(resolve("package.json"))).toBe(false);
   });
 });
 
@@ -1504,6 +1646,53 @@ describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
       logSpy.mock.calls.some((c) => c.join(" ").includes("module invalidated")),
     ).toBe(false);
     logSpy.mockRestore();
+  });
+});
+
+// F079: the api folder may not exist when `bascik` starts. Chokidar 6
+// reports a watched path that appears later, so the watcher is installed
+// anyway and the first route file added registers its route.
+describe("watchFiles – api folder created after dev start", () => {
+  beforeEach(async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    // Only the import root exists: no src/api at boot.
+    mockExistsSync.mockImplementation((p: string) => p === mockGetImportRoot());
+    await watchFiles();
+    mockApiInvalidateFile.mockClear();
+  });
+
+  const apiWatcherIndex = (): number =>
+    mockWatch.mock.calls.findIndex(
+      (c) => Array.isArray(c[0]) && c[0].includes("src/api"),
+    );
+
+  it("still watches the configured api folder", () => {
+    expect(apiWatcherIndex()).toBeGreaterThanOrEqual(0);
+  });
+
+  it("registers a route file added once the folder appears", async () => {
+    const handler = getHandler(apiWatcherIndex(), "add");
+    await handler?.("/project/src/api/ping.ts");
+    expect(mockApiInvalidateFile).toHaveBeenCalledWith(
+      "/project/src/api/ping.ts",
+    );
+    expect(mockEventEmit).toHaveBeenCalledWith("api-route-changed", {
+      path: "/project/src/api/ping.ts",
+      type: "add",
+    });
+  });
+
+  it("is not installed for a build", async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    (BascikConfig as any).isBuild = true;
+    try {
+      await watchFiles();
+      expect(apiWatcherIndex()).toBe(-1);
+    } finally {
+      (BascikConfig as any).isBuild = false;
+    }
   });
 });
 

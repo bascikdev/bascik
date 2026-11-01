@@ -79,6 +79,27 @@ describe("findOverlaps", () => {
     expect(findOverlaps([a, b])).toEqual([]);
   });
 
+  it("ignores positioned siblings that only touch, even when 0.1 px rounding makes their edges cross", () => {
+    // Section A: y 100.05, height 1103.45, rounded to 100.1 + 1103.5 = 1203.6; section B at 1203.45, rounded 1203.5.
+    const a = box("SECTION:Specs", "0.0", 0, 100.1, 1280, 1103.5, {
+      positioned: true,
+    });
+    const b = box("SECTION:Reviews", "0.1", 0, 1203.5, 1280, 900, {
+      positioned: true,
+    });
+    expect(findOverlaps([a, b])).toEqual([]);
+    // The same sliver beside an svg (media) is no overlap either.
+    const svg = box("SVG:", "0.2", 1279.9, 0, 40, 40, { media: true });
+    const edge = box("DIV:Edge", "0.3", 1240, 0, 40, 40);
+    expect(findOverlaps([svg, edge])).toEqual([]);
+  });
+
+  it("still pairs a badge that overlaps its avatar by a pixel", () => {
+    const avatar = box("IMG:Sam", "0.0", 0, 0, 40, 40, { media: true });
+    const badge = box("SPAN:3", "0.1", 39, 39, 12, 12, { positioned: true });
+    expect(findOverlaps([avatar, badge])).toHaveLength(1);
+  });
+
   it("ignores an element and its own ancestor", () => {
     const li = box("LI:Design review", "0.1", 0, 96, 400, 56, {
       positioned: true,

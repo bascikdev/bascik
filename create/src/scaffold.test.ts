@@ -33,9 +33,13 @@ import {
   aboutPage,
   contactPage,
   edgePage,
+  MANUAL_SETUP_URL,
+  ScaffoldTargetError,
   indexPage,
   notFoundPage,
+  packageNameOf,
   scaffold,
+  siteNameOf,
   validateProjectName,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
@@ -43,8 +47,15 @@ import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+const enoent = (): never => {
+  throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+};
+
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn(async () => undefined),
+  // The project folder does not exist yet unless a test says otherwise.
+  stat: vi.fn(async () => enoent()),
+  lstat: vi.fn(async () => enoent()),
   // A new project folder has no files yet, so every read finds nothing.
   readFile: vi.fn(async () => {
     throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -52,9 +63,11 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
+const mockStat = stat as ReturnType<typeof vi.fn>;
+const mockLstat = lstat as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
@@ -235,6 +248,80 @@ describe("validateProjectName", () => {
     expect(res).not.toBeNull();
     expect(res).toContain("is not a valid directory name");
   });
+
+  it("accepts a relative path, a scoped name and capitals", () => {
+    expect(validateProjectName("sites/my-site")).toBeNull();
+    expect(validateProjectName("@acme/site")).toBeNull();
+    expect(validateProjectName("MySite")).toBeNull();
+  });
+
+  it.each([".", "..", "../sibling", "a/../..", "sites/./x"])(
+    "misuse: refuses %j, which writes into the current or a parent folder, and points at the manual setup",
+    (name) => {
+      const res = validateProjectName(name);
+      expect(res).toContain('"." or ".."');
+      expect(res).toContain(MANUAL_SETUP_URL);
+    },
+  );
+
+  it("misuse: refuses an absolute path, which would be created under the current folder instead", () => {
+    expect(validateProjectName("/tmp/site")).toContain("is an absolute path");
+  });
+
+  it.each(["my site", " my-site", "my-site "])(
+    "misuse: refuses %j, with a space the printed cd command and npm cannot use",
+    (name) => {
+      expect(validateProjectName(name)).toContain("contains a space");
+    },
+  );
+
+  it.each([" ", "   ", "\t"])(
+    "misuse: refuses the blank name %j as empty, not with an empty dashed suggestion",
+    (name) => {
+      const res = validateProjectName(name);
+      expect(res).toBe("Project name cannot be empty.");
+    },
+  );
+
+  it("suggests the dashed name for a name with spaces", () => {
+    expect(validateProjectName("my  site")).toContain('"my-site"');
+  });
+
+  it.each(["a//b", "my-site/"])(
+    "misuse: refuses %j, which has an empty path segment",
+    (name) => {
+      expect(validateProjectName(name)).toContain("empty path segment");
+    },
+  );
+
+  it("misuse: refuses a hidden folder name", () => {
+    expect(validateProjectName(".site")).toContain('with "."');
+  });
+});
+
+describe("packageNameOf and siteNameOf", () => {
+  it("uses the name as it is when it is already a package name", () => {
+    expect(packageNameOf("my-site")).toBe("my-site");
+    expect(siteNameOf("my-site")).toBe("my-site");
+  });
+
+  it("lowercases the package name and keeps the site name's capitals", () => {
+    expect(packageNameOf("MySite")).toBe("mysite");
+    expect(siteNameOf("MySite")).toBe("MySite");
+  });
+
+  it("uses the last segment of a nested path", () => {
+    expect(packageNameOf("sites/My-Site")).toBe("my-site");
+    expect(siteNameOf("sites/My-Site")).toBe("My-Site");
+  });
+
+  it("keeps a scoped name scoped", () => {
+    expect(packageNameOf("@Acme/Site")).toBe("@acme/site");
+  });
+
+  it("drops a leading underscore, which npm does not allow", () => {
+    expect(packageNameOf("_site")).toBe("site");
+  });
 });
 
 // ─── Template exports ─────────────────────────────────────────────────────────
@@ -370,6 +457,32 @@ describe("VITE_CONFIG", () => {
     expect(VITE_CONFIG).toContain("src/**/*.test.ts");
     expect(VITE_CONFIG).toContain("provider: 'v8'");
   });
+
+  it("misuse: imports defineConfig from vitest/config, not vite, which the project does not declare", () => {
+    expect(VITE_CONFIG).toContain(
+      "import { defineConfig } from 'vitest/config';",
+    );
+  });
+
+  it("misuse: every package the generated configs import is declared in the generated package.json", () => {
+    for (const template of ["default", "cloudflare"] as const) {
+      const pkg = JSON.parse(PACKAGE_JSON("my-app", template));
+      const declared = new Set([
+        ...Object.keys(pkg.dependencies ?? {}),
+        ...Object.keys(pkg.devDependencies ?? {}),
+      ]);
+      for (const config of [VITE_CONFIG, PLAYWRIGHT_CONFIG]) {
+        for (const [, spec] of config.matchAll(/\bfrom\s+'([^'.][^']*)'/g)) {
+          if (spec.startsWith("node:")) continue;
+          const parts = spec.split("/");
+          const name = spec.startsWith("@")
+            ? parts.slice(0, 2).join("/")
+            : parts[0];
+          expect(declared, `${template}: ${spec}`).toContain(name);
+        }
+      }
+    }
+  });
 });
 
 describe("PLAYWRIGHT_CONFIG", () => {
@@ -386,6 +499,19 @@ describe("PLAYWRIGHT_CONFIG", () => {
     // build looks for e2e/src/pages and the run fails before any test.
     expect(PLAYWRIGHT_CONFIG).toMatch(
       /webServer:\s*\{[^}]*\bcwd:\s*(['"])\.\.\1/,
+    );
+  });
+
+  it("misuse: falls back to the URL the e2e server runs on only when neither BASCIK_SITE_URL nor the project's .env sets one", () => {
+    // A literal localhost here would beat a real BASCIK_SITE_URL and .env,
+    // and the e2e build would rewrite dist/ with a localhost sitemap.
+    expect(PLAYWRIGHT_CONFIG).not.toMatch(
+      /BASCIK_SITE_URL:\s*'http:\/\/localhost:8080'/,
+    );
+    expect(PLAYWRIGHT_CONFIG).toContain("process.env.BASCIK_SITE_URL");
+    expect(PLAYWRIGHT_CONFIG).toContain("new URL('../.env', import.meta.url)");
+    expect(PLAYWRIGHT_CONFIG).toMatch(
+      /webServer:\s*\{[^}]*\benv:\s*\{\s*BASCIK_SITE_URL:\s*siteUrl\s*\}/,
     );
   });
 });
@@ -488,6 +614,18 @@ describe("GITIGNORE", () => {
     expect(GITIGNORE).toContain("dist/");
     expect(GITIGNORE).toContain("coverage/");
     expect(GITIGNORE).toContain(".pem");
+  });
+
+  it("misuse: ignores the .env files Bascik loads, where secrets go, but keeps an example file", () => {
+    const lines = GITIGNORE.split("\n");
+    expect(lines).toContain(".env");
+    expect(lines).toContain(".env.*");
+    expect(lines).toContain("!.env.example");
+    // A negation only works after the pattern it overrides.
+    expect(lines.indexOf("!.env.example")).toBeGreaterThan(
+      lines.indexOf(".env.*"),
+    );
+    expect(CLOUDFLARE_GITIGNORE.split("\n")).toContain(".env");
   });
 
   it("does not ignore .wrangler/ in the default template", () => {
@@ -1088,7 +1226,8 @@ describe("scaffold", () => {
     await scaffold("my-app", "/tmp");
     expect(writtenTo("package.json")).toBeDefined();
     expect(writtenTo("bascik.config.ts")).toBeUndefined();
-    expect(writtenTo("vite.config.js")).toBeDefined();
+    expect(writtenTo("vite.config.ts")).toBeDefined();
+    expect(writtenTo("vite.config.js")).toBeUndefined();
     expect(writtenTo(".gitignore")).toBeDefined();
     expect(writtenTo(".hintrc")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
@@ -1220,6 +1359,119 @@ describe("scaffold", () => {
     expect(allWrittenPaths().every((p) => p.includes("app"))).toBe(true);
   });
 
+  describe("an existing target folder", () => {
+    /** Make `paths` (relative to /tmp/my-app, "" for the folder itself) exist; a trailing "/" makes a folder. */
+    const existing = (paths: string[]) => {
+      const lookup = async (path: unknown) => {
+        const rel = String(path)
+          .replace(/\\/g, "/")
+          .replace(/^\/tmp\/my-app\/?/, "");
+        if (rel === "" && !paths.includes(""))
+          return { isDirectory: () => true };
+        if (paths.includes(`${rel}/`)) return { isDirectory: () => true };
+        if (paths.includes(rel)) return { isDirectory: () => false };
+        return enoent();
+      };
+      mockStat.mockImplementation(lookup);
+      mockLstat.mockImplementation(lookup);
+    };
+
+    beforeEach(() => {
+      mockStat.mockImplementation(async () => enoent());
+      mockLstat.mockImplementation(async () => enoent());
+    });
+
+    it("misuse: refuses a folder that already has a package.json and pages, and writes nothing", async () => {
+      existing(["package.json", "src/pages/index.html"]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already has package.json, src/pages/index.html, which the starter would replace. Nothing was written.',
+      );
+      expect(mockMkdir).not.toHaveBeenCalled();
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("misuse: the refusal is a ScaffoldTargetError that points at the manual setup", async () => {
+      existing([".gitignore"]);
+      const err = await scaffold("my-app", "/tmp").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ScaffoldTargetError);
+      expect((err as Error).message).toContain(MANUAL_SETUP_URL);
+    });
+
+    it("misuse: lists five files and counts the rest", async () => {
+      existing([
+        "package.json",
+        "vite.config.ts",
+        ".gitignore",
+        "e2e/playwright.config.ts",
+        "e2e/app.spec.ts",
+        "src/pages/index.html",
+        "src/pages/about.html",
+      ]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        /already has (?:[^,]+, ){4}[^,]+ and 2 more, which/,
+      );
+    });
+
+    it("misuse: refuses a file where one of the starter's folders goes", async () => {
+      existing(["src/pages/css"]);
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already has src/pages/css,',
+      );
+    });
+
+    it("misuse: refuses a project name that is an existing file", async () => {
+      existing([""]);
+      mockStat.mockImplementation(async (path: unknown) =>
+        String(path).replace(/\\/g, "/") === "/tmp/my-app"
+          ? { isDirectory: () => false }
+          : enoent(),
+      );
+      await expect(scaffold("my-app", "/tmp")).rejects.toThrow(
+        '"my-app" already exists and is not a folder.',
+      );
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("misuse: refuses the cloudflare starter's own files, which the default starter does not write", async () => {
+      existing(["src/api/hello.ts"]);
+      await expect(scaffold("my-app", "/tmp")).resolves.toBeDefined();
+      vi.clearAllMocks();
+      await expect(
+        scaffold("my-app", "/tmp", { template: "cloudflare" }),
+      ).rejects.toThrow('"my-app" already has src/api/hello.ts,');
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("scaffolds into a folder that has only the files it merges into and its own empty folders", async () => {
+      existing([
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".vscode/",
+        ".vscode/settings.json",
+        "README.md",
+        ".git/",
+        "src/",
+        "src/pages/",
+      ]);
+      await scaffold("my-app", "/tmp");
+      expect(writtenTo("/tmp/my-app/package.json")).toBeDefined();
+      expect(mockWriteFile.mock.calls.length).toBe(31);
+    });
+  });
+
+  it("names the package and brands the pages after the last segment of a nested name", async () => {
+    await scaffold("sites/My-Site", "/tmp");
+    expect(
+      allWrittenPaths().every((p) => p.startsWith("/tmp/sites/My-Site/")),
+    ).toBe(true);
+    expect(JSON.parse(writtenTo("/tmp/sites/My-Site/package.json")!).name).toBe(
+      "my-site",
+    );
+    const index = writtenTo("/tmp/sites/My-Site/src/pages/index.html")!;
+    expect(index).toContain('data-bascik-prop-brand="My-Site"');
+    expect(index).not.toContain("sites/My-Site");
+  });
+
   it("injects the project name into the index page", async () => {
     await scaffold("hello-world", "/tmp");
     const indexCall = mockWriteFile.mock.calls.find((c) =>
@@ -1321,6 +1573,30 @@ describe("parseCliOptions --no-skills", () => {
     expect(
       parseCliOptions(["my-site"], { npm_config_skills: "true" }).noSkillsFlag,
     ).toBe(false);
+  });
+
+  it("misuse: honors --no-skills and --no-install written before --, which npm exports as empty npm_config_* values", () => {
+    // What npm 11 sets for `npm create bascik my-site --no-skills --no-install`.
+    expect(
+      parseCliOptions(["my-site"], {
+        npm_config_skills: "",
+        npm_config_install: "",
+      }),
+    ).toMatchObject({ noSkillsFlag: true, noInstallFlag: true });
+    expect(
+      parseCliOptions(["my-site"], { npm_config_install: "false" })
+        .noInstallFlag,
+    ).toBe(true);
+    expect(
+      parseCliOptions(["my-site"], {
+        npm_config_skills: "true",
+        npm_config_install: "true",
+      }),
+    ).toMatchObject({ noSkillsFlag: false, noInstallFlag: false });
+    expect(parseCliOptions(["my-site"], {})).toMatchObject({
+      noSkillsFlag: false,
+      noInstallFlag: false,
+    });
   });
 
   it("misuse: a typo'd flag such as --no-skill is refused with the flag it meant, instead of installing the skills", () => {

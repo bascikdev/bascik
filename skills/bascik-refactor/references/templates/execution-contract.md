@@ -44,6 +44,9 @@ background, rebuild after each change, and stop it before you hand off.
 
 - Browse production read-only. Never submit a real form, place an order, create an account or send synthetic
   analytics events.
+- The interaction crawl and state capture click every control on production that is not a navigation link or a
+  submit button. Before running them, review the site for controls whose handlers have side effects (add to cart,
+  subscribe, vote, start a chat) and pass each with `--skip-control <selector>`; check those by hand.
 - Never write to the legacy repository.
 - No secrets, tokens or personal data in any file, prompt, screenshot name or log.
 - Keep screenshots and reports under `artifacts/`, which is ignored by git.

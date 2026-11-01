@@ -183,3 +183,44 @@ describe("@bascik/bascik/html export", () => {
     ]);
   });
 });
+
+describe("package files list", () => {
+  const readManifest = async () =>
+    JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as {
+      files: string[];
+      bin: string | Record<string, string>;
+      scripts: Record<string, string>;
+    };
+
+  // npm silently skips a `files` entry that matches nothing, so a stale entry
+  // (CHANGELOG.md before 1.0.0) advertises a file the tarball never has.
+  // Every entry other than the built dist/ must exist in pkg/ or be copied in
+  // by `prepack`.
+  it("lists only files that exist in pkg/ or that prepack creates", async () => {
+    const pkg = await readManifest();
+    const prepack = pkg.scripts.prepack ?? "";
+    const missing = pkg.files.filter(
+      (entry) =>
+        entry !== "dist/" &&
+        !existsSync(join(process.cwd(), entry)) &&
+        !new RegExp(
+          `\\s${entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`,
+        ).test(prepack),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  // bin/ also holds repo-maintenance scripts (code-map.mjs, the coverage
+  // updaters) that reference folders an install does not have.
+  it("ships only the CLI entry from bin/, not the maintenance scripts", async () => {
+    const pkg = await readManifest();
+    const binTargets = (
+      typeof pkg.bin === "string" ? [pkg.bin] : Object.values(pkg.bin)
+    ).map((target) => target.replace(/^\.\//, ""));
+    const binEntries = pkg.files.filter((entry) => entry.startsWith("bin"));
+    expect(binEntries.sort()).toEqual(binTargets.sort());
+    for (const target of binTargets) {
+      expect(existsSync(join(process.cwd(), target)), target).toBe(true);
+    }
+  });
+});

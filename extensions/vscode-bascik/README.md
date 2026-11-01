@@ -27,7 +27,7 @@ Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over 
 
 VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a Bascik page with two scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. Setting `"html.validate.scripts": false` in a project's `.vscode/settings.json` turns off only VS Code's check of code inside `<script>` tags in `.html` files.
 
-A project gets the setting from `npm create bascik`, from `bascik init`, or from this extension. When the extension starts in a workspace with a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it asks once: **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder, keeping what is there, and **Don't ask again** stops the message for that workspace. The extension never changes the setting without that click, never touches user settings, and never asks in a folder that is not a Bascik project. You can also paste the setting into `.vscode/settings.json` yourself.
+A project gets the setting from `npm create bascik`, from `bascik init`, or from this extension. When the extension starts in a workspace with a `bascik.config.js`, `bascik.config.mjs`, or `bascik.config.ts` and nobody has set `html.validate.scripts` in the user, workspace, or folder settings, it asks once, unless VS Code's built-in HTML Language Features extension is disabled (then nothing checks inline scripts and there is nothing to turn off): **Add to workspace settings** writes the setting to `.vscode/settings.json` in each Bascik folder, keeping what is there, and **Don't ask again** stops the message for that workspace. The extension never changes the setting without that click, never touches user settings, and never asks in a folder that is not a Bascik project. You can also paste the setting into `.vscode/settings.json` yourself.
 
 With the setting off, VS Code no longer reports JavaScript syntax or semantic errors inside `<script>` tags in `.html` files. A syntax error in a build or server script still fails when Bascik loads it, with the file and line, and one in a script for the browser shows in the browser console.
 
@@ -87,9 +87,11 @@ To configure extension diagnostics for your project without coupling them to you
 }
 ```
 
+A `bascik.ext.ts` is read without running it, so it holds literal values only (`export default { ... }` or `const config = { ... }; export default config;`). A config file that cannot be read is ignored, and the **Bascik** output panel names its file, line, and the reason.
+
 ## Optional Component Descriptions
 
-Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-text`, and `data-bascik-html`, and infers named or default slots from `data-bascik-slot`.
+Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*` and `data-bascik-attr-*`, and infers named or default slots from `data-bascik-slot`.
 
 Add a leading metadata header to enrich that inferred contract:
 
@@ -129,13 +131,13 @@ The extension reports high-signal problems in the editor and Problems panel:
 - standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
 - runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold typed route handlers with `Request` and `context` arguments.
+Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold route handlers with `request` and `context` arguments, typed in TypeScript (`params` is `Record<string, string | string[]>`, since a `[...name]` catch-all is a `string[]`) and without annotations in JavaScript. `bascik-post` parses the body in a `try` block and answers `400` on malformed JSON, so it passes the `api-unguarded-json` check.
 
 ## Nested Projects and Custom Configuration
 
 The extension reads `directory.components` and `scripts.importRoot` from the project's config file, found in the same order the CLI uses: `bascik.config.js`, then `bascik.config.mjs`, then `bascik.config.ts`. When a folder holds more than one, the first in that order wins, so the editor and the build read the same file. It discovers configs recursively, assigns each file to its closest enclosing Bascik project, and keeps nested projects and separate workspace folders isolated.
 
-Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Config, component, and HTML changes refresh automatically without restarting VS Code.
+Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Such a folder counts as a Bascik project when its root has a `bascik.ext.json` (or another language server config) or its `package.json` lists `@bascik/bascik` or `@bascik/language-server`; a folder with none of these (a React or Vue app, say) gets no Bascik diagnostics, and the **Bascik** output panel says why. Config, component, and HTML changes refresh automatically without restarting VS Code.
 
 ## Get Started
 

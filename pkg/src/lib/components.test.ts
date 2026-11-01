@@ -670,6 +670,35 @@ describe("extractProps", () => {
     ).toEqual({ title: 'say "hello"', caption: "it's fine" });
   });
 
+  it("decodes named and numeric references as the browser does, so injection escapes the character once (F028)", () => {
+    const props = extractProps(
+      '<my-card data-bascik-prop-title="Caf&eacute; &copy; 2026 &nbsp;x &mdash; &#8212; &#x2014; &hellip;&rsquo;&euro;&trade; it&apos;s &#150;" data-bascik-prop-alt="Milk &mdash; frother"></my-card>',
+    );
+    expect(props).toEqual({
+      title:
+        "Caf\u00e9 \u00a9 2026 \u00a0x \u2014 \u2014 \u2014 \u2026\u2019\u20ac\u2122 it's \u2013",
+      alt: "Milk \u2014 frother",
+    });
+    expect(injectProps("<p data-bascik-prop-title></p>", props)).toBe(
+      "<p>Caf\u00e9 \u00a9 2026 \u00a0x \u2014 \u2014 \u2014 \u2026\u2019\u20ac\u2122 it&#39;s \u2013</p>",
+    );
+    expect(
+      injectPropAttributes('<img data-bascik-attr-alt="alt">', props),
+    ).toBe('<img alt="Milk \u2014 frother">');
+  });
+
+  it("decodes &amp; once, so an escaped reference stays text, and leaves unknown or unterminated names as written", () => {
+    const props = extractProps(
+      '<my-card data-bascik-prop-t="&amp;mdash; &notanentity; &mdash &AMP; &Amp;"></my-card>',
+    );
+    // `&mdash` without its semicolon and the misspelled `&Amp;` are not
+    // decoded: write the semicolon, or the character itself.
+    expect(props).toEqual({ t: "&mdash; &notanentity; &mdash & &Amp;" });
+    expect(injectProps("<p data-bascik-prop-t></p>", props)).toBe(
+      "<p>&amp;mdash; &amp;notanentity; &amp;mdash &amp; &amp;Amp;</p>",
+    );
+  });
+
   it("does not treat a marker token inside another attribute's quoted value as a prop", () => {
     // The marker string appears only inside the `title` value, never as a
     // whole attribute name, so no prop may be fabricated from it.
@@ -1318,6 +1347,39 @@ describe("listComponents", () => {
             msg.includes("bad-card.css:1"),
         ),
       ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("listComponents – reserved generated class head", () => {
+  it("warns, with file and line, about an authored .b_el_ or .b_id_ class, and not about .el__p", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-reserved-head-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, "src/components/plan-card"), { recursive: true });
+      await writeFile(
+        join(cwd, "src/components/plan-card/plan-card.html"),
+        '<p class="b_el_x el__p">x</p>\n<style>\n  .el__p { color: blue; }\n  .b_id_plan-card_btn { color: red; }\n</style>\n',
+      );
+      await writeFile(
+        join(cwd, "src/components/plan-card/plan-card.css"),
+        "p {\n  margin: 0;\n}\n.b_el_x {\n  color: red;\n}\n",
+      );
+      await listComponents([join(cwd, "src/components")]);
+      const reserved = warnSpy.mock.calls
+        .map((c) => c.join(" "))
+        .filter((msg) => msg.includes("css-reserved-class-prefix"));
+      expect(reserved).toHaveLength(2);
+      expect(reserved.some((msg) => msg.includes("plan-card.css:4"))).toBe(
+        true,
+      );
+      expect(reserved.some((msg) => msg.includes("plan-card.html:4"))).toBe(
+        true,
+      );
+      expect(reserved[0]).toContain("b_el_");
     } finally {
       warnSpy.mockRestore();
       await rm(cwd, { recursive: true, force: true });
@@ -2033,6 +2095,65 @@ describe("replaceTag – nested same-name tags", () => {
 // Bug 2: quote-aware props & attribute scanning
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("extractProps – unquoted values read the way the browser reads them", () => {
+  it.each([
+    [
+      "a URL with a query string",
+      "<my-card data-bascik-prop-href=/docs/page?q=1&x=2></my-card>",
+      { href: "/docs/page?q=1&x=2" },
+    ],
+    [
+      "a URL with a query string and another prop",
+      "<my-card data-bascik-prop-href=/docs/page?q=1&x=2 data-bascik-prop-title=hello></my-card>",
+      { href: "/docs/page?q=1&x=2", title: "hello" },
+    ],
+    [
+      "an apostrophe, which does not drop the other props",
+      "<my-card data-bascik-prop-title=it's data-bascik-prop-x=1></my-card>",
+      { title: "it's", x: "1" },
+    ],
+    [
+      "a backtick",
+      "<my-card data-bascik-prop-title=a`b data-bascik-prop-x=1></my-card>",
+      { title: "a`b", x: "1" },
+    ],
+    [
+      "a self-closing usage",
+      "<my-card data-bascik-prop-href=/a?b=c/>",
+      { href: "/a?b=c" },
+    ],
+    [
+      "a > in a later quoted value",
+      '<my-card data-bascik-prop-href=/a?b=c title="x > y"></my-card>',
+      { href: "/a?b=c" },
+    ],
+  ])("%s", (_case, usage, expected) => {
+    const warn = vi.fn();
+    expect(extractProps(usage, warn)).toEqual(expected);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("returns no props for a usage tag with no closing >", () => {
+    expect(extractProps("<my-card data-bascik-prop-title=a")).toEqual({});
+  });
+});
+
+describe("extractInheritableAttributes – unquoted values", () => {
+  it("keeps =, apostrophes and backticks in unquoted values", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-nav title=it's data-q=a=b data-t=c`d class=x></my-nav>",
+      ),
+    ).toEqual({ title: "it's", "data-q": "a=b", "data-t": "c`d", class: "x" });
+  });
+
+  it("drops the / of a self-closing usage from an unquoted value", () => {
+    expect(extractInheritableAttributes("<my-nav class=top/>")).toEqual({
+      class: "top",
+    });
+  });
+});
+
 describe("extractProps – single-quoted values", () => {
   it("extracts a single-quoted prop value", () => {
     expect(
@@ -2087,6 +2208,143 @@ describe("extractInheritableAttributes – quote-aware scanning", () => {
       "aria-label": "nav",
       id: "top",
     });
+  });
+});
+
+describe("extractInheritableAttributes – attribute names as the HTML tokenizer reads them (F027)", () => {
+  it("keeps names with @ and . whole, with their values", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card @click="open()" x-on:click.prevent="go()" :class="{a:b}" hx-on::after-request="done()" class="x"></my-card>',
+      ),
+    ).toEqual({
+      "@click": "open()",
+      "x-on:click.prevent": "go()",
+      ":class": "{a:b}",
+      "hx-on::after-request": "done()",
+      class: "x",
+    });
+  });
+
+  it("keeps other names outside [\\w:-] (#ref, v-bind.sync, [prop]) and valueless ones", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-card #ref v-bind:title.sync=t @keyup.enter='send()' [hidden]=\"no\" disabled></my-card>",
+      ),
+    ).toEqual({
+      "#ref": "",
+      "v-bind:title.sync": "t",
+      "@keyup.enter": "send()",
+      "[hidden]": "no",
+      disabled: "",
+    });
+  });
+
+  it("reads an unquoted value up to whitespace, slashes included, and drops the self-closing slash", () => {
+    expect(
+      extractInheritableAttributes(
+        "<my-card data-href=/about/team title=x/></my-card>",
+      ),
+    ).toEqual({ "data-href": "/about/team", title: "x" });
+    expect(extractInheritableAttributes("<my-card title=x />")).toEqual({
+      title: "x",
+    });
+  });
+
+  it("still excludes data-bascik-* attributes, in any case, and spaced or prefixed names", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card DATA-BASCIK-PROP-T="a" data-bascik-slot @data-bascik-x="y" class="c"></my-card>',
+      ),
+    ).toEqual({ "@data-bascik-x": "y", class: "c" });
+  });
+
+  it("drops a name holding a quote or <, the tail of a malformed value", () => {
+    expect(
+      extractInheritableAttributes(
+        `<my-card title="say "hi"" c<d class="c"></my-card>`,
+      ),
+    ).toEqual({ title: "say ", class: "c" });
+  });
+
+  it("does not read attribute-like text inside a quoted value as an attribute", () => {
+    expect(
+      extractInheritableAttributes(
+        '<my-card title="a @click=bad() b" class="c"></my-card>',
+      ),
+    ).toEqual({ title: "a @click=bad() b", class: "c" });
+  });
+});
+
+describe("injectProps – end tags the close finder pairs (F032)", () => {
+  it.each([
+    ["<p data-bascik-prop-title>old</p foo>", "<p>new</p foo>"],
+    ["<p data-bascik-prop-title>old</p/>", "<p>new</p/>"],
+    ["<p data-bascik-prop-title>old</p\tclass=x>", "<p>new</p\tclass=x>"],
+    ["<p data-bascik-prop-title>old</p >", "<p>new</p >"],
+    ["<p data-bascik-prop-title>old</P>", "<p>new</P>"],
+    [
+      '<div data-bascik-prop-title>old<p>x</p></div class="x">',
+      '<div>new</div class="x">',
+    ],
+    [
+      "<div><p data-bascik-prop-title>old</p foo></div>",
+      "<div><p>new</p foo></div>",
+    ],
+  ])("fills %j", (template, expected) => {
+    const warn = vi.fn();
+    expect(injectProps(template, { title: "new" }, warn)).toBe(expected);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unclosed receiver", "<p data-bascik-prop-title>old", "p"],
+    [
+      "a void receiver",
+      '<meta name="description" data-bascik-prop-title content="d" />',
+      "meta",
+    ],
+  ])(
+    "warns for %s instead of dropping the value silently",
+    (_label, template, tag) => {
+      const warn = vi.fn();
+      const out = injectProps(template, { title: "new" }, warn);
+      expect(out).not.toContain("data-bascik-prop-title");
+      expect(out).not.toContain("new");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toBe(
+        `Ignoring data-bascik-prop-title on a <${tag}> with no end tag: the value replaces an element's content, so it needs a </${tag}>. ` +
+          'To put the value in an attribute, use data-bascik-attr-{attribute}="title".',
+      );
+    },
+  );
+
+  it("warns once per prop for a template with several receivers lacking an end tag", () => {
+    const warn = vi.fn();
+    injectProps(
+      "<p data-bascik-prop-t>a<p data-bascik-prop-t>b<p data-bascik-prop-u>c",
+      { t: "x", u: "y" },
+      warn,
+    );
+    expect(
+      warn.mock.calls.map(([message]) => message.split(" on ")[0]),
+    ).toEqual(["Ignoring data-bascik-prop-t", "Ignoring data-bascik-prop-u"]);
+  });
+
+  it("does not warn for a receiver whose prop is not given", () => {
+    const warn = vi.fn();
+    expect(injectProps("<p data-bascik-prop-title>old", {}, warn)).toBe(
+      "<p>old",
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does not take a longer tag name's end tag as the close", () => {
+    expect(
+      injectProps("<p data-bascik-prop-title>old</param></p>", {
+        title: "new",
+      }),
+    ).toBe("<p>new</p>");
   });
 });
 

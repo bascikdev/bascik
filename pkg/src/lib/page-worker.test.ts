@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { MessageChannel } from "node:worker_threads";
+import { resolve } from "node:path";
+import { BuildScriptError } from "./build-error.ts";
+import { mem } from "./mem.ts";
 
 const { _mockTranspilePage } = vi.hoisted(() => ({
   _mockTranspilePage: vi.fn(),
@@ -20,7 +23,9 @@ vi.mock("./script-runner.js", async (importOriginal) => ({
 
 import {
   createPageWorkerListener,
+  endPageWorker,
   handlePageWorkerMessage,
+  PAGE_WORKER_SELF_EXIT_MS,
   type PageWorkerMessage,
 } from "./page-worker.ts";
 import {
@@ -31,6 +36,82 @@ import {
 const firstMessage = (port: {
   postMessage: ReturnType<typeof vi.fn>;
 }): PageWorkerMessage => port.postMessage.mock.calls[0][0] as PageWorkerMessage;
+
+// The pool stops a page worker by asking it to end itself (`stopSignal` in
+// worker-pool.ts): terminating it from outside can abort Node 24.
+describe("page worker stop message", () => {
+  it("hands the stop message to onStop once, without replying or compiling", () => {
+    const port = { postMessage: vi.fn() };
+    const onStop = vi.fn();
+    const listener = createPageWorkerListener(
+      port,
+      { componentList: {}, globalStylesHtml: "" },
+      onStop,
+    );
+    listener({ stop: true });
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // A second stop (a pool retrying) and a page sent after it are ignored:
+    // the worker is on its way out and the pool waits for its exit.
+    listener({ stop: true });
+    listener("src/pages/index.html");
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(_mockTranspilePage).not.toHaveBeenCalled();
+    expect(port.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not take a page job or a settings message for a stop", () => {
+    const port = { postMessage: vi.fn() };
+    const onStop = vi.fn();
+    const listener = createPageWorkerListener(port, null, onStop);
+    listener({ kind: CHILD_WORKER_COUNT_MESSAGE, workerCount: 2 });
+    listener({ stop: false } as never);
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it("ends the worker by stopping its checker, then closing its port, with an unref'd exit as the fallback", async () => {
+    vi.useFakeTimers();
+    try {
+      const order: string[] = [];
+      const exit = vi.fn();
+      await endPageWorker(
+        { close: () => order.push("close") },
+        {
+          stopChecker: async () => {
+            order.push("checker");
+          },
+          exit,
+        },
+      );
+      expect(order).toEqual(["checker", "close"]);
+      // Normally the thread has ended by now; the timer only fires when
+      // something a build script left behind still holds its event loop.
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(PAGE_WORKER_SELF_EXIT_MS - 1);
+      expect(exit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(exit).toHaveBeenCalledWith(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still closes its port when stopping the checker fails", async () => {
+    const close = vi.fn();
+    vi.useFakeTimers();
+    try {
+      await endPageWorker(
+        { close },
+        {
+          stopChecker: () => Promise.reject(new Error("checker stuck")),
+          exit: vi.fn(),
+        },
+      );
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("handlePageWorkerMessage", () => {
   // The build trims its early-started pool to the job count and tells the
@@ -169,6 +250,59 @@ describe("handlePageWorkerMessage", () => {
       ok: false,
       error: "Transpile failed",
     });
+  });
+
+  // F054: a structured clone keeps neither the class nor the fields of a
+  // BuildScriptError, so the worker posts them as data.
+  it("posts a build script failure's location beside its message", async () => {
+    _mockTranspilePage.mockRejectedValueOnce(
+      new BuildScriptError("build script error in site-footer", {
+        sourceFile: "components/site-footer.html",
+        line: 7,
+        column: 3,
+      }),
+    );
+    const port = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(port, null, "src/pages/index.html");
+    expect(port.postMessage).toHaveBeenCalledWith({
+      ok: false,
+      error: "build script error in site-footer",
+      detail: {
+        message: "build script error in site-footer",
+        location: {
+          sourceFile: "components/site-footer.html",
+          line: 7,
+          column: 3,
+        },
+      },
+    });
+  });
+
+  // F053: the helpers a failed compile could not import were recorded only
+  // in this worker's own store; they now travel with the failure.
+  it("posts the missing helpers the failed compile recorded, and only this compile's", async () => {
+    const page = resolve("src/pages/index.html");
+    mem.recordFailedDependencies(page, ["src/pages/lib/stale.ts"]);
+    _mockTranspilePage.mockImplementationOnce(async () => {
+      mem.recordFailedDependencies(page, ["src/pages/lib/prices.ts"]);
+      throw new Error("Cannot find module './lib/prices.ts'");
+    });
+    const port = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(port, null, page);
+    expect(firstMessage(port)).toEqual({
+      ok: false,
+      error: "Cannot find module './lib/prices.ts'",
+      detail: {
+        message: "Cannot find module './lib/prices.ts'",
+        failedDependencies: ["src/pages/lib/prices.ts"],
+      },
+    });
+
+    // A later failure that records nothing must not resend the old list.
+    _mockTranspilePage.mockRejectedValueOnce(new Error("no body"));
+    const again = { postMessage: vi.fn() };
+    await handlePageWorkerMessage(again, null, page);
+    expect(firstMessage(again)).toEqual({ ok: false, error: "no body" });
   });
 
   it("handles non-Error objects thrown during transpile", async () => {

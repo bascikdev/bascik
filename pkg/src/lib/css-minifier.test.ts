@@ -92,4 +92,57 @@ describe("minifyCss", () => {
       ":root{--empty: ;--x:1px;}",
     );
   });
+
+  it("keeps the whitespace that ends a hex escape apart from the combinator after it", () => {
+    // `.\31  p` is the class `1` and a descendant `p`; one space would make
+    // it the class `1p` (CSS Syntax: an escape consumes one whitespace).
+    expect(minifyCss(".\\31  p { color: red; }")).toBe(".\\31  p{color:red;}");
+    expect(minifyCss(".a\\1\n  .b { color: red; }")).toBe(
+      ".a\\1  .b{color:red;}",
+    );
+    expect(minifyCss(".a\\00003a   :hover { color: red; }")).toBe(
+      ".a\\00003a  :hover{color:red;}",
+    );
+  });
+
+  it("reads a CRLF or a lone CR after a hex escape as the one newline CSS preprocessing makes of it", () => {
+    // CSS Syntax turns CRLF and a lone CR into one LF before tokenizing, so
+    // `.\31\r\np` is the class `1p`, as with LF; two spaces would make it
+    // the class `1` and a descendant `p` (PR 115 review).
+    expect(minifyCss(".\\31\r\np { color: red; }")).toBe(".\\31 p{color:red;}");
+    expect(minifyCss(".\\31\rp { color: red; }")).toBe(".\\31 p{color:red;}");
+    expect(minifyCss(".\\31\np { color: red; }")).toBe(".\\31 p{color:red;}");
+    // After the escape's own newline, a second one is a combinator.
+    expect(minifyCss(".\\31\r\n\r\np { color: red; }")).toBe(
+      ".\\31  p{color:red;}",
+    );
+    expect(minifyCss(".\\31\r\rp { color: red; }")).toBe(
+      ".\\31  p{color:red;}",
+    );
+    expect(minifyCss(".\\31\r\n  p { color: red; }")).toBe(
+      ".\\31  p{color:red;}",
+    );
+  });
+
+  it("misuse: an escape followed by a real double space keeps one for the combinator, whatever the line endings", () => {
+    expect(minifyCss(".\\31  p { color: red; }")).toBe(".\\31  p{color:red;}");
+    expect(minifyCss(".a {\r\n  color: red;\r\n}\r\n.b  p {}")).toBe(
+      ".a{color:red;}.b p{}",
+    );
+    // A CR inside a string is the string's own: shielded, never rewritten.
+    expect(minifyCss('.a::after { content: "x\\\r\ny"; }')).toBe(
+      '.a::after{content:"x\\\r\ny";}',
+    );
+  });
+
+  it("misuse: still collapses spaces after a seven-digit hex run or a plain backslash escape", () => {
+    // Six digits end an escape, so the seventh is text and the spaces after
+    // it are one combinator; `\:` is not a hex escape at all.
+    expect(minifyCss(".a\\1234567   p { color: red; }")).toBe(
+      ".a\\1234567 p{color:red;}",
+    );
+    expect(minifyCss(".md\\:flex   p { color: red; }")).toBe(
+      ".md\\:flex p{color:red;}",
+    );
+  });
 });

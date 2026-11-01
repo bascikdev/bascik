@@ -139,6 +139,43 @@ test.describe("data-bascik-server — request-time script execution", () => {
     await expect(page.getByTestId("static-after")).toHaveText("static-after");
   });
 
+  // ─── Return values (prompt 158 R3-04) ────────────────────────────────────
+
+  test("an array returned by a server or stream script is joined with no separator", async ({
+    page,
+  }) => {
+    await page.goto("/server-scripts-returns-test");
+    await expect(page.getByTestId("returns-item")).toHaveText([
+      "Milk frother",
+      "Kettle",
+    ]);
+    expect(await page.getByTestId("returns-list").innerHTML()).not.toContain(
+      ",",
+    );
+    expect(
+      (await page.getByTestId("returns-stream-list").innerHTML()).replace(
+        /\s+/g,
+        () => "",
+      ),
+    ).toBe("<li>a</li><li>b</li>");
+  });
+
+  test("misuse: an object or a Response returned by a script is an empty slot, the page still renders", async ({
+    page,
+    request,
+  }) => {
+    const response = await request.get("/server-scripts-returns-test");
+    expect(response.status()).toBe(200);
+    const body = await response.text();
+    expect(body).not.toContain("[object");
+    expect(body).not.toContain("api habit");
+    await page.goto("/server-scripts-returns-test");
+    await expect(page.getByTestId("returns-before")).toHaveText("before");
+    await expect(page.getByTestId("returns-after")).toHaveText("after");
+    await expect(page.getByTestId("returns-object")).toHaveText("");
+    await expect(page.getByTestId("returns-response")).toHaveText("");
+  });
+
   // ─── Per-request freshness & Concurrency isolation ─────────────────────────
 
   test("executes fresh on each request — different headers produce different output", async ({

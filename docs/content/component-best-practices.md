@@ -220,7 +220,7 @@ The root is a `<nav>`, the links are a list, and the `aria-label` from the usage
   data-testid="site-nav"
   aria-label="Demo site"
 >
-  <ul class="bascik__site-nav__el__ul">
+  <ul class="b_el_site-nav_ul">
     <li><a href="/">Home</a></li>
     <li><a href="/components">Components</a></li>
     <li><a href="/faq">FAQ</a></li>

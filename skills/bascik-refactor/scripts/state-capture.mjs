@@ -22,6 +22,9 @@ import {
   routesOf,
   runCli,
   settleOf,
+  SKIP_CONTROL_OPTION,
+  skipControlsFrom,
+  skipControlsOf,
   withPage,
 } from "./lib/checks.mjs";
 import { forcedStyles } from "./text-style-diff.mjs";
@@ -68,6 +71,9 @@ Options:
   --target <url>    Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>    Route to check (repeatable, required)
   --mask <selector> A documented dynamic region to leave out, such as a carousel (repeatable)
+  --skip-control <selector>
+                    A control with side effects on the live site to never open, on either side (repeatable; see
+                    interaction-crawl.mjs --help: both checks click production's controls)
   --settle-ms <ms>  Least time after navigation before measuring (default 5000)
   --matrix <file>   Breakpoint matrix JSON (default docs/migration/breakpoints.json)
   --out <dir>       Report folder; crops go to <out>/states/ (default artifacts/checks)
@@ -726,7 +732,7 @@ async function openState(
 
 /** Compares the open states of every disclosure on one route and case. */
 async function compareCase(browser, options, route, c, dir, states, extra) {
-  const { sharp, masks } = extra;
+  const { sharp, masks, skip } = extra;
   const settleMs = settleOf(options);
   const findings = [];
   await withPage(
@@ -742,8 +748,8 @@ async function compareCase(browser, options, route, c, dir, states, extra) {
         c,
         async (targetPage) => {
           const [prodItems, targetItems] = await Promise.all([
-            discover(prodPage, masks),
-            discover(targetPage, masks),
+            discover(prodPage, masks, skip),
+            discover(targetPage, masks, skip),
           ]);
           const [prodVolatile, targetVolatile] = await Promise.all([
             observeVolatile(prodPage, options.prod, route, masks, settleMs),
@@ -862,13 +868,17 @@ export async function runCheck(browser, options) {
         ...(await compareCase(browser, options, route, c, dir, states, {
           sharp,
           masks,
+          skip: skipControlsOf(options),
         })),
       );
   return result(CHECK, findings, { states });
 }
 
 export function parseCliArgs(argv) {
-  return parseArgsFor(argv);
+  const args = parseArgsFor(argv, { extra: SKIP_CONTROL_OPTION });
+  if (args.help) return args;
+  const { "skip-control": skipControls, ...rest } = args;
+  return { ...rest, skipControls: skipControlsFrom(skipControls) };
 }
 
 if (isMain(import.meta.url)) {

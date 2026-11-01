@@ -312,6 +312,32 @@ describe("3. repeated-sections: the forms the first version missed", () => {
       expect(f.target).toBe("rgb(214, 69, 93)");
     }
   });
+
+  it("a carousel captured on another slide is a diverging instance unless --mask leaves it out", async () => {
+    // The target's /about page is captured on the carousel's second slide, every other page on the first. Unmasked,
+    // the slide's color differs between the two instances; masked as run-checks documents, the region is out of the
+    // style signature and the section still counts as one component.
+    const variant = "3e-masked-carousel";
+    const unmasked = await run("repeated-sections", variant, options(variant));
+    expect(
+      unmasked.findings.some((f) => f.kind === "diverging-instance"),
+      show(unmasked),
+    ).toBe(true);
+    const masked = await run("repeated-sections", variant, {
+      ...options(variant),
+      masks: ['[data-testid="hero-carousel-slides"]'],
+    });
+    expect(masked.findings, show(masked)).toEqual([]);
+  }, 120_000);
+
+  it("a mask written as the --mask flag (options.mask) is honored too", async () => {
+    const variant = "3e-masked-carousel";
+    const r = await run("repeated-sections", variant, {
+      ...options(variant),
+      mask: ['[data-testid="hero-carousel-slides"]'],
+    });
+    expect(r.findings, show(r)).toEqual([]);
+  }, 120_000);
 });
 
 describe("identical pairs stay clean", () => {

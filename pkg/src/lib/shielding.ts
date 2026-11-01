@@ -18,9 +18,12 @@ let nextShieldToken = 0;
 export const __shieldStatsForTests = {
   tagScans: 0,
   hiddenValues: 0,
+  /** Token scans restore ran over its input. */
+  restoreScans: 0,
   reset(): void {
     this.tagScans = 0;
     this.hiddenValues = 0;
+    this.restoreScans = 0;
   },
 };
 
@@ -50,7 +53,10 @@ export const createContentShield = (
   const restore = (value: string): string => {
     let result = value;
     let replaced = true;
-    while (replaced) {
+    // With every hidden value restored (or none hidden, the common case) no
+    // token can be replaced, so the scan would return its input unchanged.
+    while (replaced && values.size > 0) {
+      __shieldStatsForTests.restoreScans++;
       replaced = false;
       result = result.replace(SHIELD_TOKEN_PATTERN, (token) => {
         if (!ownedTokens.has(token)) return token;

@@ -15,6 +15,11 @@ Accessible tabs built from the sections passed in. Each child of the default slo
       var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
   }
 
+  /* An author display value beats the hidden attribute, so restate it: without JavaScript the empty list stays hidden. */
+  .tablist[hidden] {
+    display: none;
+  }
+
   .tab {
     padding: 0.5rem 1rem;
     border: 0;
@@ -58,12 +63,15 @@ Accessible tabs built from the sections passed in. Each child of the default slo
     border-radius: 0 0 var(--radius, 0.5rem) var(--radius, 0.5rem);
   }
 </style>
-<div class="tab-group" id="root">
+<!-- HTML has no tabs element, so a <div> groups the tablist and its panels: a data-testid or class on the usage tag
+     lands on the whole widget. -->
+<div class="tab-group" id="root" data-testid="tab-group">
   <div
     class="tablist"
     id="tablist"
     role="tablist"
     data-bascik-attr-aria-label="label"
+    data-testid="tab-group-tablist"
     hidden
   ></div>
   <div class="panels" id="panels">
@@ -97,6 +105,7 @@ Accessible tabs built from the sections passed in. Each child of the default slo
     tab.className = "tab";
     tab.textContent = panel.dataset.tab || `Tab ${index + 1}`;
     tab.setAttribute("role", "tab");
+    tab.setAttribute("data-testid", "tab-group-tab");
     tab.setAttribute("id", tabId);
     tab.setAttribute("aria-controls", panelId);
     tab.addEventListener("click", () => select(index, false));

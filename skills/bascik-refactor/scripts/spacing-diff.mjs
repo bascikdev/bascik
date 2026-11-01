@@ -263,7 +263,7 @@ function diffSectionSpacing(prod, target, inner, tolerance) {
  * iframe, or a control, at any depth: the wrappers between it and its section do not matter, so an error three
  * wrappers deep is still a local gap. Fixed layers, masked regions and hidden elements do not count.
  */
-function measureSections(arg) {
+export function measureSections(arg) {
   const LANDMARKS = "section, header, footer, main, aside, article, nav";
   const MEDIA = new Set(["IMG", "SVG", "VIDEO", "CANVAS", "IFRAME", "PICTURE"]);
   const CONTROLS = new Set(["BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
@@ -289,7 +289,7 @@ function measureSections(arg) {
     else {
       const heading = el.querySelector("h1, h2, h3, h4, h5, h6");
       const label = (norm(heading?.textContent) || accName(el))
-        .slice(0, 40)
+        .slice(0, 70)
         .trim();
       key = `${tagOf(el)}:${label}`;
       for (let n = 2; seen.has(key); n++) key = `${tagOf(el)}:${label} #${n}`;
@@ -323,10 +323,11 @@ function measureSections(arg) {
       sections.set(key, { el: section, key, children: [], keys: new Set() });
     const entry = sections.get(key);
     const r = el.getBoundingClientRect();
-    const text = textOf(el) || accName(el);
-    let childKey = `${tagOf(el)}:${text.slice(0, 40).trim()}`;
-    for (let n = 2; entry.keys.has(childKey); n++)
-      childKey = `${tagOf(el)}:${text.slice(0, 40).trim()} #${n}`;
+    // The page helper textKey, as production-defects keys a defect: a finding on an element production got wrong
+    // must carry the defect's key to be corrected, whatever the length of its text.
+    const base = textKey(el);
+    let childKey = base;
+    for (let n = 2; entry.keys.has(childKey); n++) childKey = `${base} #${n}`;
     entry.keys.add(childKey);
     entry.children.push({ key: childKey, rect: r });
   }

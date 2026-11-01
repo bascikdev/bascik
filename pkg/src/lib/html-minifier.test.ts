@@ -16,10 +16,25 @@ const parsedAsBrowser = (html: string) =>
     collectScript: (_script, inTemplate) => !inTemplate,
   });
 
-/** Minifying must not change what the browser builds or which scripts run. */
+/**
+ * Minifying must not change what the browser builds or which scripts run, and
+ * a moved script must still run after every element it ran after before (the
+ * k-th copy of a script in the output is matched with the k-th in the input).
+ */
 const expectSameParse = (html: string): string => {
   const minified = minifyHtml(html);
-  expect(parsedAsBrowser(minified)).toEqual(parsedAsBrowser(html));
+  const { scriptPositions: after, ...output } = parsedAsBrowser(minified);
+  const { scriptPositions: before, ...input } = parsedAsBrowser(html);
+  expect(output).toEqual(input);
+  const remaining = [...before];
+  for (const position of after) {
+    const index = remaining.findIndex((s) => s.script === position.script);
+    const original = remaining.splice(index, 1)[0]!;
+    expect(
+      position.elementsBefore,
+      `${position.script} runs before elements it followed`,
+    ).toBeGreaterThanOrEqual(original.elementsBefore);
+  }
   return minified;
 };
 
@@ -139,6 +154,13 @@ describe("extractScriptTags", () => {
     }
   });
 
+  it("keeps a removed comment from joining digits onto a long numeric character reference", () => {
+    const zeros = "0".repeat(70);
+    expect(expectSameParse(`<p>&#${zeros}<!-- c -->60;</p>`)).toBe(
+      `<p>&#${zeros}<!---->60;</p>`,
+    );
+  });
+
   it("keeps the text around a removed comment from forming a different character reference", () => {
     expect(expectSameParse("<p>&am<!-- c -->p;</p>")).toBe(
       "<p>&am<!---->p;</p>",
@@ -184,6 +206,29 @@ describe("extractScriptTags", () => {
       expect(expectSameParse(html)).toBe(html);
     }
   });
+
+  it.each([
+    [
+      "an unclosed <svg> left by a breakout tag",
+      '<svg><p>oops</p>\n<div id="x"></div>\n<script>document.getElementById("x").textContent="hi"</script>\n<p>after</p>',
+      '<svg><p>oops</p><div id="x"></div><p>after</p>\n<script>document.getElementById("x").textContent="hi"</script>',
+    ],
+    [
+      "an unclosed inline icon followed by a <span>",
+      '<p>a</p><svg><path d="M0 0"/><span>b</span><div id="x"></div><script>a()</script>',
+      '<p>a</p><svg><path d="M0 0"/><span>b</span><div id="x"></div>\n<script>a()</script>',
+    ],
+    [
+      "an unclosed <math> left by a breakout tag",
+      "<math><mi>x</mi><div>y</div><script>a()</script>",
+      "<math><mi>x</mi><div>y</div>\n<script>a()</script>",
+    ],
+  ])(
+    "keeps a hoisted script after the content it follows, after %s",
+    (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    },
+  );
 
   it("keeps execution order around a script that must run in place", () => {
     // The SVG script and the import map stay put, so scripts before them stay
@@ -327,6 +372,9 @@ describe("extractScriptTags", () => {
       "</pre x>",
       "<svg><script>",
       "<svg><style>",
+      // Breakout tags, which leave unclosed SVG or MathML.
+      "<span>",
+      "<br>",
     );
     fc.assert(
       fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {
@@ -735,6 +783,127 @@ describe("minifyHtml", () => {
     expect(minifyHtml(htmlString)).toBe(
       '<p><strong>More on the next page.</strong> <a href="/scoped-styles">Scoped Styles</a></p>',
     );
+  });
+
+  describe("keeps the space next to elements that are inline by default", () => {
+    it.each([
+      [
+        "an inline <svg> icon and its label in a button",
+        '<button type="button"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg>\n<span>Save</span></button>',
+        '<button type="button"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg> <span>Save</span></button>',
+      ],
+      [
+        "an inline <svg> icon and a link in a list item",
+        '<li><svg viewBox="0 0 1 1"></svg>\n<a href="/">Home</a></li>',
+        '<li><svg viewBox="0 0 1 1"></svg> <a href="/">Home</a></li>',
+      ],
+      [
+        "<del> and <ins>",
+        "<p><del>old</del>\n<ins>new</ins></p>",
+        "<p><del>old</del> <ins>new</ins></p>",
+      ],
+      [
+        "a custom element",
+        "<p><b>bold</b>\n<my-widget>x</my-widget></p>",
+        "<p><b>bold</b> <my-widget>x</my-widget></p>",
+      ],
+      [
+        "a custom element and a <span>",
+        "<p><span>Hello</span> <custom-el>World</custom-el></p>",
+        "<p><span>Hello</span> <custom-el>World</custom-el></p>",
+      ],
+      [
+        "<math>",
+        "<p><span>a</span> <math><mi>x</mi></math> <span>b</span></p>",
+        "<p><span>a</span> <math><mi>x</mi></math> <span>b</span></p>",
+      ],
+      ...[
+        "video",
+        "audio",
+        "canvas",
+        "iframe",
+        "picture",
+        "object",
+        "font",
+        "nobr",
+        "strike",
+        "map",
+        "slot",
+      ].map((name) => [
+        `<${name}>`,
+        `<p><span>a</span> <${name}></${name}> <span>b</span></p>`,
+        `<p><span>a</span> <${name}></${name}> <span>b</span></p>`,
+      ]),
+      [
+        "<embed>",
+        '<p><span>a</span> <embed src="x"> <span>b</span></p>',
+        '<p><span>a</span> <embed src="x"> <span>b</span></p>',
+      ],
+    ])("%s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it.each([
+      [
+        "an <svg> next to a block element",
+        "<div><svg></svg>\n<div>x</div></div>",
+        "<div><svg></svg><div>x</div></div>",
+      ],
+      [
+        "a custom element next to a block element",
+        "<section><my-widget>x</my-widget>\n<p>y</p></section>",
+        "<section><my-widget>x</my-widget><p>y</p></section>",
+      ],
+      [
+        "MathML elements, whose whitespace never renders",
+        "<math><mi>x</mi> <mo>+</mo> <mi>y</mi></math>",
+        "<math><mi>x</mi><mo>+</mo><mi>y</mi></math>",
+      ],
+    ])("still drops it next to %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+  });
+
+  describe("keeps the space between SVG text content elements", () => {
+    it.each([
+      [
+        "two <tspan>s",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+      ],
+      [
+        "two <tspan>s on separate lines",
+        "<svg><text><tspan>Hello</tspan>\n  <tspan>World</tspan></text></svg>",
+        "<svg><text><tspan>Hello</tspan> <tspan>World</tspan></text></svg>",
+      ],
+      [
+        "an SVG <a> and a <tspan>",
+        '<svg><text><a href="#">Hello</a> <tspan>World</tspan></text></svg>',
+        '<svg><text><a href="#">Hello</a> <tspan>World</tspan></text></svg>',
+      ],
+      [
+        "a <tspan> and a <textPath>",
+        '<svg><text><tspan>Hello</tspan> <textPath href="#p">World</textPath></text></svg>',
+        '<svg><text><tspan>Hello</tspan> <textPath href="#p">World</textPath></text></svg>',
+      ],
+    ])("%s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it.each([
+      [
+        "SVG shapes, whose whitespace never renders",
+        "<svg><g></g> <g></g>\n<rect/></svg>",
+        "<svg><g></g><g></g><rect/></svg>",
+      ],
+      [
+        "the edges of a <text>, which SVG trims",
+        "<svg><text>\n  <tspan>Hello</tspan>\n</text></svg>",
+        "<svg><text><tspan>Hello</tspan></text></svg>",
+      ],
+    ])("still drops it between %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
   });
 
   it("preserves special regex tokens ($1, $&, $', $`, $$) inside <pre> and <textarea> blocks verbatim", () => {

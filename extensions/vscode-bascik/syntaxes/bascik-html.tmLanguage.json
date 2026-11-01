@@ -1,10 +1,15 @@
 {
   "scopeName": "bascik.html.injection",
-  "injectionSelector": "L:text.html.basic",
+  "injectionSelector": "L:text.html meta.tag -string -comment",
   "patterns": [
     {
-      "name": "entity.other.attribute-name.bascik",
-      "match": "\\bdata-bascik-(?:attr-[A-Za-z_:][\\w:.-]*|prop-[\\w-]+|slot|build-once|build|routes|server|stream|preserve)\\b"
+      "name": "meta.attribute.bascik",
+      "begin": "(?<![\\w:.-])data-bascik-(?:attr-[A-Za-z_:][\\w:.-]*|prop-[\\w-]+|slot|build-once|build|routes|server|stream|preserve)(?![\\w:-])",
+      "beginCaptures": {
+        "0": { "name": "entity.other.attribute-name.bascik" }
+      },
+      "end": "(?=\\s*+[^=\\s])",
+      "patterns": [{ "include": "text.html.basic#attribute-interior" }]
     }
   ]
 }

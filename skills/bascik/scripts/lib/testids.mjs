@@ -36,7 +36,16 @@ const WIDGET_ROLES = new Set([
 const LANDMARKS = new Set(["nav", "main", "aside"]);
 /** A <header> or <footer> inside one of these is part of that section, not the page's banner or contentinfo. */
 const SECTIONING = new Set(["article", "aside", "main", "nav", "section"]);
-const NOT_ROOT = new Set(["style", "script", "link", "meta", "template"]);
+/** Head tags: never a component's root. */
+const NOT_ROOT = new Set([
+  "style",
+  "script",
+  "link",
+  "meta",
+  "template",
+  "title",
+  "base",
+]);
 
 const hasTestId = (node) =>
   "data-testid" in node.attrs || "data-bascik-attr-data-testid" in node.attrs;
@@ -71,9 +80,6 @@ function needsTestId(node) {
   return (node.attrs.tabindex ?? "").trim() === "0";
 }
 
-/** The component's root: its first element that is not a style, script, link, meta, or template tag. */
-const rootOf = (tree) => tree.children.find((node) => !NOT_ROOT.has(node.tag));
-
 /** The prefix to suggest for a page's test ids: its route, with "home" for the site's index page. */
 function pageName(pagesDir, file) {
   const route = relative(pagesDir, file)
@@ -100,15 +106,46 @@ export function testIdAdvisory(root, configModule) {
     }
   };
 
-  for (const component of listComponents(
-    componentRoots(root, configModule),
-    root,
-  )) {
-    const tree = read(`${root}/${component.file}`);
+  const components = listComponents(componentRoots(root, configModule), root);
+  const trees = new Map(
+    components.map((component) => [
+      component.tag,
+      read(`${root}/${component.file}`),
+    ]),
+  );
+  /**
+   * Whether a component renders a root a test can find. A component of head tags only (meta, link, script) has
+   * none, and neither has one whose top-level elements are all head tags or usage tags of such components, such as
+   * a shared <site-head> that holds <theme-init /> and a <link>. An unknown tag counts as body markup, so a typo'd
+   * name still gets a gap. A component that reaches itself counts as rendering one.
+   */
+  const renders = new Map();
+  const rendersRoot = (tag) => {
+    if (!trees.has(tag)) return true;
+    if (renders.has(tag)) return renders.get(tag);
+    renders.set(tag, true);
+    const tree = trees.get(tag);
+    const result = !tree || visibleRoot(tree) !== undefined;
+    renders.set(tag, result);
+    return result;
+  };
+  /**
+   * The component's root: its first top-level element that is not a head tag (style, script, link, meta, template, title, base)
+   * and not the usage tag of a head-only component, so the <header> after a leading <theme-init /> is the root.
+   */
+  const visibleRoot = (tree) =>
+    tree.children.find(
+      (node) =>
+        !NOT_ROOT.has(node.tag) &&
+        !(node.tag.includes("-") && !rendersRoot(node.tag)),
+    );
+
+  for (const component of components) {
+    const tree = trees.get(component.tag);
     if (!tree) continue;
     const name = component.tag;
-    const top = rootOf(tree);
-    if (top && !hasTestId(top))
+    const top = visibleRoot(tree);
+    if (top && !hasTestId(top) && rendersRoot(name))
       gaps.push({
         file: component.file,
         line: top.line,

@@ -11,6 +11,7 @@
  *   export default async () => await articleSchema();
  */
 import { readFile } from "node:fs/promises";
+import { pageDescription, pageTitle } from "./meta-tags.ts";
 import { socialImageUrl } from "./open-graph.ts";
 
 /** Official Bascik profiles. Lets search engines connect the site to the same entity. */
@@ -38,24 +39,12 @@ export async function articleSchema(): Promise<string> {
     );
     return "";
   }
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/);
-  const descMatch =
-    html.match(
-      /<meta\b[^>]*\bname=["']description["'][^>]*\bcontent=["']([^"']+)["']/i,
-    ) ||
-    html.match(
-      /<meta\b[^>]*\bcontent=["']([^"']+)["'][^>]*\bname=["']description["']/i,
-    );
-  if (!titleMatch || !descMatch) return "";
+  const title = pageTitle(html);
+  const pageText = pageDescription(html);
+  if (!title || !pageText) return "";
 
-  const headline = titleMatch[1]
-    .trim()
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  const description = descMatch[1]
-    .trim()
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const headline = title.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const description = pageText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const relPath = pageFile.startsWith(pagesDir)
     ? pageFile

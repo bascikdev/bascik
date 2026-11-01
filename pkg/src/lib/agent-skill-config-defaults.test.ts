@@ -51,6 +51,38 @@ describe("bascik-config agent skill defaults", () => {
     }
   });
 
+  it("lists every mode-independent default leaf of defaultConfig, so a restated default is never missed", async () => {
+    const { KNOWN_DEFAULTS, MODE_DEFAULTS } = await loadAudit();
+    const modeKeys = new Set(
+      Object.values(MODE_DEFAULTS).flatMap((defaults) => Object.keys(defaults)),
+    );
+    const leaves: string[] = [];
+    const walk = (value: unknown, prefix: string) => {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.keys(value).length > 0
+      ) {
+        for (const [key, child] of Object.entries(value))
+          walk(child, prefix ? `${prefix}.${key}` : key);
+        return;
+      }
+      if (value === undefined || typeof value === "function") return;
+      leaves.push(prefix);
+    };
+    walk(defaultConfig, "");
+    const modeDependent = (path: string) =>
+      modeKeys.has(path) ||
+      [devDefaultConfig, buildDefaultConfig, serverDefaultConfig].some(
+        (mode) => lookup(mode, path) !== undefined,
+      );
+    const missing = leaves.filter(
+      (path) => !Object.hasOwn(KNOWN_DEFAULTS, path) && !modeDependent(path),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it("does not list a mode-dependent key as mode-independent", async () => {
     const { KNOWN_DEFAULTS } = await loadAudit();
     for (const modeDefaults of [

@@ -4,9 +4,9 @@ bascik.dev sets no cookies, shows no ads, and runs no trackers. This page lists 
 
 ## Analytics
 
-bascik.dev uses [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/) to count page views. It is cookieless: it sets no cookies, stores nothing in your browser, does not fingerprint your device, and does not follow you across sites or visits. It reports aggregate figures such as which pages were viewed, where visits came from, and how fast pages loaded.
+bascik.dev uses [Cloudflare's server-side traffic analytics](https://developers.cloudflare.com/analytics/account-and-zone-analytics/zone-analytics/) to understand site usage. These figures come from requests handled by Cloudflare, not an analytics script running in your browser. We do not install the Cloudflare Web Analytics beacon or collect browser performance measurements through it.
 
-We use it to learn which parts of the docs people read, so we can improve them. Cloudflare processes the request data, including your IP address, to produce those figures; see [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/).
+We use aggregate traffic figures and visitor estimates to understand how much the docs are used. Requests can include assets and automated traffic, so they are not an exact count of human page views. Cloudflare processes request data, including your IP address, to produce its analytics; see [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/).
 
 ## Hosting
 

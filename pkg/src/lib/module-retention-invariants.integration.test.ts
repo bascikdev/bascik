@@ -39,7 +39,11 @@ async function nativeInvariant(body: string): Promise<void> {
     const request = (name = "current") => new Request("http://localhost/?request=" + name);
     const html = source => '<script data-bascik-server>' + source.replace('export default', '\\nexport default') + '</script>';
     const run = async plan => (await executeServerScriptPlan(plan, request(), context, 5000, resolve("page.html"))).toString();
-    const owned = () => ({ cache: Reflect.get(scriptRegistry, "cache").size, graph: scriptRegistry.graph.size });
+    const owned = () => {
+      const cache = Reflect.get(scriptRegistry, "cache");
+      assert(cache instanceof Map, "registry cache observation unavailable: ScriptRegistry's private cache field moved");
+      return { cache: cache.size, graph: scriptRegistry.graph.size };
+    };
     const store = async (name, source) => {
       await mem.storePage({ relativePagePath: name + ".html", absolutePagePath: resolve(name + ".html"), pageContent: source });
       const plan = mem.getPageExact("/" + name).serverScriptPlan;

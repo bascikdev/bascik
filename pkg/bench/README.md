@@ -217,6 +217,8 @@ Rounds (1 to 10) swap which compiler runs first. Cold runs remove the fixture's 
 
 `src/lib/module-retention.integration.test.ts` runs bounded native-process experiments with changing-source and stable-source controls. It checks completed responses, framework-owned references, and strong heap retainer paths separately. Framework cache cleanup does not evict Node's ESM cache, and allocation samples alone do not prove reclamation. See "Module Lifetime" under [In-Process Script Module Registry](https://bascik.dev/internals/server#in-process-script-module-registry) for the runtime behavior being measured.
 
+Every sample also fails closed on leaks, in every lane, without the lane test asking: `staleInlineLoads`, `staleModuleEntries` (a superseded `scriptRegistry.load` entry still reachable after GC) and `closedSockets` (a destroyed accepted socket still reachable, observed through the `net.server.socket` diagnostics channel) must be 0, `resources` must equal the baseline's, the subject must have observed at least one socket and one module entry, and no heap snapshot may hold more `Timeout` objects than the first one (unref'd timers are missing from `process.getActiveResourcesInfo()`). The heap analysis fails when the `ScriptRegistry` node has no `cache` property instead of reporting zero namespaces. HTTP/2 captures require Node 24; the test lanes skip them elsewhere and write the reason to stderr.
+
 To keep a capture for inspection, run the helper directly from the repository root. This example keeps a changing-source dev capture of 60 rounds in a new temporary directory:
 
 ```sh

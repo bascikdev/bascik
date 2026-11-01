@@ -134,7 +134,7 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 }
 ```
 
-### Content Security Policy
+### Content Security Policy hashes
 
 Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support a strict policy without `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `.bascik/dist/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`), taken from the pages as `post` exec scripts left them.
 

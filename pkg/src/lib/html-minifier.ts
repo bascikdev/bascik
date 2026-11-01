@@ -21,8 +21,9 @@
  *   `<listing>`, so an element styled `white-space: pre` (or `pre-wrap`,
  *   `pre-line`, `break-spaces`) loses its extra spaces and line breaks.
  * - Whitespace between two tags is kept as one space only when both are
- *   inline elements by default (`INLINE_TAGS`); elsewhere it is removed. An
- *   element made inline with CSS can lose the space next to it.
+ *   inline elements by default (`INLINE_TAGS`, custom elements, and SVG text
+ *   content elements such as `<tspan>`); elsewhere it is removed. An element
+ *   made inline with CSS can lose the space next to it.
  * - Where the scan cannot follow the browser's parse of malformed markup
  *   (see html-scanner.ts), the rest of the document is left as written.
  */
@@ -173,31 +174,46 @@ const planMinification = (htmlString: string): MinificationPlan => {
 export const extractScriptTags = (htmlString: string): string =>
   planMinification(htmlString).scripts.join("\n");
 
+/**
+ * Elements that are inline by default (in the browser's user-agent
+ * stylesheet), so whitespace between two of them renders as one space. Custom
+ * elements are inline too; see isInlineTag.
+ */
 export const INLINE_TAGS = new Set([
   "a",
-
   "abbr",
   "acronym",
+  "audio",
   "b",
   "bdi",
   "bdo",
   "big",
   "br",
   "button",
+  "canvas",
   "cite",
   "code",
   "data",
   "del",
   "dfn",
   "em",
+  "embed",
+  "font",
   "i",
+  "iframe",
   "img",
   "input",
+  "ins",
   "kbd",
   "label",
+  "map",
   "mark",
+  "math",
   "meter",
+  "nobr",
+  "object",
   "output",
+  "picture",
   "progress",
   "q",
   "rp",
@@ -207,18 +223,29 @@ export const INLINE_TAGS = new Set([
   "samp",
   "script",
   "select",
+  "slot",
   "small",
   "span",
+  "strike",
   "strong",
   "sub",
   "sup",
+  "svg",
   "textarea",
   "time",
   "tt",
   "u",
   "var",
+  "video",
   "wbr",
 ]);
+
+/**
+ * SVG text content child elements (lowercased, as the scan reports names).
+ * Inside `<text>`, whitespace between two of them renders as one space, as
+ * between inline HTML elements; `a` is already in INLINE_TAGS.
+ */
+const SVG_TEXT_CONTENT_TAGS = new Set(["tspan", "textpath", "tref"]);
 
 /**
  * Whitespace the CSS white space rules collapse in rendered text: spaces,
@@ -273,8 +300,17 @@ const FORMATTING_ELEMENTS = new Set([
 const isMarkupToken = (token: HtmlToken | undefined): token is HtmlToken =>
   token !== undefined && (token.kind === "tag" || token.kind === "markup");
 
+/**
+ * A tag of an element that is inline by default: one in INLINE_TAGS, an SVG
+ * text content element, or a custom element (any name with a hyphen, which
+ * stays inline unless styled otherwise).
+ */
 const isInlineTag = (token: HtmlToken | undefined): boolean =>
-  token !== undefined && token.kind === "tag" && INLINE_TAGS.has(token.name);
+  token !== undefined &&
+  token.kind === "tag" &&
+  (INLINE_TAGS.has(token.name) ||
+    SVG_TEXT_CONTENT_TAGS.has(token.name) ||
+    token.name.includes("-"));
 
 /**
  * The nearest token from `k` in direction `step` that renders: comments and

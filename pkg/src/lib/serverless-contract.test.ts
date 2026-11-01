@@ -112,6 +112,9 @@ describe("serverless contract: host-neutral runtime boundary", () => {
       // The ANSI stripping Node applies to every script's output, so a
       // Worker sends the same bytes.
       resolve(here, "ansi-escapes.ts"),
+      // What a script's return value prints, classified the same way on
+      // both hosts (prompt 158 R3-04).
+      resolve(here, "server-script-output.ts"),
       resolve(here, "../runtime.ts"),
     ];
     for (const entry of entries) {

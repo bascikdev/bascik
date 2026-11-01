@@ -592,6 +592,16 @@ const text = (
     headers: { "content-type": "text/plain; charset=utf-8", ...headers },
   });
 
+/**
+ * Cancel a response body that will not be sent (a HEAD answer). A cancel
+ * that rejects, or a body already locked, is ignored: the headers still go.
+ */
+const releaseBody = (response: Response): void => {
+  const body = response.body;
+  if (!body || body.locked) return;
+  body.cancel().catch(() => {});
+};
+
 /** Sorted `Allow` header value for a module: exported methods plus derived HEAD and auto OPTIONS. */
 export const allowHeaderFor = (mod: ApiHandlerModule): string => {
   const allow = new Set<string>();
@@ -615,8 +625,13 @@ export const dispatchApiHandler = async (
   context: ApiHandlerContext,
   options: DispatchOptions = {},
 ): Promise<Response> => {
-  const method = request.method.toUpperCase() as HttpMethod;
+  const requested = request.method.toUpperCase();
   const allow = allowHeaderFor(mod);
+  // The allowlist comes first: an export named PURGE, or a helper that only
+  // looks like a method, is never dispatched, so `Allow` stays accurate.
+  if (!(ALLOWED_METHODS as readonly string[]).includes(requested))
+    return text("Method Not Allowed", 405, { Allow: allow });
+  const method = requested as HttpMethod;
   const isAllowed =
     typeof mod[method] === "function" ||
     (method === "HEAD" && typeof mod.GET === "function") ||
@@ -661,6 +676,9 @@ export const dispatchApiHandler = async (
     return text("Internal Server Error", 500);
   }
   if (derivedHead) {
+    // The GET body is never sent: cancel it so a streamed source (a fetch
+    // pass-through, a file or cursor) is released now, not at GC.
+    releaseBody(value);
     return new Response(null, {
       status: value.status,
       statusText: value.statusText,

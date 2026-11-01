@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { DiagnosticSeverity } from "vscode-languageserver";
 import { createDiagnostics } from "./analyzer.js";
 import {
   findComponentStructureProblems,
@@ -413,6 +414,25 @@ describe("rules moved from bascik --check keep their edge cases", () => {
       ).toBe(true);
     });
 
+    it("checks inline TypeScript component scripts like JavaScript ones, as the compiler does", () => {
+      for (const type of ["text/typescript", "TEXT/TypeScript"]) {
+        const text = `<div class="a"></div><script type="${type}">const el = document.querySelector("div")!; el.id = "x";</script>`;
+        expect(
+          diagnosticsFor(component, "html", text)
+            .filter((d) => /^js-/.test(String(d.code)))
+            .map((d) => d.code),
+        ).toEqual(["js-id-setter"]);
+      }
+      // A script type the browser does not run (a data block) is not code, so it stays unchecked.
+      const dataBlock =
+        '<div class="a"></div><script type="application/json">{"id": "x", "el.id = 1": true}</script>';
+      expect(
+        diagnosticsFor(component, "html", dataBlock).filter((d) =>
+          /^js-/.test(String(d.code)),
+        ),
+      ).toEqual([]);
+    });
+
     it("checks inline style blocks whatever their end tag spelling, and skips <style-guide>", () => {
       const text =
         '<style-guide>[data-a] text</style-guide><div class="x"></div>' +
@@ -526,6 +546,11 @@ describe("every diagnostic can be named", () => {
   it.each([
     ["component-name-not-hyphenated", component, "<p>hi</p>"],
     [
+      "component-name-underscore",
+      "/site/src/components/site_nav.html",
+      "<p>hi</p>",
+    ],
+    [
       "id-reference-undeclared",
       "/site/src/components/my-card.html",
       '<label for="missing">x</label>',
@@ -592,5 +617,260 @@ describe("every diagnostic can be named", () => {
       '<a data-bascik-attr-href="href">x</a>',
     ).filter((d) => d.code === "attr-prop-unsupplied");
     expect(found.severity).toBe(3);
+  });
+});
+
+describe("component-name-not-hyphenated", () => {
+  // Windows paths start with a drive letter. resolveComponentRoots stores roots with forward
+  // slashes, and the editor and --check pass the file's native path.
+  const windowsProject = snapshot({
+    projectRoot: "C:/site",
+    componentRoots: ["C:/site/src/components"],
+    importRoot: "C:/site/src",
+    apiRoot: "C:/site/src/api",
+  });
+
+  it("warns for an unhyphenated component on a Windows path", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).toContain("component-name-not-hyphenated");
+  });
+
+  it("stays quiet for a hyphenated component and for a page, on either path style", () => {
+    expect(
+      codesFor(
+        "C:\\site\\src\\components\\demo-card.html",
+        "html",
+        "<article>hi</article>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor(
+        "C:\\site\\src\\pages\\card.html",
+        "html",
+        "<p>hi</p>",
+        windowsProject,
+      ),
+    ).not.toContain("component-name-not-hyphenated");
+    expect(
+      codesFor("/site/src/pages/card.html", "html", "<p>hi</p>"),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+
+  it("does not fire for a document with no file path, such as an unsaved buffer", () => {
+    expect(
+      codesFor("Untitled-1", "html", "<p>hi</p>", windowsProject),
+    ).not.toContain("component-name-not-hyphenated");
+  });
+});
+
+describe("component-name-underscore", () => {
+  const diagnosticsFor = (path: string, project = snapshot()) =>
+    createDiagnostics(
+      TextDocument.create(`file://${path}`, "html", 1, "<nav>hi</nav>"),
+      path,
+      project,
+    ).filter((d) => d.code === "component-name-underscore");
+
+  it("warns on a component whose tag name holds an underscore, with the collision it can cause and the hyphenated name", () => {
+    const [found] = diagnosticsFor("/site/src/components/site-nav_x.html");
+    expect(found.severity).toBe(2);
+    expect(found.range.start).toEqual({ line: 0, character: 0 });
+    expect(messageText(found.message)).toBe(
+      'Component "site-nav_x" has an underscore in its name. The name is legal, but underscores can make two components\' generated id classes spell the same name: #btn in <site-nav_x> and #x_btn in <site-nav> both compile to the class b_id_site-nav_x_btn, which stops the build. Use hyphens (e.g. "site-nav-x").',
+    );
+  });
+
+  it("reads the tag the way the build does: the lowercased file name up to its first dot, in a subfolder or on a Windows path", () => {
+    expect(
+      diagnosticsFor("/site/src/components/nav/Site_Nav.html"),
+    ).toHaveLength(1);
+    expect(
+      messageText(
+        diagnosticsFor("/site/src/components/site_nav.v2.html")[0].message,
+      ),
+    ).toContain('Component "site_nav"');
+    // The tag is <site-nav>: the underscore after the first dot is not part of it.
+    expect(diagnosticsFor("/site/src/components/site-nav.my_v2.html")).toEqual(
+      [],
+    );
+    // A folder name does not define the tag.
+    expect(
+      diagnosticsFor("/site/src/components/my_folder/site-nav.html"),
+    ).toEqual([]);
+    const windowsProject = snapshot({
+      projectRoot: "C:/site",
+      componentRoots: ["C:/site/src/components"],
+      importRoot: "C:/site/src",
+      apiRoot: "C:/site/src/api",
+    });
+    expect(
+      diagnosticsFor(
+        "C:\\site\\src\\components\\site_nav.html",
+        windowsProject,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("leaves out the example when the name gives no real pair, such as a leading or trailing underscore", () => {
+    for (const name of ["_card", "card_", "card_2x"]) {
+      const [found] = diagnosticsFor(`/site/src/components/${name}.html`);
+      expect(messageText(found.message)).toBe(
+        `Component "${name}" has an underscore in its name. The name is legal, but underscores can make two components' generated id classes spell the same name. Use hyphens (e.g. "${name.replace(/_/g, "-")}").`,
+      );
+    }
+  });
+
+  it("stays quiet for a hyphenated component, a page with an underscore, and an unsaved buffer", () => {
+    expect(diagnosticsFor("/site/src/components/site-nav.html")).toEqual([]);
+    expect(diagnosticsFor("/site/src/pages/my_page.html")).toEqual([]);
+    expect(diagnosticsFor("Untitled-1")).toEqual([]);
+  });
+
+  it("fires next to component-name-not-hyphenated for a name with only underscores", () => {
+    const codes = createDiagnostics(
+      TextDocument.create(
+        "file:///site/src/components/my_card.html",
+        "html",
+        1,
+        "<p>x</p>",
+      ),
+      "/site/src/components/my_card.html",
+      snapshot(),
+    ).map((d) => d.code);
+    expect(codes).toContain("component-name-not-hyphenated");
+    expect(codes).toContain("component-name-underscore");
+  });
+});
+
+describe("attr-prop-unsupplied", () => {
+  const ITEM = '<a data-bascik-attr-href="href">x</a>';
+  // A component root outside src, as a monorepo's shared components are (directory.components: ["components"]).
+  const sharedProject = (listSource: string) =>
+    snapshot({
+      componentRoots: ["/site/components"],
+      componentMap: new Map([
+        ["card-item", "/site/components/card-item.html"],
+        ["card-list", "/site/components/card-list.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/components/card-item.html", ITEM],
+        ["/site/components/card-list.html", listSource],
+      ]),
+    });
+
+  it("counts a usage in a sibling component under a root outside src", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-href="/x"></card-item>'),
+      ),
+    ).not.toContain("attr-prop-unsupplied");
+  });
+
+  it("still hints when that sibling misspells the prop", () => {
+    expect(
+      codesFor(
+        "/site/components/card-item.html",
+        "html",
+        ITEM,
+        sharedProject('<card-item data-bascik-prop-hrf="/x"></card-item>'),
+      ),
+    ).toContain("attr-prop-unsupplied");
+  });
+});
+
+describe("api-unguarded-json in the editor", () => {
+  const route = [
+    "export const POST = async (request: Request) => {",
+    "  const body = await request.json();",
+    '  return new Response("ok");',
+    "};",
+  ].join("\n");
+
+  it("marks the call itself, so the hint sits where the fix goes", () => {
+    const [hint] = createDiagnostics(
+      TextDocument.create("file:///site/src/api/x.ts", "typescript", 1, route),
+      "/site/src/api/x.ts",
+      snapshot(),
+    ).filter((d) => d.code === "api-unguarded-json");
+    expect(hint.range).toEqual({
+      start: { line: 1, character: 21 },
+      end: { line: 1, character: 33 },
+    });
+  });
+
+  it("is silenced by bascik-ignore on the line above the call", () => {
+    const ignored = route.replace(
+      "  const body",
+      "  // bascik-ignore api-unguarded-json\n  const body",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", ignored)).not.toContain(
+      "api-unguarded-json",
+    );
+    expect(codesFor("/site/src/api/x.ts", "typescript", route)).toContain(
+      "api-unguarded-json",
+    );
+  });
+});
+
+describe("server-script-returns-response in the editor", () => {
+  const page = [
+    "<main>",
+    "  <script data-bascik-server>",
+    "    export default async () => {",
+    "      return Response.json({ ok: true });",
+    "    };",
+    "  </script>",
+    "</main>",
+  ].join("\n");
+
+  it("warns on the returned Response in a page's server script", () => {
+    const [warning] = createDiagnostics(
+      TextDocument.create("file:///site/src/pages/a.html", "html", 1, page),
+      "/site/src/pages/a.html",
+      snapshot(),
+    ).filter((d) => d.code === "server-script-returns-response");
+    expect(warning.severity).toBe(DiagnosticSeverity.Warning);
+    expect(warning.range).toEqual({
+      start: { line: 3, character: 13 },
+      end: { line: 3, character: 26 },
+    });
+  });
+
+  it("stays quiet in an API route, where a Response is the contract", () => {
+    const route =
+      'export default async () => {\n  return new Response("x");\n};\nexport const GET = () => Response.json({});\n';
+    expect(codesFor("/site/src/api/x.ts", "typescript", route)).not.toContain(
+      "server-script-returns-response",
+    );
+  });
+
+  it("stays quiet in a build script on a page", () => {
+    const build = page.replace("data-bascik-server", "data-bascik-build");
+    expect(codesFor("/site/src/pages/a.html", "html", build)).not.toContain(
+      "server-script-returns-response",
+    );
+  });
+
+  it("is silenced by bascik-ignore on the line above the return", () => {
+    const ignored = page.replace(
+      "      return Response",
+      "      // bascik-ignore server-script-returns-response\n      return Response",
+    );
+    expect(codesFor("/site/src/pages/a.html", "html", ignored)).not.toContain(
+      "server-script-returns-response",
+    );
+    expect(codesFor("/site/src/pages/a.html", "html", page)).toContain(
+      "server-script-returns-response",
+    );
   });
 });

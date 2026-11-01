@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Audit built pages in dist/ for the head tags and structure that search engines, social cards, and Lighthouse
 // SEO check. Dependency-free; Node.js 22.22+. Run from the project root after `bascik --build`.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
+import { parseArgs, parseEnv } from "node:util";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HELP = `Usage: node audit-seo.mjs [--dist dist] [--site-url https://example.com] [--strict] [--json]
 
@@ -264,6 +264,14 @@ function htmlFiles(dir, out = []) {
   return out;
 }
 
+/**
+ * BASCIK_SITE_URL from the text of a .env file, parsed with Node's util.parseEnv as Bascik reads it: CRLF line ends,
+ * quotes and comments are handled the same way. An empty value reads as unset.
+ */
+export function siteUrlFromEnv(text) {
+  return parseEnv(text).BASCIK_SITE_URL?.trim() || undefined;
+}
+
 /** "/", "/about", or "/blog/post/" for a dist-relative HTML file. Exported for tests. */
 export function pagePathOf(rel) {
   const path = rel.split(sep).join("/");
@@ -311,8 +319,15 @@ async function main() {
     "bascik.config.ts",
   ]) {
     if (existsSync(join(root, file))) {
-      config =
-        (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      try {
+        config =
+          (await import(pathToFileURL(join(root, file)).href)).default ?? {};
+      } catch (error) {
+        process.stderr.write(
+          `audit-seo: could not load ${file}: ${error.message}\n`,
+        );
+        process.exit(1);
+      }
       break;
     }
   }
@@ -325,9 +340,7 @@ async function main() {
   }
   const envFile = join(root, ".env");
   const fromEnvFile = existsSync(envFile)
-    ? /^BASCIK_SITE_URL=["']?([^"'\n]+)/m.exec(
-        readFileSync(envFile, "utf8"),
-      )?.[1]
+    ? siteUrlFromEnv(readFileSync(envFile, "utf8"))
     : undefined;
   const siteUrl =
     values["site-url"] ?? process.env.BASCIK_SITE_URL ?? fromEnvFile;
@@ -385,9 +398,20 @@ async function main() {
   process.exitCode = failed ? 1 : 0;
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+// Compare real paths: Node resolves symlinks in the main module's path before it sets import.meta.url, so comparing it
+// with argv[1] as typed made the script a silent no-op (exit 0, no output) whenever a folder on the path was a symlink
+// or junction, such as the skills CLI's install into .claude/skills.
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+  }
+})();
 if (invokedDirectly) await main();
 
 /**

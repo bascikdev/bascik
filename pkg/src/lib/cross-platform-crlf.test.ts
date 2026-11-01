@@ -34,6 +34,7 @@ import {
 import { runScopingPipeline } from "./scoping-template.ts";
 import { getHttpPath } from "./paths.ts";
 import { minifyHtml } from "./html-minifier.ts";
+import { computePageCspHashes } from "./csp-hashes.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import type { BascikComponent } from "./types.ts";
@@ -190,6 +191,21 @@ describe("Cross-platform CRLF (\\r\\n) and Windows path parity", () => {
       "const a = 1;\n// comment\nconst b = a + 2;\nconsole.log(b);\n";
     const crlfJs = toCrlf(lfJs);
     expect(await minifyJs(crlfJs)).toBe(await minifyJs(lfJs));
+  });
+
+  it("gives a CRLF page the same CSP hashes as its LF spelling, minified or not, since browsers hash the LF text (F085)", () => {
+    const lfPage =
+      "<!doctype html>\n<html>\n<head>\n<style>\n.card {\n  color: red;\n}\n</style>\n</head>\n" +
+      "<body>\n<script>\nconst a = 1;\nconsole.log(a);\n</script>\n</body>\n</html>\n";
+    const crlfPage = toCrlf(lfPage);
+    const lf = computePageCspHashes(lfPage);
+    expect(lf.scripts).toHaveLength(1);
+    expect(lf.styles).toHaveLength(1);
+    expect(computePageCspHashes(crlfPage)).toEqual(lf);
+    // The HTML minifier keeps script and style bodies as written, CR and all.
+    expect(computePageCspHashes(minifyHtml(crlfPage))).toEqual(
+      computePageCspHashes(minifyHtml(lfPage)),
+    );
   });
 
   it("normalizes Windows backslash paths and drive-letter paths in getHttpPath", () => {

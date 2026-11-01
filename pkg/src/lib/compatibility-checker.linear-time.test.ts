@@ -27,6 +27,23 @@ describe("rule patterns on hostile input", () => {
   );
 });
 
+describe("css rule patterns on hostile input", () => {
+  it.each([
+    ["[id=", 20_000],
+    ['[id="a', 20_000],
+    ["[id='a]", 20_000],
+    ["[ id ", 20_000],
+    [".a:not([id]", 20_000],
+  ] as const)(
+    "scans %j repeated in linear time",
+    (unit, count) => {
+      const text = (n: number) => unit.repeat(n);
+      expectLinearTime(text, count, (t) => findCompatibilityMatches(t, "css"));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
 describe("maskComments", () => {
   it.each([
     ["css", '"', '\\"', 100_000],

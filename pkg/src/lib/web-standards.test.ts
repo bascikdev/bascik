@@ -24,6 +24,22 @@ import { escapeXml, buildSitemapXml } from "./sitemap.ts";
 
 describe("Web Standards Validation via @webref & MDN BCD", () => {
   describe("HTML Standards Validation (WHATWG HTML §4 / @webref/elements & MDN BCD)", () => {
+    it("NATIVE_HTML_ELEMENTS holds every WHATWG HTML element, obsolete ones the parser still knows included, plus svg and math (F033)", async () => {
+      const allElements = await elements.listAll();
+      const htmlNames = allElements["html"].elements.map(
+        (el: { name: string }) => el.name,
+      );
+      // A component file named after any of these replaces every native tag.
+      const expected = new Set([...htmlNames, "svg", "math"]);
+      expect(
+        [...expected].filter((name) => !NATIVE_HTML_ELEMENTS.has(name)),
+      ).toEqual([]);
+      // And nothing else: a name outside the specs is not a native element.
+      expect(
+        [...NATIVE_HTML_ELEMENTS].filter((name) => !expected.has(name)),
+      ).toEqual([]);
+    });
+
     it("validates NATIVE_HTML_ELEMENTS against WHATWG HTML elements from @webref/elements", async () => {
       const allElements = await elements.listAll();
       const htmlSpec = allElements["html"];
@@ -89,9 +105,9 @@ describe("Web Standards Validation via @webref & MDN BCD", () => {
       const { css: scoped, elementsConvertedClasses } =
         convertCssElementSelectorsToClasses(sampleCss, componentName);
 
-      expect(scoped).toContain(`.bascik__${componentName}__el__article`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__section`);
-      expect(scoped).toContain(`.bascik__${componentName}__el__nav`);
+      expect(scoped).toContain(`.b_el_${componentName}_article`);
+      expect(scoped).toContain(`.b_el_${componentName}_section`);
+      expect(scoped).toContain(`.b_el_${componentName}_nav`);
       expect(elementsConvertedClasses).toEqual(
         expect.arrayContaining(["article", "section", "nav"]),
       );
@@ -223,12 +239,12 @@ describe("Web Standards Validation via @webref & MDN BCD", () => {
       const { css: scoped, elementsConvertedClasses } =
         convertCssElementSelectorsToClasses(nestedCss, "my-comp");
 
-      expect(scoped).toContain("& > .bascik__my-comp__el__h1");
-      expect(scoped).toContain("&>.bascik__my-comp__el__h2");
-      expect(scoped).toContain("> .bascik__my-comp__el__p");
-      expect(scoped).toContain("+ .bascik__my-comp__el__aside");
-      expect(scoped).toContain("~ .bascik__my-comp__el__footer");
-      expect(scoped).toContain(".bascik__my-comp__el__span");
+      expect(scoped).toContain("& > .b_el_my-comp_h1");
+      expect(scoped).toContain("&>.b_el_my-comp_h2");
+      expect(scoped).toContain("> .b_el_my-comp_p");
+      expect(scoped).toContain("+ .b_el_my-comp_aside");
+      expect(scoped).toContain("~ .b_el_my-comp_footer");
+      expect(scoped).toContain(".b_el_my-comp_span");
       expect(elementsConvertedClasses).toEqual(
         expect.arrayContaining(["h1", "h2", "p", "aside", "footer", "span"]),
       );

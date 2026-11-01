@@ -11,7 +11,7 @@ import {
 
 const scope: OutputScope = {
   classes: { item: "bascik__c__item", wrap: "bascik__c__wrap" },
-  elements: { h2: "bascik__c__el__h2", a: "bascik__c__el__a" },
+  elements: { h2: "b_el_c_h2", a: "b_el_c_a" },
 };
 
 describe("stripOutputScopeAttribute", () => {

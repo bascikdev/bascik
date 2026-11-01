@@ -1,6 +1,6 @@
 /**
  * Generates docs/lighthouse/lighthouserc.all.json and docs/lighthouse/lighthouserc.all-light.json
- * dynamically from docs/scripts/nav.ts.
+ * dynamically from docs/src/lib/nav.ts.
  *
  * Run with:
  *   node docs/lighthouse/generate-config.ts
@@ -8,18 +8,39 @@
 import { writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NAV } from "../src/lib/nav.ts";
-import { LIGHTHOUSE_ORIGIN, LIGHTHOUSE_SERVER_COMMAND } from "./site.ts";
+import { NAV, type NavSection } from "../src/lib/nav.ts";
+import {
+  LIGHTHOUSE_ORIGIN,
+  LIGHTHOUSE_SERVER_COMMAND,
+  SEO_URL_PATTERN,
+} from "./site.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const lighthouseDir = resolve(__dirname);
 
-export async function generateLighthouseAllConfig(
+/** An lhci assertion: a level (`off`, `warn`, `error`), or a level and its options. */
+export type LighthouseAssertion = string | [string, Record<string, number>];
+
+/**
+ * An lhci `assert` block: flat `assertions` for every URL, or `assertMatrix` entries, each checked for every URL its
+ * `matchingUrlPattern` matches (every URL without one).
+ */
+export interface LighthouseAssertOptions {
+  assertions?: Record<string, LighthouseAssertion>;
+  assertMatrix?: {
+    matchingUrlPattern?: string;
+    assertions: Record<string, LighthouseAssertion>;
+  }[];
+}
+
+/** The two sweep configs for every page in `nav`, as generateLighthouseAllConfig writes them. */
+export function lighthouseAllConfigs(
+  nav: NavSection[] = NAV,
   baseUrl = LIGHTHOUSE_ORIGIN,
-): Promise<string[]> {
-  // Collect all page hrefs from NAV. External nav entries (e.g. Merch) are
+) {
+  // Collect all page hrefs from the nav. External nav entries (e.g. Merch) are
   // off-site and can't be audited against the local server, so they are skipped.
-  const navHrefs = NAV.flatMap((section) =>
+  const navHrefs = nav.flatMap((section) =>
     section.pages.filter((page) => !page.external).map((page) => page.href),
   );
 
@@ -36,6 +57,35 @@ export async function generateLighthouseAllConfig(
       `${baseUrl}${route === "/" ? "/?theme=light" : `${route}?theme=light`}`,
   );
 
+  const sweepAssert: LighthouseAssertOptions = {
+    // The gates' shape (lighthouserc.json): lhci checks every entry whose pattern matches a URL, so SEO sits in
+    // its own entry, which skips the noindex /search page, and /search keeps the other categories.
+    assertMatrix: [
+      {
+        matchingUrlPattern: ".*",
+        assertions: {
+          "is-crawlable": "off",
+          // Every page, one run each: a warning, since one noisy run should not fail the sweep. The gate
+          // that fails is lighthouserc.json and lighthouserc.desktop.json.
+          "categories:performance": ["warn", { minScore: 0.95 }],
+          "categories:accessibility": ["error", { minScore: 1.0 }],
+          "categories:best-practices": ["error", { minScore: 1.0 }],
+        },
+      },
+      {
+        matchingUrlPattern: SEO_URL_PATTERN,
+        assertions: {
+          "categories:seo": ["error", { minScore: 1.0 }],
+        },
+      },
+    ],
+  };
+  const lightAssert: LighthouseAssertOptions = {
+    assertions: {
+      "categories:accessibility": ["error", { minScore: 1.0 }],
+    },
+  };
+
   const config = {
     ci: {
       collect: {
@@ -47,17 +97,7 @@ export async function generateLighthouseAllConfig(
           chromeFlags: "--no-sandbox --headless",
         },
       },
-      assert: {
-        assertions: {
-          "is-crawlable": "off",
-          // Every page, one run each: a warning, since one noisy run should not fail the sweep. The gate
-          // that fails is lighthouserc.json and lighthouserc.desktop.json.
-          "categories:performance": ["warn", { minScore: 0.95 }],
-          "categories:accessibility": ["error", { minScore: 1.0 }],
-          "categories:best-practices": ["error", { minScore: 1.0 }],
-          "categories:seo": ["error", { minScore: 1.0 }],
-        },
-      },
+      assert: sweepAssert,
       upload: {
         target: "filesystem",
         outputDir: "./.lighthouseci",
@@ -77,11 +117,7 @@ export async function generateLighthouseAllConfig(
           onlyCategories: ["accessibility"],
         },
       },
-      assert: {
-        assertions: {
-          "categories:accessibility": ["error", { minScore: 1.0 }],
-        },
-      },
+      assert: lightAssert,
       upload: {
         target: "filesystem",
         outputDir: "./.lighthouseci-light",
@@ -89,6 +125,13 @@ export async function generateLighthouseAllConfig(
     },
   };
 
+  return { urls: allUrls, config, lightConfig };
+}
+
+export async function generateLighthouseAllConfig(
+  baseUrl = LIGHTHOUSE_ORIGIN,
+): Promise<string[]> {
+  const { urls, config, lightConfig } = lighthouseAllConfigs(NAV, baseUrl);
   const outPath = join(lighthouseDir, "lighthouserc.all.json");
   await writeFile(outPath, JSON.stringify(config, null, 2) + "\n", "utf8");
 
@@ -99,7 +142,7 @@ export async function generateLighthouseAllConfig(
     "utf8",
   );
 
-  return allUrls;
+  return urls;
 }
 
 const isMain =

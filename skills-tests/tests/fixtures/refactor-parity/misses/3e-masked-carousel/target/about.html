@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk frother</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 Helvetica,
+          Arial,
+          sans-serif;
+        color: #1d2433;
+      }
+      .hero {
+        padding: 40px;
+      }
+      .hero h2 {
+        margin: 0 0 16px;
+        color: #1d2433;
+      }
+      .slides {
+        height: 160px;
+        padding: 16px;
+      }
+      .slide {
+        height: 120px;
+        margin: 0;
+      }
+      .ticker {
+        margin: 8px 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>About</h1>
+      <section
+        class="hero bascik__hero-carousel__c1"
+        data-testid="hero-carousel"
+      >
+        <h2>Froth at home</h2>
+        <div class="slides" data-testid="hero-carousel-slides">
+          <p class="slide" style="background-color: rgb(242, 221, 228)">
+            Slide
+          </p>
+          <p class="ticker">Now shipping</p>
+        </div>
+        <p>Silky milk in thirty seconds.</p>
+      </section>
+    </main>
+    <script>
+      // An autoplay carousel and a ticker: they never stop changing, so only a mask lets the page go quiet.
+      const words = ["Now shipping", "Free returns", "Two year warranty"];
+      let n = 0;
+      setInterval(() => {
+        document.querySelector(".ticker").textContent =
+          words[++n % words.length];
+      }, 200);
+    </script>
+  </body>
+</html>

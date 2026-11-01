@@ -324,7 +324,7 @@ This site is built with [Bascik](${DOCS}): HTML pages and components compiled to
 ### Commands
 
 - \`${dev}\`: dev server with live reload at http://localhost:8080
-- \`${build}\`: production build into \`dist/\`
+- \`${build}\`: production build into \`dist/\`; it needs the site's URL in \`BASCIK_SITE_URL\` or \`.env\` for the sitemap and robots.txt ([site URL](${DOCS}/cli#environment-files-and-the-site-url))
 - \`npx bascik --check\`: validate pages, components and config
 ${preview}
 

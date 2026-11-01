@@ -680,6 +680,19 @@ describe("the html-helpers Errors table and Troubleshooting quote the real messa
     );
   });
 
+  it("tells a handler test to print the return with serverScriptOutput, not String(), which adds commas to an array", () => {
+    const testing = read("content/testing/server-scripts.md");
+    expect(testing).toContain(
+      'import { serverScriptOutput } from "@bascik/bascik/runtime";',
+    );
+    expect(testing).toContain("printed.text");
+    expect(testing).toContain("printed.error");
+    expect(testing).not.toMatch(/String\(\s*await weatherHandler/);
+    expect(readRepo("skills/bascik-testing/SKILL.md")).toContain(
+      "serverScriptOutput(await handler(",
+    );
+  });
+
   it("says the html error is in the terminal in dev (the browser shows a plain 500)", () => {
     expect(read("content/security.md")).toMatch(/terminal/);
     expect(helpers).toMatch(/terminal/);

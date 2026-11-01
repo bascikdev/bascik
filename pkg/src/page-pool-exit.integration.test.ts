@@ -347,7 +347,8 @@ describe("exiting while page workers load (real CLI)", () => {
     expectNoStopNoise("stuck crash", result);
     expect(result.code, describeRun("stuck crash", result)).toBe(1);
     expect(result.stderr).toContain(CRASH_MESSAGE);
-    // The worker would load in 60 s; the exit waits for it at most ~10 s.
+    // The worker would load in 60 s; the exit waits for it at most ~13 s
+    // (10 s ready grace, then up to 3 s for a loaded worker to stop itself).
     expect(result.ms, describeRun("stuck crash", result)).toBeLessThan(25_000);
   }, 60_000);
 

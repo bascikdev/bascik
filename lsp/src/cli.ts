@@ -2,15 +2,24 @@
 import { CheckUsageError, checkFiles, formatDiagnostic } from "./check.js";
 
 interface CliOptions {
-  targetPath?: string;
+  targetPaths: string[];
   projectPath?: string;
   fix: boolean;
 }
 
+const USAGE =
+  "Usage: bascik-language-server --check [--fix] [--project <dir>] [path ...]";
+
+/** Every positional argument is a path to check; an unknown flag is a usage error, never ignored. */
 function parseArgs(args: string[]): CliOptions {
-  let targetPath: string | undefined;
+  const targetPaths: string[] = [];
   let projectPath: string | undefined;
   let fix = false;
+  const projectValue = (value: string | undefined): string => {
+    if (!value || value.startsWith("-"))
+      throw new CheckUsageError(`--project needs a directory. ${USAGE}`);
+    return value;
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--stdio" || arg === "--check") {
@@ -22,32 +31,36 @@ function parseArgs(args: string[]): CliOptions {
       continue;
     }
     if (arg === "--project") {
-      projectPath = args[++i];
+      projectPath = projectValue(args[++i]);
       continue;
     }
     if (arg.startsWith("--project=")) {
-      projectPath = arg.slice("--project=".length);
+      projectPath = projectValue(arg.slice("--project=".length));
       continue;
     }
-    if (!arg.startsWith("-")) {
-      targetPath = arg;
+    if (arg === "--") {
+      targetPaths.push(...args.slice(i + 1));
+      break;
     }
+    if (arg.startsWith("-"))
+      throw new CheckUsageError(`Unknown option: ${arg}. ${USAGE}`);
+    targetPaths.push(arg);
   }
-  return { targetPath, projectPath, fix };
+  return { targetPaths, projectPath, fix };
 }
 
 /** `bascik-language-server --check`: per-file diagnostics over a folder or file, printed one per line. */
 export async function runCliCheck(
   args: string[] = process.argv.slice(2),
 ): Promise<number> {
-  const { targetPath, projectPath, fix } = parseArgs(args);
   const cwd = process.cwd();
 
   let result;
   try {
+    const { targetPaths, projectPath, fix } = parseArgs(args);
     result = await checkFiles({
       cwd,
-      targets: targetPath ? [targetPath] : undefined,
+      targets: targetPaths.length > 0 ? targetPaths : undefined,
       projectPath,
       fix,
     });

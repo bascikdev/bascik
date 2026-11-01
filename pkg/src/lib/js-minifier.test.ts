@@ -22,6 +22,20 @@ it("preserves binary continuations across line breaks", () => {
 });
 
 describe("minifyJs – basic comment stripping and whitespace collapsing", () => {
+  it("keeps a hashbang line and its line break as written", () => {
+    expect(
+      minifyJs("#!/usr/bin/env node\n'use strict'\nconsole.log( 1 ) // done\n"),
+    ).toBe("#!/usr/bin/env node\n'use strict';console.log(1)");
+    expect(minifyJs("#!/usr/bin/env node\r\nrun( )")).toBe(
+      "#!/usr/bin/env node\r\nrun()",
+    );
+    expect(minifyJs("#!/usr/bin/env node")).toBe("#!/usr/bin/env node");
+  });
+
+  it("only treats `#!` at the very start as a hashbang", () => {
+    expect(minifyJs(" #!x\nfoo( )")).not.toContain("\n");
+  });
+
   it("removes block comments", () => {
     expect(minifyJs("/* hello */var x = 1;")).toBe("var x=1;");
   });
@@ -181,6 +195,17 @@ describe("minifyJs – regex literal after control-statement headers", () => {
 });
 
 describe("minifyJs – regex literal handling", () => {
+  it("keeps a regex after `}` intact when it closes on the same line", () => {
+    // findJsLiteralSpans reads this `/` as division; js-literal-spans.test.ts pins that side.
+    expect(minifyJs("function f() {}\n/ a '/.test(s)")).toContain("/ a '/");
+  });
+
+  it("keeps a regex after `else` intact", () => {
+    expect(minifyJs("if (a) b();\nelse / x '/.test(s);")).toBe(
+      "if(a)b();else/ x '/.test(s);",
+    );
+  });
+
   it("preserves a simple regex literal verbatim", () => {
     expect(minifyJs("var re = /abc/g;")).toBe("var re=/abc/g;");
   });

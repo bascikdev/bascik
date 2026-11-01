@@ -41,7 +41,11 @@ vi.mock("./config.js", async (importOriginal) => {
   };
 });
 
-import { stripSourceFileComments } from "./component-expansion-core.ts";
+import {
+  expandComponents,
+  stripSourceFileComments,
+} from "./component-expansion-core.ts";
+import type { ComponentList } from "./types.ts";
 import {
   LINEAR_TIME_TIMEOUT_MS,
   expectLinearTime,
@@ -69,6 +73,46 @@ describe("stripSourceFileComments", () => {
           label: opener,
         });
       }
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
+describe("expandComponents on failing instances", () => {
+  it(
+    "strips each failed usage where it was found, in time linear in the page",
+    () => {
+      // A host whose onError returns (the build logs) strips the usage and
+      // goes on, splicing the mask like an empty template (R2-07). Each
+      // splice copies the page, as every substitution does, so the check
+      // holds the usage count and grows the text around them, like the
+      // other loop checks (transpile-loop.linear-time.test.ts).
+      const list: ComponentList = {
+        "x-fail": { fileName: "x-fail.html", fileContent: "<p>never</p>" },
+      };
+      const usages = 200;
+      const page = (size: number) => {
+        const filler = "<p>text <!-- note --> more</p>".repeat(
+          Math.max(1, Math.ceil(size / usages / 30)),
+        );
+        return `${filler}<x-fail>a</x-fail>`.repeat(usages);
+      };
+      const expand = (html: string) =>
+        expandComponents(html, list, {
+          scope: () => {
+            throw new Error("scoping failed");
+          },
+          mintId: (name, ordinal) => `${name}-${ordinal}`,
+          injectAttrProps: "before-scope",
+          numberSourceUrls: false,
+          inheritAttributes: true,
+          instanceState: { ordinalMap: new Map(), issuedIds: new Set() },
+          limits: { maxSubstitutions: 1e9, maxOutputBytes: 1e9 },
+          onError: () => {},
+          warn: () => {},
+        }).transpiledHtmlBody;
+      expect(expand(page(1))).not.toContain("x-fail");
+      expectLinearTime(page, 400_000, expand);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <site-head />
-    <script data-bascik-build>
+    <script data-bascik-build type="text/typescript">
       import { seo } from "@/lib/seo.ts";
       export default () =>
         seo({
@@ -23,7 +23,7 @@
     component appears here twice.
   -->
     <site-header />
-    <main id="main" class="container">
+    <main id="main" class="container" data-testid="example-components-main">
       <h1>Example Components</h1>
 
       <div data-testid="tabs-a">

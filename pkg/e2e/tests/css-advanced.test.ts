@@ -3,7 +3,7 @@
  *
  * Two instances of <css-advanced> are rendered. Tests verify:
  *   - CSS custom properties are scoped (--accent → --bascik__css-advanced__accent)
- *   - CSS #id selectors are converted to class selectors (.bascik__css-advanced__id__special)
+ *   - CSS #id selectors are converted to class selectors (.b_id_css-advanced_special)
  *   - @keyframes names are scoped (fadeIn → bascik__css-advanced__keyframe__fadeIn)
  *   - Animation class toggle on instance A does not affect instance B
  *   - Both instances share the same custom property value (per-component, not per-instance)
@@ -25,9 +25,9 @@ function accentBox(inst: Locator) {
   return inst.locator(".bascik__css-advanced__accent-box");
 }
 
-/** #special in CSS becomes .bascik__css-advanced__id__special on the element */
+/** #special in CSS becomes .b_id_css-advanced_special on the element */
 function specialBox(inst: Locator) {
-  return inst.locator(".bascik__css-advanced__id__special");
+  return inst.locator(".b_id_css-advanced_special");
 }
 
 function animBtn(inst: Locator) {

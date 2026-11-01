@@ -25,7 +25,7 @@ export async function renderCards(jsonPath: string) {
 }
 ```
 
-Static imports, bare imports, `export ... from`, and dynamic `import()` all work. Bascik rewrites genuine `./` and `../` specifiers relative to the containing page, component, or external script file.
+Static imports, bare imports, `export ... from`, and dynamic `import()` all work. An inline `data-bascik-server` or `data-bascik-stream` block resolves bare packages and package `imports` (`#lib/format.ts`, from the `imports` field of your `package.json`) from the project, as a `src=` file does. Bascik rewrites genuine `./` and `../` specifiers relative to the containing page, component, or external script file. A query or fragment on one (`./render.ts?v=2`) stays on the rewritten URL, as Node reads it: it names a separate module instance, not part of the file name.
 
 ## Import Root Aliases (`@/`)
 

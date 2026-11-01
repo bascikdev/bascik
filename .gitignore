@@ -83,11 +83,13 @@ pkg/e2e/dist-*
 pkg/e2e/base-fixture/dist-*
 create/dist
 extensions/vscode-bascik/dist
+extensions/vscode-bascik/out
 pkg/test-results
 test-results
 hint-report/
 .lighthouseci
 .lighthouseci-light
+.lighthouseci-desktop
 docs/lighthouse/lighthouserc.all.json
 docs/lighthouse/lighthouserc.all-light.json
 docs/.wrangler

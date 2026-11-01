@@ -441,6 +441,41 @@ describe("SseManager - prompt 97 bounded drain subscriptions", () => {
     expect(manager.activeClientCount).toBe(0);
   });
 
+  it("ends an over-cap stream whose headers are already committed instead of leaving it open", () => {
+    manager = new SseManager({
+      heartbeatIntervalMs: 100,
+      maxConnections: 1,
+      clock: nativeClock,
+    });
+    manager.addClient(makeMockRes().mockRes);
+
+    const overflow = makeMockRes();
+    overflow.mockRes.headersSent = true;
+    overflow.mockRes.respond = vi.fn(() => {
+      throw Object.assign(new Error("headers sent"), {
+        code: "ERR_HTTP_HEADERS_SENT",
+      });
+    });
+    const rejected = manager.addClient(overflow.mockRes);
+    expect(rejected).toBeNull();
+    expect(overflow.mockRes.respond).not.toHaveBeenCalled();
+    expect(overflow.mockRes.end).toHaveBeenCalled();
+    expect(overflow.writes).toEqual([]);
+  });
+
+  it("reports whether it is at capacity", () => {
+    manager = new SseManager({
+      heartbeatIntervalMs: 100,
+      maxConnections: 1,
+      clock: nativeClock,
+    });
+    expect(manager.isAtCapacity).toBe(false);
+    const client = manager.addClient(makeMockRes().mockRes)!;
+    expect(manager.isAtCapacity).toBe(true);
+    manager.removeClient(client.id);
+    expect(manager.isAtCapacity).toBe(false);
+  });
+
   it("rejects connections beyond maxConnections and ends the stream before headers are committed", () => {
     manager = new SseManager({
       heartbeatIntervalMs: 100,

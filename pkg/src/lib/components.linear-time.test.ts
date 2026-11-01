@@ -113,7 +113,9 @@ describe("injectProps", () => {
     () => {
       const count = 40_000;
       const unclosed = (n: number) => "<i data-bascik-prop-t>f".repeat(n);
-      expect(injectProps(unclosed(count), { t: "x" })).toBe(
+      // Each call warns once that a receiver has no end tag; not printed here.
+      const quiet = () => {};
+      expect(injectProps(unclosed(count), { t: "x" }, quiet)).toBe(
         "<i>f".repeat(count),
       );
       const tail = 3000;
@@ -121,10 +123,10 @@ describe("injectProps", () => {
         `${"<i data-bascik-prop-t>f".repeat(n)}</i>`;
       // Only the last receiver pairs with the one close; the rest stay
       // unfilled, exactly as a depth count from each of them finds.
-      expect(injectProps(closedOnce(tail), { t: "x" })).toBe(
+      expect(injectProps(closedOnce(tail), { t: "x" }, quiet)).toBe(
         `${"<i>f".repeat(tail - 1)}<i>x</i>`,
       );
-      const fill = (t: string) => injectProps(t, { t: "x" });
+      const fill = (t: string) => injectProps(t, { t: "x" }, quiet);
       expectLinearTime(unclosed, count, fill, {
         label: "unclosed",
         ceilingMs: 5000,

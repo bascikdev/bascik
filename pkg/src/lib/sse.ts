@@ -78,10 +78,19 @@ export class SseManager {
     if (this.destroyed) {
       return null;
     }
-    if (this.clients.size >= this.maxConnections) {
+    if (this.isAtCapacity) {
+      // The server checks `isAtCapacity` before committing its 200, so this
+      // branch is the backstop for a caller that did not. A response whose
+      // headers are already sent cannot become a 503; end it so the client
+      // sees the stream close (EventSource retries) instead of an open 200
+      // stream that never carries an event.
       try {
-        res.respond(503, { "content-type": "text/plain" });
-        res.end("Too Many SSE Connections");
+        if (!res.headersSent) {
+          res.respond(503, { "content-type": "text/plain; charset=utf-8" });
+          res.end("Too Many SSE Connections");
+        } else {
+          res.end();
+        }
       } catch {}
       return null;
     }
@@ -224,6 +233,11 @@ export class SseManager {
 
   public get activeClientCount(): number {
     return this.clients.size;
+  }
+
+  /** True when a new connection would be refused (`maxConnections` reached). */
+  public get isAtCapacity(): boolean {
+    return this.clients.size >= this.maxConnections;
   }
 
   public destroy(): void {

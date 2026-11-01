@@ -25,7 +25,8 @@
  * - Where the model cannot follow the browser, the scan stops and reports the
  *   rest of the input as one `unparsed` token, so callers never act on a
  *   guess. It stops at raw text, RCDATA, or SVG/MathML start tags inside
- *   `<select>` (parsers disagree there), `<frameset>`, CDATA directly inside
+ *   `<select>` (parsers disagree there), at end tags other than its options'
+ *   inside a `<select>` in SVG/MathML, `<frameset>`, CDATA directly inside
  *   an SVG/MathML integration point, end tags in foreign content that may
  *   close an element the scan does not track, and nesting deeper than
  *   MAX_TRACKED_DEPTH.
@@ -420,6 +421,75 @@ const TABLE_STRUCTURE_ELEMENTS = new Set([
   "col",
   "colgroup",
   "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+]);
+
+/**
+ * Start tags that close a `<p>` open in button scope before they are
+ * inserted ("in body"). `<table>` does too, except in quirks mode, which
+ * depends on the DOCTYPE; it is left out, which keeps a `<p>` open longer.
+ */
+const CLOSES_P = new Set([
+  "address",
+  "article",
+  "aside",
+  "blockquote",
+  "center",
+  "dd",
+  "details",
+  "dialog",
+  "dir",
+  "div",
+  "dl",
+  "dt",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hgroup",
+  "hr",
+  "li",
+  "listing",
+  "main",
+  "menu",
+  "nav",
+  "ol",
+  "p",
+  "plaintext",
+  "pre",
+  "search",
+  "section",
+  "summary",
+  "ul",
+  "xmp",
+]);
+
+/**
+ * Start tags that "in body" (and "in select") ignore: they insert no element.
+ * Inside an SVG or MathML integration point with no table open they open
+ * nothing, so they cannot keep an end tag after them from closing the
+ * foreign content. After a `<table>`, the table's insertion modes give the
+ * table-structure ones meaning, so they are only ignored with none open.
+ */
+const IGNORED_IN_BODY = new Set([
+  "body",
+  "caption",
+  "colgroup",
+  "head",
+  "html",
   "tbody",
   "td",
   "tfoot",
@@ -981,6 +1051,26 @@ export const scanHtml = (
     }
   };
 
+  /**
+   * Close a `<p>` open in button scope among the tracked elements, as the
+   * start tags in CLOSES_P do. The walk starts at an HTML element or an
+   * integration point (HTML rules apply), so it meets an integration point,
+   * a scope boundary or `<button>` before it leaves the tracked elements:
+   * only HTML elements lie above the `<p>` it pops to.
+   */
+  const closeParagraphInButtonScope = (tokenStart: number): void => {
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const entry = stack[k];
+      if (entry.namespace !== "html") return;
+      if (entry.name === "p") {
+        popTo(k, tokenStart, tokenStart, false);
+        return;
+      }
+      if (SCOPE_BOUNDARY_ELEMENTS.has(entry.name) || entry.name === "button")
+        return;
+    }
+  };
+
   /** Tree construction dispatcher for a start tag: HTML rules or foreign content rules. */
   const startTagUsesHtmlRules = (name: string): boolean => {
     if (stack.length === 0) return true;
@@ -1041,6 +1131,8 @@ export const scanHtml = (
       lost = true;
       return tag.end;
     }
+    if (stack.length > 0 && !selectOpen && CLOSES_P.has(name))
+      closeParagraphInButtonScope(start);
     if (name === "svg" || name === "math") {
       if (!tag.selfClosing) {
         if (stack.length === 0) foreignStartedInTable = openTables > 0;
@@ -1093,7 +1185,11 @@ export const scanHtml = (
       openPreformatted > 0
     )
       preformatted().sticky = true;
-    if (stack.length > 0 && !VOID_ELEMENTS.has(name)) {
+    if (
+      stack.length > 0 &&
+      !VOID_ELEMENTS.has(name) &&
+      !(openTables === 0 && IGNORED_IN_BODY.has(name))
+    ) {
       push({
         name,
         namespace: "html",
@@ -1208,6 +1304,17 @@ export const scanHtml = (
 
   const endElement = (name: string, tokenStart: number, end: number): void => {
     if (name === "select") selectOpen = false;
+    else if (
+      selectOpen &&
+      stack.length > 0 &&
+      name !== "option" &&
+      name !== "optgroup"
+    ) {
+      // "In select" ignores this end tag; the customizable `<select>` may
+      // not. In foreign content it decides whether the SVG or MathML closes.
+      lost = true;
+      return;
+    }
     if (stack.length === 0) {
       if (name === "template") closeTemplate();
       else if (isPreformatted(name)) closePreformattedElement(name);
@@ -1266,7 +1373,11 @@ export const scanHtml = (
         emitMarkup("raw", tag.end, close, name);
         emitMarkup("tag", close, end, name, true);
       }
-      if (wasInsertable && !isInsertable()) notInsertableSince = start;
+      // A breakout tag (`<p>`, `<div>`, ...) in unclosed SVG or MathML pops
+      // the foreign stack, which makes what follows ordinary content again.
+      const nowInsertable = isInsertable();
+      if (wasInsertable && !nowInsertable) notInsertableSince = start;
+      else if (!wasInsertable && nowInsertable) notInsertableSince = -1;
       i = html.indexOf("<", resume);
       continue;
     }
@@ -1363,8 +1474,31 @@ export const scanHtml = (
   return endAt(n);
 };
 
-/** Output that ends with a pending `<` or an unfinished character reference. */
-const PENDING_LOOKAHEAD_RE = /(?:<|&[#0-9A-Za-z]*)$/;
+/** `[#0-9A-Za-z]`: what a character reference reads after its `&`. */
+const isReferenceChar = (code: number): boolean =>
+  code === 35 ||
+  (code >= 48 && code <= 57) ||
+  (code >= 65 && code <= 90) ||
+  (code >= 97 && code <= 122);
+
+/**
+ * What the output ends with, after `previous` and then `text`: a `<` that
+ * is text only because markup followed it (`lt`), an unfinished character
+ * reference such as `&am` or `&#0...0` (`amp`), or neither. A reference can
+ * run any length (the tokenizer keeps reading leading zeros), so this
+ * carries the state across writes instead of looking at a fixed tail.
+ */
+const pendingLookahead = (
+  previous: "lt" | "amp" | "",
+  text: string,
+): "lt" | "amp" | "" => {
+  let run = text.length;
+  while (run > 0 && isReferenceChar(text.charCodeAt(run - 1))) run--;
+  if (run === 0) return text === "" || previous === "amp" ? previous : "";
+  const before = text.charCodeAt(run - 1);
+  if (before === 38 /* & */) return "amp";
+  return before === 60 /* < */ && run === text.length ? "lt" : "";
+};
 
 /** An empty comment: parsed as nothing, and it ends any pending `<` or `&` lookahead. */
 export const SEAM_SEPARATOR = "<!---->";
@@ -1391,8 +1525,8 @@ export const removeHtmlRanges = (
   if (ranges.length === 0) return { html, index };
   const sorted = [...ranges].sort((a, b) => a.start - b.start || b.end - a.end);
   const parts: string[] = [];
-  // The last characters written, which is all the lookahead check needs.
-  let tail = "";
+  // Whether the output so far ends in a pending `<` or character reference.
+  let pending: "lt" | "amp" | "" = "";
   let length = 0;
   let cursor = 0;
   let mappedIndex = -1;
@@ -1400,15 +1534,14 @@ export const removeHtmlRanges = (
     if (!text) return;
     parts.push(text);
     length += text.length;
-    tail = (tail + text).slice(-64);
+    pending = pendingLookahead(pending, text);
   };
   for (const range of sorted) {
     if (range.start < cursor) continue;
     if (mappedIndex === -1 && index <= range.start)
       mappedIndex = length + Math.max(0, index - cursor);
     write(html.slice(cursor, range.start));
-    if (range.separate || PENDING_LOOKAHEAD_RE.test(tail))
-      write(SEAM_SEPARATOR);
+    if (range.separate || pending !== "") write(SEAM_SEPARATOR);
     cursor = range.end;
   }
   if (mappedIndex === -1) mappedIndex = length + Math.max(0, index - cursor);

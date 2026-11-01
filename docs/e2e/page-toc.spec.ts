@@ -24,6 +24,27 @@ test.describe('"On this page" table of contents', () => {
     }
   });
 
+  // /deployment renders content/deployment/index.md, which the sidebar once failed to find (an empty list),
+  // and had two headings with the id #content-security-policy.
+  test("lists the headings of a page whose Markdown is a folder's index.md, each with its own id", async ({
+    page,
+  }) => {
+    await page.goto("/deployment");
+    const toc = page.getByRole("navigation", { name: "On this page" });
+    await expect(toc).toBeVisible();
+
+    const hrefs = await toc
+      .getByRole("link")
+      .evaluateAll((links) => links.map((a) => String(a.getAttribute("href"))));
+    expect(hrefs.length).toBeGreaterThan(10);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+    for (const href of hrefs) {
+      await expect(page.locator(`[id="${href.slice(1)}"]`), href).toHaveCount(
+        1,
+      );
+    }
+  });
+
   test("clicking a link updates the URL hash and marks it as the current location", async ({
     page,
   }) => {

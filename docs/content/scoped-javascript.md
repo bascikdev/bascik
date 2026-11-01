@@ -292,7 +292,7 @@ count.addEventListener("click", () => {
 </script>
 ```
 
-**Ordinary `<script>` blocks are JavaScript.** Browsers do not execute TypeScript in an unmarked `<script>`, so Bascik leaves those blocks byte-for-byte on the JavaScript path and never changes their meaning. When it can positively identify erasable TypeScript syntax in one, the build logs a warning that names the file and points to the two supported paths above. Valid JavaScript is never rewritten or warned about.
+**Ordinary `<script>` blocks are JavaScript.** Browsers do not execute TypeScript in an unmarked `<script>`, so Bascik leaves those blocks byte-for-byte on the JavaScript path and never changes their meaning. The same holds for `<script type="module">` and the other JavaScript types. When it can positively identify erasable TypeScript syntax in one, the build logs a warning that names the file and points to the two supported paths above; for a module script, that is a companion `.ts` referenced with `<script type="module" src="name.ts">`, since a `text/typescript` block is always a classic script. Valid JavaScript is never rewritten or warned about.
 
 The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source.
 

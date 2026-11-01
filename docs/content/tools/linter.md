@@ -54,6 +54,12 @@ Check a specific path or page:
 npx @bascik/language-server --check src/pages
 ```
 
+Name several paths to check them in one run. The project is found from the first one, and an option the checker does not know, such as a misspelled `--fixx`, stops it with a usage error instead of being ignored:
+
+```sh
+npx @bascik/language-server --check src/components src/pages
+```
+
 The checker reads `bascik.config.ts` to know which folders hold components. A component folder outside the project, such as a monorepo's shared components, is not under the directory you check, so check it separately. Run from the site, the checker uses the site's config for any folder listed in its `directory.components`; `--project` names the project explicitly from anywhere:
 
 ```sh
@@ -121,6 +127,16 @@ To trust a project escaper, list it in `diagnostics.escapeFunctions`. To silence
 
 ![VS Code: a server script returns a template that interpolates a query parameter, the hole is underlined, the hover names server-script-unescaped-markup, and the quick fix wraps the template in html and adds the import](/assets/vscode/unescaped-markup@2x.webp)
 
+### `server-script-returns-response`
+
+A server or stream script's return value is spliced into the page as markup, so a script that returns a `Response` (the API-route habit) is refused when the page is requested: an error in dev and an empty slot with a warning in production (see [Return Values](/server-scripts#return-values)). The linter warns where the default export returns `new Response(...)`, `Response.json(...)`, `Response.redirect(...)` or `Response.error(...)`, including an arrow whose body is one:
+
+```text
+src/pages/status.html:6:16 - warning: (server-script-returns-response) This data-bascik-server script returns a Response, which Bascik refuses when the page is requested: the script's return value is spliced into the page as markup. Return a string or an html`...` value from @bascik/bascik/html. A Response belongs in an API route (src/api/).
+```
+
+Return the markup (a string or an `html` value), or move the code to an [API route](/api-routes) when the response itself is what you want. The words in strings and comments, a `return` inside a nested helper or callback, a Response that is built but not returned, `data-bascik-build` scripts and API routes are not reported. A default export wrapped in a call (`export default withAuth(handler)`) is not read.
+
 ### `shared-name-group`
 
 `name` ships as written ([Component Best Practices](/component-best-practices#name-form-controls-and-groups)), so a component that holds a whole name group makes one group of all its copies on a page. The linter warns on the `name` attribute in the component file when the component is used more than once on one page and holds:
@@ -151,6 +167,25 @@ When the shared group is what you want, silence it on the line above the attribu
 
 `bascik-ignore` covers its own line and the next, so for a group spread over many lines use `<!-- bascik-disable shared-name-group -->` and `<!-- bascik-enable -->`, or turn the rule off for the project with `"disabledRules": ["shared-name-group"]` in `bascik.ext.json`.
 
+### `component-name-underscore`
+
+A component whose tag name holds an underscore gets a warning on its file. The tag is the file name up to its first dot, lowercased, so `site-nav_x.html` defines `<site-nav_x>`, while `site-nav.my_v2.html` defines `<site-nav>` and a folder name never counts:
+
+```text
+src/components/site-nav_x.html:1:1 - warning: (component-name-underscore) Component "site-nav_x" has an underscore in its name. The name is legal, but underscores can make two components' generated id classes spell the same name: #btn in <site-nav_x> and #x_btn in <site-nav> both compile to the class b_id_site-nav_x_btn, which stops the build. Use hyphens (e.g. "site-nav-x").
+```
+
+The name is legal HTML, so this is a warning, not an error. The build itself fails only when two components really do generate one class, with an error that names both rules and their lines; see [The Naming Scheme](/internals/scoping-system#the-remaining-collision-cases). Rename the file with hyphens, or silence the rule for the project with `"disabledRules": ["component-name-underscore"]` under `diagnostics` in `bascik.ext.json`.
+
+### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
+
+Two rules are hints: advice that is easy to ignore and never fails a run.
+
+- `attr-prop-unsupplied` marks a `data-bascik-attr-*` binding in a component whose prop no usage supplies: no page, no other component, and no open editor buffer has a `<my-card data-bascik-prop-href="...">` for `data-bascik-attr-href="href"`. It cannot see usages written in Markdown or produced by a build script, which is why it is a hint.
+- `api-unguarded-json` marks a `request.json()` (or `req.json()`) call in an API route that is not inside a `try` block, because a malformed body then throws and the route answers 500.
+
+Silence either with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks. Hints are shown in the editor and by this command, and never fail anything:
@@ -163,6 +198,8 @@ The CLI checker exits with code `0` when clean (or only warnings) and code `1` w
 ---
 
 ## Editor Setup
+
+In every editor, the language server checks only folders that are Bascik projects: a folder with a `bascik.config.*`, a language server config at its root (`bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`), or a `package.json` that lists `@bascik/bascik` or `@bascik/language-server` in any dependency field. A shared component library that uses the linter on its own, or a global install with no `package.json` entry, opts in with a `bascik.ext.json`. Any other folder, such as a React or Vue app with its own `src/components`, gets no diagnostics, while navigation, hover, and completion still work, and the server logs why once (in VS Code, to the **Bascik** output panel). `--check` does not apply this rule: it checks the files you name in any folder.
 
 ### VS Code
 
@@ -198,7 +235,7 @@ if not configs.bascik then
     default_config = {
       cmd = { 'npx', '@bascik/language-server', '--stdio' },
       filetypes = { 'html' },
-      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', '.git'),
+      root_dir = lspconfig.util.root_pattern('bascik.config.ts', 'bascik.config.js', 'bascik.ext.json', '.git'),
       settings = {},
     },
   }
@@ -259,6 +296,8 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
   }
 }
 ```
+
+A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
 
 `serverScriptRules: false` turns off every rule for server and stream scripts. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`.
 

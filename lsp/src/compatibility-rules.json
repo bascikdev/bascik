@@ -2,8 +2,8 @@
   {
     "id": "css-id-attribute-selector",
     "kind": "css",
-    "pattern": "(^|[,{}\\s])\\[id(?:\\s*[~|^$*]?=[^\\]]+)?\\]",
-    "flags": "gm",
+    "pattern": "(?<![\"'])(?<!selector\\(\\s*)\\[\\s*id\\s*(?:[~|^$*]?=(?:\"[^\"]*\"|'[^']*'|[^\\][{};\"'])*)?\\]",
+    "flags": "gmi",
     "message": "[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.",
     "suggestion": "Use a CSS #id selector or class selector instead.",
     "severity": "error"
@@ -11,11 +11,20 @@
   {
     "id": "css-attribute-selector",
     "kind": "css",
-    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\](?!(?:[^(),{]|\\([^)]*\\))*\\.[A-Za-z_][\\w-]*)",
+    "pattern": "(^|,)\\s*\\[(?![iI][dD](?![\\w-]))[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\](?!(?:[^(),{]|\\([^)]*\\))*\\.[A-Za-z_][\\w-]*)",
     "flags": "gm",
     "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
     "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector.",
     "severity": "error"
+  },
+  {
+    "id": "css-reserved-class-prefix",
+    "kind": "css",
+    "pattern": "(?<![\\w\"'-])\\.b_(?:el|id)_[\\w-]*",
+    "flags": "g",
+    "message": "Class names starting with b_el_ or b_id_ use the head Bascik reserves for the classes it generates from element and #id selectors (p in plan-card becomes b_el_plan-card_p, #btn becomes b_id_plan-card_btn), so the same name used as a global class can style a component's elements.",
+    "suggestion": "Rename the class, for example .el-p or .item__p.",
+    "severity": "warning"
   },
   {
     "id": "css-is-element-names",

@@ -9,6 +9,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DiagnosticSeverity } from "vscode-languageserver";
 import {
@@ -206,7 +207,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
     const relative = path.relative(cwd, filePath);
 
     let document = TextDocument.create(
-      `file://${filePath}`,
+      pathToFileURL(filePath).toString(),
       languageId,
       1,
       content,
@@ -217,7 +218,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
         fs.writeFileSync(filePath, fixed.text, "utf8");
         fixedFiles.push(relative);
         document = TextDocument.create(
-          `file://${filePath}`,
+          pathToFileURL(filePath).toString(),
           languageId,
           2,
           fixed.text,

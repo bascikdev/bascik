@@ -64,7 +64,7 @@ const PRODUCT_CARD = `<!-- @bascik
   A product with its price and a buy button.
 -->
 <article class="card">
-  <h2 data-bascik-text="title"></h2>
+  <h2 data-bascik-prop-title></h2>
   <buy-button></buy-button>
 </article>
 `;

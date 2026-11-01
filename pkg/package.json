@@ -30,11 +30,10 @@
   "type": "module",
   "types": "./dist/lib/defineConfig.d.ts",
   "files": [
-    "bin/",
+    "bin/bascik.js",
     "dist/",
     "LICENSE",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "bin": "bin/bascik.js",
   "exports": {

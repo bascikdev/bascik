@@ -192,6 +192,39 @@ describe("createContentShield", () => {
     const shield = createContentShield(lookalike);
     expect(shield.restore(shield.hide(lookalike))).toBe(lookalike);
   });
+
+  // Most shields hide nothing (no comment, no <textarea>, no @layer), and
+  // restore ran a token scan over the whole page or stylesheet anyway
+  // (prompt 158 R2-09).
+  it("skips the token scan when nothing is left to restore", () => {
+    const other = createContentShield("x");
+    const foreign = other.hide("kept");
+    const shield = createContentShield("x");
+    __shieldStatsForTests.reset();
+    const text = `a ${foreign} b`;
+    expect(shield.restore(text)).toBe(text);
+    expect(__shieldStatsForTests.restoreScans).toBe(0);
+
+    const hidden = shield.hide("value");
+    expect(shield.restore(`<${hidden}> ${foreign}`)).toBe(`<value> ${foreign}`);
+    expect(__shieldStatsForTests.restoreScans).toBe(1);
+    // Restored once, the token is spent: a second restore (a forgetful
+    // caller) leaves it and scans nothing.
+    __shieldStatsForTests.reset();
+    expect(shield.restore(hidden)).toBe(hidden);
+    expect(__shieldStatsForTests.restoreScans).toBe(0);
+    // The other shield still restores its own token.
+    expect(other.restore(text)).toBe("a kept b");
+  });
+
+  it("still restores nested tokens in as many scans as the nesting needs", () => {
+    const shield = createContentShield("");
+    const inner = shield.hide("inner");
+    const outer = shield.hide(`[${inner}]`);
+    __shieldStatsForTests.reset();
+    expect(shield.restore(`${outer}!`)).toBe("[inner]!");
+    expect(__shieldStatsForTests.restoreScans).toBe(2);
+  });
 });
 
 describe("maskElementContents", () => {

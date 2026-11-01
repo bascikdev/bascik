@@ -200,10 +200,13 @@ Docs: `/scoped-javascript#typescript-in-component-scripts`, `/configuration#scri
 class  ->  bascik__<component>__<name>                  shared by every instance
 id     ->  bascik__<component>__<instance>__<name>      unique per instance
 name   ->  name                                          as written (scoping.attributes.name: true scopes it per instance)
-p {}   ->  .bascik__<component>__el__p                  class added to template elements
+p {}   ->  .b_el_<component>_p                          class added to template elements
+#btn {} -> .b_id_<component>_btn                        class added to the element with that id
 --x declared in the component -> --bascik__<component>__x
 data-testid ->  as written                               never scoped or hashed
 ```
+
+Name components with hyphens, never underscores (`site-nav-x.html`, not `site-nav_x.html`): `#btn` in `site-nav_x` and `#x_btn` in `site-nav` both become `b_id_site-nav_x_btn`, which fails the build. The linter warns on any underscore in a component name (`component-name-underscore`).
 
 Production builds shorten these to hashes. Never hard-code a scoped name. Tests use `data-testid` instead: the root gets `data-testid="<component>"`, and each interactive part, form, and landmark inside gets `data-testid="<component>-<part>"` (`plan-card-buy`, `signup-form-email`). Every instance shares them; a page that needs to tell instances apart puts `data-testid` on the usage tag, which replaces the root's. Rule 16 of the `bascik` skill has the full list.
 
@@ -252,7 +255,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | `modal-dialog`               | `<dialog>` and `showModal()`, backdrop click, `html:has()` scroll lock               |
 | `popover-menu`               | No JavaScript: `popover`, implicit anchor, `position-area` in `@supports`            |
 | `copy-button`                | Prop bound to an attribute with `data-bascik-attr-*`, clipboard, `role="status"`     |
-| `filter-list`                | Slotted `<li>` items reached through a container, `pageshow` re-sync                 |
+| `filter-list`                | Slotted `<li>` items via a container, `pageshow` re-sync, `<search>` hidden until JS |
 | `contact-form`               | Literal field names, validation, JSON `fetch`, the API route behind it               |
 | `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event                          |
 

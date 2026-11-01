@@ -61,10 +61,23 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
   }
 </style>
 <!-- Bascik ships name as written, so the server receives the keys name, email and message. -->
-<form class="form" id="form" action="/api/contact" method="post">
+<form
+  class="form"
+  id="form"
+  action="/api/contact"
+  method="post"
+  data-testid="contact-form"
+>
   <div class="field">
     <label for="name">Name</label>
-    <input class="input" id="name" name="name" autocomplete="name" required />
+    <input
+      class="input"
+      id="name"
+      name="name"
+      autocomplete="name"
+      required
+      data-testid="contact-form-name"
+    />
   </div>
   <div class="field">
     <label for="email">Email</label>
@@ -75,6 +88,7 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
       type="email"
       autocomplete="email"
       required
+      data-testid="contact-form-email"
     />
   </div>
   <div class="field">
@@ -86,10 +100,23 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
       rows="5"
       required
       minlength="10"
+      data-testid="contact-form-message"
     ></textarea>
   </div>
-  <button class="submit" id="submit" type="submit">Send</button>
-  <p class="status" id="status" role="status"></p>
+  <button
+    class="submit"
+    id="submit"
+    type="submit"
+    data-testid="contact-form-submit"
+  >
+    Send
+  </button>
+  <p
+    class="status"
+    id="status"
+    role="status"
+    data-testid="contact-form-status"
+  ></p>
 </form>
 <script type="text/typescript">
   const form = document.getElementById("form") as HTMLFormElement;

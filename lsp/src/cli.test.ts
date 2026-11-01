@@ -126,6 +126,53 @@ describe("runCliCheck", () => {
     });
   });
 
+  it("checks every path it is given, not only the last", async () => {
+    const components = path.join(tempDir, "components");
+    const pages = path.join(tempDir, "pages");
+    fs.mkdirSync(components);
+    fs.mkdirSync(pages);
+    fs.writeFileSync(
+      path.join(components, "broken.html"),
+      "<div data-bascik-build></div>",
+    );
+    fs.writeFileSync(path.join(pages, "clean.html"), "<p>Milk frother</p>");
+
+    expect(await runCliCheck([components, pages])).toBe(1);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("broken.html"),
+    );
+    consoleLogSpy.mockClear();
+    expect(await runCliCheck([pages, components])).toBe(1);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("broken.html"),
+    );
+  });
+
+  it.each([
+    [["--fixx"], "Unknown option: --fixx"],
+    [["-f"], "Unknown option: -f"],
+    [["--project"], "--project needs a directory"],
+    [["--project", "--fix"], "--project needs a directory"],
+    [["--project="], "--project needs a directory"],
+  ])(
+    "rejects %j with a usage error instead of ignoring it",
+    async (args, message) => {
+      const filePath = path.join(tempDir, "clean.html");
+      fs.writeFileSync(filePath, "<p>Hello</p>");
+      expect(await runCliCheck([filePath, ...args])).toBe(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(message),
+      );
+      expect(consoleLogSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still accepts the transport flag an editor may pass", async () => {
+    const filePath = path.join(tempDir, "clean.html");
+    fs.writeFileSync(filePath, "<p>Hello</p>");
+    expect(await runCliCheck(["--stdio", filePath])).toBe(0);
+  });
+
   it("returns 1 when target path does not exist", async () => {
     const nonExistent = path.join(tempDir, "does-not-exist.html");
     const exitCode = await runCliCheck([nonExistent]);

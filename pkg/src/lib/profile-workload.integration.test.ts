@@ -706,6 +706,75 @@ describe("bounded real profiling runner", () => {
       });
     },
   );
+  it("treats the pool's stop message as no task, so a worker that ends itself leaves no phantom dispatch", async () => {
+    // `WorkerPool` with `stopSignal` posts `{ stop: true }` instead of calling
+    // `terminate()`. Before the observers knew that message, each one opened a
+    // pending task named `undefined:<n>` that no reply ever closed, and the
+    // workers scenario failed its coverage check.
+    const root = await temporaryRoot();
+    const worker = join(root, "worker.mjs");
+    await writeFile(
+      worker,
+      `import {parentPort} from 'node:worker_threads'; parentPort.on('message', (input) => { if (input?.stop === true) { parentPort.close(); return; } parentPort.postMessage('done'); });`,
+    );
+    const source = `import {observeSubjects} from ${JSON.stringify(new URL("../../bench/profile-observers.ts", import.meta.url).href)};
+      const events = observeSubjects(${JSON.stringify(root)});
+      const {Worker} = await import('node:worker_threads');
+      const {once} = await import('node:events');
+      const worker = new Worker(${JSON.stringify(worker)});
+      const replied = once(worker, 'message');
+      worker.postMessage('page.html');
+      await replied;
+      const exited = once(worker, 'exit');
+      worker.postMessage({stop: true});
+      const [code] = await exited;
+      console.log(JSON.stringify({code, events}));`;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      ["--input-type=module", "-e", source],
+      { timeout: 10_000, env: cleanGeneratorEnvironment(process.env) },
+    );
+    const { code, events } = JSON.parse(stdout) as {
+      code: number;
+      events: { taskId?: string; completedAt?: number }[];
+    };
+    expect(code).toBe(0);
+    const tasks = events.filter((event) => event.taskId !== undefined);
+    expect(tasks.map((task) => task.taskId)).toEqual(["page.html:0"]);
+    expect(tasks[0].completedAt).toEqual(expect.any(Number));
+    const entries = (
+      await Promise.all(
+        (await readdir(root))
+          .filter((name) => name.endsWith(".jsonl"))
+          .map(async (name) =>
+            (await readFile(join(root, name), "utf8"))
+              .trim()
+              .split("\n")
+              .map(
+                (line) =>
+                  JSON.parse(line) as { event: string; taskId?: string },
+              ),
+          ),
+      )
+    ).flat();
+    const journaled = entries.map((entry) => entry.event);
+    expect(journaled).toContain("stop-requested");
+    expect(journaled).toContain("worker-exit");
+    expect(journaled).not.toContain("termination-requested");
+    expect(journaled.filter((event) => event === "dispatch")).toHaveLength(1);
+    if (!workerCpuLimitation()) {
+      expect(journaled).toContain("stop-received");
+      // One per-task profile, for the page, and none for the stop message.
+      // (The first profile the preload starts is its own warm-up, with no task.)
+      expect(
+        entries.filter(
+          (entry) =>
+            entry.event === "inspector-start" && entry.taskId !== undefined,
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
   it.each(["SIGINT", "SIGTERM"] as const)(
     "cancels disposable descendants on %s even when the leader exits first",
     async (signal) => {

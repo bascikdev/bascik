@@ -449,6 +449,47 @@ export const hasStaticModuleSyntax = (source: string): boolean => {
 };
 
 /**
+ * True when `source` declares a default export in any ES module form:
+ * `export default ...` (anywhere on a line), `export { handler as default }`,
+ * `export { default } from "..."`, `export { a, b as default } from "..."`,
+ * and `export * as default from "..."`. Text in comments, strings, template
+ * literals and regex literals never counts; the tokenizer skips them.
+ * `export { default as name }` re-exports under another name, so it does not
+ * count either. Matches the language server's missing-default-export rule.
+ */
+export const hasDefaultExport = (source: string): boolean => {
+  const tokens = tokenizeJavaScript(source);
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.type !== "identifier" || token.value !== "export") continue;
+    if (tokens[index - 1]?.value === ".") continue;
+    const next = tokens[index + 1];
+    if (next?.type === "identifier" && next.value === "default") return true;
+    if (
+      next?.value === "*" &&
+      tokens[index + 2]?.value === "as" &&
+      tokens[index + 3]?.value === "default"
+    )
+      return true;
+    if (next?.type !== "punctuation" || next.value !== "{") continue;
+    for (let inner = index + 2; inner < tokens.length; inner++) {
+      const part = tokens[inner];
+      if (part.type === "punctuation" && part.value === "}") break;
+      if (part.type !== "identifier" || part.value !== "default") continue;
+      const before = tokens[inner - 1];
+      const after = tokens[inner + 1];
+      if (before?.type === "identifier" && before.value === "as") return true;
+      if (
+        (before?.value === "{" || before?.value === ",") &&
+        (after?.value === "," || after?.value === "}")
+      )
+        return true;
+    }
+  }
+  return false;
+};
+
+/**
  * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
  *
  * - `relative`: `./` or `../`, resolved against the containing file's directory.
@@ -520,7 +561,18 @@ export interface RewriteModuleSpecifierOptions {
 }
 
 /**
+ * Where a specifier's URL query or fragment starts (`./a.ts?v=2`, `./a.ts#x`),
+ * or its length when it has none. Node reads a specifier as a URL, so the
+ * suffix names a module instance, not part of the file name.
+ */
+const specifierSuffixStart = (value: string): number => {
+  const index = value.search(/[?#]/);
+  return index === -1 ? value.length : index;
+};
+
+/**
  * Resolve a specifier to an absolute filesystem path using Bascik's rules.
+ * A query or fragment (`./a.ts?v=2`) is not part of the path.
  * Returns `undefined` for external specifiers, which are left to Node.
  * Throws `LeadingSlashSpecifierError` for a leading `/`.
  */
@@ -529,11 +581,12 @@ export const resolveSpecifierPath = (
   baseDir: string,
   importRoot: string,
 ): string | undefined => {
+  const path = value.slice(0, specifierSuffixStart(value));
   switch (classifySpecifier(value)) {
     case "relative":
-      return resolve(baseDir, value);
+      return resolve(baseDir, path);
     case "root":
-      return resolve(importRoot, stripRootPrefix(value));
+      return resolve(importRoot, stripRootPrefix(path));
     case "root-slash":
       throw new LeadingSlashSpecifierError(value);
     default:
@@ -603,8 +656,11 @@ export const rewriteModuleSpecifiersWithEdits = (
 
   const edits: SpecifierEdit[] = [];
   let rewritten = source;
-  for (const { start, end, resolved } of replacements) {
-    const href = pathToFileURL(resolved).href;
+  for (const { start, end, resolved, value } of replacements) {
+    // The query or fragment goes back on the URL as authored: in the path,
+    // pathToFileURL would percent-encode it into a file name that does not exist.
+    const href =
+      pathToFileURL(resolved).href + value.slice(specifierSuffixStart(value));
     const lineStart = source.lastIndexOf("\n", start - 1) + 1;
     let line = 1;
     for (

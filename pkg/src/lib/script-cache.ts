@@ -11,6 +11,52 @@ const PRUNE_THROTTLE_MS = 60 * 60 * 1000; // prune at most once per hour
 
 export const resetScriptCachePruneThrottle = (): void => {
   lastPruneTime = 0;
+  lastTempModulePruneTime = 0;
+};
+
+/**
+ * The temp module a build or routes script runs from:
+ * `build-<ms>-<random>.mjs` / `routes-<ms>-<random>.mjs` (build-scripts.ts,
+ * routes.ts). Each is removed when its script finishes; one left behind
+ * belongs to a process that was killed mid-script.
+ */
+const TEMP_MODULE_RE = /^(?:build|routes)-\d+-[a-z0-9]+\.mjs$/;
+/** Far longer than any script runs, so a running process keeps its own. */
+const TEMP_MODULE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+let lastTempModulePruneTime = 0;
+
+/**
+ * Remove orphaned build and routes temp modules from `tempDir`
+ * (`node_modules/.cache/bascik`), older than a day. Throttled like
+ * `pruneScriptCache`; never throws.
+ */
+export const pruneStaleTempModules = async (
+  tempDir: string,
+  force = false,
+  clock: FrameworkClock = nativeClock,
+): Promise<void> => {
+  const now = clock.now();
+  if (!force && now - lastTempModulePruneTime < PRUNE_THROTTLE_MS) return;
+  lastTempModulePruneTime = now;
+  try {
+    const files = await readdir(tempDir);
+    await Promise.all(
+      files
+        .filter((f) => TEMP_MODULE_RE.test(f))
+        .map(async (f) => {
+          const fullPath = join(tempDir, f);
+          try {
+            const st = await stat(fullPath);
+            if (now - st.mtimeMs > TEMP_MODULE_MAX_AGE_MS)
+              await unlink(fullPath).catch(() => {});
+          } catch {
+            // Removed meanwhile, or unreadable: leave it.
+          }
+        }),
+    );
+  } catch {
+    // No cache folder yet, or a mocked file system.
+  }
 };
 
 export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {

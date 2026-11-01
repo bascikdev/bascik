@@ -4,9 +4,10 @@
  * Build-time Script Execution
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * `<script data-bascik-build>` blocks are executed at transpile time as
- * Node.js ESM modules.  Whatever the script writes to stdout is injected into
- * the page in place of the script tag.
+ * `<script data-bascik-build>` (and `data-bascik-build-once`) blocks run at
+ * transpile time as Node.js ESM modules. The module's default export is
+ * called with no arguments, and the string it returns (or an `html` value,
+ * or a promise of either) replaces the script tag in the page.
  *
  * This lets you pull in external data — markdown files, JSON, API responses —
  * at build time and inline the generated HTML directly into the page.
@@ -17,25 +18,30 @@
  * <script data-bascik-build>
  * import { readFile } from 'node:fs/promises';
  * import { marked }   from 'marked';
- * const md = await readFile('./content/posts/intro.md', 'utf8');
- * console.log(marked(md));
+ * export default async function () {
+ *   return marked(await readFile('./content/posts/intro.md', 'utf8'));
+ * }
  * </script>
  * ```
  *
  * Rules
  * ──────────────────────────────────────────────────────────────────────────────
- * - The script is written to a temporary `.mjs` file and executed with the
- *   same Node.js binary that is running Bascik.
+ * - Each uncached script is written to its own temporary module and run in
+ *   its own child process with the Node.js binary running Bascik
+ *   (`handler-runner.ts`); the result comes back through a private result
+ *   file, never through stdout.
  * - Top-level `import` statements and top-level `await` are supported.
  * - The script's working directory is the project root (`process.cwd()`).
- * - Use `console.log()` or `process.stdout.write()` to output the HTML to
- *   inject.  Anything written to stderr is forwarded to Bascik's own stderr.
- * - The script tag (including its attributes and closing tag) is completely
- *   replaced by the stdout output.  If the script produces no output, the tag
- *   is replaced with an empty string.
- * - On execution error, Bascik logs a warning and removes the script tag from
- *   the output rather than aborting the build.
- * - Scripts run during both `bascik` (dev) and `bascik --build` (production).
+ * - A module without a callable default export, or a default export that
+ *   returns anything but a string or `html` value, is a script error.
+ * - `console.log()` / `console.error()` output is diagnostic only: it is
+ *   captured and printed to Bascik's stdout / stderr when the child exits,
+ *   and never becomes markup.
+ * - A failing script follows `scripts.onBuildScriptError`: `'error'` (the
+ *   default) fails the page with a located error, `'warn'` logs it and
+ *   leaves an empty slot, `'ignore'` leaves the empty slot silently.
+ * - Scripts run during both `bascik` (dev) and `bascik --build` (production),
+ *   and their output is cached by content (`computeScriptCacheKey`).
  */
 
 import { createHash } from "node:crypto";
@@ -71,6 +77,7 @@ import {
 import {
   isScriptCacheEnabledForPath,
   pruneScriptCache,
+  pruneStaleTempModules,
 } from "./script-cache.ts";
 import {
   computePackageIdentity,
@@ -214,9 +221,9 @@ const outputKeysByDependency = new Map<string, Set<string>>();
 // The dependencies each key's hash folded in, recorded by
 // `computeScriptCacheKey` and consumed when (if) the output is memoized. Only
 // memoized keys enter `outputKeysByDependency`, so the reverse index never
-// holds a key the memo does not. Bounded: an entry is removed on memoization
-// or eviction, and a key that is never memoized (script failed) is at most one
-// pending list per distinct failing key until the next full clear.
+// holds a key the memo does not. Bounded: an entry is removed on eviction,
+// and every key a run computed but did not memoize (a failed script, a shared
+// key whose run read its page) is dropped when that run finishes.
 const dependenciesByOutputKey = new Map<string, string[]>();
 
 const unindexOutputKey = (key: string): void => {
@@ -229,6 +236,13 @@ const unindexOutputKey = (key: string): void => {
     keys.delete(key);
     if (keys.size === 0) outputKeysByDependency.delete(relKey);
   }
+};
+
+/** Forget the pending dependency list of each key that has no memoized output. */
+const dropUnmemoizedDependencyLists = (...keys: (string | null)[]): void => {
+  for (const key of keys)
+    if (key !== null && !inMemoryScriptOutputCache.has(key))
+      dependenciesByOutputKey.delete(key);
 };
 
 const indexOutputKey = (key: string): void => {
@@ -321,6 +335,13 @@ export const _buildScriptCacheTestHooks = {
   },
   get dependencyScanSize(): number {
     return dependencyScanCache.size;
+  },
+  /** Keys whose dependency list is recorded but not yet indexed (never memoized). */
+  get pendingDependencyListCount(): number {
+    let pending = 0;
+    for (const key of dependenciesByOutputKey.keys())
+      if (!inMemoryScriptOutputCache.has(key)) pending++;
+    return pending;
   },
   /** Number of memo keys the reverse index holds for a dependency. */
   reverseIndexKeyCount(filePath: string): number {
@@ -523,6 +544,7 @@ const computeScriptCacheKey = async (
   pagePath: string = "",
   importRoot: string = getImportRoot(),
   variant: string = "",
+  language: "js" | "ts" | "ts-compiler" = "js",
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
@@ -530,6 +552,9 @@ const computeScriptCacheKey = async (
   // from page-specific records. Empty for the page-specific key, which keeps
   // existing cache entries valid.
   if (variant) hash.update(`VARIANT:${variant}`);
+  // TypeScript runs as different code than the same text as JavaScript.
+  // JavaScript adds nothing, so its existing cache entries stay valid.
+  if (language !== "js") hash.update(`LANGUAGE:${language}`);
   hash.update(script);
   hash.update(relative(process.cwd(), importRoot).replace(/\\/g, "/")); // alias target can change output
   hash.update(isBuild ? "1" : "0");
@@ -710,6 +735,29 @@ export interface ExecuteBuildScriptOptions {
 }
 
 /**
+ * Report one failed build script under `scripts.onBuildScriptError`: throw
+ * under `'error'` (the default), log under `'warn'`, say nothing under
+ * `'ignore'`. The caller gives the script an empty slot when this returns.
+ */
+const reportBuildScriptFailure = (
+  header: string,
+  detail: string,
+  location: BuildScriptLocation | undefined,
+): void => {
+  const message = `${header}:\n${detail}`;
+  const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+  if (behavior === "error") {
+    console.error(message);
+    // The location travels as data so the dev overlay can name the file. Without a source
+    // file there is nothing to point at, so the failure stays a plain Error.
+    if (location) throw new BuildScriptError(message, location);
+    throw new Error(message);
+  }
+  if (behavior === "ignore") return;
+  console.warn(message);
+};
+
+/**
  * Find every `<script data-bascik-build>` block in `html`, execute each as a
  * Node.js ESM module, and replace the tag with the script's stdout output.
  */
@@ -750,7 +798,10 @@ export const executeBuildScripts = async (
     mkdir(tempDir, { recursive: true }),
     mkdir(cacheDir, { recursive: true }),
   ]);
-  await pruneScriptCache(cacheDir);
+  await Promise.all([
+    pruneScriptCache(cacheDir),
+    pruneStaleTempModules(tempDir),
+  ]);
 
   const defaultSourceFile = options?.sourceFile ?? filePath ?? "";
   const pageFile = options?.once ? "" : (options?.pageFile ?? filePath ?? "");
@@ -794,6 +845,8 @@ export const executeBuildScripts = async (
     output?: string;
     /** Whether the run (or its cache record) read the page context. */
     readsPageContext?: boolean;
+    /** Already reported and given its output (an unreadable `src=`): never looked up or run. */
+    settled?: boolean;
   }
 
   const tasks: ScriptTask[] = [];
@@ -865,8 +918,18 @@ export const executeBuildScripts = async (
     let moduleSource = scriptContent;
     let fromSrcFile = false;
     let trimmedScript = scriptContent.trim();
+    const srcAttribute = getHtmlAttributeValue(openTag, "src");
+    // Browsers run only the file when a script has src=; a body next to it
+    // is ignored there. Running either one here would hide the other, so
+    // the tag is ambiguous and rejected, the same way for every directive.
+    if (srcAttribute && trimmedScript) {
+      const message = `[bascik] error: <script> tag has both src="${srcAttribute}" and an inline body${where}. A script with src= runs only that file, as in a browser: move the body into "${srcAttribute}" or remove src=.`;
+      // The location travels as data so the dev overlay can name the file.
+      if (location) throw new BuildScriptError(message, location);
+      throw new Error(message);
+    }
     if (!trimmedScript) {
-      const srcPath = getHtmlAttributeValue(openTag, "src");
+      const srcPath = srcAttribute;
       if (srcPath) {
         // `src=` follows the same rules as ESM specifiers: relative and bare
         // paths resolve against the containing file, `@/` against the import
@@ -889,17 +952,50 @@ export const executeBuildScripts = async (
           moduleSourcePath = getProjectPath(resolvedPath);
           fromSrcFile = true;
         } catch (err) {
-          console.warn(
-            '[bascik] warning: Failed to read build script src "%s":',
-            srcPath,
-            err,
+          // A missing src= file is the failure to report, located at the
+          // tag. Running the empty body instead would report a missing
+          // default export the author never wrote.
+          const reason = err instanceof Error ? err.message : String(err);
+          reportBuildScriptFailure(
+            `[bascik] build script error${where}`,
+            `Cannot read build script src "${srcPath}" (${getProjectPath(resolvedPath)}): ${reason}`,
+            location,
           );
+          tasks.push({
+            fullTag,
+            index,
+            openTag,
+            preparedScript: "",
+            cacheKey: null,
+            sharedKey: null,
+            tmpPath: "",
+            moduleSourcePath,
+            location,
+            specifierEdits: [],
+            outputScope: null,
+            sourceFile,
+            output: "",
+            settled: true,
+          });
+          continue;
         }
       }
     }
 
     let preparedScript: string;
     let specifierEdits: SpecifierEdit[];
+    const isTypeScript = isTypeScriptDirectiveScript(
+      openTag,
+      fromSrcFile ? moduleSourcePath : undefined,
+    );
+    // The same text is a different program as TypeScript (and through a
+    // `scripts.typescript` compiler) than as JavaScript, so the language is
+    // part of the cache key: removing the marker must not reuse its output.
+    const language = !isTypeScript
+      ? "js"
+      : typeof BascikConfig.scripts?.typescript === "function"
+        ? "ts-compiler"
+        : "ts";
     try {
       // Padded first, so the rewrite's edits are in the file's own lines and columns.
       // Without a known file there are no file lines to line up with.
@@ -913,10 +1009,7 @@ export const executeBuildScripts = async (
             );
       // TypeScript (a marked tag, or a `.ts` src) becomes JavaScript before
       // its imports are rewritten. Strip-only keeps every line and column.
-      const javascript = isTypeScriptDirectiveScript(
-        openTag,
-        fromSrcFile ? moduleSourcePath : undefined,
-      )
+      const javascript = isTypeScript
         ? await compileDirectiveTypeScript(
             padded,
             moduleSourcePath,
@@ -968,6 +1061,8 @@ export const executeBuildScripts = async (
             pageFile,
             pagePath,
             importRoot,
+            "",
+            language,
           )
         : null;
     const cacheKey = scriptIsNonCacheable ? null : computeKey;
@@ -1000,6 +1095,7 @@ export const executeBuildScripts = async (
             "",
             importRoot,
             "shared",
+            language,
           )
         : null;
 
@@ -1045,6 +1141,7 @@ export const executeBuildScripts = async (
   // Check cache for all tasks
   const uncachedTasks: ScriptTask[] = [];
   for (const task of tasks) {
+    if (task.settled) continue;
     const cached = await readCachedOutput(task);
     if (cached !== null) {
       task.output = cached.output;
@@ -1057,7 +1154,8 @@ export const executeBuildScripts = async (
   // page's build-once scripts are counted as the page's too.
   const stats = options?.stats;
   if (stats) {
-    stats.cached += tasks.length - uncachedTasks.length;
+    stats.cached +=
+      tasks.filter((task) => !task.settled).length - uncachedTasks.length;
     stats.ran += uncachedTasks.length;
   }
 
@@ -1159,21 +1257,10 @@ export const executeBuildScripts = async (
         if (location) {
           errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
-        // Nothing was memoized for this key; drop its pending dependency list
-        // so a failing script cannot accumulate index state across edits.
-        if (task.cacheKey !== null)
-          dependenciesByOutputKey.delete(task.cacheKey);
-        const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-        if (behavior === "error") {
-          console.error(`${errorMsg}:\n${cleanedMsg}`);
-          // The location travels as data so the dev overlay can name the file. Without a source
-          // file there is nothing to point at, so the failure stays a plain Error.
-          if (location)
-            throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
-          throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-        } else {
-          console.warn(`${errorMsg}:\n${cleanedMsg}`);
-        }
+        // Nothing was memoized for either key; drop their pending dependency
+        // lists so a failing script cannot accumulate index state across edits.
+        dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+        reportBuildScriptFailure(errorMsg, cleanedMsg, location);
         task.output = "";
       } finally {
         await unlink(task.tmpPath).catch(() => {});
@@ -1181,6 +1268,12 @@ export const executeBuildScripts = async (
     }
     if (stats) stats.childMs += performance.now() - childrenStarted;
   }
+
+  // A key computed here but never memoized (a shared key whose run read its
+  // page, or the key a cache hit on the other one made unnecessary) keeps no
+  // pending dependency list: only memoized keys are indexed.
+  for (const task of tasks)
+    dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
 
   if (options?.onReadsPageContext && !options.once) {
     for (const task of tasks) {

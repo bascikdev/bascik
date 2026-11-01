@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import type { ExecEntry } from "./types.ts";
@@ -10,6 +11,17 @@ import {
 } from "./clock.ts";
 
 export type PublishCompilation = (event: string, payload?: unknown) => void;
+
+/**
+ * The cycle whose work is running in the current async context. The shared
+ * emitter also carries build-errors that are not a cycle's own: a parallel
+ * script an earlier cycle started failing during a later compile, a startup
+ * parallel script, a watcher error. A cycle fails only for a build-error
+ * emitted from inside its own work (pre, parallel, compile, post), which
+ * runs in this context; anything else is reported by its source and leaves
+ * the cycle's publications and paths alone.
+ */
+const cycleScope = new AsyncLocalStorage<object>();
 
 /** A source edit owns one pre -> (parallel + compile) -> post cycle.
  * No completion event can enqueue work. Edits received during work are retained.
@@ -83,57 +95,60 @@ export const createSourceCycle = (options: {
     const publications: [string, unknown][] = [];
     const hasPostScript = matching.some((entry) => entry.phase === "post");
     let hadError = false;
+    const cycleToken = {};
     const onError = () => {
-      hadError = true;
+      if (cycleScope.getStore() === cycleToken) hadError = true;
     };
     options.emitter.on("build-error", onError);
     try {
-      for (const entry of matching.filter(
-        (entry) => (entry.phase ?? "pre") === "pre",
-      ))
-        await runEntry(entry);
-      if (closed) return;
-      for (const entry of matching.filter(
-        (entry) => entry.phase === "parallel",
-      )) {
-        // Serialize the same producer across edits without blocking compilation
-        // or independent producers. Every queued invocation is retained.
-        const previous = parallelTails.get(entry);
-        const task = (
-          previous ? previous.then(() => runEntry(entry)) : runEntry(entry)
-        ).catch(() => undefined);
-        parallelTails.set(entry, task);
-        void task.then(() => {
-          if (parallelTails.get(entry) === task) parallelTails.delete(entry);
-        });
-      }
-      await options.compile(paths, (event, payload) => {
-        if (
-          !hasPostScript &&
-          !closed &&
-          options.publishEarly?.(event, payload)
-        ) {
-          options.emitter.emit(event, payload);
-          return;
+      await cycleScope.run(cycleToken, async () => {
+        for (const entry of matching.filter(
+          (entry) => (entry.phase ?? "pre") === "pre",
+        ))
+          await runEntry(entry);
+        if (closed) return;
+        for (const entry of matching.filter(
+          (entry) => entry.phase === "parallel",
+        )) {
+          // Serialize the same producer across edits without blocking compilation
+          // or independent producers. Every queued invocation is retained.
+          const previous = parallelTails.get(entry);
+          const task = (
+            previous ? previous.then(() => runEntry(entry)) : runEntry(entry)
+          ).catch(() => undefined);
+          parallelTails.set(entry, task);
+          void task.then(() => {
+            if (parallelTails.get(entry) === task) parallelTails.delete(entry);
+          });
         }
-        publications.push([event, payload]);
-      });
-      if (hadError) throw new Error("Source compilation failed");
-      for (const entry of matching.filter((entry) => entry.phase === "post"))
-        await runEntry(entry);
-      if (!hadError && !closed) {
-        for (const [event, payload] of publications) {
-          heldPublications.set(`${event}:${JSON.stringify(payload)}`, [
-            event,
-            payload,
-          ]);
-        }
-        if (pending.size === 0) {
-          for (const [event, payload] of heldPublications.values())
+        await options.compile(paths, (event, payload) => {
+          if (
+            !hasPostScript &&
+            !closed &&
+            options.publishEarly?.(event, payload)
+          ) {
             options.emitter.emit(event, payload);
-          heldPublications.clear();
+            return;
+          }
+          publications.push([event, payload]);
+        });
+        if (hadError) throw new Error("Source compilation failed");
+        for (const entry of matching.filter((entry) => entry.phase === "post"))
+          await runEntry(entry);
+        if (!hadError && !closed) {
+          for (const [event, payload] of publications) {
+            heldPublications.set(`${event}:${JSON.stringify(payload)}`, [
+              event,
+              payload,
+            ]);
+          }
+          if (pending.size === 0) {
+            for (const [event, payload] of heldPublications.values())
+              options.emitter.emit(event, payload);
+            heldPublications.clear();
+          }
         }
-      }
+      });
     } catch (error) {
       for (const path of paths) failed.add(path);
       if (!hadError) report(error);

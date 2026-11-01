@@ -120,4 +120,34 @@ describe("stopAfterExecFailure", () => {
     expect(order).toEqual(["shutdown", "exit"]);
     expect(exit).toHaveBeenCalledExactlyOnceWith(1);
   });
+  it("prints an exec error's own [bascik] prefix once, not twice", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.fn();
+    stopAfterExecFailure(
+      new Error('[bascik] exec "scripts/x.ts" exited with code 1'),
+      { exit, runShutdownHandlers: async () => undefined },
+    );
+    await vi.waitFor(() => expect(exit).toHaveBeenCalled());
+    expect(String(errors.mock.calls[0][0])).toBe(
+      `[bascik] exec "scripts/x.ts" exited with code 1\n  Stopping because pipeline.onExecError is 'error'.`,
+    );
+  });
+});
+
+describe("reportToleratedExecFailure prefix", () => {
+  it("prints an exec error's own [bascik] prefix once, in the log and the overlay", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    reportToleratedExecFailure(
+      new Error('[bascik] exec "scripts/x.ts" exited with code 1'),
+    );
+    expect(String(errors.mock.calls[0][0])).toMatch(
+      /^\[bascik\] exec "scripts\/x\.ts" exited with code 1\n/,
+    );
+    expect(emitted).toEqual([
+      [
+        "build-error",
+        { message: 'exec failed: exec "scripts/x.ts" exited with code 1' },
+      ],
+    ]);
+  });
 });

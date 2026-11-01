@@ -188,10 +188,12 @@ vi.mock("./mime.js", () => ({
 
 import { startHttp2Server } from "./http2.ts";
 import {
+  getSseManager,
   resetActiveRateLimiter,
   resetSseManager,
   startServerInstance,
 } from "./server.ts";
+import { DEFAULT_MAX_SSE_CONNECTIONS } from "./sse.ts";
 import { mem } from "./mem.ts";
 import { getLiveReloadScript } from "./live-reload.ts";
 import { BascikConfig } from "./config.ts";
@@ -651,6 +653,114 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
       expect.objectContaining({ ":status": 404 }),
     );
     (BascikConfig as any).isProdServer = false;
+  });
+});
+
+describe("startHttp2Server – SSE connection cap", () => {
+  beforeEach(async () => {
+    await startHttp2Server();
+  });
+
+  /** Fills the live-reload manager to its cap with idle stand-in clients. */
+  const fillSseManager = () => {
+    const manager = getSseManager();
+    for (let i = 0; i < DEFAULT_MAX_SSE_CONNECTIONS; i++) {
+      manager.addClient({
+        headersSent: true,
+        destroyed: false,
+        write: vi.fn(() => true),
+        end: vi.fn(),
+        close: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+      } as any);
+    }
+    expect(manager.activeClientCount).toBe(DEFAULT_MAX_SSE_CONNECTIONS);
+  };
+
+  /**
+   * A stream that behaves like Node's: a second `respond` after headers are
+   * committed throws ERR_HTTP2_HEADERS_SENT.
+   */
+  const makeStrictStream = () => {
+    const stream = makeStream();
+    let headersSent = false;
+    stream.respond = vi.fn(() => {
+      if (headersSent) {
+        const err = new Error("Response has already been initiated.");
+        (err as NodeJS.ErrnoException).code = "ERR_HTTP2_HEADERS_SENT";
+        throw err;
+      }
+      headersSent = true;
+    });
+    return stream;
+  };
+
+  it("answers 503 and ends the stream once the cap is reached, before committing a 200", async () => {
+    fillSseManager();
+    const handler = getStreamHandler()!;
+    const stream = makeStrictStream();
+    await handler(
+      stream,
+      makeHeaders(
+        "/bascik-live-reload",
+        "GET",
+        "",
+        "http://localhost:8443/about",
+      ),
+    );
+    expect(stream.respond).toHaveBeenCalledTimes(1);
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 503 }),
+    );
+    expect(stream.respond).not.toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
+    expect(stream.end).toHaveBeenCalledWith("Too Many SSE Connections");
+    expect(stream.write).not.toHaveBeenCalled();
+    expect(getSseManager().activeClientCount).toBe(DEFAULT_MAX_SSE_CONNECTIONS);
+  });
+
+  it("does not leave the referring page tracked as open when the cap rejects the connection", async () => {
+    fillSseManager();
+    const handler = getStreamHandler()!;
+    const stream = makeStrictStream();
+    await handler(
+      stream,
+      makeHeaders(
+        "/bascik-live-reload",
+        "GET",
+        "",
+        "http://localhost:8443/about",
+      ),
+    );
+    // Either never tracked, or tracked and balanced: the open-page count for
+    // /about must not stay raised by a connection that was refused.
+    expect(mockMem.trackOpenPage.mock.calls.length).toBe(
+      mockMem.untrackOpenPage.mock.calls.length,
+    );
+  });
+
+  it("accepts a new connection again once a slot frees up", async () => {
+    fillSseManager();
+    const handler = getStreamHandler()!;
+    const rejected = makeStrictStream();
+    await handler(rejected, makeHeaders("/bascik-live-reload"));
+    expect(rejected.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 503 }),
+    );
+
+    const manager = getSseManager();
+    manager.removeClient(1);
+    const accepted = makeStrictStream();
+    await handler(accepted, makeHeaders("/bascik-live-reload"));
+    expect(accepted.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 200,
+        "content-type": "text/event-stream",
+      }),
+    );
+    expect(accepted.write).toHaveBeenCalledWith("data: connected\n\n");
   });
 });
 

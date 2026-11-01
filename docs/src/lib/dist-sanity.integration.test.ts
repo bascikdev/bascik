@@ -132,7 +132,9 @@ describe("dist sanity: HTML parse errors (parse5 WHATWG)", () => {
     }
 
     expect(failures).toHaveLength(0);
-  }, 30_000);
+    // parse5 over every built page takes ~15 s plain and over 30 s under coverage
+    // instrumentation (`yarn docs:coverage`), so leave room for the slow run.
+  }, 120_000);
 });
 
 describe("dist sanity: unreplaced pipeline tokens", () => {

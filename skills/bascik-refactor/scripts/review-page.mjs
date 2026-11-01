@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { routeSlug, validateRoute } from "./lib/checks.mjs";
+import { routeSlug, validateRoute, validateRouteSet } from "./lib/checks.mjs";
 import { reportDirName } from "./compare-route.mjs";
 import { LEDGER_NOTE } from "./production-defects.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
@@ -444,6 +444,7 @@ export function parseCliArgs(argv) {
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
   for (const route of values.route) validateRoute(route);
+  validateRouteSet(values.route);
   const mode = values.sign ? "sign" : values.verify ? "verify" : "build";
   if (mode === "sign" && values.route.length !== 1)
     throw new Error("--sign takes one --route: each route gets its own review");

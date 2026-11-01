@@ -17,5 +17,16 @@
     "lib": ["ES2025"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test-helper.ts", "node_modules"]
+  // Test-only sources stay out of dist/, which ships to every install
+  // (src/lib/package-contents.integration.test.ts).
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test-helper.ts",
+    "src/**/*.fixture.ts",
+    "src/**/*.fixtures.ts",
+    "src/**/__fixtures__/**",
+    "src/**/test-fixtures/**",
+    "src/lib/build-fixtures.ts",
+    "node_modules"
+  ]
 }

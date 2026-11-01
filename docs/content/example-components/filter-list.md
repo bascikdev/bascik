@@ -26,6 +26,7 @@ Pass `<li>` items in the default slot; the slot sits inside the component's `<ul
 - The script reaches the items through the list it found by ID (`document.getElementById('items').children`). A page-wide `querySelectorAll('li')` would also match every other instance's items.
 - Matching is case-insensitive on each item's text. A polite live region reports how many items are shown.
 - The filter runs again on `pageshow`, because Back and reload can restore the input's value without an `input` event.
+- The filter box is a `<search>` element, which HTML defines for filtering controls (it is a search landmark), and the list stays outside it. It is `hidden` until the script runs; its `display: grid` would override the `hidden` attribute, so a `.controls[hidden]` rule restates `display: none`.
 
 ## Adapt It
 

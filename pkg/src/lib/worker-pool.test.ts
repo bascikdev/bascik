@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WorkerPool } from "./worker-pool.ts";
+import { WorkerPool, WorkerTaskError } from "./worker-pool.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;
@@ -104,6 +104,18 @@ describe("WorkerPool", () => {
     await pool.terminate();
   });
 
+  it("passes the worker's failure detail through untouched (F054)", async () => {
+    const pool = makePool(1);
+    const promise = pool.run("task-a");
+    const detail = { message: "boom", location: { sourceFile: "a.html" } };
+    workers[0].emit("message", { ok: false, error: "boom", detail });
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(WorkerTaskError);
+    expect((error as WorkerTaskError).message).toBe("boom");
+    expect((error as WorkerTaskError).detail).toEqual(detail);
+    await pool.terminate();
+  });
+
   it("rejects in-flight task and respawns worker when worker exits unexpectedly", async () => {
     const pool = makePool(1);
     const promise = pool.run("task-a");
@@ -164,6 +176,39 @@ describe("WorkerPool", () => {
       expect(workers[1].postMessage).toHaveBeenCalledWith("task-b");
       completeWith(workers[1], "recovered");
       await expect(next).resolves.toBe("recovered");
+      await pool.terminate();
+    });
+
+    it("rejects the task whose result could not be received (messageerror) and keeps the worker serving", async () => {
+      const pool = makePool(1);
+      const lost = pool.run("src/pages/lost.html");
+      const queued = pool.run("src/pages/next.html");
+      workers[0].emit(
+        "messageerror",
+        new TypeError("Missing internal module 'internal/nope'"),
+      );
+      await expect(lost).rejects.toThrow(
+        /result could not be received.*Missing internal module 'internal\/nope'/,
+      );
+      // Not a failure the worker reported: there is no detail to read.
+      await expect(lost).rejects.not.toBeInstanceOf(WorkerTaskError);
+      // The worker itself is fine: it was not retired, and it takes the next task.
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+      expect(workers[0].postMessage).toHaveBeenLastCalledWith(
+        "src/pages/next.html",
+      );
+      completeWith(workers[0], "next-done");
+      await expect(queued).resolves.toBe("next-done");
+      await pool.terminate();
+    });
+
+    it("ignores a messageerror from an idle worker instead of failing a later task", async () => {
+      const pool = makePool(1);
+      workers[0].emit("messageerror", new Error("stray"));
+      const task = pool.run("src/pages/a.html");
+      completeWith(workers[0], "a-done");
+      await expect(task).resolves.toBe("a-done");
       await pool.terminate();
     });
 
@@ -760,6 +805,149 @@ describe("WorkerPool", () => {
         1,
       );
       await pool.terminate();
+    });
+  });
+
+  // An external `worker.terminate()` stops a thread wherever it is, and V8
+  // can abort the whole process when that lands while the worker is still
+  // allocating code ("Check failed: jit_page.has_value()", Node 24's wasm
+  // code GC race, nodejs/node#66366). A pool whose workers understand a stop
+  // message asks them to end themselves instead, and terminates only a
+  // worker that does not.
+  describe("stopSignal", () => {
+    const STOP = { stop: true };
+    const makeStopPool = (size = 2, readySignal = false) =>
+      new WorkerPool<string, string>(
+        "/fake/worker.js",
+        size,
+        {},
+        { stopSignal: true, readySignal },
+      );
+    const stopsPosted = (worker: FakeWorker) =>
+      worker.postMessage.mock.calls.filter(
+        ([message]) => JSON.stringify(message) === JSON.stringify(STOP),
+      ).length;
+
+    it("asks every worker to stop and waits for it to exit instead of terminating it", async () => {
+      const pool = makeStopPool(2);
+      let done = false;
+      const terminated = pool.terminate().then(() => (done = true));
+      await Promise.resolve();
+      for (const w of workers) expect(stopsPosted(w)).toBe(1);
+      expect(done).toBe(false);
+      for (const w of workers) w.emit("exit", 0);
+      await terminated;
+      for (const w of workers) expect(w.terminate).not.toHaveBeenCalled();
+    });
+
+    it("asks a trimmed worker to stop and never replaces it when it exits", async () => {
+      const pool = makeStopPool(3);
+      const trimmed = pool.shrink(1);
+      const stopped = workers.filter((w) => stopsPosted(w) === 1);
+      expect(stopped).toHaveLength(2);
+      for (const w of stopped) w.emit("exit", 0);
+      await trimmed;
+      expect(WorkerMock).toHaveBeenCalledTimes(3);
+      expect(pool.size).toBe(1);
+      for (const w of workers) expect(w.terminate).not.toHaveBeenCalled();
+      await pool.terminate();
+    });
+
+    it("terminates a worker that ignores the stop message after a grace period", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeStopPool(1);
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(stopsPosted(workers[0])).toBe(1);
+        await vi.advanceTimersByTimeAsync(2_500);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+        await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("neither asks nor terminates a worker that already exited on its own", async () => {
+      const pool = makeStopPool(1);
+      const first = workers[0];
+      // An idle worker that exits by itself is retired and replaced.
+      first.emit("exit", 0);
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+      expect(stopsPosted(first)).toBe(0);
+      expect(first.terminate).not.toHaveBeenCalled();
+      const replacement = workers[1];
+      const terminated = pool.terminate();
+      await Promise.resolve();
+      replacement.emit("exit", 0);
+      await expect(terminated).resolves.toBeUndefined();
+      expect(first.terminate).not.toHaveBeenCalled();
+    });
+
+    it("terminates at once a worker that cannot receive the stop message", async () => {
+      const pool = makeStopPool(1);
+      workers[0].postMessage.mockImplementation(() => {
+        throw new Error("port closed");
+      });
+      await pool.terminate();
+      expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects queued and in-flight tasks as before while the workers stop", async () => {
+      const pool = makeStopPool(1);
+      const running = pool.run("t1");
+      const queued = pool.run("t2");
+      const terminated = pool.terminate();
+      await expect(queued).rejects.toThrow("before task ran");
+      await expect(running).rejects.toThrow("in flight");
+      // A result the worker still posts while stopping settles nothing.
+      completeWith(workers[0], "late");
+      workers[0].emit("exit", 0);
+      await terminated;
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+    });
+
+    it("with readySignal, sends the stop message only once the worker has loaded", async () => {
+      const pool = makeStopPool(1, true);
+      const terminated = pool.terminate();
+      await Promise.resolve();
+      expect(stopsPosted(workers[0])).toBe(0);
+      workers[0].emit("message", { ready: true });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(stopsPosted(workers[0])).toBe(1);
+      workers[0].emit("exit", 0);
+      await terminated;
+      expect(workers[0].terminate).not.toHaveBeenCalled();
+    });
+
+    it("with readySignal, terminates a worker that never loaded at the ready deadline without asking it to stop", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeStopPool(1, true);
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(stopsPosted(workers[0])).toBe(0);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        // A worker still evaluating its modules has no listener for the stop
+        // message, so waiting STOP_GRACE_MS for a reply would only push the
+        // terminate() to the exit bound.
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(stopsPosted(workers[0])).toBe(0);
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+        await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("never sends the stop message to a pool's workers without the option", async () => {
+      const pool = makePool(1);
+      await pool.terminate();
+      expect(stopsPosted(workers[0])).toBe(0);
+      expect(workers[0].terminate).toHaveBeenCalledTimes(1);
     });
   });
 });

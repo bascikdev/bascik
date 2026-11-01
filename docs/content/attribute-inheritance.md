@@ -32,6 +32,7 @@ Common use cases:
 - **Accessibility:** `aria-label`, `role`, `aria-hidden`
 - **Testing hooks:** `data-testid`, `data-cy`
 - **Custom data:** any `data-*` attribute except `data-bascik-*`
+- **Framework directives:** `@click="open()"`, `x-on:click.prevent="go()"`, `:class="{ active }"`, `hx-on::after-request="done()"`. An attribute name is read the way the browser reads it, up to whitespace, `/`, `=` or `>`, so `@`, `.`, `:` and `#` stay part of the name and the value comes along.
 
 Inherited values are copied exactly as written, with one exception: see [Attributes That Become URLs on the Root](#attributes-that-become-urls-on-the-root). An inherited `class` or `style` merges into the root's own `class` or `style` only, never into text another inherited value carries.
 
@@ -153,10 +154,10 @@ nav a {
 
 ```html
 <!-- compiled output (identifier minification off) -->
-<nav class="bascik__site-nav__el__nav">
+<nav class="b_el_site-nav_nav">
   <a class="bascik__site-nav__item" href="/">Home</a>
   <a class="bascik__site-nav__item" href="/blog">Blog</a>
-  <a class="bascik__site-nav__el__a" href="/about">About</a>
+  <a class="b_el_site-nav_a" href="/about">About</a>
 </nav>
 ```
 

@@ -60,7 +60,8 @@
  * CSS pass  (class attribute only) — rewrites the component's .css file AND
  * any inline <style> tags in the HTML:
  *   .className       →  .bascik__...__className      (class prefixing)
- *   p { }            →  .bascik__...__el__p { }       (element → class)
+ *   p { }            →  .b_el_..._p { }               (element → class)
+ *   #btn { }         →  .b_id_..._btn { }             (#id → class)
  *   @keyframes name  →  @keyframes bascik__...__keyframe__name
  *   animation: name  →  animation: bascik__...__keyframe__name
  *   @layer name      →  @layer bascik__...__layer__name
@@ -82,7 +83,9 @@ import { COMPANION_SCRIPT_RE } from "./companion-scripts.ts";
 import { scanHtml } from "./html-scanner.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
+  getHtmlAttributeValue,
   isBuildScriptOpenTag,
+  isDirectiveScriptOpenTag,
   isRequestScriptOpenTag,
 } from "./html-patterns.ts";
 import {
@@ -152,6 +155,7 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
   "i",
 );
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
+import { findJsLiteralSpans } from "./js-literal-spans.ts";
 import { sourceLinePadding, takeScriptLine } from "./script-source-lines.ts";
 import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
 import {
@@ -159,6 +163,7 @@ import {
   addIdClassesInHtml,
   convertCssElementSelectorsToClasses,
   convertCssIdSelectorsToClasses,
+  elementSelectorClassName,
   prefixKeyframes,
   removeIdSelectors,
   scopeCssCustomProperties,
@@ -171,6 +176,11 @@ import {
   extractInlineStyles,
   resolveCssImportsSync,
   shieldCssStrings,
+  quotedAttributeValueRanges,
+  declaredCssClassNames,
+  scopeCssClassSelectors,
+  declaredCustomPropertyNames,
+  scopeCustomPropertiesInStyleValue,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -239,10 +249,12 @@ interface ScopedCssCacheEntry {
 
 const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
 const cssDeclaredClassesCache = new Map<string, Set<string>>();
+const cssDeclaredCustomPropertiesCache = new Map<string, Set<string>>();
 
 export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
   cssDeclaredClassesCache.clear();
+  cssDeclaredCustomPropertiesCache.clear();
 };
 
 export const __scopedCssCacheStatsForTests = {
@@ -382,7 +394,13 @@ const replaceBalancedCall = (
 const replaceSafeAttr = (
   html: string,
   attrName: string,
-  replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
+  replacer: (
+    fullMatch: string,
+    prefix: string,
+    quotedVal: string,
+    tag: string,
+  ) => string,
+  isScriptCodeAt: (index: number) => boolean = () => false,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attrRegex = new RegExp(
@@ -404,29 +422,15 @@ const replaceSafeAttr = (
       while (isTagNameCode(html.charCodeAt(index))) index++;
       if (index === start + 1) return -1;
       const code = html.charCodeAt(index);
-      if (code === 0x3e) return index;
-      return isRegexWhitespace(code) ? index + 1 : -1;
+      if (code !== 0x3e && !isRegexWhitespace(code)) return -1;
+      // `count<max && ok` in script code is a comparison, not a tag.
+      if (isScriptCodeAt(start)) return -1;
+      return code === 0x3e ? index : index + 1;
     }),
     (tagMatch) => {
       if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
-      const stringRanges: Array<{ start: number; end: number }> = [];
-      let j = 0;
-      let strChar = null;
-      let strStart = -1;
-      while (j < tagMatch.length) {
-        if (strChar) {
-          if (tagMatch[j] === "\\") j++;
-          else if (tagMatch[j] === strChar) {
-            stringRanges.push({ start: strStart, end: j });
-            strChar = null;
-          }
-        } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
-          strChar = tagMatch[j];
-          strStart = j;
-        }
-        j++;
-      }
+      const stringRanges = quotedAttributeValueRanges(tagMatch);
 
       let finalStr = "";
       let lastIdx = 0;
@@ -441,7 +445,7 @@ const replaceSafeAttr = (
         if (!isInside) {
           finalStr +=
             tagMatch.substring(lastIdx, matchStart) +
-            replacer(match[0], match[1], match[2]);
+            replacer(match[0], match[1], match[2], tagMatch);
           lastIdx = matchStart + match[0].length;
         }
       }
@@ -450,6 +454,84 @@ const replaceSafeAttr = (
     },
   );
 };
+/**
+ * A lookup of whether an offset of `html` lies in the code of a JavaScript (or TypeScript)
+ * `<script>` body, outside its string and template literals. Markup a script builds sits in
+ * its literals; a `<` in its code is an operator (`count<max`) or a type argument. Script
+ * elements are found on the first lookup, so markup with no tag candidates costs nothing,
+ * and a script's type and literal spans are read only when a lookup lands in its body:
+ * a component's own tags sit outside its scripts, so most scripts are never read.
+ */
+const createScriptCodeLookup = (html: string): ((index: number) => boolean) => {
+  interface ScriptBody {
+    contentStart: number;
+    contentEnd: number;
+    openTag: string;
+    /** Code ranges (absolute offsets) outside literals; empty for a non-JavaScript type. */
+    code?: { starts: number[]; ends: number[] };
+  }
+  let scripts: ScriptBody[] | undefined;
+  const codeOf = (script: ScriptBody): { starts: number[]; ends: number[] } => {
+    if (script.code) return script.code;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    script.code = { starts, ends };
+    const { openTag, contentStart, contentEnd } = script;
+    if (
+      !isJavaScriptScript(openTag) &&
+      getScriptType(openTag) !== "text/typescript"
+    )
+      return script.code;
+    const body = html.slice(contentStart, contentEnd);
+    let cursor = contentStart;
+    for (const span of findJsLiteralSpans(body)) {
+      if (contentStart + span.start > cursor) {
+        starts.push(cursor);
+        ends.push(contentStart + span.start);
+      }
+      cursor = contentStart + span.end;
+    }
+    if (contentEnd > cursor) {
+      starts.push(cursor);
+      ends.push(contentEnd);
+    }
+    return script.code;
+  };
+  /** The index of the last entry of `starts` at or before `index`, or -1. */
+  const lastAtOrBefore = (starts: readonly number[], index: number): number => {
+    let low = 0;
+    let high = starts.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (starts[mid] > index) high = mid - 1;
+      else low = mid + 1;
+    }
+    return high;
+  };
+  let scriptStarts: number[] = [];
+  return (index) => {
+    if (scripts === undefined) {
+      scripts = html.includes("<script")
+        ? scanElementContents(html, "script", SCRIPT_ELEMENT_SCAN).map(
+            (match) => ({
+              contentStart: match.contentStart,
+              contentEnd: match.contentEnd,
+              openTag: html.slice(match.start, match.contentStart),
+            }),
+          )
+        : [];
+      scriptStarts = scripts.map((script) => script.contentStart);
+    }
+    const at = lastAtOrBefore(scriptStarts, index);
+    if (at === -1) return false;
+    const script = scripts[at];
+    if (index >= script.contentEnd) return false;
+    const { starts, ends } = codeOf(script);
+    const range = lastAtOrBefore(starts, index);
+    return range !== -1 && index < ends[range];
+  };
+};
+
 export const prefixElementAttribute = (
   component: BascikComponent,
   attribute: "id" | "name" | "class",
@@ -514,6 +596,9 @@ export const prefixElementAttribute = (
   // `cssFileContent` unset for an empty or comment-only stylesheet, so "no stylesheet"
   // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
+  // Custom property names the component's stylesheets declare, so the same
+  // names are renamed inside the template's `style` attributes.
+  let declaredCustomProperties: Set<string> = new Set();
   if (attribute === "class") {
     const cssSources: string[] = [];
     if (component.cssFileContent) {
@@ -537,12 +622,21 @@ export const prefixElementAttribute = (
       } else {
         scopedClassesSet = new Set<string>();
         const { css: shieldedCss } = shieldCssStrings(combinedCss);
-        for (const m of shieldedCss.matchAll(
-          /(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g,
-        )) {
-          scopedClassesSet.add(m[0]);
+        for (const name of declaredCssClassNames(shieldedCss)) {
+          scopedClassesSet.add(name);
         }
         cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
+      }
+      if (combinedCss.includes("--")) {
+        const cachedProperties =
+          cssDeclaredCustomPropertiesCache.get(combinedCss);
+        declaredCustomProperties =
+          cachedProperties ?? declaredCustomPropertyNames(combinedCss);
+        if (!cachedProperties)
+          cssDeclaredCustomPropertiesCache.set(
+            combinedCss,
+            declaredCustomProperties,
+          );
       }
     } else {
       scopedClassesSet = new Set<string>();
@@ -588,6 +682,7 @@ export const prefixElementAttribute = (
         commentShield.restore(rawElements.restore(value)),
     };
   })();
+  const isScriptCodeAt = createScriptCodeLookup(nonScriptRawShield.html);
   let scopedAttrsHtml = nonScriptRawShield.restore(
     replaceSafeAttr(
       nonScriptRawShield.html,
@@ -626,8 +721,51 @@ export const prefixElementAttribute = (
           .join(" ");
         return `${prefix}${quote}${newInner}${quote}${trailingSlash}`;
       },
+      isScriptCodeAt,
     ),
   );
+
+  if (
+    attribute === "class" &&
+    declaredCustomProperties.size > 0 &&
+    /\sstyle\s*=/i.test(scopedAttrsHtml)
+  ) {
+    const styleShield = (() => {
+      const commentShield = createContentShield(scopedAttrsHtml);
+      const withoutComments = scopedAttrsHtml.includes("<!--")
+        ? scopedAttrsHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
+            commentShield.hide(comment),
+          )
+        : scopedAttrsHtml;
+      const rawElements = shieldElementContents(withoutComments, [
+        "style",
+        "textarea",
+      ]);
+      return {
+        html: rawElements.html,
+        restore: (value: string) =>
+          commentShield.restore(rawElements.restore(value)),
+      };
+    })();
+    scopedAttrsHtml = styleShield.restore(
+      replaceSafeAttr(
+        styleShield.html,
+        "style",
+        (fullMatch, prefix, quotedVal, tag) => {
+          // A custom element tag, such as a nested component, takes the
+          // value as written: it reads the global name, as it does on a page.
+          if (/^<[a-zA-Z0-9]*-/.test(tag)) return fullMatch;
+          const quote = quotedVal[0] === '"' || quotedVal[0] === "'" ? 1 : 0;
+          const value = quotedVal.slice(quote, quotedVal.length - quote);
+          return `${prefix}${quotedVal.slice(0, quote)}${scopeCustomPropertiesInStyleValue(
+            value,
+            declaredCustomProperties,
+            scopeKey,
+          )}${quotedVal.slice(quotedVal.length - quote)}`;
+        },
+      ),
+    );
+  }
 
   if (attribute === "id" && declaredIds.size > 0) {
     const scopedIds = new Map(
@@ -807,20 +945,28 @@ export const prefixElementAttribute = (
                 /[.*+?^${}()|[\]\\]/g,
                 "\\$&",
               );
+              // Every `.class` / `#id` token, including the later tokens of a compound
+              // (`.card.active`, `button.btn`, `div#panel`): only an escaped prefix
+              // (`.a\\.b`) is not a token. Attribute selectors (`[data-x=a.b]`) are
+              // matched first and kept whole so a dot in their value is never a class.
               // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
               const tokenRegex = new RegExp(
-                `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+                `\\[[^\\]]*\\]|(?<!\\\\)${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
                 "g",
               );
               updatedBody = updatedBody.replace(
                 /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
                 (call) =>
-                  call.replace(tokenRegex, (tokenMatch, name: string) => {
-                    const scoped = seenAttrMap.get(name);
-                    return scoped === undefined
-                      ? tokenMatch
-                      : `${prefix}${scoped}`;
-                  }),
+                  call.replace(
+                    tokenRegex,
+                    (tokenMatch, name: string | undefined) => {
+                      if (name === undefined) return tokenMatch;
+                      const scoped = seenAttrMap.get(name);
+                      return scoped === undefined
+                        ? tokenMatch
+                        : `${prefix}${scoped}`;
+                    },
+                  ),
               );
             };
 
@@ -962,9 +1108,7 @@ export const prefixElementAttribute = (
         const { css: shieldedCss, restore: restoreCssStrings } =
           shieldCssStrings(component.cssFileContent);
         component.cssFileContent = restoreCssStrings(
-          shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
-            return minifyAttributeName(`bascik__${scopeKey}__${className}`);
-          }),
+          scopeCssClassSelectors(shieldedCss, scopeKey),
         );
 
         // Convert CSS hash-ID selectors (#id) to component-scoped class selectors
@@ -1069,9 +1213,7 @@ export const prefixElementAttribute = (
         );
       }
       for (const element of new Set(allElementClasses)) {
-        scope.elements[element] = minifyAttributeName(
-          `bascik__${scopeKey}__el__${element}`,
-        );
+        scope.elements[element] = elementSelectorClassName(scopeKey, element);
       }
       component.fileContent = annotateOutputScopedScripts(
         component.fileContent,
@@ -1097,9 +1239,53 @@ export interface ComponentScriptsResult {
   scriptMap: Map<string, ComponentScriptInfo>;
 }
 
+export interface ComponentScriptsOptions {
+  /**
+   * The component's HTML. A file that only directive scripts reference by `src=` is a
+   * Node.js module, not a browser companion, so it is skipped; a file a browser
+   * `<script src>` references is always claimed.
+   */
+  html?: string;
+  /**
+   * Every component HTML file. In flat layout a script whose name belongs to another
+   * component (`card-header.ts` beside `card-header.html`) is left to that component
+   * unless this one references it.
+   */
+  componentFileNames?: readonly string[];
+}
+
+/** Basenames of the `src=` values of `html`'s browser and directive scripts. */
+const scriptSrcBasenames = (
+  html: string,
+): { browser: Set<string>; directive: Set<string> } => {
+  const browser = new Set<string>();
+  const directive = new Set<string>();
+  if (!html.includes("<script")) return { browser, directive };
+  for (const match of scanElementContents(
+    html,
+    "script",
+    SCRIPT_ELEMENT_SCAN,
+  )) {
+    const openTag = html.slice(match.start, match.contentStart);
+    const src = getHtmlAttributeValue(openTag, "src")?.trim();
+    if (!src) continue;
+    const name = basename(src.replace(/[?#].*$/, ""));
+    (isDirectiveScriptOpenTag(openTag) ? directive : browser).add(name);
+  }
+  return { browser, directive };
+};
+
+/** Whether `nameWithoutExt` is `componentName`'s own name or one of its extras. */
+const isNamedFor = (nameWithoutExt: string, componentName: string): boolean =>
+  nameWithoutExt === componentName ||
+  nameWithoutExt.startsWith(`${componentName}.`) ||
+  nameWithoutExt.startsWith(`${componentName}-`) ||
+  nameWithoutExt.startsWith(`${componentName}_`);
+
 export const getComponentScripts = async (
   htmlFileName: string,
   scriptFileNames: string[],
+  options: ComponentScriptsOptions = {},
 ): Promise<ComponentScriptsResult> => {
   const scriptMap = new Map<string, ComponentScriptInfo>();
   if (
@@ -1120,23 +1306,47 @@ export const getComponentScripts = async (
     htmlDir !== compDir &&
     htmlDir.startsWith(`${compDir}/`);
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
+  const referenced =
+    options.html === undefined ? undefined : scriptSrcBasenames(options.html);
+  // Components with longer names that this one's prefix rule would otherwise reach into. Each
+  // keeps the claim rule it applies to itself: a flat one claims its name in any folder, a
+  // subfolder one only the scripts inside its own folder.
+  const siblings = (options.componentFileNames ?? []).flatMap((fileName) => {
+    const name = basename(fileName, ".html").toLowerCase();
+    if (name === componentBaseName || !isNamedFor(name, componentBaseName))
+      return [];
+    const dir = dirname(fileName).replace(/\\/g, "/");
+    const root = findComponentRoot(fileName);
+    const subfolder =
+      root !== undefined && dir !== root && dir.startsWith(`${root}/`);
+    return [{ name, dir: subfolder ? dir : undefined }];
+  });
+  const siblingClaims = (scriptDir: string, nameWithoutExt: string) =>
+    siblings.some(({ name, dir }) =>
+      dir === undefined
+        ? isNamedFor(nameWithoutExt, name)
+        : scriptDir === dir || scriptDir.startsWith(`${dir}/`),
+    );
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
     const scriptDir = dirname(scriptPath).replace(/\\/g, "/");
+    const scriptBaseName = basename(scriptPath);
+    // A directive script's `src=` module runs in Node.js: never browser code.
+    if (
+      referenced &&
+      referenced.directive.has(scriptBaseName) &&
+      !referenced.browser.has(scriptBaseName)
+    )
+      return false;
     if (isSubfolder) {
       return scriptDir === htmlDir || scriptDir.startsWith(htmlDir + "/");
-    } else {
-      const scriptBaseName = basename(scriptPath);
-      const nameWithoutExt = scriptBaseName
-        .replace(COMPANION_SCRIPT_RE, "")
-        .toLowerCase();
-      return (
-        nameWithoutExt === componentBaseName ||
-        nameWithoutExt.startsWith(`${componentBaseName}.`) ||
-        nameWithoutExt.startsWith(`${componentBaseName}-`) ||
-        nameWithoutExt.startsWith(`${componentBaseName}_`)
-      );
     }
+    const nameWithoutExt = scriptBaseName
+      .replace(COMPANION_SCRIPT_RE, "")
+      .toLowerCase();
+    if (!isNamedFor(nameWithoutExt, componentBaseName)) return false;
+    if (referenced?.browser.has(scriptBaseName)) return true;
+    return !siblingClaims(scriptDir, nameWithoutExt);
   });
 
   matchingScriptFiles.sort((a, b) => {

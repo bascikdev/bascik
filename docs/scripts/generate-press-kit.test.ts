@@ -16,6 +16,7 @@ import {
   createZip,
   generatePressKit,
   parseLogo,
+  readmeText,
   renderCanvasSvg,
   renderLogoSvg,
   zipKit,
@@ -224,6 +225,24 @@ describe("generate-press-kit", () => {
     });
   });
 
+  describe("README", () => {
+    it("carries the clear-space rule and says the files are cropped to the artwork", () => {
+      const readme = readmeText();
+      expect(readme).toMatch(/one quarter of the logo's height on every side/);
+      expect(readme).toMatch(/whole lime tile, not the letters/);
+      expect(readme).toMatch(/cropped to the artwork/);
+      expect(readme).toMatch(/rounded corners/);
+      expect(readme).toContain("24 px tall");
+      expect(readme).toContain("1/8 inch (3 mm)");
+    });
+
+    it("keeps every line within 100 characters, so it reads in any text viewer", () => {
+      for (const line of readmeText().split("\n")) {
+        expect(line.length, line).toBeLessThanOrEqual(100);
+      }
+    });
+  });
+
   describe("press contact", () => {
     it("uses the role alias on the page and in the kit README", async () => {
       expect(PRESS_EMAIL).toBe("press@bascik.dev");
@@ -326,6 +345,7 @@ describe("generate-press-kit", () => {
       expect(dev?.watch).toEqual([
         "src/pages/assets/bascik-logo.svg",
         "src/pages/assets/favicon.svg",
+        "src/lib/press-logo.ts",
       ]);
       expect(dev).not.toHaveProperty("outputs");
       expect(build.pipeline?.exec?.some((e) => e.script === script)).toBe(true);

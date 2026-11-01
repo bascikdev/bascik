@@ -258,11 +258,15 @@ export function inlineStyles(html) {
   return rawTextElements(html, "style").map((element) => element.body);
 }
 
-/** Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. */
+/**
+ * Base64 SHA-256 of UTF-8 text, as CSP hash sources use it. The HTML parser
+ * turns CR LF and lone CR into LF before the browser hashes a body, so this
+ * hashes the LF text too.
+ */
 export async function sha256Base64(text) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(text),
+    new TextEncoder().encode(text.replace(/\r\n?/g, () => "\n")),
   );
   let binary = "";
   for (const byte of new Uint8Array(digest))
@@ -370,7 +374,7 @@ const hashBodies = (sources) =>
  * environment ("production" when unset).
  *
  * Hashes come from `cspHashes`, the parsed .bascik/dist/csp-hashes.json: each HTML response lists the hashes of its
- * route (a 404 those of /404; a route the build never recorded gets none, so its inline code is blocked). Only with
+ * route (a 404 those of /404, a 500 those of /500; a route the build never recorded gets none, so its inline code is blocked). Only with
  * `hashResponseBodies: true` are they read from the response body instead, which allows any script a server or
  * stream script injected (see the comment at the top of this file).
  */
@@ -411,7 +415,14 @@ export function withResponsePolicy(
     );
   buildCsp({ directives }); // reject a bad directive at deploy time, not on the first request
   const routeHashes = (url, status) => {
-    const key = status === 404 ? "/404" : routeKeyFor(url.pathname, base);
+    // A 404 is the 404 page and a 500 the 500 page (src/pages/500.html, or Bascik's generic one with no inline code),
+    // whatever route was asked for.
+    const key =
+      status === 404
+        ? "/404"
+        : status === 500
+          ? "/500"
+          : routeKeyFor(url.pathname, base);
     const entry = Object.hasOwn(cspHashes, key) ? cspHashes[key] : undefined;
     return {
       scriptHashes: hashBodies(entry?.scripts),

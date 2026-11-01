@@ -25,7 +25,7 @@ Each child of the slot becomes one panel, and its `data-tab` attribute is the ta
 - The script builds one `<button role="tab">` per section and gives every tab and panel an ID derived from the component root's scoped ID (`${root.id}-tab-0`). Bascik rewrites `root` to a different ID in each instance, so two tab groups never share IDs, and `aria-controls` and `aria-labelledby` always point at the right element.
 - Left and Right move between tabs and wrap at the ends; Home and End jump to the first and last tab. Only the selected tab is in the Tab order (a roving `tabindex`).
 - `tab.className = 'tab'` is a static string, so Bascik rewrites it to the scoped class from the component's `<style>` block. A template literal would not be rewritten.
-- The tab list is `hidden` in the markup and shown by the script, so a visitor without JavaScript never sees buttons that do nothing.
+- The tab list is `hidden` in the markup and shown by the script, so a visitor without JavaScript never sees buttons that do nothing. Its `display: flex` would override the `hidden` attribute, so a `.tablist[hidden]` rule restates `display: none`.
 
 ## Adapt It
 

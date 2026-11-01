@@ -76,7 +76,8 @@ export function observeSubjects(directory: string | undefined) {
     override postMessage(
       ...args: Parameters<InstanceType<typeof OriginalWorker>["postMessage"]>
     ) {
-      const input = args[0] as string | { pagePath: string } | { kind: string };
+      const input = args[0] as
+        string | { pagePath: string } | { kind: string } | { stop: true };
       // A settings message (`page-worker-messages.ts`, sent through
       // `WorkerPool.configure`) is not a task and gets no reply, so it must
       // not open a pending task that the next real reply would close.
@@ -84,6 +85,17 @@ export function observeSubjects(directory: string | undefined) {
         journal("settings", {
           workerThreadId: this.threadId,
           kind: input.kind,
+        });
+        super.postMessage(...args);
+        return;
+      }
+      // The stop message (`WorkerPool` `stopSignal`) asks the worker to end
+      // itself in place of `terminate()`; the worker exits instead of
+      // replying, so it is no task either.
+      if (typeof input === "object" && "stop" in input) {
+        journal("stop-requested", {
+          workerThreadId: this.threadId,
+          taskId: this.pending?.taskId,
         });
         super.postMessage(...args);
         return;

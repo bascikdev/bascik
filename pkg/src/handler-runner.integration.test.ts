@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { describe, it, expect, vi } from "vitest";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runDirectiveHandler, Semaphore } from "./lib/script-runner.ts";
@@ -476,6 +483,79 @@ describe("runDirectiveHandler real child processes (handler and result transport
       expect(result.stdout).toContain("another log inside default export");
       expect(result.stderr).toContain("stderr log from routes handler");
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runDirectiveHandler when the temp directory is unusable", () => {
+  const TEMP_VARS = ["TMPDIR", "TEMP", "TMP"] as const;
+
+  it("makes the runner directory again when a temp cleaner deleted it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+    const modulePath = join(dir, "test-module.mjs");
+    await writeFile(modulePath, `export default () => "ok";`, "utf8");
+    const ownTemp = join(dir, "temp");
+    await mkdir(ownTemp);
+    const saved = TEMP_VARS.map((name) => [name, process.env[name]] as const);
+    vi.resetModules();
+    try {
+      for (const name of TEMP_VARS) process.env[name] = ownTemp;
+      const { runDirectiveHandler: freshRun } =
+        await import("./lib/handler-runner.ts");
+      expect((await freshRun<string>(modulePath, "build")).result).toBe("ok");
+      const made = (await readdir(ownTemp)).filter((name) =>
+        name.startsWith("bascik-handler-"),
+      );
+      expect(made).toHaveLength(1);
+      await rm(join(ownTemp, made[0]), { recursive: true, force: true });
+
+      expect((await freshRun<string>(modulePath, "build")).result).toBe("ok");
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      vi.resetModules();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects naming the temp directory instead of retrying forever", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+    const modulePath = join(dir, "test-module.mjs");
+    await writeFile(modulePath, `export default () => "ok";`, "utf8");
+    const missingTemp = join(dir, "no-such-temp-dir");
+    const saved = TEMP_VARS.map((name) => [name, process.env[name]] as const);
+    // A fresh module instance: the runner directory is memoized per process.
+    vi.resetModules();
+    try {
+      for (const name of TEMP_VARS) process.env[name] = missingTemp;
+      const { runDirectiveHandler: freshRun } =
+        await import("./lib/handler-runner.ts");
+      const outcome = await Promise.race([
+        freshRun(modulePath, "build").then(
+          () => ({ settled: "resolved" as const, message: "" }),
+          (err: Error) => ({
+            settled: "rejected" as const,
+            message: err.message,
+          }),
+        ),
+        new Promise<{ settled: "hung"; message: string }>((resolve) =>
+          setTimeout(() => resolve({ settled: "hung", message: "" }), 3000),
+        ),
+      ]);
+      expect(outcome.settled).toBe("rejected");
+      expect(outcome.message).toContain(
+        "Cannot create the script runner directory",
+      );
+      expect(outcome.message).toContain(missingTemp);
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      vi.resetModules();
       await rm(dir, { recursive: true, force: true });
     }
   });

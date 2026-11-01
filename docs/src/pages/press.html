@@ -12,7 +12,7 @@
     </script>
     <meta
       name="description"
-      content="Download the official Bascik logos, colors, and press kit, with usage guidelines and recommended image sizes for articles, talks, videos, and social profiles."
+      content="Download the official Bascik logos, colors, and press kit, with usage guidelines, image sizes for articles and social profiles, and the press contact."
     />
     <title>Press Resources - Bascik Docs</title>
     <style>
@@ -49,11 +49,19 @@
         overflow: hidden;
       }
 
+      /* The clear-space rule from press.md, by construction: each tile sets the logo's height, and the padding
+         around it is a quarter of that height, so no tile width or phone layout can bring an edge closer. */
       .press-swatch {
+        --press-logo-height: 48px;
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 150px;
+        min-height: 150px;
+        padding: calc(var(--press-logo-height) / 4);
+      }
+
+      .press-swatch-square {
+        --press-logo-height: 72px;
       }
 
       .press-swatch-dark {
@@ -68,10 +76,37 @@
         background: #ffffff;
       }
 
-      .press-swatch img {
+      /* The kit files are cropped to the artwork, so the frame and rounding that styles.css gives every
+         .docs-content img would clip the tile's corners. Reset them, as img.demo-shot does. A logo too wide for a
+         narrow tile shrinks in proportion instead of overflowing its padding. */
+      .docs-content .press-swatch img {
         display: block;
-        max-width: 80%;
+        width: auto;
         height: auto;
+        max-width: 100%;
+        max-height: var(--press-logo-height);
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        background: none;
+        box-shadow: none;
+      }
+
+      /* Clear-space diagram: inline SVGs whose lines use currentColor, so they follow the theme. */
+      .press-clear-space {
+        color: var(--text-muted);
+      }
+
+      .press-clear-space svg {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        height: auto;
+        margin: 0 auto;
+      }
+
+      .press-clear-space-square svg {
+        max-width: 140px;
       }
 
       .press-tile figcaption {
@@ -142,9 +177,13 @@
             data-testid="press-previews"
           >
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-dark">
+              <figure class="press-tile" data-testid="press-tile-wordmark-dark">
+                <div
+                  class="press-swatch press-swatch-dark"
+                  data-testid="press-swatch-wordmark-dark"
+                >
                   <img
+                    data-testid="press-logo-wordmark-dark"
                     src="/assets/press/logo/svg/bascik-wordmark.svg"
                     width="228"
                     height="56"
@@ -171,9 +210,16 @@
               </figure>
             </li>
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-light">
+              <figure
+                class="press-tile"
+                data-testid="press-tile-wordmark-white"
+              >
+                <div
+                  class="press-swatch press-swatch-light"
+                  data-testid="press-swatch-wordmark-white"
+                >
                   <img
+                    data-testid="press-logo-wordmark-white"
                     src="/assets/press/logo/svg/bascik-wordmark.svg"
                     width="228"
                     height="56"
@@ -186,9 +232,13 @@
               </figure>
             </li>
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-mid">
+              <figure class="press-tile" data-testid="press-tile-wordmark-gray">
+                <div
+                  class="press-swatch press-swatch-mid"
+                  data-testid="press-swatch-wordmark-gray"
+                >
                   <img
+                    data-testid="press-logo-wordmark-gray"
                     src="/assets/press/logo/svg/bascik-wordmark.svg"
                     width="228"
                     height="56"
@@ -201,9 +251,13 @@
               </figure>
             </li>
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-dark">
+              <figure class="press-tile" data-testid="press-tile-mark-dark">
+                <div
+                  class="press-swatch press-swatch-square press-swatch-dark"
+                  data-testid="press-swatch-mark-dark"
+                >
                   <img
+                    data-testid="press-logo-mark-dark"
                     src="/assets/press/logo/svg/bascik-mark.svg"
                     width="96"
                     height="96"
@@ -230,9 +284,13 @@
               </figure>
             </li>
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-light">
+              <figure class="press-tile" data-testid="press-tile-mark-white">
+                <div
+                  class="press-swatch press-swatch-square press-swatch-light"
+                  data-testid="press-swatch-mark-white"
+                >
                   <img
+                    data-testid="press-logo-mark-white"
                     src="/assets/press/logo/svg/bascik-mark.svg"
                     width="96"
                     height="96"
@@ -245,9 +303,13 @@
               </figure>
             </li>
             <li>
-              <figure class="press-tile">
-                <div class="press-swatch press-swatch-mid">
+              <figure class="press-tile" data-testid="press-tile-mark-gray">
+                <div
+                  class="press-swatch press-swatch-square press-swatch-mid"
+                  data-testid="press-swatch-mark-gray"
+                >
                   <img
+                    data-testid="press-logo-mark-gray"
                     src="/assets/press/logo/svg/bascik-mark.svg"
                     width="96"
                     height="96"
@@ -267,6 +329,47 @@
               export default async () =>
                 await renderMdRange("./content/press.md", {
                   from: "Kit Contents",
+                  to: "Colors",
+                });
+            </script>
+
+            <diagram-figure
+              data-bascik-prop-title="Clear space"
+              data-bascik-prop-footer="The solid line is the edge of the kit file, cropped to the artwork. The dashed line is one quarter of the logo's height further out: keep everything else outside it."
+              data-testid="press-clear-space"
+            >
+              <diagram-row>
+                <diagram-panel data-bascik-prop-label="Wordmark">
+                  <div
+                    class="press-clear-space"
+                    data-testid="press-clear-space-wordmark"
+                  >
+                    <script data-bascik-build-once>
+                      import { clearSpaceSvg } from "@/lib/press-logo.ts";
+                      export default async () =>
+                        await clearSpaceSvg("wordmark");
+                    </script>
+                  </div>
+                </diagram-panel>
+                <diagram-panel data-bascik-prop-label="Mark">
+                  <div
+                    class="press-clear-space press-clear-space-square"
+                    data-testid="press-clear-space-mark"
+                  >
+                    <script data-bascik-build-once>
+                      import { clearSpaceSvg } from "@/lib/press-logo.ts";
+                      export default async () => await clearSpaceSvg("mark");
+                    </script>
+                  </div>
+                </diagram-panel>
+              </diagram-row>
+            </diagram-figure>
+
+            <script data-bascik-build>
+              import { renderMdRange } from "@/lib/md-renderer.ts";
+              export default async () =>
+                await renderMdRange("./content/press.md", {
+                  from: "Colors",
                 });
             </script>
           </div>

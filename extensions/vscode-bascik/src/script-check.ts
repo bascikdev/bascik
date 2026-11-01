@@ -11,6 +11,12 @@
 /** The setting the prompt offers to add, as it is written in `settings.json`. */
 export const HTML_VALIDATE_SCRIPTS = "html.validate.scripts";
 
+/**
+ * The built-in extension that checks inline scripts and contributes `html.validate.scripts`. When someone disables
+ * it, the false error cannot appear and the setting is not registered, so there is nothing to ask about.
+ */
+export const HTML_LANGUAGE_FEATURES = "vscode.html-language-features";
+
 /** Config file names that make a folder a Bascik project. Matches the language server's `CONFIG_FILE_CANDIDATES`. */
 export const CONFIG_FILE_NAMES = [
   "bascik.config.js",
@@ -50,18 +56,22 @@ export type FolderDecision =
   | "already-set"
   /** Nobody set it, but it does not resolve to `true` (another extension's default, for example). */
   | "already-off"
+  /** VS Code's HTML language features are disabled, so nothing checks inline scripts and the setting does not exist. */
+  | "no-html-check"
   /** Bascik project, nobody set the value, and VS Code checks inline scripts there. */
   | "ask";
 
 /**
- * Should this Bascik folder be offered the setting? Only when nobody chose a value at any level, so a person's own
- * choice, in either direction, is never questioned.
+ * Should this Bascik folder be offered the setting? Only when VS Code's HTML language features run and nobody chose a
+ * value at any level, so a person's own choice, in either direction, is never questioned.
  */
 export function decideFolder(
   isBascik: boolean,
   setting: SettingInspection | undefined,
+  htmlLanguageFeaturesRunning = true,
 ): FolderDecision {
   if (!isBascik) return "not-bascik";
+  if (!htmlLanguageFeaturesRunning) return "no-html-check";
   const chosen = [
     setting?.globalValue,
     setting?.workspaceValue,

@@ -90,12 +90,12 @@ describe("pipeline loop consolidation & parity invariants", () => {
       );
 
       // ID-converted classes and element classes are injected onto all instances
-      expect(inst1.fileContent).toContain("bascik__id-card__id__card-root");
-      expect(inst2.fileContent).toContain("bascik__id-card__id__card-root");
-      expect(inst3.fileContent).toContain("bascik__id-card__id__card-root");
-      expect(inst1.fileContent).toContain("bascik__id-card__el__p");
-      expect(inst2.fileContent).toContain("bascik__id-card__el__p");
-      expect(inst3.fileContent).toContain("bascik__id-card__el__p");
+      expect(inst1.fileContent).toContain("b_id_id-card_card-root");
+      expect(inst2.fileContent).toContain("b_id_id-card_card-root");
+      expect(inst3.fileContent).toContain("b_id_id-card_card-root");
+      expect(inst1.fileContent).toContain("b_el_id-card_p");
+      expect(inst2.fileContent).toContain("b_el_id-card_p");
+      expect(inst3.fileContent).toContain("b_el_id-card_p");
 
       // CSS is identical across all instances and does not require per-instance CSS
       expect(inst1.requiresPerInstanceCss).toBeFalsy();
@@ -123,12 +123,8 @@ describe("pipeline loop consolidation & parity invariants", () => {
       expect(inst2.cssFileContent).toContain(
         "url(#bascik__svg-badge__bbbb2222__grad)",
       );
-      expect(inst1.cssFileContent).toContain(
-        ".bascik__svg-badge__aaaa1111__id__box",
-      );
-      expect(inst2.cssFileContent).toContain(
-        ".bascik__svg-badge__bbbb2222__id__box",
-      );
+      expect(inst1.cssFileContent).toContain(".b_id_svg-badge__aaaa1111_box");
+      expect(inst2.cssFileContent).toContain(".b_id_svg-badge__bbbb2222_box");
     });
   });
 
@@ -146,9 +142,9 @@ describe("pipeline loop consolidation & parity invariants", () => {
       `;
       const elements = ["div", "h1", "p"];
       const ids = [
-        { idName: "root", className: "bascik__comp__id__root" },
-        { idName: "title", className: "bascik__comp__id__title" },
-        { idName: "second", className: "bascik__comp__id__second" },
+        { idName: "root", className: "b_id_comp_root" },
+        { idName: "title", className: "b_id_comp_title" },
+        { idName: "second", className: "b_id_comp_second" },
       ];
       const scopedIdNames = {
         root: "bascik__comp__1234__root",
@@ -171,17 +167,17 @@ describe("pipeline loop consolidation & parity invariants", () => {
       );
       const afterBoth = addIdClassesInHtml(afterElements, ids, scopedIdNames);
 
-      // Root div had class="wrapper", gets __el__div then __id__root
+      // Root div had class="wrapper", gets b_el_comp_div then b_id_comp_root
       expect(afterBoth).toContain(
-        `id="${scopedIdNames.root}" class="wrapper bascik__comp__el__div bascik__comp__id__root"`,
+        `id="${scopedIdNames.root}" class="wrapper b_el_comp_div b_id_comp_root"`,
       );
-      // h1 had no class, gets class="__el__h1" then appends __id__title
+      // h1 had no class, gets class="b_el_comp_h1" then appends b_id_comp_title
       expect(afterBoth).toContain(
-        `<h1 class="bascik__comp__el__h1 bascik__comp__id__title" id="${scopedIdNames.title}">`,
+        `<h1 class="b_el_comp_h1 b_id_comp_title" id="${scopedIdNames.title}">`,
       );
-      // p#second had no class, gets class="__el__p" then appends __id__second
+      // p#second had no class, gets class="b_el_comp_p" then appends b_id_comp_second
       expect(afterBoth).toContain(
-        `<p class="bascik__comp__el__p bascik__comp__id__second" id="${scopedIdNames.second}">`,
+        `<p class="b_el_comp_p b_id_comp_second" id="${scopedIdNames.second}">`,
       );
       // Comment, script, and textarea contents are untouched
       expect(afterBoth).toContain(

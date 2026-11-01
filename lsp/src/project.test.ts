@@ -4,6 +4,11 @@ import * as path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   CONFIG_FILE_CANDIDATES,
+  parseApiRoot,
+  parseComponentRoots,
+  parseImportRoot,
+  parsePagesRoot,
+  parseScopesName,
   readConfigSource,
   resolveComponentRoots,
 } from "./project.js";
@@ -79,5 +84,63 @@ describe("readConfigSource", () => {
     const pkgNames = Array.from(list.matchAll(/"([^"]+)"/g), (m) => m[1]);
     expect(pkgNames.length).toBeGreaterThan(0);
     expect(CONFIG_FILE_CANDIDATES).toEqual(pkgNames);
+  });
+});
+
+describe("config readers skip commented-out settings, as the compiler does", () => {
+  const config = (body: string) => `export default {\n${body}\n};\n`;
+
+  it("ignores settings inside a /* */ block", () => {
+    const commented = config(
+      [
+        "  /* scoping: { attributes: { name: true } }, */",
+        "  directory: {",
+        "    /*",
+        "    components: ['src/ui'],",
+        "    pages: 'site/pages',",
+        "    api: 'server/routes',",
+        "    */",
+        "  },",
+        "  /* scripts: { importRoot: 'lib' } */",
+      ].join("\n"),
+    );
+    expect(parseScopesName(commented)).toBe(false);
+    expect(parseComponentRoots(commented)).toEqual(["src/components"]);
+    expect(parsePagesRoot(commented)).toBe("src/pages");
+    expect(parseApiRoot(commented)).toBe("src/api");
+    expect(parseImportRoot(commented)).toBe("src");
+  });
+
+  it("ignores settings in // comments, but keeps // inside strings", () => {
+    const source = config(
+      [
+        "  site: { url: 'https://example.com' },",
+        "  directory: {",
+        "    // components: ['src/ui'],",
+        "    components: ['src/parts'], // was 'src/ui'",
+        "    pages: 'site//pages',",
+        "  },",
+      ].join("\n"),
+    );
+    expect(parseComponentRoots(source)).toEqual(["src/parts"]);
+    expect(parsePagesRoot(source)).toBe("site//pages");
+  });
+
+  it("reads the live setting after a commented copy of it", () => {
+    const source = config(
+      "  /* directory: { api: 'old/api' } */\n  directory: { api: 'server/routes' },\n  // scoping: { attributes: { name: false } },\n  scoping: { attributes: { name: true } },",
+    );
+    expect(parseApiRoot(source)).toBe("server/routes");
+    expect(parseScopesName(source)).toBe(true);
+  });
+
+  it("treats an unclosed /* as a comment to the end of the file, in linear time", () => {
+    expect(parseApiRoot("export default { /* directory: { api: 'x' } }")).toBe(
+      "src/api",
+    );
+    const start = performance.now();
+    parseComponentRoots("/*".repeat(50_000) + "components: ['a']");
+    parseScopesName("'/*".repeat(50_000));
+    expect(performance.now() - start).toBeLessThan(250);
   });
 });

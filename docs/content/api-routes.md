@@ -34,9 +34,11 @@ API route files live in `directory.api` (default: `src/api`). The URL path prefi
 | `src/api/[...path].ts`        | `/api/*` (one or more segments)       |
 | `src/api/files/[...path].ts`  | `/api/files/*` (one or more segments) |
 
+Every `.ts`, `.mts`, `.js` and `.mjs` file in `directory.api` is a route, except type declarations (`types.d.ts`) and tests beside a route (`contact.test.ts`, `contact.spec.mts`). Keep shared helpers outside the folder, for example in `src/lib/` imported as `@/lib/db.ts`: a helper inside it, such as `src/api/db.ts`, is served as `/api/db` and answers `405` to every method it does not export.
+
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
 
-Dynamic `[param]` values are percent-decoded once from the raw request path. `/api/users/100%2520` supplies the literal string `100%20`, not `100 `.
+Dynamic `[param]` values are percent-decoded once from the raw request path. `/api/users/100%2520` supplies the literal string `100%20`, not `100 `. A `[param]` value is always one path segment: an encoded `/` or `\` (`/api/users/a%2Fb`) never splits it into two and never reaches the handler, the request answers `400`, as it does for a catch-all.
 
 ### Catch-all routes
 
@@ -67,8 +69,8 @@ When configuring a custom `base` in `bascik.config.ts`, API routes compose clean
 
 A route file exports functions corresponding to standard HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
 
-- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods.
-- **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence.
+- **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods. Only the seven names above are methods: an export such as `PURGE` or `SEARCH` is never called, and a request with that method gets the same `405`. `TRACE`, `TRACK` and `CONNECT` cannot be exported either (a web `Request` cannot carry them), so they always get that `405`.
+- **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence. A body a `HEAD` answer does not send is canceled, so a streamed source (a `fetch()` pass-through, a file) is released at once.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
 
 This recording sends two real requests to a dev server whose `src/api/users/[id].ts` exports only `GET`. The `GET` returns the handler's JSON with a `200`. The `DELETE` is refused with a `405`, and the `Allow` header lists exactly what the route accepts:
@@ -77,7 +79,7 @@ This recording sends two real requests to a dev server whose `src/api/users/[id]
 
 ## The Request and Response Contract & Portability
 
-Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. That makes the handler _function_ reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
+Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. Its pathname is the request path as sent: a request for `//api/ping` has the pathname `//api/ping`, never the host `api`. That makes the handler _function_ reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.
 
 Reusable code is not the same as a deployable service. Three more things have to exist on any host before a handler answers traffic: the route table (`src/api/users/[id].ts` to `/api/users/:id`), the method dispatch and `Allow` semantics described above, and whatever the handler imports. A handler that reads `process.env`, opens a database socket, or imports a Node-only package runs where those things exist.
 

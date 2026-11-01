@@ -57,6 +57,8 @@ pipeline: {
 }
 ```
 
+Chokidar does not expand globs, so Bascik watches the folder a pattern starts in (the part before its first wildcard) and keeps only the files the pattern matches. A pattern with no folder before its wildcard, such as `'**/*.md'` or `'*.json'`, starts in the project root. Below any watched folder, Bascik never descends into `node_modules` or `.git`, and it ignores the output directory and its private `.bascik` folder, so a root-level glob does not walk every installed package. To watch files inside a package, name a folder inside `node_modules` as the pattern's start (`'node_modules/@milk/frother-ui/dist/'`). A bare `@` or `+` in a folder name is literal; only `@(`, `+(` and `!(` are extglob operators.
+
 ### Overlapping Paths
 
 Listing a source in both `pipeline.watchPaths` and `pipeline.exec[].watch` creates one phase-ordered rebuild, not independent actions. Matching pre scripts finish before compilation; parallel starts alongside compilation; post starts after compilation and disk writes complete. Only matching scripts rerun. Exec-only source edits can rebuild associated pages without duplicate `pipeline.watchPaths` entries. See [Exec Scripts](/exec-scripts#watching-source-inputs).

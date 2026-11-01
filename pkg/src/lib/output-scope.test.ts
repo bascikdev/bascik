@@ -10,7 +10,7 @@ import {
 
 const scope: OutputScope = {
   classes: { item: "bascik__c__item", wrap: "bascik__c__wrap" },
-  elements: { h2: "bascik__c__el__h2", a: "bascik__c__el__a" },
+  elements: { h2: "b_el_c_h2", a: "b_el_c_a" },
 };
 
 describe("encodeOutputScope / decodeOutputScope", () => {
@@ -94,23 +94,23 @@ describe("applyOutputScope", () => {
 
   it("adds the element class to a styled element and scopes its classes together", () => {
     expect(applyOutputScope('<h2 class="item">y</h2>', scope)).toBe(
-      '<h2 class="bascik__c__item bascik__c__el__h2">y</h2>',
+      '<h2 class="bascik__c__item b_el_c_h2">y</h2>',
     );
   });
 
   it("injects an element class when the tag has no class attribute", () => {
     expect(applyOutputScope('<h2 id="t">y</h2>', scope)).toBe(
-      '<h2 class="bascik__c__el__h2" id="t">y</h2>',
+      '<h2 class="b_el_c_h2" id="t">y</h2>',
     );
   });
 
   it("does not duplicate an element class already present in the class attribute", () => {
     const withDup: OutputScope = {
-      classes: { el: "bascik__c__el__h2" },
-      elements: { h2: "bascik__c__el__h2" },
+      classes: { el: "b_el_c_h2" },
+      elements: { h2: "b_el_c_h2" },
     };
     expect(applyOutputScope('<h2 class="el">y</h2>', withDup)).toBe(
-      '<h2 class="bascik__c__el__h2">y</h2>',
+      '<h2 class="b_el_c_h2">y</h2>',
     );
   });
 
@@ -191,7 +191,7 @@ describe("applyOutputScope", () => {
         scope,
       ),
     ).toBe(
-      '<section><p class="bascik__c__item">x</p><a class="bascik__c__el__a" href="#">y</a></section>',
+      '<section><p class="bascik__c__item">x</p><a class="b_el_c_a" href="#">y</a></section>',
     );
   });
 });

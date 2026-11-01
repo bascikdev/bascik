@@ -9,7 +9,7 @@
  * `findComponentRoot` instead, so no consumer can drift toward a
  * first-root-only assumption.
  */
-import { relative } from "node:path";
+import nodePath, { type PlatformPath } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { trimTrailingSlashes } from "./slashes.ts";
 
@@ -42,15 +42,19 @@ export const findComponentRoot = (filePath: string): string | undefined => {
 
 /**
  * Display form for a components root: `components` when the root sits inside
- * the project, otherwise the cwd-relative path (`../shared/components`) so a
- * user can locate it. Never a filesystem-absolute path.
+ * the project, otherwise the cwd-relative path (`..`, `../shared/components`)
+ * so a user can locate it. The one exception to "never a filesystem-absolute
+ * path" is a root on another Windows drive, which no relative path reaches,
+ * shown with forward slashes (`D:/shared/components`). `path` is for tests.
  */
 export const displayComponentRoot = (
   root: string,
   cwd = process.cwd(),
+  path: Pick<PlatformPath, "relative" | "isAbsolute"> = nodePath,
 ): string => {
-  const rel = relative(cwd, root).replace(/\\/g, "/");
-  if (rel === "" || rel === ".") return "components";
-  if (rel.startsWith("../")) return rel;
+  const rel = path.relative(cwd, root);
+  if (path.isAbsolute(rel)) return rel.replace(/\\/g, "/");
+  const posixRel = rel.replace(/\\/g, "/");
+  if (posixRel === ".." || posixRel.startsWith("../")) return posixRel;
   return "components";
 };

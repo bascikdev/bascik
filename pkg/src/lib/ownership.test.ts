@@ -72,6 +72,7 @@ import {
   validateInventory,
   ownershipTracker,
   emptyInventory,
+  RETAINED_SCRIPTS_OWNER,
   type OwnershipInventory,
   type OwnershipEntry,
 } from "./ownership.ts";
@@ -358,6 +359,210 @@ describe("ownership inventory persistence & integrity", () => {
     // A's removed script pruned; B's untouched script retained from prior.
     expect(sidecar.scripts["scriptA"]).toBeUndefined();
     expect(sidecar.scripts["scriptB"].source).toBe("b-source");
+  });
+});
+
+// F030: with no usable ownership.json, a targeted build must keep the
+// untouched pages' server scripts (their HTML still carries the
+// placeholders), as the warning and the manifest and CSP reconcilers do, and
+// a later targeted build must not drop them either.
+describe("degraded targeted build keeps untouched pages' server scripts", () => {
+  let tempDir = "";
+  const sidecarFile = () => join(privateDirFor(tempDir), "server-scripts.json");
+  const readSidecar = async () =>
+    JSON.parse(await readFile(sidecarFile(), "utf8"));
+  const script = (id: string, source: string) =>
+    ({ id, mode: "server", source }) as ServerScriptEntry;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-degraded-"));
+    await mkdir(privateDirFor(tempDir), { recursive: true });
+    ownershipTracker.clear();
+    manifestCollector.clear();
+    cspHashCollector.clear();
+    serverSidecarRegistry.clear();
+    (BascikConfig as any).directory.out = tempDir;
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).generate.manifest = true;
+    (BascikConfig as any).generate.cspHashes = true;
+    (BascikConfig as any).only = ["a.html"];
+    listComponentsMock.mockReset();
+    listComponentsMock.mockResolvedValue({});
+    await writeFile(
+      sidecarFile(),
+      JSON.stringify({
+        version: "1.0.0",
+        schema: SIDECAR_SCHEMA_VERSION,
+        scripts: {
+          scriptA: script("scriptA", "a-old"),
+          scriptB: script("scriptB", "b-source"),
+          component_script_6361726401: script(
+            "component_script_6361726401",
+            "stale-component",
+          ),
+        },
+      }),
+      "utf8",
+    );
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDirFor(tempDir), { recursive: true, force: true });
+  });
+
+  const rebuildA = async () => {
+    const sourceA = resolve(tempDir, "src/pages/a.html");
+    ownershipTracker.recordOutput(sourceA, "pages/a.html", "a.html", "/a");
+    ownershipTracker.recordScript(sourceA, "pages/a.html", "scriptA");
+    serverSidecarRegistry.recordScripts({
+      scriptA: script("scriptA", "a-new"),
+    });
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
+  };
+
+  it.each([
+    ["missing", null],
+    ["corrupt", "{ not json"],
+    [
+      "from an older schema",
+      JSON.stringify({ ...emptyInventory(), schema: 0, owners: {} }),
+    ],
+  ])("when ownership.json is %s", async (_label, ownershipJson) => {
+    if (ownershipJson !== null) {
+      await writeFile(
+        join(privateDirFor(tempDir), "ownership.json"),
+        ownershipJson,
+        "utf8",
+      );
+    }
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await rebuildA();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("merged additively"),
+    );
+    warnSpy.mockRestore();
+    const sidecar = await readSidecar();
+    expect(sidecar.scripts.scriptA.source).toBe("a-new");
+    expect(sidecar.scripts.scriptB.source).toBe("b-source");
+    // Component jobs are regenerated from the component list, never carried.
+    expect(sidecar.scripts.component_script_6361726401).toBeUndefined();
+  });
+
+  it("keeps them through the next targeted build, which finds the fresh inventory", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await rebuildA();
+    ownershipTracker.clear();
+    serverSidecarRegistry.clear();
+    await rebuildA();
+    warnSpy.mockRestore();
+    const sidecar = await readSidecar();
+    expect(Object.keys(sidecar.scripts).sort()).toEqual(["scriptA", "scriptB"]);
+  });
+
+  it("hands a retained script back to its page once that page is rebuilt", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await rebuildA();
+    warnSpy.mockRestore();
+    ownershipTracker.clear();
+    serverSidecarRegistry.clear();
+    const sourceB = resolve(tempDir, "src/pages/b.html");
+    ownershipTracker.recordOutput(sourceB, "pages/b.html", "b.html", "/b");
+    ownershipTracker.recordScript(sourceB, "pages/b.html", "scriptB");
+    serverSidecarRegistry.recordScripts({
+      scriptB: script("scriptB", "b-new"),
+    });
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
+    const inv = await readOwnershipInventory();
+    expect(inv?.owners[RETAINED_SCRIPTS_OWNER]).toBeUndefined();
+    expect(inv?.owners[sourceB].scripts).toEqual(["scriptB"]);
+    const sidecar = await readSidecar();
+    expect(sidecar.scripts.scriptA.source).toBe("a-new");
+    expect(sidecar.scripts.scriptB.source).toBe("b-new");
+  });
+
+  it("drops them on a full build, which owns every page again", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await rebuildA();
+    warnSpy.mockRestore();
+    ownershipTracker.clear();
+    serverSidecarRegistry.clear();
+    const sourceA = resolve(tempDir, "src/pages/a.html");
+    ownershipTracker.recordOutput(sourceA, "pages/a.html", "a.html", "/a");
+    ownershipTracker.recordScript(sourceA, "pages/a.html", "scriptA");
+    serverSidecarRegistry.recordScripts({
+      scriptA: script("scriptA", "a-new"),
+    });
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: false });
+    const sidecar = await readSidecar();
+    expect(Object.keys(sidecar.scripts)).toEqual(["scriptA"]);
+    const inv = await readOwnershipInventory();
+    expect(Object.keys(inv?.owners ?? {}).sort()).toEqual(
+      ["components", sourceA].sort(),
+    );
+  });
+});
+
+// F034: a finalize that fails after staging must not leave its staged
+// `.<name>.<pid>.tmp` files in the private folder: a targeted build does not
+// clear that folder, so each failed run would add more.
+describe("finalize removes its staged temp files when it fails", () => {
+  let tempDir = "";
+  const privateDir = () => privateDirFor(tempDir);
+  const tempFiles = async () =>
+    (await (await import("node:fs/promises")).readdir(privateDir())).filter(
+      (name) => name.endsWith(".tmp"),
+    );
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-staged-"));
+    await mkdir(privateDir(), { recursive: true });
+    ownershipTracker.clear();
+    manifestCollector.clear();
+    cspHashCollector.clear();
+    serverSidecarRegistry.clear();
+    (BascikConfig as any).directory.out = tempDir;
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).generate.manifest = true;
+    (BascikConfig as any).generate.cspHashes = true;
+    (BascikConfig as any).only = ["a.html"];
+    listComponentsMock.mockReset();
+    listComponentsMock.mockResolvedValue({});
+    const source = resolve(tempDir, "src/pages/a.html");
+    ownershipTracker.recordOutput(source, "pages/a.html", "a.html", "/a");
+    ownershipTracker.recordScript(source, "pages/a.html", "scriptA");
+    serverSidecarRegistry.recordScript("scriptA", "a-source");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(privateDir(), { recursive: true, force: true });
+  });
+
+  it("when the component manifest fails after the manifest was staged", async () => {
+    listComponentsMock.mockRejectedValue(
+      new Error('build script error in "src/components/broken-card.html"'),
+    );
+    await expect(
+      finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true }),
+    ).rejects.toThrow(/broken-card/);
+    expect(await tempFiles()).toEqual([]);
+    // Nothing was committed either: the prior (absent) set is untouched.
+    await expect(access(join(privateDir(), "manifest.json"))).rejects.toThrow();
+  });
+
+  it("when a rename fails partway through the commit", async () => {
+    // A non-empty folder where the manifest goes makes its rename fail after
+    // the ownership file was renamed and before the CSP and sidecar were.
+    await mkdir(join(privateDir(), "manifest.json", "blocker"), {
+      recursive: true,
+    });
+    await expect(
+      finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true }),
+    ).rejects.toThrow();
+    expect(await tempFiles()).toEqual([]);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { GeneratedIdClassCollisionError } from "./generated-id-classes.ts";
 
 const {
   listPagesMock,
@@ -927,6 +928,65 @@ describe("checkProject", () => {
       expect(item?.locations).toHaveLength(2);
     });
 
+    it("reports two components whose #id rules generate one class, with both rule locations and the fix", async () => {
+      await setupProject({
+        "pages/index.html": "<site-nav></site-nav><site-nav_x></site-nav_x>",
+        "src/components/site-nav.html": '<a id="x_btn">a</a>',
+        "src/components/site-nav_x.html": '<a id="btn">b</a>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockRejectedValue(
+        new GeneratedIdClassCollisionError([
+          {
+            className: "b_id_site-nav_x_btn",
+            first: {
+              component: "site-nav",
+              idName: "x_btn",
+              fileName: join(workDir, "src/components/site-nav.html"),
+            },
+            second: {
+              component: "site-nav_x",
+              idName: "btn",
+              fileName: join(workDir, "src/components/site-nav_x.html"),
+            },
+            firstLocation: {
+              filePath: "src/components/site-nav.css",
+              line: 4,
+              column: 1,
+            },
+            secondLocation: { filePath: "src/components/site-nav_x.html" },
+          },
+        ]),
+      );
+      deepReadDirFlatMock.mockResolvedValue([
+        join(workDir, "src/components/site-nav.html"),
+        join(workDir, "src/components/site-nav_x.html"),
+      ]);
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "generated-id-class-collision",
+      );
+      expect(item).toMatchObject({
+        severity: "error",
+        message:
+          "<site-nav> #x_btn and <site-nav_x> #btn both generate the class b_id_site-nav_x_btn",
+        locations: [
+          { filePath: "src/components/site-nav.css", line: 4, column: 1 },
+          { filePath: "src/components/site-nav_x.html" },
+        ],
+      });
+      expect(item?.suggestion).toContain("#x-btn");
+      // Not also reported as an unexplained component scan failure.
+      expect(
+        findings.items.filter((i) => i.category === "component-list"),
+      ).toEqual([]);
+      // The fallback scan still knows both components, so neither tag is unmatched.
+      expect(
+        findings.items.filter((i) => i.category === "unmatched-tag"),
+      ).toEqual([]);
+    });
+
     it("falls back to scanning every configured component root, so <local-card> in a second root is known", async () => {
       await setupProject({
         "pages/index.html":
@@ -1063,7 +1123,7 @@ describe("checkProject", () => {
       ).toBe(false);
     });
 
-    it("marks watchPaths as warning and exec script path failures as error for severity parity", async () => {
+    it("marks missing watchPaths and exec script paths as errors, as bascik --build does", async () => {
       Object.assign(userConfigMock, {
         pipeline: {
           watchPaths: ["src/missing"],
@@ -1082,7 +1142,7 @@ describe("checkProject", () => {
         cfg.some(
           (i) =>
             i.message.includes("pipeline.watchPaths[0]") &&
-            i.severity === "warning",
+            i.severity === "error",
         ),
       ).toBe(true);
       expect(
@@ -1094,7 +1154,7 @@ describe("checkProject", () => {
       ).toBe(true);
     });
 
-    it("marks inlineStyles missing paths as warning for severity parity", async () => {
+    it("marks inlineStyles missing paths as errors, as bascik --build does", async () => {
       Object.assign(userConfigMock, {
         assets: {
           inlineStyles: ["src/missing.css"],
@@ -1112,9 +1172,44 @@ describe("checkProject", () => {
         cfg.some(
           (i) =>
             i.message.includes("assets.inlineStyles[0]") &&
-            i.severity === "warning",
+            i.severity === "error",
         ),
       ).toBe(true);
+    });
+
+    // F097: `bascik --check && bascik --build` in CI must not pass the check
+    // and then fail the build on the same configuration problem.
+    it("fails every configuration problem that stops bascik --build", async () => {
+      const userConfig = {
+        pipeline: { watchPaths: ["data"] },
+        assets: { inlineStyles: ["src/missing.css"] },
+        http: { tls: { enabled: true, keyFile: "certs/missing.key" } },
+      };
+      Object.assign(userConfigMock, userConfig);
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.filter(
+        (i) => i.category === "config-validation",
+      );
+      expect(cfg).toHaveLength(3);
+      expect(cfg.map((i) => i.severity)).toEqual(["error", "error", "error"]);
+
+      const { initBascikConfig } =
+        await vi.importActual<typeof import("./config.ts")>("./config.ts");
+      let buildError: unknown;
+      try {
+        initBascikConfig(userConfig, {}, { isBuild: true });
+      } catch (error) {
+        buildError = error;
+      }
+      expect(buildError).toBeInstanceOf(Error);
+      for (const item of cfg)
+        expect((buildError as Error).message).toContain(
+          item.message.split(":")[0],
+        );
     });
 
     it("marks unreadable TLS key/cert paths as error for severity parity", async () => {
@@ -1194,6 +1289,30 @@ describe("checkProject", () => {
       } finally {
         process.argv = originalArgv;
       }
+    });
+
+    // F096: a rejected directory.pages is reported once, as the config error;
+    // the default folder the check falls back to is not reported as well.
+    it("reports a missing directory.pages once, as a config error, not again as an unreadable default folder", async () => {
+      Object.assign(userConfigMock, { directory: { pages: "site-pages" } });
+      listPagesMock.mockRejectedValue(
+        Object.assign(new Error("ENOENT: no such file or directory"), {
+          code: "ENOENT",
+        }),
+      );
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const configItem = findings.items.find(
+        (i) =>
+          i.category === "config-validation" &&
+          i.message.startsWith("directory.pages:"),
+      );
+      expect(configItem?.severity).toBe("error");
+      expect(configItem?.message).toContain('"site-pages"');
+      expect(
+        findings.items.filter((i) => i.category === "pages-directory"),
+      ).toEqual([]);
     });
 
     it("reports directory.pages as an error when it exists but has no html pages", async () => {

@@ -3,11 +3,23 @@ import os from "node:os";
 
 // vi.hoisted() runs before vi.mock() factories so the same vi.fn() references
 // are used in both the factory (which is hoisted) and the test file.
-const { _mockAccess, _mockExec, _mockExecFile, _mockRm } = vi.hoisted(() => ({
+const {
+  _mockAccess,
+  _mockExec,
+  _mockExecFile,
+  _mockRm,
+  _mockReadFile,
+  certState,
+} = vi.hoisted(() => ({
   _mockAccess: vi.fn(),
   _mockExec: vi.fn(),
   _mockExecFile: vi.fn(),
   _mockRm: vi.fn().mockResolvedValue(undefined),
+  _mockReadFile: vi.fn(),
+  /** What the stand-in X509Certificate parses; `null` means not a certificate. */
+  certState: {
+    dates: null as null | { validFrom: string; validTo: string },
+  },
 }));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -15,6 +27,20 @@ const { _mockAccess, _mockExec, _mockExecFile, _mockRm } = vi.hoisted(() => ({
 vi.mock("node:fs/promises", () => ({
   access: _mockAccess,
   rm: _mockRm,
+  readFile: _mockReadFile,
+}));
+
+vi.mock("node:crypto", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:crypto")>()),
+  X509Certificate: class {
+    validFrom: string;
+    validTo: string;
+    constructor() {
+      if (!certState.dates) throw new Error("error:0680007B:asn1 header");
+      this.validFrom = certState.dates.validFrom;
+      this.validTo = certState.dates.validTo;
+    }
+  },
 }));
 
 vi.mock("node:child_process", () => ({
@@ -46,6 +72,12 @@ beforeEach(() => {
   mockRm.mockResolvedValue(undefined);
   mockPlatform.mockReturnValue("linux");
   mockAccess.mockResolvedValue(undefined); // default: certs exist → early return
+  _mockReadFile.mockReset();
+  _mockReadFile.mockResolvedValue(Buffer.from("-----BEGIN CERTIFICATE-----"));
+  certState.dates = {
+    validFrom: "Jan  1 00:00:00 2020 GMT",
+    validTo: "Jan  1 00:00:00 2999 GMT",
+  };
   mockExecFile.mockImplementation((...args: any[]) => {
     const cb = args[args.length - 1];
     if (typeof cb === "function") cb(new Error("mkcert not found"));
@@ -190,5 +222,84 @@ describe("ensureCertificates", () => {
     expect(consoleSpy).toHaveBeenCalledWith(
       "SSL: generated trusted certs via mkcert",
     );
+  });
+});
+
+// F077: the openssl fallback issues a 365-day certificate, and the default
+// files were reused forever, so a year later every browser refused the
+// server with nothing in the console pointing at the expired file.
+describe("ensureCertificates – reused certificate dates", () => {
+  const mkcertSucceeds = () =>
+    mockExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb(null, { stdout: "", stderr: "" });
+    });
+
+  it("regenerates an expired default certificate and says why", async () => {
+    certState.dates = {
+      validFrom: "Jan  1 00:00:00 2020 GMT",
+      validTo: "Jan  1 00:00:00 2021 GMT",
+    };
+    mkcertSucceeds();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const paths = await ensureCertificates();
+    expect(paths.certPath).toContain("bascik-cert.pem");
+    const message = String(warn.mock.calls[0]?.[0]);
+    expect(message).toContain("bascik-cert.pem");
+    expect(message).toMatch(/expired on Jan {1,2}1 00:00:00 2021 GMT/);
+    expect(message).toMatch(/generating a new one/);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "mkcert",
+      expect.arrayContaining([paths.certPath]),
+      expect.any(Function),
+    );
+  });
+
+  it("regenerates a default certificate that is not valid yet", async () => {
+    certState.dates = {
+      validFrom: "Jan  1 00:00:00 2998 GMT",
+      validTo: "Jan  1 00:00:00 2999 GMT",
+    };
+    mkcertSucceeds();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await ensureCertificates();
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/not valid until/);
+    expect(mockExecFile).toHaveBeenCalled();
+  });
+
+  it("reuses a current default certificate without generating or warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await ensureCertificates();
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("never replaces an expired custom certificate, but warns naming it", async () => {
+    certState.dates = {
+      validFrom: "Jan  1 00:00:00 2020 GMT",
+      validTo: "Jan  1 00:00:00 2021 GMT",
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const paths = await ensureCertificates({
+      keyFile: "custom-key.pem",
+      certFile: "custom-cert.pem",
+    });
+    expect(paths.certPath).toContain("custom-cert.pem");
+    expect(mockExecFile).not.toHaveBeenCalled();
+    const message = String(warn.mock.calls[0]?.[0]);
+    expect(message).toContain("custom-cert.pem");
+    expect(message).toMatch(/expired/);
+    expect(message).toMatch(/http\.tls\.certFile/);
+  });
+
+  it("leaves a file it cannot parse to the TLS server, which reports it", async () => {
+    certState.dates = null;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const paths = await ensureCertificates();
+    expect(paths.certPath).toContain("bascik-cert.pem");
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

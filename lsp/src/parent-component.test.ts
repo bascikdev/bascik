@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { findNearestParentComponent } from "./analyzer.js";
+import {
+  findNearestParentComponent,
+  findNearestParentComponents,
+} from "./analyzer.js";
 
 // The regex scanner this function used before it became linear. Kept here as
 // the behavioral oracle: the linear scanner must agree with it on every input.
@@ -90,6 +93,51 @@ describe("findNearestParentComponent", () => {
         JSON.stringify(source),
       ).toBe(regexOracle(source, components));
     }
+  });
+
+  it("answers every prefix of a document in one pass, as the prefix scan would", () => {
+    const pieces = [
+      "<a",
+      "<b",
+      "</a>",
+      "</b>",
+      ">",
+      "/>",
+      ' x="',
+      '"',
+      " y='",
+      "'",
+      "<my-card ",
+      "<my-card>",
+      "text",
+      "<",
+    ];
+    let seed = 0xc0ffee;
+    const next = (): number => {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      return seed;
+    };
+    for (let run = 0; run < 1_000; run++) {
+      let source = "";
+      const length = next() % 30;
+      for (let index = 0; index < length; index++)
+        source += pieces[next() % pieces.length];
+      const offsets = Array.from({ length: source.length + 1 }, (_, i) => i);
+      const answers = findNearestParentComponents(source, offsets, components);
+      offsets.forEach((offset, index) => {
+        expect(answers[index], `${JSON.stringify(source)} at ${offset}`).toBe(
+          regexOracle(source.slice(0, offset), components),
+        );
+      });
+    }
+  });
+
+  it("answers a tag cut off by the offset as text, then later offsets in full", () => {
+    // `<my-card title="a>b">` ends after offset 10, so the prefix there has no <my-card> tag.
+    const source = '<a><my-card title="a>b"><p>';
+    expect(
+      findNearestParentComponents(source, [10, source.length], components),
+    ).toEqual(["a", "my-card"]);
   });
 
   it.each([

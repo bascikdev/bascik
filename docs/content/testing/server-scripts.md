@@ -146,11 +146,14 @@ describe("fetchCityWeather", () => {
 
 ## Direct Server Script Handler Testing
 
-Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. A handler that builds its markup with [`html`](/html-helpers#html) returns a `SafeHtml` object, not a string, so wrap the result in `String(output)` before `toContain` or any string method; without it, `expect(output).toContain("Seattle")` fails with `expected [] to include 'Seattle'`. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
+Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes.
+
+A handler's return is not always a string: one that builds its markup with [`html`](/html-helpers#html) returns a `SafeHtml` object, and one that returns `items.map(...)` returns an array, which the page joins with no separator (see [Return Values](/server-scripts#return-values)). Pass the result to `serverScriptOutput` from `@bascik/bascik/runtime`, the function Bascik uses to print it, and assert on its `text`: those are the bytes the page gets. `String(output)` is right only for a single string or `html` value; for an array it adds the commas the page never shows (`<li>a</li>,<li>b</li>`).
 
 ```ts
 // src/components/weather-widget/weather-widget.server.test.ts
 import { describe, it, expect } from "vitest";
+import { serverScriptOutput } from "@bascik/bascik/runtime";
 import weatherHandler from "./weather-widget.server.ts";
 
 describe("weatherHandler", () => {
@@ -160,14 +163,29 @@ describe("weatherHandler", () => {
     });
     const context = { remoteIp: "127.0.0.1" };
 
-    const output = String(
+    const printed = serverScriptOutput(
       await weatherHandler(request, context, {
         signal: new AbortController().signal,
       }),
     );
-    expect(output).toContain("Seattle");
-    expect(output).toContain("Alice");
+    expect(printed.error).toBeUndefined();
+    expect(printed.text).toContain("Seattle");
+    expect(printed.text).toContain("Alice");
   });
+});
+```
+
+When a handler returns something the page refuses (data instead of markup, a `Response`, a caught `Error`, or the array of Promises an `async` callback in `.map` makes), `text` is `undefined` and `error` says what came back, in the words of the server's message:
+
+```ts
+import { it, expect } from "vitest";
+import { serverScriptOutput } from "@bascik/bascik/runtime";
+
+it("names a refused return", () => {
+  const printed = serverScriptOutput([Promise.resolve("<li>Kettle</li>")]);
+  expect(printed.text).toBeUndefined();
+  expect(printed.error?.kind).toBe("promise");
+  expect(printed.error?.received).toBe("an array holding a Promise at [0]");
 });
 ```
 

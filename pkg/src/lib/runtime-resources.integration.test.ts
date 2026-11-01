@@ -10,8 +10,7 @@ import {
   assertInlinePublication,
   assertMeasuredBatchDeltas,
   runRetentionExperiment,
-  tlsCleanupRuntimeSkipReason,
-  tlsCleanupRuntimeSupported,
+  skipUnsupportedRetentionLane,
   type DevChurnStage,
   type DevChurnStageObservation,
   type RetentionCheckpoint,
@@ -54,9 +53,9 @@ describe("packet R2: fixed production batches", () => {
     { timeout: 120_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -129,9 +128,9 @@ describe("packet R3 row: cancel before headers", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -194,9 +193,9 @@ describe("packet R3 row: cancel after exact prefix", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -265,9 +264,9 @@ describe("packet R3 row: reject after acknowledged abort", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(
@@ -329,9 +328,9 @@ describe("packet R3 row: fixed failed import", () => {
     { timeout: 180_000 },
     async (mode, { skip }) => {
       // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
-      // (assertSupportedTlsCleanupRuntime); skip the lane off Node 24.
-      if (mode === "http2" && !tlsCleanupRuntimeSupported)
-        skip(tlsCleanupRuntimeSkipReason);
+      // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
+      // 24 and logs why, so the skip is visible in every reporter.
+      skipUnsupportedRetentionLane(mode, skip);
       const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
       retentionReportDirectories.push(directory);
       const checkpoints = await runRetentionExperiment(

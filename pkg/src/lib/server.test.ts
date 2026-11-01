@@ -264,6 +264,7 @@ const makeStream = () => ({
   write: vi.fn(),
   close: vi.fn(),
   on: vi.fn(),
+  off: vi.fn(),
   destroyed: false,
   pipe: vi.fn(),
   session: { socket: { remoteAddress: "127.0.0.1" } },
@@ -1123,6 +1124,40 @@ describe("startHttp2Server – security config toggles", () => {
     },
   );
 
+  // F174: Windows path.resolve treats `\\` as a separator, so a request
+  // whose only separators before the dotfile are (encoded) backslashes must
+  // still be refused. On POSIX the request-level check refuses it; on the
+  // Windows CI job the resolved-path guard is exercised too.
+  it.each([
+    "/a%5C..%5C.env",
+    "/x%5C.env",
+    "/a%5C.git%5Cconfig.txt",
+    "/assets%5C.secret.json",
+  ])(
+    "security.hideDotfiles on: %s (backslash separators) answers 404 with no disk access",
+    async (path) => {
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/.bascik%5Cserver-scripts.json", "/.BASCIK%5Ccomponents.json"])(
+    "security.hideDotfiles: false still hides %s (backslash after .bascik)",
+    async (path) => {
+      BascikConfigRef.security = { hideDotfiles: false };
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
   it("security.hideDotfiles: false still answers traversal with 400", async () => {
     BascikConfigRef.security = { hideDotfiles: false };
     const stream = makeStream();
@@ -1866,6 +1901,35 @@ describe("startHttp2Server – onError: stream already has headers sent", () => 
     // Only one respond() call (the page response); onError() must not add a second.
     expect(stream.respond).toHaveBeenCalledTimes(1);
   });
+
+  // F072: a path component that is a regular file (ENOTDIR) or a name over
+  // the filesystem limit (ENAMETOOLONG) means the request names no file.
+  it.each(["ENOTDIR", "ENAMETOOLONG"])(
+    "responds 404 when stat throws %s (the path names no file)",
+    async (code) => {
+      const handler = getStreamHandler()!;
+      mockStat.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/robots.txt/x.png", "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(stream.end).toHaveBeenCalledWith("Not Found");
+    },
+  );
+
+  it.each(["EACCES", "EIO", "EMFILE"])(
+    "still responds 500 when stat throws %s (a server fault)",
+    async (code) => {
+      const handler = getStreamHandler()!;
+      mockStat.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/style.css", "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 500 }),
+      );
+    },
+  );
 
   it("responds 500 when stat throws a non-ENOENT error", async () => {
     const handler = getStreamHandler()!;

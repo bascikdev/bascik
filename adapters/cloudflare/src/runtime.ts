@@ -59,6 +59,8 @@ import {
   matchApiRoute,
   pageLookupCandidates,
   stripAnsiEscapeCodes,
+  serverScriptOutput,
+  serverScriptOutputErrorMessage,
   contentSecurityPolicyHeader,
   DEFAULT_RESPONSE_SECURITY,
   type ApiRouteDefinition,
@@ -268,9 +270,12 @@ const missingJob = (id: string): Error =>
     `[bascik] server script job "${id}" is missing from the deployment graph.`,
   );
 
+/** Jobs whose refused return value was already logged in this isolate. */
+const warnedRefused = new WeakSet<GraphScriptJob>();
+
 /**
  * Run one graph job under `timeoutMs`. Output handling mirrors
- * `runServerScriptJob`: a string or stringifiable value is the fragment,
+ * `runServerScriptJob`: what `serverScriptOutput` prints is the fragment,
  * stripped of ANSI escapes, and a job carrying an output scope (a
  * component's script, prompt 157) gets the component's element classes
  * applied; a failing job with an owner is located by it; failure under
@@ -306,22 +311,51 @@ const runGraphJob = async (
     // Node's message, so a log reads the same on both hosts.
     { timeoutMs, signal, timeoutError: scriptTimeoutError },
   );
+  // The rule Node applies (F060): an array is joined with no separator; an
+  // object, a Response, an unawaited Promise in an array, a function or a
+  // symbol is refused. A Worker is production, so a refused return never
+  // fails the page: the slot is empty and, unless the policy is "ignore",
+  // the warning is logged once per script for the isolate's life. A throw
+  // from the author's own toString is the script failing, as on Node.
+  let printed: ReturnType<typeof serverScriptOutput> | undefined;
+  let failure: Error | undefined;
   if (result.ok) {
-    const value = result.value;
-    const output =
-      typeof value === "string"
-        ? value
-        : value !== undefined && value !== null
-          ? String(value)
-          : "";
+    try {
+      printed = serverScriptOutput(result.value);
+    } catch (thrown) {
+      failure = thrown instanceof Error ? thrown : new Error(String(thrown));
+    }
+  }
+  if (printed) {
+    if (printed.error) {
+      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+        warnedRefused.add(job);
+        log(
+          serverScriptOutputErrorMessage(
+            printed.error,
+            request.url,
+            // A page job carries no owner in the graph (only component jobs
+            // do); the route in the message names its page.
+            job.owner ?? `${job.mode} script`,
+            { production: true },
+          ),
+        );
+      }
+      return "";
+    }
     // scripts.stripAnsi off: the codes reach the page as printed.
     return scopeJobOutput(
       job,
-      graph.stripAnsi === false ? output : stripAnsiEscapeCodes(output),
+      graph.stripAnsi === false
+        ? printed.text
+        : stripAnsiEscapeCodes(printed.text),
     );
   }
-  if (result.aborted && !result.timedOut) return "";
-  const error = result.error ?? new Error("Server script failed");
+  if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
+  const error =
+    failure ??
+    (!result.ok ? result.error : undefined) ??
+    new Error("Server script failed");
   // Node maps the stack to the authored file; here it names only the bundle,
   // so a component job (a timeout, a throw or a missing default export deep
   // inside a rendered tag) is placed by the owner the build recorded.
@@ -450,6 +484,17 @@ export const createCloudflareWorker = (
     return graph.assetHeaders ? withAssetHeaders(request, response) : response;
   };
 
+  /** The listed static 404 page nearest to `path`, as the asset layer looks one up. */
+  const notFoundRouteFor = (path: string): string | undefined => {
+    const segments = path.split("/").slice(1, -1);
+    for (let depth = segments.length; depth >= 0; depth--) {
+      const dir = segments.slice(0, depth).join("/");
+      const route = dir ? `/${dir}/404` : "/404";
+      if (assetCspRoutes.has(route)) return route;
+    }
+    return undefined;
+  };
+
   /** The headers _headers would have given a static file, sent by the Worker instead. */
   const withAssetHeaders = (request: Request, response: Response): Response => {
     const headers = new Headers(response.headers);
@@ -472,10 +517,21 @@ export const createCloudflareWorker = (
     } catch {
       path = null;
     }
-    if (csp && path !== null && assetCspRoutes.has(path)) {
+    // A miss answered with a 404.html carries that page's policy, as the
+    // Node server sends the 404 page's own: the asset layer serves the
+    // nearest 404.html up the path (`/docs/nope` gets `/docs/404.html`).
+    const route =
+      path === null
+        ? undefined
+        : assetCspRoutes.has(path)
+          ? path
+          : response.status === 404
+            ? notFoundRouteFor(path)
+            : undefined;
+    if (csp && route !== undefined) {
       const { name, value } = contentSecurityPolicyHeader(
         csp.policy,
-        csp.hashes[path],
+        csp.hashes[route],
       );
       if (!headers.has(name)) headers.set(name, value);
     }
@@ -557,10 +613,23 @@ export const createCloudflareWorker = (
             `[bascik] ${message}${error ? `\n${(error as Error).stack ?? String(error)}` : ""}`,
           ),
       });
+      // A WebSocket upgrade (`new Response(null, { status: 101, webSocket })`,
+      // the platform's pattern) goes back as the handler made it: a copy
+      // would lose the socket, and the constructor refuses status 101
+      // without one, so the request would end in an uncaught RangeError.
+      if (
+        response.status === 101 ||
+        (response as Response & { webSocket?: unknown }).webSocket
+      )
+        return response;
       const headers = mergeHandlerHeaders(response.headers, {
         https,
         security,
       });
+      // A HEAD answer sends no body: release the one an explicit HEAD
+      // handler returned (a derived HEAD's GET body is released by the core).
+      if (request.method === "HEAD" && response.body && !response.body.locked)
+        response.body.cancel().catch(() => {});
       return new Response(request.method === "HEAD" ? null : response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -584,17 +653,31 @@ export const createCloudflareWorker = (
         }
         // The asset layer serves 404.html at its own URL with 200 (and
         // redirects its aliases). Fetch the canonical asset and answer with
-        // the status the Node server uses for the custom 404 page.
-        const assetUrl = new URL(request.url);
-        assetUrl.pathname = graph.base === "/" ? "/404" : `${graph.base}404`;
-        assetUrl.search = "";
-        const asset = await forwardToAssets(
-          new Request(assetUrl, {
-            method: request.method === "HEAD" ? "HEAD" : "GET",
-            headers: request.headers,
-          }),
-          env,
+        // the status the Node server uses for the custom 404 page. Through
+        // the binding, html_handling resolves `/404` without a redirect,
+        // except `"none"`, where only the file name finds the page.
+        const fetchNotFoundAsset = (pathname: string) => {
+          const assetUrl = new URL(request.url);
+          assetUrl.pathname = pathname;
+          assetUrl.search = "";
+          return forwardToAssets(
+            new Request(assetUrl, {
+              method: request.method === "HEAD" ? "HEAD" : "GET",
+              headers: request.headers,
+            }),
+            env,
+          );
+        };
+        let asset = await fetchNotFoundAsset(
+          graph.base === "/" ? "/404" : `${graph.base}404`,
         );
+        if (asset.status !== 200) {
+          const byFileName = await fetchNotFoundAsset(`${graph.base}404.html`);
+          if (byFileName.status === 200) {
+            asset.body?.cancel().catch(() => {});
+            asset = byFileName;
+          } else byFileName.body?.cancel().catch(() => {});
+        }
         if (asset.status !== 200) return asset;
         return new Response(request.method === "HEAD" ? null : asset.body, {
           status: 404,

@@ -700,6 +700,66 @@ describe.each([true, false])(
         );
     });
 
+    it("css: sibling nested jobs returning different stylesheets emit their blocks in site order whatever order they finish in", async () => {
+      // Each <srv-card> site's nested job returns a different component (and
+      // two perInstance ring-cards), so the style blocks would follow nested
+      // completion order if `used` were collected from the settled outputs.
+      const manifest = await build();
+      const html = `<srv-card></srv-card><srv-card></srv-card><srv-card></srv-card>`;
+      const answers = [
+        `<plain-card data-bascik-prop-t="one"></plain-card><ring-card></ring-card>`,
+        `<slots-card></slots-card><ring-card></ring-card>`,
+        `<server-card></server-card>`,
+      ];
+      const render = async (order: number[]) => {
+        const pending = [deferred(), deferred(), deferred()];
+        let call = 0;
+        const host = makeHost(manifest);
+        host.runComponentJob.mockImplementation(() => pending[call++].promise);
+        const wrapped = wrapRunner(
+          runnerFrom({ a: html }),
+          serverPlan("a"),
+          host,
+        );
+        const out = wrapped("a", signalOf());
+        await tick();
+        expect(host.runComponentJob).toHaveBeenCalledTimes(3);
+        for (const i of order) {
+          pending[i].resolve(answers[i]);
+          await tick();
+        }
+        return out;
+      };
+      const forward = await render([0, 1, 2]);
+      expect(await render([2, 1, 0])).toBe(forward);
+      expect(await render([1, 2, 0])).toBe(forward);
+      const blockOf = (name: string) => {
+        const css = manifest.components[name].css;
+        if (!css || !("text" in css)) throw new Error(`${name}: no shared css`);
+        return `<style>${css.text}</style>`;
+      };
+      const ring1 = scopedId(
+        "ring-card",
+        requestId("a/0", "ring-card", 1),
+        "ring",
+      );
+      const ring2 = scopedId(
+        "ring-card",
+        requestId("a/1", "ring-card", 1),
+        "ring",
+      );
+      const order = [
+        forward.indexOf(blockOf("srv-card")),
+        forward.indexOf(blockOf("plain-card")),
+        forward.indexOf(`url(#${ring1})`),
+        forward.indexOf(blockOf("slots-card")),
+        forward.indexOf(`url(#${ring2})`),
+        forward.indexOf(blockOf("server-card")),
+      ];
+      expect(order.every((index) => index >= 0)).toBe(true);
+      expect([...order].sort((x, y) => x - y)).toEqual(order);
+    });
+
     it("requestRoutePath: the pathname, percent-decoded, so every spelling of a route salts the same ids; a malformed escape stays as written", () => {
       expect(requestRoutePath("https://x.test/catalog?q=1")).toBe("/catalog");
       expect(requestRoutePath("https://x.test/c%61talog")).toBe("/catalog");

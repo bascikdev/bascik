@@ -64,8 +64,22 @@ export const stripLiveReloadScript = (html: string): string => {
 export const LIVE_RELOAD_VERSION_ATTR = "data-bascik-live-reload-version";
 
 let lastPageVersion = 0;
-/** A version for a page being compiled now, unique in this process. */
-export const nextLiveReloadVersion = (): string => String(++lastPageVersion);
+/**
+ * Room for each thread's own count in a version. A thread id is never reused
+ * within a process, so `threadId * THREAD_VERSION_SPAN + count` stays unique
+ * across the main thread (id 0, versions 1, 2, ...) and every page worker of
+ * every pool, which each count from 1 (F055: a fresh pool for each dev
+ * rebuild re-stamped a changed page with the version it had before). Digits
+ * only, and below 2^53 for two million threads.
+ */
+const THREAD_VERSION_SPAN = 2 ** 32;
+/**
+ * A version for a page being compiled now, unique in this process. `thread`
+ * is the compiling thread's `threadId` from `node:worker_threads` (passed in,
+ * so this module needs no Node import).
+ */
+export const nextLiveReloadVersion = (thread = 0): string =>
+  String(thread * THREAD_VERSION_SPAN + ++lastPageVersion);
 
 /**
  * The version on the last live-reload script in a stored page, quoted or
@@ -91,69 +105,135 @@ export const getLiveReloadScript = (
     var source = null;
     var retryCount = 0;
     var maxRetries = 5;
+    var offlineRetryDelay = 5000;
     var retryTimeout = null;
     var banner = null;
+    var bannerDot = null;
+    var bannerText = null;
     var errorOverlay = null;
+    var errorDetails = null;
     var lastGeneration = 0;
     var pageVersion = (document.currentScript &&
       document.currentScript.getAttribute('${LIVE_RELOAD_VERSION_ATTR}')) || '';
 
-    function escapeHtml(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
+    // The overlay is a native modal <dialog> with the alertdialog role: showModal() puts it in the top layer
+    // above any dialog or popover the page has open, moves focus to Dismiss, makes the page behind it inert,
+    // closes it on Escape, and returns focus to where it was when it closes. Its parts are built with
+    // createElement and textContent, so an error message is always shown as text.
     function showErrorOverlay(errData) {
+      // Escape closes the dialog at once but removes it only in the close event's later task.
+      if (errorOverlay && !errorOverlay.open) closeErrorOverlay();
       if (!errorOverlay) {
-        errorOverlay = document.createElement('div');
+        errorOverlay = document.createElement('dialog');
         errorOverlay.id = 'bascik-build-error-overlay';
         errorOverlay.setAttribute('data-testid', 'bascik-build-error-overlay');
-        errorOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;' +
+        errorOverlay.setAttribute('role', 'alertdialog');
+        errorOverlay.setAttribute('aria-modal', 'true');
+        errorOverlay.setAttribute('aria-labelledby', 'bascik-build-error-title');
+        errorOverlay.setAttribute('aria-describedby', 'bascik-build-error-details');
+        errorOverlay.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;' +
+          'margin:0;border:0;z-index:2147483647;' +
           'background:rgba(0,0,0,0.85);color:#f43f5e;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;' +
           'padding:24px;overflow:auto;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;';
+        var header = document.createElement('div');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #3f3f46;padding-bottom:12px;';
+        var title = document.createElement('span');
+        title.id = 'bascik-build-error-title';
+        title.style.cssText = 'font-weight:bold;font-size:16px;color:#f43f5e;';
+        title.textContent = 'Bascik Build Error';
+        var dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.setAttribute('data-testid', 'bascik-error-dismiss');
+        dismiss.style.cssText = 'background:#27272a;color:#e4e4e7;border:1px solid #3f3f46;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;';
+        dismiss.textContent = 'Dismiss';
+        dismiss.addEventListener('click', function() { closeErrorOverlay(); });
+        header.appendChild(title);
+        header.appendChild(dismiss);
+        errorDetails = document.createElement('div');
+        errorDetails.id = 'bascik-build-error-details';
+        errorDetails.setAttribute('aria-live', 'polite');
+        errorDetails.style.cssText = 'display:flex;flex-direction:column;gap:16px;';
+        errorOverlay.appendChild(header);
+        errorOverlay.appendChild(errorDetails);
+        // Escape, Dismiss, and a reload all end in close; the overlay then leaves the page, so the next error
+        // builds a new one instead of filling in a detached element.
+        var overlay = errorOverlay;
+        overlay.addEventListener('close', function() {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          if (errorOverlay === overlay) {
+            errorOverlay = null;
+            errorDetails = null;
+          }
+        });
         document.body.appendChild(errorOverlay);
+        if (typeof errorOverlay.showModal === 'function') errorOverlay.showModal();
+        else errorOverlay.setAttribute('open', '');
+        dismiss.focus();
       }
-      var header = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #3f3f46;padding-bottom:12px;">' +
-        '<span style="font-weight:bold;font-size:16px;color:#f43f5e;">Bascik Build Error</span>' +
-        '<button data-testid="bascik-error-dismiss" style="background:#27272a;color:#e4e4e7;border:1px solid #3f3f46;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;" onclick="this.closest(\\'#bascik-build-error-overlay\\').remove()">Dismiss</button>' +
-        '</div>';
-      var loc = errData.file ? '<div style="color:#a1a1aa;font-size:13px;">File: <span style="color:#e4e4e7;">' + escapeHtml(errData.file) + (errData.line ? ':' + errData.line : '') + '</span></div>' : '';
-      var body = '<pre style="background:#18181b;color:#e4e4e7;padding:16px;border-radius:6px;border:1px solid #27272a;overflow-x:auto;white-space:pre-wrap;font-size:13px;line-height:1.5;margin:0;">' + escapeHtml(errData.message || errData) + '</pre>';
-      errorOverlay.innerHTML = header + loc + body;
+      errorDetails.textContent = '';
+      if (errData && errData.file) {
+        var loc = document.createElement('div');
+        loc.style.cssText = 'color:#a1a1aa;font-size:13px;';
+        loc.textContent = 'File: ';
+        var where = document.createElement('span');
+        where.style.cssText = 'color:#e4e4e7;';
+        where.textContent = errData.file + (errData.line ? ':' + errData.line : '');
+        loc.appendChild(where);
+        errorDetails.appendChild(loc);
+      }
+      var body = document.createElement('pre');
+      body.style.cssText = 'background:#18181b;color:#e4e4e7;padding:16px;border-radius:6px;border:1px solid #27272a;overflow-x:auto;white-space:pre-wrap;font-size:13px;line-height:1.5;margin:0;';
+      body.textContent = String((errData && errData.message) || errData || '');
+      errorDetails.appendChild(body);
     }
 
-    function removeErrorOverlay() {
-      if (errorOverlay && errorOverlay.parentNode) {
-        errorOverlay.parentNode.removeChild(errorOverlay);
+    function closeErrorOverlay() {
+      if (!errorOverlay) return;
+      var overlay = errorOverlay;
+      if (typeof overlay.close === 'function' && overlay.open) overlay.close();
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (errorOverlay === overlay) {
         errorOverlay = null;
+        errorDetails = null;
       }
     }
 
+    // A polite status region: screen readers announce each new message without moving focus. The element and
+    // its message span stay while the text changes, because a live region added together with its text is
+    // often not announced.
     function showBanner(message, isOffline) {
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'bascik-live-reload-banner';
+        banner.setAttribute('role', 'status');
+        banner.setAttribute('aria-live', 'polite');
+        banner.setAttribute('aria-atomic', 'true');
         banner.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;' +
           'background:#18181b;color:#f4f4f5;border:1px solid #3f3f46;border-radius:8px;' +
           'font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.4;' +
           'padding:10px 14px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.5);display:flex;' +
           'align-items:center;gap:12px;max-width:380px;';
+        bannerDot = document.createElement('span');
+        bannerDot.setAttribute('aria-hidden', 'true');
+        bannerText = document.createElement('span');
+        bannerText.style.cssText = 'flex:1;';
+        banner.appendChild(bannerDot);
+        banner.appendChild(bannerText);
         document.body.appendChild(banner);
       }
       var dotColor = isOffline ? '#ef4444' : '#f59e0b';
-      banner.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor +
-        ';flex-shrink:0;display:inline-block;"></span>' +
-        '<span style="flex:1;">' + message + '</span>';
+      bannerDot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + dotColor +
+        ';flex-shrink:0;display:inline-block;';
+      bannerText.textContent = message;
     }
 
     function removeBanner() {
       if (banner && banner.parentNode) {
         banner.parentNode.removeChild(banner);
-        banner = null;
       }
+      banner = null;
+      bannerDot = null;
+      bannerText = null;
     }
 
     function connect() {
@@ -166,7 +246,7 @@ export const getLiveReloadScript = (
           var gen = parts.length > 1 ? parseInt(parts[1], 10) : 0;
           if (!gen || gen > lastGeneration) {
             if (gen) lastGeneration = gen;
-            removeErrorOverlay();
+            closeErrorOverlay();
             window.location.reload();
           }
         } else if (msg === 'connected' || msg.indexOf('connected ') === 0) {
@@ -174,7 +254,7 @@ export const getLiveReloadScript = (
           removeBanner();
           var storedVersion = msg.split(' ')[1] || '';
           if (wasConnected || (pageVersion && storedVersion && storedVersion !== pageVersion)) {
-            removeErrorOverlay();
+            closeErrorOverlay();
             window.location.reload();
           }
           wasConnected = true;
@@ -200,7 +280,11 @@ export const getLiveReloadScript = (
           if (retryTimeout) clearTimeout(retryTimeout);
           retryTimeout = setTimeout(connect, delay);
         } else {
+          // Keep probing slowly so a tab that stays focused and visible still
+          // reconnects when the server comes back, as the banner promises.
           showBanner('Dev server offline. Will reconnect automatically when server restarts.', true);
+          if (retryTimeout) clearTimeout(retryTimeout);
+          retryTimeout = setTimeout(connect, offlineRetryDelay);
         }
       };
     }

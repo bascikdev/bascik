@@ -52,6 +52,46 @@ describe("scanApiRouteFiles", () => {
     }
   });
 
+  // F078: a test or declaration file beside a route is not a route. The
+  // docs encourage `contact.test.ts` next to `contact.ts`; registering it
+  // made /api/contact.test import vitest on request and answer 500.
+  it("skips declaration, test and spec files, in any case", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bascik-api-scan-"));
+    try {
+      await mkdir(join(root, "users"), { recursive: true });
+      const names = [
+        "contact.ts",
+        "contact.test.ts",
+        "contact.spec.mts",
+        "users/[id].ts",
+        "users/[id].test.mjs",
+        "users/[id].SPEC.js",
+        "types.d.ts",
+        "env.d.mts",
+        "latest.ts",
+        "contest.ts",
+        "spec.ts",
+      ];
+      for (const name of names) {
+        await writeFile(join(root, name), "export const GET = () => {};\n");
+      }
+      const found = (await scanApiRouteFiles(root)).map((file) =>
+        file.slice(root.length + 1).replace(/\\/g, "/"),
+      );
+      expect(found.sort()).toEqual(
+        [
+          "contact.ts",
+          "contest.ts",
+          "latest.ts",
+          "spec.ts",
+          "users/[id].ts",
+        ].sort(),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("returns no routes for a missing folder", async () => {
     expect(
       await scanApiRouteFiles(join(tmpdir(), "bascik-no-such-api")),

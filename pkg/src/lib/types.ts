@@ -366,9 +366,9 @@ export interface ScriptsOptions {
   cache: ScopableOptions;
   /** See {@link TypeScriptCompilerOption}. Default `true`. */
   typescript: TypeScriptCompilerOption;
-  onBuildScriptError: "warn" | "error";
-  onRoutesScriptError: "warn" | "error";
-  onServerScriptError: "warn" | "error";
+  onBuildScriptError: "warn" | "error" | "ignore";
+  onRoutesScriptError: "warn" | "error" | "ignore";
+  onServerScriptError: "warn" | "error" | "ignore";
   timeout: number;
   /**
    * Directory that `@/` import specifiers (and script tag `src=` values)
@@ -399,13 +399,27 @@ export interface HttpTimeoutsOptions {
   drain?: number;
 }
 
+/** `http.rateLimit` as an object: the sliding window and the table cap. */
+export interface RateLimitOptions {
+  /** Sliding window in milliseconds. Default `10000`. */
+  window?: number;
+  /** Requests allowed per client in one window. Default `500`. */
+  max?: number;
+  /**
+   * Clients tracked at once. A full table evicts the least recently seen
+   * client (its count starts over) and logs a warning once per window; it
+   * never refuses a request because the table is full. Default `10000`.
+   */
+  maxTrackedIps?: number;
+}
+
 export interface HttpOptions {
   httpCache: boolean;
   /** TCP port to listen on. Defaults to `8080` for HTTP, or `8443` when TLS is enabled. */
   port?: number;
   hostname: string;
   tls: HttpTlsOptions;
-  rateLimit: boolean | { window?: number; max?: number };
+  rateLimit: boolean | RateLimitOptions;
   trustProxy: boolean;
   cacheControl: string | Record<string, string>;
   compression: boolean;
@@ -496,7 +510,7 @@ export type UserConfig = {
     port?: number;
     hostname?: string;
     tls?: Partial<HttpTlsOptions>;
-    rateLimit?: boolean | { window?: number; max?: number };
+    rateLimit?: boolean | RateLimitOptions;
     trustProxy?: boolean;
     /**
      * `Cache-Control` for static files under `bascik --server`: one value for
@@ -524,43 +538,3 @@ export type UserConfig = {
    */
   security?: Partial<SecurityOptions>;
 };
-
-export interface StoredPage {
-  relativePagePath: string;
-  absolutePagePath: string;
-  content: Buffer;
-  // Computed asynchronously in the background; undefined until brotli
-  // compression finishes, in which case the server falls back to gzip
-  // (if ready) or identity.
-  compressedContent: Buffer | undefined;
-  /**
-   * Gzip fallback for clients whose Accept-Encoding lacks `br` (legacy
-   * browsers, some proxies and crawlers). Computed in the background after
-   * store like `compressedContent`; undefined until ready.
-   */
-  gzipContent?: Buffer;
-  usedComponentsSet: Set<string>;
-  /** Relative paths of local file dependencies referenced by build scripts on this page. */
-  fileDependenciesSet?: Set<string>;
-  /**
-   * Precomputed at store time (prompt 67). `undefined` when the page has no
-   * `data-bascik-server` / `data-bascik-stream` blocks; the server then takes
-   * the static/ETag/Brotli path. When defined, the server never rescans
-   * `content` and uses the plan's segments directly. A planner error
-   * (conflicting directives, unresolvable sidecar id) is stored as `{ error }`
-   * so one bad page yields a 500 for that page only and never blocks the rest
-   * of the site from loading.
-   */
-  serverScriptPlan?:
-    import("./server-scripts.ts").ServerScriptPlan | { error: Error };
-  /**
-   * The component manifest the page was built against (prompt 157), kept by
-   * reference from the publication that stored it, so a request renders the
-   * component tags its server and stream scripts return with that version
-   * and never a mix. Only pages with a plan carry one: a static page never
-   * renders at request time.
-   */
-  componentManifest?: import("./component-manifest.ts").ComponentManifest;
-  /** Pre-computed ETag from the page content buffer for fast response headers. */
-  etag?: string;
-}

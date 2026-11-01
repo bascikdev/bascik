@@ -145,6 +145,47 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
 
+  it("a root-level glob does not watch node_modules, .git or the output (F187)", async () => {
+    mocks.config.pipeline.watchPaths = ["**/*.md"];
+    mocks.config.pipeline.exec = [
+      { script: "scripts/pre.ts", watch: ["*.json"] },
+    ];
+    await watchSourceCycles(vi.fn());
+    const [roots, options] = mocks.watch.mock.calls[0];
+    expect(roots).toContain(".");
+    for (const ignored of [
+      "node_modules",
+      "node_modules/pkg/README.md",
+      ".git",
+      ".git/HEAD",
+      "src/pages/node_modules/x/a.md",
+      "dist/notes.md",
+      ".bascik/dist/server-scripts.json",
+    ])
+      expect(options.ignored(resolve(ignored)), ignored).toBe(true);
+    for (const watched of ["README.md", "content/doc.md", "package.json"])
+      expect(options.ignored(resolve(watched)), watched).toBe(false);
+  });
+
+  it("an explicit watch root inside node_modules is still watched", async () => {
+    mocks.config.pipeline.watchPaths = [
+      "**/*.css",
+      "node_modules/@milk/frother-ui/dist",
+    ];
+    mocks.config.pipeline.exec = [];
+    await watchSourceCycles(vi.fn());
+    const [, options] = mocks.watch.mock.calls[0];
+    expect(
+      options.ignored(resolve("node_modules/@milk/frother-ui/dist/a.css")),
+    ).toBe(false);
+    expect(options.ignored(resolve("node_modules/other/a.css"))).toBe(true);
+    expect(
+      options.ignored(
+        resolve("node_modules/@milk/frother-ui/dist/node_modules/x/a.css"),
+      ),
+    ).toBe(true);
+  });
+
   it("exec-only source changes rebuild dependents and edits during boot are retained", async () => {
     mocks.config.pipeline.watchPaths = [];
     await watchSourceCycles(vi.fn());

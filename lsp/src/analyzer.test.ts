@@ -171,6 +171,35 @@ describe("Bascik Language Server Analyzer", () => {
     );
   });
 
+  it("says stream scripts run on the dev server too, as server scripts do and the docs say", () => {
+    const docOf = (text: string, label: string) => {
+      const items =
+        createCompletions(
+          TextDocument.create(
+            "file:///test-project/src/pages/index.html",
+            "html",
+            1,
+            text,
+          ),
+          { line: 0, character: text.length },
+          mockSnapshot,
+        ) ?? [];
+      const item = items.find((c) => c.label === label);
+      const documentation = item?.documentation;
+      return typeof documentation === "string"
+        ? documentation
+        : (documentation?.value ?? "");
+    };
+    for (const documentation of [
+      docOf("<script ", "data-bascik-stream"),
+      docOf("<bascik-", "bascik-stream"),
+    ]) {
+      expect(documentation).toContain(
+        "per request on production and dev servers",
+      );
+    }
+  });
+
   it("provides script shorthand completions (<bascik-...) expanding to script blocks", () => {
     const doc = TextDocument.create(
       "file:///test-project/src/pages/index.html",
@@ -261,6 +290,104 @@ describe("Bascik Language Server Analyzer", () => {
     );
     const unclosed = diags.find((d) => d.code === "unclosed-component-tag");
     expect(unclosed).toBeDefined();
+  });
+
+  it("attributes each data-bascik-slot to its own nearest component", () => {
+    const text = [
+      '<site-nav><p data-bascik-slot="actions">ok</p></site-nav>',
+      '<p data-bascik-slot="actions">outside</p>',
+      '<site-nav><div><p data-bascik-slot="actoins">typo</p></div></site-nav>',
+      '<site-nav><p data-bascik-slot="actions">ok again</p></site-nav>',
+    ].join("\n");
+    const doc = TextDocument.create(
+      "file:///test-project/src/pages/index.html",
+      "html",
+      1,
+      text,
+    );
+    const slotDiagnostics = createDiagnostics(
+      doc,
+      "/test-project/src/pages/index.html",
+      mockSnapshot,
+    )
+      .filter((d) => /slot/.test(String(d.code)))
+      .map((d) => [d.code, d.range.start.line]);
+    expect(slotDiagnostics).toEqual([
+      ["slot-outside-component", 1],
+      ["undeclared-slot", 2],
+    ]);
+  });
+
+  describe("component tag names end where HTML ends them", () => {
+    const codesIn = (text: string) =>
+      createDiagnostics(
+        TextDocument.create(
+          "file:///test-project/src/pages/index.html",
+          "html",
+          1,
+          text,
+        ),
+        "/test-project/src/pages/index.html",
+        mockSnapshot,
+      ).map((d) => d.code);
+
+    it("does not read a longer custom element that starts with a component name as that component", () => {
+      expect(
+        codesIn('<site-nav-toggle title="Menu">x</site-nav-toggle>'),
+      ).toEqual([]);
+      expect(codesIn('<site-nav-toggle title="Menu" />')).toEqual([]);
+      expect(codesIn("<site-nav_x>")).toEqual([]);
+    });
+
+    it("still reads the component when whitespace, / or > ends its name", () => {
+      expect(codesIn('<site-nav\n  title="Welcome"></site-nav>')).toEqual([
+        "missing-prop-prefix",
+      ]);
+      expect(codesIn('<site-nav title="Welcome"/>')).toEqual([
+        "missing-prop-prefix",
+      ]);
+      expect(codesIn("<site-nav>")).toEqual(["unclosed-component-tag"]);
+    });
+
+    it("accepts a closing tag with whitespace or attributes before >, as the compiler does", () => {
+      for (const closer of [
+        "</site-nav >",
+        "</site-nav\n>",
+        "</site-nav\t>",
+        '</site-nav foo="x">',
+        "</SITE-NAV>",
+      ]) {
+        expect(
+          codesIn(`<site-nav data-bascik-prop-title="A">x${closer}`),
+          closer,
+        ).toEqual([]);
+      }
+    });
+
+    it("does not take a longer data-bascik-prop-* name as supplying the prop", () => {
+      expect(
+        codesIn(
+          '<site-nav title="A" data-bascik-prop-title-extra="B"></site-nav>',
+        ),
+      ).toContain("missing-prop-prefix");
+    });
+
+    it("still reports a component closed by a different tag, or by a longer name", () => {
+      expect(
+        codesIn('<site-nav data-bascik-prop-title="A">x</site-navx>'),
+      ).toEqual(["unclosed-component-tag"]);
+      expect(
+        codesIn('<site-nav data-bascik-prop-title="A">x</site-nav-toggle>'),
+      ).toEqual(["unclosed-component-tag"]);
+    });
+
+    it("counts a nested same-name component written with a newline after its name", () => {
+      expect(
+        codesIn(
+          '<site-nav data-bascik-prop-title="A"><site-nav\ndata-bascik-prop-title="B"></site-nav>',
+        ),
+      ).toEqual(["unclosed-component-tag"]);
+    });
   });
 
   it("diagnoses paired tag on zero-slot component", () => {
