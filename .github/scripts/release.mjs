@@ -66,17 +66,17 @@ export async function release(args, dependencies = {}) {
   } = dependencies;
   if (args.includes("--help")) {
     log(
-      "Usage: yarn release [pkg lsp create cloudflare extension] [--dry-run] [--extension-pre] [--promote-rc-latest]\n" +
+      "Usage: yarn release [pkg lsp create cloudflare extension] [--dry-run] [--extension-pre] [--latest]\n" +
         "Default: release all five artifacts. Versions come from origin/main.\n" +
         "--extension-pre selects the Marketplace pre-release channel.\n" +
-        "--promote-rc-latest also points npm's latest tag at each released RC.",
+        "--latest prints npm dist-tag commands for selected packages without releasing.",
     );
     return;
   }
   const dryRun = args.includes("--dry-run");
   const extensionPre = args.includes("--extension-pre");
-  const promoteRcLatest = args.includes("--promote-rc-latest");
-  const options = ["--dry-run", "--extension-pre", "--promote-rc-latest"];
+  const latest = args.includes("--latest");
+  const options = ["--dry-run", "--extension-pre", "--latest"];
   const ids = args.filter((arg) => !options.includes(arg));
   for (const id of ids)
     if (!PACKAGES.some((pkg) => pkg.id === id))
@@ -126,27 +126,25 @@ export async function release(args, dependencies = {}) {
       tag: `${prefix}${manifest.version}`,
     };
   });
-  const npmRcPackages = plan.filter(
-    (pkg) =>
-      pkg.id !== "extension" &&
-      pkg.version.split("-")[1]?.split(/[.-]/)[0] === "rc",
-  );
-  if (promoteRcLatest && !npmRcPackages.length)
-    throw new Error(
-      "--promote-rc-latest requires selecting at least one npm RC package.",
+  if (latest) {
+    const npmPackages = plan.filter((pkg) => pkg.id !== "extension");
+    if (!npmPackages.length)
+      throw new Error("--latest requires selecting at least one npm package.");
+    log(
+      "Run these commands to set the selected npm package versions to latest:",
     );
+    for (const pkg of npmPackages)
+      log(
+        `npm dist-tag add ${pkg.name}@${pkg.version} latest --registry https://registry.npmjs.org`,
+      );
+    return;
+  }
+
   log(`${dryRun ? "Previewing" : "Releasing"} ${sha}:`);
   for (const pkg of plan) log(`  ${pkg.id}: ${pkg.tag}`);
-  if (dryRun && promoteRcLatest)
-    for (const pkg of npmRcPackages)
-      log(
-        `  npm dist-tag add ${pkg.name}@${pkg.version} latest --registry https://registry.npmjs.org`,
-      );
 
   if (!dryRun) {
     run("gh", ["auth", "status"]);
-    if (promoteRcLatest)
-      run("npm", ["whoami", "--registry", "https://registry.npmjs.org"]);
     // Preflight every tag before pushing any stage. Never move an existing release tag.
     const existing = run("git", [
       "ls-remote",
@@ -229,15 +227,6 @@ export async function release(args, dependencies = {}) {
           5 * 60_000,
           `${pkg.name}@${pkg.version} on npm`,
         );
-      if (promoteRcLatest && npmRcPackages.includes(pkg))
-        run("npm", [
-          "dist-tag",
-          "add",
-          `${pkg.name}@${pkg.version}`,
-          "latest",
-          "--registry",
-          "https://registry.npmjs.org",
-        ]);
       log(`${pkg.tag} succeeded.`);
     }
   }
