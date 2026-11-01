@@ -1,119 +1,75 @@
 # Releasing
 
-Five artifacts ship from this repo. Each is versioned independently and released by pushing a git tag; `.github/workflows/release.yml` does the rest.
+## Release
 
-| Artifact                     | Registry    | Tag                                      | Version file                            |
-| ---------------------------- | ----------- | ---------------------------------------- | --------------------------------------- |
-| `@bascik/language-server`    | npm         | `lsp-v<version>`                         | `lsp/package.json`                      |
-| `@bascik/bascik`             | npm         | `v<version>`                             | `pkg/package.json`                      |
-| `create-bascik`              | npm         | `create-v<version>`                      | `create/package.json`                   |
-| `@bascik/adapter-cloudflare` | npm         | `adapter-cloudflare-v<version>`          | `adapters/cloudflare/package.json`      |
-| Bascik VS Code extension     | Marketplace | `ext-v<version>` or `ext-pre-v<version>` | `extensions/vscode-bascik/package.json` |
-
-The tag must equal the prefix plus the `version` in that package's `package.json`, or the publish script fails before publishing anything.
-
-**Tag only commits on `main`.** Every publish job checks out the full history and, before it installs, builds or publishes anything, runs `.github/scripts/release-on-main.mjs`, which fails the job unless the tagged commit is on `origin/main` (`git merge-base --is-ancestor`). The error names the tag and the commit. So merge the release pull request first, then tag the commit on `main` (`git fetch origin main && git tag <tag> origin/main`). A tag pushed on a branch or an unpushed local commit publishes nothing; delete it with `git tag -d <tag> && git push origin :refs/tags/<tag>` and tag the commit on `main` instead.
-
-## One-time setup
-
-1. **npm:** the `bascik` organization must exist and `NPM_TOKEN` (repository secret) must be a granular token with publish rights to the `@bascik` scope and to `create-bascik`.
-2. **Provenance:** npm provenance needs a public GitHub repository and a `repository.url` in each `package.json` that matches it. Both are already configured.
-3. **Marketplace:** create the `bascik` publisher at https://marketplace.visualstudio.com/manage. Publishing authenticates with Microsoft Entra ID (`vsce publish --azure-credential`), not a personal access token, because Azure DevOps retires global PATs on December 1, 2026. The one-time setup, in order (see the "Secure automated publishing" section of the [VS Code publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)):
-   1. **Azure portal:** create a user-assigned managed identity and give it the **Reader** role on the subscription. Record its Client ID, the Tenant ID, and the Subscription ID.
-   2. **Azure DevOps:** the Marketplace needs the identity's Azure DevOps ID, which only an Azure DevOps pipeline can look up. In a project, create an Azure Resource Manager service connection with identity type **Managed identity** (it creates the federated credential for you) and grant it to all pipelines. Run a one-off pipeline with an `AzureCLI@2` step that runs `az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource 499b84ac-1321-427f-aa17-267ca6975798`, and copy the `id` from the output. Adding the identity under Organization settings, Users was not needed. The pipeline and service connection can be deleted afterward.
-   3. **Marketplace:** on the publisher's Members tab, add that `id` with the **Contributor** role.
-   4. **Azure portal:** add a second federated credential on the same identity for GitHub Actions, with entity type **Environment** and environment `marketplace`. Keep the subject the portal generates. For this repo it includes the numeric owner and repository IDs (`repo:<org>@<ownerId>/<repo>@<repoId>:environment:marketplace`). If login fails with `AADSTS700213` or `AADSTS7002138`, copy the `subject claim` from the run log verbatim into the credential. Subjects are case-sensitive.
-   5. **GitHub:** create an environment named `marketplace`. Its deployment rules must allow tags matching `ext-*`, because the release job is triggered by a tag. Add the `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` secrets (repository or environment secrets both work) used by the `azure/login@v3` step in `release.yml`.
-
-   `publish-vsce.sh` falls back to a `VSCE_PAT` environment variable when one is set, which is only useful for local publishing before the retirement date.
-
-## Publish order
-
-Packages depend on each other, and `create-bascik` scaffolds projects that install the others from npm, so publish in this order and wait for each job to finish before starting the next group.
-
-1. **`@bascik/language-server` and `@bascik/bascik`.** Neither depends on the other, so either may go first. Both must be on npm before anything in step 2.
-2. **`create-bascik` and `@bascik/adapter-cloudflare`.** The scaffold pins `@bascik/bascik` and `@bascik/language-server` (and `@bascik/adapter-cloudflare` in the Cloudflare Workers template), and the adapter has a peer dependency on `@bascik/bascik`. Their order relative to each other does not matter.
-3. **VS Code extension.** It does not depend on any npm package, so it can ship at any point, but release it last so it is tested against the published packages.
-
-## Release candidate walkthrough
-
-Release candidates use a semver prerelease version (`1.0.0-rc.1`) and publish under the `rc` dist-tag, so `npm install @bascik/bascik` never picks them up. Install one with `npm install @bascik/bascik@rc`.
-
-1. Confirm the versions in each `package.json` are the intended RC versions, and that `create/src/scaffold.ts` (`BASCIK_VERSION` and the dependency ranges), `adapters/cloudflare/package.json` (the `@bascik/bascik` peer and dev dependency, which must match), `pkg/package.json` (the `@bascik/language-server` peer range), and `examples/starter-site/package.json` reference ranges that include them (for example `^1.0.0-rc.1`). `create/src/scaffold.test.ts` and `pkg/e2e/scripts/release-manifests.test.ts` fail when one is left behind, or when a published manifest uses Yarn's `workspace:` protocol, which `npm publish` does not rewrite. `npm create bascik` installs the agent skills from the `v<BASCIK_VERSION>` tag, which step 3 pushes.
-2. Merge the version bumps into `main` through a pull request (a direct push to `main` does not deploy the docs, and a tag must be on `main`).
-3. Tag the merged commit on `main` and push the first group, then wait for both jobs to succeed in the Actions tab:
-
-   ```sh
-   git fetch origin main
-   git tag lsp-v0.1.0-rc.1 origin/main
-   git tag v1.0.0-rc.1 origin/main
-   git push origin lsp-v0.1.0-rc.1 v1.0.0-rc.1
-   ```
-
-4. Confirm both resolve on the registry:
-
-   ```sh
-   npm view @bascik/language-server@rc version
-   npm view @bascik/bascik@rc version
-   ```
-
-5. Tag and push the second group:
-
-   ```sh
-   git tag create-v1.0.0-rc.1 origin/main
-   git tag adapter-cloudflare-v1.0.0-rc.1 origin/main
-   git push origin create-v1.0.0-rc.1 adapter-cloudflare-v1.0.0-rc.1
-   ```
-
-6. Move the `latest` dist-tag to the new RC for every package whose tag you pushed. The publish script always publishes prereleases under the `rc` dist-tag, never `latest`, so this is a manual step from an authenticated command line:
-
-   ```sh
-   npm dist-tag add @bascik/language-server@0.1.0-rc.1 latest
-   npm dist-tag add @bascik/bascik@1.0.0-rc.1 latest
-   npm dist-tag add create-bascik@1.0.0-rc.1 latest
-   npm dist-tag add @bascik/adapter-cloudflare@1.0.0-rc.1 latest
-   ```
-
-   Verify each with `npm dist-tag ls <package>` (for example `npm dist-tag ls create-bascik`).
-
-7. Smoke test a clean scaffold from the registry:
-
-   ```sh
-   npm create bascik@rc my-site
-   ```
-
-Push tags by name rather than `--tags` so only the intended tags trigger jobs.
-
-## Extension releases
-
-The Marketplace rejects semver prerelease identifiers, so extension versions are plain `x.y.z`. Use the tag prefix to choose the channel:
-
-- `ext-pre-v0.1.0` publishes with `vsce publish --pre-release` (opt-in for users).
-- `ext-v0.2.0` publishes a stable release.
-
-After updating `extensions/vscode-bascik/package.json` and merging that change into `main`, tag the commit on `main` and push the tag. Replace `0.2.0` with the version in the package file:
+Update package versions and dependent ranges, pass CI, and merge into `main`.
+Then, with Node 24, Git, and an authenticated GitHub CLI:
 
 ```sh
-git fetch origin main && git tag ext-v0.2.0 origin/main && git push origin ext-v0.2.0
+yarn release                       # Publish all five artifacts
+yarn release pkg lsp               # Publish only selected packages
+yarn release create cloudflare
+yarn release extension             # Marketplace stable
+yarn release extension --extension-pre
+yarn release --dry-run             # Print tag-push commands without publishing
 ```
 
-Pre-release and stable uploads must use different version numbers: if `0.1.0` is uploaded as a pre-release, the next stable release must be a distinct version. VS Code auto-updates every user to the highest version available, including pre-release users, so a stable version higher than the latest pre-release moves them onto stable. The Marketplace convention is to avoid surprises by using an odd minor for pre-releases and an even minor for stable (`0.1.*` pre-release, `0.2.*` stable). A version number can only be published once.
+Versions come from fetched `origin/main`, not your working tree. One pinned
+commit ships in stages:
 
-Pre-release support requires `engines.vscode` of at least 1.63.0; the extension currently declares `^1.91.0`. To check packaging locally without publishing:
+1. Language server + Bascik.
+2. Scaffold + Cloudflare adapter.
+3. VS Code extension.
 
-```sh
-cd extensions/vscode-bascik
-npx @vscode/vsce@3 package --no-dependencies -o /tmp/bascik-ext.vsix
-```
+The script waits for successful Actions runs and npm availability between stages.
+Failures stop later stages. `--dry-run` fetches `main` and prints commands without
+pushing. CI independently rejects off-main tags with `.github/scripts/release-on-main.mjs`.
 
-## Promoting a release candidate to stable
+Existing tags are never replaced. Select only unreleased packages; their
+dependencies must already be published or selected in an earlier stage.
 
-1. Bump each package to its stable version (`1.0.0`, `0.1.0`) and update dependent ranges if needed. Update the release-date banner in `docs/src/components/docs-nav/docs-nav.html` (remove it, or change it to announce the release) so the docs site does not advertise a past date.
-2. Tag and push in the same order as above, using the stable tags (`v1.0.0`, and so on). Stable versions publish under the `latest` dist-tag, so no manual `npm dist-tag add` is needed for them.
-3. The `rc` dist-tag keeps pointing at the last candidate. That is harmless, but it can be moved with `npm dist-tag add <package>@<version> rc`.
+npm prereleases publish under their prerelease channel (`rc`, `beta`, etc.);
+stable versions publish under `latest`. The script does not promote RCs to
+`latest`. Extension versions must be plain `x.y.z`; `--extension-pre` uses
+`ext-pre-v<version>`. Use distinct versions for stable and pre-release uploads.
 
-## CI caveats
+## One-time authentication
 
-- The CI job `yarn create:test-site` scaffolds with `--no-install` and builds against the workspace packages, so it does not prove the published packages install. Step 7's `npm create bascik@rc` smoke test is the registry check.
-- npm versions are immutable. A failed publish before the registry accepts it can be retried by re-running the job; a bad version that was accepted must be superseded with a new version, not republished.
-- If a tag was pushed against the wrong commit before the job published, delete the tag locally and remotely, fix the commit, and tag again. A tag on a commit that is not on `main` fails the job's first check (`release-on-main.mjs`) and publishes nothing.
+### npm
+
+On npmjs.com, open **Settings > Trusted Publisher** for each of
+`@bascik/bascik`, `@bascik/language-server`, `create-bascik`, and
+`@bascik/adapter-cloudflare`. Select **GitHub Actions**:
+
+| Field                | Value               |
+| -------------------- | ------------------- |
+| Organization or user | `bascikdev`         |
+| Repository           | `bascik`            |
+| Workflow filename    | `release.yml`       |
+| Environment name     | Leave blank         |
+| Allowed actions      | Allow `npm publish` |
+
+No npm token is needed. After a successful OIDC publish, delete the unused
+`NPM_TOKEN` GitHub secret and revoke old npm publish tokens.
+See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+### VS Code Marketplace
+
+Use the `bascik` publisher with an Entra managed identity:
+
+1. Create a user-assigned managed identity with subscription **Reader** access.
+2. Look up its Azure DevOps profile ID through a managed-identity pipeline and add it as a Marketplace publisher **Contributor** (see the guide below).
+3. Add a GitHub federated credential for environment `marketplace`, keeping the exact generated subject.
+4. Create the GitHub environment `marketplace`, allow `ext-*` tags, and add `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` secrets.
+
+See the [VS Code publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#secure-automated-publishing).
+
+## Failed releases
+
+Inspect the failed run before retrying. Rerunning a job uses the workflow from
+its original tagged commit, not current `main`. A failed tag can be deleted and
+recreated on updated `main` **only if its version was never published**.
+Published versions are immutable: bump the version instead.
+
+For npm authentication failures, check the trusted-publisher fields and the
+`npm publish` permission. Don't restore an expired token.

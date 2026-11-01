@@ -39,6 +39,7 @@
     "tmp": "^0.2.6"
   },
   "scripts": {
+    "release": "node .github/scripts/release.mjs",
     "pkg:build": "yarn workspace @bascik/bascik build",
     "pkg:map": "yarn workspace @bascik/bascik code-map",
     "pkg:bench": "yarn workspace @bascik/bascik bench",

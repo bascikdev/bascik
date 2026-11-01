@@ -141,14 +141,12 @@ All jobs follow the same steps: check out the full history, check that the tagge
 
 ## Publishing to npm
 
-All packages publish to the public npm registry under the `bascik` organization using a granular access token stored as the `NPM_TOKEN` repository secret (Settings → Secrets and variables → Actions). Every job calls `.github/scripts/publish-npm.sh <tag-prefix>` from the package directory:
+The four npm packages publish to npmjs.com using GitHub Actions OIDC trusted publishing, without an npm token. Configure a trusted publisher separately for each package with organization `bascikdev`, repository `bascik`, workflow filename `release.yml`, no environment, and permission to run `npm publish`. Every job calls `.github/scripts/publish-npm.sh <tag-prefix>` from the package directory:
 
 ```yaml
 - name: Publish to npm
   working-directory: pkg
   run: ${{ github.workspace }}/.github/scripts/publish-npm.sh v
-  env:
-    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
 The script fails unless the git tag equals the prefix plus the `version` in the package's `package.json`, then runs `npm publish --provenance --access public --tag <dist-tag>`:
@@ -158,6 +156,8 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 - `--tag`: `latest` for stable versions. A prerelease such as `1.0.0-rc.1` publishes under the identifier before the first dot (`rc`), so `npm install <pkg>` never picks it up by default.
 
 ## Tagging a Release
+
+After merging version bumps into `main`, run `yarn release` from the repository root. `.github/scripts/release.mjs` reads versions from fetched `origin/main` and pushes tags in three stages: language server and Bascik, scaffold and Cloudflare adapter, then the extension. It waits for successful Actions runs and npm registry availability between stages, stops on failures, and refuses existing tags. Use `yarn release pkg lsp` to select packages or `yarn release --dry-run` to print commands without pushing. The examples below are the manual alternative.
 
 ### `@bascik/bascik`
 
@@ -202,4 +202,4 @@ Use a prerelease version and the matching tag, for example `1.0.0-rc.1` with `v1
 
 The release workflow picks up the tag, runs tests, builds `dist/` (which is not committed to git), and publishes to npm.
 
-> **Prerequisite.** The `NPM_TOKEN` secret must be set in the repository before pushing a release tag, or the publish step will fail.
+> **Prerequisite.** Save each package's npm trusted-publisher configuration before pushing a release tag. The jobs already have `id-token: write` and Node 24 with an OIDC-capable npm CLI; no `NPM_TOKEN` secret is needed.
