@@ -31,8 +31,8 @@ const PATTERNS = [
   ),
   // { "&": "&amp;" } and new Map([["&", "&#38;"]]).
   new RegExp(`(${Q})&\\1\\s*[:,]\\s*(${Q})${AMP}\\2`, "g"),
-  // case "&": return "&amp;"
-  new RegExp(`\\bcase\\s+(${Q})&\\1\\s*:[^\\n]*${AMP}`, "g"),
+  // case "&": return "&amp;", also with the return on the next line as Prettier writes it.
+  new RegExp(`\\bcase\\s+(${Q})&\\1\\s*:\\s*[^\\n]*${AMP}`, "g"),
 ];
 /** The patterns that find an entity map rather than code that replaces: { "&": "&amp;" } and case "&":. */
 const ENTITY_MAPS = PATTERNS.slice(3);
@@ -173,11 +173,12 @@ export function handWrittenEscapers(code) {
     const xml = explainedAsXml(lines, statementLine(lines, hit), name);
     const last = out.at(-1);
     const near = last && hit - last.hit <= SAME_ESCAPER_LINES;
-    // An unnamed entity map belongs to the function beside it, and a character-class replace reads the unnamed map
-    // above it.
+    // An unnamed entity map belongs to the character-class replace just above it that reads it, and a
+    // character-class replace reads the unnamed map just above it. A replace that writes its own entities reads no
+    // map, so it never joins one, and never shares an XML explanation with one.
     const mapCase =
       near &&
-      ((map && name === undefined) ||
+      ((map && name === undefined && last.reader) ||
         (last.map && last.name === undefined && reader));
     const sameFunction = near && name === last.name && xml === last.xml;
     if (mapCase || sameFunction) {
@@ -185,10 +186,11 @@ export function handWrittenEscapers(code) {
       last.name ??= name;
       if (mapCase) last.xml ||= xml;
       last.map &&= map;
+      last.reader ||= reader;
       if (kind === "escape") last.kind = "escape";
       continue;
     }
-    out.push({ start: hit, hit, kind, name, xml, map });
+    out.push({ start: hit, hit, kind, name, xml, map, reader });
   }
   return out
     .filter(({ xml }) => !xml)

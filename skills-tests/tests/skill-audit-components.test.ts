@@ -1629,6 +1629,42 @@ const ENTITIES: Record<string, string> = {
   "<": "&lt;",
 };`),
     ).toEqual([]);
+    // An XML-commented map below an inline replace that writes its own entities does not hide that replace.
+    expect(
+      lines(`const a = x.replace(/&/g, "&amp;");
+// rss xml
+const M = { "&": "&amp;" };`),
+    ).toEqual([1]);
+    // An HTML entity map under an escapeXml that does not read it is reported, though no character class reads it.
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+
+const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([5]);
+    // An HTML switch inside an anonymous callback right after escapeXml is reported, at its statement, with the
+    // return on the case's line or, as Prettier writes it, on the next.
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+const out = list.map((c) => { switch (c) { case "&": return "&amp;"; default: return c; } });`),
+    ).toEqual([4]);
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+const out = list.map((c) => {
+  switch (c) {
+    case "&":
+      return "&amp;";
+    default:
+      return c;
+  }
+});`),
+    ).toEqual([4]);
   });
 
   it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
@@ -2183,13 +2219,27 @@ ${component("@/lib/format.ts")}${component("@/lib/typed.ts")}</p>
       "src/lib/named.ts": `export const value = { render: (x: string) => x };\nexport default value;\n`,
       "src/lib/named-method.ts": `export const value: { render(): number } = { render() { return 1; } };\nexport default value;\n`,
       "src/lib/renamed.ts": `const tools = { slug: (t: string) => t.toLowerCase() };\nexport { tools as value };\nexport default tools;\n`,
+      "src/lib/shorthand.ts": `function render(x: string) {\n  return x;\n}\nconst draw = (x: string) => x;\nexport const value = { render, paint: draw };\nexport default value;\n`,
     };
     const content: Record<string, string> = {
       // Content: plain values, and markup built with html whose holes hold arrows.
       "src/lib/site.ts": `export default { name: "Milk frother", note: "() => {} is text" };\n`,
+      // Content: a shorthand member that names a local value, not a function.
+      "src/lib/shorthand-value.ts": `const name = "Milk frother";\nexport const value = { name, price: 129 };\nexport default value;\n`,
       "src/lib/cards.ts": `import { html } from "@bascik/bascik/html";
 const items = ["Quiet", "Fast"];
 export default { body: html\`\${items.map((i) => html\`<li>\${i}</li>\`)}\` };
+`,
+      // Content: values computed with a callback are still values, not helpers.
+      "src/lib/computed.ts": `const list = [{ name: "Quiet", published: true }];
+export const value = {
+  items: list.map((d) => d.name),
+  shown: list.filter(function (d) {
+    return d.published;
+  }),
+  nested: { names: list.map((d) => d.name) },
+};
+export default value;
 `,
     };
     const all = { ...helpers, ...content };
@@ -2208,7 +2258,12 @@ export default { body: html\`\${items.map((i) => html\`<li>\${i}</li>\`)}\` };
       moduleFindings((await audit(root)).findings)
         .map((f) => f.file)
         .sort(),
-    ).toEqual(["src/lib/cards.ts", "src/lib/site.ts"]);
+    ).toEqual([
+      "src/lib/cards.ts",
+      "src/lib/computed.ts",
+      "src/lib/shorthand-value.ts",
+      "src/lib/site.ts",
+    ]);
   });
 
   it("leaves a src/lib module that two other src/lib modules import, even when one page reaches both", async () => {

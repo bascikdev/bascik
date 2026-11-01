@@ -929,27 +929,46 @@ function literalEnd(code, start) {
 const FUNCTION_VALUE =
   /^\s*(?::[^=]*=>[^=]*)?=\s*(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)|^\s*:[^=]*=>/;
 
+/** A member value that is a function: `(async) (args) =>`, `x =>` or `function`. */
+const FUNCTION_MEMBER =
+  /^(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)/;
+/** A method shorthand: `name(...) {`, `async name(`, `get name(`, `*name(`. */
+const METHOD_MEMBER =
+  /^(?:(?:async|get|set)\s+)?\*?\s*[A-Za-z_$][\w$]*\s*\([^()]*\)\s*(?::[^{]+)?\{/;
+/** The key of a member, `key:`, `[computed]:`, or a quoted key (blank once masked). */
+const MEMBER_KEY = /^(?:[\w$]*|\[[^\]]*\])\s*:\s*/;
+
 /**
- * Whether the object literal whose `{` is at `open` in masked code holds a function: an arrow, a `function`
- * expression, or a method `name(...) {`.
+ * Whether the object literal whose `{` is at `open` in masked code holds a function as one of its own members: a
+ * member whose value is an arrow or a `function` expression, or a method `name(...) {`. A callback inside a member's
+ * value (`items: list.map((d) => d.name)`) or inside a nested object does not count: that member is computed content.
+ * A member that names one of `localFunctions` (`{ render }` or `{ draw: render }`) counts as a function.
  */
-function holdsFunctions(bare, open) {
+function holdsFunctions(bare, open, localFunctions = new Set()) {
+  const members = [];
   let depth = 0;
-  let end = bare.length;
+  let from = open + 1;
   for (let i = open; i < bare.length; i++) {
-    if (bare[i] === "{") depth++;
-    else if (bare[i] === "}" && --depth === 0) {
-      end = i;
-      break;
+    const c = bare[i];
+    if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") {
+      if (--depth === 0) {
+        members.push(bare.slice(from, i));
+        break;
+      }
+    } else if (c === "," && depth === 1) {
+      members.push(bare.slice(from, i));
+      from = i + 1;
     }
   }
-  const body = bare.slice(open + 1, end);
-  return (
-    /=>|\bfunction\b/.test(body) ||
-    /(?:^|[{,\s])(?:async\s+|get\s+|set\s+)?\*?\s*[A-Za-z_$][\w$]*\s*\([^()]*\)\s*(?::[^{,]+)?\{/.test(
-      body,
-    )
-  );
+  return members.some((member) => {
+    const text = member.trim();
+    if (METHOD_MEMBER.test(text) || localFunctions.has(text)) return true;
+    const key = MEMBER_KEY.exec(text);
+    if (key === null) return false;
+    const value = text.slice(key[0].length);
+    return FUNCTION_MEMBER.test(value) || localFunctions.has(value);
+  });
 }
 
 /**
@@ -976,23 +995,35 @@ function exportsDataOnly(file) {
     )
   )
     return false;
-  // An exported object literal whose members are functions holds helpers: export default { render: (x) => x }.
-  // Arrows in html`...` holes were masked with the template, so content built with html stays content.
-  const objectStart =
-    /\bexport\s+default\s*\{|\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=\s*\{/g;
-  for (const m of bare.matchAll(objectStart))
-    if (holdsFunctions(bare, m.index + m[0].length - 1)) return false;
-  // Local names declared as functions or classes.
+  // Local names declared as functions or classes, read first so an object that holds one by name is a helper too.
   const functions = new Set();
   for (const m of bare.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g))
     functions.add(m[1]);
-  for (const m of bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) {
-    const after = bare.slice(m.index + m[0].length);
-    const object = /^\s*(?::[^=]+)?=\s*\{/.exec(after);
+  const declarations = [
+    ...bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g),
+  ];
+  for (const m of declarations)
+    if (FUNCTION_VALUE.test(bare.slice(m.index + m[0].length).slice(0, 400)))
+      functions.add(m[1]);
+  // An exported object literal whose members are functions holds helpers: export default { render: (x) => x }, or
+  // { render } with render a local function. Arrows in html`...` holes were masked with the template, so content
+  // built with html stays content.
+  const objectStart =
+    /\bexport\s+default\s*\{|\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=\s*\{/g;
+  for (const m of bare.matchAll(objectStart))
+    if (holdsFunctions(bare, m.index + m[0].length - 1, functions))
+      return false;
+  for (const m of declarations) {
+    const object = /^\s*(?::[^=]+)?=\s*\{/.exec(
+      bare.slice(m.index + m[0].length),
+    );
     if (
-      FUNCTION_VALUE.test(after.slice(0, 400)) ||
-      (object &&
-        holdsFunctions(bare, m.index + m[0].length + object[0].length - 1))
+      object &&
+      holdsFunctions(
+        bare,
+        m.index + m[0].length + object[0].length - 1,
+        functions,
+      )
     )
       functions.add(m[1]);
   }
