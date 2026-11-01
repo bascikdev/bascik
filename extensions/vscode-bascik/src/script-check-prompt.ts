@@ -150,8 +150,11 @@ export class ScriptCheckPrompt implements vscode.Disposable {
   }
 }
 
-/** A disabled extension is missing from `vscode.extensions`, so presence means VS Code checks inline scripts. */
-function htmlLanguageFeaturesRunning(): boolean {
+/**
+ * A disabled extension is missing from `vscode.extensions`, so presence means VS Code checks inline scripts (and
+ * answers hover and completion about a page's own names in its TypeScript blocks).
+ */
+export function htmlLanguageFeaturesRunning(): boolean {
   return vscode.extensions.getExtension(HTML_LANGUAGE_FEATURES) !== undefined;
 }
 

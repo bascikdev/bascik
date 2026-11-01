@@ -13,7 +13,12 @@ const appRoot = join(
 describe("initializationOptions", () => {
   it("passes VS Code's own TypeScript and says the editor answers inside TypeScript blocks itself", () => {
     expect(
-      initializationOptions(appRoot, { enabled: true, path: "" }, "/work/site"),
+      initializationOptions(
+        appRoot,
+        { enabled: true, path: "" },
+        "/work/site",
+        true,
+      ),
     ).toEqual({
       typescript: {
         enabled: true,
@@ -33,6 +38,7 @@ describe("initializationOptions", () => {
         appRoot,
         { enabled: false, path: "  /opt/typescript  " },
         "/work/site",
+        true,
       ).typescript,
     ).toEqual({
       enabled: false,
@@ -48,6 +54,7 @@ describe("initializationOptions", () => {
         appRoot,
         { enabled: true, path: "node_modules/typescript" },
         "/work/site",
+        true,
       ).typescript.path,
     ).toBe(resolve("/work/site", "node_modules/typescript"));
     expect(
@@ -55,7 +62,19 @@ describe("initializationOptions", () => {
         appRoot,
         { enabled: true, path: "node_modules/typescript" },
         undefined,
+        true,
       ).typescript.path,
     ).toBe(resolve(appRoot, "node_modules/typescript"));
+  });
+
+  it("asks the server for every answer when VS Code's HTML support is disabled", () => {
+    expect(
+      initializationOptions(
+        appRoot,
+        { enabled: true, path: "" },
+        "/work/site",
+        false,
+      ).editorHasEmbeddedTypeScript,
+    ).toBe(false);
   });
 });

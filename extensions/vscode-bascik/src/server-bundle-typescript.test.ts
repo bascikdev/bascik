@@ -338,6 +338,7 @@ describe("the bundled language server's TypeScript checks", () => {
         join(work, "no-editor"),
         { enabled: true, path: "" },
         root,
+        true,
       ),
     );
     try {
@@ -376,6 +377,79 @@ describe("the bundled language server's TypeScript checks", () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(diagnostics.some(isTypeScript)).toBe(false);
       expect(server.logs.some((log) => log.includes("TypeScript"))).toBe(false);
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+
+  /** A page importing `@/lib/frother.ts`, and the position of `needle` (plus `delta`) in it. */
+  const FEATURE_PAGE =
+    '<main>Milk frother</main>\n<script type="text/typescript">\n  import { frother } from "@/lib/frother.ts";\n  const rpm: number = frother.speed;\n  frother.\n</script>\n';
+  const at = (needle: string, delta = 0) => {
+    const before = FEATURE_PAGE.slice(
+      0,
+      FEATURE_PAGE.indexOf(needle) + delta,
+    ).split("\n");
+    return { line: before.length - 1, character: before.at(-1)!.length };
+  };
+
+  async function featureProject(name: string, editorFlag: boolean) {
+    const root = await project(name);
+    await mkdir(join(root, "src/lib"), { recursive: true });
+    const helper = join(root, "src/lib/frother.ts");
+    await writeFile(
+      helper,
+      "export interface Frother {\n  /** Revolutions per minute. */\n  speed: number;\n}\nexport const frother: Frother = { speed: 1200 };\n",
+    );
+    const server = await startServer(serverFile, root, {
+      typescript: { path: TYPESCRIPT_6_DIR },
+      editorHasEmbeddedTypeScript: editorFlag,
+    });
+    const file = join(root, "src/pages/index.html");
+    const uri = pathToFileURL(file).toString();
+    await open(server, file, FEATURE_PAGE);
+    const ask = (method: string, needle: string, delta = 0, extra = {}) =>
+      server.connection.sendRequest(method, {
+        textDocument: { uri },
+        position: at(needle, delta),
+        ...extra,
+      }) as Promise<any>;
+    return { server, helper, ask };
+  }
+
+  it("answers hover, definition and member completion from its worker, for a client without its own TypeScript mode", async () => {
+    const { server, helper, ask } = await featureProject("features", false);
+    try {
+      const hover = await ask("textDocument/hover", "frother.speed", 1);
+      expect(hover.contents.value).toContain("const frother: Frother");
+      expect((await ask("textDocument/hover", "rpm")).contents.value).toContain(
+        "const rpm: number",
+      );
+      const [definition] = await ask(
+        "textDocument/definition",
+        "frother.speed",
+        1,
+      );
+      expect(definition.uri).toBe(pathToFileURL(helper).toString());
+      expect(definition.range.start).toEqual({ line: 4, character: 13 });
+      const members = await ask("textDocument/completion", "frother.\n", 8, {
+        context: { triggerKind: 2, triggerCharacter: "." },
+      });
+      expect(members.map((item: { label: string }) => item.label)).toEqual([
+        "speed",
+      ]);
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+
+  it("leaves the page's own names to VS Code's mode when the client says it has one", async () => {
+    const { server, ask } = await featureProject("features-vscode", true);
+    try {
+      expect(await ask("textDocument/hover", "rpm")).toBeNull();
+      expect(
+        (await ask("textDocument/hover", "frother.speed", 1)).contents.value,
+      ).toContain("const frother: Frother");
     } finally {
       await server.stop();
     }

@@ -12,6 +12,7 @@ import {
 } from "./client-options";
 import { RestartQueue } from "./restart-queue";
 import {
+  htmlLanguageFeaturesRunning,
   ScriptCheckPrompt,
   type ScriptCheckResult,
 } from "./script-check-prompt";
@@ -67,6 +68,7 @@ export async function activate(
           path: settings.get<string>("path", ""),
         },
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        htmlLanguageFeaturesRunning(),
       );
     },
   };

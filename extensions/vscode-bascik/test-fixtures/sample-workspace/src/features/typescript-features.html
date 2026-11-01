@@ -1,0 +1,14 @@
+<main>Milk frother</main>
+<script type="text/typescript">
+  import { frotherSettings, froth } from "@/lib/frother-settings.ts";
+  import { frotherSpeed } from "../lib/frother-speed.ts";
+  const steamTemperature = 65;
+  const jug = { size: 1 };
+  document.title = froth(
+    frotherSettings.rpm + frotherSpeed + steamTemperature + jug.size,
+  );
+</script>
+<script>
+  const plainFrother = { size: 2 };
+  console.log(plainFrother.size);
+</script>

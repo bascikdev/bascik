@@ -84,3 +84,129 @@ export async function replaceUnsaved(
   );
   assert.ok(await vscode.workspace.applyEdit(edit), "The edit should apply");
 }
+
+/** The cross-file fixture: a page importing `@/lib/frother-settings.ts` and `../lib/frother-speed.ts`. */
+export function typeScriptFeaturesFixture(): {
+  page: vscode.Uri;
+  settings: vscode.Uri;
+  speed: vscode.Uri;
+} {
+  const folder = vscode.workspace.workspaceFolders?.find(
+    (candidate) => candidate.name === "primary",
+  );
+  assert.ok(folder, "Workspace folder primary should be open");
+  const at = (...parts: string[]) =>
+    vscode.Uri.file(path.join(folder.uri.fsPath, ...parts));
+  return {
+    page: at("src", "features", "typescript-features.html"),
+    settings: at("src", "lib", "frother-settings.ts"),
+    speed: at("src", "lib", "frother-speed.ts"),
+  };
+}
+
+/** The position of `needle` (plus `delta`) in the document. */
+export function positionOf(
+  document: vscode.TextDocument,
+  needle: string,
+  delta = 0,
+): vscode.Position {
+  const start = document.getText().indexOf(needle);
+  assert.ok(start >= 0, `${needle} should be in ${document.uri.fsPath}`);
+  return document.positionAt(start + delta);
+}
+
+/** Every hover's text at a position, from every provider (VS Code's HTML support and Bascik). */
+export async function hoverTexts(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): Promise<string[]> {
+  const hovers =
+    (await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      document.uri,
+      position,
+    )) ?? [];
+  return hovers.map((hover) =>
+    hover.contents
+      .map((content) =>
+        typeof content === "string"
+          ? content
+          : "value" in content
+            ? content.value
+            : String(content),
+      )
+      .join("\n"),
+  );
+}
+
+/** The files every definition provider points to from a position. */
+export async function definitionPaths(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): Promise<string[]> {
+  const found =
+    (await vscode.commands.executeCommand<
+      (vscode.Location | vscode.LocationLink)[]
+    >("vscode.executeDefinitionProvider", document.uri, position)) ?? [];
+  return found.map(
+    (location) =>
+      ("targetUri" in location ? location.targetUri : location.uri).fsPath,
+  );
+}
+
+/**
+ * Every completion label at a position, from every language provider, duplicates kept. VS Code's word-based
+ * suggestions (kind Text: any word in an open document) are left out; they know nothing of types.
+ */
+export async function completionLabels(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  triggerCharacter?: string,
+): Promise<string[]> {
+  const list = await vscode.commands.executeCommand<vscode.CompletionList>(
+    "vscode.executeCompletionItemProvider",
+    document.uri,
+    position,
+    triggerCharacter,
+  );
+  return (list?.items ?? [])
+    .filter((item) => item.kind !== vscode.CompletionItemKind.Text)
+    .map((item) =>
+      typeof item.label === "string" ? item.label : item.label.label,
+    );
+}
+
+/** The signatures every provider gives at a position. */
+export async function signatureLabels(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): Promise<string[]> {
+  const help = await vscode.commands.executeCommand<vscode.SignatureHelp>(
+    "vscode.executeSignatureHelpProvider",
+    document.uri,
+    position,
+  );
+  return (help?.signatures ?? []).map((signature) => signature.label);
+}
+
+/** Retries `read` until `accept` passes: the server answers once its worker has built TypeScript's program. */
+export async function eventuallyAnswered<T>(
+  read: () => Promise<T>,
+  accept: (value: T) => boolean,
+  message: string,
+  timeoutMs = 20_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let value = await read();
+  while (!accept(value)) {
+    if (Date.now() > deadline)
+      assert.fail(`${message}; last: ${JSON.stringify(value)}`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    value = await read();
+  }
+  return value;
+}
+
+/** How many entries of `list` equal `value`. */
+export const countOf = (list: string[], value: string): number =>
+  list.filter((entry) => entry === value).length;

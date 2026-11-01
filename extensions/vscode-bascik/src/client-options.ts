@@ -36,13 +36,16 @@ export function bundledTypeScriptPath(appRoot: string): string {
 /**
  * The server's `initializationOptions` (`BascikInitializationOptions` in the language server). The setting goes in
  * `path` and VS Code's own copy in `editorPath`, so a mistyped or broken setting falls back to VS Code's copy (and
- * the server shows a warning) instead of turning the checks off. VS Code's HTML support already answers hover and
- * completion inside quoted TypeScript blocks, so the server is told it need not.
+ * the server shows a warning) instead of turning the checks off. While VS Code's HTML support runs
+ * (`htmlLanguageFeatures`), it answers hover, completion, definition and signature help about a page's own names
+ * inside quoted TypeScript blocks, so the server answers only what it cannot; with it disabled, the server answers
+ * everything.
  */
 export function initializationOptions(
   appRoot: string,
   settings: TypeScriptSettings,
   workspaceFolder: string | undefined,
+  htmlLanguageFeatures: boolean,
 ) {
   const configured = settings.path.trim();
   return {
@@ -55,6 +58,6 @@ export function initializationOptions(
             resolve(workspaceFolder ?? appRoot, configured),
       editorPath: bundledTypeScriptPath(appRoot),
     },
-    editorHasEmbeddedTypeScript: true,
+    editorHasEmbeddedTypeScript: htmlLanguageFeatures,
   };
 }
