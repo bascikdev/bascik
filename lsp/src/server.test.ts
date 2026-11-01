@@ -820,6 +820,7 @@ describe("BascikLanguageServer", () => {
       // The workspace root's own config is a different project.
       await initialize();
       open(page, pageText);
+      expect(await server.getSnapshotForFile(page)).toBeDefined();
       await settle();
       open(cards, cardsText, "typescript");
       await settle();
