@@ -76,7 +76,7 @@ Pass `--typescript` to also report TypeScript errors in `<script type="text/type
 npx @bascik/language-server --check --typescript
 ```
 
-Each error is reported at its line and column with TypeScript's number as the rule, such as `(TS2322)`, and fails the run like any other error. The check uses the project's own `typescript` package, which must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`); TypeScript 7 publishes no language service and TypeScript 4 cannot resolve `.ts` imports as Bascik does, so both are skipped. Without a usable TypeScript the run prints one `note:` line saying why and checks everything else. TypeScript errors are opt-in so that adding the language server to an existing project's CI never fails it on errors its build ignores.
+Each error is reported at its line and column with TypeScript's number as the rule, such as `(TS2322)`, and fails the run like any other error. The check uses the project's own `typescript` package, or, when the project cannot resolve one, a `typescript` the `@bascik/language-server` package can resolve from where it is installed (a pnpm strict layout or a global install, for example). It must be TypeScript 5 or 6 (`npm install --save-dev typescript@6`); TypeScript 7 publishes no language service and TypeScript 4 cannot resolve `.ts` imports as Bascik does, so both are skipped. Without a usable TypeScript the run prints one `note:` line saying why and checks everything else. TypeScript errors are opt-in so that adding the language server to an existing project's CI never fails it on errors its build ignores.
 
 ### Auto-fixing with `--fix`
 
@@ -234,14 +234,14 @@ end
 lspconfig.bascik.setup{}
 ```
 
-TypeScript errors in `type="text/typescript"` blocks are on in every editor and use the project's own `typescript` (5 or 6). Inside those blocks the server also answers hover, Go to Definition, completion (members after `.`, and files in relative and `@/` import paths), and signature help, for the page's own names and for what it imports, as the [VS Code extension](/tools/vscode-extension#imports-in-typescript-script-tags) does. A client can pass options when it starts the server, as `initializationOptions`:
+TypeScript errors in `type="text/typescript"` blocks are on in every editor and use the project's own `typescript` (5 or 6), or, when the project cannot resolve one, a `typescript` the `@bascik/language-server` package can resolve from where it is installed. Inside those blocks the server also answers hover, Go to Definition, completion (members after `.`, and files in relative and `@/` import paths), and signature help, for the page's own names and for what it imports, as the [VS Code extension](/tools/vscode-extension#imports-in-typescript-script-tags) does. A client can pass options when it starts the server, as `initializationOptions`:
 
 ```lua
 lspconfig.bascik.setup{
   init_options = {
     typescript = {
       enabled = true,
-      -- A typescript package folder to use instead of the project's own.
+      -- An absolute path to a typescript package folder to use instead of the project's own.
       path = '/path/to/node_modules/typescript',
       -- How long TypeScript stays loaded once no open page has a TypeScript block.
       releaseDelayMs = 30000,
