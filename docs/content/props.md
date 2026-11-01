@@ -21,11 +21,9 @@ A receiver on a `<script>` or `<style>` element is never filled: escaping cannot
 <!-- demo:basic-props-html -->
 
 ```html
-<aside class="alert-box">
-  <strong class="alert-box-title" data-bascik-prop-title>Notice</strong>
-  <p class="alert-box-message" data-bascik-prop-message>
-    Props replace this text at build time.
-  </p>
+<aside>
+  <strong data-bascik-prop-title>Notice</strong>
+  <p data-bascik-prop-message>Props replace this text at build time.</p>
 </aside>
 ```
 
@@ -52,11 +50,9 @@ A receiver on a `<script>` or `<style>` element is never filled: escaping cannot
 <!-- demo:basic-props-output-html -->
 
 ```html
-<aside class="bascik__alert-box__alert-box">
-  <strong class="bascik__alert-box__alert-box-title">Success</strong>
-  <p class="bascik__alert-box__alert-box-message">
-    Your changes have been saved.
-  </p>
+<aside class="b_el_alert-box_aside">
+  <strong class="b_el_alert-box_strong">Success</strong>
+  <p class="b_el_alert-box_p">Your changes have been saved.</p>
 </aside>
 ```
 

@@ -228,12 +228,13 @@ Production builds shorten these to hashes. Never hard-code a scoped name. Tests 
 ## CSS rules (must follow)
 
 1. **Classes, element selectors, `#id`, `@keyframes`, locally declared custom properties, `@property`, `@counter-style`, container, layer, anchor, and view-transition names are scoped.** Names are shared by every instance of the component and invisible to other components.
-2. **Classes the component's CSS does not define stay global**, so global helpers such as `.container` or `.skip-link` still match.
-3. **Element selectors only match the component's own template**, never slotted content, child component roots, or elements a script creates. Style those with classes, or from a global stylesheet.
-4. **No element names inside `:is()`, `:where()`, or `:has()`** (lint error); use classes there. **Anchor attribute selectors** on a class (`.card[data-state]`); a standalone `[data-state]` leaks, and `[id]` is stripped.
-5. **`html`, `body`, and `head` are never renamed:** `html[data-theme="dark"] .card {}` works.
-6. **Declare design tokens once in a global stylesheet; only read them in components** with `var(--token, fallback)`. A `:root {}` block in a component makes a private copy.
-7. **`@font-face` belongs in the global stylesheet**, never in a component.
+2. **Prefer element selectors when they identify the component's element; otherwise use short, role-based class names** such as `.title` or `.body`, not component-prefixed names such as `.hello-card-title`. Bascik already scopes component-local selectors.
+3. **Classes the component's CSS does not define stay global**, so global helpers such as `.container` or `.skip-link` still match.
+4. **Element selectors only match the component's own template**, never slotted content, child component roots, or elements a script creates. Style those with classes, or from a global stylesheet.
+5. **No element names inside `:is()`, `:where()`, or `:has()`** (lint error); use classes there. **Anchor attribute selectors** on a class (`.card[data-state]`); a standalone `[data-state]` leaks, and `[id]` is stripped.
+6. **`html`, `body`, and `head` are never renamed:** `html[data-theme="dark"] .card {}` works.
+7. **Declare design tokens once in a global stylesheet; only read them in components** with `var(--token, fallback)`. A `:root {}` block in a component makes a private copy.
+8. **`@font-face` belongs in the global stylesheet**, never in a component.
 
 ## Theming
 

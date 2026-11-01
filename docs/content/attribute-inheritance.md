@@ -16,7 +16,7 @@ The demo above shows the usage tag and component template separately under Sourc
 
 When the root element already has a scoped `class`, the inherited class is **appended** rather than replacing it.
 
-In the demo output, the scoped `inherit-card` class and usage-site `featured-card` class both remain on the root `<article>`.
+In the demo output, the scoped `article` selector and usage-site `featured-card` class both remain on the root `<article>`.
 
 When both the component root and usage tag define `style`, Bascik appends the usage declarations after the root declarations. Normal CSS cascade rules therefore let the usage declaration win when both set the same property.
 
@@ -204,10 +204,10 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
 <!-- demo:source-html -->
 
 ```html
-<article class="inherit-card">
-  <p class="inherit-card-kicker">Template root</p>
-  <h3 class="inherit-card-title">Attribute inheritance</h3>
-  <p class="inherit-card-body">
+<article>
+  <p class="kicker">Template root</p>
+  <h3>Attribute inheritance</h3>
+  <p class="body">
     Usage attributes merge onto this root element at build time.
   </p>
 </article>
@@ -216,7 +216,7 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
 <!-- demo:source-css -->
 
 ```css
-.inherit-card {
+article {
   width: min(100%, 34rem);
   background: #242628;
   border: 1px solid #3a3d40;
@@ -224,7 +224,7 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
   padding: 24px;
 }
 
-.inherit-card-kicker {
+.kicker {
   margin: 0 0 10px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -233,12 +233,12 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
   color: #d3ff8d;
 }
 
-.inherit-card-title {
+h3 {
   margin: 0 0 10px;
   font-size: 1.05rem;
 }
 
-.inherit-card-body {
+.body {
   margin: 0;
   color: #8d929e;
 }
@@ -248,16 +248,14 @@ This example forwards a class, an ID, an accessibility label, and a testing hook
 
 ```html
 <article
-  class="bascik__inherit-demo-card__inherit-card featured-card"
+  class="b_el_inherit-demo-card_article featured-card"
   id="featured-inheritance"
   aria-label="Featured inheritance demo"
   data-testid="inherit-demo"
 >
-  <p class="bascik__inherit-demo-card__inherit-card-kicker">Template root</p>
-  <h3 class="bascik__inherit-demo-card__inherit-card-title">
-    Attribute inheritance
-  </h3>
-  <p class="bascik__inherit-demo-card__inherit-card-body">
+  <p class="bascik__inherit-demo-card__kicker">Template root</p>
+  <h3 class="b_el_inherit-demo-card_h3">Attribute inheritance</h3>
+  <p class="bascik__inherit-demo-card__body">
     Usage attributes merge onto this root element at build time.
   </p>
 </article>

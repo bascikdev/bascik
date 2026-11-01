@@ -2,9 +2,9 @@
 
 Components are the core building block in Bascik. Each component is a `.html` file in `src/components/`. The file name becomes the tag name used in your pages and in other components.
 
-## HTML-Only Components
+## HTML with Companion CSS
 
-The simplest component is just markup. No CSS, no JavaScript required.
+Components can pair an HTML file with a companion stylesheet and need no JavaScript.
 
 <!-- demo:source-usage-hello -->
 
@@ -20,16 +20,51 @@ The simplest component is just markup. No CSS, no JavaScript required.
 <!-- demo:source-html-hello -->
 
 ```html
-<article class="hello-card">
-  <p class="hello-card-kicker">One file. One tag.</p>
-  <h3 class="hello-card-title">Plain HTML, ready to reuse.</h3>
-  <p class="hello-card-body">
+<article>
+  <p class="kicker">One file. One tag.</p>
+  <h3>Plain HTML, ready to reuse.</h3>
+  <p class="body">
     Bascik replaces the custom tag at build time and ships the finished markup.
   </p>
 </article>
 ```
 
-> **Styles omitted for clarity.** This demo component includes a companion `.css` file that styles the card. The CSS is not shown in the source view so the demo stays focused on the HTML structure. Note that output code examples across the documentation show unminified output (HTML, CSS, JS, and identifier names) for readability.
+<!-- demo:source-css-hello -->
+
+```css
+article {
+  width: min(100%, 32rem);
+  padding: 24px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 6px;
+}
+
+.kicker {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.body {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+```
+
+> Output examples show unminified HTML, CSS, JavaScript, and identifier names for readability.
 
 <!-- demo:output-html-hello -->
 
@@ -39,7 +74,7 @@ The simplest component is just markup. No CSS, no JavaScript required.
 <html lang="en">
   <head>
     <style>
-      .bascik__hello-card__hello-card {
+      .b_el_hello-card_article {
         width: min(100%, 32rem);
         padding: 24px;
         background: var(--elevated);
@@ -47,15 +82,34 @@ The simplest component is just markup. No CSS, no JavaScript required.
         border-top: 3px solid var(--accent);
         border-radius: 6px;
       }
+      .bascik__hello-card__kicker {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .b_el_hello-card_h3 {
+        margin: 0 0 8px;
+        color: var(--text);
+        font-size: 1.1rem;
+      }
+      .bascik__hello-card__body {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
     </style>
   </head>
   <body>
-    <article class="bascik__hello-card__hello-card">
-      <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
-      <h3 class="bascik__hello-card__hello-card-title">
-        Plain HTML, ready to reuse.
-      </h3>
-      <p class="bascik__hello-card__hello-card-body">
+    <article class="b_el_hello-card_article">
+      <p class="b_el_hello-card_p bascik__hello-card__kicker">
+        One file. One tag.
+      </p>
+      <h3 class="b_el_hello-card_h3">Plain HTML, ready to reuse.</h3>
+      <p class="b_el_hello-card_p bascik__hello-card__body">
         Bascik replaces the custom tag at build time and ships the finished
         markup.
       </p>
@@ -66,7 +120,7 @@ The simplest component is just markup. No CSS, no JavaScript required.
 
 Components can appear in other components too. If `site-layout.html` uses `<page-footer></page-footer>`, every page that uses `<site-layout>` gets the footer automatically.
 
-## HTML with CSS
+## HTML with Inline CSS
 
 Add a `<style>` block to style the component inline. Bascik scopes the CSS to the component at build time so selectors from one component never affect another.
 

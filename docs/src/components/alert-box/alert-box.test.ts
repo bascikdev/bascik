@@ -11,7 +11,7 @@ describe("alert-box component", () => {
   it("renders title and message props with aside element", async () => {
     const html = await readFile(componentPath, "utf8");
 
-    expect(html).toContain('<aside class="alert-box">');
+    expect(html).toContain("<aside>");
     expect(html).toContain("data-bascik-prop-title");
     expect(html).toContain("data-bascik-prop-message");
   });

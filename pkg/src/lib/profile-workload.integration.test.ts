@@ -1206,6 +1206,13 @@ describe("bounded real profiling runner", () => {
       } catch (error) {
         failure = error;
       }
+      if (failure && tool !== "heapprofiler") {
+        console.error(
+          `${tool} capture failed; diagnostics retained: ${root}`,
+          failure,
+        );
+        throw failure;
+      }
       const manifest = JSON.parse(
         await readFile(join(root, "manifest.json"), "utf8"),
       );

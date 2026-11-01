@@ -1,4 +1,4 @@
-.scope-lab {
+.lab {
   --signal-color: var(--accent);
   display: flex;
   flex-direction: column;
@@ -10,7 +10,7 @@
   border-radius: 6px;
 }
 
-.scope-lab-meter {
+.meter {
   display: block;
   height: 4px;
   background: var(--signal-color);
@@ -46,7 +46,7 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scope-lab-meter {
+  .meter {
     animation: none;
   }
 }

@@ -14,6 +14,8 @@ npx skills add bascikdev/bascik
 
 The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Choose skills interactively, or use a command from the table below to install one. To install all nine without prompts, run `npx skills add bascikdev/bascik --skill '*' -y`.
 
+To install a skill from the docs site instead, use `npx skills add https://bascik.dev --skill <skill-name>`. For example, install the opt-in `bascik-refactor` skill with `npx skills add https://bascik.dev --skill bascik-refactor`.
+
 ## The Skills
 
 | Skill                  | Use it for                                                                                                               | Install command                                                |
@@ -160,7 +162,7 @@ After setting up the files, `npm create bascik@rc` and `bascik init` ask:
 Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
 ```
 
-Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found.
+Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found.
 
 Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
 

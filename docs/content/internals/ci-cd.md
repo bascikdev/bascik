@@ -47,6 +47,8 @@ Integration tests spawn real processes, servers, browsers, and worker threads, s
 - **Agent Skills Integration Tests (`integration-skills`)**: `yarn skills:integration`, with Chromium installed for the `bascik-refactor` parity checks.
 - **Node 22.22 Floor (`node-floor`)**: Builds every workspace and runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor, to prove the packages still work there.
 
+If framework integration tests fail, both framework jobs upload retained profiling test directories as `profiling-diagnostics-node24` or `profiling-diagnostics-node22.22`, kept for seven days. These artifacts contain synthetic fixtures, capture logs, manifests, and profiler output for diagnosing capture failures. Unexpected profiler failures report the original subprocess error rather than a secondary assertion; the existing HeapProfiler invalid-allocation rejection remains strict. Successful profiling tests remove their temporary reports.
+
 ### Stage 4: End-to-End Test Matrix
 
 Runs after every Stage 3 job passes. The Playwright jobs install Chromium via `playwright install chromium`; the extension job downloads VS Code itself. The jobs execute:

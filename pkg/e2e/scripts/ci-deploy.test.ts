@@ -1074,6 +1074,44 @@ describe("CI stages and the deploy stage", () => {
       expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
   });
 
+  it.each([
+    ["integration-pkg", "node24"],
+    ["node-floor", "node22.22"],
+  ])(
+    "uploads retained profiling diagnostics only after %s integration tests fail",
+    (id, runtime) => {
+      const job = jobs.get(id)!;
+      const integration = job.steps.find((step) =>
+        /^ {8}run: yarn pkg:integration$/m.test(step.text),
+      )!;
+      expect(integration.text).toMatch(/^ {8}id: framework-integration$/m);
+      expect(integration.text).toMatch(
+        /^ {10}TMPDIR: \$\{\{ runner.temp \}\}$/m,
+      );
+      const upload = job.steps.find((step) =>
+        /uses: actions\/upload-artifact@v4/.test(step.text),
+      )!;
+      expect(job.steps.indexOf(upload)).toBe(
+        job.steps.indexOf(integration) + 1,
+      );
+      expect(upload.text).toContain(`name: profiling-diagnostics-${runtime}`);
+      expect(upload.text).toContain(
+        "path: ${{ runner.temp }}/bascik-profile-test-*",
+      );
+      expect(upload.text).toContain("if-no-files-found: ignore");
+      expect(upload.text).toContain("retention-days: 7");
+      expect(upload.if).toBe(
+        "${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}",
+      );
+      for (const outcome of ["success", "failure", "skipped", "cancelled"])
+        expect(
+          evaluate(upload.if!, {
+            "steps.framework-integration.outcome": outcome,
+          }),
+        ).toBe(outcome === "failure");
+    },
+  );
+
   it("misuse: runs every workspace's root e2e script in some CI job, so a suite cannot silently drop out of CI", () => {
     const scripts = Object.keys(
       JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8"))

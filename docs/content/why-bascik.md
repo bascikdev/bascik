@@ -22,21 +22,48 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
 <!-- demo:source-html -->
 
 ```html
-<style>
-  .hello-card {
-    padding: 24px;
-    background: #242628;
-    border: 1px solid #3a3d40;
-    border-top: 3px solid #d3ff8d;
-  }
-</style>
-<article class="hello-card">
-  <p class="hello-card-kicker">One file. One tag.</p>
-  <h3 class="hello-card-title">Plain HTML, ready to reuse.</h3>
-  <p class="hello-card-body">
+<article>
+  <p class="kicker">One file. One tag.</p>
+  <h3>Plain HTML, ready to reuse.</h3>
+  <p class="body">
     Bascik replaces the custom tag at build time and ships the finished markup.
   </p>
 </article>
+```
+
+<!-- demo:source-css -->
+
+```css
+article {
+  width: min(100%, 32rem);
+  padding: 24px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 6px;
+}
+
+.kicker {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.body {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
 ```
 
 <!-- demo:output-html -->
@@ -47,21 +74,42 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
 <html lang="en">
   <head>
     <style>
-      .bascik__hello-card__hello-card {
+      .b_el_hello-card_article {
+        width: min(100%, 32rem);
         padding: 24px;
-        background: #242628;
-        border: 1px solid #3a3d40;
-        border-top: 3px solid #d3ff8d;
+        background: var(--elevated);
+        border: 1px solid var(--border);
+        border-top: 3px solid var(--accent);
+        border-radius: 6px;
+      }
+      .bascik__hello-card__kicker {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .b_el_hello-card_h3 {
+        margin: 0 0 8px;
+        color: var(--text);
+        font-size: 1.1rem;
+      }
+      .bascik__hello-card__body {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.9rem;
       }
     </style>
   </head>
   <body>
-    <article class="bascik__hello-card__hello-card">
-      <p class="bascik__hello-card__hello-card-kicker">One file. One tag.</p>
-      <h3 class="bascik__hello-card__hello-card-title">
-        Plain HTML, ready to reuse.
-      </h3>
-      <p class="bascik__hello-card__hello-card-body">
+    <article class="b_el_hello-card_article">
+      <p class="b_el_hello-card_p bascik__hello-card__kicker">
+        One file. One tag.
+      </p>
+      <h3 class="b_el_hello-card_h3">Plain HTML, ready to reuse.</h3>
+      <p class="b_el_hello-card_p bascik__hello-card__body">
         Bascik replaces the custom tag at build time and ships the finished
         markup.
       </p>

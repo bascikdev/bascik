@@ -1,4 +1,4 @@
-.simple-slot-card {
+section {
   width: min(100%, 24rem);
   min-height: 9rem;
   padding: 20px;
@@ -7,7 +7,7 @@
   border-radius: 6px;
 }
 
-.simple-slot-label {
+.label {
   margin: 0 0 12px;
   color: var(--accent);
   font-family: var(--font-mono);
@@ -16,11 +16,11 @@
   text-transform: uppercase;
 }
 
-.simple-slot-card > :last-child {
+section > :last-child {
   margin-bottom: 0;
   color: var(--text);
 }
 
-.simple-slot-fallback {
+.fallback {
   color: var(--text-muted);
 }

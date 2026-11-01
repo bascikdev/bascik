@@ -1,4 +1,4 @@
-.state-toggle {
+section {
   width: min(100%, 30rem);
   padding: 20px;
   background: var(--elevated);
@@ -6,19 +6,19 @@
   border-radius: 6px;
 }
 
-.state-toggle-row {
+.row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.state-toggle-row p {
+.row p {
   margin: 0;
   color: var(--text-muted);
 }
 
-.state-toggle-row button {
+.row button {
   padding: 8px 12px;
   color: var(--bg);
   font: inherit;
@@ -29,7 +29,7 @@
   cursor: pointer;
 }
 
-.state-toggle-panel {
+.panel {
   margin-top: 16px;
   padding: 16px;
   color: #a0a6b4;
@@ -44,7 +44,7 @@
     border-color 160ms;
 }
 
-.state-toggle-panel.is-open {
+.panel.is-open {
   color: var(--text);
   border-color: var(--accent);
   opacity: 1;

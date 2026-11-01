@@ -928,9 +928,9 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
   export default function (request) {
     const name = request.headers.get("x-display-name") ?? "Guest";
     return html`
-      <aside class="alert-box">
-        <strong class="alert-box-title">Session Active</strong>
-        <p class="alert-box-message">Logged in as ${name}</p>
+      <aside>
+        <strong>Session Active</strong>
+        <p>Logged in as ${name}</p>
       </aside>
     `;
   }
@@ -941,8 +941,8 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 
 ```html
 <!-- The script tag is replaced by its returned markup per request -->
-<aside class="alert-box">
-  <strong class="alert-box-title">Session Active</strong>
-  <p class="alert-box-message">Logged in as Jane Doe</p>
+<aside>
+  <strong>Session Active</strong>
+  <p>Logged in as Jane Doe</p>
 </aside>
 ```

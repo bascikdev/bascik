@@ -1,4 +1,4 @@
-.hello-card {
+article {
   width: min(100%, 32rem);
   padding: 24px;
   background: var(--elevated);
@@ -7,7 +7,7 @@
   border-radius: 6px;
 }
 
-.hello-card-kicker {
+.kicker {
   margin: 0 0 10px;
   color: var(--accent);
   font-family: var(--font-mono);
@@ -17,13 +17,13 @@
   text-transform: uppercase;
 }
 
-.hello-card-title {
+h3 {
   margin: 0 0 8px;
   color: var(--text);
   font-size: 1.1rem;
 }
 
-.hello-card-body {
+.body {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.9rem;
