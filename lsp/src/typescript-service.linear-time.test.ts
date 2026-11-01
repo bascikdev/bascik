@@ -18,6 +18,11 @@ import { createFixture, typescript6 as ts } from "./typescript.test.util.js";
 const fixture = createFixture({ "bascik.config.ts": "export default {};\n" });
 afterAll(() => fixture.remove());
 
+// Repeated script tags at 2,000/8,000 cross V8's large-object allocation boundary.
+// At 8,000/32,000 both strings use the same regime, without relaxing the 8x growth limit.
+const SMALL_SCAN_SIZE = 8_000;
+const LARGE_SCAN_SIZE = 4 * SMALL_SCAN_SIZE;
+
 /** A page of `count` client blocks, each with a little typed code. */
 const pageOf = (count: number, edited: string) =>
   Array.from(
@@ -99,7 +104,9 @@ describe("TypeScript block diagnostics: linear time", () => {
         const text = html(n);
         return () => extractTypeScriptBlocks(text);
       };
-      expect(growthOf(runOf(2_000), runOf(8_000))).toBeLessThan(8);
+      expect(
+        growthOf(runOf(SMALL_SCAN_SIZE), runOf(LARGE_SCAN_SIZE)),
+      ).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
@@ -111,7 +118,9 @@ describe("TypeScript block diagnostics: linear time", () => {
         const text = html(n).replaceAll("text/typescript", "text/javascript");
         return () => extractPageScopeScripts(text);
       };
-      expect(growthOf(runOf(2_000), runOf(8_000))).toBeLessThan(8);
+      expect(
+        growthOf(runOf(SMALL_SCAN_SIZE), runOf(LARGE_SCAN_SIZE)),
+      ).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
