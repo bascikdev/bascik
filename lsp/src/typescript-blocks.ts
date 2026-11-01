@@ -308,6 +308,11 @@ export interface VirtualBlockText {
     sourceStart: number;
     sourceEnd: number;
   };
+  /**
+   * Names a block declares that another classic script on the page declares too, and so may have assigned: a
+   * `var shared: number;` that types a plain script's `var shared = 1` is not "used before being assigned".
+   */
+  assignedElsewhere?: string[];
 }
 
 /**
@@ -425,6 +430,36 @@ export function virtualBlockText(
 /** What goes between two blocks of a shared scope: a new statement, as a new `<script>` element starts one. */
 const SHARED_SCOPE_SEPARATOR = "\n;\n";
 
+/**
+ * The global type alias, declared once per client program, for the real `typeof globalThis`: a page that redeclares
+ * `globalThis` (see `GlobalObjects`) can no longer name it itself.
+ */
+export const GLOBAL_THIS_TYPE = "__BascikGlobalThis";
+
+/** The page-local type alias that lists a page's classic globals as properties of its global objects. */
+export const PAGE_GLOBALS_TYPE = "__bascikPageGlobals";
+
+/** The global objects whose properties a classic script's top-level `var` and `function` names become. */
+export type GlobalObjectName = "window" | "self" | "globalThis";
+
+/** The library type of each global object, before a page's classic globals are added to it. */
+const GLOBAL_OBJECT_TYPES: Record<GlobalObjectName, string> = {
+  window: `Window & ${GLOBAL_THIS_TYPE}`,
+  self: `Window & ${GLOBAL_THIS_TYPE}`,
+  globalThis: GLOBAL_THIS_TYPE,
+};
+
+/**
+ * A classic script's top-level `var` and `function` names are properties of `window` (and `self`, `globalThis`),
+ * which the shared text, checked as a module, does not see: its footer redeclares those objects, for that page only,
+ * with the names added. A name a typed block declares gets its declared type; any other page-scope script's, `any`.
+ */
+export interface GlobalObjects {
+  members: { name: string; typed: boolean }[];
+  /** The objects to redeclare: not one the page declares itself. */
+  objects: GlobalObjectName[];
+}
+
 /** What `sharedScriptText` adds to the blocks it joins. */
 export interface SharedScriptOptions {
   /** Insertions per block, keyed by the block's `index`. */
@@ -434,6 +469,10 @@ export interface SharedScriptOptions {
    * scope, blocks left out for a syntax error), declared `any` in the footer so a block can use them.
    */
   ambientNames?: string[];
+  /** The page's classic globals as properties of its global objects. */
+  globalObjects?: GlobalObjects;
+  /** See `VirtualBlockText.assignedElsewhere`. */
+  assignedElsewhere?: string[];
 }
 
 /**
@@ -459,8 +498,20 @@ export function sharedScriptText(
   const ambient = options.ambientNames ?? [];
   if (ambient.length > 0)
     text += `\ndeclare var ${ambient.map((name) => `${name}: any`).join(", ")};`;
+  const globals = options.globalObjects;
+  if (globals && globals.members.length > 0 && globals.objects.length > 0) {
+    const members = globals.members
+      .map(({ name, typed }) => `${name}: ${typed ? `typeof ${name}` : "any"}`)
+      .join("; ");
+    text += `\ntype ${PAGE_GLOBALS_TYPE} = { ${members} };`;
+    for (const object of globals.objects)
+      text += `\ndeclare var ${object}: ${GLOBAL_OBJECT_TYPES[object]} & ${PAGE_GLOBALS_TYPE};`;
+  }
   text += blockFooter(undefined);
-  return { text, segments, footerStart };
+  const assignedElsewhere = options.assignedElsewhere ?? [];
+  return assignedElsewhere.length > 0
+    ? { text, segments, footerStart, assignedElsewhere }
+    : { text, segments, footerStart };
 }
 
 /**

@@ -5,8 +5,9 @@
  * Each block becomes a virtual `.ts` file next to its HTML file (`page.html.bascik-0.ts`), so a relative import
  * resolves from the page's folder and `@/` resolves against `scripts.importRoot` through `paths`. Client blocks and
  * server-side blocks are checked by two LanguageServices with different libraries: the browser's (DOM, no Node
- * types) and Node's (Node types when `@types/node` is installed, no DOM). The project's `tsconfig.json`, when it
- * has one, is the base; Bascik's settings go on top.
+ * types) and Node's (Node types when `@types/node` is installed, no DOM). A page whose client blocks add to the
+ * browser's globals gets a client LanguageService of its own, since no two pages run together (see `serviceKey`).
+ * The project's `tsconfig.json`, when it has one, is the base; Bascik's settings go on top.
  *
  * Edits are incremental: an HTML edit replaces only the virtual files of blocks whose text changed, and an edit in
  * an imported file (an unsaved editor buffer, or a change on disk) bumps that file's version.
@@ -22,6 +23,9 @@ import {
   extractPageScopeScripts,
   extractTypeScriptBlocks,
   type FooterCheck,
+  GLOBAL_THIS_TYPE,
+  type GlobalObjectName,
+  type GlobalObjects,
   SCRIPT_TYPE_CHECK,
   type Insertion,
   type TypeScriptBlock,
@@ -94,6 +98,8 @@ interface VirtualFile extends VirtualBlockText {
   fileName: string;
   htmlPath: string;
   program: TypeScriptProgramKind;
+  /** The LanguageService that checks it: `client`, `server`, or a page's own (see `TypeScriptProject.serviceKey`). */
+  service: string;
   /** A page's client blocks joined into one classic script. */
   sharedScope: boolean;
   version: number;
@@ -104,6 +110,8 @@ interface Page {
   isolatedClientBlocks: boolean;
   pageScopeHtml: string[];
   fileNames: string[];
+  /** The service that checks the page's client blocks (see `TypeScriptProject.serviceKey`). */
+  clientService: string;
   /** Syntax errors of client blocks left out of the shared scope, located in the HTML. */
   blockErrors: TypeScriptDiagnostic[];
   /**
@@ -363,8 +371,14 @@ function defaultExportPlan(
 interface ClassicScriptInfo {
   /** Top-level value names: the globals a classic script adds for the scripts after it. */
   names: string[];
-  /** Top-level interfaces with no modifiers, by name and offsets in the script. */
-  interfaces: { name: string; start: number; end: number }[];
+  /** The top-level `var` and `function` names (declared ones too): those that are properties of `window`. */
+  windowNames: string[];
+  /** The script's own `declare global { }` blocks, which add to the browser's globals, as written. */
+  globalAugmentations: string[];
+  /** Top-level type names other than interfaces (type aliases, namespaces) and the names its imports bind. */
+  localNames: string[];
+  /** Top-level interfaces with no modifiers, by name, offsets in the script and text. */
+  interfaces: { name: string; start: number; end: number; text: string }[];
   /** Syntax errors, in offsets of the script, clamped to its length. */
   syntaxErrors: Omit<TypeScriptDiagnostic, "category">[];
 }
@@ -406,6 +420,9 @@ export function readClassicScript(
     typed ? ts.ScriptKind.TS : ts.ScriptKind.JS,
   );
   const names: string[] = [];
+  const windowNames: string[] = [];
+  const globalAugmentations: string[] = [];
+  const localNames: string[] = [];
   const interfaces: ClassicScriptInfo["interfaces"] = [];
   for (const statement of source.statements) {
     if (statement.pos >= content.length) break;
@@ -416,9 +433,38 @@ export function readClassicScript(
       statement.name
     ) {
       names.push(statement.name.text);
+      if (ts.isFunctionDeclaration(statement))
+        windowNames.push(statement.name.text);
     } else if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations)
+      // `let`, `const` and `using` are globals of the page's scope, but not properties of `window`.
+      const isVar =
+        (statement.declarationList.flags & ts.NodeFlags.BlockScoped) === 0;
+      for (const declaration of statement.declarationList.declarations) {
         bindingNames(ts, declaration.name, names);
+        if (isVar) bindingNames(ts, declaration.name, windowNames);
+      }
+    } else if (
+      ts.isModuleDeclaration(statement) &&
+      (statement.flags & ts.NodeFlags.GlobalAugmentation) !== 0
+    ) {
+      globalAugmentations.push(statement.getText(source));
+    } else if (
+      (ts.isTypeAliasDeclaration(statement) ||
+        ts.isModuleDeclaration(statement)) &&
+      ts.isIdentifier(statement.name)
+    ) {
+      localNames.push(statement.name.text);
+    } else if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      if (clause?.name) localNames.push(clause.name.text);
+      const bindings = clause?.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings))
+        localNames.push(bindings.name.text);
+      else if (bindings)
+        for (const element of bindings.elements)
+          localNames.push(element.name.text);
+    } else if (ts.isImportEqualsDeclaration(statement)) {
+      localNames.push(statement.name.text);
     } else if (
       ts.isInterfaceDeclaration(statement) &&
       (statement.modifiers?.length ?? 0) === 0
@@ -427,6 +473,7 @@ export function readClassicScript(
         name: statement.name.text,
         start: statement.getStart(source),
         end: statement.end,
+        text: statement.getText(source),
       });
     }
   }
@@ -465,50 +512,88 @@ export function readClassicScript(
       };
     });
   }
-  return { names: [...new Set(names)], interfaces, syntaxErrors };
+  return {
+    names: [...new Set(names)],
+    windowNames: [...new Set(windowNames)],
+    globalAugmentations,
+    localNames,
+    interfaces,
+    syntaxErrors,
+  };
 }
 
-/** Global interface names per library file, read once per process (the files never change while it runs). */
-const libraryInterfaces = new Map<string, Set<string>>();
+/** The globals a library declares: its interfaces (such as `Window`) and its values (such as `name`, `close`). */
+interface LibraryGlobals {
+  interfaces: Set<string>;
+  values: Set<string>;
+}
+
+/** Global names per library file, read once per process (the files never change while it runs). */
+const libraryGlobals = new Map<string, LibraryGlobals>();
 
 /**
- * The interfaces a library file declares globally, following its `/// <reference lib>` lines. The library files
- * are generated with every global interface at the start of a line, so a scan of the text finds them without
- * parsing a multi-megabyte file.
+ * The interfaces and values a library file declares globally, following its `/// <reference lib>` lines. The
+ * library files are generated with every global declaration at the start of a line, so a scan of the text finds
+ * them without parsing a multi-megabyte file.
  */
-function globalInterfacesOf(
+function globalsOf(
   ts: TypeScriptModule,
   libDir: string,
   libName: string,
-  into: Set<string>,
+  into: LibraryGlobals,
   seen: Set<string>,
 ): void {
   const file = path.join(libDir, libName);
   if (seen.has(file)) return;
   seen.add(file);
-  let names = libraryInterfaces.get(file);
+  let globals = libraryGlobals.get(file);
   const references: string[] = [];
   const text = ts.sys.readFile(file) ?? "";
   for (const match of text.matchAll(
     /^\/\/\/\s*<reference\s+lib=["']([^"']+)["']/gm,
   ))
     references.push(`lib.${match[1].toLowerCase()}.d.ts`);
-  if (!names) {
-    names = new Set(
-      [
-        ...text.matchAll(/^(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)/gm),
-      ].map((match) => match[1]),
-    );
-    libraryInterfaces.set(file, names);
+  if (!globals) {
+    const names = (re: RegExp) =>
+      new Set([...text.matchAll(re)].map((match) => match[1]));
+    globals = {
+      interfaces: names(/^(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)/gm),
+      values: names(
+        /^declare\s+(?:var|let|const|function)\s+([A-Za-z_$][\w$]*)/gm,
+      ),
+    };
+    libraryGlobals.set(file, globals);
   }
-  for (const name of names) into.add(name);
+  for (const name of globals.interfaces) into.interfaces.add(name);
+  for (const name of globals.values) into.values.add(name);
   for (const reference of references)
-    globalInterfacesOf(ts, libDir, reference, into, seen);
+    globalsOf(ts, libDir, reference, into, seen);
+}
+
+/** The global objects a page's classic globals are properties of. */
+const GLOBAL_OBJECTS: GlobalObjectName[] = ["window", "self", "globalThis"];
+
+/** What a page's client blocks add to the browser's globals (see `TypeScriptProject.serviceKey`). */
+interface Augmentations {
+  /** Each addition as written: a `declare global { }`, or an interface Bascik wraps in one. */
+  texts: string[];
+  /** The names the blocks declare at their top level, which an addition may refer to. */
+  localNames: Set<string>;
+}
+
+/** The names a page's classic scripts declare, and how its shared text declares them (see `pageGlobals`). */
+interface PageGlobals {
+  ambientNames: string[];
+  globalObjects: GlobalObjects;
+  assignedElsewhere: string[];
 }
 
 /** Whether a file is part of an installed package (or TypeScript's own libraries), never the project's own. */
 const isPackageFile = (fileName: string): boolean =>
   /[\\/]node_modules[\\/]/.test(fileName);
+
+/** "Variable 'x' is used before being assigned." */
+const USED_BEFORE_ASSIGNED = 2454;
 
 /** Diagnostics TypeScript gives for a name declared and never used (`noUnusedLocals` and the like). */
 const UNUSED_CODES = new Set([6133, 6196, 6198, 6199]);
@@ -645,7 +730,11 @@ export class TypeScriptProject {
   private readonly pages = new Map<string, Page>();
   /** Versions of real files reported changed (an editor buffer or a file on disk). */
   private readonly fileVersions = new Map<string, number>();
-  private readonly services: Record<TypeScriptProgramKind, TS.LanguageService>;
+  /** `client` and `server`, and a page's own client service once it augments the globals (see `serviceKey`). */
+  private readonly services = new Map<string, TS.LanguageService>();
+  private readonly registry: TS.DocumentRegistry;
+  private readonly cancellationToken: TS.CancellationToken;
+  private readonly clientOptions: TS.CompilerOptions;
   private projectVersion = 0;
   private nextFileVersion = 1;
   /** How many times a program was brought up to date with a changed project (see `programUpdates`). */
@@ -676,8 +765,10 @@ export class TypeScriptProject {
    * file whose version did not change keeps its old resolutions.
    */
   private resolutionGeneration = 0;
-  /** The interfaces the client program's libraries declare globally, such as `Window`; read on first need. */
-  private clientGlobalInterfaces: Set<string> | undefined;
+  /** The globals the client program's libraries declare, such as `Window` and `close`; read on first need. */
+  private clientGlobals: LibraryGlobals | undefined;
+  /** The client programs' declaration of `GLOBAL_THIS_TYPE`. */
+  private readonly clientDeclarations: { fileName: string; text: string };
 
   constructor(options: TypeScriptProjectOptions) {
     // TypeScript keys files by absolute path; a relative root would make every relative import miss.
@@ -685,13 +776,13 @@ export class TypeScriptProject {
     this.importRoot = path.resolve(this.projectRoot, options.importRoot);
     this.ts = options.ts;
     this.readOpenFile = options.readOpenFile ?? (() => undefined);
-    const registry =
+    this.registry =
       options.registry ??
       this.ts.createDocumentRegistry(
         this.ts.sys.useCaseSensitiveFileNames,
         this.projectRoot,
       );
-    const cancellationToken: TS.CancellationToken = {
+    this.cancellationToken = {
       isCancellationRequested: options.isCancellationRequested ?? (() => false),
       throwIfCancellationRequested: () => {
         if (options.isCancellationRequested?.())
@@ -705,24 +796,85 @@ export class TypeScriptProject {
           fileName: path.join(this.projectRoot, "__bascik-node-globals.d.ts"),
           text: untypedNodeDeclarations(),
         };
-    const createService = (program: TypeScriptProgramKind) => {
-      const compilerOptions = compilerOptionsFor(
-        this.ts,
-        this.projectRoot,
-        this.importRoot,
-        program,
-        nodeTypes,
-      );
-      this.programOptions.push(compilerOptions);
-      return this.ts.createLanguageService(
-        this.host(program, compilerOptions, cancellationToken),
-        registry,
-      );
+    this.clientDeclarations = {
+      fileName: path.join(this.projectRoot, "__bascik-client-globals.d.ts"),
+      text: `// The real globalThis, for pages that redeclare it with their classic globals.\ntype ${GLOBAL_THIS_TYPE} = typeof globalThis;\n`,
     };
-    this.services = {
-      client: createService("client"),
-      server: createService("server"),
-    };
+    this.clientOptions = compilerOptionsFor(
+      this.ts,
+      this.projectRoot,
+      this.importRoot,
+      "client",
+      nodeTypes,
+    );
+    const serverOptions = compilerOptionsFor(
+      this.ts,
+      this.projectRoot,
+      this.importRoot,
+      "server",
+      nodeTypes,
+    );
+    this.programOptions.push(this.clientOptions, serverOptions);
+    this.services.set("client", this.createService("client", "client"));
+    this.services.set(
+      "server",
+      this.ts.createLanguageService(
+        this.host("server", "server", serverOptions),
+        this.registry,
+      ),
+    );
+  }
+
+  /**
+   * The service a virtual file is checked by. A page whose client blocks add to the browser's globals (a
+   * `declare global`, or an interface such as `Window` that Bascik wraps in one) is kept out of the shared client
+   * service, where its additions would reach every other page although no two pages run together. Pages whose
+   * additions are written the same and refer to none of their own names (the same analytics snippet on every page)
+   * mean the same thing, and share a service; any other such page gets one of its own.
+   */
+  private serviceKey(
+    program: TypeScriptProgramKind,
+    htmlPath: string,
+    augmentations: Augmentations | undefined,
+  ): string {
+    if (program === "server") return "server";
+    if (!augmentations || augmentations.texts.length === 0) return "client";
+    const refersToPage = augmentations.texts.some((text) =>
+      (text.match(/[A-Za-z_$][\w$]*/g) ?? []).some((word) =>
+        augmentations.localNames.has(word),
+      ),
+    );
+    return refersToPage
+      ? `page:${htmlPath}`
+      : `globals:${augmentations.texts.join("\n")}`;
+  }
+
+  private createService(
+    program: TypeScriptProgramKind,
+    key: string,
+  ): TS.LanguageService {
+    return this.ts.createLanguageService(
+      this.host(program, key, this.clientOptions),
+      this.registry,
+    );
+  }
+
+  private serviceFor(key: string): TS.LanguageService {
+    let service = this.services.get(key);
+    if (!service) {
+      service = this.createService("client", key);
+      this.services.set(key, service);
+    }
+    return service;
+  }
+
+  /** Drops a client service of pages that augment the globals, once no page uses it. */
+  private dropService(key: string | undefined): void {
+    if (key === undefined || key === "client" || key === "server") return;
+    for (const page of this.pages.values())
+      if (page.clientService === key) return;
+    this.services.get(key)?.dispose();
+    this.services.delete(key);
   }
 
   /**
@@ -742,9 +894,10 @@ export class TypeScriptProject {
 
   private host(
     program: TypeScriptProgramKind,
+    key: string,
     options: TS.CompilerOptions,
-    cancellationToken: TS.CancellationToken,
   ): TS.LanguageServiceHost {
+    const cancellationToken = this.cancellationToken;
     const ts = this.ts;
     // TypeScript's own library files, wherever the copy sits (a client path need not be under node_modules).
     const libDir = path.dirname(ts.getDefaultLibFilePath(options)) + path.sep;
@@ -755,10 +908,11 @@ export class TypeScriptProject {
         // TypeScript asks only when the project version changed, before it builds the program again.
         this.updates++;
         const names = [...this.files.values()]
-          .filter((file) => file.program === program)
+          .filter((file) => file.service === key)
           .map((file) => file.fileName);
         if (program === "server" && this.nodeDeclarations)
           names.push(this.nodeDeclarations.fileName);
+        if (program === "client") names.push(this.clientDeclarations.fileName);
         return names;
       },
       getScriptVersion: (fileName) => {
@@ -783,6 +937,7 @@ export class TypeScriptProject {
         const exists =
           this.files.has(fileName) ||
           fileName === this.nodeDeclarations?.fileName ||
+          fileName === this.clientDeclarations.fileName ||
           this.readOpenFile(fileName) !== undefined ||
           ts.sys.fileExists(fileName);
         this.recordLookup(fileName, exists);
@@ -814,6 +969,8 @@ export class TypeScriptProject {
     if (virtual) return virtual.text;
     if (fileName === this.nodeDeclarations?.fileName)
       return this.nodeDeclarations.text;
+    if (fileName === this.clientDeclarations.fileName)
+      return this.clientDeclarations.text;
     return this.readOpenFile(fileName) ?? this.ts.sys.readFile(fileName);
   }
 
@@ -830,17 +987,82 @@ export class TypeScriptProject {
     return info;
   }
 
-  private globalInterfaces(): Set<string> {
-    if (!this.clientGlobalInterfaces) {
-      const options = this.programOptions[0];
+  private libraryGlobals(): LibraryGlobals {
+    if (!this.clientGlobals) {
+      const options = this.clientOptions;
       const libDir = path.dirname(this.ts.getDefaultLibFilePath(options));
-      const names = new Set<string>();
+      const globals: LibraryGlobals = {
+        interfaces: new Set(),
+        values: new Set(),
+      };
       const seen = new Set<string>();
       for (const lib of options.lib ?? [])
-        globalInterfacesOf(this.ts, libDir, lib, names, seen);
-      this.clientGlobalInterfaces = names;
+        globalsOf(this.ts, libDir, lib, globals, seen);
+      this.clientGlobals = globals;
     }
-    return this.clientGlobalInterfaces;
+    return this.clientGlobals;
+  }
+
+  /**
+   * How a page's shared text declares the names of the page's classic scripts. `typed` are the infos of the typed
+   * blocks it joins, `untyped` those of every other classic script in the page's scope (plain scripts, components'
+   * scripts, blocks left out for a syntax error).
+   */
+  private pageGlobals(
+    typed: ClassicScriptInfo[],
+    untyped: ClassicScriptInfo[],
+  ): PageGlobals {
+    const declared = new Set(typed.flatMap((info) => info.names));
+    const ambient = new Set<string>();
+    const assignedElsewhere = new Set<string>();
+    for (const info of untyped)
+      for (const name of info.names)
+        (declared.has(name) ? assignedElsewhere : ambient).add(name);
+    const members = new Map<string, boolean>();
+    for (const [infos, isTyped] of [
+      [typed, true],
+      [untyped, false],
+    ] as const)
+      for (const info of infos)
+        for (const name of info.windowNames)
+          if (!members.has(name)) members.set(name, isTyped);
+    // A name the DOM already declares (`name`, `close`, `length`) keeps the DOM's type on `window`. The library
+    // is scanned only for a page that has such names at all.
+    if (members.size > 0) {
+      const libraryValues = this.libraryGlobals().values;
+      for (const name of members.keys())
+        if (libraryValues.has(name)) members.delete(name);
+    }
+    const objects = GLOBAL_OBJECTS.filter(
+      (object) => !declared.has(object) && !ambient.has(object),
+    );
+    for (const object of GLOBAL_OBJECTS) members.delete(object);
+    return {
+      // A name a block declares itself is the block's: declaring it again would be reported as a redeclaration.
+      ambientNames: [...ambient],
+      globalObjects: {
+        members: [...members].map(([name, isTyped]) => ({
+          name,
+          typed: isTyped,
+        })),
+        objects,
+      },
+      assignedElsewhere: [...assignedElsewhere],
+    };
+  }
+
+  /** Adds what a client script adds to the browser's globals, and the names it declares, to `into`. */
+  private collectAugmentations(
+    info: ClassicScriptInfo,
+    into: Augmentations,
+  ): void {
+    const globals = this.libraryGlobals().interfaces;
+    for (const declaration of info.interfaces)
+      if (globals.has(declaration.name)) into.texts.push(declaration.text);
+      else into.localNames.add(declaration.name);
+    into.texts.push(...info.globalAugmentations);
+    for (const name of [...info.names, ...info.localNames])
+      into.localNames.add(name);
   }
 
   /**
@@ -849,9 +1071,12 @@ export class TypeScriptProject {
    */
   private globalInterfaceWraps(info: ClassicScriptInfo): Insertion[] {
     const insertions: Insertion[] = [];
-    const globals = info.interfaces.length > 0 ? this.globalInterfaces() : [];
+    const globals =
+      info.interfaces.length > 0
+        ? this.libraryGlobals().interfaces
+        : new Set<string>();
     for (const declaration of info.interfaces) {
-      if (!(globals as Set<string>).has(declaration.name)) continue;
+      if (!globals.has(declaration.name)) continue;
       insertions.push(
         { at: declaration.start, text: "declare global { " },
         { at: declaration.end, text: " }" },
@@ -892,8 +1117,14 @@ export class TypeScriptProject {
       virtual: VirtualBlockText;
     }[] = [];
     const blockErrors: TypeScriptDiagnostic[] = [];
+    const augmentations: Augmentations = { texts: [], localNames: new Set() };
     if (!isolatedClientBlocks) {
-      const shared = this.sharedClientText(text, blocks, pageScopeHtml);
+      const shared = this.sharedClientText(
+        text,
+        blocks,
+        pageScopeHtml,
+        augmentations,
+      );
       blockErrors.push(...shared.blockErrors);
       if (shared.virtual)
         units.push({
@@ -905,6 +1136,11 @@ export class TypeScriptProject {
     }
     for (const block of blocks) {
       if (block.program === "client" && !isolatedClientBlocks) continue;
+      if (block.program === "client")
+        this.collectAugmentations(
+          this.classicScript(block.content, true),
+          augmentations,
+        );
       units.push({
         fileName: `${htmlPath}.bascik-${block.index}.ts`,
         program: block.program,
@@ -912,18 +1148,25 @@ export class TypeScriptProject {
         virtual: this.virtualFile(block),
       });
     }
+    const clientService = this.serviceKey("client", htmlPath, augmentations);
     let changed = false;
     for (const { fileName, program, sharedScope, virtual } of units) {
       const existing = this.files.get(fileName);
+      const service =
+        program === "client"
+          ? clientService
+          : this.serviceKey(program, htmlPath, undefined);
       if (
         existing &&
         existing.text === virtual.text &&
-        existing.program === program
+        existing.program === program &&
+        existing.service === service
       ) {
         // Same text; only the offsets moved (an edit above the block).
         existing.segments = virtual.segments;
         existing.footerStart = virtual.footerStart;
         existing.footerCheck = virtual.footerCheck;
+        existing.assignedElsewhere = virtual.assignedElsewhere;
         continue;
       }
       changed = true;
@@ -932,6 +1175,7 @@ export class TypeScriptProject {
         fileName,
         htmlPath,
         program,
+        service,
         sharedScope,
         version: this.nextFileVersion++,
       });
@@ -953,8 +1197,11 @@ export class TypeScriptProject {
       isolatedClientBlocks,
       pageScopeHtml,
       fileNames,
+      clientService,
       blockErrors,
     });
+    if (previous && previous.clientService !== clientService)
+      this.dropService(previous.clientService);
     if (changed) this.projectVersion++;
   }
 
@@ -968,14 +1215,15 @@ export class TypeScriptProject {
     text: string,
     blocks: TypeScriptBlock[],
     pageScopeHtml: string[],
+    augmentations: Augmentations,
   ): { virtual?: VirtualBlockText; blockErrors: TypeScriptDiagnostic[] } {
     const blockErrors: TypeScriptDiagnostic[] = [];
     const client = blocks.filter((block) => block.program === "client");
     if (client.length === 0) return { blockErrors };
     const valid: TypeScriptBlock[] = [];
     const insertions = new Map<number, Insertion[]>();
-    const declared = new Set<string>();
-    const ambient = new Set<string>();
+    const typed: ClassicScriptInfo[] = [];
+    const untyped: ClassicScriptInfo[] = [];
     for (const block of client) {
       const info = this.classicScript(block.content, true);
       if (info.syntaxErrors.length > 0) {
@@ -986,28 +1234,38 @@ export class TypeScriptProject {
             end: block.contentStart + error.end,
             category: "error",
           });
-        for (const name of info.names) ambient.add(name);
+        untyped.push(info);
         continue;
       }
       valid.push(block);
-      for (const name of info.names) declared.add(name);
+      typed.push(info);
       const wraps = this.globalInterfaceWraps(info);
       if (wraps.length > 0) insertions.set(block.index, wraps);
+      this.collectAugmentations(info, augmentations);
     }
     if (valid.length === 0) return { blockErrors };
-    const others = [
-      ...extractPageScopeScripts(text).filter((script) => !script.typed),
-      ...pageScopeHtml.flatMap((html) => extractPageScopeScripts(html)),
-    ];
-    for (const script of others)
-      for (const name of this.classicScript(script.content, script.typed).names)
-        ambient.add(name);
-    // A name a block declares itself is the block's: declaring it again would be reported as a redeclaration.
-    const ambientNames = [...ambient].filter((name) => !declared.has(name));
+    untyped.push(...this.otherPageScopeScripts(text, pageScopeHtml));
+    // An addition that names a plain script's global refers to this page too.
+    for (const info of untyped)
+      for (const name of info.names) augmentations.localNames.add(name);
     return {
-      virtual: sharedScriptText(valid, { insertions, ambientNames }),
+      virtual: sharedScriptText(valid, {
+        insertions,
+        ...this.pageGlobals(typed, untyped),
+      }),
       blockErrors,
     };
+  }
+
+  /** The page's plain classic scripts, and the scripts of components that run in its scope. */
+  private otherPageScopeScripts(
+    text: string,
+    pageScopeHtml: string[],
+  ): ClassicScriptInfo[] {
+    return [
+      ...extractPageScopeScripts(text).filter((script) => !script.typed),
+      ...pageScopeHtml.flatMap((html) => extractPageScopeScripts(html)),
+    ].map((script) => this.classicScript(script.content, script.typed));
   }
 
   private virtualFile(block: TypeScriptBlock): VirtualBlockText {
@@ -1043,6 +1301,7 @@ export class TypeScriptProject {
     for (const fileName of page.fileNames) this.files.delete(fileName);
     if (page.editingFileName) this.files.delete(page.editingFileName);
     this.pages.delete(htmlPath);
+    this.dropService(page.clientService);
     this.projectVersion++;
   }
 
@@ -1053,6 +1312,11 @@ export class TypeScriptProject {
    */
   get programUpdates(): number {
     return this.updates;
+  }
+
+  /** How many LanguageServices the project holds: client, server, and those of pages that augment the globals. */
+  get serviceCount(): number {
+    return this.services.size;
   }
 
   /** A file the blocks may import changed, appeared or disappeared, in an editor buffer or on disk. */
@@ -1089,9 +1353,23 @@ export class TypeScriptProject {
     const result: TypeScriptDiagnostic[] = [...(page?.blockErrors ?? [])];
     for (const fileName of page?.fileNames ?? []) {
       const file = this.files.get(fileName)!;
-      const service = this.services[file.program];
+      const service = this.serviceFor(file.service);
       const syntactic = service.getSyntacticDiagnostics(fileName);
       let semantic = service.getSemanticDiagnostics(fileName);
+      // A var another classic script declares may have been assigned there, before this block runs.
+      const assignedElsewhere = new Set(file.assignedElsewhere);
+      if (assignedElsewhere.size > 0)
+        semantic = semantic.filter(
+          (diagnostic) =>
+            diagnostic.code !== USED_BEFORE_ASSIGNED ||
+            diagnostic.start === undefined ||
+            !assignedElsewhere.has(
+              file.text.slice(
+                diagnostic.start,
+                diagnostic.start + (diagnostic.length ?? 0),
+              ),
+            ),
+        );
       if (file.sharedScope && semantic.some((d) => UNUSED_CODES.has(d.code))) {
         const source = service.getProgram()?.getSourceFile(fileName);
         if (source) {
@@ -1201,12 +1479,14 @@ export class TypeScriptProject {
     const at = this.virtualOffset(htmlPath, text, query.offset);
     if (!at) return undefined;
     const { file, generated } = at;
-    const service = this.services[file.program];
+    const service = this.serviceFor(file.service);
     const libDir = path.dirname(
-      this.ts.getDefaultLibFilePath(this.programOptions[0]),
+      this.ts.getDefaultLibFilePath(this.clientOptions),
     );
     const isVirtual = (fileName: string) =>
-      this.files.has(fileName) || fileName === this.nodeDeclarations?.fileName;
+      this.files.has(fileName) ||
+      fileName === this.nodeDeclarations?.fileName ||
+      fileName === this.clientDeclarations.fileName;
     // A block VS Code's HTML support does not embed gets nothing from its modes: every answer is Bascik's. One it
     // embeds as JavaScript (an uppercase `TYPE`) gets the page-local answers from its JavaScript mode.
     const editorLanguage =
@@ -1288,22 +1568,17 @@ export class TypeScriptProject {
       (block) => block.program === "client",
     );
     if (blocks.length === 0) return undefined;
-    const declared = new Set(
-      blocks.flatMap((block) => this.classicScript(block.content, true).names),
+    const globals = this.pageGlobals(
+      blocks.map((block) => this.classicScript(block.content, true)),
+      this.otherPageScopeScripts(text, page.pageScopeHtml),
     );
-    const ambient = new Set<string>();
-    for (const script of [
-      ...extractPageScopeScripts(text).filter((script) => !script.typed),
-      ...page.pageScopeHtml.flatMap((html) => extractPageScopeScripts(html)),
-    ])
-      for (const name of this.classicScript(script.content, script.typed).names)
-        if (!declared.has(name)) ambient.add(name);
     const fileName = `${htmlPath}.bascik-client-editing.ts`;
     const file: VirtualFile = {
-      ...sharedScriptText(blocks, { ambientNames: [...ambient] }),
+      ...sharedScriptText(blocks, globals),
       fileName,
       htmlPath,
       program: "client",
+      service: page.clientService,
       sharedScope: true,
       version: this.nextFileVersion++,
     };
@@ -1332,8 +1607,8 @@ export class TypeScriptProject {
   }
 
   dispose(): void {
-    this.services.client.dispose();
-    this.services.server.dispose();
+    for (const service of this.services.values()) service.dispose();
+    this.services.clear();
   }
 }
 

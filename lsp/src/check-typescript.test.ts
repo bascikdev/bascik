@@ -120,6 +120,31 @@ describe("checkFiles with TypeScript", () => {
     expect(unscoped.diagnostics).toEqual([]);
   });
 
+  it("checks each page with its own additions to the globals, and its classic globals on window", async () => {
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    root.write("src/pages/index.html", "<p>Milk frother</p>\n");
+    root.write(
+      "src/pages/aug-a.html",
+      '<script type="text/typescript">\n  interface Window { pageConfig: { speed: number } }\n  window.pageConfig = { speed: 1 };\n</script>\n',
+    );
+    root.write(
+      "src/pages/aug-b.html",
+      '<script type="text/typescript">\n  interface Window { pageConfig: string }\n  window.pageConfig = "two";\n</script>\n',
+    );
+    root.write(
+      "src/pages/winvar.html",
+      '<script>var legacyState = { ready: true };</script>\n<script type="text/typescript">var frotherState = { on: false }; function gtag(...args: unknown[]): void {}</script>\n<script type="text/typescript">window.frotherState.on = true; globalThis.frotherState.on = false; window.gtag("js", new Date()); console.log(window.legacyState);</script>\n',
+    );
+    root.write(
+      "src/pages/uses-config.html",
+      '<script type="text/typescript">\n  window.pageConfig;\n</script>\n',
+    );
+    const result = await checkFiles({ cwd: root.root, typescript: true });
+    expect(result.diagnostics.map((d) => [d.filePath, d.line, d.code])).toEqual(
+      [[path.join("src", "pages", "uses-config.html"), 2, "TS2339"]],
+    );
+  });
+
   it("gives TypeScript every page first, so it builds its programs once for the whole check", async () => {
     root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
     for (const name of ["a", "b", "c"])

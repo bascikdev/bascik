@@ -784,6 +784,225 @@ describe("a page's client blocks run as one classic script", () => {
   });
 });
 
+describe("a page's classic globals are properties of window", () => {
+  const WINVAR =
+    "<script>var legacyState = { ready: true };</script>\n" +
+    '<script type="text/typescript">var frotherState = { on: false }; function gtag(...args: unknown[]): void {}</script>\n' +
+    '<script type="text/typescript">window.frotherState.on = true; globalThis.frotherState.on = false; self.gtag("js", new Date()); window.gtag("js", new Date()); console.log(window.legacyState, globalThis.legacyState);</script>\n';
+
+  it("reaches a top-level var or function, and a plain script's names, through window, self and globalThis", () => {
+    for (const root of [
+      fixture(),
+      fixture({
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { noUnusedLocals: true },
+        }),
+      }),
+    ])
+      expect(check(root, "src/pages/winvar.html", WINVAR)).toEqual([]);
+  });
+
+  it("types them from their declarations, and keeps the DOM's own members", () => {
+    const root = fixture();
+    const html =
+      page(
+        "var frotherState = { on: false };\nfunction gtag(event: string): void {}",
+      ) +
+      page(
+        'window.frotherState.on = 3;\nglobalThis.gtag(1);\nwindow.frotherStat;\nwindow.document.title = "Milk frother";\nconst w: Window = window;\nw.addEventListener("load", () => undefined);',
+      );
+    expect(
+      check(root, "src/pages/index.html", html).map((d) => [d.code, d.text]),
+    ).toEqual([
+      [2322, "window.frotherState.on"],
+      [2345, "1"],
+      [2551, "frotherStat"],
+    ]);
+  });
+
+  it("misuse: let, const and class names, and names of other pages, are not properties of window", () => {
+    const root = fixture();
+    const service = project(root);
+    check(
+      root,
+      "src/pages/other.html",
+      page("var otherPageState = 1;\nwindow.otherPageState;"),
+      service,
+    );
+    const html = page(
+      "let frotherLet = 1;\nconst frotherConst = 2;\nclass FrotherClass {}\nconsole.log(frotherLet, frotherConst, FrotherClass);\nwindow.frotherLet;\nwindow.frotherConst;\nwindow.FrotherClass;\nwindow.otherPageState;",
+    );
+    expect(
+      check(root, "src/pages/index.html", html, service).map((d) => [
+        d.code,
+        d.text,
+      ]),
+    ).toEqual([
+      [2339, "frotherLet"],
+      [2339, "frotherConst"],
+      [2339, "FrotherClass"],
+      [2339, "otherPageState"],
+    ]);
+  });
+
+  it("misuse: a var named like a DOM global keeps the DOM's type on window", () => {
+    const root = fixture();
+    const html = page(
+      'var length = "three";\nfunction close(reason: string): void {}\nconst size: number = window.length;\nwindow.close();\nconsole.log(length.toUpperCase());\nclose("done");',
+    );
+    expect(check(root, "src/pages/index.html", html)).toEqual([]);
+  });
+
+  it("does not report a var a plain script assigns as used before being assigned", () => {
+    const root = fixture();
+    const html =
+      "<script>var shared = 1;</script>\n" +
+      page("var shared: number;\nconsole.log(shared + 1);");
+    expect(check(root, "src/pages/index.html", html)).toEqual([]);
+    // Without another script that could assign it, the read is still reported.
+    const alone = page("var own: number;\nconsole.log(own + 1);");
+    expect(
+      check(root, "src/pages/alone.html", alone).map((d) => [d.code, d.text]),
+    ).toEqual([[2454, "own"]]);
+  });
+});
+
+describe("a page's global augmentations stay in that page", () => {
+  const AUG_A = page(
+    "interface Window { pageConfig: { speed: number } }\nwindow.pageConfig = { speed: 1 };",
+  );
+  const AUG_B = page(
+    'interface Window { pageConfig: string }\nwindow.pageConfig = "two";',
+  );
+  const DATA_LAYER = page(
+    "interface Window { dataLayer: unknown[] }\nwindow.dataLayer = window.dataLayer || [];",
+  );
+  const USES_DATA_LAYER = page("window.dataLayer = [];");
+
+  it("checks two pages that augment Window differently without a conflict, in either order", () => {
+    for (const order of [
+      ["aug-a", "aug-b"],
+      ["aug-b", "aug-a"],
+    ]) {
+      const root = fixture();
+      const service = project(root);
+      const html: Record<string, string> = { "aug-a": AUG_A, "aug-b": AUG_B };
+      for (const name of order)
+        expect(
+          check(root, `src/pages/${name}.html`, html[name], service),
+        ).toEqual([]);
+      // Both are still clean once both are loaded.
+      for (const name of order)
+        expect(
+          check(root, `src/pages/${name}.html`, html[name], service),
+        ).toEqual([]);
+    }
+  });
+
+  it("misuse: another page's augmentation is not seen, whether or not that page is loaded", () => {
+    const root = fixture();
+    const alone = check(root, "src/pages/b.html", USES_DATA_LAYER);
+    const service = project(root);
+    expect(check(root, "src/pages/index.html", DATA_LAYER, service)).toEqual(
+      [],
+    );
+    const withIndex = check(root, "src/pages/b.html", USES_DATA_LAYER, service);
+    expect(alone.map((d) => [d.code, d.text])).toEqual([[2339, "dataLayer"]]);
+    expect(withIndex.map((d) => [d.code, d.text])).toEqual([
+      [2339, "dataLayer"],
+    ]);
+  });
+
+  it("keeps an author's declare global and a component's augmentation in their own file", () => {
+    const root = fixture();
+    const service = project(root);
+    check(
+      root,
+      "src/components/frother-card.html",
+      page(
+        "declare global { interface Window { cardState: number } }\nwindow.cardState = 1;",
+      ),
+      service,
+      { isolatedClientBlocks: true },
+    );
+    check(
+      root,
+      "src/pages/declared.html",
+      page(
+        'declare global { interface Window { cardState: string } }\nwindow.cardState = "x";',
+      ),
+      service,
+    );
+    expect(
+      check(
+        root,
+        "src/pages/index.html",
+        page("window.cardState;"),
+        service,
+      ).map((d) => [d.code, d.text]),
+    ).toEqual([[2339, "cardState"]]);
+  });
+
+  it("checks the same addition on many pages together, and one that names a page's own type apart", () => {
+    const root = fixture();
+    const service = project(root);
+    for (let index = 0; index < 4; index++)
+      expect(
+        check(root, `src/pages/same-${index}.html`, DATA_LAYER, service),
+      ).toEqual([]);
+    // One service for the four, beside the shared client and server ones.
+    expect(service.serviceCount).toBe(3);
+    const local = page(
+      "type Config = { speed: number };\ninterface Window { config: Config }\nwindow.config = { speed: 1 };",
+    );
+    for (const name of ["local-a", "local-b"])
+      expect(check(root, `src/pages/${name}.html`, local, service)).toEqual([]);
+    expect(service.serviceCount).toBe(5);
+    const imported = page(
+      'import type { Frother } from "@/lib/frother.ts";\ninterface Window { frother: Frother }\nwindow.frother = { speed: 1 };',
+    );
+    root.write(
+      "src/lib/frother.ts",
+      "export interface Frother { speed: number }\n",
+    );
+    for (const name of ["imported-a", "imported-b"])
+      expect(check(root, `src/pages/${name}.html`, imported, service)).toEqual(
+        [],
+      );
+    expect(service.serviceCount).toBe(7);
+  });
+
+  it("misuse: one page leaving a shared addition does not take it from the others", () => {
+    const root = fixture();
+    const service = project(root);
+    const first = root.write("src/pages/first.html", DATA_LAYER);
+    const second = root.write("src/pages/second.html", DATA_LAYER);
+    expect(service.diagnostics(first, DATA_LAYER)).toEqual([]);
+    expect(service.diagnostics(second, DATA_LAYER)).toEqual([]);
+    expect(
+      service.diagnostics(first, USES_DATA_LAYER).map((d) => d.code),
+    ).toEqual([2339]);
+    service.removePage(first);
+    expect(service.diagnostics(second, DATA_LAYER)).toEqual([]);
+    expect(service.serviceCount).toBe(3);
+    service.removePage(second);
+    expect(service.serviceCount).toBe(2);
+  });
+
+  it("misuse: a page that stops augmenting, or is removed, leaves nothing behind", () => {
+    const root = fixture();
+    const service = project(root);
+    const file = root.write("src/pages/aug-a.html", AUG_A);
+    expect(service.diagnostics(file, AUG_A)).toEqual([]);
+    const plain = page("window.pageConfig;");
+    expect(service.diagnostics(file, plain).map((d) => d.code)).toEqual([2339]);
+    expect(service.diagnostics(file, AUG_A)).toEqual([]);
+    service.removePage(file);
+    expect(service.serviceCount).toBe(2);
+    expect(check(root, "src/pages/aug-b.html", AUG_B, service)).toEqual([]);
+  });
+});
+
 describe("TypeScriptProjects", () => {
   it("reports why there is no TypeScript, without checking", () => {
     const root = fixture();
