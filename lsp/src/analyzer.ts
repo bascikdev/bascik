@@ -38,6 +38,7 @@ import {
 } from "./server-script-rules.js";
 import { HAND_WRITTEN_ESCAPER_RULE } from "./hand-written-escaper.js";
 import {
+  exportArgumentsOf,
   normalizeModulePath,
   scriptModulesOf,
   type ScriptModules,
@@ -840,6 +841,10 @@ export function createDiagnostics(
         directive: "module",
         requestTime: isRequestTimeModule,
         escapeFunctions: earlyExtConfig.diagnostics?.escapeFunctions ?? [],
+        exportArguments:
+          modules && snapshot
+            ? exportArgumentsOf(modules, snapshot, fsPath, openDocumentTexts)
+            : undefined,
       }),
       0,
       text.length,

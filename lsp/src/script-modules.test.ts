@@ -823,3 +823,101 @@ describe("review 2026-10-31: a file too deep to analyze does not stop the check"
     expect(got.some((g) => g.includes("analysis-failed"))).toBe(false);
   });
 });
+
+describe("the wrap fix in an exported helper follows the modules that import it (fix round 3)", () => {
+  const LAYOUT =
+    "export function layout(title: string, body: string) {\n  return `<main><h1>${title}</h1>${body}</main>`;\n}\n";
+  const docFor = (file: string, text = fs.readFileSync(file, "utf8")) =>
+    TextDocument.create(pathToFileURL(file).toString(), "typescript", 1, text);
+  /** Whether the markup diagnostics on the layout template offer the template fix. */
+  const layoutFixable = async (
+    files: Record<string, string>,
+    open: (
+      paths: Record<string, string>,
+    ) => { fsPath: string; text: string }[] = () => [],
+  ) => {
+    const paths: Record<string, string> = {};
+    for (const [rel, text] of Object.entries(files))
+      paths[rel] = write(rel, text);
+    const layout = write("src/lib/layout.ts", LAYOUT);
+    const snapshot = await buildSnapshot(root);
+    const doc = docFor(layout);
+    const diags = createDiagnostics(doc, layout, snapshot, open(paths)).filter(
+      (d) => d.code === MARKUP,
+    );
+    expect(diags.length).toBeGreaterThan(0);
+    return diags.every(
+      (d) => (d.data as { fixable?: boolean } | undefined)?.fixable === true,
+    );
+  };
+  const PAGE_IMPORTING = (what: string) =>
+    PAGE(
+      `<script data-bascik-build>import { home } from "@/lib/${what}"; export default () => home;</script>`,
+    );
+
+  it("a module that passes it markup withholds the fix", async () => {
+    expect(
+      await layoutFixable({
+        "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
+        "src/lib/q5.ts":
+          'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
+      }),
+    ).toBe(false);
+  });
+
+  it("a module that passes it plain text keeps the fix", async () => {
+    expect(
+      await layoutFixable({
+        "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
+        "src/lib/q5.ts":
+          'import { layout } from "./layout.ts";\nexport const home = layout("Home", "Welcome");\n',
+      }),
+    ).toBe(true);
+  });
+
+  it("a page's inline script that passes it markup withholds the fix", async () => {
+    expect(
+      await layoutFixable({
+        "src/pages/index.html": PAGE(
+          '<script data-bascik-build>import { layout } from "@/lib/layout.ts"; export default () => layout("Home", "<p>Welcome</p>");</script>',
+        ),
+      }),
+    ).toBe(false);
+  });
+
+  it("an importer's unsaved buffer is read in place of the disk", async () => {
+    expect(
+      await layoutFixable(
+        {
+          "src/pages/index.html": PAGE_IMPORTING("q5.ts"),
+          "src/lib/q5.ts":
+            'import { layout } from "./layout.ts";\nexport const home = layout("Home", "Welcome");\n',
+        },
+        (paths) => [
+          {
+            fsPath: paths["src/lib/q5.ts"],
+            text: 'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
+          },
+        ],
+      ),
+    ).toBe(false);
+  });
+
+  it("bascik --check reports the layout without crashing on the importer graph", async () => {
+    write("src/pages/index.html", PAGE_IMPORTING("q5.ts"));
+    write(
+      "src/lib/q5.ts",
+      'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");\n',
+    );
+    write("src/lib/layout.ts", LAYOUT);
+    const result = await checkFiles({
+      cwd: root,
+      targets: [{ path: "src/pages", extensions: ["html"] }],
+      projectPath: root,
+    });
+    const got = result.diagnostics.map(
+      (d) => `${d.filePath.replace(/\\/g, "/")}:${d.line} ${d.code}`,
+    );
+    expect(got).toContain("src/lib/layout.ts:2 server-script-unescaped-markup");
+  });
+});

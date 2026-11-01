@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeServerScriptSource,
+  exportArgumentsFrom,
   type AnalyzeOptions,
 } from "./server-script-rules.js";
 import { scanJavaScript } from "./module-specifiers.js";
@@ -1969,5 +1970,262 @@ describe("report writers and unclosed fences (fix round 2)", () => {
     const body =
       'export function code(lang: string, src: string, user: string) {\n  return `<div class="post">\n\\`\\`\\`${lang}\n${src}\n<p class="by">${user}</p>\n</div>`;\n}';
     expect(moduleCovered(body)).toEqual(["${lang}", "${src}", "${user}"]);
+  });
+});
+
+describe("the wrap fix follows markup across modules (fix round 3)", () => {
+  const fixableAt = (
+    body: string,
+    hole: string,
+    opts: Partial<AnalyzeOptions> = {},
+  ) => {
+    const diags = unescaped(body, { directive: "module", ...opts });
+    const d = diags.find((x) => body.slice(x.start, x.end) === hole);
+    expect(d, `${hole} is reported`).toBeDefined();
+    return { fixable: d!.template?.fixable, message: d!.message };
+  };
+  const NOT_FIXABLE_TEXT =
+    "Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.";
+
+  it.each([
+    [
+      "an imported ALL_CAPS markup constant",
+      'import { ICON_OK } from "./icons.ts";\nexport const a = (l: string) => `<td>${ICON_OK}${l}</td>`;',
+      "${l}",
+      "ICON_OK",
+    ],
+    [
+      "a property of an imported object",
+      'import { icons } from "./icons.ts";\nexport const b = (l: string) => `<td>${icons.ok}${l}</td>`;',
+      "${l}",
+      "icons",
+    ],
+    [
+      "an imported name after the reported hole",
+      'import { footer } from "../partials/icons.ts";\nexport const c = (l: string) => `<p>${l}</p>${footer}`;',
+      "${l}",
+      "footer",
+    ],
+    [
+      "a default import from an @/ specifier",
+      'import banner from "@/lib/banner.ts";\nexport const c = (l: string) => `<p>${l}</p>${banner}`;',
+      "${l}",
+      "banner",
+    ],
+    [
+      "a namespace import's member",
+      'import * as parts from "./parts.ts";\nexport const c = (l: string) => `<p>${l}</p>${parts.footer}`;',
+      "${l}",
+      "parts",
+    ],
+    [
+      "an environment variable",
+      "const footer = process.env.FOOTER_MARKUP;\nexport const c = (l: string) => `<p>${l}</p>${footer}`;",
+      "${l}",
+      "footer",
+    ],
+    [
+      "an environment variable in the hole",
+      "export const c = (l: string) => `<p>${l}</p>${process.env.FOOTER_MARKUP}`;",
+      "${l}",
+      "process.env",
+    ],
+  ])("%s: no fix, and the message says why", (_name, body, hole, culprit) => {
+    const { fixable, message } = fixableAt(body, hole);
+    expect(fixable).toBe(false);
+    expect(message).not.toContain(NOT_FIXABLE_TEXT);
+    expect(message).toContain(culprit);
+  });
+
+  it.each([
+    [
+      "a name imported from a package",
+      'import { siteName } from "site-meta";\nexport const c = (l: string) => `<p>${siteName}: ${l}</p>`;',
+      "${l}",
+    ],
+    [
+      "an environment variable not named for markup",
+      'const siteUrl = process.env.BASCIK_SITE_URL ?? "";\nexport const c = (p: string) => `<link rel="canonical" href="${siteUrl}${p}" />`;',
+      "${p}",
+    ],
+    [
+      "a bracketed environment variable not named for markup",
+      'export const c = (l: string) => `<p>${process.env["SITE_NAME"]}: ${l}</p>`;',
+      "${l}",
+    ],
+    [
+      "a type-only import",
+      'import type { Row } from "./types.ts";\nexport const c = (r: Row) => `<p>${r.name}</p>`;',
+      "${r.name}",
+    ],
+    [
+      "an imported function's parameter name shadowed by nothing (a property named like an import)",
+      'import { footer } from "./icons.ts";\nexport const c = (p: { footer: string }) => `<p>${p.footer}</p>`;',
+      "${p.footer}",
+    ],
+  ])("%s keeps the fix", (_name, body, hole) => {
+    expect(fixableAt(body, hole).fixable).toBe(true);
+  });
+
+  const LAYOUT =
+    "export function layout(title: string, body: string) {\n  return `<main><h1>${title}</h1>${body}</main>`;\n}\n";
+
+  it("an exported function whose parameter a call in another module fills with markup: no fix", () => {
+    const { fixable, message } = fixableAt(LAYOUT, "${title}", {
+      exportArguments: new Map([["layout", new Set([1])]]),
+    });
+    expect(fixable).toBe(false);
+    expect(message).toContain("body");
+    expect(message).toContain("another module");
+  });
+
+  it.each([
+    ["no importer passes it markup", new Map([["layout", new Set<number>()]])],
+    ["only another export gets markup", new Map([["other", "any" as const]])],
+    ["no importers are known", undefined],
+  ])("%s: the fix stays", (_name, exportArguments) => {
+    expect(fixableAt(LAYOUT, "${title}", { exportArguments }).fixable).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["passed on as a value", new Map([["layout", "any" as const]])],
+    [
+      "a whole-module re-export or dynamic import",
+      new Map([["*", "any" as const]]),
+    ],
+  ])(
+    "%s: every parameter may hold markup, no fix",
+    (_name, exportArguments) => {
+      expect(fixableAt(LAYOUT, "${title}", { exportArguments }).fixable).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each([
+    [
+      "export const arrow",
+      "export const layout = (title: string, body: string) => `<main><h1>${title}</h1>${body}</main>`;",
+      "layout",
+    ],
+    [
+      "an export list with an alias",
+      "function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport { frame as layout };",
+      "layout",
+    ],
+    [
+      "a default export",
+      "export default function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }",
+      "default",
+    ],
+    [
+      "a default export of a name",
+      "function frame(title: string, body: string) { return `<main><h1>${title}</h1>${body}</main>`; }\nexport default frame;",
+      "default",
+    ],
+  ])(
+    "%s: the export's parameters are filled by importers",
+    (_name, body, key) => {
+      expect(
+        fixableAt(body, "${title}", {
+          exportArguments: new Map([[key, new Set([1])]]),
+        }).fixable,
+      ).toBe(false);
+    },
+  );
+});
+
+describe("exportArgumentsFrom: what an importer passes a module's exports (fix round 3)", () => {
+  const isLayout = (s: string) =>
+    s === "./layout.ts" || s === "@/lib/layout.ts";
+  const of = (body: string) =>
+    Object.fromEntries(
+      [...exportArgumentsFrom(body, isLayout)].map(([k, v]) => [
+        k,
+        v === "any" ? v : [...v].sort(),
+      ]),
+    );
+
+  it.each([
+    [
+      "a markup string argument",
+      'import { layout } from "./layout.ts";\nexport const home = layout("Home", "<p>Welcome</p>");',
+      { layout: [1] },
+    ],
+    [
+      "a markup template argument",
+      'import { layout } from "./layout.ts";\nexport const page = (y: string) => layout(`Hi ${y}`, `<p>${y}</p>`);',
+      { layout: [1] },
+    ],
+    [
+      "a name bound to markup",
+      'import { layout } from "./layout.ts";\nconst body = "<p>x</p>";\nexport const home = layout("Home", body);',
+      { layout: [1] },
+    ],
+    [
+      "a call to another project module's helper",
+      'import { layout } from "./layout.ts";\nimport { card } from "./card.ts";\nexport const home = layout("Home", card());',
+      { layout: [1] },
+    ],
+    [
+      "an html value and plain text",
+      'import { html } from "@bascik/bascik/html";\nimport { layout } from "./layout.ts";\nexport const home = layout("Home", html`<p>x</p>`);',
+      { layout: [] },
+    ],
+    [
+      "an alias",
+      'import { layout as frame } from "@/lib/layout.ts";\nexport const home = frame("Home", "<p>Welcome</p>");',
+      { layout: [1] },
+    ],
+    [
+      "a namespace import",
+      'import * as L from "./layout.ts";\nexport const home = L.layout("<b>Home</b>", "x");',
+      { layout: [0] },
+    ],
+    [
+      "a default import",
+      'import frame from "./layout.ts";\nexport const home = frame("Home", "<p>Welcome</p>");',
+      { default: [1] },
+    ],
+    [
+      "passed on as a callback",
+      'import { layout } from "./layout.ts";\nexport const pages = titles.map(layout);',
+      { layout: "any" },
+    ],
+    [
+      "a namespace passed on whole",
+      'import * as L from "./layout.ts";\nexport const lib = L;',
+      { "*": "any" },
+    ],
+    [
+      "a named re-export",
+      'export { layout } from "./layout.ts";',
+      { layout: "any" },
+    ],
+    ["a star re-export", 'export * from "./layout.ts";', { "*": "any" }],
+    [
+      "a dynamic import",
+      'export const load = () => import("./layout.ts");',
+      { "*": "any" },
+    ],
+    [
+      "a spread of markup fills every position",
+      'import { layout } from "./layout.ts";\nexport const home = layout(...["Home", "<p>x</p>"]);',
+      { layout: "any" },
+    ],
+    [
+      "a spread of plain data",
+      'import { layout } from "./layout.ts";\nconst parts = ["Home", "Welcome"];\nexport const home = layout(...parts);',
+      { layout: [] },
+    ],
+    [
+      "another module's import with the same name",
+      'import { layout } from "./other.ts";\nexport const home = layout("Home", "<p>Welcome</p>");',
+      {},
+    ],
+  ])("%s", (_name, body, expected) => {
+    expect(of(body)).toEqual(expected);
   });
 });

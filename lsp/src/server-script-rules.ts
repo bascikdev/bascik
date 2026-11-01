@@ -73,6 +73,16 @@ export interface AnalyzeOptions {
   escapeFunctions?: readonly string[];
   /** Added to body line numbers so messages name the file line (the body's first line is line 1 + lineOffset). */
   lineOffset?: number;
+  /**
+   * "module" only: what the files that import this module pass its
+   * exported functions, by export name ("default" for the default
+   * export): the argument positions that may hold markup, or "any" when
+   * an importer passes the function on as a value or re-exports it. The
+   * key "*" with "any" stands for every export (a namespace passed on
+   * whole, `export * from`, a dynamic import). See exportArgumentsFrom.
+   * Undefined when no importer is known.
+   */
+  exportArguments?: ReadonlyMap<string, ReadonlySet<number> | "any">;
 }
 
 export const UNESCAPED_MARKUP_RULE = "server-script-unescaped-markup";
@@ -412,6 +422,13 @@ export function analyzeServerScriptSource(
   /** Whether a markup literal (a template or a quoted string) starts between `from` and `to`. */
   const sourceWithin = (from: number, to: number): boolean =>
     firstAtOrAfter(markupSources, to) > firstAtOrAfter(markupSources, from);
+  // An exported function's parameters hold what the modules that import
+  // it pass them: layout("Home", "<p>Welcome</p>") in another file.
+  const externalParams = externallyFilledParameters(
+    body,
+    functions,
+    opts.exportArguments,
+  );
   const producers = markupProducers(
     tokens,
     functions,
@@ -421,6 +438,7 @@ export function analyzeServerScriptSource(
     (name) =>
       htmlExportOf(name, imports) !== undefined ||
       ctx.escapeFunctions.includes(name),
+    externalParams,
   );
   // Local functions that build a markup string: a hole that calls one
   // holds markup, which wrapping the template in html would escape.
@@ -476,16 +494,26 @@ export function analyzeServerScriptSource(
       if (opaque !== undefined)
         return {
           ...at,
-          text: `calls ${opaque}(), whose result this file cannot see into (a callback, a package function, a file or a response); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+          text:
+            opaque === ENV_READ
+              ? `reads ${ENV_READ}, an environment variable this file cannot see into; if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+              : `calls ${opaque}(), whose result this file cannot see into (a callback, a package function, a file or a response); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
         };
       const name = producerWithin(hole.start + 2, hole.end - 1);
-      if (name !== undefined)
+      if (name !== undefined) {
+        const owner = externalParams.get(name);
         return {
           ...at,
-          text: producers.markupNames.has(name)
-            ? `reads ${name}, which may hold markup built as a string in this file; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
-            : `reads ${name}, which holds what a call this file cannot see into returns (a callback, a package function, a file or a response); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
+          text:
+            owner !== undefined
+              ? `reads ${name}, a parameter of ${owner}() that a call in another module fills with markup, or that a module passes on where this file cannot see; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` in the calling module (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+              : !producers.names.has(name)
+                ? `reads ${name}, imported from a project module, which may hold markup as a string; html would escape it, so the page would show its tags as text. Make that value an html\`...\` value in its module (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+                : producers.markupNames.has(name)
+                  ? `reads ${name}, which may hold markup built as a string in this file; html would escape it, so the page would show its tags as text. Build that markup with html\`...\` first (raw() for fixed markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`
+                  : `reads ${name}, which holds what this file cannot see into (a callback, a package function, a file, a response or an environment variable); if it is markup, html would escape it, so the page would show its tags as text. Make that value an html\`...\` value (raw() for trusted markup), since html inserts an html value as it is, then wrap this template in html\`...\` from @bascik/bascik/html.`,
         };
+      }
     }
     return undefined;
   };
@@ -1343,12 +1371,332 @@ function markupSourceStarts(
   return starts.sort((x, y) => x - y);
 }
 
+/**
+ * The export names of a module's own functions, each with its local name:
+ * `export function f`, `export const f =`, `export default function f`,
+ * `export default f`, and `export { f as g }` without `from`.
+ */
+function exportedLocals(body: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of body.matchAll(
+    /\bexport\s+(default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g,
+  ))
+    out.set(m[1] ? "default" : m[2], m[2]);
+  for (const m of body.matchAll(
+    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
+  ))
+    out.set(m[1], m[1]);
+  for (const m of body.matchAll(
+    /\bexport\s+default\s+(?!async\b|function\b|class\b)([A-Za-z_$][\w$]*)\s*(?:;|$)/gm,
+  ))
+    out.set("default", m[1]);
+  for (const m of body.matchAll(/\bexport\s*\{([^}]*)\}(?!\s*from\b)/g))
+    for (const entry of m[1].split(",")) {
+      const specifier = parseImportSpecifier(entry.replace(/^\s*type\s+/, ""));
+      if (specifier && !/^\s*type\s/.test(entry))
+        out.set(specifier[1], specifier[0]);
+    }
+  return out;
+}
+
+/**
+ * The parameters of this module's exported functions that importers may
+ * fill with markup (see AnalyzeOptions.exportArguments), each with the
+ * name of its function. A parameter of a function an importer passes on
+ * as a value, or of every export when a whole namespace is passed on,
+ * counts at every position.
+ */
+function externallyFilledParameters(
+  body: string,
+  functions: readonly LocalFunction[],
+  exportArguments: AnalyzeOptions["exportArguments"],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!exportArguments || exportArguments.size === 0) return out;
+  const locals = exportedLocals(body);
+  const byName = new Map<string, LocalFunction[]>();
+  for (const fn of functions) {
+    const list = byName.get(fn.name) ?? [];
+    list.push(fn);
+    byName.set(fn.name, list);
+  }
+  const fill = (local: string, positions: ReadonlySet<number> | "any") => {
+    for (const fn of byName.get(local) ?? []) {
+      fn.params.forEach((names, i) => {
+        if (positions === "any" || positions.has(i))
+          for (const name of names) if (!out.has(name)) out.set(name, local);
+      });
+    }
+  };
+  const everything = exportArguments.get("*") === "any";
+  for (const [exported, local] of locals) {
+    const positions = everything ? "any" : exportArguments.get(exported);
+    if (positions !== undefined) fill(local, positions);
+  }
+  return out;
+}
+
+/** What a call passes an export: the argument positions that may hold markup, or "any". */
+export type ExportArguments = Map<string, Set<number> | "any">;
+
+/**
+ * What a file that imports modules passes their exported functions, by
+ * import specifier: for each export name ("default" for a default
+ * import), the argument positions where a call may pass markup built as a
+ * string (a markup string or template, a name that holds one, a call to a
+ * project helper or to something this file cannot see into), or "any"
+ * when the function is passed on as a value (`titles.map(layout)`) or
+ * re-exported. The key "*" with "any" stands for every export: a
+ * namespace passed on whole, `export * from`, or a dynamic import. An
+ * html`...` argument is not markup built as a string. Every import is
+ * read in one pass over the importer's tokens, so an importer is read
+ * once for all the modules it imports.
+ */
+export function exportArgumentsBySpecifier(
+  body: string,
+): Map<string, ExportArguments> {
+  const out = new Map<string, ExportArguments>();
+  const of = (specifier: string): ExportArguments => {
+    let map = out.get(specifier);
+    if (!map) out.set(specifier, (map = new Map()));
+    return map;
+  };
+  const any = (specifier: string, name: string): void => {
+    of(specifier).set(name, "any");
+  };
+  const at = (specifier: string, name: string, position: number): void => {
+    const map = of(specifier);
+    let set = map.get(name);
+    if (set === "any") return;
+    if (!set) map.set(name, (set = new Set()));
+    set.add(position);
+  };
+  const called = (specifier: string, name: string): void => {
+    const map = of(specifier);
+    if (!map.has(name)) map.set(name, new Set());
+  };
+  /** Local name to [specifier, export name], and namespace name to specifier. */
+  const locals = new Map<string, [string, string]>();
+  const namespaces = new Map<string, string>();
+  /** Import statements' spans, whose names are not uses; in source order. */
+  const statements: [number, number][] = [];
+  for (const m of body.matchAll(
+    /\b(import|export)\s+(?!type\s)([^;'"`]{0,1000}?)\s*from\s*(["'])([^"'\n]*)\3/g,
+  )) {
+    const specifier = m[4];
+    if (!/^(?:\.\.?\/|@\/)/.test(specifier)) continue;
+    const start = m.index ?? 0;
+    statements.push([start, start + m[0].length]);
+    const clause = m[2];
+    const brace = /\{([^}]*)\}/.exec(clause);
+    const rest = brace ? clause.replace(brace[0], "") : clause;
+    if (m[1] === "export") {
+      if (/\*/.test(rest)) any(specifier, "*");
+      if (brace)
+        for (const entry of brace[1].split(",")) {
+          if (/^\s*type\s/.test(entry)) continue;
+          const named = parseImportSpecifier(entry);
+          if (named) any(specifier, named[0]);
+        }
+      continue;
+    }
+    of(specifier);
+    if (brace)
+      for (const entry of brace[1].split(",")) {
+        if (/^\s*type\s/.test(entry)) continue;
+        const named = parseImportSpecifier(entry);
+        if (named) locals.set(named[1], [specifier, named[0]]);
+      }
+    const namespace = /\*\s*as\s+([\w$]+)/.exec(rest);
+    if (namespace) namespaces.set(namespace[1], specifier);
+    const defaultName = /^\s*([\w$]+)\s*(?:,|$)/.exec(rest);
+    if (defaultName) locals.set(defaultName[1], [specifier, "default"]);
+  }
+  for (const m of body.matchAll(/\bimport\s*\(\s*(["'`])([^"'`\n]*)\1/g))
+    if (/^(?:\.\.?\/|@\/)/.test(m[2])) any(m[2], "*");
+  if (locals.size === 0 && namespaces.size === 0) return out;
+
+  const { tokens } = scanJavaScript(body);
+  const n = tokens.length;
+  const isPunct = (k: number, v: string): boolean =>
+    k >= 0 &&
+    k < n &&
+    tokens[k].type === "punctuation" &&
+    tokens[k].value === v;
+  const partner = new Int32Array(n).fill(-1);
+  const opens: number[] = [];
+  for (let k = 0; k < n; k++) {
+    if (tokens[k].type !== "punctuation") continue;
+    const v = tokens[k].value;
+    if (v === "(" || v === "[" || v === "{") opens.push(k);
+    else if ((v === ")" || v === "]" || v === "}") && opens.length > 0)
+      partner[opens.pop()!] = k;
+  }
+  // What may hold markup built as a string, found as analyzeServerScriptSource
+  // does, but only when an argument needs it: most calls pass nothing, or
+  // only literals.
+  let sources: number[] | undefined;
+  const sourcesOf = (): number[] => {
+    if (sources) return sources;
+    const markupStarts = findTemplateLiterals(body)
+      .filter(
+        (l) =>
+          (l.tag === null || PLAIN_STRING_TAGS.has(l.tag)) &&
+          looksLikeMarkup(l.parts),
+      )
+      .map((l) => l.start);
+    return (sources = markupSourceStarts(body, tokens, markupStarts));
+  };
+  /** Ascending offsets where an argument would hold markup: a source, a call this file cannot see into, a name that may hold markup, or a project import (called or read). */
+  let suspects: number[] | undefined;
+  const suspectsOf = (): number[] => {
+    if (suspects) return suspects;
+    const found = sourcesOf();
+    const sourceWithin = (from: number, to: number): boolean =>
+      firstAtOrAfter(found, to) > firstAtOrAfter(found, from);
+    const imports = findHtmlImports(body);
+    const projectNames = projectImportNames(body);
+    const producers = markupProducers(
+      tokens,
+      localFunctions(body, tokens),
+      findBindingRanges(body),
+      sourceWithin,
+      projectNames,
+      (name) => htmlExportOf(name, imports) !== undefined,
+    );
+    const all = [...found, ...producers.opaqueStarts, ...producers.starts];
+    for (let k = 0; k < n; k++)
+      if (
+        tokens[k].type === "identifier" &&
+        projectNames.has(tokens[k].value) &&
+        !isPunct(k - 1, ".")
+      )
+        all.push(tokens[k].start);
+    return (suspects = all.sort((x, y) => x - y));
+  };
+  const within = (values: number[], from: number, to: number): boolean =>
+    firstAtOrAfter(values, to) > firstAtOrAfter(values, from);
+  /** Whether the argument with tokens first..last-1 (offsets from..to) may hold markup. */
+  const suspectWithin = (
+    first: number,
+    last: number,
+    from: number,
+    to: number,
+  ): boolean => {
+    let names = false;
+    let literals = false;
+    for (let j = first; j < last; j++) {
+      const type = tokens[j].type;
+      if (type === "identifier") {
+        names = true;
+        break;
+      }
+      if (type === "string" || type === "template") literals = true;
+    }
+    // A template with holes gives no token of its own, only its holes do.
+    if (!names && !literals && /`/.test(body.slice(from, to))) literals = true;
+    if (names) return within(suspectsOf(), from, to);
+    return literals && within(sourcesOf(), from, to);
+  };
+  const statementStarts = statements.map(([start]) => start);
+  const inStatement = (offset: number): boolean => {
+    const k = firstAtOrAfter(statementStarts, offset + 1) - 1;
+    return k >= 0 && offset < statements[k][1];
+  };
+  /** The call whose `(` is at `open`: each argument that may hold markup, by position. */
+  const record = (specifier: string, name: string, open: number): void => {
+    called(specifier, name);
+    const close = partner[open];
+    let from = tokens[open].end;
+    let first = open + 1;
+    let position = 0;
+    for (let j = open + 1; j <= close; j++) {
+      if (j === close || isPunct(j, ",")) {
+        const to = tokens[j].start;
+        if (isPunct(first, ".") && isPunct(first + 1, ".") && j > first + 2) {
+          // A spread fills this position and every one after it.
+          if (suspectWithin(first, j, from, to)) any(specifier, name);
+        } else if (suspectWithin(first, j, from, to))
+          at(specifier, name, position);
+        from = tokens[j].end;
+        first = j + 1;
+        position++;
+      } else if (partner[j] !== -1) j = partner[j];
+    }
+  };
+  for (let k = 0; k < n; k++) {
+    const t = tokens[k];
+    if (t.type !== "identifier" || isPunct(k - 1, ".")) continue;
+    const isKey =
+      isPunct(k + 1, ":") && (isPunct(k - 1, "{") || isPunct(k - 1, ","));
+    if (isKey) continue;
+    const imported = locals.get(t.value);
+    if (imported !== undefined) {
+      if (inStatement(t.start)) continue;
+      const [specifier, exported] = imported;
+      if (isPunct(k + 1, "(") && partner[k + 1] !== -1)
+        record(specifier, exported, k + 1);
+      else any(specifier, exported);
+      continue;
+    }
+    const specifier = namespaces.get(t.value);
+    if (specifier !== undefined) {
+      if (inStatement(t.start)) continue;
+      if (
+        isPunct(k + 1, ".") &&
+        k + 2 < n &&
+        tokens[k + 2].type === "identifier"
+      ) {
+        const member = tokens[k + 2].value;
+        if (isPunct(k + 3, "(") && partner[k + 3] !== -1)
+          record(specifier, member, k + 3);
+        else any(specifier, member);
+      } else any(specifier, "*");
+    }
+  }
+  return out;
+}
+
+/** Adds what `more` says importers pass to what `into` says already. */
+export function mergeExportArguments(
+  into: ExportArguments,
+  more: ExportArguments,
+): void {
+  for (const [name, positions] of more) {
+    const known = into.get(name);
+    if (known === "any") continue;
+    if (positions === "any") into.set(name, "any");
+    else into.set(name, new Set([...(known ?? []), ...positions]));
+  }
+}
+
+/**
+ * What one importer passes the exports of the module that
+ * `refersToModule` names (see exportArgumentsBySpecifier).
+ */
+export function exportArgumentsFrom(
+  body: string,
+  refersToModule: (specifier: string) => boolean,
+): ExportArguments {
+  const out: ExportArguments = new Map();
+  for (const [specifier, found] of exportArgumentsBySpecifier(body))
+    if (refersToModule(specifier)) mergeExportArguments(out, found);
+  return out;
+}
+
 /** Globals that return plain data, and syntax that looks like a call. */
 const PLAIN_CALLEES = new Set(
   "String Number Boolean BigInt Symbol Array Object Date RegExp Map Set WeakMap WeakSet Promise Error TypeError RangeError URL URLSearchParams parseInt parseFloat isNaN isFinite encodeURIComponent encodeURI decodeURIComponent decodeURI structuredClone setTimeout clearTimeout setInterval clearInterval queueMicrotask require import super if for while switch catch with function return typeof void delete await yield new async in of instanceof case do else".split(
     " ",
   ),
 );
+
+/** How an environment variable read (`process.env.NAME`) is named among the opaque values. */
+const ENV_READ = "process.env";
+
+/** An environment variable whose name says it holds markup: FOOTER_MARKUP, BANNER_HTML, ANALYTICS_SNIPPET. */
+const MARKUP_ENV =
+  /markup|html|svg|snippet|partial|fragment|banner|footer|header|template|embed/i;
 
 /** Calls that read a file or a response: what they return may be markup. */
 const READER_METHODS = new Set(["readFileSync", "readFile", "text"]);
@@ -1397,6 +1745,7 @@ function markupProducers(
   sourceWithin: (from: number, to: number) => boolean,
   projectNames: ReadonlySet<string>,
   isTrustedCallee: (name: string) => boolean,
+  seeds: ReadonlyMap<string, string> = new Map(),
 ): MarkupProducers {
   const n = tokens.length;
   const isPunct = (k: number, v: string): boolean =>
@@ -1454,6 +1803,23 @@ function markupProducers(
   const opaqueStarts: number[] = [];
   const opaqueValues: string[] = [];
   for (let k = 0; k + 1 < n; k++) {
+    // process.env.FOOTER_HTML: an environment variable named for markup.
+    // Others (SITE_URL, NAME) are taken to hold text, as package functions
+    // not named for markup are.
+    if (
+      tokens[k].type === "identifier" &&
+      tokens[k].value === "process" &&
+      !isPunct(k - 1, ".") &&
+      isPunct(k + 1, ".") &&
+      k + 4 < n &&
+      tokens[k + 2].value === "env" &&
+      (isPunct(k + 3, ".") || isPunct(k + 3, "[")) &&
+      MARKUP_ENV.test(tokens[k + 4].value)
+    ) {
+      opaqueStarts.push(tokens[k].start);
+      opaqueValues.push(ENV_READ);
+      continue;
+    }
     if (tokens[k].type !== "identifier" || !isPunct(k + 1, "(")) continue;
     if (partner[k + 1] === -1) continue;
     const name = tokens[k].value;
@@ -1542,6 +1908,7 @@ function markupProducers(
     if (!set) usedBy.set(from, (set = new Set()));
     set.add(to);
   };
+  for (const name of seeds.keys()) markMarkup(name);
   const opaqueAt = new Set(opaqueStarts);
   const stack: { name: string; end: number }[] = [];
   let r = 0;
@@ -1573,8 +1940,15 @@ function markupProducers(
 
   const starts: number[] = [];
   const values: string[] = [];
+  // A project import read as a value (ICON_OK, icons.ok) may hold markup
+  // built as a string in its module; one that is called is a project
+  // helper, which projectHelperIn reports.
   for (let k = 0; k < n; k++)
-    if (reads(k) && names.has(tokens[k].value)) {
+    if (
+      reads(k) &&
+      (names.has(tokens[k].value) ||
+        (projectNames.has(tokens[k].value) && !isPunct(k + 1, "(")))
+    ) {
       starts.push(tokens[k].start);
       values.push(tokens[k].value);
     }
