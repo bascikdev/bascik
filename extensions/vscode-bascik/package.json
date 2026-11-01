@@ -64,7 +64,7 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "An absolute path to a `typescript` package folder (TypeScript 5 or 6) to check `type=\"text/typescript\"` blocks with, instead of VS Code's own. A user setting only: a workspace cannot choose code for the editor to load. TypeScript 7 has no language service and is skipped."
+          "markdownDescription": "An absolute path to a `typescript` package folder (TypeScript 5 or 6) to check `type=\"text/typescript\"` blocks with, instead of VS Code's own. A path that cannot be used shows a warning and falls back to VS Code's own. A user setting only: a workspace cannot choose code for the editor to load. TypeScript 7 has no language service and is skipped."
         }
       }
     }

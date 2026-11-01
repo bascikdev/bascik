@@ -921,7 +921,10 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
       { createTypeScriptEngine: create },
       { typescript: { path: " /editor/typescript " } },
     );
-    expect(create).toHaveBeenCalledWith({ clientPath: "/editor/typescript" });
+    expect(create).toHaveBeenCalledWith({
+      clientPath: "/editor/typescript",
+      editorPath: undefined,
+    });
     await pause(10);
     const [, registration] = fake.connection.client.register.mock
       .calls[0] as unknown as [
@@ -984,6 +987,27 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
         .flat()
         .some((d) => d.message === "stale"),
     ).toBe(false);
+  });
+
+  it("misuse: warns once, visibly, when the TypeScript path the client set cannot be used", async () => {
+    const problem =
+      "the TypeScript path the editor gave (/nonexistent/typescript) is not a typescript package folder";
+    const engine = recordingEngine(() => ({
+      status: "ok",
+      diagnostics: [],
+      clientPathProblem: problem,
+    }));
+    await start({ createTypeScriptEngine: () => engine });
+    const page = await write("src/pages/index.html", PAGE);
+    const other = await write("src/pages/other.html", PAGE);
+    open(page, PAGE);
+    open(other, PAGE);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalledTimes(2));
+    await pause();
+    expect(fake.connection.window.showWarningMessage).toHaveBeenCalledTimes(1);
+    const [message] = fake.connection.window.showWarningMessage.mock.calls[0];
+    expect(message).toContain("/nonexistent/typescript");
+    expect(message).toContain("checked with another TypeScript");
   });
 
   it("logs a failed check and keeps going", async () => {
@@ -1199,16 +1223,18 @@ describe("readInitializationOptions", () => {
     expect(readInitializationOptions(undefined)).toEqual({
       typescriptEnabled: true,
       typescriptPath: undefined,
+      typescriptEditorPath: undefined,
       editorHasEmbeddedTypeScript: false,
     });
     expect(
       readInitializationOptions({
-        typescript: { enabled: true, path: "/ts" },
+        typescript: { enabled: true, path: "/ts", editorPath: " /editor/ts " },
         editorHasEmbeddedTypeScript: true,
       }),
     ).toEqual({
       typescriptEnabled: true,
       typescriptPath: "/ts",
+      typescriptEditorPath: "/editor/ts",
       editorHasEmbeddedTypeScript: true,
     });
   });
@@ -1225,17 +1251,19 @@ describe("readInitializationOptions", () => {
       expect(readInitializationOptions(value)).toEqual({
         typescriptEnabled: true,
         typescriptPath: undefined,
+        typescriptEditorPath: undefined,
         editorHasEmbeddedTypeScript: false,
       });
     }
     expect(
       readInitializationOptions({
-        typescript: { enabled: "false", path: "   " },
+        typescript: { enabled: "false", path: "   ", editorPath: 3 },
         editorHasEmbeddedTypeScript: "yes",
       }),
     ).toEqual({
       typescriptEnabled: true,
       typescriptPath: undefined,
+      typescriptEditorPath: undefined,
       editorHasEmbeddedTypeScript: false,
     });
     expect(

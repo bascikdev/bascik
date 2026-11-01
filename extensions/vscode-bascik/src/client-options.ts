@@ -27,15 +27,17 @@ export interface TypeScriptSettings {
 /**
  * Where VS Code keeps its own TypeScript, under the editor's application root. Bascik never bundles TypeScript; the
  * server checks `type="text/typescript"` blocks with this copy unless the `bascik.typescript.path` setting names
- * another. (When it is missing, the server falls back to the project's own `typescript`.)
+ * another that works. (When it is missing too, the server falls back to the project's own `typescript`.)
  */
 export function bundledTypeScriptPath(appRoot: string): string {
   return join(appRoot, "extensions", "node_modules", "typescript");
 }
 
 /**
- * The server's `initializationOptions` (`BascikInitializationOptions` in the language server). VS Code's HTML
- * support already answers hover and completion inside quoted TypeScript blocks, so the server is told it need not.
+ * The server's `initializationOptions` (`BascikInitializationOptions` in the language server). The setting goes in
+ * `path` and VS Code's own copy in `editorPath`, so a mistyped or broken setting falls back to VS Code's copy (and
+ * the server shows a warning) instead of turning the checks off. VS Code's HTML support already answers hover and
+ * completion inside quoted TypeScript blocks, so the server is told it need not.
  */
 export function initializationOptions(
   appRoot: string,
@@ -48,9 +50,10 @@ export function initializationOptions(
       enabled: settings.enabled,
       path:
         configured === ""
-          ? bundledTypeScriptPath(appRoot)
+          ? undefined
           : // A relative setting is read from the (first) workspace folder, as typescript.tsdk is.
             resolve(workspaceFolder ?? appRoot, configured),
+      editorPath: bundledTypeScriptPath(appRoot),
     },
     editorHasEmbeddedTypeScript: true,
   };

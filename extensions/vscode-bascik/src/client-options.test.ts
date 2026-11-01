@@ -17,7 +17,8 @@ describe("initializationOptions", () => {
     ).toEqual({
       typescript: {
         enabled: true,
-        path: join(appRoot, "extensions", "node_modules", "typescript"),
+        path: undefined,
+        editorPath: join(appRoot, "extensions", "node_modules", "typescript"),
       },
       editorHasEmbeddedTypeScript: true,
     });
@@ -26,14 +27,19 @@ describe("initializationOptions", () => {
     );
   });
 
-  it("uses the bascik.typescript.path setting instead, and passes enabled through", () => {
+  it("passes the bascik.typescript.path setting first, keeps VS Code's own as the fallback, and passes enabled through", () => {
     expect(
       initializationOptions(
         appRoot,
         { enabled: false, path: "  /opt/typescript  " },
         "/work/site",
       ).typescript,
-    ).toEqual({ enabled: false, path: resolve("/opt/typescript") });
+    ).toEqual({
+      enabled: false,
+      path: resolve("/opt/typescript"),
+      // A mistyped setting falls back to this copy rather than turning checks off.
+      editorPath: bundledTypeScriptPath(appRoot),
+    });
   });
 
   it("misuse: reads a relative setting from the first workspace folder, or the editor when there is none", () => {

@@ -49,9 +49,14 @@ export interface TypeScriptDiagnostic {
 
 /** What a diagnostics request returns. */
 export type TypeScriptDiagnosticsResult =
-  | { status: "ok"; diagnostics: TypeScriptDiagnostic[] }
+  | {
+      status: "ok";
+      diagnostics: TypeScriptDiagnostic[];
+      /** Why the client's TypeScript path was not used (another copy was), for the editor to show. */
+      clientPathProblem?: string;
+    }
   /** No usable TypeScript for the project; `message` says why, once per project. */
-  | { status: "unavailable"; message: string }
+  | { status: "unavailable"; message: string; clientPathProblem?: string }
   /** A newer edit made the request stale before it finished. */
   | { status: "cancelled" }
   /** TypeScript threw (a bug, or a broken install); `message` is for the log. */
@@ -722,6 +727,8 @@ export class TypeScriptProject {
 export interface TypeScriptProjectsOptions {
   /** The TypeScript the client asked for (a package folder); see `typescript-loader.ts`. */
   clientPath?: string;
+  /** The editor's own TypeScript, tried after `clientPath`. */
+  editorPath?: string;
   /** Where to resolve an installed peer `typescript` from after the project. */
   fallbackFrom?: string;
   /** Whether the request that is running is stale. */
@@ -754,6 +761,7 @@ export class TypeScriptProjects {
         this.options.resolve?.(projectRoot) ??
         resolveTypeScript({
           clientPath: this.options.clientPath,
+          editorPath: this.options.editorPath,
           projectRoot,
           fallbackFrom: this.options.fallbackFrom,
         });
@@ -817,12 +825,16 @@ export class TypeScriptProjects {
     } & PageCheckOptions,
   ): TypeScriptDiagnosticsResult {
     const projectRoot = path.resolve(request.projectRoot);
+    const { clientPathProblem } = this.resolution(projectRoot);
+    const problem =
+      clientPathProblem === undefined ? {} : { clientPathProblem };
     const project = this.project(projectRoot, request.importRoot);
     if (typeof project === "string")
-      return { status: "unavailable", message: project };
+      return { status: "unavailable", message: project, ...problem };
     try {
       return {
         status: "ok",
+        ...problem,
         diagnostics: project.diagnostics(
           path.resolve(projectRoot, request.htmlPath),
           request.text,

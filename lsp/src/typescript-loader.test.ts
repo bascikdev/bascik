@@ -53,6 +53,44 @@ describe("resolveTypeScript", () => {
     });
   });
 
+  it("misuse: a client path that cannot be used falls back to the editor's own TypeScript, and says why", () => {
+    const root = fixture();
+    root.link("node_modules/typescript", TYPESCRIPT_7_DIR);
+    const result = resolveTypeScript({
+      clientPath: root.file("nonexistent/typescript"),
+      editorPath: TYPESCRIPT_6_DIR,
+      projectRoot: root.root,
+    });
+    expect(result).toMatchObject({ ok: true, source: "editor" });
+    expect(result.clientPathProblem).toContain(
+      `the TypeScript path the editor gave (${root.file("nonexistent/typescript")}) is not a typescript package folder`,
+    );
+    // A usable client path has no problem to report, and the editor's copy is not needed.
+    const fine = resolveTypeScript({
+      clientPath: TYPESCRIPT_6_DIR,
+      editorPath: root.file("missing-editor"),
+      projectRoot: root.root,
+    });
+    expect(fine).toMatchObject({ ok: true, source: "client" });
+    expect(fine.clientPathProblem).toBeUndefined();
+  });
+
+  it("misuse: a client path to TypeScript 7 with no editor copy names both problems and turns checks off", () => {
+    const root = fixture();
+    const result = resolveTypeScript({
+      clientPath: TYPESCRIPT_7_DIR,
+      editorPath: root.file("missing-editor"),
+      projectRoot: root.root,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.clientPathProblem).toMatch(
+      /TypeScript 7\.\d+\.\d+ in .* has no language service/,
+    );
+    expect(result.ok || result.message).toContain(
+      `the editor's own TypeScript (${root.file("missing-editor")}) is not a typescript package folder`,
+    );
+  });
+
   it("accepts a client path that names the package's lib folder, as typescript.tsdk does", () => {
     const root = fixture();
     const result = resolveTypeScript({

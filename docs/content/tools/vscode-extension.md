@@ -343,7 +343,7 @@ Two settings control the TypeScript errors in script tags:
 | `bascik.typescript.enabled` | `true`  | Report TypeScript errors in `type="text/typescript"` blocks. Turn it off to keep only Bascik's own diagnostics                                                                                            |
 | `bascik.typescript.path`    | `""`    | An absolute path to a `typescript` package folder (TypeScript 5 or 6) to check with instead of VS Code's own. It is a user setting only, so a workspace you open cannot choose code for the editor to run |
 
-The extension never bundles TypeScript. It uses the TypeScript VS Code ships with, or the one `bascik.typescript.path` names, and falls back to the project's own `typescript` package. TypeScript 7 publishes no language service for other programs to use, so a TypeScript 7 install is skipped. When no usable TypeScript is found, the checks are off and the **Bascik** output panel says why, once. Changing either setting restarts the language server.
+The extension never bundles TypeScript. It uses the one `bascik.typescript.path` names, or the TypeScript VS Code ships with, and falls back to the project's own `typescript` package. When `bascik.typescript.path` names a folder that cannot be used (a typo, a folder that is not a `typescript` package, or TypeScript 7), VS Code shows a warning once and the check uses VS Code's own TypeScript instead. TypeScript 7 publishes no language service for other programs to use, so a TypeScript 7 install is skipped. When no usable TypeScript is found, the checks are off and the **Bascik** output panel says why, once. Changing either setting restarts the language server.
 
 ### Filter Generic Editor Word Suggestions
 

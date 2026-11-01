@@ -32,6 +32,8 @@ interface RunningServer {
   connection: MessageConnection;
   child: ChildProcess;
   logs: string[];
+  /** Messages the server asked the editor to show (`window/showMessageRequest`). */
+  shown: string[];
   /** Resolves with the first diagnostics published for `uri` that pass `accept`. */
   waitFor(
     uri: string,
@@ -60,6 +62,14 @@ async function startServer(
     resolve: (diagnostics: Diagnostic[]) => void;
   }[] = [];
   const logs: string[] = [];
+  const shown: string[] = [];
+  connection.onRequest(
+    "window/showMessageRequest",
+    ({ message }: { message: string }) => {
+      shown.push(message);
+      return null;
+    },
+  );
   connection.onNotification(
     "window/logMessage",
     ({ message }: { message: string }) => {
@@ -93,6 +103,7 @@ async function startServer(
     connection,
     child,
     logs,
+    shown,
     waitFor(uri, accept) {
       const current = latest.get(uri);
       if (current && accept(current)) return Promise.resolve(current);
@@ -223,6 +234,33 @@ describe("the bundled language server's TypeScript checks", () => {
       expect(fixed.filter(isTypeScript)).toEqual([]);
     } finally {
       await server.stop();
+    }
+  }, 30_000);
+
+  it("misuse: a mistyped TypeScript path setting falls back to the editor's own TypeScript, with a warning", async () => {
+    const root = await project("mistyped-setting");
+    const fallback = await startServer(serverFile, root, {
+      typescript: {
+        path: join(work, "nonexistent/typescript"),
+        editorPath: TYPESCRIPT_6_DIR,
+      },
+      editorHasEmbeddedTypeScript: true,
+    });
+    try {
+      const file = join(root, "src/pages/index.html");
+      const uri = pathToFileURL(file).toString();
+      await open(fallback, file, PAGE);
+      const diagnostics = await fallback.waitFor(uri, (all) =>
+        all.some(isTypeScript),
+      );
+      expect(diagnostics.filter(isTypeScript).map((d) => d.code)).toEqual([
+        2322,
+      ]);
+      expect(fallback.shown).toHaveLength(1);
+      expect(fallback.shown[0]).toContain(join(work, "nonexistent/typescript"));
+      expect(fallback.shown[0]).toContain("is not a typescript package folder");
+    } finally {
+      await fallback.stop();
     }
   }, 30_000);
 

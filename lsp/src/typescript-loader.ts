@@ -4,11 +4,15 @@
  * TypeScript is never a dependency of the language server and never bundled with it: it is an optional peer. The
  * first of these that works is used:
  *
- *   1. a path the client passes (the VS Code extension passes VS Code's own TypeScript, or the
- *      `bascik.typescript.path` setting);
- *   2. the project's `typescript`, resolved from the project root, then from this package (where a strict
+ *   1. a path the client passes (the VS Code extension passes the `bascik.typescript.path` setting);
+ *   2. the editor's own TypeScript, when the client passes one (the VS Code extension passes VS Code's), so a
+ *      mistyped or broken setting falls back to it rather than turning the checks off;
+ *   3. the project's `typescript`, resolved from the project root, then from this package (where a strict
  *      layout such as pnpm's links an installed peer);
- *   3. none: TypeScript checks are off.
+ *   4. none: TypeScript checks are off.
+ *
+ * Why a client path could not be used is kept apart (`clientPathProblem`), so the editor can show it where the
+ * user set it.
  *
  * A copy without `createLanguageService` (TypeScript 7, the native port, publishes no JavaScript language
  * service) is skipped like a missing one, with a note, and so is a copy missing any library file the checks load.
@@ -21,7 +25,7 @@ import type * as TS from "typescript-6";
 export type TypeScriptModule = typeof TS;
 
 /** Where a TypeScript copy was found. */
-export type TypeScriptSource = "client" | "project";
+export type TypeScriptSource = "client" | "editor" | "project";
 
 export interface LoadedTypeScript {
   ok: true;
@@ -32,6 +36,8 @@ export interface LoadedTypeScript {
   packageDir: string;
   /** Copies that were found and skipped, with the reason, for a log line. */
   skipped: string[];
+  /** Why the client's path was not used, when it gave one that could not be. */
+  clientPathProblem?: string;
 }
 
 export interface MissingTypeScript {
@@ -39,6 +45,8 @@ export interface MissingTypeScript {
   /** One line for a log or `bascik --check`: why there is no TypeScript, and what to do. */
   message: string;
   skipped: string[];
+  /** Why the client's path was not used, when it gave one that could not be. */
+  clientPathProblem?: string;
 }
 
 export type TypeScriptResolution = LoadedTypeScript | MissingTypeScript;
@@ -46,6 +54,8 @@ export type TypeScriptResolution = LoadedTypeScript | MissingTypeScript;
 export interface TypeScriptLookup {
   /** A `typescript` package folder (or a path inside one, such as its `lib`) the client asked for. */
   clientPath?: string;
+  /** The editor's own `typescript` package folder, tried after `clientPath` (VS Code's bundled copy). */
+  editorPath?: string;
   /** The project root; its `node_modules` is searched next. */
   projectRoot: string;
   /**
@@ -186,17 +196,28 @@ export function resolveTypeScript(
 ): TypeScriptResolution {
   const skipped: string[] = [];
   const tried = new Set<string>();
-  if (lookup.clientPath) {
-    const packageDir = packageDirOf(lookup.clientPath);
+  let clientPathProblem: string | undefined;
+  const withProblem = <T extends TypeScriptResolution>(result: T): T =>
+    clientPathProblem === undefined ? result : { ...result, clientPathProblem };
+  const given: [string | undefined, TypeScriptSource, string][] = [
+    [lookup.clientPath, "client", "the TypeScript path the editor gave"],
+    [lookup.editorPath, "editor", "the editor's own TypeScript"],
+  ];
+  for (const [candidate, source, label] of given) {
+    if (!candidate) continue;
+    const before = skipped.length;
+    const packageDir = packageDirOf(candidate);
     if (packageDir === undefined) {
       skipped.push(
-        `the TypeScript path the editor gave (${lookup.clientPath}) is not a typescript package folder`,
+        `${label} (${candidate}) is not a typescript package folder`,
       );
-    } else {
+    } else if (!tried.has(realPath(packageDir))) {
       tried.add(realPath(packageDir));
-      const result = tryLoad(packageDir, "client", skipped);
-      if (result) return result;
+      const result = tryLoad(packageDir, source, skipped);
+      if (result) return withProblem(result);
     }
+    if (source === "client" && skipped.length > before)
+      clientPathProblem = skipped.slice(before).join("; ");
   }
   const projectRoot = path.resolve(lookup.projectRoot);
   for (const from of [
@@ -207,12 +228,12 @@ export function resolveTypeScript(
     if (packageDir === undefined || tried.has(realPath(packageDir))) continue;
     tried.add(realPath(packageDir));
     const result = tryLoad(packageDir, "project", skipped);
-    if (result) return result;
+    if (result) return withProblem(result);
   }
   const reasons = skipped.length > 0 ? ` (${skipped.join("; ")})` : "";
-  return {
+  return withProblem({
     ok: false,
     message: `TypeScript checks of type="text/typescript" scripts are off: no usable typescript was found from ${projectRoot}${reasons}. Install TypeScript 5 or 6 with: npm install --save-dev typescript@6`,
     skipped,
-  };
+  });
 }

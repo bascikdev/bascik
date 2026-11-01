@@ -40,6 +40,7 @@ export function createFakeConnection() {
         }),
       ),
     },
+    window: { showWarningMessage: vi.fn<Handler>(async () => undefined) },
     console: {
       error: vi.fn<Handler>(),
       warn: vi.fn<Handler>(),

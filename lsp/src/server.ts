@@ -74,8 +74,13 @@ export interface BascikInitializationOptions {
   typescript?: {
     /** `false` turns TypeScript checks of `type="text/typescript"` blocks off. Default `true`. */
     enabled?: boolean;
-    /** A `typescript` package folder to use before the project's own (VS Code passes its bundled copy). */
+    /** A `typescript` package folder to use first (VS Code passes the `bascik.typescript.path` setting). */
     path?: string;
+    /**
+     * The editor's own `typescript` package folder, used when `path` is not given or cannot be used, before the
+     * project's own (VS Code passes its bundled copy).
+     */
+    editorPath?: string;
   };
   /**
    * The editor answers hover, completion and definition inside quoted `type="text/typescript"` blocks itself
@@ -89,6 +94,7 @@ export interface BascikInitializationOptions {
 export function readInitializationOptions(value: unknown): {
   typescriptEnabled: boolean;
   typescriptPath: string | undefined;
+  typescriptEditorPath: string | undefined;
   editorHasEmbeddedTypeScript: boolean;
 } {
   const options =
@@ -99,12 +105,12 @@ export function readInitializationOptions(value: unknown): {
     typeof options.typescript === "object" && options.typescript !== null
       ? (options.typescript as Record<string, unknown>)
       : {};
+  const pathOption = (value: unknown) =>
+    typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
   return {
     typescriptEnabled: typescript.enabled !== false,
-    typescriptPath:
-      typeof typescript.path === "string" && typescript.path.trim() !== ""
-        ? typescript.path.trim()
-        : undefined,
+    typescriptPath: pathOption(typescript.path),
+    typescriptEditorPath: pathOption(typescript.editorPath),
     editorHasEmbeddedTypeScript: options.editorHasEmbeddedTypeScript === true,
   };
 }
@@ -224,6 +230,8 @@ export class BascikLanguageServer {
   private readonly typeScriptGenerations = new Map<string, number>();
   /** Project roots whose missing TypeScript has been noted in the output panel. */
   private readonly reportedTypeScriptRoots = new Set<string>();
+  /** Whether the client's unusable TypeScript path has been shown, which happens once: it is one setting. */
+  private reportedClientPathProblem = false;
 
   constructor(
     private readonly connection: Connection,
@@ -261,6 +269,7 @@ export class BascikLanguageServer {
         if (clientOptions.typescriptEnabled) {
           this.typeScript = this.options.createTypeScriptEngine?.({
             clientPath: clientOptions.typescriptPath,
+            editorPath: clientOptions.typescriptEditorPath,
           });
         }
 
@@ -980,6 +989,19 @@ export class BascikLanguageServer {
         `Bascik could not check the TypeScript in ${fsPath}: ${result.message}`,
       );
       return true;
+    }
+    if (result.clientPathProblem && !this.reportedClientPathProblem) {
+      // A path the user set that is mistyped or broken: said where they will see it, not only in a log.
+      this.reportedClientPathProblem = true;
+      const instead =
+        result.status === "ok"
+          ? "TypeScript blocks are checked with another TypeScript instead."
+          : "TypeScript checks are off.";
+      const message = `Bascik cannot use its TypeScript path setting: ${result.clientPathProblem}. ${instead}`;
+      this.connection.console.warn(message);
+      // Typed void, but sent as a request: a client that refuses it must not leave a rejected promise behind.
+      const shown: unknown = this.connection.window.showWarningMessage(message);
+      if (shown instanceof Promise) shown.catch(() => undefined);
     }
     if (result.status === "unavailable") {
       // Off without TypeScript, quietly: one line in the output panel per project, nothing in the editor.

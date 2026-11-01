@@ -50,8 +50,10 @@ export interface TypeScriptEngine {
 
 /** How the engine finds TypeScript; see `typescript-loader.ts`. */
 export interface TypeScriptEngineSettings {
-  /** A `typescript` package folder the client passes (VS Code passes its own). */
+  /** A `typescript` package folder the client passes (VS Code passes the `bascik.typescript.path` setting). */
   clientPath?: string;
+  /** The editor's own `typescript` package folder, tried after `clientPath` (VS Code passes its bundled copy). */
+  editorPath?: string;
   /** Where to resolve an installed peer `typescript` after the project. */
   fallbackFrom?: string;
 }
@@ -102,6 +104,7 @@ export function createInProcessTypeScriptEngine(
   let running: { slot: number; epoch: number } | undefined;
   const projects = new TypeScriptProjects({
     clientPath: settings.clientPath,
+    editorPath: settings.editorPath,
     fallbackFrom: settings.fallbackFrom,
     isCancellationRequested: () =>
       running !== undefined && epochs.current(running.slot) !== running.epoch,
