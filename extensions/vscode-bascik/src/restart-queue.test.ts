@@ -19,6 +19,22 @@ function controlledRestart() {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("RestartQueue", () => {
+  it("waits for the client's first start before the first restart, and keeps the change", async () => {
+    let ready!: () => void;
+    const starting = new Promise<void>((resolve) => (ready = resolve));
+    const { restart, finish } = controlledRestart();
+    const queue = new RestartQueue(restart, vi.fn(), starting);
+    // A setting changes while the client is still starting: no restart yet (it would reject), none lost.
+    const done = queue.request();
+    await settle();
+    expect(restart).not.toHaveBeenCalled();
+    ready();
+    await settle();
+    expect(restart).toHaveBeenCalledTimes(1);
+    finish();
+    await done;
+  });
+
   it("restarts once for a change, and once more for changes made while it ran, never two at a time", async () => {
     const { restart, finish } = controlledRestart();
     const queue = new RestartQueue(restart, vi.fn());

@@ -11,9 +11,14 @@ export class RestartQueue {
   private next: Promise<void> | undefined;
   private disposed = false;
 
+  /**
+   * `ready` is the client's first start: a restart asked for while it still runs would reject the same way
+   * and lose its change, so every restart waits for it first.
+   */
   constructor(
     private readonly restart: () => Promise<void>,
     private readonly log: (message: string) => void,
+    private readonly ready?: Promise<unknown>,
   ) {}
 
   /** Asks for a restart that starts after this call; resolves once it has finished (or failed, and been logged). */
@@ -43,6 +48,7 @@ export class RestartQueue {
 
   private async run(): Promise<void> {
     try {
+      if (this.ready) await this.ready;
       await this.restart();
     } catch (error) {
       this.log(

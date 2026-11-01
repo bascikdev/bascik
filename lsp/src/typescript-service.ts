@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import * as path from "node:path";
-import type * as TS from "typescript-6";
+import type * as TS from "typescript";
 import type { ComponentSource } from "./project.js";
 import {
   extractPageScopeScripts,

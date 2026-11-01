@@ -75,10 +75,13 @@ export async function activate(
   client = new LanguageClient("bascik", "Bascik", serverOptions, clientOptions);
   const started = client;
   // The server reads the TypeScript settings when it starts, so a change restarts it: one restart at a time,
-  // with changes made during one applied by the next, and a failure logged rather than left unhandled.
+  // after the first start has finished (a restart during it rejects), with changes made during one applied
+  // by the next, and a failure logged rather than left unhandled.
+  const starting = client.start();
   const restarts = new RestartQueue(
     () => started.restart(),
     (message) => started.outputChannel.appendLine(message),
+    starting,
   );
   context.subscriptions.push(
     { dispose: () => restarts.dispose() },
@@ -87,7 +90,7 @@ export async function activate(
         void restarts.request();
     }),
   );
-  await client.start();
+  await starting;
   return {
     scriptCheck,
     firstScriptCheck,

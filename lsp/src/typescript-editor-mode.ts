@@ -10,7 +10,7 @@
  * an offset. (VS Code's mode also loads a jQuery declaration file, which is not mirrored.)
  */
 import * as path from "node:path";
-import type * as TS from "typescript-6";
+import type * as TS from "typescript";
 import { editorEmbeddedScripts } from "./typescript-blocks.js";
 import {
   type EditorModeAnswers,

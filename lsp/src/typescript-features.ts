@@ -12,7 +12,7 @@
  *
  * Results are located in the HTML (offsets in the request's text) or, for another file, by line and character.
  */
-import type * as TS from "typescript-6";
+import type * as TS from "typescript";
 import {
   type Segment,
   withoutGlobalObjectAliases,

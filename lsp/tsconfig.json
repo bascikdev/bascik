@@ -14,7 +14,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      // The repo builds with TypeScript 7, which publishes no language service types; the sources name the
+      // `typescript` peer (so the emitted declarations do too) and type-check against TypeScript 6 here.
+      "typescript": ["../node_modules/typescript-6/lib/typescript.d.ts"]
+    }
   },
   "include": ["src/**/*"]
 }
