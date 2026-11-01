@@ -18,12 +18,16 @@ import type { TypeScriptModule } from "./typescript-loader.js";
 /** The library VS Code's HTML support gives its in-file TypeScript mode. */
 export const EDITOR_MODE_LIB = "lib.es2020.full.d.ts";
 
-/** The page as VS Code's mode reads it: the TypeScript blocks' text in place, every other character a space. */
+/**
+ * The page as VS Code's mode reads it: the text of the blocks it embeds as TypeScript in place (not a block whose
+ * `type` it does not recognize, see `editorEmbedsTypeScript`), every other character a space.
+ */
 export function editorModeText(html: string): string {
   const chars = html.replace(/[^\r\n]/g, " ").split("");
   for (const block of extractTypeScriptBlocks(html))
-    for (let i = 0; i < block.content.length; i++)
-      chars[block.contentStart + i] = block.content[i];
+    if (block.editorEmbedded)
+      for (let i = 0; i < block.content.length; i++)
+        chars[block.contentStart + i] = block.content[i];
   return chars.join("");
 }
 

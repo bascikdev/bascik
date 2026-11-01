@@ -30,6 +30,11 @@ export interface TypeScriptBlock {
   /** Offset of the block's first character in the HTML. */
   contentStart: number;
   content: string;
+  /**
+   * VS Code's HTML support embeds the block as TypeScript, so its own in-file mode answers about it: the open tag's
+   * lowercase `type` attribute is exactly `"text/typescript"` or `'text/typescript'` (see `editorEmbedsTypeScript`).
+   */
+  editorEmbedded: boolean;
 }
 
 /** In the order Bascik's compiler resolves a tag that (wrongly) carries more than one. */
@@ -82,6 +87,8 @@ export function mayHaveTypeScriptBlocks(html: string): boolean {
 /** A `<script>` element of an HTML file, with its open tag's attributes. */
 interface ScriptElement {
   attributes: Map<string, string>;
+  /** The open tag's text, `<script` to `>`. */
+  openTag: string;
   contentStart: number;
   content: string;
 }
@@ -120,8 +127,10 @@ function scanScripts(html: string): ScriptElement[] {
     // An element that never closes swallows the rest of the file; nothing after it is a tag.
     if (close < 0) break;
     if (name === "script") {
+      const openTag = html.slice(lt, contentStart);
       scripts.push({
-        attributes: readOpenTagAttributes(html.slice(lt, contentStart)),
+        attributes: readOpenTagAttributes(openTag),
+        openTag,
         contentStart,
         content: html.slice(contentStart, close),
       });
@@ -137,13 +146,32 @@ const directiveOf = (
   DIRECTIVES.find((candidate) => attributes.has(`data-bascik-${candidate}`));
 
 /**
+ * Whether VS Code's HTML support reads a script as TypeScript. Its scanner compares the attribute's name as written
+ * with `type` (an uppercase `TYPE` makes the block JavaScript) and tests the value as written, quotes included,
+ * against `/["']text\/typescript["']/`; the last `type` attribute wins. So `type="text/TypeScript"`,
+ * `type=text/typescript` and `type=" text/typescript"`, which Bascik compiles as TypeScript, get nothing from it.
+ */
+export function editorEmbedsTypeScript(openTag: string): boolean {
+  const insideTag = openTag.replace(/^<[^\s/>]+/, "").replace(/\/?>$/, "");
+  const attributeRe =
+    /([^\s"'=<>`/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'][^\s]*))?/g;
+  let embedded = false;
+  for (const [, name, value] of insideTag.matchAll(attributeRe))
+    if (name === "type")
+      embedded = value !== undefined && /["']text\/typescript["']/.test(value);
+  return embedded;
+}
+
+/**
  * The `type="text/typescript"` script blocks of an HTML file, in source order. A block inside an HTML comment, a
  * script with `src`, a script whose tag or element never closes, and a script with any other type are not blocks.
  */
 export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
   const blocks: TypeScriptBlock[] = [];
   if (!mayHaveTypeScriptBlocks(html)) return blocks;
-  for (const { attributes, contentStart, content } of scanScripts(html)) {
+  for (const { attributes, openTag, contentStart, content } of scanScripts(
+    html,
+  )) {
     const type = attributes.get("type")?.trim().toLowerCase();
     if (type !== "text/typescript" || attributes.has("src")) continue;
     const directive = directiveOf(attributes);
@@ -153,6 +181,7 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
       program: directive === undefined ? "client" : "server",
       contentStart,
       content,
+      editorEmbedded: editorEmbedsTypeScript(openTag),
     });
   }
   return blocks;

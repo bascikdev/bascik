@@ -328,6 +328,36 @@ describe("TypeScript language features beside an editor's own in-file TypeScript
     ).toEqual(expect.arrayContaining(["frother.ts", "steam.ts"]));
   });
 
+  it("answers everything in a block VS Code does not embed as TypeScript (its type not quoted and lowercase)", () => {
+    const setup = project();
+    for (const type of [
+      '"text/TypeScript"',
+      "text/typescript",
+      '" text/typescript"',
+      'TYPE="text/typescript"',
+    ]) {
+      const attribute = type.startsWith("TYPE") ? type : `type=${type}`;
+      const html = PAGE.replace(
+        '<script type="text/typescript">',
+        `<script ${attribute}>`,
+      ).replace(
+        "document.title = frother.label;",
+        "const jug = { size: 1 };\n  jug.",
+      );
+      expect(
+        ask(setup, html, "hover", "rpm;", 0, crossFileOnly)?.markdown,
+      ).toContain("const rpm: number");
+      expect(
+        names(
+          ask(setup, html, "completion", "jug.", 4, {
+            ...crossFileOnly,
+            triggerCharacter: ".",
+          }),
+        ),
+      ).toContain("size");
+    }
+  });
+
   it("gives signatures of imported functions only", () => {
     const setup = project();
     const html = PAGE.replace("froth(2)", "froth(2, )");

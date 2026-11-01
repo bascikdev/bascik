@@ -29,6 +29,7 @@ import {
   sharedScriptText,
   toGeneratedOffset,
   toSourceOffset,
+  typeScriptBlockAt,
   virtualBlockText,
   type VirtualBlockText,
 } from "./typescript-blocks.js";
@@ -1206,7 +1207,11 @@ export class TypeScriptProject {
     );
     const isVirtual = (fileName: string) =>
       this.files.has(fileName) || fileName === this.nodeDeclarations?.fileName;
-    const isForeign = query.crossFileOnly
+    // A block VS Code's HTML support does not embed as TypeScript gets nothing from its mode: every answer is Bascik's.
+    const crossFileOnly =
+      query.crossFileOnly === true &&
+      typeScriptBlockAt(text, query.offset)?.editorEmbedded === true;
+    const isForeign = crossFileOnly
       ? (fileName: string) =>
           !isVirtual(fileName) &&
           path.dirname(path.resolve(fileName)) !== libDir
@@ -1220,7 +1225,7 @@ export class TypeScriptProject {
         generated,
         file,
         isForeign,
-        editor: query.crossFileOnly
+        editor: crossFileOnly
           ? editorModeMirror(this.ts).at(text, query.offset)
           : undefined,
         toSource: (offset) =>

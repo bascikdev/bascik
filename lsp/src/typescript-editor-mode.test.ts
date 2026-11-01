@@ -45,6 +45,17 @@ describe("editorModeText", () => {
     expect(text).not.toContain("<script");
   });
 
+  it("leaves out a block VS Code does not embed as TypeScript (its type not quoted and lowercase)", () => {
+    const html =
+      '<script type="text/typescript">const kept = 1;</script>\n' +
+      '<script type="text/TypeScript">const mixedCase = 1;</script>\n' +
+      "<script type=text/typescript>const unquoted = 1;</script>\n";
+    const text = editorModeText(html);
+    expect(text).toContain("kept");
+    expect(text).not.toContain("mixedCase");
+    expect(text).not.toContain("unquoted");
+  });
+
   it("is all blanks for a page without TypeScript blocks", () => {
     expect(editorModeText("<p>Frother</p>\n").trim()).toBe("");
   });

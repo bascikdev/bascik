@@ -105,6 +105,27 @@ describe("extractTypeScriptBlocks", () => {
     }
   });
 
+  it("marks the blocks VS Code's HTML support embeds as TypeScript: a quoted, lowercase type attribute only", () => {
+    const embedded = (openTag: string) =>
+      extractTypeScriptBlocks(`${openTag}let a = 1;</script>`).map(
+        (block) => block.editorEmbedded,
+      );
+    expect(embedded('<script type="text/typescript">')).toEqual([true]);
+    expect(embedded("<script type='text/typescript'>")).toEqual([true]);
+    expect(
+      embedded('<script data-bascik-server\n  type="text/typescript"\n>'),
+    ).toEqual([true]);
+    // Bascik reads these as TypeScript too, but VS Code's regex does not, so its mode gives them nothing.
+    for (const openTag of [
+      '<script type="text/TypeScript">',
+      "<script type=text/typescript>",
+      '<script type=" text/typescript">',
+      '<script type="text/typescript ">',
+      '<script TYPE="text/typescript">',
+    ])
+      expect(embedded(openTag)).toEqual([false]);
+  });
+
   it("skips a script with src, and script text inside style, textarea and title", () => {
     expect(
       extractTypeScriptBlocks(
