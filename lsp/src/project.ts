@@ -133,6 +133,47 @@ export function hasIsolatedClientBlocks(
   );
 }
 
+/** A component's file and its current text (an open editor buffer's, when newer than the file on disk). */
+export interface ComponentSource {
+  fsPath: string;
+  text: string;
+}
+
+/**
+ * Every component a page uses, directly or through other components, with its file and text, whatever the script
+ * scoping. Each component appears once, in the order first used, and never the page itself. `readOpen` gives an
+ * open editor buffer's newer text.
+ */
+export function usedComponentSources(
+  fsPath: string,
+  text: string,
+  snapshot: Pick<ProjectSnapshot, "componentMap"> &
+    Partial<Pick<ProjectSnapshot, "componentSourceByFile">>,
+  readOpen: (fsPath: string) => string | undefined = () => undefined,
+): ComponentSource[] {
+  const names = new Set(snapshot.componentMap.keys());
+  const seen = new Set<string>([path.resolve(fsPath)]);
+  const found: ComponentSource[] = [];
+  const queue = [text];
+  while (queue.length > 0) {
+    const html = queue.shift()!;
+    for (const usage of findComponentUsages(html, names)) {
+      const componentPath = snapshot.componentMap.get(usage.name);
+      if (componentPath === undefined) continue;
+      const resolved = path.resolve(componentPath);
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      const source =
+        readOpen(componentPath) ??
+        snapshot.componentSourceByFile?.get(componentPath);
+      if (source === undefined) continue;
+      found.push({ fsPath: componentPath, text: source });
+      queue.push(source);
+    }
+  }
+  return found;
+}
+
 /**
  * The HTML of every component a page uses, directly or through other components, whose client scripts run in the
  * page's own scope: all of them when `scoping.scriptBlocks` is off, none otherwise (each component block is then
@@ -150,27 +191,9 @@ export function pageScopeComponentHtml(
   readOpen: (fsPath: string) => string | undefined = () => undefined,
 ): string[] {
   if (snapshot.scopesScriptBlocks !== false) return [];
-  const names = new Set(snapshot.componentMap.keys());
-  const seen = new Set<string>([path.resolve(fsPath)]);
-  const found: string[] = [];
-  const queue = [text];
-  while (queue.length > 0) {
-    const html = queue.shift()!;
-    for (const usage of findComponentUsages(html, names)) {
-      const componentPath = snapshot.componentMap.get(usage.name);
-      if (componentPath === undefined) continue;
-      const resolved = path.resolve(componentPath);
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
-      const source =
-        readOpen(componentPath) ??
-        snapshot.componentSourceByFile?.get(componentPath);
-      if (source === undefined) continue;
-      found.push(source);
-      queue.push(source);
-    }
-  }
-  return found;
+  return usedComponentSources(fsPath, text, snapshot, readOpen).map(
+    (component) => component.text,
+  );
 }
 
 /** Is `fsPath` HTML that `htmlUsageByFile` tracks: under `src` or the pages folder? */

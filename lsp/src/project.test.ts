@@ -14,6 +14,7 @@ import {
   pageScopeComponentHtml,
   readConfigSource,
   resolveComponentRoots,
+  usedComponentSources,
 } from "./project.js";
 
 describe("resolveComponentRoots", () => {
@@ -231,6 +232,53 @@ describe("config readers skip commented-out settings, as the compiler does", () 
         ...snapshot,
         scopesScriptBlocks: undefined,
       }),
+    ).toEqual([]);
+  });
+
+  it("finds every component a page uses, nested ones too, with its path, whatever the script scoping", () => {
+    const button = "<button>Milk frother</button>";
+    const card = "<article><frother-button></frother-button></article>";
+    const snapshot = {
+      componentRoots: ["/site/src/components"],
+      scopesScriptBlocks: true,
+      componentMap: new Map([
+        ["frother-card", "/site/src/components/frother-card.html"],
+        ["frother-button", "/site/src/components/frother-button.html"],
+        ["unused-card", "/site/src/components/unused-card.html"],
+      ]),
+      componentSourceByFile: new Map([
+        ["/site/src/components/frother-card.html", card],
+        ["/site/src/components/frother-button.html", button],
+        ["/site/src/components/unused-card.html", "<p>unused</p>"],
+      ]),
+    };
+    const expected = [
+      { fsPath: "/site/src/components/frother-card.html", text: card },
+      {
+        fsPath: "/site/src/components/frother-button.html",
+        text: "<b>edited</b>",
+      },
+    ];
+    const readOpen = (fsPath: string) =>
+      fsPath.endsWith("frother-button.html") ? "<b>edited</b>" : undefined;
+    for (const scopesScriptBlocks of [true, false, undefined]) {
+      const scoped = { ...snapshot, scopesScriptBlocks };
+      expect(
+        usedComponentSources(
+          "/site/src/pages/index.html",
+          "<frother-card></frother-card><frother-card />",
+          scoped,
+          readOpen,
+        ),
+      ).toEqual(expected);
+    }
+    // A component never lists itself.
+    expect(
+      usedComponentSources(
+        "/site/src/components/frother-button.html",
+        "<frother-button></frother-button>",
+        snapshot,
+      ),
     ).toEqual([]);
   });
 

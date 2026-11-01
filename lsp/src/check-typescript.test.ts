@@ -145,6 +145,36 @@ describe("checkFiles with TypeScript", () => {
     );
   });
 
+  it("sees what a component adds to Window on the pages that use it, scoped or not", async () => {
+    root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
+    root.write("src/pages/index.html", "<p>Milk frother</p>\n");
+    root.write(
+      "src/components/ga-tag.html",
+      '<template><span>ga</span></template><script type="text/typescript">interface Window { dataLayer: unknown[] } window.dataLayer = window.dataLayer || [];</script>\n',
+    );
+    root.write(
+      "src/pages/uses-ga.html",
+      '<main><ga-tag /></main>\n<script type="text/typescript">window.dataLayer.push({ event: "x" });</script>\n',
+    );
+    root.write(
+      "src/pages/no-ga.html",
+      '<main>Milk frother</main>\n<script type="text/typescript">window.dataLayer.push({ event: "x" });</script>\n',
+    );
+    const expected = [[path.join("src", "pages", "no-ga.html"), 2, "TS2339"]];
+    const scoped = await checkFiles({ cwd: root.root, typescript: true });
+    expect(scoped.diagnostics.map((d) => [d.filePath, d.line, d.code])).toEqual(
+      expected,
+    );
+    root.write(
+      "bascik.config.ts",
+      "export default { scoping: { scriptBlocks: false } };\n",
+    );
+    const unscoped = await checkFiles({ cwd: root.root, typescript: true });
+    expect(
+      unscoped.diagnostics.map((d) => [d.filePath, d.line, d.code]),
+    ).toEqual(expected);
+  });
+
   it("gives TypeScript every page first, so it builds its programs once for the whole check", async () => {
     root.link("node_modules/typescript", TYPESCRIPT_6_DIR);
     for (const name of ["a", "b", "c"])

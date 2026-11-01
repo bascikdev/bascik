@@ -15,12 +15,14 @@ import { DiagnosticSeverity } from "vscode-languageserver";
 import {
   buildSnapshot,
   hasIsolatedClientBlocks,
-  pageScopeComponentHtml,
   isInsideComponentRoots,
   type ProjectSnapshot,
 } from "./project.js";
 import { createDiagnostics, applyAutoFixes } from "./analyzer.js";
-import { hasTypeScriptBlocks } from "./typescript-blocks.js";
+import {
+  hasTypeScriptBlocks,
+  pageComponentsForTypeScript,
+} from "./typescript-blocks.js";
 import { TypeScriptProjects } from "./typescript-service.js";
 
 /**
@@ -267,7 +269,7 @@ export async function checkFiles(options: CheckOptions): Promise<CheckResult> {
               htmlPath: filePath,
               text: document.getText(),
               isolatedClientBlocks: hasIsolatedClientBlocks(filePath, snapshot),
-              pageScopeHtml: pageScopeComponentHtml(
+              ...pageComponentsForTypeScript(
                 filePath,
                 document.getText(),
                 snapshot,

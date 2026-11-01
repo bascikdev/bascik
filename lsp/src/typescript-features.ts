@@ -13,7 +13,10 @@
  * Results are located in the HTML (offsets in the request's text) or, for another file, by line and character.
  */
 import type * as TS from "typescript-6";
-import type { Segment } from "./typescript-blocks.js";
+import {
+  type Segment,
+  withoutGlobalObjectAliases,
+} from "./typescript-blocks.js";
 import type { TypeScriptModule } from "./typescript-loader.js";
 
 export type TypeScriptFeatureKind =
@@ -145,7 +148,9 @@ function display(
   ts: TypeScriptModule,
   parts: TS.SymbolDisplayPart[] | undefined,
 ): string {
-  return ts.displayPartsToString(parts).replace(/\b__bascik\./g, "");
+  return withoutGlobalObjectAliases(
+    ts.displayPartsToString(parts).replace(/\b__bascik\./g, ""),
+  );
 }
 
 /** Completion lists up to this long get each entry's type and documentation; longer ones only names. */

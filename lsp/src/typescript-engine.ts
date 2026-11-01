@@ -13,6 +13,7 @@
  * cancellation check, so typing never builds a queue.
  */
 import { Worker } from "node:worker_threads";
+import type { ComponentSource } from "./project.js";
 import type {
   TypeScriptFeatureKind,
   TypeScriptFeatureQuery,
@@ -43,6 +44,8 @@ export interface TypeScriptCheckRequest {
   isolatedClientBlocks?: boolean;
   /** The HTML of the components whose client scripts run in the page's scope (see `PageCheckOptions`). */
   pageScopeHtml?: string[];
+  /** The components with TypeScript blocks the page uses, whose global additions hold on it (see `PageCheckOptions`). */
+  usedComponents?: ComponentSource[];
 }
 
 /** A language feature at an offset of a page, with the page's current text. */
@@ -365,6 +368,7 @@ export function createWorkerTypeScriptEngine(
       text: request.text,
       isolatedClientBlocks: request.isolatedClientBlocks,
       pageScopeHtml: request.pageScopeHtml,
+      usedComponents: request.usedComponents,
     };
     return new Promise((resolve) => {
       pending.set(id, resolve as (result: unknown) => void);

@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   activateExtension,
@@ -180,3 +181,70 @@ suite("TypeScript errors in script blocks", () => {
     );
   });
 });
+
+// A component's script runs on the pages that use it, so what its TypeScript block adds to Window holds there.
+suite(
+  "TypeScript sees a component's additions to Window on the page that uses it",
+  () => {
+    const folder = () => {
+      const found = vscode.workspace.workspaceFolders?.find(
+        (candidate) => candidate.name === "primary",
+      );
+      assert.ok(found, "Workspace folder primary should be open");
+      return found.uri.fsPath;
+    };
+    const page = () =>
+      vscode.Uri.file(
+        path.join(folder(), "src", "features", "typescript-globals.html"),
+      );
+    const component = () =>
+      vscode.Uri.file(
+        path.join(folder(), "src", "components", "frother-analytics.html"),
+      );
+
+    suiteSetup(activateExtension);
+
+    suiteTeardown(async () => {
+      for (const uri of [page(), component()]) {
+        const document = vscode.workspace.textDocuments.find(
+          (candidate) => candidate.uri.toString() === uri.toString(),
+        );
+        if (document?.isDirty) {
+          await vscode.window.showTextDocument(document);
+          await vscode.commands.executeCommand("workbench.action.files.revert");
+        }
+      }
+    });
+
+    test("reports only the typo, and the page follows an unsaved edit to the component", async () => {
+      const document = await vscode.workspace.openTextDocument(page());
+      const codes = () =>
+        typeScriptDiagnostics(page()).map((diagnostic) => [
+          typeof diagnostic.code === "object"
+            ? diagnostic.code.value
+            : diagnostic.code,
+          document.getText(diagnostic.range),
+        ]);
+      await waitLong(
+        () => typeScriptDiagnostics(page()).length > 0,
+        "TypeScript should have checked the page",
+      );
+      assert.deepStrictEqual(codes(), [[2551, "frotherEvent"]]);
+
+      const card = await vscode.workspace.openTextDocument(component());
+      await replaceUnsaved(
+        card,
+        card.getText().replace("frotherEvents:", "frotherLog:"),
+      );
+      await waitLong(
+        () =>
+          JSON.stringify(codes()) ===
+          JSON.stringify([
+            [2339, "frotherEvents"],
+            [2339, "frotherEvent"],
+          ]),
+        `The page should lose the component's addition; got ${JSON.stringify(codes())}`,
+      );
+    });
+  },
+);

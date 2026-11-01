@@ -15,10 +15,12 @@
  * This module is the engine; `typescript-engine.ts` runs it beside the language server, and `check.ts` runs it for
  * `bascik --check`.
  */
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import * as path from "node:path";
 import type * as TS from "typescript-6";
+import type { ComponentSource } from "./project.js";
 import {
   extractPageScopeScripts,
   extractTypeScriptBlocks,
@@ -36,6 +38,7 @@ import {
   typeScriptBlockAt,
   virtualBlockText,
   type VirtualBlockText,
+  withoutGlobalObjectAliases,
 } from "./typescript-blocks.js";
 import {
   answerFeature,
@@ -109,7 +112,14 @@ interface Page {
   text: string;
   isolatedClientBlocks: boolean;
   pageScopeHtml: string[];
+  usedComponents: ComponentSource[];
   fileNames: string[];
+  /**
+   * The virtual files of the client blocks of components the page uses that add to the browser's globals, in the
+   * page's client service, so those additions hold on the page (see `componentGlobalFiles`). Never reported on;
+   * pages in one service that use the same component share its file.
+   */
+  componentFileNames: string[];
   /** The service that checks the page's client blocks (see `TypeScriptProject.serviceKey`). */
   clientService: string;
   /** Syntax errors of client blocks left out of the shared scope, located in the HTML. */
@@ -134,6 +144,12 @@ export interface PageCheckOptions {
    * so the names they declare are known. Default none.
    */
   pageScopeHtml?: string[];
+  /**
+   * The components the page uses, directly or through others, that have TypeScript blocks. Their scripts run on
+   * the page, so what their client blocks add to the browser's globals (`interface Window { ... }`, `declare
+   * global`) holds on the page too, whatever the script scoping. Default none.
+   */
+  usedComponents?: ComponentSource[];
 }
 
 export interface TypeScriptProjectOptions {
@@ -588,6 +604,10 @@ interface PageGlobals {
   assignedElsewhere: string[];
 }
 
+/** A short, stable name for a service key, for the names of the files a service holds. */
+const shortHash = (text: string): string =>
+  createHash("sha1").update(text).digest("hex").slice(0, 12);
+
 /** Whether a file is part of an installed package (or TypeScript's own libraries), never the project's own. */
 const isPackageFile = (fileName: string): boolean =>
   /[\\/]node_modules[\\/]/.test(fileName);
@@ -830,23 +850,31 @@ export class TypeScriptProject {
    * `declare global`, or an interface such as `Window` that Bascik wraps in one) is kept out of the shared client
    * service, where its additions would reach every other page although no two pages run together. Pages whose
    * additions are written the same and refer to none of their own names (the same analytics snippet on every page)
-   * mean the same thing, and share a service; any other such page gets one of its own.
+   * mean the same thing, and share a service; any other such page gets one of its own. A page that uses components
+   * whose blocks add to the globals is kept out too, as their additions hold on it (`componentBlocks`, each
+   * `path#index`); pages that use the same ones share a service.
    */
   private serviceKey(
     program: TypeScriptProgramKind,
     htmlPath: string,
     augmentations: Augmentations | undefined,
+    componentBlocks: string[] = [],
   ): string {
     if (program === "server") return "server";
-    if (!augmentations || augmentations.texts.length === 0) return "client";
-    const refersToPage = augmentations.texts.some((text) =>
+    const texts = augmentations?.texts ?? [];
+    if (texts.length === 0 && componentBlocks.length === 0) return "client";
+    const refersToPage = texts.some((text) =>
       (text.match(/[A-Za-z_$][\w$]*/g) ?? []).some((word) =>
-        augmentations.localNames.has(word),
+        augmentations!.localNames.has(word),
       ),
     );
-    return refersToPage
-      ? `page:${htmlPath}`
-      : `globals:${augmentations.texts.join("\n")}`;
+    if (refersToPage) return `page:${htmlPath}`;
+    // Pages that use the same augmenting components share a service, apart from those components' own pages.
+    const uses =
+      componentBlocks.length === 0
+        ? ""
+        : `\nuses:${componentBlocks.join("\n")}`;
+    return `globals:${texts.join("\n")}${uses}`;
   }
 
   private createService(
@@ -1086,6 +1114,56 @@ export class TypeScriptProject {
   }
 
   /**
+   * The client blocks of the components a page uses that add to the browser's globals (a `declare global`, or an
+   * interface such as `Window` that Bascik wraps in one), each as the virtual text it is checked as on its own.
+   * The page's service gets a copy of each, so their additions hold on the page; the rest of a component's code
+   * is never reported there. A block mid-edit (a syntax error) adds nothing.
+   */
+  private componentGlobalBlocks(usedComponents: ComponentSource[]): {
+    key: string;
+    fsPath: string;
+    block: TypeScriptBlock;
+    virtual: VirtualBlockText;
+  }[] {
+    const found: {
+      key: string;
+      fsPath: string;
+      block: TypeScriptBlock;
+      virtual: VirtualBlockText;
+    }[] = [];
+    for (const component of usedComponents) {
+      const fsPath = path.resolve(this.projectRoot, component.fsPath);
+      for (const block of extractTypeScriptBlocks(component.text)) {
+        if (block.program !== "client") continue;
+        const info = this.classicScript(block.content, true);
+        if (info.syntaxErrors.length > 0) continue;
+        const additions: Augmentations = { texts: [], localNames: new Set() };
+        this.collectAugmentations(info, additions);
+        if (additions.texts.length === 0) continue;
+        found.push({
+          key: `${fsPath}#${block.index}`,
+          fsPath,
+          block,
+          virtual: this.virtualFile(block),
+        });
+      }
+    }
+    return found;
+  }
+
+  /** Deletes the component files no page lists any more. True when one was deleted. */
+  private dropComponentFiles(fileNames: string[]): boolean {
+    if (fileNames.length === 0) return false;
+    const listed = new Set<string>();
+    for (const page of this.pages.values())
+      for (const fileName of page.componentFileNames) listed.add(fileName);
+    let dropped = false;
+    for (const fileName of fileNames)
+      if (!listed.has(fileName) && this.files.delete(fileName)) dropped = true;
+    return dropped;
+  }
+
+  /**
    * Records an HTML file's text. Only virtual files whose text changed get a new version, so TypeScript reuses
    * what it knows about the rest.
    */
@@ -1099,6 +1177,7 @@ export class TypeScriptProject {
     const pageScopeHtml = isolatedClientBlocks
       ? []
       : (options.pageScopeHtml ?? []);
+    const usedComponents = options.usedComponents ?? [];
     const previous = this.pages.get(htmlPath);
     if (
       previous?.text === text &&
@@ -1106,6 +1185,12 @@ export class TypeScriptProject {
       previous.pageScopeHtml.length === pageScopeHtml.length &&
       previous.pageScopeHtml.every(
         (html, index) => html === pageScopeHtml[index],
+      ) &&
+      previous.usedComponents.length === usedComponents.length &&
+      previous.usedComponents.every(
+        (component, index) =>
+          component.fsPath === usedComponents[index].fsPath &&
+          component.text === usedComponents[index].text,
       )
     )
       return;
@@ -1148,7 +1233,15 @@ export class TypeScriptProject {
         virtual: this.virtualFile(block),
       });
     }
-    const clientService = this.serviceKey("client", htmlPath, augmentations);
+    const componentBlocks = units.some((unit) => unit.program === "client")
+      ? this.componentGlobalBlocks(usedComponents)
+      : [];
+    const clientService = this.serviceKey(
+      "client",
+      htmlPath,
+      augmentations,
+      componentBlocks.map(({ key }) => key),
+    );
     let changed = false;
     for (const { fileName, program, sharedScope, virtual } of units) {
       const existing = this.files.get(fileName);
@@ -1192,14 +1285,35 @@ export class TypeScriptProject {
       this.files.delete(previous.editingFileName)
     )
       changed = true;
+    const componentFileNames: string[] = [];
+    for (const { fsPath, block, virtual } of componentBlocks) {
+      const fileName = `${fsPath}.bascik-${block.index}.global-${shortHash(clientService)}.ts`;
+      componentFileNames.push(fileName);
+      const existing = this.files.get(fileName);
+      if (existing?.text === virtual.text) continue;
+      changed = true;
+      this.files.set(fileName, {
+        ...virtual,
+        fileName,
+        htmlPath: fsPath,
+        program: "client",
+        service: clientService,
+        sharedScope: false,
+        version: this.nextFileVersion++,
+      });
+    }
     this.pages.set(htmlPath, {
       text,
       isolatedClientBlocks,
       pageScopeHtml,
+      usedComponents,
       fileNames,
+      componentFileNames,
       clientService,
       blockErrors,
     });
+    if (this.dropComponentFiles(previous?.componentFileNames ?? []))
+      changed = true;
     if (previous && previous.clientService !== clientService)
       this.dropService(previous.clientService);
     if (changed) this.projectVersion++;
@@ -1301,6 +1415,7 @@ export class TypeScriptProject {
     for (const fileName of page.fileNames) this.files.delete(fileName);
     if (page.editingFileName) this.files.delete(page.editingFileName);
     this.pages.delete(htmlPath);
+    this.dropComponentFiles(page.componentFileNames);
     this.dropService(page.clientService);
     this.projectVersion++;
   }
@@ -1410,9 +1525,8 @@ export class TypeScriptProject {
           diagnostic.category !== this.ts.DiagnosticCategory.Warning
         )
           continue;
-        const message = this.ts.flattenDiagnosticMessageText(
-          diagnostic.messageText,
-          "\n",
+        const message = withoutGlobalObjectAliases(
+          this.ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
         );
         const category =
           diagnostic.category === this.ts.DiagnosticCategory.Error
@@ -1744,6 +1858,7 @@ export class TypeScriptProjects {
           {
             isolatedClientBlocks: request.isolatedClientBlocks,
             pageScopeHtml: request.pageScopeHtml,
+            usedComponents: request.usedComponents,
           },
         ),
       };
@@ -1778,6 +1893,7 @@ export class TypeScriptProjects {
           {
             isolatedClientBlocks: request.isolatedClientBlocks,
             pageScopeHtml: request.pageScopeHtml,
+            usedComponents: request.usedComponents,
           },
           query,
         ),
@@ -1802,6 +1918,7 @@ export class TypeScriptProjects {
       project.updatePage(path.resolve(projectRoot, page.htmlPath), page.text, {
         isolatedClientBlocks: page.isolatedClientBlocks,
         pageScopeHtml: page.pageScopeHtml,
+        usedComponents: page.usedComponents,
       });
   }
 

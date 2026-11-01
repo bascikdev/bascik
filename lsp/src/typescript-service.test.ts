@@ -5,6 +5,7 @@ import {
   compilerOptionsFor,
   SERVER_WEB_LIBS,
   TypeScriptProject,
+  type PageCheckOptions,
   TypeScriptProjects,
   type TypeScriptDiagnostic,
 } from "./typescript-service.js";
@@ -61,7 +62,7 @@ function check(
   relative: string,
   html: string,
   service = project(root),
-  options: { isolatedClientBlocks?: boolean; pageScopeHtml?: string[] } = {},
+  options: PageCheckOptions = {},
 ): (TypeScriptDiagnostic & { text: string })[] {
   const file = root.write(relative, html);
   return service.diagnostics(file, html, options).map((diagnostic) => ({
@@ -820,6 +821,41 @@ describe("a page's classic globals are properties of window", () => {
     ]);
   });
 
+  it("misuse: a typo's message names the global object's type, not Bascik's names for the page's globals", () => {
+    const root = fixture();
+    const html = page(
+      "var frotherState = { on: false };\nglobalThis.frotherStat;\nwindow.frotherStat;",
+    );
+    const messages = check(root, "src/pages/index.html", html).map(
+      (d) => d.message,
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain("'typeof globalThis'");
+    expect(messages[1]).toContain("'Window & typeof globalThis'");
+    for (const message of messages) expect(message).not.toMatch(/__bascik/i);
+  });
+
+  it("misuse: an addition several pages share through one component is declared once", () => {
+    const root = fixture();
+    const service = project(root);
+    const html =
+      '<span>config</span>\n<script type="text/typescript">\ndeclare global { const FROTHER_CONFIG: { speed: number } }\n</script>\n';
+    const config = {
+      fsPath: root.write("src/components/frother-config.html", html),
+      text: html,
+    };
+    for (const name of ["a", "b"])
+      expect(
+        check(
+          root,
+          `src/pages/${name}.html`,
+          page("FROTHER_CONFIG.speed;"),
+          service,
+          { usedComponents: [config] },
+        ),
+      ).toEqual([]);
+  });
+
   it("misuse: let, const and class names, and names of other pages, are not properties of window", () => {
     const root = fixture();
     const service = project(root);
@@ -1000,6 +1036,156 @@ describe("a page's global augmentations stay in that page", () => {
     service.removePage(file);
     expect(service.serviceCount).toBe(2);
     expect(check(root, "src/pages/aug-b.html", AUG_B, service)).toEqual([]);
+  });
+});
+
+describe("a component's global additions reach the pages that use it", () => {
+  const GA_TAG =
+    '<template><span>ga</span></template>\n<script type="text/typescript">\ninterface Window { dataLayer: unknown[] }\nwindow.dataLayer = window.dataLayer || [];\n</script>\n';
+  const USES_GA = page('window.dataLayer.push({ event: "x" });');
+
+  /** Writes a component to the fixture and returns it as a page's `usedComponents` entry. */
+  function component(root: Fixture, relative: string, html: string) {
+    return { fsPath: root.write(relative, html), text: html };
+  }
+
+  it("sees a scoped component's Window addition on the page that uses it, and only there", () => {
+    const root = fixture();
+    const service = project(root);
+    const ga = component(root, "src/components/ga-tag.html", GA_TAG);
+    expect(
+      check(root, "src/components/ga-tag.html", GA_TAG, service, {
+        isolatedClientBlocks: true,
+      }),
+    ).toEqual([]);
+    expect(
+      check(root, "src/pages/uses-ga.html", USES_GA, service, {
+        usedComponents: [ga],
+      }),
+    ).toEqual([]);
+    // In either order: a fresh project that checks the page first.
+    expect(
+      check(root, "src/pages/uses-ga.html", USES_GA, project(root), {
+        usedComponents: [ga],
+      }),
+    ).toEqual([]);
+    // A page that does not use the component never sees it.
+    expect(
+      check(root, "src/pages/other.html", USES_GA, service).map((d) => [
+        d.code,
+        d.text,
+      ]),
+    ).toEqual([[2339, "dataLayer"]]);
+  });
+
+  it("sees the addition of a component whose scripts share the page scope", () => {
+    const root = fixture();
+    const shared =
+      '<template><span>ga</span></template>\n<script type="text/typescript">\ninterface Window { dataLayer: unknown[] }\nfunction gtag2(...args: unknown[]): void { window.dataLayer.push(args); }\n</script>\n';
+    const ga = component(root, "src/components/ga-tag.html", shared);
+    const html = page(
+      'window.dataLayer.push({ event: "x" });\nwindow.gtag2("js");',
+    );
+    expect(
+      check(root, "src/pages/uses-ga.html", html, project(root), {
+        pageScopeHtml: [shared],
+        usedComponents: [ga],
+      }),
+    ).toEqual([]);
+  });
+
+  it("follows an addition that names the component's own types, and a declare global", () => {
+    const root = fixture();
+    const card = component(
+      root,
+      "src/components/frother-card.html",
+      '<article>card</article>\n<script type="text/typescript">\ninterface FrotherState { speed: number }\ninterface Window { frother: FrotherState }\ndeclare global { var frotherReady: boolean }\nwindow.frother = { speed: 1 };\n</script>\n',
+    );
+    const html = page(
+      'window.frother.speed = 2;\nif (frotherReady) window.frother.speed = "fast";\nwindow.frothr;',
+    );
+    expect(
+      check(root, "src/pages/index.html", html, project(root), {
+        usedComponents: [card],
+      }).map((d) => [d.code, d.text]),
+    ).toEqual([
+      [2322, "window.frother.speed"],
+      [2551, "frothr"],
+    ]);
+  });
+
+  it("checks many pages that use one component together, apart from pages that do not", () => {
+    const root = fixture();
+    const service = project(root);
+    const ga = component(root, "src/components/ga-tag.html", GA_TAG);
+    for (let index = 0; index < 4; index++)
+      expect(
+        check(root, `src/pages/uses-${index}.html`, USES_GA, service, {
+          usedComponents: [ga],
+        }),
+      ).toEqual([]);
+    expect(service.serviceCount).toBe(3);
+    expect(
+      check(root, "src/components/ga-tag.html", GA_TAG, service, {
+        isolatedClientBlocks: true,
+      }),
+    ).toEqual([]);
+    expect(
+      check(root, "src/pages/plain.html", page("window.dataLayer;"), service)
+        .length,
+    ).toBe(1);
+  });
+
+  it("misuse: an edited, broken or dropped component changes what the page sees", () => {
+    const root = fixture();
+    const service = project(root);
+    const ga = component(root, "src/components/ga-tag.html", GA_TAG);
+    const file = root.write("src/pages/uses-ga.html", USES_GA);
+    expect(
+      service.diagnostics(file, USES_GA, { usedComponents: [ga] }),
+    ).toEqual([]);
+    // The component's unsaved edit renames the addition.
+    const renamed = { ...ga, text: GA_TAG.replace(/dataLayer/g, "events") };
+    expect(
+      service
+        .diagnostics(file, USES_GA, { usedComponents: [renamed] })
+        .map((d) => d.code),
+    ).toEqual([2339]);
+    // A component block mid-edit adds nothing and breaks nothing.
+    const broken = {
+      ...ga,
+      text: GA_TAG.replace("unknown[] }", "unknown[] "),
+    };
+    expect(
+      service
+        .diagnostics(file, USES_GA, { usedComponents: [broken] })
+        .map((d) => d.code),
+    ).toEqual([2339]);
+    expect(
+      service.diagnostics(file, USES_GA, { usedComponents: [ga] }),
+    ).toEqual([]);
+    // The page stops using it.
+    expect(service.diagnostics(file, USES_GA).map((d) => d.code)).toEqual([
+      2339,
+    ]);
+    service.removePage(file);
+    expect(service.serviceCount).toBe(2);
+  });
+
+  it("misuse: a component without additions keeps the page in the shared program", () => {
+    const root = fixture();
+    const service = project(root);
+    const button = component(
+      root,
+      "src/components/frother-button.html",
+      '<button>Milk frother</button>\n<script type="text/typescript">\nconst label: string = "on";\n</script>\n',
+    );
+    expect(
+      check(root, "src/pages/index.html", page("const speed = 1;"), service, {
+        usedComponents: [button],
+      }),
+    ).toEqual([]);
+    expect(service.serviceCount).toBe(2);
   });
 });
 

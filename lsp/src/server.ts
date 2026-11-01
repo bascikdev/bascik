@@ -24,7 +24,6 @@ import {
   isConfigFile,
   isExcludedProjectPath,
   hasIsolatedClientBlocks,
-  pageScopeComponentHtml,
   isInsideComponentRoots,
   isPathInside,
   isUsageSourcePath,
@@ -40,6 +39,7 @@ import { createReferences } from "./references.js";
 import { EXTENSION_CONFIG_FILES } from "./config-reader.js";
 import {
   hasTypeScriptBlocks,
+  pageComponentsForTypeScript,
   relocateBlockRanges,
   typeScriptBlockAt,
 } from "./typescript-blocks.js";
@@ -966,15 +966,15 @@ export class BascikLanguageServer {
       if (closed && projectRoot) this.typeScript.closePage(projectRoot, fsPath);
       if (closed) this.scheduleTypeScriptRelease();
       if (!closed && projectRoot) {
-        // A page edit only changes that page's blocks, unless it is a component whose scripts run in the scope
-        // of the pages that use it (`scoping.scriptBlocks` off): their names are those pages' globals.
+        // A page edit only changes that page's blocks, unless it is a component: its scripts run on the pages
+        // that use it, so what it adds to the globals (and, with `scoping.scriptBlocks` off, its names) are theirs.
         const snapshot = this.projectSnapshots.get(projectRoot);
-        const sharesPageScope =
-          snapshot?.scopesScriptBlocks === false &&
+        const isComponent =
+          snapshot !== undefined &&
           isInsideComponentRoots(fsPath, snapshot.componentRoots);
         this.scheduleTypeScriptCheck(
           projectRoot,
-          sharesPageScope ? undefined : document.uri,
+          isComponent ? undefined : document.uri,
         );
       }
       return;
@@ -1077,6 +1077,7 @@ export class BascikLanguageServer {
           text: request.text,
           isolatedClientBlocks: request.isolatedClientBlocks,
           pageScopeHtml: request.pageScopeHtml,
+          usedComponents: request.usedComponents,
         })),
       });
     for (let index = 0; index < checks.length; index++) {
@@ -1117,14 +1118,13 @@ export class BascikLanguageServer {
       text,
       isolatedClientBlocks:
         snapshot !== undefined && hasIsolatedClientBlocks(fsPath, snapshot),
-      pageScopeHtml:
-        snapshot === undefined
-          ? undefined
-          : pageScopeComponentHtml(fsPath, text, snapshot, (componentPath) =>
-              this.documents
-                .get(pathToFileURL(componentPath).toString())
-                ?.getText(),
-            ),
+      ...(snapshot === undefined
+        ? {}
+        : pageComponentsForTypeScript(fsPath, text, snapshot, (componentPath) =>
+            this.documents
+              .get(pathToFileURL(componentPath).toString())
+              ?.getText(),
+          )),
     };
     return check;
   }

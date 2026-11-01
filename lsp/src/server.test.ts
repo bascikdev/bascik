@@ -1146,6 +1146,41 @@ describe("BascikLanguageServer TypeScript diagnostics", () => {
     );
   });
 
+  it("passes the components with TypeScript blocks a page uses, and checks pages again when one is edited", async () => {
+    const engine = recordingEngine();
+    await start({ createTypeScriptEngine: () => engine });
+    const tag =
+      '<span>ga</span>\n<script type="text/typescript">interface Window { dataLayer: unknown[] }</script>\n';
+    const component = await write("src/components/ga-tag.html", tag);
+    // A component without a TypeScript block adds nothing to the page's globals, so it is not passed.
+    await write("src/components/frother-label.html", "<b>Milk frother</b>\n");
+    const pageText = `<ga-tag></ga-tag><frother-label></frother-label>\n${PAGE}`;
+    const page = await write("src/pages/index.html", pageText);
+    open(page, pageText);
+    await eventually(() => expect(engine.diagnostics).toHaveBeenCalled());
+    expect(engine.diagnostics.mock.calls.at(-1)![0]).toMatchObject({
+      htmlPath: page,
+      isolatedClientBlocks: false,
+      pageScopeHtml: [],
+      usedComponents: [{ fsPath: component, text: tag }],
+    });
+
+    open(component, tag);
+    await pause(400);
+    engine.diagnostics.mockClear();
+    const edited = tag.replace("dataLayer", "events");
+    change(component, edited, 2);
+    await eventually(() =>
+      expect(
+        engine.diagnostics.mock.calls.some(
+          ([request]) =>
+            request.htmlPath === page &&
+            request.usedComponents?.[0]?.text === edited,
+        ),
+      ).toBe(true),
+    );
+  });
+
   it("gives the engine every owed page together before checking them one by one", async () => {
     const engine = recordingEngine();
     await start({ createTypeScriptEngine: () => engine });

@@ -14,6 +14,11 @@
  * The scan is linear in the length of the HTML, so a keystroke in a long page costs the same as in a short one.
  */
 import { readOpenTagAttributes } from "./analyzer.js";
+import {
+  type ComponentSource,
+  type ProjectSnapshot,
+  usedComponentSources,
+} from "./project.js";
 
 /** Which program checks a block: the browser one (DOM, no Node types) or the server one (Node, no DOM). */
 export type TypeScriptProgramKind = "client" | "server";
@@ -220,6 +225,32 @@ export function extractTypeScriptBlocks(html: string): TypeScriptBlock[] {
  */
 export function hasTypeScriptBlocks(html: string): boolean {
   return extractTypeScriptBlocks(html).length > 0;
+}
+
+/**
+ * What checking a page's blocks needs from the components it uses, directly or through others: `pageScopeHtml`,
+ * the HTML of those whose client scripts run in the page's scope (all of them with `scoping.scriptBlocks` off,
+ * none otherwise), whose names are the page's globals; and `usedComponents`, those with a TypeScript block, whose
+ * additions to the browser's globals (`interface Window { ... }`, `declare global`) hold on the page too, as their
+ * scripts run there. `readOpen` gives an open editor buffer's newer text.
+ */
+export function pageComponentsForTypeScript(
+  fsPath: string,
+  text: string,
+  snapshot: Pick<ProjectSnapshot, "scopesScriptBlocks" | "componentMap"> &
+    Partial<Pick<ProjectSnapshot, "componentSourceByFile">>,
+  readOpen?: (fsPath: string) => string | undefined,
+): { pageScopeHtml: string[]; usedComponents: ComponentSource[] } {
+  const used = usedComponentSources(fsPath, text, snapshot, readOpen);
+  return {
+    pageScopeHtml:
+      snapshot.scopesScriptBlocks === false
+        ? used.map((component) => component.text)
+        : [],
+    usedComponents: used.filter((component) =>
+      hasTypeScriptBlocks(component.text),
+    ),
+  };
 }
 
 /**
@@ -438,6 +469,24 @@ export const GLOBAL_THIS_TYPE = "__BascikGlobalThis";
 
 /** The page-local type alias that lists a page's classic globals as properties of its global objects. */
 export const PAGE_GLOBALS_TYPE = "__bascikPageGlobals";
+
+/**
+ * Text TypeScript shows the author (a message, a hover) without the names the shared text's footer gives the page's
+ * global objects: `Window & typeof globalThis & __bascikPageGlobals` reads `Window & typeof globalThis`, the type a
+ * classic script sees.
+ */
+export function withoutGlobalObjectAliases(text: string): string {
+  if (!text.includes("__")) return text;
+  return text
+    .replace(PAGE_GLOBALS_MENTION, "")
+    .replace(GLOBAL_THIS_MENTION, "typeof globalThis");
+}
+
+const PAGE_GLOBALS_MENTION = new RegExp(
+  `\\s*&\\s*${PAGE_GLOBALS_TYPE}\\b|\\b${PAGE_GLOBALS_TYPE}\\s*&\\s*`,
+  "g",
+);
+const GLOBAL_THIS_MENTION = new RegExp(`\\b${GLOBAL_THIS_TYPE}\\b`, "g");
 
 /** The global objects whose properties a classic script's top-level `var` and `function` names become. */
 export type GlobalObjectName = "window" | "self" | "globalThis";

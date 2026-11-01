@@ -114,6 +114,19 @@ describe("TypeScript language features for a client without its own TypeScript m
     expect(hover?.markdown).toContain("const rpm: number");
   });
 
+  it("misuse: shows window's type without the names Bascik gives a page's classic globals", () => {
+    const setup = project();
+    const html = `<main>Milk frother</main>
+<script type="text/typescript">
+  var frotherState = { on: false };
+  window.frotherState.on = true;
+</script>
+`;
+    const hover = ask(setup, html, "hover", "window.frotherState", 1);
+    expect(hover?.markdown).toContain("var window: Window & typeof globalThis");
+    expect(hover?.markdown).not.toMatch(/__bascik/i);
+  });
+
   it("goes to the definition in @/lib and in ../lib", () => {
     const setup = project();
     const [froth] = ask(setup, PAGE, "definition", "froth(2)", 1) ?? [];
