@@ -35,8 +35,6 @@ my-site/
 │   ├── launch.json                 ← Debug launchers for dev server and tests
 │   ├── extensions.json             ← Recommends official Bascik extension
 │   └── settings.json               ← Stops false VS Code errors on pages with several scripts
-├── .hintrc                         ← Stops false webhint warnings about the head Bascik builds
-├── .hintrc.dist.json               ← webhint with every check on, for the built pages in dist/
 ├── src/
 │   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter, contact-form
 │   └── pages/                      ← index.html, about.html, contact.html, 404.html, css/styles.css

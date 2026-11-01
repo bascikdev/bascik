@@ -1,9 +1,0 @@
-{
-  "extends": ["development"],
-  "hints": {
-    "axe/text-alternatives": ["default", { "document-title": "off", "image-alt": "off" }]
-  },
-  "ignoredUrls": [
-    { "domain": "/(?:src/pages|src/components)/[^?#]*\\.html$", "hints": ["meta-viewport", "meta-charset-utf-8", "apple-touch-icons"] }
-  ]
-}

@@ -52,11 +52,6 @@ import {
   skillsRef,
 } from "./agent-setup.ts";
 import { BASCIK_VERSION } from "./scaffold.ts";
-import {
-  DEFAULT_SOURCE_DIRECTORIES,
-  hintDistJson,
-  hintrcJson,
-} from "./vscode-settings.ts";
 
 /** The command to run later, pinned to the version create-bascik scaffolds. */
 const LATER = skillsLaterLines(skillsRef(BASCIK_VERSION));
@@ -150,7 +145,7 @@ describe("npm create bascik and the agent skills", () => {
     expect(LATER[0]).toContain(`#v${BASCIK_VERSION}`);
   });
 
-  it("the built CLI writes the webhint config a new project's editor reads", async () => {
+  it("the built CLI does not generate optional Webhint config", async () => {
     const { status, output, parent } = await create([
       "my-site",
       "-y",
@@ -159,12 +154,8 @@ describe("npm create bascik and the agent skills", () => {
     ]);
     expect(status, output).toBe(0);
     const site = join(parent, "my-site");
-    expect(readFileSync(join(site, ".hintrc"), "utf8")).toBe(
-      hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
-    );
-    expect(readFileSync(join(site, ".hintrc.dist.json"), "utf8")).toBe(
-      hintDistJson(),
-    );
+    expect(existsSync(join(site, ".hintrc"))).toBe(false);
+    expect(existsSync(join(site, ".hintrc.dist.json"))).toBe(false);
   });
 
   it("misuse: --no-skills and --no-install written before --, which npm exports as empty values, are honored", async () => {

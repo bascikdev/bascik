@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  importConfig,
-  initProject,
-  sourceDirectoriesOf,
-  type InitOptions,
-} from "./init.ts";
+import { initProject, type InitOptions } from "./init.ts";
 import {
   CLAUDE_MD,
   SKILLS_QUESTION,
@@ -15,13 +7,7 @@ import {
   skillsCommand,
   skillsLaterLines,
 } from "./agent-setup.ts";
-import {
-  DEFAULT_SOURCE_DIRECTORIES,
-  VSCODE_SETTINGS_JSON,
-  hintDistJson,
-  hintrcJson,
-  parseJsonc,
-} from "./vscode-settings.ts";
+import { VSCODE_SETTINGS_JSON, parseJsonc } from "./vscode-settings.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -373,139 +359,51 @@ describe("initProject", () => {
       });
     }
 
-    const logged = (): string =>
-      (console.log as unknown as ReturnType<typeof vi.fn>).mock.calls
-        .map((c) => String(c[0]))
-        .join("\n");
-
-    it("writes .hintrc and .hintrc.dist.json for Bascik's default folders", async () => {
+    it("does not create Webhint config files or add a Webhint dependency", async () => {
       files();
-      await init({ readConfig: async () => undefined });
-      expect(writtenTo("/.hintrc")).toBe(
-        hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
-      );
-      expect(writtenTo("/.hintrc.dist.json")).toBe(hintDistJson());
-      expect(logged()).toContain("created: .hintrc");
+      await init();
+      expect(writtenTo("/.hintrc")).toBeUndefined();
+      expect(writtenTo("/.hintrc.dist.json")).toBeUndefined();
+      expect(writtenTo("/package.json")).not.toMatch(/"hint"|"webhint"/);
     });
 
-    it("misuse: scopes the source-file exceptions to a custom pages folder from bascik.config", async () => {
-      files();
-      await init({
-        readConfig: async () => ({
-          directory: { pages: "site/pages", components: "site/ui" },
-        }),
-      });
-      expect(writtenTo("/.hintrc")).toBe(
-        hintrcJson({ pages: "site/pages", components: ["site/ui"] }),
-      );
-    });
-
-    it("misuse: names a custom output folder from bascik.config in the built-site command", async () => {
-      files();
-      await init({
-        readConfig: async () => ({ directory: { out: "build" } }),
-      });
-      // .hintrc stays strict JSON, so the command is printed, not written.
-      expect(() => JSON.parse(writtenTo("/.hintrc")!)).not.toThrow();
-      expect(logged()).toContain(
-        "npx hint -c .hintrc.dist.json $(find build -name '*.html')",
-      );
-      expect(logged()).not.toContain("find dist");
-      expect(sourceDirectoriesOf({ directory: { out: 7 } }).out).toBe("dist");
-    });
-
-    it("misuse: prints a note for an old .hintrc that turned the viewport hint off everywhere", async () => {
-      files({
-        ".hintrc":
-          '{ "extends": ["development"], "hints": { "meta-viewport": "off" } }',
-      });
-      await init({ readConfig: async () => undefined });
-      expect(logged()).toContain("updated: .hintrc");
-      expect(logged()).toMatch(/\.hintrc: .*meta-viewport/);
-    });
-
-    it("misuse: prints what to add when an existing .hintrc sets axe/text-alternatives itself", async () => {
-      files({
-        ".hintrc": '{ "hints": { "axe/text-alternatives": "error" } }',
-      });
-      await init({ readConfig: async () => undefined });
-      expect(logged()).toMatch(
-        /\.hintrc: .*axe\/text-alternatives.*"document-title": "off", "image-alt": "off"/,
-      );
-    });
-
-    it("reads the folders from a real bascik.config on disk", async () => {
-      const dir = mkdtempSync(join(tmpdir(), "bascik-init-config-"));
-      try {
-        expect(await importConfig(dir)).toBeUndefined();
-        writeFileSync(
-          join(dir, "bascik.config.mjs"),
-          'export default { directory: { pages: "pages" } };\n',
-        );
-        expect(sourceDirectoriesOf(await importConfig(dir))).toEqual({
-          pages: "pages",
-          components: ["src/components"],
-          out: "dist",
-        });
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
-
-    it("misuse: ignores directory values of the wrong type", () => {
-      expect(
-        sourceDirectoriesOf({ directory: { pages: 3, components: [1] } }),
-      ).toEqual(DEFAULT_SOURCE_DIRECTORIES);
-      expect(sourceDirectoriesOf(null)).toEqual(DEFAULT_SOURCE_DIRECTORIES);
-    });
-
-    it("misuse: a config that cannot be read falls back to the default folders and says so", async () => {
-      files();
-      await init({
-        readConfig: async () => {
-          throw new Error("Cannot find package '@bascik/bascik'");
-        },
-      });
-      expect(writtenTo("/.hintrc")).toBe(
-        hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
-      );
-      expect(logged()).toContain("src/pages, src/components and dist");
-    });
-
-    it("misuse: merges into an existing .hintrc with comments instead of replacing it", async () => {
-      files({ ".hintrc": '{\n  // mine\n  "extends": ["development"]\n}\n' });
-      await init({ readConfig: async () => undefined });
-      const text = writtenTo("/.hintrc")!;
-      expect(text).toContain("// mine");
-      expect(parseJsonc(text)).toHaveProperty("ignoredUrls");
-      expect(logged()).toContain("updated: .hintrc");
-    });
-
-    it("misuse: leaves a package.json hintConfig alone and prints where to look", async () => {
+    it("preserves an existing package.json hintConfig", async () => {
+      const hintConfig = { extends: ["development"] };
       files({
         "package.json": JSON.stringify({
           name: "my-app",
-          hintConfig: { extends: ["development"] },
+          hintConfig,
         }),
       });
-      await init({ readConfig: async () => undefined });
+      await init();
       expect(writtenTo("/.hintrc")).toBeUndefined();
-      // The dist config does not extend the editor config, so it is written.
-      expect(writtenTo("/.hintrc.dist.json")).toBe(hintDistJson());
-      expect(logged()).toContain(
-        "https://bascik.dev/testing/linting#editor-linters-read-source",
+      expect(JSON.parse(writtenTo("/package.json")!).hintConfig).toEqual(
+        hintConfig,
       );
     });
 
-    it("leaves a .hintrc that already has the exceptions alone, so running init twice changes nothing", async () => {
-      files({
-        ".hintrc": hintrcJson(DEFAULT_SOURCE_DIRECTORIES),
-        ".hintrc.dist.json": hintDistJson(),
-      });
-      await init({ readConfig: async () => undefined });
-      expect(writtenTo("/.hintrc")).toBeUndefined();
-      expect(writtenTo("/.hintrc.dist.json")).toBeUndefined();
-      expect(logged()).toContain("skipped: .hintrc (already set)");
+    it.each([".hintrc", ".hintrc.json", ".hintrc.js", ".hintrc.dist.json"])(
+      "does not read or modify an existing %s, even if it is invalid",
+      async (file) => {
+        files({ [file]: "{ user-owned config" });
+        await init();
+        expect(writtenTo(`/${file}`)).toBeUndefined();
+        expect(
+          mockReadFile.mock.calls.some(([path]) =>
+            String(path).replace(/\\/g, "/").endsWith(`/${file}`),
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it("does not load bascik.config just to initialize the project", async () => {
+      files();
+      await init();
+      expect(
+        mockReadFile.mock.calls.some(([path]) =>
+          /bascik\.config\./.test(String(path)),
+        ),
+      ).toBe(false);
     });
   });
 

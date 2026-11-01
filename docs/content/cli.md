@@ -17,8 +17,6 @@ my-project/
   package.json
   vite.config.ts
   .gitignore
-  .hintrc                webhint in the editor, scoped to what Bascik builds
-  .hintrc.dist.json      webhint for the built pages in dist/
   .vscode/
     launch.json
     extensions.json
@@ -575,14 +573,14 @@ bascik --check && bascik --build
 
 `bascik --check` does **not** validate CSS or JavaScript syntax. Use those tools immediately around it rather than treating them as a separate, later concern:
 
-| Tool                                  | What it catches                                                    | How to use                                                                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VS Code built-in CSS**              | CSS syntax errors in `.css` files                                  | Enabled by default                                                                                                                                       |
-| **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions          | `npm install -D stylelint && npx stylelint "**/*.css"`                                                                                                   |
-| **[parse5](https://parse5.js.org/)**  | WHATWG HTML5 parse errors in compiled `dist/` output               | `npm install -D parse5` then `bascik --check`                                                                                                            |
-| **[HTMLHint](https://htmlhint.com)**  | HTML structure errors in page and component `.html` files          | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` (with the [source exceptions](/testing/linting#other-editor-linters))                          |
-| **[Webhint](https://webhint.io)**     | Web standards, ARIA accessibility, and cross-browser compatibility | `npm install -D hint && npx hint -c .hintrc.dist.json $(find dist -name '*.html')` after `bascik --build` ([why](/testing/linting#check-the-built-site)) |
-| **[ESLint](https://eslint.org)**      | JavaScript syntax and logic errors in `.js` files                  | `npm install -D eslint && npx eslint "src/**/*.js"`                                                                                                      |
+| Tool                                  | What it catches                                                             | How to use                                                                                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **VS Code built-in CSS**              | CSS syntax errors in `.css` files                                           | Enabled by default                                                                                                                                                   |
+| **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions                   | `npm install -D stylelint && npx stylelint "**/*.css"`                                                                                                               |
+| **[parse5](https://parse5.js.org/)**  | WHATWG HTML5 parse errors in compiled `dist/` output                        | `npm install -D parse5` then `bascik --check`                                                                                                                        |
+| **[HTMLHint](https://htmlhint.com)**  | HTML structure errors in page and component `.html` files                   | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` (with the [source exceptions](/testing/linting#other-editor-linters))                                      |
+| **[Webhint](https://webhint.io)**     | Optional web standards, ARIA accessibility, and cross-browser compatibility | Copy the [optional config](/testing/linting#optional-webhint-configuration), then `npx hint -c .hintrc.dist.json $(find dist -name '*.html')` after `bascik --build` |
+| **[ESLint](https://eslint.org)**      | JavaScript syntax and logic errors in `.js` files                           | `npm install -D eslint && npx eslint "src/**/*.js"`                                                                                                                  |
 
 For most teams, the most useful CI command sequence is:
 
@@ -667,7 +665,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 }
 ```
 
-**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. `npm create bascik` and `bascik init` write a `.hintrc` that turns those checks off for source files only. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and its setting.
+**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. Third-party linters are opt-in: `npm create bascik` and `bascik init` do not install them or create or modify their config files. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and has copyable settings.
 
 **Inspect `dist/` directly.** Both the dev server and `bascik --build` write compiled HTML to `dist/` on disk. This is the fastest way to confirm what Bascik emitted:
 

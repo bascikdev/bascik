@@ -43,12 +43,7 @@ import {
   validateProjectName,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
-import {
-  DEFAULT_SOURCE_DIRECTORIES,
-  hintDistJson,
-  hintrcJson,
-  parseJsonc,
-} from "./vscode-settings.js";
+import { parseJsonc } from "./vscode-settings.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -1240,9 +1235,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 33 expected files", async () => {
+  it("writes all 31 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(33);
+    expect(mockWriteFile.mock.calls.length).toBe(31);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -1301,9 +1296,8 @@ describe("scaffold", () => {
     expect(writtenTo("vite.config.ts")).toBeDefined();
     expect(writtenTo("vite.config.js")).toBeUndefined();
     expect(writtenTo(".gitignore")).toBeDefined();
-    // Scopes webhint's charset, viewport and title checks to what Bascik builds.
-    expect(writtenTo(".hintrc")).toBe(hintrcJson(DEFAULT_SOURCE_DIRECTORIES));
-    expect(writtenTo(".hintrc.dist.json")).toBe(hintDistJson());
+    expect(writtenTo(".hintrc")).toBeUndefined();
+    expect(writtenTo(".hintrc.dist.json")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
     const extensionsJson = writtenTo(".vscode/extensions.json");
     expect(extensionsJson).toBeDefined();
@@ -1516,7 +1510,7 @@ describe("scaffold", () => {
       expect(mockWriteFile).not.toHaveBeenCalled();
     });
 
-    it("scaffolds into a folder that has only the files it merges into and its own empty folders", async () => {
+    it("scaffolds into a folder with unrelated files, mergeable files and empty folders", async () => {
       existing([
         "AGENTS.md",
         "CLAUDE.md",
@@ -1530,7 +1524,7 @@ describe("scaffold", () => {
       ]);
       await scaffold("my-app", "/tmp");
       expect(writtenTo("/tmp/my-app/package.json")).toBeDefined();
-      expect(mockWriteFile.mock.calls.length).toBe(33);
+      expect(mockWriteFile.mock.calls.length).toBe(31);
     });
   });
 
@@ -1590,8 +1584,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
 
-    it("writes the 33 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(35);
+    it("writes the 31 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(33);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");

@@ -41,7 +41,7 @@ The template name is misspelled or missing. The message lists the valid names. S
 
 ### `A 'viewport' meta element was not specified` or `Documents must have <title> element`
 
-webhint, axe, or another editor linter read the source page, which has no charset, viewport, or `<title>` because a head component and a build script add them at build time. Open the built page in `dist/`: if the tags are there, the warning is false, and adding them to the source page would put two in the built page. `npm create bascik` and `bascik init` write a `.hintrc` that turns these checks off for source files only. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source) for every such warning and its setting.
+webhint, axe, or another editor linter read the source page, which has no charset, viewport, or `<title>` because a head component and a build script add them at build time. Open the built page in `dist/`: if the tags are there, the warning is false, and adding them to the source page would put two in the built page. Third-party linters are opt-in, and `npm create bascik` and `bascik init` leave their config files alone. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source) for every such warning and copyable settings.
 
 ## Configuration
 

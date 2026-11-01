@@ -1,4 +1,0 @@
-{
-  "extends": ["development"],
-  "formatters": ["stylish"]
-}
