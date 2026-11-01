@@ -308,6 +308,18 @@ describe("release.yml publishes only commits on main", () => {
     );
   });
 
+  it("builds the Cloudflare adapter before create-bascik integration tests", () => {
+    const steps = jobSteps(workflow).get("release-create") ?? [];
+    const adapterBuild = steps.findIndex((step) =>
+      /name: Build Cloudflare adapter/.test(step),
+    );
+    const tests = steps.findIndex((step) => /name: Run tests/.test(step));
+
+    expect(adapterBuild).toBeGreaterThan(-1);
+    expect(tests).toBeGreaterThan(adapterBuild);
+    expect(steps[adapterBuild]).toContain("yarn adapter:cf:build");
+  });
+
   it("misuse: flags a publish job added without the guard, with a shallow checkout, or with a conditional guard", () => {
     const job = (id: string, checkout: string[], guard: string[]) =>
       [

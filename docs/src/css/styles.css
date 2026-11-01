@@ -596,7 +596,6 @@ pre code {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   background: var(--badge-bg);
   color: var(--badge-color);
   border: 1px solid var(--badge-border);

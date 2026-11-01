@@ -99,6 +99,9 @@ jobs:
       - name: Build package
         run: yarn pkg:build
 
+      - name: Build Cloudflare adapter
+        run: yarn adapter:cf:build
+
       - name: Run tests
         working-directory: create
         run: yarn test:ci
