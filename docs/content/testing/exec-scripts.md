@@ -41,6 +41,7 @@ Export the generator and output functions so they can be imported and executed i
 ```ts
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { esc } from "@bascik/bascik/html";
 
 export interface SitemapConfig {
   siteUrl: string;
@@ -53,7 +54,8 @@ export function buildSitemapXml(siteUrl: string, routes: string[]): string {
   const urlEntries = routes
     .map((r) => {
       const path = r === "/" ? "" : r.startsWith("/") ? r : `/${r}`;
-      return `  <url>\n    <loc>${cleanUrl}${path}</loc>\n  </url>`;
+      // A sitemap is XML, not HTML: esc() escapes each value.
+      return `  <url>\n    <loc>${esc(cleanUrl + path)}</loc>\n  </url>`;
     })
     .join("\n");
 

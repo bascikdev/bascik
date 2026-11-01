@@ -9,6 +9,8 @@ const decode = (html: string) =>
     .replace(/<span data-code-token="[a-z]+">|<\/span>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
 describe("examples", () => {

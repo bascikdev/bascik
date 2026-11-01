@@ -13,6 +13,7 @@ import { inPage } from "./lib/dom.mjs";
 import {
   casesOf,
   finding,
+  keyMatch,
   masksOf,
   parseArgsFor,
   result,
@@ -22,6 +23,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 import { decodeCharacterReferences } from "./lib/character-references.mjs";
 
 export const CHECK = "repeated-sections";
@@ -382,7 +384,8 @@ function collectSections(arg) {
     const heading = [...el.querySelectorAll("h1, h2, h3, h4, h5, h6")].find(
       (h) => !masked(h),
     );
-    const label = norm(heading?.textContent) || accName(el);
+    // The text a reader sees, cut after 70 visible characters, so both sides cut a long heading at the same place.
+    const label = (heading && keyText(heading, 70)) || capText(accName(el), 70);
     const signature = {};
     for (const [p, v] of Object.entries(pick(el))) signature[p] = v;
     // Every part, numbered among the siblings with its tag ("DIV:3 H3"), so the third card counts as much as the first.
@@ -436,8 +439,8 @@ function collectSections(arg) {
       }
     out.push({
       tree: tree(el),
-      key: `${tagOf(el)}:${label.slice(0, 70).trim()}`,
-      label: label.slice(0, 70).trim(),
+      key: `${tagOf(el)}:${label}`,
+      label,
       tag: tagOf(el),
       path: pathOf(el),
       signature,
@@ -521,6 +524,22 @@ function componentOf(instance, usage, pages, page, sources) {
 }
 
 /**
+ * The section in `list` (the target's sections on one route) that is production's section `key`: by key, by structure
+ * (`fingerprint`), or by its heading text on any element (a Bascik build may drop the wrapper production put around
+ * it). Keys and headings are compared with whitespace removed (keyMatch): React markup and formatted HTML read alike.
+ */
+export function matchSection(list, key, fingerprint) {
+  const label = key.slice(key.indexOf(":") + 1);
+  return (
+    list.find((s) => keyMatch(s.key) === keyMatch(key)) ??
+    list.find((s) => sectionFingerprint(s) === fingerprint) ??
+    (keyMatch(label)
+      ? list.find((s) => keyMatch(s.label) === keyMatch(label))
+      : undefined)
+  );
+}
+
+/**
  * Resolves to { check, ok, findings, repeated }. Options: prod, target, routes (two or more), cases, targetSrc.
  */
 export async function runCheck(browser, options) {
@@ -533,12 +552,10 @@ export async function runCheck(browser, options) {
   const target = {};
   for (const c of cases)
     for (const route of routes) {
-      prod[`${c.width} ${route}`] = await sections(
-        browser,
-        options.prod,
-        route,
-        c,
+      prod[`${c.width} ${route}`] = await cachedProd(
         options,
+        { check: CHECK, route, case: c },
+        () => sections(browser, options.prod, route, c, options),
       );
       target[`${c.width} ${route}`] = await sections(
         browser,
@@ -589,17 +606,8 @@ export async function runCheck(browser, options) {
       );
       continue;
     }
-    // The same section on the target: by key, by structure, or by its heading text on any element (a Bascik build
-    // may drop the wrapper production put around it).
-    const matchTarget = (route, key, width) => {
-      const list = target[`${width} ${route}`];
-      const label = key.slice(key.indexOf(":") + 1);
-      return (
-        list.find((s) => s.key === key) ??
-        list.find((s) => sectionFingerprint(s) === r.fingerprint) ??
-        (label ? list.find((s) => s.label === label) : undefined)
-      );
-    };
+    const matchTarget = (route, key, width) =>
+      matchSection(target[`${width} ${route}`], key, r.fingerprint);
     const found = r.routes.map((route, i) =>
       matchTarget(route, r.keys[i], first),
     );

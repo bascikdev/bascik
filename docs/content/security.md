@@ -23,7 +23,7 @@ When the values in your output are escaped, Bascik keeps escaped data from ever 
 
 ## What is yours
 
-- **Escaping what you interpolate.** Build output with `html`, or escape every value yourself.
+- **Escaping what you interpolate.** Build markup with `html` in every script and helper (build, server and stream scripts, API routes, and the helpers they import), and `esc()` a value in a string built without it. No escaper of your own is needed.
 - **HTML from a CMS or Markdown.** Sanitize it before it reaches the page; escaping would destroy it.
 - **Component scripts.** A component's client script should treat its own markup as data, never as code to run.
 - **The Content-Security-Policy.** Bascik sends none by default. The [`contentSecurityPolicy`](/how-to/content-security-policy) option sends one with your directives and the build's hashes.

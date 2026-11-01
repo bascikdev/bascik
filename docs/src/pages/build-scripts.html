@@ -51,17 +51,18 @@
             <div data-bascik-slot="example">
               <script data-bascik-build>
                 import { readFile } from "node:fs/promises";
-                import { marked } from "marked";
+                import { html } from "@bascik/bascik/html";
                 export default async function () {
                   const md = await readFile("./content/why-bascik.md", "utf8");
                   const [heading, paragraph] = md.split("\n\n");
                   const title = heading.replace(/^#\s*/, "");
-                  return `
-                <feature-card
-                  data-bascik-prop-title="${title}"
-                  data-bascik-prop-desc="${marked.parseInline(paragraph).replace(/"/g, "&quot;")}">
-                </feature-card>
-              `;
+                  return html`
+                    <feature-card
+                      data-bascik-prop-title="${title}"
+                      data-bascik-prop-desc="${paragraph}"
+                    >
+                    </feature-card>
+                  `;
                 }
               </script>
             </div>
@@ -114,10 +115,11 @@
           <component-demo data-bascik-prop-file="src/pages/build-scripts.html">
             <div data-bascik-slot="example">
               <script data-bascik-build type="text/typescript">
+                import { html, type SafeHtml } from "@bascik/bascik/html";
                 const path: string = process.env.BASCIK_PAGE_PATH ?? "/";
                 const trail: string[] = ["Home", ...path.split("/").filter(Boolean)];
-                export default (): string =>
-                  `<nav aria-label="Breadcrumb">${trail.join(" / ")}</nav>`;
+                export default (): SafeHtml =>
+                  html`<nav aria-label="Breadcrumb">${trail.join(" / ")}</nav>`;
               </script>
             </div>
             <div data-bascik-slot="source-usage">

@@ -6,23 +6,34 @@
 //
 // Why: agents treated "no flags" from the scripts they happened to run as PASS. One command with every check leaves
 // nothing to forget, and a check that crashed is a finding, never a pass.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { loadMatrix } from "./lib/matrix.mjs";
 import { loadPlaywright } from "./lib/project-deps.mjs";
 import {
+  caseIdsFrom,
   DEFAULT_MATRIX,
   DEFAULT_OUT,
   DEFAULT_SETTLE_MS,
   formatFinding,
+  launchPolite,
   pixels,
   routeSlug,
+  runFooter,
+  runMatrix,
   skipControlsFrom,
   validateMask,
   validateRoute,
   validateRouteSet,
+  validateTarget,
 } from "./lib/checks.mjs";
+import {
+  DEFAULT_PROD_CACHE,
+  openProdCache,
+  PROD_CACHE_OPTIONS,
+  prodCacheFlags,
+  prodCacheRecord,
+} from "./lib/prod-cache.mjs";
 import * as productionDefects from "./production-defects.mjs";
 import * as interactionCrawl from "./interaction-crawl.mjs";
 import * as stateCapture from "./state-capture.mjs";
@@ -35,6 +46,7 @@ import * as testidCarryover from "./testid-carryover.mjs";
 import * as testidCoverage from "./testid-coverage.mjs";
 import * as presenceByRoute from "./presence-by-route.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { POLITE_HELP, POLITE_OPTIONS, politeFlags } from "./lib/capture.mjs";
 
 const MODULES = [
   productionDefects,
@@ -66,17 +78,33 @@ own: the route still needs a visual review and a human sign-off.
 Runtime: every page waits until ${DEFAULT_SETTLE_MS / 1000} s after it started loading (--settle-ms, so a modal or banner on a timer is
 on both sides) and then until it has been quiet for 0.75 s, and the interaction crawl and state capture reload the
 page once per interactive element on each side, so expect about two minutes per route per matrix case on a typical
-marketing page (state-capture and interaction-crawl take most of it). Run every check anyway: a check skipped to save
-time is a check that passes nothing. A check that crashes on a navigation timeout (a loaded host, a slow network) is
-run once more, and the report notes the retry; a second crash is a finding.
+marketing page (state-capture and interaction-crawl take most of it). A check that crashes on a navigation timeout (a
+loaded host, a slow network) is run once more, and the report notes the retry; a second crash is a finding. A browser
+that closed mid-run (killed, out of memory) is relaunched before the retry and for every later check.
+
+Production is measured once and kept in --prod-cache (default ${DEFAULT_PROD_CACHE}): the next run reads production's side
+from there and loads only the target, as long as nothing that changes what production measures changed (the case,
+the masks, skip-controls, dismiss selectors, block list, settle time, the browser and the skill's scripts are in the key).
+Pass --refresh-prod at the start of every check stage and review round, and whenever production changed.
+
+Iteration loop: while fixing a route, run a few cases (--cases 360x812,768,1280x900: ids from the matrix, or a bare
+width for every case of it) and only the checks your fix can affect (--only, --skip). Such a run prints PARTIAL and
+its report says partial: true (the report lists the checks that ran and the ones left out), and review-page.mjs
+refuses to sign or verify it. The gate: the full docs/migration/breakpoints.json matrix and every check, with
+production measured within the last day (review-page.mjs --max-prod-age, default 24h). "Done" is decided only there.
 
 Options:
   --prod <url>                Live production origin
   --target <url>              Bascik origin, such as http://localhost:8080 (a production build: bascik --server)
   --route <path>              Route to check (repeatable, required; pass every route that shares components)
-  --legacy-src <dir>          The legacy repository, for testid-carryover (required unless it is skipped)
+  --legacy-src <dir>          The legacy repository, for testid-carryover (required unless --no-legacy-repo)
+  --no-legacy-repo            There is no legacy repository: testid-carryover cannot run, and the report says why
+                              (the run can still be the gate; --skip testid-carryover makes it partial)
   --target-src <dir>          The Bascik project, holding src/pages and src/components (default .)
-  --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json)
+  --matrix <file>             Breakpoint matrix JSON (default docs/migration/breakpoints.json; another file makes the run
+                              partial)
+  --cases <id>                Run only these matrix cases: an id such as 360x812 or 1408x900-dark, or a width such as 360
+                              for every case of it (repeatable or comma separated; makes the run partial)
   --spacing-tolerance <px>    spacing-diff tolerance (default 2)
   --overlap-tolerance <px>    overlap-diff tolerance (default 1)
   --mask <selector>           A documented dynamic region every check leaves out, such as an autoplay carousel, an
@@ -89,9 +117,20 @@ Options:
                               a layer on a longer timer, 0 for a site with none
   --dismiss <selector>        Another control presence-by-route uses to dismiss a layer (repeatable)
   --ledger <file>             Append production defects to this decisions ledger
-  --only <check>              Run only these checks (repeatable or comma separated)
-  --skip <check>              Skip these checks (repeatable or comma separated)
+  --reject <id>               A production-defects ledger row a reviewer found is not a defect, such as PD-1a2b3c
+                              (repeatable): neither a fix target nor a copied-defect. For the iteration loop only:
+                              review-page.mjs refuses a gate run that used it; put the id in accepted.json instead
+  --accepted <file>           accepted.json whose "defect" lists are rejected too (default
+                              docs/migration/accepted.json when it exists)
+  --only <check>              Run only these checks (repeatable or comma separated; makes the run partial)
+  --skip <check>              Skip these checks (repeatable or comma separated; makes the run partial)
   --out <dir>                 Report folder (default artifacts/checks)
+  --prod-cache <dir>          Production cache folder (default ${DEFAULT_PROD_CACHE})
+  --refresh-prod              Measure production again and overwrite the cache
+  --no-prod-cache             Neither read nor write the cache
+Every page load, on both sides, runs without service workers, skips the analytics and tracking hosts and sends no
+request other than GET or HEAD outside the target (a GET with a side effect and WebSocket traffic still get through):
+${POLITE_HELP}
   --help                      Show this message`;
 
 function checkList(flag, values) {
@@ -117,6 +156,9 @@ export function parseCliArgs(argv) {
       target: { type: "string" },
       route: { type: "string", multiple: true },
       matrix: { type: "string" },
+      cases: { type: "string", multiple: true },
+      ...PROD_CACHE_OPTIONS,
+      ...POLITE_OPTIONS,
       "target-src": { type: "string" },
       "legacy-src": { type: "string" },
       "spacing-tolerance": { type: "string" },
@@ -126,8 +168,11 @@ export function parseCliArgs(argv) {
       "settle-ms": { type: "string" },
       dismiss: { type: "string", multiple: true },
       ledger: { type: "string" },
+      reject: { type: "string", multiple: true },
+      accepted: { type: "string" },
       only: { type: "string", multiple: true },
       skip: { type: "string", multiple: true },
+      "no-legacy-repo": { type: "boolean", default: false },
       out: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -135,26 +180,38 @@ export function parseCliArgs(argv) {
   if (values.help) return { help: true };
   if (!values.prod) throw new Error("--prod <url> is required");
   if (!values.target) throw new Error("--target <url> is required");
+  validateTarget(values.prod, values.target);
   if (!values.route?.length)
     throw new Error("--route <path> is required (repeatable)");
   for (const route of values.route) validateRoute(route);
   validateRouteSet(values.route);
   for (const selector of values.mask ?? []) validateMask(selector);
+  const cache = prodCacheFlags(values);
+  const polite = politeFlags(values, values);
   const only = checkList("--only", values.only);
   const skip = checkList("--skip", values.skip);
+  const noLegacyRepo = values["no-legacy-repo"];
+  if (noLegacyRepo && values["legacy-src"])
+    throw new Error(
+      "--no-legacy-repo says there is no legacy repository, but --legacy-src names one; pass one of them",
+    );
+  const waived = noLegacyRepo ? { [NO_LEGACY_CHECK]: NO_LEGACY_REASON } : {};
   const run = (
     only.length ? CHECKS.filter((c) => only.includes(c)) : [...CHECKS]
-  ).filter((c) => !skip.includes(c));
+  ).filter((c) => !skip.includes(c) && !(c in waived));
   if (!run.length) throw new Error("--only and --skip leave no check to run");
   if (run.includes("testid-carryover") && !values["legacy-src"])
     throw new Error(
-      "--legacy-src <dir> is required while testid-carryover runs (its legacy source hooks are half of the check); pass --skip testid-carryover only when there is no legacy repository",
+      "--legacy-src <dir> is required while testid-carryover runs (its legacy source hooks are half of the check); pass --no-legacy-repo only when there is no legacy repository (--skip testid-carryover makes the run partial)",
     );
   return {
     prod: values.prod,
     target: values.target,
     route: values.route,
     matrix: values.matrix ?? DEFAULT_MATRIX,
+    caseIds: caseIdsFrom(values.cases),
+    ...cache,
+    polite,
     targetSrc: values["target-src"] ?? ".",
     legacySrc: values["legacy-src"],
     spacingTolerance: pixels(
@@ -177,9 +234,33 @@ export function parseCliArgs(argv) {
     ),
     dismiss: values.dismiss ?? [],
     ledger: values.ledger,
+    reject: productionDefects.rejectIdsFrom(values.reject),
+    accepted:
+      values.accepted ??
+      (existsSync(productionDefects.DEFAULT_ACCEPTED)
+        ? productionDefects.DEFAULT_ACCEPTED
+        : undefined),
     out: values.out ?? DEFAULT_OUT,
     only: run,
+    waived,
   };
+}
+
+/** The check a site without a legacy repository cannot run, and the reason the gate record gives for it. */
+export const NO_LEGACY_CHECK = "testid-carryover";
+export const NO_LEGACY_REASON = "no legacy repository (--no-legacy-repo)";
+
+/**
+ * The cases and gate record of a run-checks run (runMatrix): the gate record also lists the checks that ran and the
+ * checks left out, so a run with --only or --skip is partial like a --cases subset. `defaultMatrix` is for tests.
+ */
+export function runChecksMatrix(args, defaultMatrix) {
+  return runMatrix(args, {
+    checks: args.only,
+    allChecks: CHECKS,
+    waived: args.waived,
+    ...(defaultMatrix ? { defaultMatrix } : {}),
+  });
 }
 
 /** Whether a finding belongs to a route: its own route, one of its routes, or no route at all. */
@@ -191,13 +272,24 @@ const onRoute = (f, route) =>
 /**
  * One route's report from the check results ([{ check, ok, findings, ... } or { check, error }]). It passes only when
  * every expected check ran and none has a finding. A crashed or missing check is an "error" finding. A parity finding
- * on an element production-defects found wrong at that route and width moves to `corrected`.
+ * on an element production-defects found wrong at that route and width moves to `corrected`. The production defects
+ * a reviewer rejected on this route (`rejectedDefects`, each with its id and sources) and every rejection the run used
+ * (`rejections`: id, source "--reject" or an accepted.json entry id, ledgerRow, matched) are kept, so the gate record
+ * and the review page show them; review-page.mjs refuses a gate run with a bare --reject. `gate` (gateRecord: the
+ * matrix, its hash, the cases run, partial) and `production` (prodCacheRecord) are recorded as they are: review-page.mjs
+ * refuses a partial report or one of another matrix.
  */
-export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
+export function buildRouteReport(
+  route,
+  results,
+  { expected = CHECKS, gate, production } = {},
+) {
   const raw = [];
   const checks = {};
   const byName = new Map(results.map((r) => [r.check, r]));
   const defects = [];
+  const rejectedDefects = [];
+  const rejections = [];
   for (const name of [...expected, ...results.map((r) => r.check)]) {
     if (name in checks) continue;
     const r = byName.get(name);
@@ -220,6 +312,9 @@ export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
       .filter((f) => onRoute(f, route))
       .map((f) => ({ ...f, route: f.route ?? route }));
     for (const d of r.defects ?? []) if (d.route === route) defects.push(d);
+    for (const d of r.rejected ?? [])
+      if (d.route === route) rejectedDefects.push(d);
+    rejections.push(...(r.rejections ?? []));
     checks[name] = {
       ok: own.length === 0,
       findings: own.length,
@@ -234,10 +329,14 @@ export function buildRouteReport(route, results, { expected = CHECKS } = {}) {
     findings: kept,
     corrected,
     productionDefects: defects,
+    rejectedDefects,
+    rejections,
     checks,
     states: results
       .flatMap((r) => r.states ?? [])
       .filter((s) => s.route === undefined || s.route === route),
+    ...(gate ? { gate } : {}),
+    ...(production ? { production } : {}),
   };
 }
 
@@ -295,20 +394,62 @@ export function isTransient(error) {
 }
 
 /**
- * Runs one check module over all routes and cases at once (repeated-sections and presence-by-route compare routes with
- * each other), turning a crash into an error result. A transient crash (isTransient: a navigation timeout on a loaded
- * host) is retried once; the result then says so in `retried`, and a second crash is the error.
+ * The browser of a run, replaced when it dies. Chromium can go away mid-run (killed, out of memory); every later call
+ * on the old object then fails at once with "Target page, context or browser has been closed". `ensure()` relaunches
+ * it through `relaunch(previous)` when it is no longer connected and says whether it did; `relaunches` counts them.
  */
-export async function runOne(name, browser, options, modules = MODULES) {
+export function browserHolder(browser, relaunch) {
+  return {
+    browser,
+    relaunches: 0,
+    async ensure() {
+      if (this.browser.isConnected?.() !== false) return false;
+      try {
+        await this.browser.close();
+      } catch {
+        // Already gone.
+      }
+      try {
+        this.browser = await relaunch(this.browser);
+      } catch (error) {
+        throw new Error(
+          `the browser had closed and could not be relaunched: ${String(error?.message ?? error).split("\n")[0]}`,
+        );
+      }
+      this.relaunches++;
+      return true;
+    },
+  };
+}
+
+/**
+ * Runs one check module over all routes and cases at once (repeated-sections and presence-by-route compare routes with
+ * each other), turning a crash into an error result. `holder` is a browserHolder: a browser that closed (an earlier
+ * check or this one took it down) is relaunched before the check runs and before its retry. A transient crash
+ * (isTransient: a navigation timeout on a loaded host), or any crash that left the browser closed, is retried once;
+ * the result then says so in `retried` (naming the relaunch when there was one), and a second crash is the error.
+ */
+export async function runOne(name, holder, options, modules = MODULES) {
+  if (typeof holder?.ensure !== "function")
+    throw new TypeError(
+      "runOne takes a browserHolder(browser, relaunch), not a bare browser, so it can relaunch a browser that died",
+    );
   const mod = modules.find((m) => m.CHECK === name);
   let retried;
   for (let attempt = 1; ; attempt++) {
     try {
-      const r = await mod.runCheck(browser, options);
+      const relaunched = await holder.ensure();
+      if (relaunched && retried)
+        retried = retried.replace(
+          " and was run again:",
+          " and was run again (the browser had closed and was relaunched):",
+        );
+      const r = await mod.runCheck(holder.browser, options);
       return retried ? { ...r, retried } : r;
     } catch (error) {
-      const first = error.message.split("\n")[0];
-      if (attempt === 1 && isTransient(error)) {
+      const first = String(error?.message ?? error).split("\n")[0];
+      const died = holder.browser.isConnected?.() === false;
+      if (attempt === 1 && (isTransient(error) || died)) {
         retried = `${name} crashed once and was run again: ${first}`;
         continue;
       }
@@ -324,11 +465,22 @@ export async function runOne(name, browser, options, modules = MODULES) {
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) return console.log(HELP);
-  const cases = loadMatrix(args.matrix);
+  const { cases, gate } = runChecksMatrix(args);
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const holder = browserHolder(
+    await launchPolite(chromium, args),
+    (previous) => {
+      console.log("        the browser closed; relaunching it");
+      return launchPolite(chromium, args, previous);
+    },
+  );
   const results = [];
+  let prodCache = null;
   try {
+    prodCache = await openProdCache(holder.browser, {
+      dir: args.prodCache,
+      refresh: args.refreshProd,
+    });
     const base = {
       prod: args.prod,
       target: args.target,
@@ -341,15 +493,20 @@ async function main() {
       skipControls: args.skipControls,
       settleMs: args.settleMs,
       dismiss: args.dismiss,
+      polite: args.polite,
+      prodCache,
     };
     for (const name of args.only) {
       const options = { ...base };
       if (name === "spacing-diff") options.tolerance = args.spacingTolerance;
       if (name === "overlap-diff") options.tolerance = args.overlapTolerance;
-      if (name === "production-defects" && args.ledger)
-        options.ledger = args.ledger;
+      if (name === "production-defects") {
+        if (args.ledger) options.ledger = args.ledger;
+        options.reject = args.reject;
+        options.accepted = args.accepted;
+      }
       const started = Date.now();
-      const r = await runOne(name, browser, options);
+      const r = await runOne(name, holder, options);
       results.push(r);
       const n = r.error ? "crashed" : `${r.findings.length} finding(s)`;
       console.log(
@@ -357,11 +514,20 @@ async function main() {
       );
     }
   } finally {
-    await browser.close();
+    try {
+      await holder.browser.close();
+    } catch {
+      // A browser that died at the end has nothing left to close.
+    }
   }
   let allOk = true;
+  const production = prodCacheRecord(prodCache);
   for (const route of args.route) {
-    const report = buildRouteReport(route, results, { expected: args.only });
+    const report = buildRouteReport(route, results, {
+      expected: args.only,
+      gate,
+      production,
+    });
     const dir = join(args.out, routeSlug(route));
     mkdirSync(dir, { recursive: true });
     const file = join(dir, "report.json");
@@ -369,12 +535,28 @@ async function main() {
     console.log(`${report.ok ? "ok  " : "FAIL"}  ${route}  (${file})`);
     for (const line of formatFindings(report.findings))
       console.log(`        ${line}`);
+    if (report.rejectedDefects.length)
+      console.log(
+        `        ${report.rejectedDefects.length} production defect(s) rejected as reviewed false positives (see rejectedDefects)`,
+      );
+    for (const r of report.rejections.filter(
+      (r) => r.source === "--reject" || r.ledgerRow === false,
+    ))
+      console.log(
+        `        warning: ${r.id} rejected by ${r.source}${r.source === "--reject" ? "" : " (no ledger row)"}: review-page.mjs refuses this run as a gate`,
+      );
     if (report.corrected.length)
       console.log(
         `        ${report.corrected.length} finding(s) on production defects the target fixes (see productionDefects)`,
       );
     allOk &&= report.ok;
   }
+  if (holder.relaunches)
+    console.log(
+      `the browser closed and was relaunched ${holder.relaunches} time(s) during this run (see the retried notes)`,
+    );
+  for (const line of runFooter(prodCache, gate, holder.browser, args.polite))
+    console.log(line);
   if (!allOk) process.exitCode = 1;
 }
 

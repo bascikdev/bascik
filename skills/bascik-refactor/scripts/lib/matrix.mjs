@@ -3,7 +3,9 @@
 //
 // The rule: for every width threshold B, test B - 1, B and B + 1 CSS pixels, plus one width inside every interval
 // and the narrowest and widest supported widths. Width and height are a pair.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const PX_PER_EM = 16;
 
@@ -143,4 +145,100 @@ export function loadMatrix(file) {
     }
   });
   return cases;
+}
+
+/**
+ * The id of a matrix case for --cases and the reports: "360x812", with a suffix for each variant the case sets:
+ * "1408x900-dark" (colorScheme), "-motion" (reducedMotion other than reduce), "-mobile" (isMobile), "-touch" (hasTouch).
+ */
+export function caseId(c) {
+  const parts = [`${c.width}x${c.height}`];
+  if (c.colorScheme && c.colorScheme !== "light") parts.push(c.colorScheme);
+  if (c.reducedMotion && c.reducedMotion !== "reduce") parts.push("motion");
+  if (c.isMobile) parts.push("mobile");
+  if (c.hasTouch) parts.push("touch");
+  return parts.join("-");
+}
+
+/**
+ * The cases --cases names, in matrix order: each value is a case id (caseId) or a bare width, which selects every case
+ * of that width; values may be comma separated. No values selects every case. A value that matches no case is an
+ * error listing the valid ids, so a typo never runs an empty or wrong subset.
+ */
+export function selectCases(cases, values) {
+  const list = values ?? [];
+  if (!list.length) return cases;
+  const ids = list.flatMap((v) =>
+    String(v)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  if (!ids.length)
+    throw new Error(
+      `--cases needs case ids or widths, such as 360x812 or 360; this matrix has ${cases.map(caseId).join(", ")}`,
+    );
+  const picked = new Set();
+  for (const id of ids) {
+    const hits = cases.filter((c) =>
+      /^\d+$/.test(id) ? c.width === Number(id) : caseId(c) === id,
+    );
+    if (!hits.length)
+      throw new Error(
+        `--cases ${id}: no such case in the matrix; use a case id or a width from ${cases.map(caseId).join(", ")}`,
+      );
+    for (const c of hits) picked.add(c);
+  }
+  return cases.filter((c) => picked.has(c));
+}
+
+/**
+ * What a run checked, for report.json: the matrix file and its sha256, the ids of the cases run and the total and, when
+ * `allChecks` is given (run-checks.mjs), the checks that ran, the checks left out (`skipped`) and the checks `waived`
+ * ({ check: reason }: testid-carryover with --no-legacy-repo). A run is partial (an iteration result, never the gate)
+ * when it ran a subset of the cases (--cases), a matrix file other than `defaultMatrix`
+ * (docs/migration/breakpoints.json), or left out a check that is not waived (--only, --skip).
+ */
+export function gateRecord({
+  file,
+  cases,
+  selected,
+  defaultMatrix,
+  checks,
+  allChecks,
+  waived = {},
+}) {
+  const record = {
+    matrix: file,
+    sha256: createHash("sha256").update(readFileSync(file)).digest("hex"),
+    cases: selected.map(caseId),
+    total: cases.length,
+  };
+  let skipped = [];
+  if (allChecks) {
+    skipped = allChecks.filter((c) => !checks.includes(c) && !(c in waived));
+    record.checks = [...checks];
+    record.skipped = skipped;
+    if (Object.keys(waived).length) record.waived = { ...waived };
+  }
+  record.partial =
+    selected.length !== cases.length ||
+    resolve(file) !== resolve(defaultMatrix) ||
+    skipped.length > 0;
+  return record;
+}
+
+/** The terminal line for a partial run, or null for a full run of the default matrix with every check. */
+export function gateLine(gate) {
+  if (!gate?.partial) return null;
+  const n = gate.cases.length;
+  const skipped = gate.skipped ?? [];
+  // Every case and every check ran, so the matrix file itself is not the default one.
+  const other =
+    n === gate.total && !skipped.length ? ` from ${gate.matrix}` : "";
+  const ran = gate.checks?.length ?? 0;
+  const checks = skipped.length
+    ? `; ${ran} of ${ran + skipped.length} checks, without ${skipped.join(", ")}`
+    : "";
+  return `PARTIAL (${n} of ${gate.total} cases${other}${checks}): iteration result, not a gate`;
 }

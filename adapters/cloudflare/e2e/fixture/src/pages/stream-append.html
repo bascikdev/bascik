@@ -256,19 +256,15 @@
         <a class="back-link" href="/">← Back to Demo Home</a>
       </div>
       <h1>Progressive Stream (Append Flow)</h1>
-      <p class="greeting">
+      <p class="greeting" data-testid="cf-append-greeting">
         <script data-bascik-server>
+          import { html } from "@bascik/bascik/html";
           export default function (request, context) {
             const name =
               new URL(request.url).searchParams.get("name") ?? "Guest";
             const platformName = context?.platform?.name ?? "local";
-            return (
-              "Welcome back, " +
-              name.replace(/[<>&"']/g, "") +
-              ' · Edge host: <span class="badge">' +
-              platformName +
-              "</span>"
-            );
+            return html`Welcome back, ${name} · Edge host:
+              <span class="badge">${platformName}</span>`;
           }
         </script>
       </p>

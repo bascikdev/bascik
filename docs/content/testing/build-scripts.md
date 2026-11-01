@@ -26,23 +26,31 @@ Build helpers that transform local data files, parse Markdown, or generate navig
 ### 1. Pure Helper Module (`src/lib/nav-generator.ts`)
 
 ```ts
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
 export interface NavItem {
   href: string;
   label: string;
 }
 
-export function generateNavList(items: NavItem[], activeHref?: string): string {
-  if (!items.length) return "";
+export function generateNavList(
+  items: NavItem[],
+  activeHref?: string,
+): SafeHtml {
+  if (!items.length) return html``;
 
-  const links = items
-    .map((item) => {
-      const isCurrent = item.href === activeHref;
-      const currentAttr = isCurrent ? ' aria-current="page"' : "";
-      return `  <li><a href="${item.href}"${currentAttr}>${item.label}</a></li>`;
-    })
-    .join("\n");
+  const links = items.map(({ href, label }) => {
+    // A hole cannot add an attribute, so the current link is its own template.
+    const link =
+      href === activeHref
+        ? html`<a href="${href}" aria-current="page">${label}</a>`
+        : html`<a href="${href}">${label}</a>`;
+    return html`<li>${link}</li>`;
+  });
 
-  return `<ul class="site-nav">\n${links}\n</ul>`;
+  return html`<ul class="site-nav">
+    ${links}
+  </ul>`;
 }
 ```
 
@@ -77,7 +85,8 @@ describe("generateNavList", () => {
   ];
 
   it("generates an accessible navigation list with active page indicators", () => {
-    const html = generateNavList(sampleNav, "/docs");
+    // An html value is an object: String() gives the markup.
+    const html = String(generateNavList(sampleNav, "/docs"));
 
     expect(html).toContain('<ul class="site-nav">');
     expect(html).toContain(
@@ -86,8 +95,16 @@ describe("generateNavList", () => {
     expect(html).toContain('<li><a href="/">Home</a></li>');
   });
 
-  it("returns empty string when no navigation items are provided", () => {
-    expect(generateNavList([])).toBe("");
+  it("returns empty markup when no navigation items are provided", () => {
+    expect(String(generateNavList([]))).toBe("");
+  });
+
+  it("escapes labels and blocks a javascript: link from the data", () => {
+    const html = String(
+      generateNavList([{ href: "javascript:alert(1)", label: "<b>Hi</b>" }]),
+    );
+    expect(html).toContain('href="about:invalid"');
+    expect(html).toContain("&lt;b&gt;Hi&lt;/b&gt;");
   });
 });
 ```
@@ -114,7 +131,9 @@ Test page-aware functions in Vitest by setting `process.env` values in test case
 
 ```ts
 // src/lib/canonical.ts
-export function getCanonicalUrl(): string {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
+export function getCanonicalUrl(): SafeHtml | "" {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
@@ -132,7 +151,9 @@ export function getCanonicalUrl(): string {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = route ? `/${route}` : "/";
 
-  return `<link rel="canonical" href="${siteUrl}${urlPath}" />`;
+  // One hole per URL attribute: html refuses two side by side.
+  const href = `${siteUrl}${urlPath}`;
+  return html`<link rel="canonical" href="${href}" />`;
 }
 ```
 
@@ -155,14 +176,15 @@ describe("getCanonicalUrl", () => {
 
   it("generates canonical tag for index pages", () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/index.html";
-    expect(getCanonicalUrl()).toBe(
+    // An html value is an object: compare its text.
+    expect(String(getCanonicalUrl())).toBe(
       '<link rel="canonical" href="https://example.com/" />',
     );
   });
 
   it("generates canonical tag for nested routes", () => {
     process.env.BASCIK_SOURCE_FILE = "/app/src/pages/blog/post.html";
-    expect(getCanonicalUrl()).toBe(
+    expect(String(getCanonicalUrl())).toBe(
       '<link rel="canonical" href="https://example.com/blog/post" />',
     );
   });
@@ -181,17 +203,20 @@ When a build script encounters missing files or remote network failures, your he
 
 ```ts
 // src/lib/remote-data.ts
-export async function fetchHeroData(endpoint: string): Promise<string> {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
+export async function fetchHeroData(endpoint: string): Promise<SafeHtml> {
   try {
     const res = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return `<h1 class="hero-title">${data.title}</h1>`;
+    // A remote title is data: html escapes it, so markup in it shows as text.
+    return html`<h1 class="hero-title">${data.title}</h1>`;
   } catch (err) {
     console.warn(
       `[build-scripts] Fallback used for ${endpoint}: ${(err as Error).message}`,
     );
-    return `<h1 class="hero-title">Welcome to Bascik</h1>`;
+    return html`<h1 class="hero-title">Welcome to Bascik</h1>`;
   }
 }
 ```
@@ -213,8 +238,23 @@ describe("fetchHeroData", () => {
       }),
     );
 
-    const html = await fetchHeroData("https://api.example.com/release");
-    expect(html).toBe('<h1 class="hero-title">Latest Release v1.0</h1>');
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe(
+      '<h1 class="hero-title">Latest Release v1.0</h1>',
+    );
+  });
+
+  it("shows markup in a remote title as text", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ title: "<img src=x onerror=alert(1)>" }), {
+        status: 200,
+      }),
+    );
+
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe(
+      '<h1 class="hero-title">&lt;img src=x onerror=alert(1)&gt;</h1>',
+    );
   });
 
   it("returns fallback markup when fetch fails", async () => {
@@ -222,8 +262,8 @@ describe("fetchHeroData", () => {
       new Error("Network error"),
     );
 
-    const html = await fetchHeroData("https://api.example.com/release");
-    expect(html).toBe('<h1 class="hero-title">Welcome to Bascik</h1>');
+    const hero = await fetchHeroData("https://api.example.com/release");
+    expect(String(hero)).toBe('<h1 class="hero-title">Welcome to Bascik</h1>');
   });
 });
 ```

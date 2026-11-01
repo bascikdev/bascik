@@ -26,7 +26,7 @@ Bascik outputs static HTML, so search engines and AI crawlers read every word wi
 
 1. **Build tags in the context of the page that uses them.** A build script inside a component runs for each use, with that page's environment variables; no page-aware marker is needed.
 2. **Never hard-code the domain.** URLs come from `BASCIK_SITE_URL` (CI variable or `.env`), `BASCIK_BASE`, and `BASCIK_PAGE_PATH`. `bascik --build` fails without the site URL because it writes the sitemap and robots.txt.
-3. **Escape every value** you interpolate into a tag. For JSON-LD, `JSON.stringify` and replace `<` with `\u003c` so data can never close the script tag. Describe only what is visible on the page.
+3. **Build head tags with `html` from `@bascik/bascik/html`**, which escapes every value you interpolate, and write JSON-LD as `` html`<script type="application/ld+json">${json(data)}</script>` ``: `json()` escapes `<`, `>` and `&` so data can never close the script tag. Never write an escaper of your own. Describe only what is visible on the page.
 4. **Dynamic routes** read the item from `BASCIK_ROUTE` in the head build script and pass its fields to the tag helper.
 5. **A noindex page also needs `<meta name="bascik-sitemap" content="exclude" />` written literally in its source.** Bascik reads the source file, not script output, to decide what `sitemap.xml` lists. 404 and 500 pages are excluded automatically.
 6. **Keep authored `robots.txt` and `sitemap.xml` only for custom rules**, and turn off the matching `generate` flag. Otherwise let Bascik generate them.

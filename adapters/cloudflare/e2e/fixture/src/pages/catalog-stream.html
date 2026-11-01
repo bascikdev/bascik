@@ -203,6 +203,7 @@
       <div class="catalog-grid" data-testid="catalog-stream-grid">
         <!-- Batch 1 -->
         <script data-bascik-stream>
+          import { html } from "@bascik/bascik/html";
           export default async function (request, context, { signal }) {
             const requested = Number(
               new URL(request.url).searchParams.get("delay") ?? 300,
@@ -224,28 +225,24 @@
                 );
               });
             }
-            const escape = (s) =>
-              String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/"/g, "&quot;");
             const products = [
               { name: "Pour-over kettle", price: "$48", badge: "New" },
               { name: "Ceramic dripper", price: "$22" },
             ];
-            return products
-              .map(
-                (p) =>
-                  `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-                  (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
-                  `</product-card>`,
-              )
-              .join("");
+            return html`${products.map(
+              (p) =>
+                html`<product-card
+                  data-bascik-prop-name="${p.name}"
+                  data-bascik-prop-price="${p.price}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                >`,
+            )}`;
           }
         </script>
 
         <!-- Batch 2 -->
         <script data-bascik-stream>
+          import { html } from "@bascik/bascik/html";
           export default async function (request, context, { signal }) {
             const requested = Number(
               new URL(request.url).searchParams.get("delay") ?? 300,
@@ -267,28 +264,24 @@
                 );
               });
             }
-            const escape = (s) =>
-              String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/"/g, "&quot;");
             const products = [
               { name: "Milk frother", price: "$129", badge: "Best seller" },
               { name: "Glass carafe", price: "$31" },
             ];
-            return products
-              .map(
-                (p) =>
-                  `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-                  (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
-                  `</product-card>`,
-              )
-              .join("");
+            return html`${products.map(
+              (p) =>
+                html`<product-card
+                  data-bascik-prop-name="${p.name}"
+                  data-bascik-prop-price="${p.price}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                >`,
+            )}`;
           }
         </script>
 
         <!-- Batch 3 -->
         <script data-bascik-stream>
+          import { html } from "@bascik/bascik/html";
           export default async function (request, context, { signal }) {
             const requested = Number(
               new URL(request.url).searchParams.get("delay") ?? 300,
@@ -310,20 +303,15 @@
                 );
               });
             }
-            const escape = (s) =>
-              String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/"/g, "&quot;");
             const products = [{ name: "Filters & holder", price: "$9" }];
-            return products
-              .map(
-                (p) =>
-                  `<product-card data-bascik-prop-name="${escape(p.name)}" data-bascik-prop-price="${escape(p.price)}">` +
-                  (p.badge ? `<span>${escape(p.badge)}</span>` : "") +
-                  `</product-card>`,
-              )
-              .join("");
+            return html`${products.map(
+              (p) =>
+                html`<product-card
+                  data-bascik-prop-name="${p.name}"
+                  data-bascik-prop-price="${p.price}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                >`,
+            )}`;
           }
         </script>
       </div>

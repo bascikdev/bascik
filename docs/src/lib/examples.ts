@@ -37,9 +37,6 @@ const LANGUAGES: Record<string, string> = {
   ".svg": "html",
 };
 
-const escapeAttribute = (value: string): string =>
-  escapeCode(value).replace(/"/g, "&quot;");
-
 /** Files of an example folder, relative to it, sorted, without build output or dependencies. Exported for tests. */
 export async function exampleFiles(folder: string): Promise<string[]> {
   const out: string[] = [];
@@ -98,7 +95,7 @@ export function fileTree(name: string, files: string[]): string {
 export async function exampleFileBlock(examplePath: string): Promise<string> {
   const source = await readFile(join(EXAMPLES_DIR, examplePath), "utf8");
   const lang = LANGUAGES[extname(examplePath)] ?? "text";
-  return `<code-block data-bascik-prop-lang="${lang}" data-bascik-prop-file="examples/${escapeAttribute(examplePath)}">${highlightCode(source.replace(/\n$/, ""), lang)}</code-block>`;
+  return `<code-block data-bascik-prop-lang="${lang}" data-bascik-prop-file="examples/${escapeCode(examplePath)}">${highlightCode(source.replace(/\n$/, ""), lang)}</code-block>`;
 }
 
 /** The live demo box for one component: preview, usage, and the full component file. */
@@ -113,10 +110,10 @@ export async function exampleDemo(
     );
   const source = await readFile(componentPath, "utf8");
   const file = relative("..", componentPath).split(sep).join("/");
-  return `<component-demo data-bascik-prop-no-output="true" data-bascik-prop-file="${escapeAttribute(file)}">
+  return `<component-demo data-bascik-prop-no-output="true" data-bascik-prop-file="${escapeCode(file)}">
   <div data-bascik-slot="example"><div data-example-stage>${usage.code}</div></div>
   <div data-bascik-slot="source-usage"><code-block data-bascik-prop-lang="html">${highlightCode(usage.code, "html")}</code-block></div>
-  <div data-bascik-slot="source-html"><code-block data-bascik-prop-lang="html" data-bascik-prop-file="${escapeAttribute(file)}">${highlightCode(source.replace(/\n$/, ""), "html")}</code-block></div>
+  <div data-bascik-slot="source-html"><code-block data-bascik-prop-lang="html" data-bascik-prop-file="${escapeCode(file)}">${highlightCode(source.replace(/\n$/, ""), "html")}</code-block></div>
 </component-demo>`;
 }
 

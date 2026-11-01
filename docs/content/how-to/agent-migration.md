@@ -19,8 +19,9 @@ Everything ships in the opt-in `bascik-refactor` agent skill:
   - [`driver-agent.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/driver-agent.md): the agent that runs the queue behind a PASS gate.
   - [`decisions-ledger.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/decisions-ledger.md): every intentional difference from the old site.
   - [`visual-review.md`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/visual-review.md): an agent with image input that looks for differences side by side.
-- Twenty scripts:
+- Twenty-one scripts:
   - [`breakpoint-matrix.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/breakpoint-matrix.mjs): finds the legacy breakpoints and writes the viewport matrix.
+  - [`capture-baselines.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/capture-baselines.mjs): records production alone, before any target page exists: a full-page screenshot, element geometry and every open state per route and matrix case.
   - [`geometry-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/geometry-diff.mjs): compares element boxes between production and Bascik.
   - [`compare-route.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/compare-route.mjs): pixel diff, geometry, evidence and interaction traces per route.
   - [`lighthouse-gate.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/lighthouse-gate.mjs): fails unless every report is 100 in all five categories.
@@ -29,7 +30,7 @@ Everything ships in the opt-in `bascik-refactor` agent skill:
   - [`worker-response-policy.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/worker-response-policy.mjs): a Cloudflare Worker wrapper for a strict CSP, robots and cache headers.
   - [`run-checks.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/run-checks.mjs): runs every parity check below per route and matrix case, and exits 1 on any finding.
   - [`production-defects.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/production-defects.mjs): finds production's own layout bugs first, so the target fixes them instead of copying them.
-  - [`interaction-crawl.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/interaction-crawl.mjs): activates every control on both sides and compares what each one does. It clicks production's buttons too, so pass controls with side effects on the live site (add to cart, subscribe) with `--skip-control`.
+  - [`interaction-crawl.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/interaction-crawl.mjs): activates every control on both sides and compares what each one does. It clicks production's buttons too. Their POSTs and other writes to production are refused, but a control that changes something with a GET (a vote link, an add-to-cart URL) or opens a WebSocket (start a chat) still reaches the live site, so pass controls with side effects with `--skip-control`.
   - [`state-capture.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/state-capture.mjs): opens every dropdown and disclosure and compares styles and icons.
   - [`repeated-sections.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/repeated-sections.mjs): requires one component for a section repeated across routes.
   - [`text-style-diff.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/text-style-diff.mjs): compares text styles at rest, on hover and on keyboard focus.
@@ -171,6 +172,28 @@ for (const r of routes) console.log(process.env.TARGET_URL + r.path);' > docs/mi
 
 `integrations.json` lists every third-party script with its network and cookie contract (`name`, `loads`, `origins`, `cookies`, `pages`), so nothing disappears silently.
 
+### Inventory Production Before Any Page Exists
+
+There is no target yet, so the inventory scripts run on production alone: leave out `--target`. Never point `--target` at production instead; the scripts refuse it, because it would load the live site twice at once. Each one writes production's side to `artifacts/checks/` and exits 0, and stores it in the production cache under its own check's key. Only those checks reuse it: the first `run-checks.mjs` of a route reads production-defects, interaction-crawl and state-capture from the cache when it passes the same `--mask`, `--skip-control` and `--settle-ms`, and presence-by-route only when it also passes the same `--route` values in the same order (its key holds the whole route list, so an inventory of every route does not match a `--route /contact` run). The other checks (repeated-sections, text-style-diff, spacing-diff, alignment-diff, overlap-diff, testid-carryover and testid-coverage) still load production on that first run, and from the cache after it.
+
+```sh
+node "$REFACTOR/interaction-crawl.mjs" --prod "$PROD_URL" --route / --route /pricing --discover
+node "$REFACTOR/presence-by-route.mjs" --prod "$PROD_URL" --route / --route /pricing
+node "$REFACTOR/state-capture.mjs" --prod "$PROD_URL" --route / --route /pricing
+```
+
+`--discover` turns the crawl into a first draft of `interactions.json` at `docs/migration/interactions.draft.json`: one step per control that did something, found by test id, role and name, or selector, with what production did in `"observed"`. The file and every step say `"draft": true`, and `compare-route.mjs` refuses a draft. Review each step (add the panel it opens, fix `expect`, drop noise, add what a crawl cannot do, such as typing in a search box), remove every `"draft"`, and save the steps as `docs/migration/interactions.json`.
+
+### Production Baselines
+
+A baseline is what production looks like at one route and matrix case, recorded before the target exists. `capture-baselines.mjs` records them one page at a time, with the same settings every check uses:
+
+```sh
+node "$REFACTOR/capture-baselines.mjs" --prod "$PROD_URL" --route / --route /pricing --states
+```
+
+For every route and case it writes `artifacts/baselines/<route>/<case>.png` (the full page), `<case>.nodes.json` (the box of every visible heading, paragraph, button and link, the geometry `geometry-diff.mjs` compares) and, with `--states`, a crop of every dropdown, drawer and accordion opened. `artifacts/baselines/index.json` lists them by id. A baseline id is `<route>@<case>`, with the case id `--cases` takes: `/pricing@360x812`, or `/@1408x900-dark` for a dark color scheme case. An open state adds `#<label>`, such as `/@360x812#BUTTON:Menu`. The one-route prompt names its baselines by id in `{{BASELINE_IDS}}`. With `--states`, the open states land in the production cache under `state-capture.mjs`'s own key, so the first `run-checks.mjs` with the same `--mask`, `--skip-control` and `--settle-ms` reads them instead of opening production's menus again.
+
 The example site on this page is a generic marketing site: a header with a mobile drawer, a hero, a review carousel, a pricing slider, a contact form and a press list.
 
 ## The Breakpoint Matrix
@@ -199,7 +222,7 @@ It writes `{ thresholds, sources, cases }`, where `sources` names the file each 
 
 One route at a time, one section at a time:
 
-1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, complete images and finished animations.
+1. **Capture both sides with identical settings.** Same width and height, browser version, device scale factor 1, zoom, color scheme, reduced motion, scroll position and cookie notice state. Wait for `document.fonts.ready`, scroll the page through and back (lazy images load and scroll-triggered fade-ins run), wait for complete images and finished animations, then wait 5 seconds after navigation (`--settle-ms`) and for the DOM to go quiet. Every script, `compare-route.mjs` and `geometry-diff.mjs` included, does this the same way. Keep production read-only: every script blocks service workers and the common analytics hosts on both sides and refuses any request other than GET or HEAD that does not go to the target (see [Keep Production Read-Only](#keep-production-read-only)).
 2. **Find the owning production subtree from stable anchors.** Use visible heading text, `href`, `src`, `alt`, landmarks and test ids, never generated class names. Climb to the smallest ancestor that owns one coherent section, and stop there.
 3. **Extract structure, geometry and computed styles.** Use a fixed property list: display, position, box sizing, sizes, margins, paddings, gap, alignment, overflow, colors, backgrounds, border, radius, shadow, font family, size and weight, line height, letter spacing, text alignment, white-space, transform and z-index. Add `::before` and `::after`, child order, line counts, image `currentSrc`, intrinsic size and `object-fit`.
 4. **Read the legacy owner of that subtree only.** Translate the resolved behavior. Do not copy React or Sass wholesale.
@@ -393,7 +416,7 @@ node "$REFACTOR/geometry-diff.mjs" \
   --matrix docs/migration/breakpoints.json --out artifacts/geometry
 ```
 
-It exits with code 1 when anything is flagged, so an agent can use it as an acceptance check.
+It waits like the checks before it reads the boxes (`--settle-ms`, then a quiet DOM), so a caption that types itself out is finished on both sides. Pass `--mask` for a documented dynamic region, such as a rotating carousel: its nodes are left out on both sides. It exits with code 1 when anything is flagged, so an agent can use it as an acceptance check.
 
 ### Route Comparison
 
@@ -411,11 +434,13 @@ node "$REFACTOR/compare-route.mjs" \
 
 Each route gets `report.json` and a pair of PNGs per case under `artifacts/compare/`. A case fails when more than 0.1 percent of its pixels differ (`--max-ratio`), when the geometry diff flags a node, or when an interaction ends in a different state on the two sides. A missing or ambiguous trigger fails at once and names its locator and case.
 
-Mask only documented dynamic regions, such as a rotating review carousel. No route passes on one screenshot, and no route passes on a Lighthouse score.
+`compare-route.mjs` captures each side the way the parity checks do: it scrolls the page through and back, so a lazy photo far below the fold is drawn and a section that fades in on scroll is visible on both sides, then waits until 5 seconds after navigation and for the DOM to go quiet, so a banner mounted after hydration or a caption that types itself out is finished. Pass `--settle-ms` with a longer time for a later timer, or 0 for a site with none.
+
+Mask only documented dynamic regions, such as a rotating review carousel; the quiet wait ignores changes inside a mask. No route passes on one screenshot, and no route passes on a Lighthouse score.
 
 ### Parity Checks
 
-Pixels and boxes miss what a reviewer notices first: a button that does nothing, a menu that opens unstyled, a link in the wrong weight. `run-checks.mjs` runs one check per issue type on every route and matrix case, after `production-defects.mjs` has logged what production itself gets wrong. Each check matches elements by test id, role, name or text, never by class, and a check that crashes is a finding:
+Pixels and boxes miss what a reviewer notices first: a button that does nothing, a menu that opens unstyled, a link in the wrong weight. `run-checks.mjs` runs one check per issue type on every route and matrix case, after `production-defects.mjs` has logged what production itself gets wrong. Each check matches elements by test id, role, name or text, never by class. Text is what a reader sees (a menu hidden in the markup adds nothing, text in a `display: contents` wrapper counts), cut after the same number of visible characters on both sides and compared with all whitespace removed, so React's markup and the same page formatted by Prettier match; keep the source formatted. A check that crashes is a finding. A browser that closes mid-run (killed, out of memory) is relaunched for the retry and the checks after it, so one crash does not fail the rest of the run:
 
 ```sh
 node "$REFACTOR/production-defects.mjs" --prod "$PROD_URL" --route / --route /pricing
@@ -426,7 +451,7 @@ node "$REFACTOR/run-checks.mjs" \
   --mask '[data-testid="review-carousel"]'
 ```
 
-Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width; skipping a check to save time skips what it would catch.
+Each route gets `artifacts/checks/<route>/report.json`. A finding on an element production gets wrong, at the width where it is wrong, is listed as corrected instead of failing, because the ledger row says "production defect: fix in target". `production-defects.mjs` measures each page with its animations finished, and leaves out what a visitor never sees as broken: glyphs a few pixels past a tight `line-height` with overflow visible, visually hidden `sr-only` text, the turned-away face of a flip card, the back cards of a stacked deck under the front card's opaque background, an icon above its heading at every width, and overflow that comes only from a `--mask` region. `node "$REFACTOR/run-checks.mjs" --help` lists every check and its tolerance. Every check leaves out the `--mask` regions, so mask a carousel that advances on a timer, an autoplay video, a ticker that rotates its text or a relative time such as "5 minutes ago", and log each mask in the ledger. Mask the element itself, such as the `<video>` and not the hero around it: what is drawn over a masked region, such as the headline, is still compared. Do not mask a newsletter modal or a banner that opens on a timer. Every page waits 5 seconds after it starts loading before it is measured, so such a layer is on both sides; pass `--settle-ms` with a longer time for a later timer. Expect about two minutes per route per width on the first run; skipping a check to save time skips what it would catch.
 
 The review page reads the `compare-route.mjs` and `run-checks.mjs` reports, so run both first. The sign-off records which screenshots and findings it covers:
 
@@ -437,7 +462,45 @@ node "$REFACTOR/review-page.mjs" --sign --route / --reviewer "Your name" --verdi
 node "$REFACTOR/review-page.mjs" --verify --route / --route /pricing
 ```
 
-`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off.
+`--verify` fails while `run-checks.mjs` reports findings for a route, and after any change to the target's screenshots or findings since its sign-off. `--sign` and `--verify` also refuse a partial report (a subset of the cases, a run that left out a check with `--only` or `--skip`, or another matrix file), and a report whose matrix differs from `docs/migration/breakpoints.json` as it is now. They refuse a report that used cached production measurements more than a day old, or that records none; `--max-prod-age 7d` (or `12h`, `30m`) moves that limit.
+
+### Iteration Runs and the Gate
+
+A full run over a 25-case matrix takes 20 to 50 minutes per route, too slow to repeat after every fix. Two things make the loop fast without lowering the bar for done.
+
+Production is measured once. Every check keeps what it measured on production in `artifacts/prod-cache/`, and the next run loads only the target. The cache key holds everything that changes what production measures: the check, the skill's scripts, the browser version, the production origin, the route, the full matrix case, `--settle-ms`, the `--mask` and `--skip-control` selectors, and the block list; presence-by-route also keys on every route in order and on its `--dismiss` selectors, which no other check uses. A changed mask is a cache miss, never a stale result. Each run prints how many measurements came from the cache and how old the oldest one is. Pass `--refresh-prod` after production changes and at the start of every check stage and review round; `--prod-cache <dir>` moves the cache and `--no-prod-cache` turns it off.
+
+While a route is being built, run a few cases and the checks the last fix can affect:
+
+```sh
+node "$REFACTOR/run-checks.mjs" \
+  --prod "$PROD_URL" --target "$TARGET_URL" --route /pricing \
+  --legacy-src ../legacy --target-src . \
+  --cases 360x812,768,1280x900 --only spacing-diff,alignment-diff
+```
+
+A case id is `<width>x<height>`, with a suffix for each variant (`1408x900-dark`, `390x844-mobile-touch`), and a bare width selects every case of that width. An id the matrix does not have fails and lists the valid ones. Pick one phone, one tablet and one desktop case, plus the cases on both sides of every breakpoint the route's own CSS or JS reacts to.
+
+Such a run prints `PARTIAL (3 of 25 cases; 2 of 11 checks, without ...): iteration result, not a gate`, and its report records `partial: true` with the checks that ran and the ones left out. A run of every case that leaves out one check is partial too, as is a run of any matrix file other than `docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check. Run it once at the end of each route, and in every check and review round: "done" is decided only there. A site with no legacy repository passes `--no-legacy-repo` instead of `--legacy-src`; the report records why the test hook carryover check did not run, and the run can still be the gate.
+
+The cache trades freshness for speed: a cached measurement shows production as it was when it was taken. A gate run reads the cache like any other, so sign-off refuses a report built from cached production more than a day old. Pass `--refresh-prod` on the gate run when the cache is older, and raise `--max-prod-age` only for a production site you know has not changed.
+
+### Keep Production Read-Only
+
+Every page load is a page view on the live site. The checks load production once per route, matrix case and check, and the crawl reloads it once per control, so one route run would put hundreds of synthetic visits in the owner's analytics. Every script that loads production (each check, `run-checks.mjs`, `capture-baselines.mjs`, `compare-route.mjs` and `geometry-diff.mjs`) applies the same rules in the browser, on both sides:
+
+- **Analytics and tracking requests are blocked.** The default list covers Google Tag Manager, Analytics and ads, Vercel insights, Plausible, Segment, Hotjar, the Facebook pixel, Clarity and Cloudflare insights. Add a site's own tracker with `--block` (repeatable): a host such as `stats.example.net` also blocks its subdomains, and a value with a `/` such as `*/api/track` matches anywhere in the URL, with `*` as a wildcard. A pattern that matches `--prod` or `--target` itself is refused. `--no-default-block` drops the list when the page needs one of those hosts; log that in the ledger. The target blocks the same requests, so a tag that adds markup is missing on both sides, never on one.
+- **No write leaves for production or a third party.** A form post, a beacon or an API write (any request other than GET or HEAD) is refused unless it goes to the target's own origin; with no `--target`, every one is refused.
+- **Service workers are blocked.** A page's requests all go through these rules, and a worker cannot answer a reload from its cache.
+- **A GET with a side effect and WebSocket traffic still get through.** A vote or unsubscribe link, a view counter, a tracker on a host not on the list, or a chat widget's socket reaches the live site. Block such a host with `--block`, and keep the controls that start them out of the crawl with `--skip-control`.
+- **`--min-interval-ms` spaces production page loads.** The default is 0. Pass 1000 or more for a site you do not run or one behind a rate limit.
+
+```sh
+node "$REFACTOR/run-checks.mjs" --prod "$PROD_URL" --target "$TARGET_URL" --route / --legacy-src ../legacy \
+  --block stats.example.net --min-interval-ms 1000
+```
+
+Each run prints what it blocked. The block list is part of the production cache key; the interval is not.
 
 ### Why a Human Signs Off Every Route
 
@@ -480,7 +543,7 @@ Every prompt reads the [execution contract](https://github.com/bascikdev/bascik/
 1. **Locations and environment.** The live URL, the read-only legacy repository, the target repository, and the `PROD_URL`, `TARGET_URL`, `BASCIK_SITE_URL` and `REFACTOR` values.
 2. **Non-negotiables.** Match production. 100 in all five Lighthouse categories on every page. Clean Bascik and TypeScript. No framework runtime carried over.
 3. **No Lighthouse gaming.** No audit detection, no vendor-free mode for audits, no hidden content and no timers that outlast the audit.
-4. **Safety.** Browse production read-only. Never submit a real form or send synthetic analytics. No secrets in files.
+4. **Safety.** Browse production read-only. Never submit a real form or send synthetic analytics: the scripts block analytics hosts, and `--block` and `--min-interval-ms` cover the rest. No secrets in files.
 5. **Working method.** Inspect, make the smallest change, run a focused check, format, hand off.
 6. **Handoff.** Status, revisions, changed files, the exact commands and their results, and what is not verified.
 
@@ -488,7 +551,7 @@ Every prompt reads the [execution contract](https://github.com/bascikdev/bascik/
 
 Number the prompts and keep them in the repository, grouped into phases. The [prompt pack index](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/references/templates/prompt-pack-index.md) is the template:
 
-1. Record the real site: inventories and baselines.
+1. Record the real site: inventories and baselines, on production alone (`capture-baselines.mjs`, and the crawl without `--target`).
 2. Local runtime: bootstrap, config boundaries, Worker packaging, redirects, headers, the test harness and the Lighthouse runner.
 3. The shared shell and the home page.
 4. Forms.
@@ -545,6 +608,18 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 
 `compare-route.mjs --accepted` masks those elements (or applies a `maxRatio` budget) only for matching routes and widths, and lists the ids it applied in the report. Never raise `--max-ratio` for the whole run to make one difference pass.
 
+`production-defects.mjs` writes one `PD-` row per element and kind, with its routes and width range. When a reviewer finds a row is not a defect, such as a logotype whose glyphs pass a tight `line-height` with nothing cut off, reject it rather than change the design: add a ledger row saying why and an entry that lists the `PD-` id, which `production-defects.mjs` and `run-checks.mjs` read (by default from `docs/migration/accepted.json`, or `--accepted`). A rejected defect is neither a fix target nor a `copied-defect`. `--reject PD-1a2b3c` does the same for one run while you iterate; `review-page.mjs` refuses to sign or verify a run that used it, or an entry whose id has no ledger row, and the route report and review page list every rejected defect with its source. An id is the kind and the element's text, so elements with the same text and kind, such as a `BUTTON:Learn more` on two routes, share it: the run warns when a rejected id covers more than one element, so check each one. Later runs keep the script's rows current, adding routes, widths and selectors, and remove its older one-row-per-width rows that nobody approved.
+
+```json
+[
+  {
+    "id": "D-07",
+    "defect": ["PD-1a2b3c"],
+    "reason": "a logotype, nothing is cut off"
+  }
+]
+```
+
 ## The Score Playbook to 5 x 100
 
 ### Largest Contentful Paint
@@ -587,11 +662,18 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 
    ```html
    <script data-bascik-build>
+     import { html } from "@bascik/bascik/html";
      import { heroFor } from "@/lib/heroes.ts";
      export default () => {
        const hero = heroFor(process.env.BASCIK_PAGE_PATH);
        return hero
-         ? `<link rel="preload" as="image" fetchpriority="high" imagesrcset="${hero.srcset}" imagesizes="100vw">`
+         ? html`<link
+             rel="preload"
+             as="image"
+             fetchpriority="high"
+             imagesrcset="${hero.srcset}"
+             imagesizes="100vw"
+           />`
          : "";
      };
    </script>

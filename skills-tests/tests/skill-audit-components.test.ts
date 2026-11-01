@@ -2,14 +2,22 @@
 // report nothing, the misuse cases (typo'd flags, a root that is not a project), and the repository's starter site.
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   auditProject,
   suggestTagName,
 } from "../../skills/bascik/scripts/audit-components.mjs";
+import { handWrittenEscapers } from "../../skills/bascik/scripts/lib/escapers.mjs";
 import { parseMarkup } from "../../skills/bascik/scripts/lib/markup.mjs";
 import { buildComponentFiles } from "../../skills/bascik/scripts/new-component.mjs";
 
@@ -720,8 +728,8 @@ describe("audit-components: build-once and once-reads-page", () => {
       [
         `<script data-bascik-build>import { trail } from "./trail.ts"; export default () => trail();</script>`,
         {
-          "src/components/site-footer/trail.ts": `import { here } from "@/lib/here.ts";\nexport const trail = (): string => here();\n`,
-          "src/lib/here.ts": `export const here = (): string => process.env.BASCIK_ROUTE ?? "";\n`,
+          "src/components/site-footer/trail.ts": `import { here } from "./here.ts";\nexport const trail = (): string => here();\n`,
+          "src/components/site-footer/here.ts": `export const here = (): string => process.env.BASCIK_ROUTE ?? "";\n`,
         },
       ],
       [
@@ -771,9 +779,9 @@ describe("audit-components: build-once and once-reads-page", () => {
 
   it("misuse: flags a data-bascik-build-once script that reads page context, naming the variable and the module", async () => {
     const root = withFooter(
-      `<script data-bascik-build-once>import { hero } from "@/lib/hero.ts"; export default () => hero();</script>`,
+      `<script data-bascik-build-once>import { hero } from "@/components/site-footer/hero.ts"; export default () => hero();</script>`,
       {
-        "src/lib/hero.ts": `export const hero = (): string => \`<link rel="preload" href="\${process.env.BASCIK_PAGE_PATH}.webp">\`;\n`,
+        "src/components/site-footer/hero.ts": `export const hero = (): string => \`<link rel="preload" href="\${process.env.BASCIK_PAGE_PATH}.webp">\`;\n`,
         "src/pages/post.html": page(
           `      <script data-bascik-build-once>export default () => process.env.BASCIK_ROUTE ?? "";</script>`,
         ),
@@ -785,7 +793,7 @@ describe("audit-components: build-once and once-reads-page", () => {
       "src/components/site-footer/site-footer.html",
     );
     expect(findings[0].message).toMatch(
-      /reads BASCIK_PAGE_PATH \(in src\/lib\/hero\.ts\), which is empty there/,
+      /reads BASCIK_PAGE_PATH \(in src\/components\/site-footer\/hero\.ts\), which is empty there/,
     );
     expect(findings[1].file).toBe("src/pages/post.html");
     expect(findings[1].message).toMatch(/this page reads BASCIK_ROUTE/);
@@ -1420,6 +1428,1000 @@ describe("audit-components: semantic HTML", () => {
   });
 });
 
+describe("handWrittenEscapers", () => {
+  const lines = (code: string) =>
+    handWrittenEscapers(code).map((e: { line: number }) => e.line);
+
+  it("finds a character-class escaper, a replace chain, an entity map, and a replaceAll chain, once each", () => {
+    expect(
+      lines(`const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (ch) => ENTITIES[ch]);`),
+    ).toEqual([1]);
+    expect(
+      lines(`export function esc2(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}`),
+    ).toEqual([1]);
+    expect(
+      lines(`const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>]/g, (ch) => ENTITIES[ch]);`),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const clean = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const escape = (s) => String(s).replace(/[<&]/g, (c) => \`&#\${c.charCodeAt(0)};\`);`,
+      ),
+    ).toEqual([1]);
+  });
+
+  it("finds numeric-entity, negative-lookahead, and split/join escapers", () => {
+    expect(
+      lines(
+        `const enc = (s: string) => s.replace(/&/g, "&#38;").replace(/</g, "&#60;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.replaceAll("&", "&#x26;");`),
+    ).toEqual([1]);
+    expect(
+      lines(
+        `const enc = (s: string) => s.replace(/&(?!amp;)/g, "&amp;").replace(/</g, "&lt;");`,
+      ),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.replace(/&(?!#?\\w+;)/g, "&amp;");`),
+    ).toEqual([1]);
+    expect(
+      lines(`const enc = (s: string) => s.split("&").join("&amp;");`),
+    ).toEqual([1]);
+    expect(lines(`const MAP = { "&": "&#38;", "<": "&#60;" };`)).toEqual([1]);
+    // Splitting on & for a query string is not an escaper.
+    expect(lines(`const pairs = query.split("&").join("\\n");`)).toEqual([]);
+  });
+
+  it("calls code that deletes the characters a stripper, and names only a function, never the variable a result lands in", () => {
+    const strip = handWrittenEscapers(`export default function (request) {
+  const user = url.searchParams.get("user") ?? "Developer";
+  const role = url.searchParams.get("role") ?? "Admin";
+  return (
+    "Hello, <strong>" +
+    user.replace(/[<>&"']/g, "") +
+    "</strong>"
+  );
+}`);
+    expect(strip).toEqual([{ line: 6, name: undefined, kind: "strip" }]);
+    const named = handWrittenEscapers(`const clean = (s: string) =>
+  s.replace(/[&<>]/g, '');`);
+    expect(named).toEqual([{ line: 1, name: "clean", kind: "strip" }]);
+    expect(
+      handWrittenEscapers(`const role = "Admin";
+const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([{ line: 2, name: "escapeHtml", kind: "escape" }]);
+  });
+
+  it("takes an XML name as the explanation, but not a nearby comment that is not about the escaper", () => {
+    expect(
+      lines(`function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`),
+    ).toEqual([]);
+    expect(
+      lines(
+        `const svgText = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);`,
+      ),
+    ).toEqual([]);
+    // A comment that also speaks of HTML is not an XML explanation.
+    expect(
+      lines(`// Builds the sitemap link and the html card.
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([2]);
+    // A comment separated from the escaper by code explains that code, not the escaper.
+    expect(
+      lines(`// Writes sitemap.xml.
+const out = "sitemap.xml";
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([3]);
+  });
+
+  it("names the escaper when it can", () => {
+    expect(
+      handWrittenEscapers(`const escapeAttr = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");`)[0].name,
+    ).toBe("escapeAttr");
+  });
+
+  it("reports two escapers far apart in one file separately", () => {
+    const filler = "const x = 1;\n".repeat(20);
+    expect(
+      lines(
+        `const a = (s: string) => s.replace(/[&<]/g, "");\n${filler}const b = (s: string) => s.replace(/&/g, "&amp;");`,
+      ),
+    ).toEqual([1, 22]);
+  });
+
+  it("reports an HTML escaper even when an XML escaper sits a few lines below it", () => {
+    const found = handWrittenEscapers(`function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+
+function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([[1, "escapeHtml"]]);
+    // The other order too: the XML escaper first does not hide the HTML one after it.
+    expect(
+      lines(`const escapeXml = (s: string) => s.replace(/&/g, "&amp;");
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;");`),
+    ).toEqual([2]);
+  });
+
+  it("judges an inline escape beside an XML escaper on its own, and never borrows a name from an earlier function", () => {
+    // An XML escaper above an inline HTML escape does not explain it.
+    expect(
+      handWrittenEscapers(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+
+const title = "x";
+const items = load();
+
+const body = userText.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+out += "<p>" + body + "</p>";`).map((e: { line: number; name?: string }) => [
+        e.line,
+        e.name,
+      ]),
+    ).toEqual([[8, undefined]]);
+    // Nor does an XML escaper below it.
+    expect(
+      lines(`const body = userText.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+document.querySelector("main").innerHTML = "<p>" + body + "</p>";
+
+// Sitemap entries are XML.
+const escapeSitemap = (s) => s.replace(/&/g, "&amp;");`),
+    ).toEqual([1]);
+    // An inline escape right after an XML-commented function is reported without that function's name.
+    expect(
+      handWrittenEscapers(`// Escape for the RSS feed.
+function esc(s) {
+  return s.replace(/&/g, "&amp;");
+}
+const body = userText.replace(/&/g, "&amp;");`).map(
+        (e: { line: number; name?: string }) => [e.line, e.name],
+      ),
+    ).toEqual([[5, undefined]]);
+    // A statement before the escape inside an XML function keeps the function's name, so it stays exempt.
+    expect(
+      lines(`function escapeXml(s: unknown) {
+  const text = String(s);
+  return text.replace(/&/g, "&amp;");
+}`),
+    ).toEqual([]);
+    // An XML entity map does not explain a replace chain below it that does not read it.
+    expect(
+      lines(`// The five XML characters, for sitemap.xml.
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};
+const body = userText.replace(/&/g, "&amp;");`),
+    ).toEqual([6]);
+    // An entity map below the XML function that reads it still belongs to it.
+    expect(
+      lines(`function escapeXml(s: string) {
+  return s.replace(/[&<]/g, (c) => ENTITIES[c]);
+}
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};`),
+    ).toEqual([]);
+    // An XML-commented map below an inline replace that writes its own entities does not hide that replace.
+    expect(
+      lines(`const a = x.replace(/&/g, "&amp;");
+// rss xml
+const M = { "&": "&amp;" };`),
+    ).toEqual([1]);
+    // An HTML entity map under an escapeXml that does not read it is reported, though no character class reads it.
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+
+const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([5]);
+    // An HTML switch inside an anonymous callback right after escapeXml is reported, at its statement, with the
+    // return on the case's line or, as Prettier writes it, on the next.
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+const out = list.map((c) => { switch (c) { case "&": return "&amp;"; default: return c; } });`),
+    ).toEqual([4]);
+    expect(
+      lines(`function escapeXml(s) {
+  return s.replace(/&/g, "&amp;");
+}
+const out = list.map((c) => {
+  switch (c) {
+    case "&":
+      return "&amp;";
+    default:
+      return c;
+  }
+});`),
+    ).toEqual([4]);
+  });
+
+  it("joins an entity map only to a replace that names it, and never lends an XML explanation to an HTML escaper", () => {
+    // A character-class replace that writes its own entities reads no map, so an XML map below it explains nothing.
+    expect(
+      lines(`const escape = (s) => s.replace(/[<&]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+// rss xml entities
+const XML_ENTITIES = { "&": "&amp;" };`),
+    ).toEqual([1]);
+    // Nor does a replace with its own inline object, beside an XML map that a later escapeXml reads.
+    expect(
+      lines(`function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
+// sitemap xml
+const XML = { "&": "&amp;" };
+export const escapeXml = (s) => s.split("").map((c) => XML[c] ?? c).join("");`),
+    ).toEqual([1]);
+    // An escapeXml that reads another map does not take an HTML map below it.
+    expect(
+      lines(`function escapeXml(s) { return s.replace(/[&<>]/g, (c) => X[c]); }
+const ENTITIES = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([2]);
+    // Nor when the XML map it does read sits between them.
+    expect(
+      lines(`function escapeXml(s) { return s.replace(/[&<>]/g, (c) => X[c]); }
+const X = { "&": "&amp;", "<": "&lt;" };
+const ENTITIES = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => [...s].map((c) => ENTITIES[c] ?? c).join("");`),
+    ).toEqual([3]);
+    // A map above a replace that does not name it stays apart from it.
+    expect(
+      lines(`// The XML characters, for the feed.
+const XML_ENTITIES = { "&": "&amp;", "<": "&lt;" };
+const escape = (s) => s.replace(/[&<]/g, (c) => "&#" + c.charCodeAt(0) + ";");`),
+    ).toEqual([3]);
+    // A replace whose own name says HTML is reported even when it reads a map a comment calls XML.
+    expect(
+      lines(`// rss xml
+const M = { "&": "&amp;", "<": "&lt;" };
+const escapeHtml = (s) => s.replace(/[&<]/g, (c) => M[c]);`),
+    ).toEqual([2]);
+    // A map read through Map.get, and a reader wrapped onto the next line, still join.
+    expect(
+      lines(`// The XML characters, for sitemap.xml.
+const XML_ENTITIES = new Map([["&", "&amp;"], ["<", "&lt;"]]);
+const esc = (s: string) =>
+  s.replace(/[&<]/g, (c) =>
+    XML_ENTITIES.get(c));`),
+    ).toEqual([]);
+  });
+
+  it("judges each function that reads a shared entity map by its own name, so an escapeXml read first never hides an escapeHtml", () => {
+    const found = (code: string) =>
+      handWrittenEscapers(code).map(
+        (e: { line: number; name?: string }) => `${e.line} ${e.name}`,
+      );
+    // The map between the two readers.
+    expect(
+      found(`function escapeXml(s) { return s.replace(/[&<]/g, (c) => X[c]); }
+const X = { "&": "&amp;" };
+function escapeHtml(s) { return s.replace(/[&<]/g, (c) => X[c]); }`),
+    ).toEqual(["3 escapeHtml"]);
+    // The map above both, no comment.
+    expect(
+      found(`const ENT = { "&": "&amp;", "<": "&lt;" };
+export function escapeXml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}
+export function escapeHtml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}`),
+    ).toEqual(["5 escapeHtml"]);
+    // An XML comment on the map, blank lines between the functions.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+
+export function escapeXml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}
+
+export function escapeHtml(s) {
+  return s.replace(/[&<]/g, (c) => ENT[c]);
+}`),
+    ).toEqual(["8 escapeHtml"]);
+    // One-line arrow functions.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeHtml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["4 escapeHtml"]);
+    // In the other order the HTML escaper is still the one reported, and the XML one stays hidden.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeHtml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["2 escapeHtml"]);
+    // A second reader with a neutral name takes no XML explanation from the first reader's map.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeText = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual(["4 escapeText"]);
+    // Two XML readers of an XML map stay hidden.
+    expect(
+      found(`// XML entities
+const ENT = { "&": "&amp;", "<": "&lt;" };
+export const escapeXml = (s) => s.replace(/[&<]/g, (c) => ENT[c]);
+export const escapeSvg = (s) => s.replace(/[&<]/g, (c) => ENT[c]);`),
+    ).toEqual([]);
+  });
+
+  it("reports two HTML escapers close together separately, each at its own line with its own name", () => {
+    const found =
+      handWrittenEscapers(`const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);
+const escapeAttr = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([
+      [1, "escapeText"],
+      [2, "escapeAttr"],
+    ]);
+  });
+
+  it("still reports an entity map and the function that reads it as one escaper", () => {
+    const found =
+      handWrittenEscapers(`const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};
+export function escapeHtml(s: string) {
+  return s.replace(/[&<]/g, (c) => ENTITIES[c]);
+}`);
+    expect(
+      found.map((e: { line: number; name?: string }) => [e.line, e.name]),
+    ).toEqual([[1, "escapeHtml"]]);
+    // A comment above the map that says XML explains the function that reads it.
+    expect(
+      lines(`// The five XML characters, for sitemap.xml.
+const ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+};
+const escape = (s: string) => s.replace(/[&<]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([]);
+  });
+
+  it("leaves decoders, slug helpers, html, esc, and plain & alone", () => {
+    expect(
+      lines(`const decode = (text: string) =>
+  text
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");`),
+    ).toEqual([]);
+    expect(lines(`const ENTITIES = { "&amp;": "&", "&lt;": "<" };`)).toEqual(
+      [],
+    );
+    expect(
+      lines(`export const slugify = (t: string) => t.replace(/&/g, " and ");`),
+    ).toEqual([]);
+    expect(
+      lines(`import { esc, html } from "@bascik/bascik/html";
+export const card = (t: string) => html\`<p>\${t}</p>\`;
+export const label = (t: string) => esc(t);`),
+    ).toEqual([]);
+    expect(lines(`const a = b && c < d;`)).toEqual([]);
+  });
+
+  it("keeps an escaper whose comment says it writes XML, and only then", () => {
+    expect(
+      lines(`// Atom is XML, not HTML: html's URL and context rules do not apply, so escape the five XML characters here.
+const xml = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);`),
+    ).toEqual([]);
+    expect(
+      lines(`/**
+ * Escape text for the RSS feed.
+ */
+function escapeXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}`),
+    ).toEqual([]);
+    // "xml" in code, not in a comment, is not an explanation.
+    expect(
+      lines(`const out = "feed.xml";
+const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ENTITIES[c]);`),
+    ).toEqual([2]);
+  });
+});
+
+describe("audit-components: hand-written-escaper", () => {
+  const withFiles = (extra: Record<string, string>) =>
+    project({ ...clean, ...extra });
+  const escaperFindings = (findings: Finding[]) =>
+    findings.filter((f) => f.rule === "hand-written-escaper");
+
+  it("warns about an escaper in a src/lib helper, at its file:line, and points to @bascik/bascik/html", async () => {
+    const root = withFiles({
+      "src/lib/cards.ts": `export interface Card { title: string }
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+export const card = (c: Card) => \`<h2>\${escapeHtml(c.title)}</h2>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      rule: "hand-written-escaper",
+      level: "warn",
+      file: "src/lib/cards.ts",
+      line: 2,
+    });
+    expect(found[0].message).toMatch(
+      /escapeHtml\(\) is a hand-written HTML escaper/,
+    );
+    expect(found[0].suggestion).toContain(
+      'import { html } from "@bascik/bascik/html"',
+    );
+    expect(found[0].suggestion).toMatch(/raw\(\)/);
+    expect(found[0].suggestion).toMatch(/json\(\)/);
+  });
+
+  it("warns about an escapeHtml that reads the same entity map as an escapeXml above it", async () => {
+    const root = withFiles({
+      "src/scripts/shared.ts": `function escapeXml(s: string) { return s.replace(/[&<]/g, (c) => X[c]); }
+const X: Record<string, string> = { "&": "&amp;", "<": "&lt;" };
+export function escapeHtml(s: string) { return s.replace(/[&<]/g, (c) => X[c]); }
+export const feed = (t: string) => escapeXml(t);
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/scripts/shared.ts:3",
+    ]);
+    expect(found[0].message).toMatch(/escapeHtml\(\)/);
+  });
+
+  it("warns about an escaper in a component's .ts companion that a build script imports", async () => {
+    const root = withFiles({
+      "src/components/site-footer/site-footer.html": `<footer data-testid="site-footer">
+  <script data-bascik-build-once type="text/typescript">
+    import { links } from "./links.ts";
+    export default () => links();
+  </script>
+</footer>
+`,
+      "src/components/site-footer/links.ts": `const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+export const links = () => \`<a href="/about">\${esc("About")}</a>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/site-footer/links.ts:1",
+    ]);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("warns about an escaper in an inline build or server script, at the page line", async () => {
+    const root = withFiles({
+      "src/pages/search.html": page(`      <h1>Search</h1>
+      <script data-bascik-server type="text/typescript">
+        const escape = (s: string) => s.replace(/[&<>]/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+        export default (request: Request) =>
+          \`<p>\${escape(new URL(request.url).searchParams.get("q") ?? "")}</p>\`;
+      </script>`),
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0].file).toBe("src/pages/search.html");
+    expect(found[0].line).toBe(11);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("says a server script that deletes <, >, & and quotes strips them, without naming the variable it lands in", async () => {
+    const root = withFiles({
+      "src/pages/hello.html": page(`      <h1>Hello</h1>
+      <script data-bascik-server type="text/typescript">
+        export default (request: Request) => {
+          const user = new URL(request.url).searchParams.get("user") ?? "Guest";
+          const role = "Admin";
+          return "<p>" + user.replace(/[<>&"']/g, "") + "</p>";
+        };
+      </script>`),
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/^This code strips/);
+    expect(found[0].message).not.toMatch(/role\(\)/);
+    expect(found[0].suggestion).toContain("@bascik/bascik/html");
+  });
+
+  it("tells a browser script to use textContent, since a client script cannot import @bascik/bascik/html", async () => {
+    const root = withFiles({
+      "src/components/signup-form/signup-form.ts": `const status = document.getElementById("status") as HTMLElement;
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+status.innerHTML = \`<b>\${escapeHtml(location.hash)}</b>\`;
+`,
+    });
+    const found = escaperFindings((await audit(root)).findings);
+    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual([
+      "src/components/signup-form/signup-form.ts:2",
+    ]);
+    expect(found[0].message).toMatch(/browser script/);
+    expect(found[0].suggestion).toMatch(/textContent/);
+    expect(found[0].suggestion).not.toContain("import { html }");
+  });
+
+  it("leaves an XML escaper with a comment, a test file, a decoder, and code that uses html alone", async () => {
+    const root = withFiles({
+      "scripts/feed.ts": `// Atom is XML, not HTML, so html does not apply: escape the five XML characters by hand.
+const xml = (s: string) => s.replace(/[&<>"']/g, (c) => \`&#\${c.charCodeAt(0)};\`);
+export const entry = (t: string) => \`<title>\${xml(t)}</title>\`;
+`,
+      "src/lib/cards.test.ts": `const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+export const expected = escapeHtml("<b>");
+`,
+      "src/lib/decode.ts": `export const decode = (t: string) => t.replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+`,
+      "src/lib/card.ts": `import { html, type SafeHtml } from "@bascik/bascik/html";
+export const card = (t: string): SafeHtml => html\`<h2>\${t}</h2>\`;
+`,
+    });
+    expect(escaperFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("does not read dist/ or node_modules", async () => {
+    const escaper = `export const e = (s) => s.replace(/[&<>]/g, (c) => "&#" + c.charCodeAt(0) + ";");\n`;
+    const root = withFiles({
+      "dist/js/app.js": escaper,
+      "node_modules/some-lib/index.js": escaper,
+    });
+    expect(
+      escaperFindings((await audit(root, { allowJs: true })).findings),
+    ).toEqual([]);
+  });
+});
+
+describe("audit-components: single-use-module", () => {
+  const withFiles = (extra: Record<string, string>) =>
+    project({ ...clean, ...extra });
+  const moduleFindings = (findings: Finding[]) =>
+    findings.filter((f) => f.rule === "single-use-module");
+  const faqList = (script: string) => `<section data-testid="faq-list">
+  <h2>Questions</h2>
+${script}</section>
+`;
+  const entries = `export const faqs: { q: string; a: string }[] = [
+  { q: "Does it froth oat milk?", a: "Yes." },
+];
+`;
+
+  it("warns about a src/lib module that one component's inline build script imports through @/, and names the folder to move it to", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      rule: "single-use-module",
+      level: "warn",
+      file: "src/lib/faqs.ts",
+      line: 1,
+    });
+    expect(found[0].message).toContain("<faq-list>");
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toContain('"./faqs.ts"');
+    expect(found[0].suggestion).toMatch(/several components or pages/);
+  });
+
+  it("follows a relative import from a component's .ts companion, and moves the module's test with it", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/lib/faqs.test.ts": `import { faqs } from "./faqs.ts";\nexport const count = faqs.length;\n`,
+      "src/components/faq-list/faq-list.html": faqList(
+        `  <script data-bascik-build-once src="./faq-list.ts"></script>\n`,
+      ),
+      "src/components/faq-list/faq-list.ts": `import { html } from "@bascik/bascik/html";
+import { faqs } from "../../lib/faqs.ts";
+export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+`,
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].suggestion).toContain("faqs.test.ts");
+  });
+
+  it("counts a script's src= naming a src/lib file as a use", async () => {
+    const root = withFiles({
+      "src/lib/nav.ts": `import { html } from "@bascik/bascik/html";
+export default () => html\`<a href="/">Home</a>\`;
+`,
+      "src/components/main-nav/main-nav.html": `<nav aria-label="Main" data-testid="main-nav">
+  <script data-bascik-build-once src="@/lib/nav.ts"></script>
+</nav>
+`,
+      "src/pages/help.html": page(`      <main-nav />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/nav.ts"]);
+    expect(found[0].message).toContain("<main-nav>");
+  });
+
+  it("tells a module that one page uses to sit beside that page as a .ts file, never .json, which the pages folder publishes", async () => {
+    const root = withFiles({
+      "src/lib/pricing.ts": `export const plans = ["Basic", "Barista"];\n`,
+      "src/lib/hours.json": `{ "open": "9:00" }\n`,
+      "src/pages/pricing/index.html": page(
+        `      <h1>Pricing</h1>
+      <script data-bascik-build type="text/typescript">
+        import { html } from "@bascik/bascik/html";
+        import { plans } from "@/lib/pricing.ts";
+        import hours from "@/lib/hours.json" with { type: "json" };
+        export default () => html\`<p>\${plans.join(", ")} from \${hours.open}</p>\`;
+      </script>`,
+      ),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual([
+      "src/lib/hours.json",
+      "src/lib/pricing.ts",
+    ]);
+    const [json, ts] = found;
+    expect(ts.message).toContain("src/pages/pricing/index.html");
+    expect(ts.suggestion).toContain("src/pages/pricing/");
+    expect(ts.suggestion).toContain('"./pricing.ts"');
+    expect(json.suggestion).toMatch(/\.ts module/);
+    expect(json.suggestion).toMatch(/public/);
+  });
+
+  it("follows one src/lib module into another: both serve the one component", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": `import { raw } from "./faq-data.ts";\nexport const faqs = raw;\n`,
+      "src/lib/faq-data.ts": `export const raw = [{ q: "Is it loud?" }];\n`,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faq-data.ts", "src/lib/faqs.ts"]);
+  });
+
+  it("leaves shared, unused, and test-only modules, and modules that config, exec scripts, or API routes also import", async () => {
+    const use = (
+      spec: string,
+    ) => `  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => String(value);
+  </script>
+`;
+    const root = withFiles({
+      // Two components.
+      "src/lib/site.ts": `export const value = "Milk frother";\n`,
+      // One component and the config.
+      "src/lib/routes.ts": `export const value = ["/drafts/**"];\n`,
+      // One page and an exec script.
+      "src/lib/posts.ts": `export const value = [];\n`,
+      // One component and an API route.
+      "src/lib/stock.ts": `export const value = 3;\n`,
+      // One component, reached only through a shared lib module.
+      "src/lib/format.ts": `export const value = "x";\n`,
+      "src/lib/money.ts": `import { value as f } from "./format.ts";\nexport const value = f;\n`,
+      // Nobody, and a test only.
+      "src/lib/unused.ts": `export const value = 0;\n`,
+      "src/lib/tested.ts": `export const value = 1;\n`,
+      "src/lib/tested.test.ts": `import { value } from "./tested.ts";\nexport const v = value;\n`,
+      // An import that names a missing file is the build's to report.
+      "src/components/brand-mark/brand-mark.html": `<p data-testid="brand-mark">
+${use("@/lib/site.ts")}${use("@/lib/routes.ts")}${use("@/lib/money.ts")}${use("@/lib/missing.ts")}</p>
+`,
+      "src/components/brand-line/brand-line.html": `<p data-testid="brand-line">
+${use("@/lib/site.ts")}${use("@/lib/stock.ts")}${use("@/lib/money.ts")}</p>
+`,
+      "src/pages/help.html": page(`      <brand-mark />
+      <brand-line />
+${use("@/lib/posts.ts")}`),
+      "bascik.config.ts": `import { value } from "./src/lib/routes.ts";
+export default { sitemap: { exclude: value } };
+`,
+      "scripts/feed.ts": `import { value } from "../src/lib/posts.ts";\nconsole.log(value);\n`,
+      "src/api/stock.ts": `import { value } from "@/lib/stock.ts";\nexport const GET = () => Response.json(value);\n`,
+      // A module already beside its component is where it belongs.
+      "src/components/faq-list/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html": faqList(use("./faqs.ts")),
+    });
+    expect(moduleFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("warns about data that one component renders and a page also reads for JSON-LD, and says the page imports it from the component's folder", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => html\`\${faqs.map((f) => html\`<h3>\${f.q}</h3>\`)}\`;
+  </script>
+`),
+      "src/pages/help.html": page(
+        `      <faq-list />`,
+        `    <script data-bascik-build type="text/typescript">
+      import { faqs } from "@/lib/faqs.ts";
+      export default () => JSON.stringify(faqs.length);
+    </script>
+`,
+      ),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].message).toContain("<faq-list>");
+    expect(found[0].message).toContain("src/pages/help.html");
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toContain('"./faqs.ts"');
+    expect(found[0].suggestion).toContain('"@/components/faq-list/faqs.ts"');
+  });
+
+  it("stays quiet when one component and a page share a helper with functions, or two components share data a page also reads", async () => {
+    const use = (
+      spec: string,
+    ) => `  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => String(value);
+  </script>
+`;
+    const root = withFiles({
+      "src/lib/format.ts": `export const value = (n: number) => n.toFixed(2);\n`,
+      "src/lib/slugs.ts": `export function value() {\n  return "milk-frother";\n}\n`,
+      "src/lib/plans.ts": `export const value = ["Basic", "Barista"];\n`,
+      "src/components/price-tag/price-tag.html": `<p data-testid="price-tag">
+${use("@/lib/format.ts")}${use("@/lib/slugs.ts")}${use("@/lib/plans.ts")}</p>
+`,
+      "src/components/plan-list/plan-list.html": `<p data-testid="plan-list">
+${use("@/lib/plans.ts")}</p>
+`,
+      "src/pages/help.html": page(`      <price-tag />
+      <plan-list />
+${use("@/lib/format.ts")}${use("@/lib/slugs.ts")}${use("@/lib/plans.ts")}`),
+    });
+    expect(moduleFindings((await audit(root)).findings)).toEqual([]);
+  });
+
+  it("counts a page and the src= module beside it as one user", async () => {
+    const root = withFiles({
+      "src/lib/pricing.ts": `export const plans = ["Basic", "Barista"];\n`,
+      "src/pages/about/index.html": page(
+        `      <h1>About</h1>
+      <script data-bascik-build src="./pricing.ts"></script>
+      <script data-bascik-build type="text/typescript">
+        import { plans } from "@/lib/pricing.ts";
+        export default () => String(plans.length);
+      </script>`,
+      ),
+      "src/pages/about/pricing.ts": `import { html } from "@bascik/bascik/html";
+import { plans } from "../../lib/pricing.ts";
+export default () => html\`<p>\${plans.join(", ")}</p>\`;
+`,
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/pricing.ts"]);
+    expect(found[0].message).toContain("src/pages/about/index.html");
+    expect(found[0].suggestion).toContain("src/pages/about/");
+  });
+
+  it("tells a component written straight into the components root to get a folder of its own first", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": entries,
+      "src/components/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(`      <faq-list />`),
+    });
+    const found = moduleFindings((await audit(root)).findings);
+    expect(found.map((f) => f.file)).toEqual(["src/lib/faqs.ts"]);
+    expect(found[0].suggestion).toContain("src/components/faq-list/");
+    expect(found[0].suggestion).toMatch(/folder of its own/);
+    expect(found[0].suggestion).not.toMatch(/into src\/components\/[,. ]/);
+  });
+
+  it("reads FAQ text that says function, class or => as text, not code", async () => {
+    const root = withFiles({
+      "src/lib/faqs.ts": `// Answers quote code, so the words function and class appear in them.
+export const faqs = [
+  { q: "Is the frother a class of its own?", a: "Yes: no other function => needed." },
+  { q: 'What does "function" mean here?', a: \`It means the class of steam wand.\` },
+  /* A block comment: () => {} */
+];
+`,
+      "src/components/faq-list/faq-list.html":
+        faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { faqs } from "@/lib/faqs.ts";
+    export default () => String(faqs.length);
+  </script>
+`),
+      "src/pages/help.html": page(
+        `      <faq-list />`,
+        `    <script data-bascik-build type="text/typescript">
+      import { faqs } from "@/lib/faqs.ts";
+      export default () => JSON.stringify(faqs.length);
+    </script>
+`,
+      ),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faqs.ts"]);
+  });
+
+  it("treats content built with html as content, and an exported function as a helper", async () => {
+    const component = (spec: string) =>
+      faqList(`  <script data-bascik-build-once type="text/typescript">
+    import { value } from "${spec}";
+    export default () => value;
+  </script>
+`);
+    const pageReads = (
+      spec: string,
+    ) => `    <script data-bascik-build type="text/typescript">
+      import { value } from "${spec}";
+      export default () => String(value);
+    </script>
+`;
+    const root = withFiles({
+      // Content: the values are built with html, arrows and all.
+      "src/lib/faq-items.ts": `import { html } from "@bascik/bascik/html";
+const items = [{ q: "Is it loud?", a: "No." }];
+export const value = html\`\${items.map((f) => html\`<h3>\${f.q}</h3><p>\${f.a}</p>\`)}\`;
+`,
+      // Helpers: an exported arrow, a function exported by name, a function typed const.
+      "src/lib/format.ts": `const format = (n: number) => n.toFixed(2);\nexport { format as value };\n`,
+      "src/lib/typed.ts": `export const value: (n: number) => string = String;\n`,
+      "src/components/faq-list/faq-list.html": component("@/lib/faq-items.ts"),
+      "src/components/price-tag/price-tag.html": `<p data-testid="price-tag">
+${component("@/lib/format.ts")}${component("@/lib/typed.ts")}</p>
+`,
+      "src/pages/help.html": page(
+        `      <faq-list />
+      <price-tag />`,
+        `${pageReads("@/lib/faq-items.ts")}${pageReads("@/lib/format.ts")}${pageReads("@/lib/typed.ts")}`,
+      ),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings).map((f) => f.file),
+    ).toEqual(["src/lib/faq-items.ts"]);
+  });
+
+  it("treats an exported object of functions as a helper, and an object of plain values as content", async () => {
+    const component = (
+      spec: string,
+    ) => `  <script data-bascik-build-once type="text/typescript">
+    import value from "${spec}";
+    export default () => String(value);
+  </script>
+`;
+    const helpers: Record<string, string> = {
+      "src/lib/arrows.ts": `const value = { render: (x: string) => x };\nexport default value;\n`,
+      "src/lib/methods.ts": `const value = {\n  render() {\n    return 1;\n  },\n};\nexport default value;\n`,
+      "src/lib/default-object.ts": `export default { value: () => 1 };\n`,
+      "src/lib/function-member.ts": `export default { value: function () { return 1; } };\n`,
+      "src/lib/named.ts": `export const value = { render: (x: string) => x };\nexport default value;\n`,
+      "src/lib/named-method.ts": `export const value: { render(): number } = { render() { return 1; } };\nexport default value;\n`,
+      "src/lib/renamed.ts": `const tools = { slug: (t: string) => t.toLowerCase() };\nexport { tools as value };\nexport default tools;\n`,
+      "src/lib/shorthand.ts": `function render(x: string) {\n  return x;\n}\nconst draw = (x: string) => x;\nexport const value = { render, paint: draw };\nexport default value;\n`,
+    };
+    const content: Record<string, string> = {
+      // Content: plain values, and markup built with html whose holes hold arrows.
+      "src/lib/site.ts": `export default { name: "Milk frother", note: "() => {} is text" };\n`,
+      // Content: a shorthand member that names a local value, not a function.
+      "src/lib/shorthand-value.ts": `const name = "Milk frother";\nexport const value = { name, price: 129 };\nexport default value;\n`,
+      "src/lib/cards.ts": `import { html } from "@bascik/bascik/html";
+const items = ["Quiet", "Fast"];
+export default { body: html\`\${items.map((i) => html\`<li>\${i}</li>\`)}\` };
+`,
+      // Content: values computed with a callback are still values, not helpers.
+      "src/lib/computed.ts": `const list = [{ name: "Quiet", published: true }];
+export const value = {
+  items: list.map((d) => d.name),
+  shown: list.filter(function (d) {
+    return d.published;
+  }),
+  nested: { names: list.map((d) => d.name) },
+};
+export default value;
+`,
+    };
+    const all = { ...helpers, ...content };
+    const uses = Object.keys(all)
+      .map((file) => component(file.replace(/^src\//, "@/")))
+      .join("");
+    const root = withFiles({
+      ...all,
+      "src/components/price-tag/price-tag.html": `<p data-testid="price-tag">\n${uses}</p>\n`,
+      "src/pages/help.html": page(
+        `      <price-tag />`,
+        uses.replaceAll("build-once", "build"),
+      ),
+    });
+    expect(
+      moduleFindings((await audit(root)).findings)
+        .map((f) => f.file)
+        .sort(),
+    ).toEqual([
+      "src/lib/cards.ts",
+      "src/lib/computed.ts",
+      "src/lib/shorthand-value.ts",
+      "src/lib/site.ts",
+    ]);
+  });
+
+  it("leaves a src/lib module that two other src/lib modules import, even when one page reaches both", async () => {
+    const root = withFiles({
+      "src/lib/site.ts": `export const site = { name: "Milk frother", url: "https://example.com" };\n`,
+      "src/lib/seo.ts": `import { site } from "./site.ts";\nexport const title = (t: string) => \`\${t} | \${site.name}\`;\n`,
+      "src/lib/schema.ts": `import { site } from "./site.ts";\nexport const org = () => ({ "@type": "Organization", url: site.url });\n`,
+      "src/pages/help.html": page(
+        `      <h1>Help</h1>`,
+        `    <script data-bascik-build type="text/typescript">
+      import { title } from "@/lib/seo.ts";
+      import { org } from "@/lib/schema.ts";
+      export default () => title("Help") + JSON.stringify(org());
+    </script>
+`,
+      ),
+    });
+    const files = moduleFindings((await audit(root)).findings).map(
+      (f) => f.file,
+    );
+    expect(files).not.toContain("src/lib/site.ts");
+    expect(files).toEqual(["src/lib/schema.ts", "src/lib/seo.ts"]);
+  });
+
+  it("does not flag the starter site's shared seo and posts helpers", async () => {
+    const { findings } = await audit(starterSite);
+    expect(moduleFindings(findings)).toEqual([]);
+  });
+});
+
 describe("audit-components CLI", () => {
   const cli = (args: string[], cwd?: string) =>
     spawnSync(process.execPath, [script, ...args], {
@@ -1496,6 +2498,8 @@ describe("audit-components CLI", () => {
       "missing-alt",
       "unlabeled-control",
       "missing-main",
+      "hand-written-escaper",
+      "single-use-module",
     ])
       expect(run.stdout).toContain(rule);
   });
@@ -1597,6 +2601,31 @@ describe("new-component scaffolds TypeScript by default", () => {
     expect(findings.map((f) => `${f.rule} ${f.file}`)).toEqual([
       "js-not-ts src/components/old-toggle/old-toggle.html",
     ]);
+  });
+});
+
+describe("the repo's own Bascik code builds markup with html", () => {
+  // Agents read the examples, the docs site, and the Cloudflare demo Worker as reference code, so none of them
+  // may carry the escaper the skills tell agents to delete.
+  const roots = ["examples", "docs/src", "adapters/cloudflare/e2e/fixture/src"];
+  it.each(roots)("%s has no hand-written HTML escaper or stripper", (root) => {
+    const base = fileURLToPath(new URL(`../../${root}`, import.meta.url));
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "dist") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (
+          /\.(?:ts|mts|js|mjs|html)$/.test(entry.name) &&
+          !/\.(?:test|spec)\.[cm]?[jt]s$/.test(entry.name)
+        )
+          for (const escaper of handWrittenEscapers(readFileSync(full, "utf8")))
+            found.push(`${root}/${relative(base, full)}:${escaper.line}`);
+      }
+    };
+    walk(base);
+    expect(found).toEqual([]);
   });
 });
 

@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { Browser } from "playwright";
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { esc } from "@bascik/bascik/html";
 import { pushFrame, type Frame } from "./frames.ts";
 
 const require = createRequire(import.meta.url);
@@ -175,9 +176,6 @@ const PALETTE: Record<number, string> = {
   97: "#ffffff",
 };
 
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 /** Turns text with ANSI color codes into HTML spans. Only the codes real CLIs commonly use are handled. */
 export function ansiToHtml(text: string): string {
   let html = "";
@@ -193,9 +191,7 @@ export function ansiToHtml(text: string): string {
     ]
       .filter(Boolean)
       .join(";");
-    html += css
-      ? `<span style="${css}">${escapeHtml(segment)}</span>`
-      : escapeHtml(segment);
+    html += css ? `<span style="${css}">${esc(segment)}</span>` : esc(segment);
   };
   for (const match of text.matchAll(pattern)) {
     emit(text.slice(last, match.index));
@@ -259,7 +255,7 @@ function documentHtml(options: TerminalOptions, bodyHtml: string): string {
   return `<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent">
 <div id="t" style="width:${width}px;border:1px solid rgba(255,255,255,.1);border-radius:10px;overflow:hidden;background:#16181a;font-family:Menlo,Monaco,'Courier New',monospace">
   <div style="height:${BAR_PX}px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 14px;background:#1e2022;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;color:#9aa0a6">
-    <span style="display:flex;gap:6px;margin-right:8px"><i style="width:10px;height:10px;border-radius:50%;background:#ff5f56"></i><i style="width:10px;height:10px;border-radius:50%;background:#ffbd2e"></i><i style="width:10px;height:10px;border-radius:50%;background:#27c93f"></i></span>${escapeHtml(title)}
+    <span style="display:flex;gap:6px;margin-right:8px"><i style="width:10px;height:10px;border-radius:50%;background:#ff5f56"></i><i style="width:10px;height:10px;border-radius:50%;background:#ffbd2e"></i><i style="width:10px;height:10px;border-radius:50%;background:#27c93f"></i></span>${esc(title)}
   </div>
   <pre id="body" style="margin:0;padding:${PAD}px;box-sizing:border-box;height:${rows * LINE_PX + PAD * 2}px;overflow:hidden;font:${FONT_SIZE}px/${LINE_PX}px Menlo,Monaco,'Courier New',monospace;color:#e6e6e6;white-space:pre-wrap;word-break:break-word">${bodyHtml}</pre>
 </div>`;
@@ -395,7 +391,7 @@ function screenToHtml(terminal: HeadlessTerminal, cursor: boolean): string {
     for (let start = 0; start < cells.length;) {
       let end = start;
       while (end < cells.length && cells[end].css === cells[start].css) end++;
-      const text = escapeHtml(
+      const text = esc(
         cells
           .slice(start, end)
           .map((cell) => cell.chars)

@@ -135,6 +135,31 @@ test.describe("cloudflare adapter: request-time pages", () => {
     expect(html).not.toContain("text/bascik-server");
   });
 
+  test("misuse: markup in the visitor's name is shown as text on the server and stream pages, with every character kept", async ({
+    page,
+  }) => {
+    // The demo builds its greeting with html from @bascik/bascik/html, so a name is escaped where it lands instead
+    // of having < > & and quotes deleted (which turned "Fish & Chips" into "Fish  Chips").
+    const name = `<b data-testid="injected">Milk & "Foam"</b>`;
+    const pages = [
+      [
+        `/server?user=${encodeURIComponent(name)}&role=${encodeURIComponent("<i>Admin</i>")}`,
+        "cf-server-greeting",
+      ],
+      [`/stream?name=${encodeURIComponent(name)}`, "cf-greeting"],
+      [`/stream-append?name=${encodeURIComponent(name)}`, "cf-append-greeting"],
+    ] as const;
+    for (const [url, testId] of pages) {
+      expect((await page.goto(url))?.status(), url).toBe(200);
+      await expect(page.getByTestId(testId), url).toContainText(name);
+      await expect(page.getByTestId("injected"), url).toHaveCount(0);
+    }
+    await page.goto(`/server?role=${encodeURIComponent("<i>Admin</i>")}`);
+    await expect(page.getByTestId("cf-server-greeting")).toContainText(
+      "Role: <i>Admin</i>",
+    );
+  });
+
   test("an API route dispatches inside the worker", async ({ page }) => {
     const res = await page.request.get("/api/ping");
     expect(res.status()).toBe(200);

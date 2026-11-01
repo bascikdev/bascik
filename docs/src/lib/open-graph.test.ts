@@ -176,8 +176,8 @@ describe("openGraph", () => {
         `<meta name="description" content="Bascik's scoped CSS keeps selectors local." />`,
       ),
     ).toEqual([
-      "Bascik's scoped CSS keeps selectors local.",
-      "Bascik's scoped CSS keeps selectors local.",
+      "Bascik&#39;s scoped CSS keeps selectors local.",
+      "Bascik&#39;s scoped CSS keeps selectors local.",
     ]);
   });
 
@@ -196,8 +196,8 @@ describe("openGraph", () => {
         `<meta name="description" content="Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;." />`,
       ),
     ).toEqual([
-      "Milk &amp; foam: Bascik's &lt;milk-frother&gt;.",
-      "Milk &amp; foam: Bascik's &lt;milk-frother&gt;.",
+      "Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;.",
+      "Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;.",
     ]);
   });
 

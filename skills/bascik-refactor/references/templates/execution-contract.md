@@ -43,7 +43,11 @@ background, rebuild after each change, and stop it before you hand off.
 ## Safety
 
 - Browse production read-only. Never submit a real form, place an order, create an account or send synthetic
-  analytics events.
+  analytics events. The skill's scripts block service workers and the common analytics hosts and refuse every
+  request other than GET or HEAD outside the target; a GET with a side effect and WebSocket traffic still get
+  through, so pass those controls with `--skip-control`. Add the site's own trackers with `--block <host or URL part>` and pass
+  `--min-interval-ms 1000` to every script that loads production (see "Capture settings" in production-parity.md).
+  Any browser driver of your own must do the same.
 - The interaction crawl and state capture click every control on production that is not a navigation link or a
   submit button. Before running them, review the site for controls whose handlers have side effects (add to cart,
   subscribe, vote, start a chat) and pass each with `--skip-control <selector>`; check those by hand.
@@ -55,13 +59,21 @@ background, rebuild after each change, and stop it before you hand off.
 
 1. Inspect: read the inventories, the production subtree and the legacy owner before editing.
 2. Make the smallest change that moves one check from fail to pass.
-3. Run a focused check (the section's measurement, screenshot or interaction test).
+3. Run a focused check (the section's measurement, screenshot or interaction test). This is the iteration loop:
+   `run-checks.mjs --cases <ids> --only <checks>` on a few cases (one phone, one tablet, one desktop, plus the
+   breakpoint edges the change touches). Production's side comes from the production cache (`artifacts/prod-cache`),
+   so only the target is loaded. Such a run prints `PARTIAL` and decides nothing.
 4. Format the changed files.
 5. Run the gate commands:
 
    ```sh
    {{GATE_COMMANDS}}
    ```
+
+   The gate is `run-checks.mjs` on the full {{MATRIX_FILE}} matrix with every check, no `--cases`, `--only`, `--skip`
+   or `--matrix`. "Done" is decided only there. Pass `--refresh-prod` on the first run of every check stage and review
+   round, and whenever production changed; `review-page.mjs` refuses to sign or verify a partial report (a subset of
+   the cases or of the checks) and, by default, one that used cached production measured more than a day ago.
 
 6. Hand off.
 

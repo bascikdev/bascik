@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Milk frother</title>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font: 20px/30px sans-serif;
+        color: #222;
+        background: #fff;
+      }
+      h1 {
+        margin: 0;
+        padding: 16px;
+        font-size: 28px;
+        line-height: 36px;
+      }
+      #caption {
+        margin: 0;
+        padding: 0 16px;
+      }
+      .spacer {
+        height: 9000px;
+      }
+      #photo {
+        display: block;
+        width: 200px;
+        height: 200px;
+        margin: 16px;
+      }
+      [data-reveal] {
+        margin: 16px;
+        padding: 16px;
+        color: #fff;
+        background: #2a6;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      [data-reveal].in {
+        opacity: 1;
+      }
+      footer {
+        height: 400px;
+      }
+      .banner {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        padding: 12px 16px;
+        color: #fff;
+        background: #123;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The target renders the finished page statically: the same caption, banner, photo and card, with no timers. -->
+    <h1>Milk frother</h1>
+    <p id="caption">
+      The Milk frother whips oat, soy and dairy milk into a dense foam in ninety
+      seconds.
+    </p>
+    <div class="spacer"></div>
+    <img id="photo" src="photo.png" alt="The Milk frother" />
+    <section data-reveal class="in">Foams oat, soy and dairy milk.</section>
+    <footer></footer>
+    <aside class="banner">We use cookies for the Milk frother cart.</aside>
+  </body>
+</html>

@@ -237,17 +237,13 @@
         <h2>Session Identity</h2>
         <p class="greeting" data-testid="cf-server-greeting">
           <script data-bascik-server>
+            import { html } from "@bascik/bascik/html";
             export default function (request, context) {
               const url = new URL(request.url);
               const user = url.searchParams.get("user") ?? "Developer";
               const role = url.searchParams.get("role") ?? "Admin";
-              return (
-                "Hello, <strong>" +
-                user.replace(/[<>&"']/g, "") +
-                '</strong> · Role: <span class="badge">' +
-                role.replace(/[<>&"']/g, "") +
-                "</span>"
-              );
+              return html`Hello, <strong>${user}</strong> · Role:
+                <span class="badge">${role}</span>`;
             }
           </script>
         </p>

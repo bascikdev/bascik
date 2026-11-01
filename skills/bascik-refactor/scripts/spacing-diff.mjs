@@ -8,6 +8,7 @@
 // Why: vertical spacing between elements was off by tens of pixels, and an absolute |dy| > 12 threshold never saw it.
 import { inPage } from "./lib/dom.mjs";
 import {
+  byKeyMatch,
   casesOf,
   finding,
   masksOf,
@@ -20,6 +21,7 @@ import {
   withPage,
 } from "./lib/checks.mjs";
 import { fail, isMain } from "./lib/cli.mjs";
+import { cachedProd } from "./lib/prod-cache.mjs";
 
 export const CHECK = "spacing-diff";
 export const DEFAULT_TOLERANCE = 2;
@@ -74,7 +76,8 @@ export function diffSpacing(
   { tolerance = DEFAULT_TOLERANCE } = {},
 ) {
   const findings = [];
-  const bySection = new Map(target.map((s) => [s.key, s]));
+  // Keys are compared with whitespace removed (keyMatch): React markup and formatted HTML key one element alike.
+  const bySection = byKeyMatch(target.map((s) => [s.key, s]));
   for (const section of prod) {
     const other = bySection.get(section.key);
     if (!other) {
@@ -88,7 +91,7 @@ export function diffSpacing(
       );
       continue;
     }
-    const children = new Map(other.children.map((c) => [c.key, c]));
+    const children = byKeyMatch(other.children.map((c) => [c.key, c]));
     // drift: small gap errors under the tolerance since the last finding, which add up along a column.
     // explained: the largest shift already reported in this section, which moves the blocks beside and below it.
     let drift = 0;
@@ -192,7 +195,7 @@ export function diffSpacing(
  */
 function diffSectionSpacing(prod, target, inner, tolerance) {
   const findings = [];
-  const bySection = new Map(target.map((s) => [s.key, s]));
+  const bySection = byKeyMatch(target.map((s) => [s.key, s]));
   for (const section of prod) {
     const t = bySection.get(section.key);
     if (!t) continue;
@@ -288,13 +291,13 @@ export function measureSections(arg) {
     if (el === document.body) key = "BODY";
     else {
       const heading = el.querySelector("h1, h2, h3, h4, h5, h6");
-      const label = (norm(heading?.textContent) || accName(el))
-        .slice(0, 70)
-        .trim();
+      // The text a reader sees, cut like textKey; keys are told apart with whitespace removed, as diffSpacing matches.
+      const label = (heading && keyText(heading)) || capText(accName(el));
       key = `${tagOf(el)}:${label}`;
-      for (let n = 2; seen.has(key); n++) key = `${tagOf(el)}:${label} #${n}`;
+      for (let n = 2; seen.has(matchKeyInPage(key)); n++)
+        key = `${tagOf(el)}:${label} #${n}`;
     }
-    seen.add(key);
+    seen.add(matchKeyInPage(key));
     keyOfSection.set(el, key);
     return key;
   };
@@ -327,8 +330,9 @@ export function measureSections(arg) {
     // must carry the defect's key to be corrected, whatever the length of its text.
     const base = textKey(el);
     let childKey = base;
-    for (let n = 2; entry.keys.has(childKey); n++) childKey = `${base} #${n}`;
-    entry.keys.add(childKey);
+    for (let n = 2; entry.keys.has(matchKeyInPage(childKey)); n++)
+      childKey = `${base} #${n}`;
+    entry.keys.add(matchKeyInPage(childKey));
     entry.children.push({ key: childKey, rect: r });
   }
   // Each landmark's height, the space to the previous landmark with the same parent landmark, and its outer landmarks.
@@ -403,7 +407,9 @@ export async function runCheck(browser, options) {
           settleOf(options),
         );
       const [prod, target] = await Promise.all([
-        measure(options.prod),
+        cachedProd(options, { check: CHECK, route, case: c }, () =>
+          measure(options.prod),
+        ),
         measure(options.target),
       ]);
       for (const f of diffSpacing(prod, target, { tolerance }))

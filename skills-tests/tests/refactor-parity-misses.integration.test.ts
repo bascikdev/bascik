@@ -254,91 +254,101 @@ describe("each defect the first checks missed is flagged by its check", () => {
     }, 120_000);
 });
 
-describe("3. repeated-sections: the forms the first version missed", () => {
-  const options = (variant: string) => ({
-    routes: ["/", "/about"],
-    targetSrc: join(server.root, "misses", variant, "src"),
-  });
-
-  it("a repeated block marked up as a div, pasted on both pages, is duplicated markup", async () => {
-    const r = await run(
-      "repeated-sections",
-      "3a-div-block",
-      options("3a-div-block"),
-    );
-    expect(
-      r.findings.some((f) => f.kind === "duplicated-markup"),
-      show(r),
-    ).toBe(true);
-  });
-
-  it("a section pasted on two pages that share one layout component is not credited to that component", async () => {
-    const r = await run(
-      "repeated-sections",
-      "3b-shared-layout",
-      options("3b-shared-layout"),
-    );
-    const dup = r.findings.filter((f) => f.kind === "duplicated-markup");
-    expect(dup.length, show(r)).toBe(1);
-    expect(dup[0].message).toContain("Why our frother");
-    expect(dup[0].message).not.toMatch(/uses site-header/);
-  });
-
-  it("the third card styled wrong on one route is a diverging instance", async () => {
-    const r = await run(
-      "repeated-sections",
-      "3c-third-card",
-      options("3c-third-card"),
-    );
-    const div = r.findings.filter((f) => f.kind === "diverging-instance");
-    expect(div.length, show(r)).toBeGreaterThan(0);
-    expect(
-      div.every((f) => f.route === "/about"),
-      show(r),
-    ).toBe(true);
-  });
-
-  it("a wrong copy on the first route is blamed on that route, with production's value as the reference", async () => {
-    const r = await run(
-      "repeated-sections",
-      "3d-first-route",
-      options("3d-first-route"),
-    );
-    const div = r.findings.filter((f) => f.kind === "diverging-instance");
-    expect(div.length, show(r)).toBeGreaterThan(0);
-    for (const f of div) {
-      expect(f.route, show(r)).toBe("/");
-      expect(f.prod).toBe("rgb(36, 87, 214)");
-      expect(f.target).toBe("rgb(214, 69, 93)");
-    }
-  });
-
-  it("a carousel captured on another slide is a diverging instance unless --mask leaves it out", async () => {
-    // The target's /about page is captured on the carousel's second slide, every other page on the first. Unmasked,
-    // the slide's color differs between the two instances; masked as run-checks documents, the region is out of the
-    // style signature and the section still counts as one component.
-    const variant = "3e-masked-carousel";
-    const unmasked = await run("repeated-sections", variant, options(variant));
-    expect(
-      unmasked.findings.some((f) => f.kind === "diverging-instance"),
-      show(unmasked),
-    ).toBe(true);
-    const masked = await run("repeated-sections", variant, {
-      ...options(variant),
-      masks: ['[data-testid="hero-carousel-slides"]'],
+// Each case loads four pages in a browser, about 3.5 s alone and more under a full parallel run: the 5 s default is
+// too close, so the block takes the 120 s the rest of this file uses.
+describe(
+  "3. repeated-sections: the forms the first version missed",
+  { timeout: 120_000 },
+  () => {
+    const options = (variant: string) => ({
+      routes: ["/", "/about"],
+      targetSrc: join(server.root, "misses", variant, "src"),
     });
-    expect(masked.findings, show(masked)).toEqual([]);
-  }, 120_000);
 
-  it("a mask written as the --mask flag (options.mask) is honored too", async () => {
-    const variant = "3e-masked-carousel";
-    const r = await run("repeated-sections", variant, {
-      ...options(variant),
-      mask: ['[data-testid="hero-carousel-slides"]'],
+    it("a repeated block marked up as a div, pasted on both pages, is duplicated markup", async () => {
+      const r = await run(
+        "repeated-sections",
+        "3a-div-block",
+        options("3a-div-block"),
+      );
+      expect(
+        r.findings.some((f) => f.kind === "duplicated-markup"),
+        show(r),
+      ).toBe(true);
     });
-    expect(r.findings, show(r)).toEqual([]);
-  }, 120_000);
-});
+
+    it("a section pasted on two pages that share one layout component is not credited to that component", async () => {
+      const r = await run(
+        "repeated-sections",
+        "3b-shared-layout",
+        options("3b-shared-layout"),
+      );
+      const dup = r.findings.filter((f) => f.kind === "duplicated-markup");
+      expect(dup.length, show(r)).toBe(1);
+      expect(dup[0].message).toContain("Why our frother");
+      expect(dup[0].message).not.toMatch(/uses site-header/);
+    });
+
+    it("the third card styled wrong on one route is a diverging instance", async () => {
+      const r = await run(
+        "repeated-sections",
+        "3c-third-card",
+        options("3c-third-card"),
+      );
+      const div = r.findings.filter((f) => f.kind === "diverging-instance");
+      expect(div.length, show(r)).toBeGreaterThan(0);
+      expect(
+        div.every((f) => f.route === "/about"),
+        show(r),
+      ).toBe(true);
+    });
+
+    it("a wrong copy on the first route is blamed on that route, with production's value as the reference", async () => {
+      const r = await run(
+        "repeated-sections",
+        "3d-first-route",
+        options("3d-first-route"),
+      );
+      const div = r.findings.filter((f) => f.kind === "diverging-instance");
+      expect(div.length, show(r)).toBeGreaterThan(0);
+      for (const f of div) {
+        expect(f.route, show(r)).toBe("/");
+        expect(f.prod).toBe("rgb(36, 87, 214)");
+        expect(f.target).toBe("rgb(214, 69, 93)");
+      }
+    });
+
+    it("a carousel captured on another slide is a diverging instance unless --mask leaves it out", async () => {
+      // The target's /about page is captured on the carousel's second slide, every other page on the first. Unmasked,
+      // the slide's color differs between the two instances; masked as run-checks documents, the region is out of the
+      // style signature and the section still counts as one component.
+      const variant = "3e-masked-carousel";
+      const unmasked = await run(
+        "repeated-sections",
+        variant,
+        options(variant),
+      );
+      expect(
+        unmasked.findings.some((f) => f.kind === "diverging-instance"),
+        show(unmasked),
+      ).toBe(true);
+      const masked = await run("repeated-sections", variant, {
+        ...options(variant),
+        masks: ['[data-testid="hero-carousel-slides"]'],
+      });
+      expect(masked.findings, show(masked)).toEqual([]);
+    }, 120_000);
+
+    it("a mask written as the --mask flag (options.mask) is honored too", async () => {
+      const variant = "3e-masked-carousel";
+      const r = await run("repeated-sections", variant, {
+        ...options(variant),
+        mask: ['[data-testid="hero-carousel-slides"]'],
+      });
+      expect(r.findings, show(r)).toEqual([]);
+    }, 120_000);
+  },
+);
 
 describe("identical pairs stay clean", () => {
   const masks = ['[data-testid="carousel"]', '[data-testid="ticker"]'];

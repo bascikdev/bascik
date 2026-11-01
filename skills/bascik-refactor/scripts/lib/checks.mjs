@@ -7,9 +7,26 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { openPage, routeUrl, settle } from "./capture.mjs";
-import { loadMatrix } from "./matrix.mjs";
+import {
+  openPage,
+  POLITE_HELP,
+  POLITE_OPTIONS,
+  politeBrowser,
+  politeFlags,
+  politeSummary,
+  routeUrl,
+  settle,
+} from "./capture.mjs";
+import { gateLine, gateRecord, loadMatrix, selectCases } from "./matrix.mjs";
 import { loadPlaywright } from "./project-deps.mjs";
+import {
+  DEFAULT_PROD_CACHE,
+  openProdCache,
+  PROD_CACHE_OPTIONS,
+  prodCacheFlags,
+  prodCacheRecord,
+  prodCacheSummary,
+} from "./prod-cache.mjs";
 
 export const DEFAULT_MATRIX = "docs/migration/breakpoints.json";
 export const DEFAULT_OUT = "artifacts/checks";
@@ -29,6 +46,42 @@ export const normalize = (value) =>
   String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+
+/**
+ * A text key as the checks compare it, the same way the in-page helper does: all whitespace removed. React writes no
+ * whitespace between elements and formatted HTML has newlines there, so the same page reads "v5.0.1Copyright" on one
+ * side and "v5.0.1 Copyright" on the other; markup formatting must never make two keys of one element. Keys keep their
+ * whitespace for messages.
+ */
+export const keyMatch = (key) => String(key ?? "").replace(/\s+/g, "");
+
+/**
+ * `text` with whitespace collapsed, cut after `max` characters that are not whitespace (default 80), as the in-page
+ * helper capText cuts a key: two texts that differ only in whitespace are cut at the same place.
+ */
+export function capKeyText(text, max = 80) {
+  const value = normalize(text);
+  let kept = 0;
+  let i = 0;
+  for (; i < value.length && kept < max; i++) if (!/\s/.test(value[i])) kept++;
+  return value.slice(0, i).trim();
+}
+
+/**
+ * A lookup of `entries` ({ key: value }, or [key, value] pairs) by keyMatch: get(key) finds the value whose key differs
+ * only in whitespace. The first entry wins.
+ */
+export function byKeyMatch(entries) {
+  const map = new Map();
+  for (const [key, value] of Array.isArray(entries)
+    ? entries
+    : Object.entries(entries ?? {}))
+    if (!map.has(keyMatch(key))) map.set(keyMatch(key), value);
+  return {
+    get: (key) => map.get(keyMatch(key)),
+    has: (key) => map.has(keyMatch(key)),
+  };
+}
 
 /**
  * The file and folder name of a route under --out and in docs/migration/review: "/" -> "index", "/pricing/team/" ->
@@ -122,6 +175,43 @@ export function validateMask(selector, flag = "--mask") {
     );
 }
 
+/**
+ * Whether two origins are one site: the same host, ignoring a leading "www.", the scheme and a trailing slash (a
+ * --target of http://example.com still loads the production site that https://www.example.com redirects to). Another
+ * port is another site (a local server). A value that is not a URL is never the same site as anything.
+ */
+export function sameSite(a, b) {
+  try {
+    const host = (url) => {
+      const u = new URL(url);
+      return `${u.hostname.toLowerCase().replace(/^www\./, "")}:${u.port}${u.pathname.replace(/\/+$/, "")}`;
+    };
+    return host(a) === host(b);
+  } catch {
+    return false;
+  }
+}
+
+/** The checks that run on production alone when --target is left out, for the inventory stage. */
+export const PRODUCTION_ONLY_CHECKS = Object.freeze([
+  "interaction-crawl",
+  "presence-by-route",
+  "state-capture",
+  "production-defects",
+]);
+
+/**
+ * Rejects a --target that is the production site itself: every check would load production twice at once (against
+ * the read-only, one-page-at-a-time rule) and compare it with itself. The inventory stage, before any target page
+ * exists, runs the production-only checks without --target and capture-baselines.mjs.
+ */
+export function validateTarget(prod, target) {
+  if (prod && target && sameSite(prod, target))
+    throw new Error(
+      `--target ${target} is production (--prod ${prod}): --target is the Bascik build, such as http://localhost:8080 from bascik --server. To inventory production before any target page exists, leave --target out: ${PRODUCTION_ONLY_CHECKS.join(", ").replace(/, ([^,]+)$/, " and $1")} run on production alone, and capture-baselines.mjs records the production baselines`,
+    );
+}
+
 /** The routes a runCheck call covers: options.routes, or options.route, or "/". */
 export function routesOf(options) {
   if (Array.isArray(options.routes) && options.routes.length)
@@ -153,7 +243,8 @@ export function skipControlsFrom(list) {
 
 /**
  * The controls a runCheck call must never activate, from `skipControls` (API and run-checks) or `skip-control`
- * (a check's own CLI): a button whose handler posts to the live site (add to cart, subscribe, vote, start a chat).
+ * (a check's own CLI): a button whose handler changes something on the live site (add to cart, subscribe, vote, start a
+ * chat), through a GET or a WebSocket the polite policy lets through, or a write it refuses.
  */
 export function skipControlsOf(options) {
   return [
@@ -229,7 +320,7 @@ export async function quiet(page, masks = [], settleMs = DEFAULT_SETTLE_MS) {
           characterData: true,
         });
       });
-      window.scrollTo(0, 0);
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     },
     { quietMs: QUIET_MS, cap: QUIET_CAP_MS, masks, settleMs },
   );
@@ -238,7 +329,9 @@ export async function quiet(page, masks = [], settleMs = DEFAULT_SETTLE_MS) {
 /**
  * Opens `route` on `origin` for one case, settled and quiet (see quiet()), runs `fn(page)` and closes the context.
  * `masks` are the documented dynamic regions the quiet wait ignores; `settleMs` is the least time after navigation
- * before `fn` runs (DEFAULT_SETTLE_MS when undefined).
+ * before `fn` runs (DEFAULT_SETTLE_MS when undefined). After the quiet wait the page is settled again (scrolled
+ * through and back, see settle()), so a section that mounted or hydrated late still loads its lazy images and runs
+ * its scroll-triggered reveals before anything is measured.
  */
 export async function withPage(
   browser,
@@ -256,6 +349,7 @@ export async function withPage(
   );
   try {
     await quiet(page, masks ?? [], settleMs ?? DEFAULT_SETTLE_MS);
+    await settle(page);
     return await fn(page, context);
   } finally {
     await context.close();
@@ -307,13 +401,30 @@ export function pixels(flag, value, fallback, unit = "CSS pixels") {
   return n;
 }
 
+/** The --cases values, split on commas: the case ids or widths a run is limited to (see selectCases). */
+export function caseIdsFrom(values) {
+  return (values ?? []).flatMap((v) =>
+    String(v)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
 /**
- * Parses the flags every check shares (--prod, --target, --route, --matrix, --out, --json, --help) plus `extra`
- * parseArgs options. `need` lists the flags that must be present.
+ * Parses the flags every check shares (--prod, --target, --route, --matrix, --cases, --out, --json, --help, the
+ * production cache flags --refresh-prod, --no-prod-cache and --prod-cache, and the polite production flags --block,
+ * --no-default-block and --min-interval-ms, returned as `polite`) plus `extra` parseArgs options. `need`
+ * lists the flags that must be present (a production-only check leaves "target" out); a --target that is production
+ * is always refused (validateTarget). `defaultOut` is the --out default.
  */
 export function parseArgsFor(
   argv,
-  { extra = {}, need = ["prod", "target", "route"] } = {},
+  {
+    extra = {},
+    need = ["prod", "target", "route"],
+    defaultOut = DEFAULT_OUT,
+  } = {},
 ) {
   const { values } = parseArgs({
     args: argv,
@@ -322,9 +433,12 @@ export function parseArgsFor(
       target: { type: "string" },
       route: { type: "string", multiple: true },
       matrix: { type: "string" },
+      cases: { type: "string", multiple: true },
       out: { type: "string" },
       mask: { type: "string", multiple: true },
       "settle-ms": { type: "string" },
+      ...PROD_CACHE_OPTIONS,
+      ...POLITE_OPTIONS,
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       ...extra,
@@ -337,17 +451,33 @@ export function parseArgsFor(
         throw new Error("--route <path> is required (repeatable)");
     } else if (!values[flag]) throw new Error(`--${flag} <url> is required`);
   }
+  validateTarget(values.prod, values.target);
   for (const selector of values.mask ?? []) validateMask(selector);
   for (const route of values.route ?? []) validateRoute(route);
   validateRouteSet(values.route);
-  const { "settle-ms": settle, ...rest } = values;
+  const cache = prodCacheFlags(values);
+  const polite = politeFlags(values, values);
+  const {
+    "settle-ms": settle,
+    cases,
+    "refresh-prod": _refresh,
+    "no-prod-cache": _off,
+    "prod-cache": _dir,
+    block: _block,
+    "no-default-block": _noDefaultBlock,
+    "min-interval-ms": _minInterval,
+    ...rest
+  } = values;
   return {
     ...rest,
+    ...cache,
+    polite,
+    caseIds: caseIdsFrom(cases),
     settleMs: pixels("--settle-ms", settle, DEFAULT_SETTLE_MS, "milliseconds"),
     route: values.route ?? [],
     mask: values.mask ?? [],
     matrix: values.matrix ?? DEFAULT_MATRIX,
-    out: values.out ?? DEFAULT_OUT,
+    out: values.out ?? defaultOut,
   };
 }
 
@@ -364,25 +494,102 @@ export function formatFinding(f) {
 }
 
 /**
- * The CLI of one check: parse, load the matrix before any browser starts, run, print, write
- * <out>/<check>.json and exit 1 on any finding.
+ * The matrix of a run: the cases of the matrix file, limited by --cases, and the gate record report.json keeps
+ * (gateRecord; run-checks.mjs also passes the checks that run, every check and the waived ones). Loaded before any
+ * browser starts, so a missing file or an unknown case id fails fast.
+ */
+export function runMatrix(
+  args,
+  { checks, allChecks, waived, defaultMatrix = DEFAULT_MATRIX } = {},
+) {
+  const all = loadMatrix(args.matrix);
+  const cases = selectCases(all, args.caseIds);
+  return {
+    cases,
+    gate: gateRecord({
+      file: args.matrix,
+      cases: all,
+      selected: cases,
+      defaultMatrix,
+      checks,
+      allChecks,
+      waived,
+    }),
+  };
+}
+
+/** The options every check CLI shares with run-checks.mjs, printed after its own --help. */
+export const SHARED_HELP = `Every check also takes:
+  --cases <id>        Run only these matrix cases: an id such as 360x812 or 1408x900-dark, or a width such as 360 for
+                      every case of it (repeatable or comma separated). The run is then PARTIAL: an iteration result,
+                      never the gate (the full matrix with every check, through run-checks.mjs)
+  --prod-cache <dir>  Where production's measurements are kept between runs (default ${DEFAULT_PROD_CACHE}); the
+                      next run reads production from there unless anything that changes what it measures changed
+  --refresh-prod      Measure production again and overwrite the cache (after production changes, and at the start
+                      of every check stage and review round)
+  --no-prod-cache     Neither read nor write the cache
+Every page load, on both sides, runs without service workers, skips the analytics and tracking hosts and sends no
+request other than GET or HEAD outside the target (a GET with a side effect and WebSocket traffic still get through):
+${POLITE_HELP}`;
+
+/**
+ * The lines a run prints after its results: the production cache numbers, what the polite policy blocked (when
+ * `browser` is a politeBrowser) and, for a partial run, PARTIAL.
+ */
+export function runFooter(prodCache, gate, browser, polite) {
+  const politeLine = politeSummary(browser?.politeStats, polite?.minIntervalMs);
+  return [
+    ...(prodCache ? [prodCacheSummary(prodCache.stats)] : []),
+    ...(politeLine ? [politeLine] : []),
+    ...(gateLine(gate) ? [gateLine(gate)] : []),
+  ];
+}
+
+/**
+ * Launches the browser of a run, wrapped so every context follows the production read-only rule (politeBrowser):
+ * `args` are parsed flags holding prod, target and polite. A relaunch passes the browser it replaces as `previous`, so
+ * the production pacing and the run footer's counts carry on.
+ */
+export async function launchPolite(chromium, args, previous) {
+  return politeBrowser(
+    await chromium.launch(),
+    {
+      prod: args.prod,
+      target: args.target,
+      ...(args.polite ?? {}),
+    },
+    previous,
+  );
+}
+
+/**
+ * The CLI of one check: parse, load the matrix (and --cases) before any browser starts, open the production cache,
+ * run, print, write <out>/<check>.json and exit 1 on any finding. A production-only run (the report says
+ * productionOnly: no --target) writes its inventory and exits 0.
  */
 export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   const args = parseCliArgs(process.argv.slice(2));
   if (args.help) {
-    console.log(help);
+    console.log(`${help}\n\n${SHARED_HELP}`);
     return;
   }
-  const cases = loadMatrix(args.matrix);
+  const { cases, gate } = runMatrix(args);
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchPolite(chromium, args);
   let report;
+  let prodCache = null;
   try {
+    prodCache = await openProdCache(browser, {
+      dir: args.prodCache,
+      refresh: args.refreshProd,
+    });
     report = await runCheck(browser, {
       ...args,
       routes: args.route,
       cases,
+      prodCache,
     });
+    report = { ...report, gate, production: prodCacheRecord(prodCache) };
   } finally {
     await browser.close();
   }
@@ -390,10 +597,16 @@ export async function runCli({ check, help, parseCliArgs, runCheck, summary }) {
   const file = join(args.out, `${check}.json`);
   writeFileSync(file, JSON.stringify(report, null, 2) + "\n");
   if (args.json) console.log(JSON.stringify(report, null, 2));
+  else if (report.productionOnly)
+    console.log(
+      `ok    ${check}  production only (no --target): inventory written to ${file}, nothing compared`,
+    );
   else {
     console.log(`${report.ok ? "ok  " : "FAIL"}  ${check}  (${file})`);
     for (const f of report.findings) console.log(`      ${formatFinding(f)}`);
   }
   for (const line of summary?.(report, args) ?? []) console.log(line);
+  for (const line of runFooter(prodCache, gate, browser, args.polite))
+    console.log(line);
   if (!report.ok) process.exitCode = 1;
 }

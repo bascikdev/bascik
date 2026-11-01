@@ -15,6 +15,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +28,21 @@ import {
   verifySignOffs,
   writeSignOff,
 } from "../../skills/bascik-refactor/scripts/review-page.mjs";
+import {
+  CHECKS,
+  buildRouteReport,
+  parseCliArgs as parseRunChecksArgs,
+  runChecksMatrix,
+} from "../../skills/bascik-refactor/scripts/run-checks.mjs";
+import { gateLine } from "../../skills/bascik-refactor/scripts/lib/matrix.mjs";
+
+/** What run-checks records about production for a run that measured it fresh (--refresh-prod). */
+const FRESH = {
+  cache: "artifacts/prod-cache",
+  refreshed: true,
+  fromCache: 0,
+  captured: 2,
+};
 
 const SCRIPT = fileURLToPath(
   new URL(
@@ -268,6 +284,234 @@ describe("writeSignOff and verifySignOffs", () => {
   });
 });
 
+describe("verifySignOffs: only a full-matrix run-checks report is a gate", () => {
+  const MATRIX = JSON.stringify({
+    cases: [
+      { width: 360, height: 812 },
+      { width: 1280, height: 900 },
+    ],
+  });
+  const sha = createHash("sha256").update(MATRIX).digest("hex");
+  const gate = (over: Record<string, unknown> = {}) => ({
+    matrix: "docs/migration/breakpoints.json",
+    sha256: sha,
+    cases: ["360x812", "1280x900"],
+    total: 2,
+    checks: [...CHECKS],
+    skipped: [],
+    partial: false,
+    ...over,
+  });
+  const setup = (report: Record<string, unknown>) => {
+    write("docs/migration/breakpoints.json", MATRIX);
+    write(
+      "artifacts/checks/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        ok: true,
+        findings: [],
+        production: FRESH,
+        ...report,
+      }),
+    );
+    writeSignOff({
+      dir: join(dir, "review"),
+      ...signOff({ route: "/about" }),
+    });
+  };
+  const verify = (extra: Record<string, unknown> = {}) =>
+    verifySignOffs(join(dir, "review"), ["/about"], {
+      checks: join(dir, "artifacts/checks"),
+      matrix: join(dir, "docs/migration/breakpoints.json"),
+      ...extra,
+    });
+
+  it("accepts a passing report of the full matrix in docs/migration/breakpoints.json", () => {
+    setup({ gate: gate() });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+  });
+
+  it("refuses a run that rejected a production defect with a bare --reject, or by an accepted.json entry with no ledger row", () => {
+    setup({
+      gate: gate(),
+      rejections: [{ id: "PD-1a2b3c", source: "--reject", matched: 3 }],
+    });
+    expect(verify().problems.join("\n")).toMatch(
+      /rejected PD-1a2b3c with a bare --reject[\s\S]*accepted\.json/,
+    );
+    setup({
+      gate: gate(),
+      rejections: [
+        { id: "PD-1a2b3c", source: "D-07", ledgerRow: false, matched: 1 },
+      ],
+    });
+    expect(verify().problems.join("\n")).toMatch(
+      /PD-1a2b3c[\s\S]*D-07[\s\S]*no row in the decisions ledger/,
+    );
+    setup({
+      gate: gate(),
+      rejections: [
+        { id: "PD-1a2b3c", source: "D-07", ledgerRow: true, matched: 1 },
+      ],
+    });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+  });
+
+  it("refuses a partial report (a --cases subset or an iteration matrix)", () => {
+    setup({ gate: gate({ partial: true, cases: ["360x812"] }) });
+    const result = verify();
+    expect(result.ok).toBe(false);
+    expect(result.problems.join("\n")).toMatch(
+      /partial run \(1 of 2 cases\)[\s\S]*full matrix/,
+    );
+  });
+
+  it("refuses a report whose matrix hash differs from docs/migration/breakpoints.json", () => {
+    setup({ gate: gate({ sha256: "0".repeat(64) }) });
+    expect(verify().problems.join("\n")).toMatch(
+      /breakpoints\.json changed since this run|another matrix/,
+    );
+  });
+
+  it("refuses a report that records no matrix (written before run-checks recorded one)", () => {
+    setup({});
+    expect(verify().problems.join("\n")).toMatch(/records no matrix/);
+  });
+
+  it("refuses a full-matrix run that left out a check (--only or --skip), naming what it left out", () => {
+    setup({
+      gate: gate({
+        checks: ["spacing-diff"],
+        skipped: CHECKS.filter((c: string) => c !== "spacing-diff"),
+        partial: true,
+      }),
+    });
+    const text = verify().problems.join("\n");
+    expect(text).toMatch(
+      /ran 1 of \d+ checks, without [^\n]*interaction-crawl[\s\S]*every check/,
+    );
+    // A forged or hand-edited record that drops a check but claims a full run is still refused.
+    setup({
+      gate: gate({
+        checks: CHECKS.filter((c: string) => c !== "interaction-crawl"),
+      }),
+    });
+    expect(verify().problems.join("\n")).toMatch(/without interaction-crawl/);
+  });
+
+  it("refuses a report that records no list of the checks it ran", () => {
+    const { checks: _checks, skipped: _skipped, ...old } = gate();
+    setup({ gate: old });
+    expect(verify().problems.join("\n")).toMatch(/no list of the checks/);
+  });
+
+  it("accepts testid-carryover waived by --no-legacy-repo, and no other waiver", () => {
+    const rest = CHECKS.filter((c: string) => c !== "testid-carryover");
+    setup({
+      gate: gate({
+        checks: rest,
+        waived: {
+          "testid-carryover": "no legacy repository (--no-legacy-repo)",
+        },
+      }),
+    });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+    const noCrawl = CHECKS.filter((c: string) => c !== "interaction-crawl");
+    setup({
+      gate: gate({
+        checks: noCrawl,
+        waived: { "interaction-crawl": "too slow" },
+      }),
+    });
+    expect(verify().problems.join("\n")).toMatch(/without interaction-crawl/);
+  });
+
+  it("refuses, by default, cached production measured more than a day ago; --max-prod-age moves the limit", () => {
+    const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    setup({
+      gate: gate(),
+      production: { fromCache: 10, captured: 0, oldestCachedAt: old },
+    });
+    const result = verify();
+    expect(result.ok).toBe(false);
+    expect(result.problems.join("\n")).toMatch(
+      /older than --max-prod-age \(1d\)[\s\S]*--refresh-prod/,
+    );
+    expect(verify({ maxProdAge: 2 * 86_400_000 }).ok).toBe(false);
+    expect(verify({ maxProdAge: 4 * 86_400_000 }).ok).toBe(true);
+    const recent = new Date(Date.now() - 3_600_000).toISOString();
+    setup({
+      gate: gate(),
+      production: { fromCache: 10, captured: 0, oldestCachedAt: recent },
+    });
+    expect(verify()).toEqual({ ok: true, problems: [] });
+  });
+
+  it("refuses a report with no production record, or cached production of unknown age", () => {
+    setup({ gate: gate(), production: undefined });
+    expect(verify().problems.join("\n")).toMatch(/no production measurement/);
+    setup({ gate: gate(), production: { fromCache: 3, captured: 0 } });
+    expect(verify().problems.join("\n")).toMatch(/unknown age/);
+    setup({
+      gate: gate(),
+      production: { fromCache: 0, captured: 0, oldestCachedAt: "not a date" },
+    });
+    expect(verify().ok).toBe(false);
+  });
+
+  it("misuse: run-checks --only or --skip on the full default matrix prints PARTIAL, and its report is refused", () => {
+    write("docs/migration/breakpoints.json", MATRIX);
+    const matrix = join(dir, "docs/migration/breakpoints.json");
+    const base = [
+      "--prod",
+      "https://example.com",
+      "--target",
+      "http://localhost:8080",
+      "--route",
+      "/about",
+      "--legacy-src",
+      "legacy",
+      "--matrix",
+      matrix,
+    ];
+    for (const extra of [
+      ["--only", "spacing-diff"],
+      ["--skip", "interaction-crawl"],
+      ["--skip", "testid-carryover"],
+    ]) {
+      const args = parseRunChecksArgs([...base, ...extra]);
+      const { gate: record } = runChecksMatrix(args, matrix);
+      expect(record.partial, extra.join(" ")).toBe(true);
+      expect(gateLine(record)).toMatch(
+        /^PARTIAL \(2 of 2 cases; \d+ of \d+ checks, without /,
+      );
+      const report = buildRouteReport(
+        "/about",
+        args.only.map((c: string) => ({ check: c, ok: true, findings: [] })),
+        { expected: args.only, gate: record, production: FRESH },
+      );
+      write("artifacts/checks/about/report.json", JSON.stringify(report));
+      writeSignOff({
+        dir: join(dir, "review"),
+        ...signOff({ route: "/about" }),
+      });
+      const result = verify();
+      expect(result.ok, extra.join(" ")).toBe(false);
+      expect(result.problems.join("\n")).toMatch(/checks, without/);
+    }
+    // Every check (testid-carryover waived because there is no legacy repository) is the gate.
+    const noLegacy = parseRunChecksArgs([
+      ...base.filter(
+        (a, i) => a !== "--legacy-src" && base[i - 1] !== "--legacy-src",
+      ),
+      "--no-legacy-repo",
+    ]);
+    const { gate: full } = runChecksMatrix(noLegacy, matrix);
+    expect(full.partial).toBe(false);
+    expect(gateLine(full)).toBeNull();
+  });
+});
+
 describe("parseCliArgs", () => {
   it("has three modes: build pages, sign, verify", () => {
     expect(parseCliArgs(["--route", "/"])).toMatchObject({
@@ -296,6 +540,23 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["--verify", "--route", "/"])).toMatchObject({
       mode: "verify",
     });
+  });
+
+  it("--max-prod-age takes days, hours or minutes, and rejects anything else", () => {
+    expect(
+      parseCliArgs(["--verify", "--route", "/"]).maxProdAge,
+    ).toBeUndefined();
+    expect(
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "7d"])
+        .maxProdAge,
+    ).toBe(7 * 86_400_000);
+    expect(
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "12h"])
+        .maxProdAge,
+    ).toBe(12 * 3_600_000);
+    expect(() =>
+      parseCliArgs(["--verify", "--route", "/", "--max-prod-age", "soon"]),
+    ).toThrow(/--max-prod-age/);
   });
 
   it("refuses --sign and --verify together, and --sign for several routes", () => {
@@ -344,9 +605,25 @@ describe("the CLI", () => {
         ],
       }),
     );
+    const matrix = JSON.stringify({ cases: [{ width: 400, height: 800 }] });
+    write("docs/migration/breakpoints.json", matrix);
     write(
       "artifacts/checks/about/report.json",
-      JSON.stringify({ route: "/about", ok: true, findings: [] }),
+      JSON.stringify({
+        route: "/about",
+        ok: true,
+        findings: [],
+        gate: {
+          matrix: "docs/migration/breakpoints.json",
+          sha256: createHash("sha256").update(matrix).digest("hex"),
+          cases: ["400x800"],
+          total: 1,
+          checks: [...CHECKS],
+          skipped: [],
+          partial: false,
+        },
+        production: FRESH,
+      }),
     );
     const missing = node(["--verify", "--route", "/about", "--dir", "review"]);
     expect(missing.status).toBe(1);
@@ -367,6 +644,141 @@ describe("the CLI", () => {
     expect(
       node(["--verify", "--route", "/about", "--dir", "review"]).status,
     ).toBe(0);
+  });
+
+  it("misuse: --sign and --verify refuse a full-matrix run-checks report of only some checks, or of stale production", () => {
+    write("artifacts/compare/about/target-400x800.png", PNG);
+    write(
+      "artifacts/compare/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        cases: [
+          {
+            width: 400,
+            height: 800,
+            screenshots: {
+              prod: "artifacts/compare/about/target-400x800.png",
+              target: "artifacts/compare/about/target-400x800.png",
+            },
+          },
+        ],
+      }),
+    );
+    const matrix = JSON.stringify({ cases: [{ width: 400, height: 800 }] });
+    write("docs/migration/breakpoints.json", matrix);
+    const gate = {
+      matrix: "docs/migration/breakpoints.json",
+      sha256: createHash("sha256").update(matrix).digest("hex"),
+      cases: ["400x800"],
+      total: 1,
+      checks: ["spacing-diff"],
+      skipped: CHECKS.filter((c: string) => c !== "spacing-diff"),
+      partial: true,
+    };
+    const report = (over: Record<string, unknown>) =>
+      write(
+        "artifacts/checks/about/report.json",
+        JSON.stringify({
+          route: "/about",
+          ok: true,
+          findings: [],
+          gate,
+          production: FRESH,
+          ...over,
+        }),
+      );
+    const sign = () =>
+      node([
+        "--sign",
+        "--route",
+        "/about",
+        "--reviewer",
+        "Sam Rivera",
+        "--verdict",
+        "pass",
+        "--dir",
+        "review",
+      ]);
+    report({});
+    const onlySome = sign();
+    expect(onlySome.status).toBe(1);
+    expect(onlySome.stderr).toMatch(/checks, without/);
+    expect(existsSync(join(dir, "review/about.json"))).toBe(false);
+
+    const stale = {
+      fromCache: 4,
+      captured: 0,
+      oldestCachedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+    };
+    report({
+      gate: { ...gate, checks: [...CHECKS], skipped: [], partial: false },
+      production: stale,
+    });
+    const staleSign = sign();
+    expect(staleSign.status).toBe(1);
+    expect(staleSign.stderr).toMatch(/--refresh-prod/);
+
+    // A full fresh run signs; --verify then refuses the report once it is replaced by an --only run.
+    report({
+      gate: { ...gate, checks: [...CHECKS], skipped: [], partial: false },
+    });
+    expect(sign().status).toBe(0);
+    expect(
+      node(["--verify", "--route", "/about", "--dir", "review"]).status,
+    ).toBe(0);
+    report({});
+    const verified = node(["--verify", "--route", "/about", "--dir", "review"]);
+    expect(verified.status).toBe(1);
+    expect(verified.stdout + verified.stderr).toMatch(/checks, without/);
+  });
+
+  it("misuse: --sign refuses a partial run-checks report", () => {
+    write("artifacts/compare/about/target-400x800.png", PNG);
+    write(
+      "artifacts/compare/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        cases: [
+          {
+            width: 400,
+            height: 800,
+            screenshots: {
+              prod: "artifacts/compare/about/target-400x800.png",
+              target: "artifacts/compare/about/target-400x800.png",
+            },
+          },
+        ],
+      }),
+    );
+    write(
+      "artifacts/checks/about/report.json",
+      JSON.stringify({
+        route: "/about",
+        ok: true,
+        findings: [],
+        gate: {
+          matrix: "docs/migration/breakpoints.iter-about.json",
+          sha256: "0".repeat(64),
+          cases: ["400x800"],
+          total: 1,
+          partial: true,
+        },
+      }),
+    );
+    const signed = node([
+      "--sign",
+      "--route",
+      "/about",
+      "--reviewer",
+      "Sam Rivera",
+      "--verdict",
+      "pass",
+      "--dir",
+      "review",
+    ]);
+    expect(signed.status).toBe(1);
+    expect(signed.stderr).toMatch(/partial/);
+    expect(existsSync(join(dir, "review/about.json"))).toBe(false);
   });
 
   it("builds artifacts/review/<slug>.html from the compare and checks reports", () => {

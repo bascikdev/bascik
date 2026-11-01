@@ -18,15 +18,15 @@
     <main id="main" class="container" data-testid="blog-tags-main">
       <h1>Tags</h1>
       <script data-bascik-build type="text/typescript">
-        import { escapeHtml, getPosts, groupByTag } from "@/lib/posts.ts";
+        import { html } from "@bascik/bascik/html";
+        import { getPosts, groupByTag } from "@/lib/posts.ts";
         export default async () => {
-          const items = groupByTag(await getPosts()).map(
+          const groups = groupByTag(await getPosts());
+          if (groups.length === 0) return html`<p>No tags yet.</p>`;
+          return html`<ul>${groups.map(
             ({ tag, posts }) =>
-              `<li><a href="/blog/tags/${tag}/">${escapeHtml(tag)}</a> (${posts.length})</li>`,
-          );
-          return items.length
-            ? `<ul>${items.join("")}</ul>`
-            : "<p>No tags yet.</p>";
+              html`<li><a href="/blog/tags/${tag}/">${tag}</a> (${posts.length})</li>`,
+          )}</ul>`;
         };
       </script>
     </main>

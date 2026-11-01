@@ -20,7 +20,9 @@ A canonical URL tag tells search engines which URL is the authoritative version 
 
 ```ts
 // src/lib/canonical.ts
-export async function canonical(): Promise<string> {
+import { html, type SafeHtml } from "@bascik/bascik/html";
+
+export async function canonical(): Promise<SafeHtml | ""> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? "").replace(/\/$/, "");
   const pageFile =
     process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? "";
@@ -40,7 +42,9 @@ export async function canonical(): Promise<string> {
     withoutExt === "index" ? "" : withoutExt.replace(/\/index$/, "/");
   const urlPath = route ? `/${route}` : "/";
 
-  return `<link rel="canonical" href="${siteUrl}${urlPath}" />`;
+  // Build the whole URL in code, then give html one hole for it.
+  const href = `${siteUrl}${urlPath}`;
+  return html`<link rel="canonical" href="${href}" />`;
 }
 ```
 
@@ -113,10 +117,13 @@ That means shared components can derive navigation state, breadcrumbs, canonical
 ```html
 <!-- src/components/canonical-link/canonical-link.html -->
 <script data-bascik-build type="text/typescript">
+  import { html } from "@bascik/bascik/html";
   import { pagePath, siteOrigin } from "@/lib/site.ts";
 
-  export default () =>
-    `<link rel="canonical" href="${siteOrigin()}${pagePath()}">`;
+  export default () => {
+    const href = `${siteOrigin()}${pagePath()}`;
+    return html`<link rel="canonical" href="${href}">`;
+  };
 </script>
 ```
 

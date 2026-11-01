@@ -37,12 +37,44 @@ Record these before writing any page. Every later prompt reads them.
 - `interactions.json`: every interactive surface (dropdowns, drawer, carousel, tabs, slider, modal, sticky header) as
   an array of steps: `{ "name", "route", "testId" | "role" + "roleName" | "selector", "nth", "panel", "action",
 "key", "expect": { "ariaExpanded", "visible", "focused" }, "minWidth", "maxWidth", "legacy" }`. Actions: click,
-  press, hover, keyboard, outside-click, focus-out. Steps run in order on one page per matrix case.
+  press, hover, keyboard, outside-click, focus-out. Steps run in order on one page per matrix case. Start it from the
+  crawl: `interaction-crawl.mjs --prod "$PROD_URL" --route <path>... --discover` (no `--target`) writes
+  `interactions.draft.json`, one step per control that did something, with what production did in `"observed"`.
+  The file and each step say `"draft": true` and `compare-route.mjs` refuses them: review each step (add its
+  `"panel"`, fix `"expect"`, drop noise, add what the crawl cannot do, such as typing), remove every `"draft"` and
+  save the steps here.
 - `integrations.json`: every third-party script with its network and cookie contract:
   `[{ "name", "loads", "origins", "cookies", "pages" }]`.
 - `decisions.md`: the differences-and-decisions ledger (template: `templates/decisions-ledger.md`).
 - `accepted.json`: one entry per ledger row that changes pixels, `[{ "id", "route", "minWidth", "maxWidth", "mask",
-"maxRatio" }]`, passed to `compare-route.mjs --accepted`. The scripts never read `decisions.md` itself.
+"maxRatio" }]`, passed to `compare-route.mjs --accepted`, and one per reviewed production-defects false positive,
+  `{ "id", "defect": ["PD-xxxxxx"], "reason" }`, read by `production-defects.mjs` and `run-checks.mjs`. The scripts never
+  read `decisions.md` itself.
+
+### Production alone, before any target page exists
+
+The inventory stage has no target, so its scripts run without `--target`: `interaction-crawl.mjs` (with `--discover`
+for the draft above), `presence-by-route.mjs` (each route's layers, fresh, dismissed and in a new tab),
+`state-capture.mjs` (every open state with its crop) and `production-defects.mjs` write production's side to
+`artifacts/checks/<check>.json` and exit 0; nothing is compared. A `--target` that is production (the same host,
+with or without `www.`, either scheme) is refused everywhere, since it loads the live site twice at once.
+
+### Production baselines (artifacts/baselines/)
+
+`capture-baselines.mjs --prod "$PROD_URL" --route <path>... [--states]` records, one page at a time, for every route
+and matrix case:
+
+- `artifacts/baselines/<route slug>/<caseId>.png`: the full page, settled like every check, masked regions invisible;
+- `<caseId>.nodes.json`: the collectNodes geometry (`geometry-diff.mjs`'s boxes);
+- with `--states`, `<caseId>.state-<n>.png`: each open state state-capture finds;
+- `artifacts/baselines/index.json`: every baseline with its files, HTTP status and open states.
+
+A baseline id is `<route>@<caseId>`, with the case id `--cases` takes: `/pricing@360x812`, `/@1408x900-dark`. An open
+state adds `#<label>`: `/@360x812#BUTTON:Menu`. Prompts name baselines by id (`{{BASELINE_IDS}}` in
+`templates/one-route.md`). A run adds to `index.json`; an index of another `--prod` is refused. Everything goes
+through the production cache, and the open states under state-capture's own key, so the first `run-checks.mjs` with
+the same `--prod`, `--mask`, `--skip-control` and `--settle-ms` reads them instead of opening production's
+disclosures again. A route that answers with an HTTP error is kept with its status and printed as a warning.
 
 ## Environment and servers
 
@@ -56,8 +88,49 @@ import nothing else.
 ## Capture settings
 
 Identical on both sides: width and height, browser version, device scale factor 1, zoom 100 percent, light color
-scheme, reduced motion, scroll position 0, the same cookie notice state. Before measuring, wait for
-`document.fonts.ready`, complete eager images and finished finite animations. `scripts/lib/capture.mjs` does this.
+scheme, reduced motion, scroll position 0, the same cookie notice state. Every script, `compare-route.mjs` and
+`geometry-diff.mjs` included, captures a page the same way (`settle` in `scripts/lib/capture.mjs`, `withPage` in `scripts/lib/checks.mjs`):
+
+1. Wait for `document.fonts.ready`.
+2. Scroll the page through in viewport-height steps (at most 40) and back to the top, instantly even under
+   `scroll-behavior: smooth`. Every `loading="lazy"` image is switched to eager first, so a full-page screenshot draws
+   a photo far below the fold on both sides, whatever distance Chromium would have loaded it from. Content that
+   appears when it scrolls into view (an IntersectionObserver fade-in, framer-motion `whileInView`,
+   `content-visibility: auto`) is revealed on both sides; many such libraries ignore reduced motion. An
+   infinite-scroll list grows by what those 40 steps load, on both sides alike.
+3. Wait for every image to complete and finite animations to finish.
+4. Wait until 5 seconds after navigation started (`--settle-ms`), then until the DOM goes 0.75 seconds without a
+   change outside the `--mask` regions (at most 4 seconds), so a banner mounted after hydration or a caption that
+   types itself out is finished on both sides.
+5. Settle again (steps 1 to 3), for a section that mounted or hydrated during the wait.
+
+Each wait is capped, so an image that never loads or a looping animation cannot hang the run. A page that scrolls
+inside an element instead of the window is not scrolled through: compare such a section with an element screenshot.
+
+Production stays read-only, and every script that loads it (every check, `run-checks.mjs`, `capture-baselines.mjs`,
+`compare-route.mjs` and `geometry-diff.mjs`) enforces it in the browser, on both sides alike:
+
+- Analytics and tracking requests are blocked: Google Tag Manager, Analytics and ads, Vercel insights,
+  Plausible, Segment, Hotjar, the Facebook pixel, Clarity and Cloudflare insights (`DEFAULT_BLOCK` in
+  `scripts/lib/capture.mjs`). Without it every load is a synthetic page view in the owner's analytics, and one route
+  run is hundreds of them. Add a site's own tracker with `--block <pattern>` (repeatable): a host, such as
+  `stats.example.net`, also blocks its subdomains; a value with a `/`, such as `*/api/track`, matches anywhere in the
+  URL, with `*` as a wildcard. A pattern that matches `--prod` or `--target` itself is refused. `--no-default-block`
+  drops the default list, for a site whose consent layer or content needs one of those hosts; log that in the
+  decisions ledger. The target blocks the same requests, so a tag that adds markup is missing from both sides.
+- A request other than GET or HEAD (a form post, a beacon, an API write, its CORS preflight) is refused unless it
+  goes to the target's own origin. With no `--target`, every one is refused.
+- Service workers are blocked on both sides, so a Workbox or next-pwa worker cannot answer a reload from its cache
+  or send requests of its own past these rules.
+- Two kinds of side effect still get through: a GET that changes something (a vote or unsubscribe link, a view
+  counter, a tracker on a host not on the list) and WebSocket traffic (a live chat widget, a presence indicator),
+  which the browser's request routing does not see. Block such a host or URL part with `--block`, and keep the
+  controls that start them out of the crawl with `--skip-control`.
+- `--min-interval-ms <n>` holds production page loads at least that far apart (default 0). Pass 1000 or more for a
+  site you do not run, or one behind a rate limit.
+
+Each run prints what it blocked (`polite: ...`). Routing turns off the browser's HTTP cache on both sides; the block
+list is part of the production cache key, the interval is not.
 
 ## The breakpoint matrix rule
 
@@ -103,7 +176,8 @@ Per route and matrix case:
 1. Pixels: per-channel tolerance 10, only documented dynamic regions masked.
 2. Geometry: `scripts/geometry-diff.mjs`. Flag `|dx| > 6`, `|dy| > 12`, `|dw| > 12` CSS pixels, plus nodes missing on
    either side. It catches cumulative drift (a small margin repeated per table row), doubled offsets (a relative top
-   and a margin top from two media queries) and containers off-center at in-between widths.
+   and a margin top from two media queries) and containers off-center at in-between widths. `--mask` leaves a
+   documented dynamic region's nodes out on both sides.
 3. Content and style: text, font metrics, colors, image source and crop, link targets.
 
 `scripts/compare-route.mjs` runs all three and replays `interactions.json` on both sides. Accepted differences come
@@ -125,7 +199,8 @@ closed booleans for interactions, and agents read "no flags" as PASS. The issue 
 
 `scripts/run-checks.mjs` runs one check per type, plus test hooks, presence and production defects, on every route at
 every matrix case, and exits 1 on any finding; a check that crashed is a finding. It writes
-`artifacts/checks/<route>/report.json`. Each check is also its own script with `--help`.
+`artifacts/checks/<route>/report.json`, which records the matrix file, its sha256, the cases run and whether the run
+was partial (see "The iteration loop and the gate" below). Each check is also its own script with `--help`.
 
 | Script                   | Compares                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Tolerance                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -142,7 +217,11 @@ every matrix case, and exits 1 on any finding; a check that crashed is a finding
 | `presence-by-route.mjs`  | Fixed, sticky and overlay layers and in-flow bars above the header per route, at the top and scrolled to the middle and bottom, each route in a fresh browser context, again after dismissal and in a new tab; each fixed layer's dock (top, middle or bottom; left, center or right). A live region without a name is named by its test id, id or place, never by its rotating text                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | exact                                                             |
 
 Rules every check follows: elements are matched by stable anchors (test id, role and accessible name, in-page `href`,
-tag and text), never by class names; each page is captured with the settings above and the waits in
+tag and text), never by class names; text is the text a reader sees (a closed menu kept in the markup as a hidden list
+adds nothing, text in a `display: contents` wrapper counts), is cut after the same number of visible characters on
+both sides and is compared with all whitespace removed, so React's markup with no whitespace between elements
+matches the same page formatted by Prettier: keep the target's source formatted, never strip whitespace to satisfy a
+check; each page is captured with the settings above and the waits in
 `scripts/lib/capture.mjs`, then waits until 5 s after it started loading (`--settle-ms`) and until the page has had no
 DOM change outside the masks for 0.75 s (at most 4 s), so a banner, a newsletter modal on a timer or content that
 arrives late is on both sides before anything is measured; the scroll and animation an activation starts are waited
@@ -152,26 +231,111 @@ and `run-checks.mjs` take it), log it in the ledger, and keep it as narrow as th
 hero around it, because a masked region is left out of every screenshot while what is drawn over it (the headline, an
 open menu) is still compared. Never mask a modal or banner on a timer; raise `--settle-ms` past its timer instead,
 since masking it removes the layer presence-by-route checks. Expect about two minutes per route per matrix case
-(state-capture and interaction-crawl take most of it, since both reload the page per interactive element); run every
-check anyway. A check that crashes on a navigation timeout is run once more and the report notes the retry.
+(state-capture and interaction-crawl take most of it, since both reload the page per interactive element). A check
+that crashes on a navigation timeout is run once more and the report notes the retry. A browser that closed mid-run
+(killed, out of memory) is relaunched before that retry and for every later check, and the retry note says so.
+
+### The iteration loop and the gate
+
+A full run of a 25-case matrix takes 20 to 50 minutes per route. Two things keep the loop fast without lowering the
+bar for done:
+
+- **The production cache.** Every check stores what it measured on production in `artifacts/prod-cache/<check>/`
+  (`--prod-cache <dir>` moves it, `--no-prod-cache` turns it off), and the next run loads only the target. The key
+  holds everything that changes what production measures: the check, the skill's scripts (an updated skill misses
+  every entry), the browser version, the production origin, the route (presence-by-route: every route, in order),
+  the full matrix case (width, height and every variant), `--settle-ms`, and the sorted `--mask` and
+  `--skip-control` selectors (presence-by-route also its `--dismiss` selectors, which no other check uses). A changed
+  mask or skip-control is a miss, never a stale hit. state-capture caches
+  production's whole side of a case: the disclosures it found, what the page changes on its own, and every open state
+  with its crop. A corrupt entry is measured again; a cache folder that cannot be written prints a warning and the run
+  goes on uncached. The run prints `production: N measurements from cache (oldest <date>), M captured`, and
+  `report.json` records the same under `production`.
+- **Fewer cases and checks.** `--cases 360x812,768,1280x900` (on `run-checks.mjs` and every check) runs only those
+  cases: an id is `<width>x<height>` with a suffix per variant (`1408x900-dark`, `390x844-mobile-touch`,
+  `1280x900-motion`), and a bare width selects every case of it. An id the matrix does not have fails and lists the
+  valid ones. `--only` (or `--skip`) reruns just the checks a fix can affect.
+
+While building a route or the shell, iterate on one phone, one tablet and one desktop case plus the B - 1, B and
+B + 1 cases of every breakpoint the route's own CSS or JS reacts to, with `--only` for what the last fix touched.
+Such a run prints `PARTIAL (n of m cases; k of 11 checks, without ...): iteration result, not a gate`, and its report
+records `gate.partial: true`, the checks that ran (`gate.checks`) and the ones left out (`gate.skipped`). A run with
+every case but one check left out is partial too, and so is a full run of any matrix file other than
+`docs/migration/breakpoints.json`. The gate is the full `docs/migration/breakpoints.json` matrix with every check (no
+`--cases`, `--only`, `--skip` or `--matrix`): run it once at the end of each route stage, at the check stage, and in
+every review and repair round. "Done" is decided only there. `review-page.mjs` refuses to sign a pass or verify a
+partial report, a report that left out a check, a report whose matrix hash differs from
+`docs/migration/breakpoints.json` now, and a report that records no matrix or no list of checks. A site with no
+legacy repository passes `--no-legacy-repo` instead of `--legacy-src`: testid-carryover cannot run, the report records
+why (`gate.waived`), and the run can still be the gate; `--skip testid-carryover` makes it partial.
+
+Refresh production with `--refresh-prod` (measure again and overwrite) at the start of every check stage and every
+review round, and whenever production changed (a deploy, new content, a changed banner). The cache trades freshness
+for speed: a cached measurement says what production looked like when it was taken, not now. So `review-page.mjs`
+refuses, by default, a report that used cached production measurements more than a day old (`--max-prod-age`,
+default `24h`; also `7d`, `30m`), and a report that records no production measurement or a cached one of unknown age.
+A gate run whose cache entries are older needs `--refresh-prod`. Raise `--max-prod-age` only for a production site you
+know has not changed since, and log that in the decisions ledger.
 
 The interaction crawl and state capture are not read-only toward production. They never follow a plain navigation
 link or press a submit button, but they click every other control (a `<button type="button">`, a `role="button"`, an
-element with a click listener) from a fresh load, once per matrix case and again per layer it opens. A handler that
-posts to the live site (add to cart, subscribe through JavaScript, vote or like, start a chat, analytics events) runs
-each time. Before the first run, list the site's side-effecting controls and pass each with `--skip-control
-<selector>` (both checks and `run-checks.mjs` take it); those controls are not activated on either side, so compare
-them by hand and note it in the ledger.
+element with a click listener) from a fresh load, once per matrix case and again per layer it opens. The capture
+settings above refuse a handler's POST, PUT, PATCH or DELETE to production and block the analytics hosts, but a
+handler that changes something with a GET (a vote, like or unsubscribe link, an add-to-cart URL), opens a WebSocket
+(start a chat) or calls a tracker not on the block list still reaches the live site each time. Before the first
+run, list the site's side-effecting controls and pass each with `--skip-control <selector>` (both checks and
+`run-checks.mjs` take it); those controls are not activated on either side, so compare them by hand and note it in
+the ledger. A control whose write is refused may also show an error state on production that the target does not;
+skip it the same way.
 
 ### Production defects
 
 Production is the truth for geometry, not for bugs. `production-defects.mjs` runs on production before a route is
 written, at every matrix case. Each defect (a squished image, an icon misaligned with its heading, text overflow,
-horizontal scroll) is appended to `docs/migration/decisions.md` as "production defect: fix in target" with its route,
-width and selector. The parity checks then compare the target with the corrected expectation for that element at that
-case: their findings there move to `corrected` in the report instead of failing, and the review page lists the
-defects apart from the findings, so the reviewer sees every intentional difference. A target that copies a defect
-fails with `copied-defect`.
+horizontal scroll) is appended to `docs/migration/decisions.md` as "production defect: fix in target": one row per
+element and kind, with every route it shows on, its width range (`320-414, 1280 px wide`) and its selectors. The
+parity checks then compare the target with the corrected expectation for that element at each of those cases: their
+findings there move to `corrected` in the report instead of failing, and the review page lists the defects apart
+from the findings, so the reviewer sees every intentional difference. A target that copies a defect fails with
+`copied-defect`.
+
+What it leaves out, because nothing is wrong for a visitor:
+
+- Glyphs a few pixels past a tight `line-height` (a logotype at 0.9, a display font at 30px/36px) while overflow is
+  visible. Text taller than its box by half a line or more, wider than its box, or cut off by `overflow: hidden` is
+  still reported.
+- Visually hidden text: an `sr-only` label clipped to 1 px, or `clip-path: inset(50%)`.
+- The face of a flip card turned away (`backface-visibility: hidden` with a transform that faces it backward).
+- Text covered by an opaque box painted above it, such as the back cards of a stacked deck under the front card's
+  background: at the middle of the overlap, a visitor sees one text, not two. A translucent or transparent card, or
+  one with `opacity` below 1, still reports the overlap. A text that should show but sits fully under an opaque box is
+  left out too; the visual review catches it.
+- Motion: running animations are finished, and infinite ones canceled, before the page is measured, so a word rising
+  into place on a loop is measured settled. Overflow that comes only from a `--mask` region (a script-driven ticker)
+  is not blamed on its unmasked parent.
+- An icon above its heading at every width of a route: that is the design. `icon-wrapped` is reported only at the
+  widths where the icon drops away from a heading it sits beside at other widths.
+
+When a reviewer finds a row is still not a defect, reject it by its id instead of changing the design to satisfy the
+check: add an `accepted.json` entry `{ "id": "D-07", "defect": ["PD-xxxxxx"], "reason": "a logotype, nothing is cut
+off" }` with a ledger row of the same id. A rejected defect is neither a fix target nor a `copied-defect`, on every
+route and width. `--reject PD-xxxxxx` on `production-defects.mjs` and `run-checks.mjs` does the same for one run, for
+the iteration loop only: `review-page.mjs` refuses to sign or verify a run that used it, or an `accepted.json` entry
+whose id has no ledger row, so only a reviewed, recorded rejection decides "done". Each route report keeps the
+rejected defects (`rejectedDefects`, with id and source) and every rejection the run used (`rejections`), and the
+review page lists them.
+
+An id is the kind plus the element's text (or its selector when it has no text), so it does not change between
+production and the target. Elements with the same text and kind share one id, such as a `BUTTON:Learn more` that
+overflows on two routes: rejecting it rejects both. The run prints a warning when a rejected id covers more than one
+selector, and the review page lists each element; check every one is a false positive. A rejected id that matches no
+defect is printed as a warning (a typo, production no longer has it, or an old id).
+
+The ledger rows stay current: a row the script wrote grows its routes, width ranges and selectors when a later run
+(a full matrix after a `--cases` subset, more routes) finds the element in more places, and keeps the approved by
+column. Rows from before ledger rows were one per element (one per route and width, evidence `production-defects.mjs`)
+are removed on the next run unless someone filled in approved by; an approved old row is kept and named in a warning.
+An old `PD-` id in `accepted.json` or `--reject` matches nothing: reject the element's new row instead.
 
 ### Presence by route
 
@@ -198,8 +362,8 @@ No route passes on findings alone. After `run-checks.mjs` passes:
 reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --sign`. `reviewed` is a hash of the
    target's screenshots and the findings the page showed.
 4. `review-page.mjs --verify --route <path>` is the last item of the driver's PASS gate. It fails when the route's
-   run-checks report fails, and when the target's screenshots or findings changed after the sign-off: a fix after the
-   review needs a new review.
+   run-checks report fails or is not a gate run (partial, another matrix, or no matrix recorded), and when the
+   target's screenshots or findings changed after the sign-off: a fix after the review needs a new review.
 
 ## Interaction parity floor
 
@@ -309,6 +473,7 @@ so when one is missing. Run any of them with `--help`.
 | Script                       | What it does                                                             |
 | ---------------------------- | ------------------------------------------------------------------------ |
 | `breakpoint-matrix.mjs`      | Thresholds from CSS, Sass and scripts, expanded into `breakpoints.json`  |
+| `capture-baselines.mjs`      | Production alone: page PNG, geometry, open states per route and case     |
 | `geometry-diff.mjs`          | collectNodes on both sides per matrix case, flagged by threshold; exit 1 |
 | `compare-route.mjs`          | Pixels, geometry, evidence, interactions, `--accepted`; report and PNGs  |
 | `lighthouse-gate.mjs`        | Five categories at 100 for a form factor and a URL list; exit 1          |

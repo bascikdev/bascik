@@ -48,6 +48,8 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * 1.33 MB: the Deployment Overview (content/deployment/index.md, about 13 KB of text) was missing from the
  * index until the content lookup learned folder index.md files. 1.335 MB: the full naming scheme for generated
  * element and #id classes on the internals scoping page (prompt 158 R3-03).
+ * 1.345 MB: the rc.10 docs sweep took the index to 1,334,643 bytes, and building every code sample's markup with
+ * html (its import, SafeHtml types, String(output) in the sample tests) added about 4 KB, for 1,338,640.
  */
 export const SEARCH_INDEX_MAX_BYTES = 1_345_000;
 

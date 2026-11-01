@@ -48,7 +48,7 @@ function accName(el) {
   if (tagOf(el) === "IMG") return norm(el.getAttribute("alt"));
   if (el.labels?.length)
     return norm([...el.labels].map((l) => l.textContent).join(" "));
-  const own = norm(el.textContent);
+  const own = keyText(el, Infinity);
   if (own) return own;
   return norm(el.getAttribute("title"));
 }
@@ -84,32 +84,103 @@ function roleOf(el) {
 }
 
 /**
- * The element's normalized text, with each <time datetime> read as its datetime: a relative date ("58 minutes ago")
- * that ticks over between the production load and the target load is still the same text.
+ * Cuts `text` after `max` characters that are not whitespace (default 80, the most a text key keeps), so two texts
+ * that differ only in whitespace are cut at the same place and still match once whitespace is removed (matchKeyInPage).
  */
-function textOf(el) {
-  if (
-    !(tagOf(el) === "TIME" && el.hasAttribute("datetime")) &&
-    !el.querySelector?.("time[datetime]")
-  )
-    return norm(el.textContent);
-  let out = "";
-  const walk = (node) => {
-    if (node.nodeType === 3) out += node.textContent;
-    else if (node.nodeType === 1) {
-      if (node.localName === "time" && node.hasAttribute("datetime"))
-        out += ` ${node.getAttribute("datetime")} `;
-      else for (const child of node.childNodes) walk(child);
-    }
-  };
-  walk(el);
-  return norm(out);
+function capText(text, max) {
+  const limit = max ?? 80;
+  if (limit === Infinity) return text;
+  let kept = 0;
+  let i = 0;
+  for (; i < text.length && kept < limit; i++) if (!/\s/.test(text[i])) kept++;
+  return text.slice(0, i).trim();
 }
 
-/** "TAG:normalized text", cut at 70 characters; the name stands in for elements without text, such as an image. */
+/**
+ * The text a reader sees in `el`, for a key: the text of its rendered descendants only (a closed menu kept in the
+ * markup as a hidden list, visibility hidden or opacity 0 text, scripts and styles add nothing), with each
+ * <time datetime> read as its datetime (a relative date that ticks over between the two loads is still the same text),
+ * whitespace collapsed for display and cut after `max` visible characters (default 80; Infinity keeps all). When `el`
+ * itself is not rendered (a closed panel), all its text counts, so it has the key it has once open. Text inside a
+ * display: contents wrapper (no box of its own) counts when the wrapper's nearest ancestor with a box is rendered.
+ * collectNodes in geometry-diff.mjs reads text the same way (it must be self-contained); keep the two in step.
+ *
+ * Markup formatting still shows in the result: React writes no whitespace between elements, formatted HTML has
+ * newlines there, so "MILK<br>FROTHER" reads "MILKFROTHER" on one side and "MILK FROTHER" on the other. Compare keys
+ * with keyMatch (lib/checks.mjs; matchKeyInPage in the page), which removes all whitespace; keep this text for messages.
+ */
+function keyText(el, max) {
+  const limit = max ?? 80;
+  // A display: contents element has no box, so checkVisibility() is false for it although its text is rendered: its
+  // nearest ancestor with a box decides (visibility still applies, since the text inherits it).
+  const shown = (node) => {
+    const cs = getComputedStyle(node);
+    if (cs.display === "contents")
+      return (
+        cs.visibility === "visible" &&
+        (!node.parentElement || shown(node.parentElement))
+      );
+    return typeof node.checkVisibility === "function"
+      ? node.checkVisibility({
+          opacityProperty: true,
+          visibilityProperty: true,
+        })
+      : cs.display !== "none" && cs.visibility === "visible";
+  };
+  const every = !shown(el);
+  const seen = new Map();
+  const visible = (node) => {
+    if (every || node === el) return true;
+    if (!seen.has(node)) seen.set(node, shown(node));
+    return seen.get(node);
+  };
+  let out = "";
+  // Visible characters read so far: the walk stops once the cut is reached, so a long subtree is not read in full.
+  let kept = 0;
+  const add = (text) => {
+    out += text;
+    kept += text.replace(/\s+/g, "").length;
+  };
+  const walk = (node) => {
+    if (kept >= limit) return;
+    if (node.nodeType === 3) {
+      if (visible(node.parentElement ?? el)) add(node.textContent);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    if (["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(tagOf(node)))
+      return;
+    if (node.localName === "time" && node.hasAttribute("datetime")) {
+      if (visible(node)) add(` ${node.getAttribute("datetime")} `);
+      return;
+    }
+    for (const child of node.childNodes) walk(child);
+  };
+  walk(el);
+  return capText(norm(out), limit);
+}
+
+/**
+ * A key as the checks compare it: all whitespace removed, so markup formatting never makes two keys of one. The same
+ * as keyMatch in lib/checks.mjs, under another name: a check module that imports keyMatch would have that import
+ * rewritten inside its in-page functions by a bundler or test runner (Vite), so in-page code calls this one.
+ */
+function matchKeyInPage(key) {
+  return String(key ?? "").replace(/\s+/g, "");
+}
+
+/** The element's text as a reader sees it (keyText, uncut). */
+function textOf(el) {
+  return keyText(el, Infinity);
+}
+
+/**
+ * "TAG:text": the text a reader sees (keyText), cut after 80 visible characters; the accessible name stands in for
+ * elements without text, such as an image. Compare keys with keyMatch.
+ */
 function textKey(el) {
-  const text = textOf(el) || accName(el);
-  return `${tagOf(el)}:${text.slice(0, 70).trim()}`;
+  const text = keyText(el) || capText(accName(el));
+  return `${tagOf(el)}:${text}`;
 }
 
 /**
@@ -229,6 +300,9 @@ const HELPERS = [
   tagOf,
   accName,
   roleOf,
+  capText,
+  keyText,
+  matchKeyInPage,
   textOf,
   textKey,
   selectorOf,

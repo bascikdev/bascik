@@ -98,12 +98,20 @@ function warmIndex() {
   if (!index) loadIndex();
 }
 
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+/**
+ * One element with its attributes and children. A string child becomes a text node, so no index value is ever
+ * parsed as HTML; null and "" children are skipped.
+ */
+function el(tag, attrs, children) {
+  var node = document.createElement(tag);
+  Object.keys(attrs).forEach(function (name) {
+    node.setAttribute(name, attrs[name]);
+  });
+  (children || []).forEach(function (child) {
+    if (child !== null && child !== undefined && child !== "")
+      node.append(child);
+  });
+  return node;
 }
 
 function runSearch(query) {
@@ -137,58 +145,61 @@ function runSearch(query) {
 
   function resultLink(e) {
     var label = e.heading
-      ? esc(e.navLabel) +
-        ' <span class="sr-sep">\u203a</span> ' +
-        esc(e.heading)
-      : esc(e.navLabel);
+      ? [
+          e.navLabel,
+          " ",
+          el("span", { class: "sr-sep" }, ["\u203a"]),
+          " ",
+          e.heading,
+        ]
+      : [e.navLabel];
     var snip = snippet(e.text, q, toks);
-    var snipHtml = snip ? '<span class="sr-text">' + esc(snip) + "</span>" : "";
-    return (
-      '<a href="' +
-      esc(e.path) +
-      '" class="sr-link">' +
-      '<span class="sr-section">' +
-      esc(e.section || "") +
-      "</span>" +
-      '<span class="sr-label">' +
-      label +
-      "</span>" +
-      snipHtml +
-      "</a>"
-    );
+    return el("a", { href: e.path, class: "sr-link" }, [
+      el("span", { class: "sr-section" }, [e.section || ""]),
+      el("span", { class: "sr-label" }, label),
+      snip ? el("span", { class: "sr-text" }, [snip]) : null,
+    ]);
   }
 
   // Home result with its popular pages nested under it, in the same result.
   function homeGroup(e) {
-    var items = sitelinks
-      .map(function (s) {
-        return (
-          '<li role="option"><a href="' +
-          esc(s.path) +
-          '" class="sr-sitelink" data-testid="search-sitelink">' +
-          esc(s.navLabel) +
-          "</a></li>"
-        );
-      })
-      .join("");
-    return (
-      '<li role="group" aria-label="Bascik home and popular pages" class="sr-group" data-testid="search-home-result">' +
-      '<div role="option">' +
-      resultLink(e) +
-      "</div>" +
-      (items
-        ? '<ul class="sr-sitelinks" role="presentation">' + items + "</ul>"
-        : "") +
-      "</li>"
+    var items = sitelinks.map(function (s) {
+      return el("li", { role: "option" }, [
+        el(
+          "a",
+          {
+            href: s.path,
+            class: "sr-sitelink",
+            "data-testid": "search-sitelink",
+          },
+          [s.navLabel],
+        ),
+      ]);
+    });
+    return el(
+      "li",
+      {
+        role: "group",
+        "aria-label": "Bascik home and popular pages",
+        class: "sr-group",
+        "data-testid": "search-home-result",
+      },
+      [
+        el("div", { role: "option" }, [resultLink(e)]),
+        items.length
+          ? el("ul", { class: "sr-sitelinks", role: "presentation" }, items)
+          : null,
+      ],
     );
   }
 
-  list.innerHTML = top
-    .map(function (e, i) {
-      if (i === 0 && e.sitelinks) return homeGroup(e);
-      return '<li role="option">' + resultLink(e) + "</li>";
-    })
-    .join("");
+  top.forEach(function (e, i) {
+    list.append(
+      i === 0 && e.sitelinks
+        ? homeGroup(e)
+        : el("li", { role: "option" }, [resultLink(e)]),
+    );
+  });
 
   var links = Array.from(list.querySelectorAll("a[href]"));
   links.forEach(function (a) {

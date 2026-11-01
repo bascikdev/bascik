@@ -834,21 +834,15 @@ async function markdownWatch(): Promise<Frame[]> {
   }
 }
 
-/** The five-line escaper the server scripts docs recommend writing once per project. */
-const ESCAPE_HELPER = `export const escape = (value: unknown): string =>
-  String(value ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-`;
-
-/** A component that is only a server script: it renders on every request, from that request. */
+/** A component that is only a server script: it renders on every request, from that request, with html escaping the name. */
 const HELLO_USER = `<script data-bascik-server>
-  import { escape } from '@/lib/server.ts';
+  import { html } from '@bascik/bascik/html';
 
   export default (request) => {
     const params = new URL(request.url).searchParams;
-    const name = escape(params.get('name') ?? 'Guest');
+    const name = params.get('name') ?? 'Guest';
     const time = new Date().toLocaleTimeString('en-US');
-    return \`<h1>Hello, \${name}!</h1>
+    return html\`<h1>Hello, \${name}!</h1>
       <p>Rendered at \${time}</p>\`;
   };
 </script>
@@ -880,8 +874,6 @@ async function serverRequest(): Promise<Frame[]> {
     editorHeight: 354,
     editorSettings: { "editor.lightbulb.enabled": "off" },
     prepare: async (dir) => {
-      await mkdir(join(dir, "src/lib"), { recursive: true });
-      await writeFile(join(dir, "src/lib/server.ts"), ESCAPE_HELPER);
       await mkdir(join(dir, "src/components/hello-user"), { recursive: true });
       await writeFile(
         join(dir, "src/components/hello-user/hello-user.html"),

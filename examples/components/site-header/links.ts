@@ -1,6 +1,8 @@
 // links.ts: the main navigation, in one place. Edit this list for your site. site-header.html imports it from a
 // build script, so the links are plain HTML in every page and the current page is marked without JavaScript.
-// Paths are relative to the deployment base; Bascik adds the base for you.
+// Paths are relative to the deployment base; Bascik adds the base for you. The markup is built with html from
+// @bascik/bascik/html, which escapes each label and href for where it lands, so there is no escaper to write.
+import { html, type SafeHtml } from "@bascik/bascik/html";
 
 export interface NavLink {
   label: string;
@@ -14,16 +16,6 @@ export const NAV_LINKS: NavLink[] = [
   { label: "Contact", href: "/contact" },
 ];
 
-const ENTITIES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
-
 /** "/blog/" and "/blog" compare equal; "/" only matches the home page. */
 const normalize = (path: string): string =>
   path.length > 1 ? path.replace(/\/+$/, "") : path;
@@ -36,17 +28,29 @@ export function isCurrent(href: string, pagePath: string): boolean {
   return current === target || current.startsWith(`${target}/`);
 }
 
+/** One nav item. aria-current is "page" for the page itself and "true" for the section it belongs to. */
+function navItem(link: NavLink, current?: "page" | "true"): SafeHtml {
+  const { href, label } = link;
+  // A hole cannot add or remove an attribute, so the tag is written twice and code picks one.
+  const anchor = current
+    ? html`<a href="${href}" aria-current="${current}">${label}</a>`
+    : html`<a href="${href}">${label}</a>`;
+  return html`<li>${anchor}</li>`;
+}
+
 /** The nav list for one page. `pagePath` is the page being built, from BASCIK_PAGE_PATH. */
-export function navLinks(pagePath = "/", links: NavLink[] = NAV_LINKS): string {
-  const items = links.map((link) => {
-    const exact = normalize(link.href) === normalize(pagePath);
-    // aria-current="page" for the page itself, "true" for the section it belongs to.
-    const current = exact
-      ? ' aria-current="page"'
-      : isCurrent(link.href, pagePath)
-        ? ' aria-current="true"'
-        : "";
-    return `<li><a href="${escapeHtml(link.href)}"${current}>${escapeHtml(link.label)}</a></li>`;
-  });
-  return `<ul class="nav-list">${items.join("")}</ul>`;
+export function navLinks(pagePath = "/", links = NAV_LINKS): SafeHtml {
+  const items = links.map((link) =>
+    navItem(
+      link,
+      normalize(link.href) === normalize(pagePath)
+        ? "page"
+        : isCurrent(link.href, pagePath)
+          ? "true"
+          : undefined,
+    ),
+  );
+  return html`<ul class="nav-list">
+    ${items}
+  </ul>`;
 }

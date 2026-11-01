@@ -12,29 +12,29 @@
         }));
     </script>
     <script data-bascik-build type="text/typescript">
+      import { html } from "@bascik/bascik/html";
       import { seo, jsonLd, article } from "@/lib/seo.ts";
       import type { Post } from "@/lib/posts.ts";
       export default () => {
         const { data: post }: { data: Post } = JSON.parse(
           process.env.BASCIK_ROUTE || "{}",
         );
-        return [
-          seo({
-            title: `${post.title} - Example Site`,
+        const tags = seo({
+          title: `${post.title} - Example Site`,
+          description: post.description,
+          type: "article",
+          publishedTime: post.date,
+          modifiedTime: post.updated,
+        });
+        const schema = jsonLd(
+          article({
+            headline: post.title,
             description: post.description,
-            type: "article",
-            publishedTime: post.date,
-            modifiedTime: post.updated,
+            datePublished: post.date,
+            dateModified: post.updated,
           }),
-          jsonLd(
-            article({
-              headline: post.title,
-              description: post.description,
-              datePublished: post.date,
-              dateModified: post.updated,
-            }),
-          ),
-        ].join("\n");
+        );
+        return html`${tags}${schema}`;
       };
     </script>
     <link rel="stylesheet" href="/css/prose.css" />
@@ -44,22 +44,22 @@
     <site-header><theme-toggle /></site-header>
     <main id="main" class="container" data-testid="blog-post-main">
       <script data-bascik-build type="text/typescript">
-        import { escapeHtml, formatDate, type Post } from "@/lib/posts.ts";
+        import { html, raw } from "@bascik/bascik/html";
+        import { formatDate, type Post } from "@/lib/posts.ts";
         export default () => {
           const { data: post }: { data: Post } = JSON.parse(
             process.env.BASCIK_ROUTE || "{}",
           );
-          const tags = post.tags
-            .map(
-              (tag: string) =>
-                `<a href="/blog/tags/${tag}/">${escapeHtml(tag)}</a>`,
-            )
-            .join(", ");
-          // post.html is trusted: it comes from your own Markdown files. Sanitize HTML from a CMS or users.
-          return `<article>
-            <h1>${escapeHtml(post.title)}</h1>
-            <p><time datetime="${post.date}">${formatDate(post.date)}</time>${tags ? ` · ${tags}` : ""}</p>
-            <div class="prose">${post.html}</div>
+          const tags = post.tags.map(
+            (tag: string, index: number) =>
+              html`${index ? ", " : " · "}<a href="/blog/tags/${tag}/">${tag}</a>`,
+          );
+          // post.html is trusted: it comes from your own Markdown files, so raw() inserts it as it is. Sanitize
+          // HTML from a CMS or users with an allowlist before you pass it to raw().
+          return html`<article>
+            <h1>${post.title}</h1>
+            <p><time datetime="${post.date}">${formatDate(post.date)}</time>${tags}</p>
+            <div class="prose">${raw(post.html)}</div>
           </article>`;
         };
       </script>

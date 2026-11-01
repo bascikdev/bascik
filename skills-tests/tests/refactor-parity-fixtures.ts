@@ -40,6 +40,8 @@ export interface FixtureServer {
   src(check: string, side: "defect" | "clean"): string;
   /** The legacy source tree of a check (`<check>/legacy`). */
   legacy(check: string): string;
+  /** How many requests the server answered whose path starts with `prefix` (such as `/site/prod/`), since the start. */
+  requests(prefix: string): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -65,8 +67,10 @@ function resolveFile(urlPath) {
   }
   return undefined;
 }
+const counts = new Map();
 const server = createServer((req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  counts.set(path, (counts.get(path) ?? 0) + 1);
   const file = resolveFile(path);
   if (!file) {
     res.writeHead(404, { "content-type": "text/plain" }).end("not found");
@@ -81,6 +85,11 @@ const server = createServer((req, res) => {
 });
 server.listen(0, "127.0.0.1", () => parentPort.postMessage({ port: server.address().port }));
 parentPort.on("message", (message) => {
+  if (message?.type === "requests") {
+    let n = 0;
+    for (const [path, count] of counts) if (path.startsWith(message.prefix)) n += count;
+    parentPort.postMessage({ type: "requests", n });
+  }
   if (message === "close") {
     server.closeAllConnections();
     server.close(() => parentPort.postMessage("closed"));
@@ -106,6 +115,16 @@ export async function serveFixtures(): Promise<FixtureServer> {
     site: (check, side) => `${origin}/${check}/${side}`,
     src: (check, side) => join(root, check, `src-${side}`),
     legacy: (check) => join(root, check, "legacy"),
+    requests: (prefix) =>
+      new Promise<number>((done) => {
+        const listen = (message: { type?: string; n?: number }) => {
+          if (message?.type !== "requests") return;
+          worker.off("message", listen);
+          done(message.n ?? 0);
+        };
+        worker.on("message", listen);
+        worker.postMessage({ type: "requests", prefix });
+      }),
     close: async () => {
       await new Promise<void>((done) => {
         worker.once("message", () => done());

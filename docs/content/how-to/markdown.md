@@ -176,11 +176,13 @@ Have the build script emit the component tag around the parsed Markdown:
 <!-- src/pages/about.html -->
 <script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
+  import { html, raw } from "@bascik/bascik/html";
   import { marked } from "marked";
 
   export default async function () {
     const md = await readFile("./content/article.md", "utf8");
-    return `<markdown-content>${marked(md)}</markdown-content>`;
+    // The Markdown is the project's own, so its HTML is trusted: raw() keeps it as markup.
+    return html`<markdown-content>${raw(marked.parse(md, { async: false }) as string)}</markdown-content>`;
   }
 </script>
 ```
@@ -246,20 +248,26 @@ This is the post body.
 <!-- src/pages/posts/my-first-post.html -->
 <script data-bascik-build type="text/typescript">
   import { readFile } from "node:fs/promises";
+  import { html, raw } from "@bascik/bascik/html";
   import { marked } from "marked";
   import matter from "gray-matter";
 
   export default async function () {
-    const raw = await readFile("./content/post.md", "utf8");
-    const { data, content } = matter(raw);
+    const source = await readFile("./content/post.md", "utf8");
+    const { data, content } = matter(source);
+    const day = data.date.toISOString().slice(0, 10);
+    const shown = data.date.toLocaleDateString("en-US", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    });
+    // html escapes the front matter; the body is your own Markdown, so raw() inserts it as it is.
+    const body = raw(marked.parse(content, { async: false }) as string);
 
-    return `
-      <article>
-        <h1>${data.title}</h1>
-        <time datetime="${data.date.toISOString().slice(0, 10)}">${data.date.toLocaleDateString("en-US", { dateStyle: "long", timeZone: "UTC" })}</time>
-        ${marked(content)}
-      </article>
-    `;
+    return html`<article>
+      <h1>${data.title}</h1>
+      <time datetime="${day}">${shown}</time>
+      ${body}
+    </article>`;
   }
 </script>
 ```
@@ -272,6 +280,7 @@ Read an entire folder of Markdown files and generate a list or index page:
 <!-- src/pages/blog/index.html -->
 <script data-bascik-build type="text/typescript">
   import { readdir, readFile } from "node:fs/promises";
+  import { html } from "@bascik/bascik/html";
   import matter from "gray-matter";
 
   export default async function () {
@@ -289,18 +298,16 @@ Read an entire folder of Markdown files and generate a list or index page:
       }),
     );
 
-    const items = posts
-      .map(
-        (p) => `
-      <li>
+    // html escapes each front matter value; an array of html values needs no .join("").
+    const items = posts.map((p) => {
+      const day = p.date.toISOString().slice(0, 10);
+      return html`<li>
         <a href="/posts/${p.slug}">${p.title}</a>
-        <time datetime="${p.date.toISOString().slice(0, 10)}">${p.date.toISOString().slice(0, 10)}</time>
-      </li>
-    `,
-      )
-      .join("\n");
+        <time datetime="${day}">${day}</time>
+      </li>`;
+    });
 
-    return `<ul class="post-list">\n${items}\n</ul>`;
+    return html`<ul class="post-list">${items}</ul>`;
   }
 </script>
 ```
