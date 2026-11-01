@@ -32,8 +32,10 @@ Component scripts are IIFEs and cannot be imported. Test logic, not DOM wiring:
 2. Load it from the component with `<script src="search-logic.ts"></script>`. Bascik strips its types and scopes it; no build step or `minify.js` hook is needed.
 3. Import the `.ts` file directly in `search-logic.test.ts`. No browser is needed.
 
+For manual Vitest setup, install `vitest`, `@vitest/coverage-v8` and `vite` as dev dependencies. Vitest 5 requires the Vite peer even when the config imports `vitest/config`; see `read-doc.mjs /testing/unit-testing`.
+
 ```ts
-// vite.config.ts: vitest/config, not vite, which the project does not declare
+// vite.config.ts
 import { defineConfig } from "vitest/config";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"] } });
 ```

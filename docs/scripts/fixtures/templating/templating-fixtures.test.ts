@@ -66,6 +66,39 @@ describe("templating fixtures", () => {
     }
   });
 
+  it("the fixture and documented helper preserve false and zero while leaving missing values empty", async () => {
+    const { interpolate } = await import("./interpolate.ts");
+    const { code: block = "" } = await readDemoBlock(
+      "./content/how-to/templating.md",
+      "helper-module",
+    );
+    const source = stripTypeScriptTypes(block)
+      .replace(/^\s*import .*$/m, "")
+      .replace("export const interpolate", "const interpolate");
+    const { esc } = await import(
+      path.resolve(import.meta.dirname, "../../../../pkg/src/html.ts")
+    );
+    const documented = new Function("esc", `${source}\nreturn interpolate;`)(
+      esc,
+    );
+    for (const render of [interpolate, documented]) {
+      expect(
+        render(
+          "${item.disabled}|${item.enabled}|${item.count}|${item.missing}|${item.nil}|${item.text}",
+          {
+            item: {
+              disabled: false,
+              enabled: true,
+              count: 0,
+              nil: null,
+              text: "<b>&",
+            },
+          },
+        ),
+      ).toBe("false|true|0|||&lt;b&gt;&amp;");
+    }
+  });
+
   it("handlebars fixture renders the article list", async () => {
     const { default: Handlebars } = await import("handlebars");
     const src = await readFile(

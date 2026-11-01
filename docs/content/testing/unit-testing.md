@@ -7,10 +7,10 @@ Unit testing in Bascik focuses on verifying pure functions, utility modules, dat
 If your project was scaffolded with `create-bascik`, Vitest is pre-configured. To set up Vitest manually in an existing project, install the dependencies:
 
 ```sh
-npm install -D vitest @vitest/coverage-v8
+npm install -D vitest @vitest/coverage-v8 vite
 ```
 
-Create a `vite.config.ts` file in your project root. Import `defineConfig` from `vitest/config`: your project declares `vitest`, and `vite` is only Vitest's own dependency, which pnpm and Yarn Plug'n'Play do not let your config import.
+Create a `vite.config.ts` file in your project root. Import `defineConfig` from `vitest/config` for its test configuration types. Vitest 5 requires `vite` as a peer dependency; declare it explicitly so Yarn Plug'n'Play and other strict package layouts can resolve it.
 
 ```ts
 import { defineConfig } from "vitest/config";

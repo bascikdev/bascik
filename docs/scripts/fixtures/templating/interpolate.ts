@@ -15,5 +15,5 @@ export const interpolate = (
           obj == null ? undefined : (obj as Record<string, unknown>)[key],
         data,
       );
-    return value == null ? "" : esc(value);
+    return value == null ? "" : esc(String(value));
   });

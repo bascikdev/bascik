@@ -93,7 +93,7 @@ Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stach
 
 ## A dependency-free interpolation helper
 
-`html` covers templates written in a script. For a template kept as a plain string, such as one read from a file or a CMS field, this small helper fills `${path}` placeholders without installing anything. It resolves dotted paths against a plain object, escapes each value with `esc()` from the same module, and renders a missing key as an empty string so a data typo degrades quietly instead of throwing. It does not check URLs, so do not put a placeholder at the start of an `href` or `src`.
+`html` covers templates written in a script. For a template kept as a plain string, such as one read from a file or a CMS field, this small helper fills `${path}` placeholders without installing anything. It resolves dotted paths against a plain object, converts present values to text before escaping with `esc()` from the same module, and renders a missing key, `null` or `undefined` as an empty string so a data typo degrades quietly instead of throwing. Boolean `false` renders as `"false"` and zero as `"0"`. It does not check URLs, so do not put a placeholder at the start of an `href` or `src`.
 
 <!-- demo:helper-module -->
 
@@ -115,7 +115,7 @@ export const interpolate = (
           obj == null ? undefined : (obj as Record<string, unknown>)[key],
         data,
       );
-    return value == null ? "" : esc(value);
+    return value == null ? "" : esc(String(value));
   });
 ```
 
