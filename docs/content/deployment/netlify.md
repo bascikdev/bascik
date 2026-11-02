@@ -2,13 +2,36 @@
 
 Deploy a Bascik site to Netlify so the CDN serves your static files and one generated Netlify Function runs your server scripts, stream scripts, component tags returned by them, and API routes, with no separate backend server.
 
-## How it works
+> **See it live on Netlify.** [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its home page comes straight from the CDN, and each demo page runs in the generated function:
+>
+> - [Server scripts](https://netlify-adapter.bascik.dev/server?name=collin): request context and platform information rendered before headers commit.
+> - [In-place skeleton swap](https://netlify-adapter.bascik.dev/stream) and [progressive append](https://netlify-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML.
+> - [Mixed server and stream page](https://netlify-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
+> - [Product catalog](https://netlify-adapter.bascik.dev/catalog?q=frother) and [streamed catalog](https://netlify-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the function renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
+> - [API client](https://netlify-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
+
+## How it works: CDN-first with Netlify Functions
 
 - **Static pages and assets come from the CDN:** pages without request-time scripts, CSS, client JavaScript, images, and fonts are plain files in `publish/`. The function is never invoked for them.
 - **Dynamic pages and API routes run in one function:** `bascik-pages` (Netlify Functions API v2, streaming) carries each `data-bascik-server` and `data-bascik-stream` job, the precompiled templates they render into, every API route in `src/api/`, and the component manifest, so component tags a script returns are rendered with the component's markup and scoped CSS. See [Returning component tags](/server-scripts#returning-component-tags).
 - **Netlify routes only those paths to it:** the function's `config.path` lists every URL of each dynamic page (`/account`, `/account.html`, `/account/`) and each API route, written as URLPattern paths (`/api/items/[id]` becomes `/api/items/:id`, a final `[...rest]` becomes `*`).
 
 The function produces the same status, body bytes, and headers as `bascik --server` for pages, streamed pages, rendered components, and API routes; the adapter's parity tests compare the two on every change.
+
+## What you get
+
+Build once on Node with `bascik --build --target netlify`. The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
+
+- a **public tree** (`publish/`): static pages and assets served by Netlify's CDN;
+- a **generated function bundle** (`functions/bascik-pages.mjs`): request-time scripts, API routes, compiled page templates, and the component manifest used to render component tags returned by scripts.
+
+At request time the flow is:
+
+1. The CDN answers ordinary static paths directly. The function is never invoked for them.
+2. Requests for a page with request-time scripts, or for a compiled API route, invoke `bascik-pages`.
+3. The function resolves every `server` job, commits headers, and streams the document: static HTML first, then each `stream` fragment as it resolves, in source order.
+
+No client-side JavaScript is added, nothing hydrates, and there is no per-fragment HTTP endpoint. A page with stream scripts renders progressively in a browser even with JavaScript disabled.
 
 ## Start from the template
 
@@ -18,7 +41,7 @@ For a new site, let `create-bascik` set this up:
 npm create bascik@rc my-site -- --template netlify
 ```
 
-The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter installed, `npm run dev` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
+The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter and Netlify CLI installed, `npm run dev` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
@@ -27,6 +50,12 @@ The `--` is required: npm keeps flags placed before it for itself. That is the s
 
 ```sh
 npm install --save-dev @bascik/adapter-netlify
+```
+
+- Netlify CLI for local development, preview, and deployment:
+
+```sh
+npm install --save-dev netlify-cli
 ```
 
 ## Build
