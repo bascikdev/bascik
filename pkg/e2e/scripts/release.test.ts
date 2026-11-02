@@ -8,7 +8,6 @@ function fixture({
   failed = false,
   pending = false,
   unavailable = false,
-  npmAuthFailure = false,
   version = "1.2.3",
 } = {}) {
   const calls: string[][] = [];
@@ -24,18 +23,24 @@ function fixture({
         if (args[0] === "rev-parse") return SHA;
         if (args[0] === "show") {
           expect(args[1]).toMatch(new RegExp(`^${SHA}:`));
-          return JSON.stringify({ name: "test-package", version });
+          const packagePath = args[1].slice(SHA.length + 1);
+          const nameByPath: Record<string, string> = {
+            "pkg/package.json": "@bascik/bascik",
+            "lsp/package.json": "@bascik/language-server",
+            "create/package.json": "create-bascik",
+            "adapters/cloudflare/package.json": "@bascik/adapter-cloudflare",
+            "extensions/vscode-bascik/package.json": "bascik-vscode",
+          };
+          return JSON.stringify({
+            name: nameByPath[packagePath],
+            version,
+          });
         }
         if (args[0] === "ls-remote")
           return existing ? `${SHA}\trefs/tags/v1.2.3` : "";
         return "";
       }
       if (args[0] === "auth") return "";
-      if (command === "npm" && args[0] === "whoami") {
-        if (npmAuthFailure) throw new Error("npm auth missing");
-        return "test-user";
-      }
-      if (command === "npm" && args[0] === "dist-tag") return "";
       expect(args.slice(0, 2)).toEqual(["run", "list"]);
       runChecks++;
       return JSON.stringify([
@@ -58,7 +63,12 @@ function fixture({
     },
     now: () => clock,
     async registry(name: string, registryVersion: string) {
-      expect(name).toBe("test-package");
+      expect([
+        "@bascik/language-server",
+        "@bascik/bascik",
+        "create-bascik",
+        "@bascik/adapter-cloudflare",
+      ]).toContain(name);
       expect(registryVersion).toBe(version);
       registryChecks++;
       calls.push(["registry"]);
@@ -132,49 +142,42 @@ describe("release script", () => {
     ]);
   });
 
-  it("promotes selected npm RCs to latest only when explicitly requested", async () => {
-    const defaultRelease = fixture({ version: "1.2.3-rc.1" });
-    await release(["pkg"], defaultRelease.dependencies);
-    expect(defaultRelease.calls.some((call) => call[1] === "dist-tag")).toBe(
-      false,
-    );
+  it("prints latest dist-tag commands for every selected npm package without releasing", async () => {
+    const { dependencies, calls, logs } = fixture();
+    await release(["--latest"], dependencies);
 
-    const promotedRelease = fixture({ version: "1.2.3-rc.1" });
-    await release(["pkg", "--promote-rc-latest"], promotedRelease.dependencies);
-    expect(promotedRelease.calls).toContainEqual([
-      "npm",
-      "dist-tag",
-      "add",
-      "test-package@1.2.3-rc.1",
-      "latest",
-      "--registry",
-      "https://registry.npmjs.org",
+    expect(logs.slice(1)).toEqual([
+      "npm dist-tag add @bascik/language-server@1.2.3 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add @bascik/bascik@1.2.3 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add create-bascik@1.2.3 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add @bascik/adapter-cloudflare@1.2.3 latest --registry https://registry.npmjs.org",
     ]);
-    const registryIndex = promotedRelease.calls.findIndex(
-      (call) => call[0] === "registry",
-    );
-    const distTagIndex = promotedRelease.calls.findIndex(
-      (call) => call[1] === "dist-tag",
-    );
-    expect(distTagIndex).toBeGreaterThan(registryIndex);
+    expect(
+      calls.some(
+        (call) => call[1] === "push" || call[0] === "gh" || call[0] === "npm",
+      ),
+    ).toBe(false);
   });
 
-  it("checks npm authentication before pushing tags when RC promotion is requested", async () => {
-    const { dependencies, calls } = fixture({
-      npmAuthFailure: true,
-      version: "1.2.3-rc.1",
-    });
-    await expect(
-      release(["pkg", "--promote-rc-latest"], dependencies),
-    ).rejects.toThrow("npm auth missing");
-    expect(calls.some((call) => call[1] === "push")).toBe(false);
+  it("prints latest commands for RC versions and selected packages only", async () => {
+    const { dependencies, logs } = fixture({ version: "1.2.3-rc.10" });
+    await release(["pkg", "create", "--latest"], dependencies);
+
+    expect(logs).toEqual([
+      "Run these commands to set the selected npm package versions to latest:",
+      "npm dist-tag add @bascik/bascik@1.2.3-rc.10 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add create-bascik@1.2.3-rc.10 latest --registry https://registry.npmjs.org",
+    ]);
   });
 
   it.each([
     { existing: true, message: /tags already exist/ },
     { failed: true, message: /failed.*Later stages were not pushed/ },
     { pending: true, message: /Timed out waiting for lsp-v/ },
-    { unavailable: true, message: /Timed out waiting for test-package/ },
+    {
+      unavailable: true,
+      message: /Timed out waiting for @bascik\/language-server/,
+    },
   ])("stops safely on $message", async ({ message, ...options }) => {
     const { dependencies, calls } = fixture(options);
     await expect(release([], dependencies)).rejects.toThrow(message);
@@ -192,20 +195,13 @@ describe("release script", () => {
       release(["pkg", "--extension-pre"], dependencies),
     ).rejects.toThrow(/requires selecting extension/);
     await expect(
-      release(["pkg", "--promote-rc-latest"], dependencies),
-    ).rejects.toThrow(/requires selecting at least one npm RC/);
+      release(["extension", "--latest"], dependencies),
+    ).rejects.toThrow(/requires selecting at least one npm package/);
     expect(
       calls.some(
         (call) => call[1] === "push" || call[0] === "gh" || call[0] === "npm",
       ),
     ).toBe(false);
-  });
-
-  it("does not promote non-RC prereleases with the RC option", async () => {
-    const { dependencies } = fixture({ version: "1.2.3-beta.1" });
-    await expect(
-      release(["pkg", "--promote-rc-latest"], dependencies),
-    ).rejects.toThrow(/requires selecting at least one npm RC/);
   });
 
   it("rejects an unexpected push remote", async () => {

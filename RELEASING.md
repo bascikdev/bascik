@@ -11,7 +11,8 @@ yarn release pkg lsp               # Publish only selected packages
 yarn release create cloudflare
 yarn release extension             # Marketplace stable
 yarn release extension --extension-pre
-yarn release pkg --promote-rc-latest # Also move npm latest to the selected RC
+yarn release --latest               # Print npm dist-tag commands; does not release
+yarn release pkg create --latest    # Print commands for selected npm packages
 yarn release --dry-run             # Print tag-push commands without publishing
 ```
 
@@ -30,10 +31,13 @@ Existing tags are never replaced. Select only unreleased packages; their
 dependencies must already be published or selected in an earlier stage.
 
 npm prereleases publish under their prerelease channel (`rc`, `beta`, etc.);
-stable versions publish under `latest`. To also promote selected npm
-RCs to `latest`, pass `--promote-rc-latest`. This requires local npm CLI
-authentication. Promoting an RC means a plain `npm install` can install that
-prerelease; without the flag, `latest` remains on the stable release.
+stable versions publish under `latest`. `--latest` is a command-generation
+mode: it prints `npm dist-tag add <package>@<version> latest` commands for the
+selected npm packages using versions from `origin/main`, and does not create
+release tags or run npm. With no package selection, it prints commands for all
+four npm packages and skips the Marketplace extension. Run the printed commands
+locally to update the tags; this lets npm handle any interactive 2FA prompt.
+Pointing `latest` at an RC means a plain `npm install` can install a prerelease.
 Extension versions must be plain `x.y.z`; `--extension-pre` uses
 `ext-pre-v<version>`. Use distinct versions for stable and pre-release uploads.
 

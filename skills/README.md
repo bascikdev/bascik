@@ -29,7 +29,7 @@ npx skills add bascikdev/bascik --skill bascik-refactor
 | Skill                                                   | Use it for                                                                                                                         |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | [`bascik`](bascik/SKILL.md)                             | Start here: project layout, components, slots, props, the CLI, verifying output, examples, and building a new site                 |
-| [`bascik-components`](bascik-components/SKILL.md)       | What becomes a component, component CSS and TypeScript that work with many instances, interactivity, and theming                   |
+| [`bascik-components`](bascik-components/SKILL.md)       | What becomes a component, component CSS and TypeScript, interactivity, theming, and local responsive image optimization            |
 | [`bascik-compatibility`](bascik-compatibility/SKILL.md) | Which HTML, CSS, and JavaScript features to use: Baseline support and Bascik scoping                                               |
 | [`bascik-scripts`](bascik-scripts/SKILL.md)             | Build, routes, server, and stream scripts, API routes, and Markdown blogs                                                          |
 | [`bascik-seo`](bascik-seo/SKILL.md)                     | Head tags, social cards, structured data, sitemap, and `llms.txt`                                                                  |
@@ -42,7 +42,7 @@ The skills hold the rules an assistant must follow and point to the docs at http
 
 ## Scripts
 
-The skills ship dependency-free Node.js scripts (Node 22.22+) that agents run from the project root. The opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
+The skills ship Node.js scripts (Node 22.22+) that agents run from the project root. Most are dependency-free; the component skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
 
 | Script                                               | Purpose                                                                                                                                                                                                         |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -68,7 +68,7 @@ The skills ship dependency-free Node.js scripts (Node 22.22+) that agents run fr
 | `bascik-refactor/scripts/compare-route.mjs`          | Pixel, geometry and interaction comparison per route (Playwright and sharp)                                                                                                                                     |
 | `bascik-refactor/scripts/lighthouse-gate.mjs`        | Fail unless every Lighthouse report is 100 in all five categories                                                                                                                                               |
 | `bascik-refactor/scripts/llms-txt.mjs`               | Post exec script that writes `dist/llms.txt`                                                                                                                                                                    |
-| `bascik-refactor/scripts/responsive-webp.mjs`        | WebP variants and a sha256 manifest (sharp)                                                                                                                                                                     |
+| `bascik-components/scripts/responsive-webp.mjs`      | WebP variants and a sha256 manifest (Sharp); see [Optimizing Images](https://bascik.dev/how-to/optimizing-images)                                                                                               |
 | `bascik-refactor/scripts/worker-response-policy.mjs` | Cloudflare Worker wrapper with CSP hashes, robots and cache headers                                                                                                                                             |
 | `bascik-refactor/scripts/interaction-crawl.mjs`      | Activate every interactive element on both sides and compare what each one does                                                                                                                                 |
 | `bascik-refactor/scripts/state-capture.mjs`          | Open every dropdown and disclosure on both sides: styles, icons and crops                                                                                                                                       |

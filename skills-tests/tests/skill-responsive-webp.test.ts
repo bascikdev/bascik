@@ -1,10 +1,12 @@
-// Unit tests for skills/bascik-refactor/scripts/responsive-webp.mjs: planning widths (never upscaling), the srcset
+// Unit tests for skills/bascik-components/scripts/responsive-webp.mjs: planning widths (never upscaling), the srcset
 // string, the manifest with byte counts and sha256, and the CLI flags. sharp is the reader's project dependency, so
 // the script takes it injected; the tests use a fake, plus one round trip through the real sharp the docs package
 // already has. Temp dirs only; no network.
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -22,7 +24,7 @@ import {
   planWidths,
   srcsetFor,
   urlPrefixFor,
-} from "../../skills/bascik-refactor/scripts/responsive-webp.mjs";
+} from "../../skills/bascik-components/scripts/responsive-webp.mjs";
 
 const sha = (buf: Buffer) => createHash("sha256").update(buf).digest("hex");
 
@@ -318,6 +320,73 @@ describe("parseCliArgs", () => {
       quality: 72,
       manifest: "docs/migration/images.json",
       urlPrefix: "/assets/img/",
+    });
+  });
+
+  describe("standalone component skill CLI", () => {
+    it("generates real files with the project's Sharp without sibling skills", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "bascik-images-cli-"));
+      try {
+        const script = join(dir, "responsive-webp.mjs");
+        copyFileSync(
+          new URL(
+            "../../skills/bascik-components/scripts/responsive-webp.mjs",
+            import.meta.url,
+          ),
+          script,
+        );
+        const src = join(dir, "hero.jpg");
+        await sharp({
+          create: {
+            width: 800,
+            height: 450,
+            channels: 3,
+            background: "#336699",
+          },
+        })
+          .jpeg()
+          .toFile(src);
+        const out = join(dir, "out");
+        const result = spawnSync(
+          process.execPath,
+          [
+            script,
+            "--src",
+            src,
+            "--out",
+            out,
+            "--widths",
+            "400,800,1600",
+            "--url-prefix",
+            "/img/",
+          ],
+          { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("manifest:");
+        const manifest = JSON.parse(
+          readFileSync(join(out, "manifest.json"), "utf8"),
+        );
+        expect(
+          manifest.images["hero.jpg"].map(
+            (image: { width: number }) => image.width,
+          ),
+        ).toEqual([400, 800]);
+        expect((await sharp(join(out, "hero-400.webp")).metadata()).width).toBe(
+          400,
+        );
+        expect(existsSync(join(out, "hero-1600.webp"))).toBe(false);
+
+        const missing = spawnSync(
+          process.execPath,
+          [script, "--src", src, "--out", out, "--url-prefix", "/img/"],
+          { cwd: dir, encoding: "utf8" },
+        );
+        expect(missing.status).toBe(1);
+        expect(missing.stderr).toContain("npm install -D sharp");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 

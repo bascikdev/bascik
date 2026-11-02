@@ -65,6 +65,13 @@ test("each like button toggles independently", async ({ page }) => {
 });
 ```
 
+## Responsive layout regressions
+
+- Test width-height pairs, not just popular phone widths: include the reported failure, short portrait, landscape, breakpoint edges and unchanged desktop cases.
+- Wait for fonts and images, then assert the intended relationships: visible text clears fixed headers, text and CTAs stay inside their section, buttons follow text with the intended gap, and no sideways scroll appears. Use roles/test ids and measured bounds, not scoped class names; choose padding/gap expectations from the design.
+- Prove the regression test fails before the fix and passes on the production build afterward; cover every route using the affected component. Screenshots and painted-layer inspection still matter: element boxes, zero sideways scroll and Lighthouse scores cannot prove text is unobscured.
+- For existing-site defects and accepted parity differences, read `read-doc.mjs /how-to/agent-migration#finding-responsive-defects` and use the `bascik-refactor` workflow when installed.
+
 ## Validate compiled HTML
 
 Install `parse5` as a dev dependency and `bascik --check` will report WHATWG parse errors in `dist/` HTML. For a test that fails the suite instead, walk `dist/**/*.html` and collect `parse5` `onParseError` results; see `read-doc.mjs /testing/component-testing`.

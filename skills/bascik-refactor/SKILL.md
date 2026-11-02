@@ -1,6 +1,6 @@
 ---
 name: bascik-refactor
-description: Have coding agents refactor a live production site to Bascik with production parity. Use when every route must match the live site in pixels, element geometry and interactions at every breakpoint and score 100 in all five Lighthouse categories; when generating a breakpoint viewport matrix from legacy CSS, comparing a route with production, gating Lighthouse reports, writing llms.txt, building responsive WebP variants, or wrapping a Cloudflare Worker with CSP, robots and cache headers; or when writing the execution contract, prompt pack, route and failure prompts, driver agent, and decisions ledger for that work. Opt-in, so new projects do not include it.
+description: Have coding agents refactor a live production site to Bascik with production parity while fixing existing responsive layout bugs, clipped text and misplaced buttons. Use when every route must match the live site in pixels, element geometry and interactions at every breakpoint and score 100 in all five Lighthouse categories; when generating a breakpoint viewport matrix from legacy CSS, comparing a route with production, gating Lighthouse reports, writing llms.txt, building responsive WebP variants, or wrapping a Cloudflare Worker with CSP, robots and cache headers; or when writing the execution contract, prompt pack, route and failure prompts, driver agent, and decisions ledger for that work. Opt-in, so new projects do not include it.
 license: MIT
 metadata:
   author: bascik
@@ -9,7 +9,7 @@ metadata:
 
 # Refactoring a Live Site with Coding Agents
 
-Requires the `bascik` skill for component rules and the `bascik-migrate` skill for the framework-to-Bascik procedure; this skill runs that procedure route by route until every route matches production. It is opt-in, so projects created with `npm create bascik@rc` do not include it. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
+Requires the `bascik` skill for component rules and the `bascik-migrate` skill for the framework-to-Bascik procedure; this skill runs that procedure route by route until every route matches production except documented, verified defect corrections. It is opt-in, so projects created with `npm create bascik@rc` do not include it. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 
 ## Procedure
 
@@ -23,6 +23,13 @@ Read `node <skills-dir>/bascik/scripts/read-doc.mjs /how-to/agent-migration` fir
 6. Log every intentional difference in [references/templates/decisions-ledger.md](references/templates/decisions-ledger.md); a row that changes pixels also gets an `accepted.json` entry for `compare-route.mjs --accepted`. A `PD-` row from `production-defects.mjs` that a reviewer finds is not a defect gets an `accepted.json` entry with `"defect": ["PD-xxxxxx"]` and a ledger row of the entry's id instead of a design change, so it is neither a fix target nor a `copied-defect`. `--reject PD-xxxxxx` is for one iteration run only: `review-page.mjs` refuses a gate run that used it. Elements with the same text and kind share a `PD-` id, so check every element a rejection covers.
 
 ## Components and TypeScript
+
+### Fix defects, not just parity differences
+
+- Before copying a layout, follow [the responsive defect investigation](references/production-parity.md#responsive-defect-investigation). A matching screenshot, no sideways scroll and Lighthouse 100 do not prove text is readable or a button is inside its section.
+- Test short portrait and landscape heights as well as breakpoint widths. Add the reported failing width-height pair and neighboring cases to the canonical matrix, not just an iteration-only matrix.
+- Prove the symptom on production with a screenshot and measured text, header, section and CTA bounds; fix the owning layout and add a regression test that fails before the fix and passes after it. Test every route using the shared component and retain unaffected desktop geometry.
+- Record corrected behavior, evidence and affected cases in the ledger. Automated `PD-` corrections apply only to defects the scripts recognize; manually found defects need the normal narrow accepted-difference entry and visual review, never a broad mask hiding broken content.
 
 The parity checks prove the page looks and behaves like production; they do not prove the code is easy to work in. Hold every route to the `bascik` skill's rules as well:
 
@@ -42,7 +49,6 @@ The parity checks prove the page looks and behaves like production; they do not 
 | [`scripts/compare-route.mjs`](scripts/compare-route.mjs)                   | Pixels, geometry, evidence and interaction traces per route            |
 | [`scripts/lighthouse-gate.mjs`](scripts/lighthouse-gate.mjs)               | Fails unless every report is 100 in all five categories                |
 | [`scripts/llms-txt.mjs`](scripts/llms-txt.mjs)                             | Post exec script that writes `dist/llms.txt`                           |
-| [`scripts/responsive-webp.mjs`](scripts/responsive-webp.mjs)               | WebP widths and a sha256 manifest for `srcset`                         |
 | [`scripts/worker-response-policy.mjs`](scripts/worker-response-policy.mjs) | Cloudflare Worker wrapper: CSP hashes, robots and cache headers        |
 | [`scripts/interaction-crawl.mjs`](scripts/interaction-crawl.mjs)           | Activates every interactive element; compares effects (CDP listeners)  |
 | [`scripts/state-capture.mjs`](scripts/state-capture.mjs)                   | Open dropdowns and disclosures: styles, icons, crops                   |

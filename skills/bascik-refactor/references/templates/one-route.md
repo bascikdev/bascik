@@ -20,6 +20,12 @@ Read `docs/migration/execution-contract.md` first. Parent prompt: {{PARENT_PROMP
    heading, overflow or sideways scroll becomes a row in `docs/migration/decisions.md` that says
    "production defect: fix in target". Build the corrected version of those elements; the parity checks compare them
    with the correction, not with production.
+   Also follow `references/production-parity.md#responsive-defect-investigation` in the installed refactor skill:
+   inspect short portrait and landscape screenshots, measure whether the visible headline clears the fixed header
+   and the CTA stays inside its section, and trace failures to the owning layout. The automatic scan is not exhaustive.
+   Add failing width-height pairs to the canonical matrix and a failing-before/passing-after Playwright regression
+   test on every route using the component. Manually found defects without a recognized `PD-` correction need a
+   narrow accepted-difference entry and review; a ledger row alone does not exempt them from parity checks.
 2. Read the production baselines {{BASELINE_IDS}}: what {{ROUTE}} looks like at each case and with each open state,
    before any target page exists. When one is missing, record it first:
    `node "$REFACTOR/capture-baselines.mjs" --prod "$PROD_URL" --route "{{ROUTE}}" --states`. Then capture the target
