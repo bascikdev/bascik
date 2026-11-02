@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Publishes the Cloudflare Preview URLs of a branch push. It always writes them
+// Publishes branch previews and the independently deployed Netlify demo. It writes them
 // to the run's job summary, and when the branch has an open pull request in
 // this repository, it creates or updates the one comment that lists them
 // there. A branch without a pull request gets the summary only.
@@ -54,13 +54,15 @@ export function commentBody({ sha, branch, previews, runUrl }) {
   const shownBranch = branch.replace(/`/g, "'");
   return [
     MARKER,
-    "### Cloudflare Previews",
+    "### Site Previews and Adapter Demos",
     "",
-    `Built from ${sha.slice(0, 12)} on \`${shownBranch}\`. These URLs stay the same for this branch and show its newest successful build.`,
+    `Built from ${sha.slice(0, 12)} on \`${shownBranch}\`. Cloudflare preview URLs stay the same for this branch and show its newest successful build. Their hostname prefix is the branch name, not the hosting provider.`,
     "",
-    "| Site | Worker | Preview |",
+    "| Site | Hosting resource | Links |",
     "| :--- | :----- | :------ |",
     ...rows,
+    "",
+    "The Netlify demo is a separate, manually deployed live site, not a preview of this commit.",
     "",
     runUrl ? `[Deploy run](${runUrl})` : "",
   ]
@@ -214,15 +216,21 @@ export async function run(
     runUrl: env.RUN_URL,
     previews: [
       {
-        label: "Docs (bascik.dev)",
+        label: "Bascik docs (Cloudflare branch preview)",
         worker: "bascik",
         url: env.DOCS_PREVIEW_URL ?? "",
         paths: ["/", "/components", "/deployment/cloudflare"],
       },
       {
-        label: "Adapter demo (cloudflare-adapter.bascik.dev)",
+        label: "Cloudflare adapter (branch preview)",
         worker: "cloudflare-adapter",
         url: env.DEMO_PREVIEW_URL ?? "",
+        paths: ["/", "/catalog", "/catalog-stream"],
+      },
+      {
+        label: "Netlify adapter (live site; manual deployment)",
+        worker: "Netlify: bascik-netlify-adapter",
+        url: "https://netlify-adapter.bascik.dev",
         paths: ["/", "/catalog", "/catalog-stream"],
       },
     ],

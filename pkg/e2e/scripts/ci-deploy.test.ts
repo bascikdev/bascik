@@ -546,6 +546,22 @@ describe("preview-comment", () => {
     expect(summary[0][0]).toBe("/summary.md");
     expect(summary[0][1]).toContain(env.DOCS_PREVIEW_URL);
     expect(summary[0][1]).toContain(env.DEMO_PREVIEW_URL);
+    expect(summary[0][1]).toContain(
+      "| Bascik docs (Cloudflare branch preview) | `bascik` | [/](https://feature-bascik.example.workers.dev/)",
+    );
+    expect(summary[0][1]).toContain(
+      "| Cloudflare adapter (branch preview) | `cloudflare-adapter` | [/](https://feature-cloudflare-adapter.example.workers.dev/)",
+    );
+    expect(summary[0][1]).toContain(
+      "| Netlify adapter (live site; manual deployment) | `Netlify: bascik-netlify-adapter` | [/](https://netlify-adapter.bascik.dev/)",
+    );
+    expect(summary[0][1]).toContain(
+      "[/catalog-stream](https://netlify-adapter.bascik.dev/catalog-stream)",
+    );
+    expect(summary[0][1]).toContain("not a preview of this commit");
+    expect(summary[0][1]).toContain(
+      "hostname prefix is the branch name, not the hosting provider",
+    );
     expect(summary[0][1]).toContain("Built from a18dc30c0123 on");
     expect(log.join("\n")).toMatch(/No open pull request/);
   });

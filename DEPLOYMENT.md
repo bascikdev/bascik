@@ -6,7 +6,7 @@ The user-facing version of the Cloudflare material is [docs/content/deployment/c
 
 ## Netlify Adapter Acceptance Project
 
-- Site: [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app).
+- Site: [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev) (also available at [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app)).
 - Project ID: `268cf8fb-826b-421a-8a34-abd78bf9be1e`.
 - Admin: [Netlify project](https://app.netlify.com/projects/bascik-netlify-adapter).
 - Source: `adapters/netlify/e2e/fixture/`; configuration: its `netlify.toml`.
@@ -17,6 +17,12 @@ The user-facing version of the Cloudflare material is [docs/content/deployment/c
 - No Git repository connection or automatic cloud deployment is configured. Local
   acceptance tests run in CI stage 4, and gate both Cloudflare deployment jobs.
   Hosted deployment and verification are explicit maintainer commands.
+
+The PR preview table lists both Cloudflare branch previews and this Netlify live
+site. Netlify is labeled as a manual deployment, not a preview of the PR's commit.
+Cloudflare preview hostnames start with the branch alias: on a branch named
+`netlify-adapter`, that prefix also appears on the docs URL, but it still serves
+the docs from the `bascik` Worker.
 
 Run from the monorepo root:
 
