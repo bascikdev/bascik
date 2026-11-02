@@ -52,7 +52,11 @@ export const PACKAGE_JSON = (
           node: ">=22.22.0",
         },
         scripts: {
-          dev: "bascik",
+          dev: cloudflare
+            ? "bascik --target cloudflare"
+            : netlify
+              ? "bascik --target netlify"
+              : "bascik",
           build: cloudflare
             ? "bascik --build --target cloudflare"
             : netlify

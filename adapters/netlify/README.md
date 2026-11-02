@@ -14,6 +14,14 @@ See the [Netlify deployment guide](https://bascik.dev/deployment/netlify) for th
 
 ## Quickstart
 
+Develop with Netlify Dev, source watching, and browser live reload:
+
+```sh
+bascik --target netlify
+```
+
+Open `http://127.0.0.1:8888`; use `--port` and `--host` to override the public address. Bascik runs full production adapter builds, installs the generated output for Netlify, starts Netlify Dev, and proxies the runtime over local HTTP. Source edits rebuild and reload connected browsers. Requests can receive 503 while rebuilding or after a failed build; the watcher stays alive and retries after the next edit. The proxy is HTTP only, regardless of the Node server's TLS configuration. Live reload is injected by the local proxy, never written into production artifacts. Bare `bascik` remains the Node development server.
+
 Build, then copy the output to the places Netlify reads:
 
 ```sh
@@ -97,14 +105,15 @@ Return the same `user_metadata` from `identity-signup` for new users. An affecte
 ## Developing and testing this adapter
 
 The permanent fixture in `e2e/fixture/` deploys to
-[bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app).
+[netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev/).
 It is independent of application projects and contains synthetic data only.
 Run these commands from the monorepo root on Node 24:
 
 ```sh
 yarn adapter:nf:unit          # Runtime, installer and real-build/Node parity tests
 yarn adapter:nf:e2e           # Build and test through offline Netlify Dev + Chromium
-yarn adapter:nf:demo:dev      # Build and browse locally on port 9877
+yarn adapter:nf:e2e:dev       # Real watched platform runtime and browser reload tests
+yarn adapter:nf:demo:dev      # Watched adapter dev with browser reload on port 9877
 yarn adapter:nf:demo:deploy   # Build and deploy ONLY the dedicated test project
 yarn adapter:nf:demo:test     # Run the same suite against the deployed HTTPS origin
 yarn adapter:nf:demo:logs     # Dedicated project's recent bascik-pages JSON logs
@@ -112,6 +121,8 @@ yarn adapter:nf:demo:logs     # Dedicated project's recent bascik-pages JSON log
 
 Install Chromium once with `yarn workspace @bascik/adapter-netlify exec playwright install chromium`.
 The CLI and browser runner are workspace dev dependencies; no global CLI is required.
+Before the watched lane, run `yarn pkg:build && yarn adapter:nf:build`. It uses `adapters/e2e/playwright.dev.config.ts` and real Netlify Dev; CI runs it separately from production acceptance. `yarn adapter:e2e:dev` runs both platforms after building both adapters.
+`demo:dev` runs from the fixture root. The E2E lane instead builds once and runs the workspace's `demo:serve` script, the direct offline Netlify Dev preview, so acceptance tests exercise production responses without proxy live-reload injection.
 `NETLIFY_ADAPTER_TEST_URL=https://<alias>--bascik-netlify-adapter.netlify.app yarn adapter:nf:e2e`
 tests a dedicated-project preview without starting a local server. Other projects' hosts
 are rejected by the test config.

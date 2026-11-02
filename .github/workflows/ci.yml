@@ -874,6 +874,11 @@ jobs:
       - name: Run Cloudflare adapter E2E tests
         run: yarn adapter:cf:e2e
 
+      - name: Run Cloudflare watched adapter development E2E tests
+        run: yarn adapter:cf:e2e:dev
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
   e2e-adapter-netlify:
     name: Netlify Adapter E2E (local Netlify runtime)
     runs-on: ubuntu-latest
@@ -905,8 +910,16 @@ jobs:
       - name: Install Playwright browsers
         run: yarn workspace @bascik/adapter-netlify exec playwright install --with-deps chromium
 
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:nf:build
+
       - name: Run Netlify adapter E2E tests
         run: yarn adapter:nf:e2e
+        env:
+          NETLIFY_TELEMETRY_DISABLED: "1"
+
+      - name: Run Netlify watched adapter development E2E tests
+        run: yarn adapter:nf:e2e:dev
         env:
           NETLIFY_TELEMETRY_DISABLED: "1"
 

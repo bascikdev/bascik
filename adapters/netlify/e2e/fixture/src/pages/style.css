@@ -242,6 +242,7 @@ a.card::after {
 }
 
 a.card:hover {
+  text-decoration: none;
   border-color: var(--border-hover);
   box-shadow: 0 0 0 1px var(--accent-dim);
 }

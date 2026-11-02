@@ -126,6 +126,23 @@ export interface AdapterBuildResult {
 export interface HostingAdapter {
   name: string;
   build(context: AdapterBuildContext): Promise<AdapterBuildResult>;
+  dev?(context: AdapterDevContext): Promise<AdapterDevCommand>;
+}
+
+export interface AdapterDevContext {
+  projectRoot: string;
+  distDir: string;
+  outDir: string;
+  variant?: string;
+  /** Private runtime port behind the live-reload proxy. */
+  port: number;
+}
+
+export interface AdapterDevCommand {
+  command: string;
+  args: string[];
+  cwd: string;
+  env?: Record<string, string | undefined>;
 }
 
 export const defineAdapter = (adapter: HostingAdapter): HostingAdapter =>

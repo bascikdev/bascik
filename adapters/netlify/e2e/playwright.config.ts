@@ -8,7 +8,8 @@ if (hostedUrl) {
   const url = new URL(hostedUrl);
   if (
     url.protocol !== "https:" ||
-    (url.hostname !== "bascik-netlify-adapter.netlify.app" &&
+    (url.hostname !== "netlify-adapter.bascik.dev" &&
+      url.hostname !== "bascik-netlify-adapter.netlify.app" &&
       !url.hostname.endsWith("--bascik-netlify-adapter.netlify.app"))
   ) {
     throw new Error(
@@ -32,7 +33,8 @@ export default defineConfig({
   webServer: hostedUrl
     ? undefined
     : {
-        command: "yarn adapter:nf:demo:dev",
+        command:
+          "yarn adapter:nf:demo:build && yarn workspace @bascik/adapter-netlify demo:serve",
         cwd: fileURLToPath(new URL("../../..", import.meta.url)),
         url: "http://127.0.0.1:9877",
         reuseExistingServer: false,

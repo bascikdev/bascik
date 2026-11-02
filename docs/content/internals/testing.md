@@ -25,6 +25,12 @@ The codebase distinguishes test runners from testing levels:
 
 Integration tests in Bascik follow an explicit boundary contract: they do not mock away the primary boundary being verified. When testing worker thread lifecycle, real Node.js `worker_threads` run. When testing targeted-build persistence, real child processes invoke `bascik --build` against isolated disk fixtures. When testing scaffold output, the real `scaffold()` creates directory structures and files, and the real compiler parses and builds them into emitted artifacts. Mocks are reserved for external environment control (such as clock injection or network limits) rather than internal subsystem borders.
 
+### Adapter development versus production acceptance
+
+Watched adapter development (`bascik --target cloudflare` or `bascik --target netlify`) adds a source watcher, full production adapter rebuilds, a local HTTP proxy, and browser live reload around the real platform runtime. Tests of that workflow must cover edits and recovery after a failed build across the CLI, runtime, proxy, and browser boundaries. A rebuilding or failed build may return 503; recovery means the watcher remains alive and serves a successful subsequent edit, not guaranteed last-good serving. The proxy is HTTP only, and emitted production artifacts must stay free of live-reload injection.
+
+Production acceptance is distinct: build once with `--build --target ...` and serve the generated output directly in Wrangler or Netlify Dev. In particular, the Netlify E2E configuration runs `adapter:nf:demo:build` followed by the adapter workspace's `demo:serve`, not the watched `adapter:nf:demo:dev`. This keeps header, static bypass, streaming, and native-function assertions about production responses. The watched repository demos use port 8787 for Cloudflare and 9877 for Netlify; a normal Netlify project's default is 8888.
+
 Differential fuzzing is a separate opt-in developer check: `yarn workspace @bascik/bascik profile:fuzz` compares a built baseline and candidate on generated inputs and reports shrunk, replayable mismatches. The unit suite tests the runner itself without a baseline checkout. See [Benchmarking & Profiling](/internals/benchmarking#differential-fuzzing-and-cpu-summaries) for commands and scope.
 
 ## Running Unit Tests
@@ -132,7 +138,14 @@ yarn adapter:cf:e2e
 # Netlify adapter suite (real offline Netlify Dev runtime, or dedicated hosted project)
 yarn adapter:nf:e2e
 yarn adapter:nf:demo:test
+
+# Watched adapter development (build pkg and the relevant adapter first)
+yarn adapter:cf:e2e:dev
+yarn adapter:nf:e2e:dev
+yarn adapter:e2e:dev       # both platforms; requires both adapter builds
 ```
+
+The watched lanes use `adapters/e2e/playwright.dev.config.ts` and `adapter-dev.test.ts` to run actual Wrangler and Netlify Dev processes and verify source rebuilds and browser reloads through the HTTP proxy. CI runs each platform's watched lane after its build and production acceptance step. These tests are separate from the direct-runtime production acceptance contract below.
 
 Both adapter lanes also run the same browser contract in
 `adapters/e2e/demo-contract.test.ts` against their real hosting runtimes. Their

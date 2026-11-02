@@ -180,6 +180,8 @@ Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /s
 
 ## Deploy
 
+For watched platform development, use `bascik --target cloudflare` (HTTP port 8787) or `bascik --target netlify` (HTTP port 8888), bound to `127.0.0.1` by default, with `--port`/`--host` overrides. These run the real platform runtime, rebuild the full adapter bundle on source edits, and inject browser live reload only through a local HTTP proxy. Rebuilding or failed builds may return 503; the watcher retries after the next edit. Bare `bascik` remains Node development. Keep `--build --target ...` and direct platform previews for production output without live reload. Read `/deployment/cloudflare#develop-locally` or `/deployment/netlify#develop-locally`.
+
 | Site uses                                                 | Deploy                                                                                                                                                                                       |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Only static pages, build scripts, and dynamic routes      | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host                                                                                                      |

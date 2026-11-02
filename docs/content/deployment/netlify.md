@@ -18,7 +18,7 @@ For a new site, let `create-bascik` set this up:
 npm create bascik@rc my-site -- --template netlify
 ```
 
-The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter installed, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
+The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter installed, `npm run dev` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
@@ -67,6 +67,19 @@ npx netlify deploy --build          # a draft deploy
 npx netlify deploy --build --prod   # production
 ```
 
+## Develop locally
+
+Run Netlify Dev with source watching and browser live reload:
+
+```sh
+bascik --target netlify
+# or, in the Netlify starter: npm run dev
+```
+
+Open `http://127.0.0.1:8888`. Use `--port <n>` and `--host <name>` to override the public address. Bascik performs a full production build with the adapter, installs the generated output for Netlify, and starts Netlify Dev from the project root behind a local HTTP proxy. Source changes rebuild the complete bundle and reload connected browsers, including changes to request-time scripts and API routes.
+
+The proxy is HTTP only; the Node server's TLS setting does not enable HTTPS here. Requests may receive 503 while a build is running or after a build fails. The watcher stays alive and retries on the next edit. Live reload is injected into local HTML responses only, not production artifacts. Bare `bascik` still starts the Node development server.
+
 ## Preview locally
 
 `netlify dev` can serve the built output with the function, its routes, and your own functions, as Netlify does:
@@ -76,7 +89,7 @@ npm run build
 npx netlify dev --dir publish
 ```
 
-Rebuild after a change. `npm run dev` (the Bascik dev server) stays the fastest loop while writing pages.
+This previews the production output without Bascik's source watcher or browser live reload. Rebuild after a change, or use `bascik --target netlify` for watched development.
 
 ## What runs where
 
@@ -148,7 +161,7 @@ Return the same `user_metadata` from `identity-signup` for new users. An affecte
 
 ## Adapter acceptance site
 
-Adapter development uses a dedicated [Netlify acceptance site](https://bascik-netlify-adapter.netlify.app),
+Adapter development uses a dedicated [Netlify acceptance site](https://netlify-adapter.bascik.dev),
 not an application's production project. Its permanent fixture and Playwright suite
 live in `adapters/netlify/e2e/`; from the Bascik monorepo root, run
 `yarn adapter:nf:e2e` for offline Netlify Dev, or `yarn adapter:nf:demo:test`

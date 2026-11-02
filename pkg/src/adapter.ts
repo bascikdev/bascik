@@ -6,6 +6,10 @@
 
 export * from "./lib/adapter-contract.ts";
 export {
+  resolvePlatformCli,
+  availableDevPort,
+} from "./lib/adapter-dev-platform.ts";
+export {
   readSiteGraph,
   pageAliasesFor,
   detectPublicCollisions,

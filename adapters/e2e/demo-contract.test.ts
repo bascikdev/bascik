@@ -41,6 +41,8 @@ test.describe("shared adapter demo contract", () => {
       await expect(card.locator("p")).toBeVisible();
       await expect(card.locator("p")).not.toBeEmpty();
       await expect(card.locator("a")).toHaveCount(0);
+      await card.hover();
+      await expect(card).toHaveCSS("text-decoration-line", "none");
     }
   });
 
@@ -51,6 +53,14 @@ test.describe("shared adapter demo contract", () => {
       const response = await page.goto(path);
       expect(response?.status(), path).toBe(200);
       await expect(page).toHaveTitle(`Bascik · ${title}`);
+      for (const href of [
+        "/favicon.ico",
+        "/assets/favicon-32x32.png",
+        "/assets/favicon.svg",
+        "/assets/apple-touch-icon.png",
+      ]) {
+        await expect(page.locator(`head link[href="${href}"]`)).toHaveCount(1);
+      }
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
       const menu = page.getByTestId("demo-menu");
       await expect(menu).not.toHaveAttribute("open");
@@ -63,6 +73,22 @@ test.describe("shared adapter demo contract", () => {
         ),
       ).toEqual(pages.map(([href]) => href));
       await expect(menu.locator('[aria-current="page"]')).toHaveText(title);
+    }
+  });
+
+  test("official Bascik favicon assets are served as static images", async ({
+    request,
+  }) => {
+    for (const path of [
+      "/favicon.ico",
+      "/assets/favicon-32x32.png",
+      "/assets/favicon.svg",
+      "/assets/apple-touch-icon.png",
+    ]) {
+      const response = await request.get(path);
+      expect(response.status(), path).toBe(200);
+      expect(response.headers()["content-type"], path).toMatch(/^image\//);
+      expect((await response.body()).length, path).toBeGreaterThan(0);
     }
   });
 
@@ -80,6 +106,13 @@ test.describe("shared adapter demo contract", () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto("/");
         const menu = page.getByTestId("demo-menu");
+        const summaryBounds = await menu.locator("summary").boundingBox();
+        const docsBounds = await page
+          .getByRole("link", { name: /docs ↗/ })
+          .boundingBox();
+        expect(summaryBounds!.height).toBe(docsBounds!.height);
+        expect(summaryBounds!.height).toBe(44);
+        expect(summaryBounds!.x).toBeGreaterThan(docsBounds!.x);
         await menu.locator("summary").focus();
         await page.keyboard.press("Enter");
         await expect(menu.getByRole("link")).toHaveCount(pages.length);

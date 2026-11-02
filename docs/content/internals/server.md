@@ -61,6 +61,22 @@ export default {
 
 When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.pem` and `bascik-privkey.pem` files. If missing, it attempts to generate CA-trusted certificates using `mkcert` (if available) or falls back to OpenSSL self-signed certificates. Present files are parsed with `X509Certificate`: an expired or not-yet-valid default certificate is regenerated with a warning, and a configured `certFile` in that state is kept and warned about, never replaced.
 
+## Adapter Development Mode (`bascik --target`)
+
+`bascik --target cloudflare` and `bascik --target netlify` use a separate development path from the in-memory Node server below:
+
+1. Run a complete production compilation and adapter build, rather than a selective in-memory page update.
+2. Start the real platform runtime: Wrangler's local workerd for Cloudflare, or Netlify Dev from the project root after installing the Netlify output.
+3. Expose a local HTTP proxy at `http://127.0.0.1:8787` for Cloudflare or `http://127.0.0.1:8888` for Netlify, with `--port` and `--host` overrides.
+4. Watch source changes, rebuild the complete adapter bundle, and notify connected browsers to reload. Live-reload code is injected into local HTML responses, not written to the emitted production artifacts.
+
+Request-time scripts and API routes run in the platform runtime, not the Node server's script registry. The proxy is HTTP only; `http.tls.enabled` applies to the Node server, not this proxy. Requests may receive 503 while rebuilding or after a failed build. The watcher survives compilation failures and retries on the next source edit; it does not guarantee last-good serving.
+
+Bare `bascik` keeps its existing in-memory authoring path. `bascik --build --target ...` remains a one-shot production build with no watcher, proxy, or live-reload injection. Direct Wrangler and Netlify previews of that output remain production acceptance paths.
+
+Platform child processes inherit terminal output, but not input: Bascik owns the development session and Ctrl+C shutdown. Platform-specific interactive exit hotkeys are disabled.
+If the platform runtime exits successfully, the development session closes without a retry error. Unexpected unsuccessful runtime exits are reported and can be retried by saving a source file.
+
 ## Development Server Mode (`bascik`)
 
 During local development, `bascik` compiles pages into memory and starts the watch and live-reload systems.

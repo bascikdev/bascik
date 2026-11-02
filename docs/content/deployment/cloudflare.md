@@ -42,7 +42,7 @@ For a new site, let `create-bascik` set this up:
 npm create bascik@rc my-site -- --template cloudflare
 ```
 
-The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. `npm run dev` is still the Bascik dev server. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
+The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run dev` set to `bascik --target cloudflare`, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
@@ -93,6 +93,21 @@ With a non-root [`base`](/configuration#base) such as `/docs/`, static files are
 
 `--target` needs a complete build and is rejected together with `--only`: a deployment bundle is one consistent release inventory.
 
+## Develop locally
+
+Run the real local Workers runtime (workerd) with source watching and browser live reload:
+
+```sh
+bascik --target cloudflare
+# or, in the Cloudflare starter: npm run dev
+```
+
+Open `http://127.0.0.1:8787`. Use `--port <n>` and `--host <name>` to override the public address. Bascik performs a full production build with the adapter, starts Wrangler, and serves the runtime through a local HTTP proxy. Source changes rebuild the complete bundle and reload connected browsers, so scripts execute in workerd rather than Node.
+
+The proxy is HTTP only; the Node server's TLS setting does not enable HTTPS here. Requests may receive 503 while a build is running or after a build fails. The watcher stays alive and retries on the next edit. Live reload is injected into local HTML responses only, not production artifacts.
+
+Bare `bascik` still starts the Node development server. Use the adapter workflow when you need the platform runtime and bindings during authoring.
+
 ## Preview locally
 
 Preview the emitted bundle in Cloudflare's local runtime (workerd) using Wrangler from the emitted target folder:
@@ -102,7 +117,7 @@ cd dist/.bascik/cloudflare
 npx wrangler dev
 ```
 
-The Bascik dev server (`bascik`) is still the fastest loop for authoring components and scripts, but it runs on Node. Preview in workerd before deploying to catch runtime differences such as an unsupported Node module.
+This previews an already-built production bundle without Bascik's source watcher or browser live reload. Rebuild after source changes, or use `bascik --target cloudflare` for watched development.
 
 ## Deploy
 

@@ -24,13 +24,21 @@ See it live: [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.d
 
 ## Quickstart
 
+Develop in Cloudflare's local runtime (workerd), with source watching and browser live reload:
+
+```sh
+bascik --target cloudflare
+```
+
+Open `http://127.0.0.1:8787`; use `--port` and `--host` to override the public address. Bascik runs full production adapter builds, starts Wrangler, and proxies the runtime over local HTTP. Source edits rebuild the bundle and reload connected browsers. Requests can receive 503 while rebuilding or after a failed build; the watcher stays alive and retries after the next edit. The proxy is HTTP only, regardless of the Node server's TLS configuration. Live reload is injected by the local proxy, never written into production artifacts. Bare `bascik` remains the Node development server.
+
 Build for Cloudflare Workers with Static Assets:
 
 ```sh
 bascik --build --target cloudflare
 ```
 
-Preview locally with Wrangler from the emitted target directory:
+Preview a production build locally with Wrangler from the emitted target directory (without Bascik's source watcher or live reload):
 
 ```sh
 cd dist/.bascik/cloudflare
@@ -67,12 +75,14 @@ From the repo root:
 
 ```sh
 yarn adapter:cf:demo:build    # build pkg, the adapter, then the fixture with --target cloudflare
-yarn adapter:cf:demo:dev      # build, then wrangler dev in local workerd
+yarn adapter:cf:demo:dev      # watched adapter dev in local workerd on port 8787
 yarn adapter:cf:demo:preview  # build, then wrangler preview (a Preview named after the git branch)
 yarn adapter:cf:demo:deploy   # build, then wrangler deploy to production
 ```
 
-The workspace scripts `demo:build`, `demo:dev`, `demo:preview`, and `demo:deploy` run one step each, for a CI that builds and deploys in separate commands.
+The workspace script `demo:dev` runs `bascik --target cloudflare` from the fixture root. `demo:build`, `demo:preview`, and `demo:deploy` remain separate production steps for CI.
+
+Watched development launches Wrangler from the project root, pointing it at the generated Worker config or Pages public directory by absolute path. Its working directory stays valid even when another build replaces the generated output.
 
 ## Development
 
@@ -84,9 +94,10 @@ yarn adapter:cf:typecheck  # TypeScript type check
 yarn adapter:cf:unit       # unit tests
 yarn adapter:cf:coverage   # unit tests with coverage, written to test-coverage.json
 yarn adapter:cf:e2e        # build the fixture and run Playwright against it in local workerd
+yarn adapter:cf:e2e:dev    # real watched platform runtime and browser reload tests
 ```
 
-The E2E lane uses the built compiler and adapter, so run `yarn pkg:build && yarn adapter:cf:build` first.
+The E2E lanes use the built compiler and adapter, so run `yarn pkg:build && yarn adapter:cf:build` first. The watched lane runs `adapters/e2e/playwright.dev.config.ts` against the real Wrangler runtime; CI runs it separately from production acceptance. `yarn adapter:e2e:dev` runs both platforms after building both adapters.
 
 Cloudflare and Netlify run the same [demo browser contract](../e2e/demo-contract.test.ts)
 against their real runtimes. Both demos expose `/`, `/server?name=collin`,

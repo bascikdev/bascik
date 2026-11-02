@@ -414,7 +414,13 @@ describe("PACKAGE_JSON", () => {
     expect(netlify.scripts.build).toBe(
       "bascik --build --target netlify && bascik-netlify-install",
     );
-    expect(netlify.scripts.preview).toContain("netlify-cli dev --dir publish");
+    expect(netlify.scripts.dev).toBe("bascik --target netlify");
+    expect(netlify.scripts.preview).toBe(
+      "npx --yes netlify-cli dev --dir publish",
+    );
+    expect(netlify.scripts.deploy).toBe(
+      "npx --yes netlify-cli deploy --build --prod",
+    );
     expect(netlify.devDependencies).not.toHaveProperty("wrangler");
   });
 
@@ -445,6 +451,7 @@ describe("PACKAGE_JSON", () => {
 
   it("leaves wrangler and the adapter out of the default template", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toBeUndefined();
     expect(pkg.devDependencies.wrangler).toBeUndefined();
     expect(pkg.scripts.preview).toBeUndefined();
@@ -454,8 +461,8 @@ describe("PACKAGE_JSON", () => {
   describe("cloudflare template", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
 
-    it("builds the Cloudflare bundle and keeps the Bascik dev server as the authoring loop", () => {
-      expect(pkg.scripts.dev).toBe("bascik");
+    it("builds the Cloudflare bundle and develops in the watched platform runtime", () => {
+      expect(pkg.scripts.dev).toBe("bascik --target cloudflare");
       expect(pkg.scripts.build).toBe("bascik --build --target cloudflare");
     });
 
@@ -478,7 +485,8 @@ describe("PACKAGE_JSON", () => {
     it("keeps every default script and dependency", () => {
       const base = JSON.parse(PACKAGE_JSON("my-app"));
       for (const key of Object.keys(base.scripts)) {
-        if (key !== "build") expect(pkg.scripts[key]).toBe(base.scripts[key]);
+        if (key !== "build" && key !== "dev")
+          expect(pkg.scripts[key]).toBe(base.scripts[key]);
       }
       expect(pkg.dependencies).toEqual(base.dependencies);
       expect(pkg.devDependencies).toMatchObject(base.devDependencies);

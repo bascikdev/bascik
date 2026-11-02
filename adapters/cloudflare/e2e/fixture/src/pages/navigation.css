@@ -25,10 +25,6 @@
   padding: 16px 0;
 }
 
-.menu {
-  margin-left: auto;
-}
-
 .menu summary {
   display: flex;
   align-items: center;
@@ -82,6 +78,10 @@
 }
 
 .docs-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-left: auto;
   flex-shrink: 0;
   padding: 7px 12px;
   border: 1px solid var(--border);
@@ -89,13 +89,8 @@
   color: var(--text);
   font-size: 0.8125rem;
   font-weight: 500;
+  line-height: 22px;
   text-decoration: none;
-}
-
-@media (max-width: 400px) {
-  .docs-link {
-    margin-left: auto;
-  }
 }
 
 .docs-link:hover {
@@ -161,6 +156,12 @@ summary:focus-visible {
   .site-nav {
     padding: 0 20px;
     margin-bottom: 24px;
+  }
+
+  @media (max-width: 400px) {
+    .wordmark {
+      flex-basis: 100%;
+    }
   }
 
   .links {

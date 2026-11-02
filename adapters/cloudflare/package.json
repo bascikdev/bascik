@@ -34,7 +34,7 @@
     "demo:build": "cd e2e/fixture && bascik --build --target cloudflare",
     "demo:deploy": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler deploy",
     "demo:preview": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler preview",
-    "demo:dev": "cd e2e/fixture/dist/.bascik/cloudflare && wrangler dev"
+    "demo:dev": "cd e2e/fixture && bascik --target cloudflare --port 8787"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

@@ -313,6 +313,12 @@ export interface AgentsOptions {
 export function agentsSection(options: AgentsOptions = {}): string {
   const dev = options.commands?.dev ?? "npm run dev";
   const build = options.commands?.build ?? "npm run build";
+  const devDescription =
+    options.template === "cloudflare"
+      ? "watched workerd development with browser live reload at http://127.0.0.1:8787"
+      : options.template === "netlify"
+        ? "watched Netlify Dev with browser live reload at http://127.0.0.1:8888"
+        : "dev server with live reload at http://localhost:8080";
   const preview =
     options.template === "cloudflare"
       ? "- `npm run preview`: run the built Worker locally in workerd (after `npm run build`)"
@@ -325,7 +331,7 @@ This site is built with [Bascik](${DOCS}): HTML pages and components compiled to
 
 ### Commands
 
-- \`${dev}\`: dev server with live reload at http://localhost:8080
+- \`${dev}\`: ${devDescription}
 - \`${build}\`: production build into \`dist/\`; it needs the site's URL in \`BASCIK_SITE_URL\` or \`.env\` for the sitemap and robots.txt ([site URL](${DOCS}/cli#environment-files-and-the-site-url))
 - \`npx bascik --check\`: validate pages, components and config
 ${preview}
