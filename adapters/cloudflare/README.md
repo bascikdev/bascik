@@ -91,7 +91,9 @@ The E2E lane uses the built compiler and adapter, so run `yarn pkg:build && yarn
 Cloudflare and Netlify run the same [demo browser contract](../e2e/demo-contract.test.ts)
 against their real runtimes. Both demos expose `/`, `/server?name=collin`,
 `/stream`, `/stream-append`, `/mixed`, `/catalog`, `/catalog-stream`, `/api-demo`,
-and `/errors` with matching titles and navigation. The contract checks static
+`/errors`, and `/static` with matching titles and navigation. The `/static`
+page demonstrates scoped client scripts and independent counters; the overview
+only links to the demos. The contract checks static
 client scripts, escaped input, product rendering and filtering, API dispatch,
 no-JavaScript stream ordering, and safe failures. Platform-specific context and
 routing assertions remain in this adapter's own suite. Error-demo requests

@@ -87,6 +87,10 @@ p {
   margin-bottom: 24px;
 }
 
+.interactive-demo {
+  margin-top: 40px;
+}
+
 .subtitle {
   max-width: 65ch;
   margin-bottom: 0;

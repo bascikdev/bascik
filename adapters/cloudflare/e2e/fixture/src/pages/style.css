@@ -123,6 +123,20 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
+.interactive-demo {
+  margin-top: 40px;
+}
+
+.interactive-demo > h2 {
+  margin-bottom: 12px;
+}
+
+.interactive-demo .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 20px;
+}
+
 .section-label {
   font-size: 0.72rem;
   font-weight: 700;

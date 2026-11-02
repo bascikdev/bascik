@@ -10,6 +10,7 @@ const pages = [
   ["/catalog-stream", "Streamed cards"],
   ["/api-demo", "API client"],
   ["/errors", "Error demo"],
+  ["/static", "Static interactivity"],
 ] as const;
 
 const products = [
@@ -22,6 +23,27 @@ const products = [
 const prices = ["$48", "$22", "$129", "$31", "$9"];
 
 test.describe("shared adapter demo contract", () => {
+  test("every overview card contains its own visible title and description", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const main = page.getByRole("main");
+    await expect(page.getByTestId("fixture-counter")).toHaveCount(0);
+    const links = main.getByRole("link");
+    await expect(links).toHaveCount(pages.length - 1);
+    for (const [path, title] of pages.slice(1)) {
+      const pathname = new URL(path, "http://example.test").pathname;
+      const card = main.locator(`a[href="${path}"], a[href="${pathname}"]`);
+      await expect(card).toHaveCount(1);
+      await expect(
+        card.getByRole("heading", { name: title, exact: true }),
+      ).toBeVisible();
+      await expect(card.locator("p")).toBeVisible();
+      await expect(card.locator("p")).not.toBeEmpty();
+      await expect(card.locator("a")).toHaveCount(0);
+    }
+  });
+
   test("canonical routes have the same titles, headings, and navigation", async ({
     page,
   }) => {
@@ -86,12 +108,20 @@ test.describe("shared adapter demo contract", () => {
   test("static assets and isolated component client scripts work", async ({
     page,
   }) => {
-    const response = await page.goto("/");
+    const response = await page.goto("/static");
     expect(response?.headers()["cache-control"]).not.toContain("private");
     const logo = await page.request.get("/assets/bascik-logo.svg");
     expect(logo.status()).toBe(200);
     expect(logo.headers()["content-type"]).toContain("image/svg+xml");
     const counters = page.getByTestId("fixture-counter");
+    const introduction = page.getByRole("heading", {
+      name: "Two components. Independent state.",
+    });
+    const introBounds = await introduction.boundingBox();
+    const subtitleBounds = await page.locator("main > .subtitle").boundingBox();
+    expect(
+      introBounds!.y - (subtitleBounds!.y + subtitleBounds!.height),
+    ).toBeGreaterThanOrEqual(32);
     await expect(counters).toHaveCount(2);
     await counters.first().getByRole("button", { name: "Increment" }).click();
     await expect(counters.getByTestId("fixture-counter-value")).toHaveText([

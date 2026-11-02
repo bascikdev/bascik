@@ -188,6 +188,9 @@ test("static pages, assets and scoped client scripts work without invoking the f
   expect(response?.status()).toBe(200);
   expect(response?.headers()["x-bascik-handler"]).toBeUndefined();
   await expect(page.getByTestId("fixture-static")).toBeVisible();
+  await expect(page.getByTestId("fixture-counter")).toHaveCount(0);
+  const interactive = await page.goto("/static");
+  expect(interactive?.headers()["x-bascik-handler"]).toBeUndefined();
   const counters = page.getByTestId("fixture-counter");
   await counters.first().getByTestId("fixture-counter-increment").click();
   await expect(

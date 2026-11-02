@@ -125,7 +125,9 @@ private-path handling. Error routes intentionally generate diagnostics.
 Both adapters also run one [shared demo browser contract](../e2e/demo-contract.test.ts)
 against their real runtimes. The canonical routes and titles match Cloudflare:
 `/`, `/server?name=collin`, `/stream`, `/stream-append`, `/mixed`, `/catalog`,
-`/catalog-stream`, `/api-demo`, and `/errors`. The legacy `/components` fixture
+`/catalog-stream`, `/api-demo`, `/errors`, and `/static`. The `/static` page
+demonstrates scoped client scripts and independent counters; the overview only
+links to the demos. The legacy `/components` fixture
 remains available for existing links. Netlify context, cookies, and native
 functions retain their separate platform-specific assertions.
 
