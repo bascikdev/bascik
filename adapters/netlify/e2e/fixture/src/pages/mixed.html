@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Mixed execution" />
+  </head>
+  <body>
+    <fixture-nav />
+    <header class="hero">
+      <h1>Mixed execution</h1>
+      <p class="subtitle">
+        Server scripts run before response headers commit. Stream scripts then
+        deliver their results over the open response.
+      </p>
+    </header>
+    <footer data-testid="cf-mixed-footer">
+      <span>Bascik · Server and stream scripts</span>
+      <a href="https://bascik.dev/stream-scripts">Stream scripts docs &rarr;</a>
+    </footer>
+    <main>
+      <aside class="callout">
+        <strong>How mixed pages execute:</strong>
+        <ol>
+          <li>Server scripts run before headers are sent.</li>
+          <li>The initial HTML shell and footer are flushed.</li>
+          <li>Stream scripts progressively send their results.</li>
+        </ol>
+      </aside>
+      <section class="panel">
+        <h2>Phase 1: Server script</h2>
+        <p>
+          Request context and session details are rendered before the shell.
+        </p>
+        <script data-bascik-server type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+          import type { NetlifyFixtureContext } from "@/lib/context.ts";
+
+          export default (request: Request, context: NetlifyFixtureContext) => {
+            const authStatus = request.headers.get("cookie")?.includes("session")
+              ? "Authenticated"
+              : "Public Visitor";
+            return html`<p><strong>Session Context:</strong> <span>${authStatus}</span></p>
+              <p><strong>Function platform:</strong> ${context.platform?.name ?? "local"}</p>`;
+          };
+        </script>
+      </section>
+      <section class="panel">
+        <h2>Phase 2 &amp; 3: Stream script</h2>
+        <p>
+          Headers commit immediately; the next chunk follows over the open
+          response.
+        </p>
+        <section class="stream-slot" aria-busy="true">
+          <div class="stream-skeleton" role="status">
+            <span class="skeleton-bar"></span>
+            <span class="loading-label">Waiting for the stream...</span>
+          </div>
+          <script data-bascik-stream type="text/typescript">
+            export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+              const requested = Number(new URL(request.url).searchParams.get("delay") ?? 800);
+              const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 800;
+              if (delay > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const timer = setTimeout(resolve, delay);
+                  signal?.addEventListener("abort", () => {
+                    clearTimeout(timer);
+                    reject(signal.reason);
+                  }, { once: true });
+                });
+              }
+              return '<div class="stream-result"><strong>Phase 3 Stream Chunk Resolved</strong><p>Asynchronous work finished and streamed over the open connection.</p></div>';
+            };
+          </script>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

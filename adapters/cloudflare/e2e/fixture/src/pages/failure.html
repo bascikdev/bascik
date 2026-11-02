@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <demo-head data-bascik-prop-title="Bascik · Server failure" />
+  </head>
+  <body>
+    <main>
+      <h1>Expected server failure</h1>
+      <script data-bascik-server>
+        export default () => {
+          throw new Error("fixture-server-failure");
+        };
+      </script>
+    </main>
+  </body>
+</html>

@@ -67,6 +67,7 @@ export const DEPLOY_TARGETS = [
   "cloudflare",
   "cloudflare-pages",
   "cloudflare-workers",
+  "netlify",
 ] as const;
 export type DeployTarget = string;
 

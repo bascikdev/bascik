@@ -200,9 +200,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      # scaffold.integration.test.ts compiles scaffolded projects with both.
-      - name: Build package and adapter
-        run: yarn pkg:build && yarn adapter:cf:build
+      # scaffold.integration.test.ts compiles scaffolded projects with all three.
+      - name: Build package and adapters
+        run: yarn pkg:build && yarn adapter:cf:build && yarn adapter:nf:build
 
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
@@ -280,10 +280,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: yarn lsp:unit
 
-      # scaffold.integration.test.ts builds the Cloudflare template with it.
-      - name: Build Cloudflare adapter
+      # scaffold.integration.test.ts builds the Cloudflare and Netlify templates with them.
+      - name: Build hosting adapters
         if: ${{ !cancelled() }}
-        run: yarn adapter:cf:build
+        run: yarn adapter:cf:build && yarn adapter:nf:build
 
       - name: Create-Bascik unit tests
         if: ${{ !cancelled() }}
@@ -316,6 +316,32 @@ jobs:
       - name: Run Cloudflare adapter unit tests
         run: yarn adapter:cf:test:ci
 
+  unit-adapter-netlify:
+    name: Netlify Adapter Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [jelly, semgrep, typecheck, standards]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:nf:build
+
+      - name: Run Netlify adapter unit and parity tests
+        run: yarn adapter:nf:test:ci
   unit-docs:
     name: Docs Unit Tests
     runs-on: ubuntu-latest
@@ -402,6 +428,7 @@ jobs:
         unit-lsp,
         unit-windows,
         unit-adapter-cloudflare,
+        unit-adapter-netlify,
         unit-docs,
         unit-skills,
         unit-extension,
@@ -457,6 +484,7 @@ jobs:
         unit-lsp,
         unit-windows,
         unit-adapter-cloudflare,
+        unit-adapter-netlify,
         unit-docs,
         unit-skills,
         unit-extension,
@@ -491,6 +519,7 @@ jobs:
         unit-lsp,
         unit-windows,
         unit-adapter-cloudflare,
+        unit-adapter-netlify,
         unit-docs,
         unit-skills,
         unit-extension,
@@ -535,6 +564,7 @@ jobs:
         unit-lsp,
         unit-windows,
         unit-adapter-cloudflare,
+        unit-adapter-netlify,
         unit-docs,
         unit-skills,
         unit-extension,
@@ -563,8 +593,8 @@ jobs:
       - name: Build create-bascik
         run: yarn create:build
 
-      - name: Build Cloudflare adapter
-        run: yarn adapter:cf:build
+      - name: Build hosting adapters
+        run: yarn adapter:cf:build && yarn adapter:nf:build
 
       # After the builds: `@bascik/bascik/*` imports (pkg/e2e/bascik.config.ts,
       # the adapter, docs) resolve to the package's dist/ types.
@@ -625,6 +655,7 @@ jobs:
         unit-lsp,
         unit-windows,
         unit-adapter-cloudflare,
+        unit-adapter-netlify,
         unit-docs,
         unit-skills,
         unit-extension,
@@ -843,6 +874,42 @@ jobs:
       - name: Run Cloudflare adapter E2E tests
         run: yarn adapter:cf:e2e
 
+  e2e-adapter-netlify:
+    name: Netlify Adapter E2E (local Netlify runtime)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      [
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install Playwright browsers
+        run: yarn workspace @bascik/adapter-netlify exec playwright install --with-deps chromium
+
+      - name: Run Netlify adapter E2E tests
+        run: yarn adapter:nf:e2e
+        env:
+          NETLIFY_TELEMETRY_DISABLED: "1"
+
   e2e-docs:
     name: Docs E2E
     runs-on: ubuntu-latest
@@ -992,6 +1059,7 @@ jobs:
         e2e-pkg-prod-http1,
         e2e-pkg-prod-http2,
         e2e-adapter-cloudflare,
+        e2e-adapter-netlify,
         e2e-docs,
         e2e-create,
         e2e-extension,
@@ -1126,6 +1194,7 @@ jobs:
         e2e-pkg-prod-http1,
         e2e-pkg-prod-http2,
         e2e-adapter-cloudflare,
+        e2e-adapter-netlify,
         e2e-docs,
         e2e-create,
         e2e-extension,

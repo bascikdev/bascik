@@ -8,7 +8,7 @@ This alert box demonstrates dynamic server script execution: in-process Node.js 
 
 > **See it live on Cloudflare Workers.** These pages render server scripts per request on a deployed Bascik site:
 >
-> - [Server script request context](https://cloudflare-adapter.bascik.dev/server?user=Jane&role=Architect): query parameters, headers, and the platform context rendered before headers commit.
+> - [Server script request context](https://cloudflare-adapter.bascik.dev/server?name=collin&role=Architect): query parameters, headers, and the platform context rendered before headers commit.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): a server script runs first, then a [stream script](/stream-scripts) flushes into the open connection.
 
 ## data-bascik-server
@@ -30,7 +30,7 @@ Tag any `<script>` block with `data-bascik-server` to run it at request time on 
 
 This recording shows a real dev server running a server script that lives in a component. Every request runs the script again: a new query string renders a new name, and reloading the same URL renders a new time. Nothing is rebuilt between requests:
 
-![An editor above a browser. The editor shows hello-user.html, a component holding one data-bascik-server script that reads a name from the query string and returns a heading and the current time built with html, which escapes the name. The browser loads /greet?name=Ada and shows Hello, Ada!, then loads /greet?name=Grace and shows Hello, Grace!, then reloads and shows a later time](/assets/demos/server-request@2x.webp)
+![An editor above a browser. The editor shows hello-user.html, a component holding one data-bascik-server script that reads a name from the query string and returns a heading and the current time built with html, which escapes the name. The browser loads /greet?name=Ada and shows Hello World!, then loads /greet?name=Grace and shows Hello, Grace!, then reloads and shows a later time](/assets/demos/server-request@2x.webp)
 
 ## Handler Signature
 
@@ -93,7 +93,7 @@ The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=Ada`
 <!-- demo:ts-server-output-html -->
 
 ```html
-<p>Hello, Ada</p>
+<p>Hello World</p>
 ```
 
 ## Return Values

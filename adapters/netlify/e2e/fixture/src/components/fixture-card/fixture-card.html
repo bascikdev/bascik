@@ -1,0 +1,24 @@
+<style>
+  .card {
+    border: 1px solid var(--accent-border);
+    border-radius: 10px;
+    background: var(--elevated);
+    padding: 1.5rem;
+    margin: 0;
+  }
+  .stock {
+    color: var(--accent);
+    font-weight: 600;
+  }
+</style>
+<article class="card" data-testid="fixture-card">
+  <h2 data-bascik-prop-name data-testid="fixture-card-name">Milk frother</h2>
+  <p><span data-bascik-slot>Standard</span></p>
+  <script data-bascik-server type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    export default (request: Request) =>
+      html`<p class="stock" data-testid="fixture-card-stock">
+        In stock at ${new URL(request.url).pathname}
+      </p>`;
+  </script>
+</article>

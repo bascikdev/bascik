@@ -299,7 +299,7 @@ export const CLAUDE_IMPORT = "@AGENTS.md";
 const DOCS = "https://bascik.dev";
 
 export interface AgentsOptions {
-  template?: "default" | "cloudflare";
+  template?: "default" | "cloudflare" | "netlify";
   /**
    * The commands that run the Bascik dev server and build, when the
    * project's `dev` and `build` npm scripts do not, such as `bascik init` in
@@ -316,7 +316,9 @@ export function agentsSection(options: AgentsOptions = {}): string {
   const preview =
     options.template === "cloudflare"
       ? "- `npm run preview`: run the built Worker locally in workerd (after `npm run build`)"
-      : "- `npx bascik --server`: serve the production build to preview it";
+      : options.template === "netlify"
+        ? "- `npm run preview`: serve the built site and its Netlify Function with `netlify dev` (after `npm run build`)"
+        : "- `npx bascik --server`: serve the production build to preview it";
   return `${AGENTS_SECTION_HEADING}
 
 This site is built with [Bascik](${DOCS}): HTML pages and components compiled to plain HTML, CSS and JavaScript.

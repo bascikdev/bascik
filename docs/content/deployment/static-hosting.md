@@ -137,6 +137,8 @@ Bascik automatically prefixes all root-relative asset URLs, stylesheets, scripts
 
 Netlify provides automated continuous deployment, instant preview URLs for pull requests, and custom domains with free SSL.
 
+> **Request-time pages or API routes?** A static deploy cannot run `data-bascik-server` or `data-bascik-stream` scripts or `src/api/` routes. Use the [Netlify Adapter](/deployment/netlify) to run them in a Netlify Function.
+
 ### Option A: Netlify Dashboard
 
 1. Log in to [Netlify](https://app.netlify.com/) and click **Add new site** > **Import an existing project**.

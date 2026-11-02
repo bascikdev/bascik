@@ -1,0 +1,16 @@
+<section class="panel" data-testid="fixture-counter">
+  <h2>Independent counter</h2>
+  <p>
+    Count: <output id="count" data-testid="fixture-counter-value">0</output>
+  </p>
+  <button type="button" id="increment" data-testid="fixture-counter-increment">
+    Increment
+  </button>
+</section>
+<script type="text/typescript">
+  const button = document.getElementById("increment") as HTMLButtonElement;
+  const output = document.getElementById("count") as HTMLOutputElement;
+  button.addEventListener("click", () => {
+    output.textContent = String(Number(output.textContent) + 1);
+  });
+</script>

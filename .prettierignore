@@ -1,6 +1,8 @@
 # The Prettier CLI also reads .gitignore. The VS Code extension reads only this file, so build output is listed here
 # too, or saving a file in it would reformat it.
 **/dist/
+**/.netlify/
+adapters/netlify/e2e/fixture/publish/
 coverage/
 test-results/
 hint-report/

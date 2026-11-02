@@ -12,8 +12,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowImportingTsExtensions": true,
-    "rootDir": "."
+    "rootDir": ".."
   },
-  "include": ["src/**/*.ts", "e2e/**/*.ts"],
+  "include": ["src/**/*.ts", "e2e/**/*.ts", "../e2e/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -88,4 +88,13 @@ yarn adapter:cf:e2e        # build the fixture and run Playwright against it in 
 
 The E2E lane uses the built compiler and adapter, so run `yarn pkg:build && yarn adapter:cf:build` first.
 
+Cloudflare and Netlify run the same [demo browser contract](../e2e/demo-contract.test.ts)
+against their real runtimes. Both demos expose `/`, `/server?name=collin`,
+`/stream`, `/stream-append`, `/mixed`, `/catalog`, `/catalog-stream`, `/api-demo`,
+and `/errors` with matching titles and navigation. The contract checks static
+client scripts, escaped input, product rendering and filtering, API dispatch,
+no-JavaScript stream ordering, and safe failures. Platform-specific context and
+routing assertions remain in this adapter's own suite. Error-demo requests
+intentionally generate diagnostics.
+
 CI deploys the demo Worker after every other stage passes, and posts a preview URL on pull requests. [DEPLOYMENT.md](../../DEPLOYMENT.md) is the runbook.

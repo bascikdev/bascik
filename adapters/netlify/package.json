@@ -1,0 +1,68 @@
+{
+  "name": "@bascik/adapter-netlify",
+  "version": "1.0.0-rc.10",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bascikdev/bascik.git",
+    "directory": "adapters/netlify"
+  },
+  "description": "Netlify Functions adapter for Bascik",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./install": {
+      "types": "./dist/install.d.ts",
+      "default": "./dist/install.js"
+    }
+  },
+  "bin": {
+    "bascik-netlify-install": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "demo:build": "cd e2e/fixture && bascik --check && bascik --build --target netlify && bascik-netlify-install",
+    "demo:deploy": "cd ../.. && netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --prod --site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
+    "demo:dev": "cd ../.. && netlify dev --filter bascik-e2e-netlify-fixture --framework '#static' --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --port 9877 --functions-port 9878 --offline --no-open",
+    "demo:logs": "cd ../.. && NETLIFY_SITE_ID=268cf8fb-826b-421a-8a34-abd78bf9be1e netlify logs --filter bascik-e2e-netlify-fixture --url https://bascik-netlify-adapter.netlify.app --function bascik-pages --since 30m --json",
+    "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
+    "coverage": "vitest run --coverage.enabled",
+    "prepack": "cp ../../LICENSE LICENSE",
+    "prepare": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:ci": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "unit": "vitest run"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "peerDependencies": {
+    "@bascik/bascik": "^1.0.0-rc.10"
+  },
+  "devDependencies": {
+    "@bascik/bascik": "^1.0.0-rc.10",
+    "@netlify/functions": "^5.2.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
+    "netlify-cli": "^27.14.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}

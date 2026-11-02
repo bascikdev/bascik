@@ -58,7 +58,7 @@ test("a page's own .ts file runs in the Preview under the page's CSP", async ({
 });
 
 for (const { path, id, text } of [
-  { path: "/server-scripts", id: "typescript", text: "<p>Hello, Ada</p>" },
+  { path: "/server-scripts", id: "typescript", text: "<p>Hello World</p>" },
   {
     path: "/stream-scripts",
     id: "typescript",

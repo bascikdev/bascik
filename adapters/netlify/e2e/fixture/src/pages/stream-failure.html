@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head
+      data-bascik-prop-title="Stream Failure - Netlify Adapter Fixture"
+    />
+  </head>
+  <body>
+    <fixture-nav />
+    <fixture-footer />
+    <main data-testid="fixture-stream-failure">
+      <header class="hero">
+        <p class="section-label">Streaming / Error handling</p>
+        <h1>Expected stream failure</h1>
+        <p class="subtitle">
+          Once headers commit, a stream failure cannot replace the response with
+          an error page.
+        </p>
+      </header>
+      <section class="panel">
+        <h2 data-testid="fixture-stream-shell">The shell survives.</h2>
+        <p>
+          This panel was sent before the failing stream script. The page stays
+          usable even when the delayed work fails.
+        </p>
+      </section>
+      <script data-bascik-stream type="text/typescript">
+        export default () => {
+          throw new Error("fixture-stream-failure");
+        };
+      </script>
+      <p><a href="/">Back to the playground &rarr;</a></p>
+    </main>
+  </body>
+</html>

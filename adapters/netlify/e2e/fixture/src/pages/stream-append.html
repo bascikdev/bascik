@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Stream append" />
+  </head>
+  <body>
+    <fixture-nav />
+    <header class="hero">
+      <h1>Stream append</h1>
+      <p class="subtitle" data-testid="cf-append-greeting">
+        <script data-bascik-server type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+          import type { NetlifyFixtureContext } from "@/lib/context.ts";
+
+          export default (request: Request, context: NetlifyFixtureContext) => {
+            const name = new URL(request.url).searchParams.get("name") ?? "Guest";
+            return html`Welcome back, ${name} · Edge host:
+              <span class="badge">${context.platform?.name ?? "local"}</span>`;
+          };
+        </script>
+      </p>
+    </header>
+    <fixture-footer />
+    <main>
+      <p class="subtitle">
+        The shell and footer arrive first. Each independent stream adds its
+        article to the grid when its backend work completes; there are no
+        placeholder cards.
+      </p>
+      <section class="grid" data-testid="stream-append-grid">
+        <script data-bascik-stream type="text/typescript">
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 300);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+            if (delay > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, delay);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return '<article class="panel"><h2>System Health · Edge Ingress</h2><p>99.99% uptime · Operational</p></article>';
+          };
+        </script>
+        <script data-bascik-stream type="text/typescript">
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 300);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+            const wait = Math.min(delay + 500, 5000);
+            if (wait > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, wait);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return '<article class="panel"><h2>Data Processing · Worker Pool</h2><p>1,420 requests per second · Operational</p></article>';
+          };
+        </script>
+        <script data-bascik-stream type="text/typescript">
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 300);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+            const wait = Math.min(delay + 1000, 5000);
+            if (wait > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, wait);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return '<article class="panel"><h2>Storage Replicas · Database Sync</h2><p>64.2 MB / 65 MB · Syncing</p></article>';
+          };
+        </script>
+      </section>
+    </main>
+  </body>
+</html>

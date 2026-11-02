@@ -21,9 +21,11 @@ export const BASCIK_VERSION = "1.0.0-rc.10";
 /**
  * The starters create-bascik can scaffold. `default` is the plain static site;
  * `cloudflare` is the same site plus the pieces a Cloudflare Workers deployment
- * needs: the hosting adapter, Wrangler, and a demo page the Worker renders.
+ * needs: the hosting adapter, Wrangler, and a demo page the Worker renders;
+ * `netlify` is the same site with the Netlify adapter, a `netlify.toml`, and
+ * the same demo page, rendered by a Netlify Function.
  */
-export const TEMPLATES = ["default", "cloudflare"] as const;
+export const TEMPLATES = ["default", "cloudflare", "netlify"] as const;
 export type Template = (typeof TEMPLATES)[number];
 
 // ─── Root files ───────────────────────────────────────────────────────────────
@@ -39,6 +41,7 @@ export const PACKAGE_JSON = (
   template: Template = "default",
 ): string => {
   const cloudflare = template === "cloudflare";
+  const netlify = template === "netlify";
   return (
     JSON.stringify(
       {
@@ -52,11 +55,18 @@ export const PACKAGE_JSON = (
           dev: "bascik",
           build: cloudflare
             ? "bascik --build --target cloudflare"
-            : "bascik --build",
+            : netlify
+              ? "bascik --build --target netlify && bascik-netlify-install"
+              : "bascik --build",
           // npm puts node_modules/.bin on PATH, so `wrangler` still resolves after the cd.
           ...(cloudflare && {
             preview: "cd dist/.bascik/cloudflare && wrangler dev",
             deploy: "cd dist/.bascik/cloudflare && wrangler deploy",
+          }),
+          // The Netlify CLI is large and most deploys run on Netlify, so npx fetches it on demand.
+          ...(netlify && {
+            preview: "npx --yes netlify-cli dev --dir publish",
+            deploy: "npx --yes netlify-cli deploy --build --prod",
           }),
           lint: "bascik --check",
           test: "vitest run",
@@ -69,6 +79,7 @@ export const PACKAGE_JSON = (
         },
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.10" }),
+          ...(netlify && { "@bascik/adapter-netlify": "^1.0.0-rc.10" }),
           "@bascik/language-server": "^0.1.0-rc.6",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
@@ -224,8 +235,8 @@ test.describe('Starter App E2E Tests', () => {
 
   test('contact form answers a submit without leaving the page', async ({ page }) => {
     await page.goto('/contact');
-    await page.getByTestId('contact-form-name').fill('Ada');
-    await page.getByTestId('contact-form-email').fill('ada@example.com');
+    await page.getByTestId('contact-form-name').fill('collin');
+    await page.getByTestId('contact-form-email').fill('collin@example.com');
     await page.getByTestId('contact-form-submit').click();
     await expect(page).toHaveURL('/contact');
     await expect(page.getByTestId('contact-form-status')).toBeVisible();
@@ -245,16 +256,16 @@ export const E2E_APP_SPEC = e2eAppSpec();
 /** The E2E web server is \`bascik --server\`, which runs server scripts on Node, so the edge page is testable here. */
 export const CLOUDFLARE_E2E_APP_SPEC = e2eAppSpec(`
   test('edge page renders the request-time greeting', async ({ page }) => {
-    await page.goto('/edge?name=Ada');
+    await page.goto('/edge?name=collin');
     await expect(page).toHaveTitle(/Edge/);
-    await expect(page.getByTestId('edge-greeting')).toContainText('Ada');
+    await expect(page.getByTestId('edge-greeting')).toContainText('Hello, collin');
   });
 
   test('edge page renders the <feature-card> its server script returns', async ({ page }) => {
-    await page.goto('/edge?name=Ada');
+    await page.goto('/edge?name=collin');
     const card = page.getByTestId('edge-card');
     await expect(card).toBeVisible();
-    await expect(card).toContainText('Hello, Ada');
+    await expect(card).toContainText('Hello, collin');
     // The component's scoped CSS reaches the browser: its article is a flex column.
     await expect(card).toHaveCSS('flex-direction', 'column');
     // The card's title rule reaches the <h3> the script passes through the slot.
@@ -277,6 +288,21 @@ hint-report/
 
 /** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
 export const CLOUDFLARE_GITIGNORE = `${GITIGNORE}.wrangler/
+`;
+
+/** \`publish/\` and \`.netlify/\` are build output (\`bascik-netlify-install\`); \`.netlify/\` also holds the CLI's site link. */
+export const NETLIFY_GITIGNORE = `${GITIGNORE}publish/
+.netlify/
+`;
+
+/**
+ * Netlify builds with \`npm run build\` and deploys \`publish/\`. Netlify sets
+ * \`URL\` to the site's main address in every build, so it becomes the site URL
+ * for the sitemap and robots.txt unless \`BASCIK_SITE_URL\` is set.
+ */
+export const NETLIFY_TOML = `[build]
+  command = "BASCIK_SITE_URL=\${BASCIK_SITE_URL:-$URL} npm run build"
+  publish = "publish"
 `;
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
@@ -929,12 +955,18 @@ ${body}
 </html>
 `;
 
-/** The extra feature card the Cloudflare template adds, linking to the page the Worker renders. */
-const EDGE_FEATURE_CARD = `
+/** Where each hosted template runs request-time code, for the copy that names it. */
+const HOST_RUNTIME: Partial<Record<Template, string>> = {
+  cloudflare: "a Cloudflare Worker",
+  netlify: "a Netlify Function",
+};
+
+/** The extra feature card a hosted template adds, linking to the page its host renders. */
+const edgeFeatureCard = (runtime: string): string => `
           <feature-card data-testid="feature-edge">
             <div data-bascik-slot="header">Edge</div>
             <h3>Rendered per request</h3>
-            <p>Server scripts and API routes run in a Cloudflare Worker. Static pages stay on the CDN.</p>
+            <p>Server scripts and API routes run in ${runtime}. Static pages stay on the CDN.</p>
             <div data-bascik-slot="footer"><a href="/edge" class="btn btn-ghost">See it run →</a></div>
           </feature-card>`;
 
@@ -980,7 +1012,7 @@ export const indexPage = (
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feature-card>${options.template === "cloudflare" ? EDGE_FEATURE_CARD : ""}
+          </feature-card>${options.template && HOST_RUNTIME[options.template] ? edgeFeatureCard(HOST_RUNTIME[options.template]!) : ""}
         </div>
       </div>
     </section>
@@ -1062,18 +1094,21 @@ export const notFoundPage = (brand: string): string =>
     "404",
   );
 
-// ─── Cloudflare template ──────────────────────────────────────────────────────
+// ─── Hosted templates (Cloudflare, Netlify) ───────────────────────────────────
 
 /**
- * A page with a `data-bascik-server` script. The Cloudflare adapter keeps it out
- * of `public/` and renders it in the Worker on every request; `bascik --server`
- * renders it on Node. The script returns the starter's `<feature-card>` around its
+ * A page with a `data-bascik-server` script. The hosting adapter keeps it out
+ * of the static upload and renders it per request (in the Cloudflare Worker
+ * or the Netlify Function); `bascik --server` renders it on Node. The script returns the starter's `<feature-card>` around its
  * greeting, and the host renders that tag into the component's markup and
  * scoped CSS per request: this page does not use the card in its own markup.
  * The script builds its markup with `html` from @bascik/bascik/html, which
  * escapes the query parameter for where it lands.
  */
-export const edgePage = (brand: string): string =>
+export const edgePage = (
+  brand: string,
+  runtime = HOST_RUNTIME.cloudflare!,
+): string =>
   pageShell(
     `Edge - ${brand}`,
     brand,
@@ -1081,7 +1116,7 @@ export const edgePage = (brand: string): string =>
       <section class="section">
         <p class="section-label">Edge</p>
         <h1>Rendered per request</h1>
-        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=Ada">?name=Ada</a> changes the greeting. The script returns a <code>&lt;feature-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
+        <p class="page-intro">The card below comes from a <code>&lt;script data-bascik-server&gt;</code> block. It runs on every request, so the time changes on reload and <a href="/edge?name=collin">?name=collin</a> changes the greeting. The script returns a <code>&lt;feature-card&gt;</code> tag, and the server renders it into the component, scoped CSS included.</p>
 
         <h2 class="mt-28">Your greeting</h2>
         <div class="edge-greeting">
@@ -1102,7 +1137,7 @@ export const edgePage = (brand: string): string =>
         </div>
 
         <div class="callout mt-40">
-          <p>The same Worker answers <a href="/api/hello">/api/hello</a>, an API route in <code>src/api/hello.ts</code>.</p>
+          <p>The same ${runtime.replace(/^a /, "")} answers <a href="/api/hello">/api/hello</a>, an API route in <code>src/api/hello.ts</code>.</p>
         </div>
       </section>
     </div>`,
@@ -1111,7 +1146,8 @@ export const edgePage = (brand: string): string =>
 
 /**
  * An API route served at /api/hello. \`context.platform\` names the host, so the
- * same handler answers "cloudflare" from the Worker and "node" from \`bascik --server\`.
+ * same handler answers "cloudflare" from the Worker, "netlify" from the Netlify
+ * Function and "node" from \`bascik --server\`.
  */
 export const HELLO_API_ROUTE = `export const GET = async (
   request: Request,
@@ -1243,7 +1279,7 @@ export async function scaffold(
 /** The folders the starter creates, relative to the project root, with `/` separators. */
 const starterDirectories = (template: Template): string[] => [
   "e2e",
-  ...(template === "cloudflare" ? ["src/api"] : []),
+  ...(template === "cloudflare" || template === "netlify" ? ["src/api"] : []),
   "src/pages/assets",
   "src/pages/css",
   "src/components/site-meta",
@@ -1264,15 +1300,27 @@ const starterFiles = (
   template: Template,
 ): Array<[path: string, data: string | Buffer]> => {
   const cloudflare = template === "cloudflare";
+  const netlify = template === "netlify";
+  const runtime = HOST_RUNTIME[template];
   return [
     // Root
     ["package.json", PACKAGE_JSON(packageName, template)],
     ["vite.config.ts", VITE_CONFIG],
-    [".gitignore", cloudflare ? CLOUDFLARE_GITIGNORE : GITIGNORE],
+    [
+      ".gitignore",
+      cloudflare
+        ? CLOUDFLARE_GITIGNORE
+        : netlify
+          ? NETLIFY_GITIGNORE
+          : GITIGNORE,
+    ],
+    ...(netlify
+      ? ([["netlify.toml", NETLIFY_TOML]] as Array<[string, string]>)
+      : []),
 
-    // E2E
+    // E2E: the web server is \`bascik --server\`, which renders the edge page on Node
     ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
-    ["e2e/app.spec.ts", cloudflare ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
+    ["e2e/app.spec.ts", runtime ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
 
     // Assets
     ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
@@ -1295,10 +1343,10 @@ const starterFiles = (
     ["src/pages/contact.html", contactPage(siteName)],
     ["src/pages/404.html", notFoundPage(siteName)],
 
-    // Cloudflare template: the edge demo page and its API route
-    ...(cloudflare
+    // Hosted templates: the edge demo page and its API route
+    ...(runtime
       ? ([
-          ["src/pages/edge.html", edgePage(siteName)],
+          ["src/pages/edge.html", edgePage(siteName, runtime)],
           ["src/api/hello.ts", HELLO_API_ROUTE],
         ] as Array<[string, string]>)
       : []),

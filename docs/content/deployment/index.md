@@ -16,14 +16,14 @@ If your site is a marketing page, blog, documentation site, portfolio, or uses b
 
 > **Get Started:** Follow our step-by-step, hand-holding [Static Hosting Guide](/deployment/static-hosting) to deploy your site to Cloudflare Pages, GitHub Pages, Netlify, and more in minutes.
 
-### 2. Serverless & Edge Adapters (Cloudflare Workers & Pages)
+### 2. Serverless & Edge Adapters (Cloudflare and Netlify)
 
 If your site uses request-time server scripts (`data-bascik-server`), progressive HTML streams (`data-bascik-stream`), or edge API routes (`src/api/`), you can deploy to edge platforms without managing a dedicated server.
 
-- **How it works:** Running `bascik --build --target cloudflare` compiles static assets for the CDN while packaging your server scripts, stream scripts, and API routes into an edge Worker automatically.
+- **How it works:** Running `bascik --build --target cloudflare` (or `--target netlify`) compiles static assets for the CDN while packaging your server scripts, stream scripts, and API routes into an edge Worker or a Netlify Function automatically.
 - **Benefits:** Global edge execution, zero origin servers to maintain, and automatic streaming.
 
-> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, keeping your Wrangler configuration in the repo, Workers Builds, Worker Previews, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
+> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, keeping your Wrangler configuration in the repo, Workers Builds, Worker Previews, and edge features, the [Netlify Adapter](/deployment/netlify) guide for Netlify Functions, or learn about [Custom Adapters](/deployment/custom-adapters).
 
 ### 3. Node.js Production Server (`bascik --server`)
 
@@ -52,7 +52,7 @@ For step-by-step walkthroughs across popular platforms, see the dedicated [Stati
 
 Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
 
-Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See [Cloudflare Adapter](/deployment/cloudflare) for the tested recipe, support matrix, and provider limits, or read [Custom Adapters](/deployment/custom-adapters) to learn how to author custom deployment adapters.
+Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`, and `netlify` via `@bascik/adapter-netlify`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See [Cloudflare Adapter](/deployment/cloudflare) and [Netlify Adapter](/deployment/netlify) for the tested recipes, support matrix, and provider limits, or read [Custom Adapters](/deployment/custom-adapters) to learn how to author custom deployment adapters.
 
 ## Using the production server
 

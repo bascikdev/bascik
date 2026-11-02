@@ -72,12 +72,13 @@ Your site will be live at `http://localhost:8080`.
 
 ## Templates
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers; with `-y` and no flag, you get the default.
+Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers, then to Netlify; with `-y` and no flag, you get the default.
 
-| Template     | What you get                                                                                                          |
-| :----------- | :-------------------------------------------------------------------------------------------------------------------- |
-| `default`    | The static starter above. `static` is accepted as an alias.                                                           |
-| `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo. |
+| Template     | What you get                                                                                                             |
+| :----------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `default`    | The static starter above. `static` is accepted as an alias.                                                              |
+| `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo.    |
+| `netlify`    | The same starter plus the [Netlify adapter](https://bascik.dev/deployment/netlify), a `netlify.toml`, and the edge demo. |
 
 ```sh
 npm create bascik@rc my-site -- --template cloudflare
@@ -99,6 +100,22 @@ After scaffolding a Cloudflare project:
 npm run build     # bascik --build --target cloudflare
 npm run preview   # run the bundle locally in workerd
 npm run deploy    # wrangler deploy
+```
+
+The Netlify template differs from the default in these files only:
+
+- `package.json`: `@bascik/adapter-netlify` as a dev dependency; `build` runs `bascik --build --target netlify && bascik-netlify-install`; new `preview` and `deploy` scripts run the Netlify CLI through `npx`. `dev` is still the Bascik dev server.
+- `netlify.toml`: builds with `npm run build`, publishes `publish/`, and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set.
+- `src/pages/edge.html` and `src/api/hello.ts`: the edge demo and API route, run in the Netlify Function.
+- `e2e/app.spec.ts`: one extra test covering the edge page.
+- `.gitignore`: ignores `publish/` and `.netlify/`.
+
+After scaffolding a Netlify project:
+
+```sh
+npm run build     # bascik --build --target netlify && bascik-netlify-install
+npm run preview   # netlify dev --dir publish
+npm run deploy    # netlify deploy --build --prod
 ```
 
 ## Development & Testing

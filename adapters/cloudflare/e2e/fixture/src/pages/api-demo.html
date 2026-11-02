@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Edge API Route Demo</title>
+    <title>Bascik · API client</title>
     <style>
       :root {
         color-scheme: dark;
@@ -247,15 +247,14 @@
         text-decoration: underline;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Bascik Edge API Route</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1>Edge API Route Client</h1>
+      <h1>API client</h1>
       <p class="subtitle">
         API routes written with standard WHATWG <code>Request</code> and
         <code>Response</code> are dispatched directly inside the Cloudflare
@@ -287,11 +286,18 @@
               flex-wrap: wrap;
             "
           >
-            <button class="btn" id="fetch-btn" type="button">
+            <button
+              class="btn"
+              id="fetch-btn"
+              type="button"
+              data-testid="demo-api-send"
+            >
               ⚡ Send Request to /api/ping
             </button>
             <span
               id="response-status"
+              data-testid="demo-api-status"
+              role="status"
               class="status-pill"
               style="display: none"
             ></span>
@@ -310,7 +316,7 @@
               >Open Raw Endpoint ↗</a
             >
           </div>
-          <pre><code id="json-display">// Click "Send Request" above to test the API route...</code></pre>
+          <pre><code id="json-display" data-testid="demo-api-response">// Click "Send Request" above to test the API route...</code></pre>
         </div>
 
         <h3
@@ -349,14 +355,20 @@
       const latencyTag = document.getElementById("latency-tag");
 
       btn.addEventListener("click", async () => {
+        btn.disabled = true;
         display.textContent = "// Sending request to /api/ping...";
         const t0 = performance.now();
         try {
           const res = await fetch("/api/ping");
+          if (!res.ok) {
+            throw new Error("HTTP " + res.status);
+          }
           const elapsed = Math.round(performance.now() - t0);
           const data = await res.json();
           statusPill.style.display = "inline-block";
           statusPill.className = "status-pill success";
+          statusPill.style.background = "";
+          statusPill.style.color = "";
           statusPill.textContent = "HTTP " + res.status + " OK";
           latencyTag.textContent = "Resolved in " + elapsed + "ms";
           display.textContent = JSON.stringify(data, null, 2);
@@ -367,6 +379,8 @@
           statusPill.style.color = "#991b1b";
           statusPill.textContent = "Request Failed";
           display.textContent = "// Error: " + err.message;
+        } finally {
+          btn.disabled = false;
         }
       });
     </script>

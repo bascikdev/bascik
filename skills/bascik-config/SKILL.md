@@ -1,6 +1,6 @@
 ---
 name: bascik-config
-description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, building a Cloudflare bundle with --target, placing static assets, 404, and 500 pages, or structuring a monorepo with several sites, shared components, workspaces, and CI. Includes an audit script that flags redundant or invalid config and a workspace checker for multi-site repositories.
+description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, building a Cloudflare or Netlify bundle with --target, placing static assets, 404, and 500 pages, or structuring a monorepo with several sites, shared components, workspaces, and CI. Includes an audit script that flags redundant or invalid config and a workspace checker for multi-site repositories.
 license: MIT
 metadata:
   author: bascik
@@ -180,10 +180,10 @@ Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /s
 
 ## Deploy
 
-| Site uses                                                 | Deploy                                                                                                   |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Only static pages, build scripts, and dynamic routes      | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host                  |
-| `data-bascik-server`, `data-bascik-stream`, or `src/api/` | `bascik --build && bascik --server` on Node, or `bascik --build --target cloudflare` for a Worker bundle |
+| Site uses                                                 | Deploy                                                                                                                                                                                       |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Only static pages, build scripts, and dynamic routes      | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host                                                                                                      |
+| `data-bascik-server`, `data-bascik-stream`, or `src/api/` | `bascik --build && bascik --server` on Node, `bascik --build --target cloudflare` for a Worker bundle, or `bascik --build --target netlify && bascik-netlify-install` for a Netlify Function |
 
 ## Look it up
 
@@ -193,6 +193,7 @@ Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /s
 | Choose a host, deploy static output                                                    | `/deployment`, `/deployment/static-hosting`       |
 | Run `bascik --server` (TLS, caching, compression, rate limits, proxies, health checks) | `/production-server`                              |
 | Deploy to Cloudflare Workers or Pages                                                  | `/deployment/cloudflare`                          |
+| Deploy to Netlify Functions                                                            | `/deployment/netlify`                             |
 | Write exec scripts and pick a phase                                                    | `/exec-scripts`                                   |
 | Control the sitemap and robots.txt                                                     | `/sitemap`                                        |
 | Set per-environment values                                                             | `/environment-variables`                          |

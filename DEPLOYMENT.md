@@ -1,8 +1,61 @@
-# Deploying bascik.dev and the Adapter Demo
+# Deploying bascik.dev and the Adapter Demos
 
 This repo deploys two sites to Cloudflare. Everything that can live in the repo does: each Worker is defined by a `wrangler.jsonc`, GitHub Actions builds and deploys both (CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml)), and root scripts build, check and preview each one locally. Nobody deploys by hand, and Cloudflare Workers Builds is not used. The steps that cannot live in the repo (credentials, the bascik.dev cutover, retiring the Pages project) are listed here with a check for each.
 
-The user-facing version of this material, written for people deploying their own Bascik sites, is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare).
+The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
+
+## Netlify Adapter Acceptance Project
+
+- Site: [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app).
+- Project ID: `268cf8fb-826b-421a-8a34-abd78bf9be1e`.
+- Admin: [Netlify project](https://app.netlify.com/projects/bascik-netlify-adapter).
+- Source: `adapters/netlify/e2e/fixture/`; configuration: its `netlify.toml`.
+- Runtime: Node 24. Static output is `publish/`; generated function is
+  `.netlify/v1/functions/bascik-pages.mjs`; an authored native function checks coexistence.
+- Synthetic data only. No Identity users, database, OAuth providers, billing, or app secrets.
+  The cookie is a short-lived transport-test marker, not an authenticated session.
+- No Git repository connection or automatic cloud deployment is configured. Local
+  acceptance tests run in CI stage 4, and gate both Cloudflare deployment jobs.
+  Hosted deployment and verification are explicit maintainer commands.
+
+Run from the monorepo root:
+
+```sh
+yarn adapter:nf:e2e
+yarn adapter:nf:demo:deploy
+yarn adapter:nf:demo:test
+yarn adapter:nf:demo:logs
+```
+
+The deploy command builds current sources before uploading and pins `--site` to
+the project ID above. It never uses an application's `.netlify/state.json`.
+Do not substitute an application project ID, copy credentials into the fixture,
+or run these commands from an application checkout. Authenticate the local
+Netlify CLI as a project maintainer; tokens belong in the CLI's credential store
+or a protected `NETLIFY_AUTH_TOKEN`, never in Git.
+
+For local browsing, `yarn adapter:nf:demo:dev` uses offline Netlify Dev on ports
+9877/9878 (plus its static server). The fixture is a Yarn workspace, selected with
+`--filter` from the repository root. Explicit deploy directories prevent an
+incorrectly selected workspace from uploading repository sources. The config
+keeps the build base at the repository root and resolves publish/functions paths
+from there. Without workspace selection, Netlify may serve static files but fail
+to discover the generated/native functions. Generated `publish/`, `dist/` and `.netlify/`
+directories are ignored. Do not build/deploy while the local suite owns them.
+
+The same browser suite runs locally and hosted; only the exact cross-origin 403
+assertion is hosted-only because Netlify Dev 27.14.2 retries 403 responses as
+static paths and changes them to 404. The hosted check must pass before accepting
+a release. See the [adapter README](adapters/netlify/README.md#developing-and-testing-this-adapter)
+for coverage and preview-origin testing. `/failure`, `/api/failure`,
+`/stream-failure`, and `/timeout` deliberately fail so logs and client error
+behavior can be checked. Match `x-nf-request-id` to `request.start` and
+`script.error`/`request.error` in logs; delivery can be delayed several minutes.
+
+Netlify Database and Identity are not enabled for this fixture. A manual deploy
+alias is not a Git branch deploy and does not automatically provision a database
+branch. Add separate isolated integrations and provisioning checks if those
+services become part of this test project's scope.
 
 ## The Two Deployments
 

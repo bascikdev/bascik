@@ -26,8 +26,11 @@ const fixtureDir = join(e2eDir, "fixture");
 const PORT = 9876;
 
 export default defineConfig({
-  testDir: "./tests",
-  testMatch: "**/adapter.test.ts",
+  testDir: "../..",
+  testMatch: [
+    "**/cloudflare/e2e/tests/adapter.test.ts",
+    "**/e2e/demo-contract.test.ts",
+  ],
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

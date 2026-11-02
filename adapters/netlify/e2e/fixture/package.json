@@ -1,0 +1,14 @@
+{
+  "name": "bascik-e2e-netlify-fixture",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "description": "Independent Netlify adapter acceptance site. No application accounts or data.",
+  "devDependencies": {
+    "@bascik/adapter-netlify": "workspace:*",
+    "@bascik/bascik": "workspace:*",
+    "@netlify/functions": "^5.2.0"
+  }
+}

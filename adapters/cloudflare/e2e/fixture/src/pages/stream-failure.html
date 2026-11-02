@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <demo-head data-bascik-prop-title="Bascik · Stream failure" />
+  </head>
+  <body>
+    <demo-nav />
+    <footer><a href="/errors">Back to the error demo</a></footer>
+    <main>
+      <h1>Expected stream failure</h1>
+      <section class="card">
+        <h2 data-testid="fixture-stream-shell">The shell survives.</h2>
+        <p>
+          This panel was sent before the failing stream script. The page stays
+          usable even when the delayed work fails.
+        </p>
+      </section>
+      <script data-bascik-stream>
+        export default () => {
+          throw new Error("fixture-stream-failure");
+        };
+      </script>
+    </main>
+  </body>
+</html>
