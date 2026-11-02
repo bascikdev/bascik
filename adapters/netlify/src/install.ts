@@ -11,8 +11,18 @@
  * separate step after the build.
  */
 
-import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  realpath,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolveAdapterProjectPaths } from "@bascik/bascik/adapter";
 import {
   ADAPTER_NAME,
   FUNCTION_DIR,
@@ -45,25 +55,144 @@ export async function findAdapterOutput(distDir: string): Promise<string> {
   return newest.dir;
 }
 
+const isInside = (path: string, parent: string): boolean => {
+  const rel = relative(parent, path);
+  return (
+    rel === "" ||
+    (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`))
+  );
+};
+
+/** Resolve existing ancestors too: a destination need not have been created yet. */
+async function physicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    try {
+      const target = await readlink(path);
+      return await physicalPath(resolve(dirname(path), target));
+    } catch (linkError) {
+      if (
+        !["ENOENT", "EINVAL"].includes(
+          (linkError as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        throw linkError;
+    }
+    const parent = dirname(path);
+    if (parent === path) throw error;
+    return resolve(await physicalPath(parent), relative(parent, path));
+  }
+}
+
+async function assertSafeDestinations(
+  projectRoot: string,
+  destinations: string[],
+  protectedPaths: string[],
+): Promise<void> {
+  const physicalRoot = await physicalPath(projectRoot);
+  const protectedEntries = await Promise.all(
+    protectedPaths.map(async (path) => ({
+      path,
+      physical: await physicalPath(path),
+    })),
+  );
+  for (const destination of destinations) {
+    const physical = await physicalPath(destination);
+    if (!isInside(physical, physicalRoot))
+      throw new Error(
+        `[netlify-install] refusing to replace ${destination}: destination resolves outside the project.`,
+      );
+    for (const entry of protectedEntries)
+      if (
+        isInside(destination, entry.path) ||
+        isInside(entry.path, destination) ||
+        isInside(physical, entry.physical) ||
+        isInside(entry.physical, physical)
+      )
+        throw new Error(
+          `[netlify-install] refusing to replace ${destination}: overlaps source or build output ${entry.path}.`,
+        );
+  }
+}
+
+/** A nested source symlink can alias a destination even when its root does not. */
+async function sourceSymlinkTargets(roots: string[]): Promise<string[]> {
+  const visited = new Set<string>();
+  const targets: string[] = [];
+  async function visit(path: string): Promise<void> {
+    const physical = await physicalPath(path);
+    if (visited.has(physical)) return;
+    visited.add(physical);
+    let entries;
+    try {
+      entries = await readdir(path, { withFileTypes: true });
+    } catch (error) {
+      if (
+        ["ENOENT", "ENOTDIR"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const child = join(path, entry.name);
+      if (entry.isSymbolicLink()) {
+        targets.push(await physicalPath(child));
+        await visit(child);
+      } else if (entry.isDirectory()) await visit(child);
+    }
+  }
+  for (const root of roots) await visit(root);
+  return targets;
+}
+
 /** Replace publish/ and the Bascik function with the adapter's latest output. */
 export async function installNetlifyOutput(
   projectRoot: string,
-  distDir = join(projectRoot, "dist"),
+  distDir?: string,
+  configArgv: string[] = [],
 ): Promise<{ publishDir: string; functionPath?: string }> {
-  const outDir = await findAdapterOutput(distDir);
-
+  projectRoot = resolve(projectRoot);
+  const paths = await resolveAdapterProjectPaths(projectRoot, configArgv);
+  const outDir = await findAdapterOutput(
+    resolve(projectRoot, distDir ?? paths.distDir),
+  );
   const publishDir = join(projectRoot, PUBLISH_DIR);
-  await rm(publishDir, { recursive: true, force: true });
-  await cp(join(outDir, PUBLISH_DIR), publishDir, { recursive: true });
-
   const functionDir = join(projectRoot, NETLIFY_FUNCTION_DIR);
   const functionPath = join(functionDir, FUNCTION_FILE);
-  await rm(functionPath, { force: true });
-  const built = join(outDir, FUNCTION_DIR, FUNCTION_FILE);
-  const hasFunction = await readFile(built).then(
-    () => true,
-    () => false,
+  await assertSafeDestinations(
+    projectRoot,
+    [publishDir, functionPath],
+    [
+      ...paths.sourceRoots,
+      ...(await sourceSymlinkTargets(paths.sourceRoots)),
+      outDir,
+    ],
   );
+  // Validate both inputs before replacing either destination.
+  const publishSource = join(outDir, PUBLISH_DIR);
+  if (!(await stat(publishSource)).isDirectory())
+    throw new Error(
+      `[netlify-install] expected a directory at ${publishSource}.`,
+    );
+  const built = join(outDir, FUNCTION_DIR, FUNCTION_FILE);
+  const hasFunction = await stat(built).then(
+    (entry) => {
+      if (!entry.isFile())
+        throw new Error(`[netlify-install] expected a file at ${built}.`);
+      return true;
+    },
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    },
+  );
+  await rm(publishDir, { recursive: true, force: true });
+  await cp(publishSource, publishDir, { recursive: true });
+  await rm(functionPath, { force: true });
   if (!hasFunction) return { publishDir };
   await mkdir(functionDir, { recursive: true });
   await cp(built, functionPath);

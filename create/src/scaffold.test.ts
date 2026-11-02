@@ -400,13 +400,20 @@ describe("PACKAGE_JSON", () => {
     const repoRoot = resolve(import.meta.dirname, "../..");
     const adapterJson = JSON.parse(
       readFileSync(resolve(repoRoot, "adapters/netlify/package.json"), "utf8"),
-    ) as { version: string; peerDependencies: Record<string, string> };
+    ) as {
+      version: string;
+      peerDependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
     const pkgJson = JSON.parse(
       readFileSync(resolve(repoRoot, "pkg/package.json"), "utf8"),
     ) as { version: string };
     const netlify = JSON.parse(PACKAGE_JSON("my-app", "netlify"));
     expect(netlify.devDependencies["@bascik/adapter-netlify"]).toBe(
       `^${adapterJson.version}`,
+    );
+    expect(netlify.devDependencies["netlify-cli"]).toBe(
+      adapterJson.devDependencies["netlify-cli"],
     );
     expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(
       `^${pkgJson.version}`,
@@ -422,6 +429,11 @@ describe("PACKAGE_JSON", () => {
       "npx --yes netlify-cli deploy --build --prod",
     );
     expect(netlify.devDependencies).not.toHaveProperty("wrangler");
+    for (const template of ["default", "cloudflare"] as const) {
+      expect(
+        JSON.parse(PACKAGE_JSON("my-app", template)).devDependencies,
+      ).not.toHaveProperty("netlify-cli");
+    }
   });
 
   it("parses --template netlify and ships its netlify.toml and ignores", () => {

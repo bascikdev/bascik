@@ -889,7 +889,7 @@ async function serverRequest(): Promise<Frame[]> {
   try {
     await openFile(editor, "hello-user.html");
     await gotoLine(editor, 1, 1);
-    if ((await heading()) !== "Hello World!")
+    if ((await heading()) !== "Hello, Ada!")
       throw new Error(`Unexpected first render: ${await heading()}`);
     await rig.snap(frames, INTRO_HOLD + 1800);
 

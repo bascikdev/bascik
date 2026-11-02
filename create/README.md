@@ -105,7 +105,7 @@ npm run deploy    # wrangler deploy
 
 The Netlify template differs from the default in these files only:
 
-- `package.json`: `@bascik/adapter-netlify` as a dev dependency; `dev` runs `bascik --target netlify` with source watching and browser live reload through Netlify Dev; `build` runs `bascik --build --target netlify && bascik-netlify-install`; `preview` and `deploy` run the Netlify CLI through `npx`.
+- `package.json`: `@bascik/adapter-netlify` and `netlify-cli` as dev dependencies; `dev` runs `bascik --target netlify` with source watching and browser live reload through the locally installed Netlify Dev; `build` runs `bascik --build --target netlify && bascik-netlify-install`; `preview` and `deploy` run the Netlify CLI through `npx`.
 - `netlify.toml`: builds with `npm run build`, publishes `publish/`, and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set.
 - `src/pages/edge.html` and `src/api/hello.ts`: the edge demo and API route, run in the Netlify Function.
 - `e2e/app.spec.ts`: one extra test covering the edge page.

@@ -32,7 +32,11 @@ export default defineAdapter({
   build,
   async dev({ projectRoot, distDir, port }) {
     const cli = await resolvePlatformCli(projectRoot, "netlify-cli", "netlify");
-    const { publishDir } = await installNetlifyOutput(projectRoot, distDir);
+    const { publishDir } = await installNetlifyOutput(
+      projectRoot,
+      distDir,
+      process.argv.slice(2),
+    );
     const functionsPort = await availableDevPort();
     const staticServerPort = await availableDevPort();
     return {

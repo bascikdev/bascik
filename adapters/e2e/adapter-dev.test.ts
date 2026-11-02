@@ -52,7 +52,18 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
       );
       await writeFile(
         join(root, "wrangler.jsonc"),
-        '{"name":"adapter-dev-browser","compatibility_date":"2026-08-01"}',
+        JSON.stringify({
+          name: "adapter-dev-browser",
+          compatibility_date: "2026-08-01",
+          ...(target === "cloudflare" && {
+            kv_namespaces: [
+              {
+                binding: "STATE",
+                id: "0123456789abcdef0123456789abcdef",
+              },
+            ],
+          }),
+        }),
       );
       await writeFile(
         join(root, "netlify.toml"),
@@ -92,6 +103,17 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
         join(root, "src/api/ping.ts"),
         'export const GET = () => Response.json({ value: "first" });',
       );
+      if (target === "cloudflare") {
+        await writeFile(
+          join(root, "src/api/state.ts"),
+          `export const GET = async (_request, context) => {
+  const state = context.platform.env.STATE;
+  const reads = Number(await state.get("reads") ?? "0") + 1;
+  await state.put("reads", String(reads));
+  return Response.json({ reads });
+};`,
+        );
+      }
       const port = await availableDevPort();
       const url = `http://127.0.0.1:${port}`;
       child = spawn(
@@ -141,6 +163,11 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
       await expect(page.locator("script[data-bascik-live-reload]")).toHaveCount(
         1,
       );
+      if (target === "cloudflare") {
+        const state = await request.get(`${url}/api/state`);
+        expect(state.status()).toBe(200);
+        expect(await state.json()).toEqual({ reads: 1 });
+      }
       const stream = await fetch(`${url}/stream`, {
         signal: AbortSignal.timeout(2000),
       });
@@ -176,6 +203,11 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
       await expect(page.getByTestId("value")).toHaveText("second", {
         timeout: 60_000,
       });
+      if (target === "cloudflare") {
+        const state = await request.get(`${url}/api/state`);
+        expect(state.status()).toBe(200);
+        expect(await state.json()).toEqual({ reads: 2 });
+      }
       await page.goto(`${url}/static`);
       await expect(page.getByTestId("static")).toHaveText("Static first");
       await expect(page.getByTestId("component")).toHaveText("Component first");

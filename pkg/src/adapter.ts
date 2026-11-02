@@ -5,6 +5,7 @@
  */
 
 export * from "./lib/adapter-contract.ts";
+export { resolveAdapterProjectPaths } from "./lib/adapter-project-paths.ts";
 export {
   resolvePlatformCli,
   availableDevPort,

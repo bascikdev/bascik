@@ -83,6 +83,7 @@ yarn adapter:cf:demo:deploy   # build, then wrangler deploy to production
 The workspace script `demo:dev` runs `bascik --target cloudflare` from the fixture root. `demo:build`, `demo:preview`, and `demo:deploy` remain separate production steps for CI.
 
 Watched development launches Wrangler from the project root, pointing it at the generated Worker config or Pages public directory by absolute path. Its working directory stays valid even when another build replaces the generated output.
+Local bindings persist under the project's `.wrangler/state/`, outside generated output, so source rebuilds do not delete KV, D1, R2, or Durable Object data.
 
 ## Development
 

@@ -37,6 +37,8 @@ bascik --build --target netlify && bascik-netlify-install
 
 `bascik --build --target netlify` writes the normal `dist/` and, beside it, `dist/.bascik/netlify/` with `publish/` and `functions/bascik-pages.mjs`. Bascik only lets an adapter write inside that folder, so `bascik-netlify-install` is a second step: it replaces `publish/` in the project root with the static files and writes the function to `.netlify/v1/functions/bascik-pages.mjs`, where Netlify's [Frameworks API](https://docs.netlify.com/build/frameworks/frameworks-api/) picks it up next to any functions of your own in `netlify/functions/`.
 
+The installer honors the build configuration's `directory.out` instead of assuming `dist/`. If you build with `--config <path>`, pass the same flag to `bascik-netlify-install`; a missing custom output or invalid configuration is an error, not a fallback to an older build. Before changing either destination, the installer refuses overlap with configured pages, component roots, API sources, `scripts.importRoot`, or its own adapter build, including symlink aliases. Keep `publish/` and the generated function outside your source roots.
+
 Put both commands in `package.json` and point `netlify.toml` at them:
 
 ```json

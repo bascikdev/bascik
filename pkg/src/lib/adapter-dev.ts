@@ -1,4 +1,5 @@
 import { fork, spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import {
   createServer,
   request as httpRequest,
@@ -10,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { Transform, pipeline } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { setTimeout as delay } from "node:timers/promises";
+import { parseEnv } from "node:util";
 import type { CliFlags } from "./cli.ts";
 import { resolveAdapterTarget } from "./adapter-resolution.ts";
 import { availableDevPort } from "./adapter-dev-platform.ts";
@@ -131,6 +133,26 @@ const disconnected = (error: NodeJS.ErrnoException): boolean =>
   ["ECONNRESET", "EPIPE", "ERR_STREAM_PREMATURE_CLOSE"].includes(
     error.code ?? "",
   );
+
+const hasConfiguredSiteUrl = (
+  projectRoot: string,
+  flags: CliFlags,
+): boolean => {
+  if (flags.siteUrl !== undefined) return true;
+  const inheritedSiteUrl = process.env.BASCIK_SITE_URL;
+  if (inheritedSiteUrl !== undefined) return inheritedSiteUrl !== "";
+
+  let fileSiteUrl: string | undefined;
+  for (const file of [
+    join(projectRoot, ".env"),
+    ...flags.envFiles.map((path) => resolve(projectRoot, path)),
+  ]) {
+    if (existsSync(file))
+      fileSiteUrl =
+        parseEnv(readFileSync(file, "utf8")).BASCIK_SITE_URL ?? fileSiteUrl;
+  }
+  return Boolean(fileSiteUrl);
+};
 
 export const stopAdapterChild = async (
   child: ChildProcess | undefined,
@@ -404,17 +426,21 @@ export const startAdapterDev = async (
           import.meta.url,
         ),
       );
+      const buildEnv = {
+        ...process.env,
+        BASCIK_ADAPTER_DEV: "1",
+        BASCIK_BUILD: "1",
+        BASCIK_SERVER: "0",
+        ...(!hasConfiguredSiteUrl(projectRoot, flags) && {
+          BASCIK_SITE_URL: origin,
+        }),
+      };
       builder = fork(cli, [...buildArgs, "--build"], {
         cwd: projectRoot,
         execArgv: [],
         detached: process.platform !== "win32",
         stdio: ["ignore", "inherit", "inherit", "ipc"],
-        env: {
-          ...process.env,
-          BASCIK_ADAPTER_DEV: "1",
-          BASCIK_BUILD: "1",
-          BASCIK_SERVER: "0",
-        },
+        env: buildEnv,
       });
       builder.on("message", (message: unknown) => {
         if (

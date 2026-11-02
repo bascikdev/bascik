@@ -9,6 +9,24 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
+test("demo inline styles are permitted by CSP", async ({ page }) => {
+  const violations: string[] = [];
+  await page.exposeFunction("recordStyleViolation", (directive: string) => {
+    violations.push(directive);
+  });
+  await page.addInitScript(`(() => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      if (event.effectiveDirective.startsWith("style-src"))
+        globalThis.recordStyleViolation(event.effectiveDirective);
+    });
+  })();`);
+  for (const path of ["/", "/api-demo", "/mixed", "/stream"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    expect(violations, path).toEqual([]);
+  }
+});
+
 test("the playground stays readable at desktop and mobile widths", async ({
   page,
 }) => {

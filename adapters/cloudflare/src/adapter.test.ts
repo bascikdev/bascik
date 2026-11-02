@@ -6,6 +6,27 @@ import { mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import type { SiteGraph } from "@bascik/bascik/adapter";
 
 describe("cloudflare adapter definition and execution", () => {
+  it.each(["workers", "pages"])(
+    "keeps %s binding state outside replaceable build output",
+    async (variant) => {
+      const projectRoot = process.cwd();
+      const outDir = join(projectRoot, "dist", ".bascik", "cloudflare");
+      const command = await adapter.dev!({
+        projectRoot,
+        distDir: join(projectRoot, "dist"),
+        outDir,
+        variant,
+        port: 8787,
+      });
+      const at = command.args.indexOf("--persist-to");
+      expect(at).toBeGreaterThan(-1);
+      expect(command.args[at + 1]).toBe(
+        join(projectRoot, ".wrangler", "state"),
+      );
+      expect(command.cwd).toBe(projectRoot);
+    },
+  );
+
   it("default export defines cloudflare adapter", () => {
     expect(adapter.name).toBe("cloudflare");
     expect(typeof adapter.build).toBe("function");

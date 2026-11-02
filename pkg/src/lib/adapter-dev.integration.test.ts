@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { once } from "node:events";
 import { availableDevPort } from "./adapter-dev-platform.ts";
@@ -52,7 +52,7 @@ it.each(["SIGINT", "runtime"] as const)(
     await writeFile(join(root, "package.json"), '{"type":"module"}');
     await writeFile(
       join(root, "bascik.config.ts"),
-      'export default { directory: { out: "output" }, generate: { sitemap: false, robots: false } };',
+      'export default { directory: { out: "output" } };',
     );
     await writeFile(join(root, "src/value.ts"), 'export default "first";');
     await writeFile(
@@ -103,6 +103,18 @@ server.listen(Number(process.argv[2]), "127.0.0.1");
 process.on("SIGTERM", () => server.close(() => process.exit(0)));
 `,
     );
+    const childEnv = { ...process.env };
+    delete childEnv.BASCIK_SITE_URL;
+    const productionBuild = spawnSync(
+      process.execPath,
+      [resolve("dist/index.js"), "--build", "--target", "./local-adapter.mjs"],
+      { cwd: root, env: childEnv, encoding: "utf8" },
+    );
+    expect(productionBuild.status).not.toBe(0);
+    expect(`${productionBuild.stdout}\n${productionBuild.stderr}`).toContain(
+      "BASCIK_SITE_URL is not set",
+    );
+
     const port = await availableDevPort();
     log = "";
     child = spawn(
@@ -116,6 +128,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       ],
       {
         cwd: root,
+        env: childEnv,
         stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
       },
@@ -132,6 +145,16 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       expect(response.status).toBe(200);
       expect(await response.text()).toContain("first");
     });
+    const fallbackSitemap = await readFile(
+      join(root, "output/sitemap.xml"),
+      "utf8",
+    );
+    expect(fallbackSitemap).toContain(`<loc>${url}/</loc>`);
+    const fallbackRobots = await readFile(
+      join(root, "output/robots.txt"),
+      "utf8",
+    );
+    expect(fallbackRobots).toContain(`Sitemap: ${url}/sitemap.xml`);
     expect((await fetch(`${url}//%`)).status).toBe(200);
     const stream = await fetch(`${url}/stream`);
     expect(stream.headers.get("content-security-policy")).toContain(
@@ -154,6 +177,10 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       join(root, "src/value.ts"),
       'export default "bad"; throw new Error("broken edit");',
     );
+    await writeFile(
+      join(root, ".env"),
+      "BASCIK_SITE_URL=https://configured.example\n",
+    );
     await waitFor(async () => {
       expect(log).toContain("broken edit");
       expect((await fetch(url)).status).toBe(503);
@@ -164,6 +191,13 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       expect(response.status).toBe(200);
       expect(await response.text()).toContain("second");
     });
+    const configuredSitemap = await readFile(
+      join(root, "output/sitemap.xml"),
+      "utf8",
+    );
+    expect(configuredSitemap).toContain(
+      "<loc>https://configured.example/</loc>",
+    );
     const output = await readFile(join(root, "output/index.html"), "utf8");
     expect(output).not.toContain("__bascik_adapter_dev");
     if (shutdown === "SIGINT") child.kill("SIGINT");

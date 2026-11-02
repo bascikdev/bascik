@@ -35,6 +35,7 @@ export type Template = (typeof TEMPLATES)[number];
  * rejects a compatibility date newer than itself and the adapter pins a recent one.
  */
 const WRANGLER_VERSION = "^4.153.0";
+const NETLIFY_CLI_VERSION = "^27.14.2";
 
 export const PACKAGE_JSON = (
   name: string,
@@ -90,6 +91,7 @@ export const PACKAGE_JSON = (
           "@vitest/coverage-v8": "^4.1.10",
           vitest: "^4.1.10",
           ...(cloudflare && { wrangler: WRANGLER_VERSION }),
+          ...(netlify && { "netlify-cli": NETLIFY_CLI_VERSION }),
         },
       },
       null,

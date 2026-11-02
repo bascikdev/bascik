@@ -72,6 +72,10 @@ When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.p
 
 Request-time scripts and API routes run in the platform runtime, not the Node server's script registry. The proxy is HTTP only; `http.tls.enabled` applies to the Node server, not this proxy. Requests may receive 503 while rebuilding or after a failed build. The watcher survives compilation failures and retries on the next source edit; it does not guarantee last-good serving.
 
+Cloudflare local bindings persist under the project's `.wrangler/state/`, not the generated adapter output. Rebuilding source files therefore preserves local KV, D1, R2, and Durable Object state.
+
+When no site URL is configured, adapter development uses the local proxy origin for sitemap, robots, and canonical URL generation. An explicit site URL, including one in `.env`, takes precedence. Production builds still require a configured site URL when those generators are enabled.
+
 Bare `bascik` keeps its existing in-memory authoring path. `bascik --build --target ...` remains a one-shot production build with no watcher, proxy, or live-reload injection. Direct Wrangler and Netlify previews of that output remain production acceptance paths.
 
 Platform child processes inherit terminal output, but not input: Bascik owns the development session and Ctrl+C shutdown. Platform-specific interactive exit hotkeys are disabled.

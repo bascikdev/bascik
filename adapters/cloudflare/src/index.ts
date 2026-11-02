@@ -43,6 +43,8 @@ export default defineAdapter({
         String(port),
         "--inspector-port",
         String(inspectorPort),
+        "--persist-to",
+        join(projectRoot, ".wrangler", "state"),
       ],
       cwd: projectRoot,
       env: { WRANGLER_SEND_METRICS: "false" },
