@@ -151,7 +151,7 @@ describe("TypeScript script demos: generated Output", () => {
     expect(run.raw.build).toBe(
       '<nav aria-label="Breadcrumb">Home / build-scripts</nav>',
     );
-    expect(run.raw.server).toContain("<p>Hello World</p>");
+    expect(run.raw.server).toContain("<p>Hello, collin</p>");
     expect(run.raw.stream).toContain("<li>Pour-over kettle: 12 left</li>");
     expect(run.raw.page).toContain("//# sourceURL=src/pages/counter.ts");
     expect(run.raw.page).not.toContain('src="./counter.ts"');

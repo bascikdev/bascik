@@ -103,7 +103,7 @@ describe("serverless docs: claims", () => {
 });
 
 describe("serverless docs: commands and code agree with the implementation", () => {
-  it("every documented bascik command parses to a build with a known target, and the --only combination is rejected", async () => {
+  it("every documented bascik command parses to the intended build or dev mode with a known target, and the --only combination is rejected", async () => {
     const md = await read("deployment/cloudflare.md");
     const shBlocks = fencedBlocks(md, "sh").join("\n");
     const bascikLines = shBlocks
@@ -119,7 +119,9 @@ describe("serverless docs: commands and code agree with the implementation", () 
         .split(/\s+/)
         .slice(1);
       const decision = resolveCliAction(args);
-      expect(decision.action, line).toBe("build");
+      expect(decision.action, line).toBe(
+        args.includes("--build") ? "build" : "dev",
+      );
       expect(decision.flags.target, line).toBeDefined();
       expect(DEPLOY_TARGETS as readonly string[]).toContain(
         decision.flags.target!,

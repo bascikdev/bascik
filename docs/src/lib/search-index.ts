@@ -57,8 +57,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * 1.39 MB: all of the above merged (the trial fixes, the build-code lint, the editor linter config and
  * TypeScript blocks) measures 1,386,661 bytes. 1.41 MB: the local responsive-image how-to adds searchable
  * workflow guidance and code examples (the built index measures 1,399,032 bytes).
+ * 1.43 MB: Netlify deployment and watched adapter development add searchable documentation
+ * (the index measures about 1,416,524 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_410_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_430_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

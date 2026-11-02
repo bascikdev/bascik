@@ -70,6 +70,51 @@ describe("apiRoutePattern", () => {
 });
 
 describe("entrySource", () => {
+  it("escapes code-sensitive characters in job and API import specifiers without changing their paths", async () => {
+    const filePath = "/tmp/</script><!-->&\u2028\u2029\"'`${value}\\module.mjs";
+    const source = entrySource(
+      {
+        scriptTimeoutMs: 5000,
+        onServerScriptError: "warn",
+        pages: {
+          "/dashboard": {
+            is404: false,
+            segments: [{ kind: "script", id: "a" }],
+            jobs: {
+              a: {
+                mode: "server",
+                source: { kind: "staged", stagedPath: filePath },
+              },
+            },
+          },
+        },
+        apiRoutes: [
+          {
+            path: "/api/test",
+            filePath,
+            paramNames: [],
+            isDynamic: false,
+          },
+        ],
+      } as never,
+      ["/dashboard", "/api/test"],
+    );
+    const specifiers = [
+      ...source.matchAll(/load: \(\) => import\(("(?:\\.|[^"\\])*")\)/g),
+    ];
+    assert.equal(specifiers.length, 2);
+    for (const [, literal] of specifiers) {
+      assert.doesNotMatch(literal!, /[<>&\u2028\u2029]/);
+      assert.equal(JSON.parse(literal!), filePath);
+    }
+    await build({
+      stdin: { contents: source, loader: "js" },
+      write: false,
+      format: "esm",
+      logLevel: "silent",
+    });
+  });
+
   it("generates lazy loaders and the function config", () => {
     const source = entrySource(
       {

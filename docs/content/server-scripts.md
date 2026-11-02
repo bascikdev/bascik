@@ -88,12 +88,12 @@ Both forms are compiled and parsed when the page is built, in dev and by `bascik
 </html>
 ```
 
-The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=Ada`, built with minification off. There is no Preview because this docs site is static and runs no server script.
+The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=collin`, built with minification off. There is no Preview because this docs site is static and runs no server script.
 
 <!-- demo:ts-server-output-html -->
 
 ```html
-<p>Hello World</p>
+<p>Hello, collin</p>
 ```
 
 ## Return Values

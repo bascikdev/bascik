@@ -21,6 +21,7 @@ import {
   type SiteGraphJob,
 } from "@bascik/bascik/adapter";
 import { manifestHasComponents } from "@bascik/bascik/runtime";
+import { json } from "@bascik/bascik/html";
 import { build as esbuild, type Message, type Plugin } from "esbuild";
 import { realpathSync } from "node:fs";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
@@ -95,8 +96,7 @@ const jobLiteral = (
   outputScope: string | undefined,
   owner?: string,
 ): string =>
-  // Emits a standalone JS module; JSON.stringify yields valid JS literals.
-  `${JSON.stringify(id)}: { id: ${JSON.stringify(id)}, mode: ${JSON.stringify(job.mode)}, ${outputScope ? `outputScope: ${JSON.stringify(outputScope)}, ` : ""}${owner ? `owner: ${JSON.stringify(owner)}, ` : ""}load: () => import(${JSON.stringify(specifierOf(job))}) }`;
+  `${JSON.stringify(id)}: { id: ${JSON.stringify(id)}, mode: ${JSON.stringify(job.mode)}, ${outputScope ? `outputScope: ${JSON.stringify(outputScope)}, ` : ""}${owner ? `owner: ${JSON.stringify(owner)}, ` : ""}load: () => import(${String(json(specifierOf(job)))}) }`;
 
 /** Whether the graph has a component the request-time renderer can expand. */
 const renderableComponents = (graph: Pick<SiteGraph, "components">) =>
@@ -139,7 +139,7 @@ export function entrySource(
     });
   const routeLiterals = (graph.apiRoutes ?? []).map(
     (r) =>
-      `{ path: ${JSON.stringify(r.path)}, filePath: ${JSON.stringify(relative(projectRoot, r.filePath).replace(/\\/g, "/"))}, paramNames: ${JSON.stringify(r.paramNames)}, isDynamic: ${r.isDynamic}, load: () => import(${JSON.stringify(r.filePath)}) }`,
+      `{ path: ${JSON.stringify(r.path)}, filePath: ${JSON.stringify(relative(projectRoot, r.filePath).replace(/\\/g, "/"))}, paramNames: ${JSON.stringify(r.paramNames)}, isDynamic: ${r.isDynamic}, load: () => import(${String(json(r.filePath))}) }`,
   );
 
   lines.push("const graph = {");
