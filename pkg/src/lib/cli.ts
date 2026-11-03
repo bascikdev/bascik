@@ -67,6 +67,7 @@ export const DEPLOY_TARGETS = [
   "cloudflare",
   "cloudflare-pages",
   "cloudflare-workers",
+  "netlify",
 ] as const;
 export type DeployTarget = string;
 
@@ -581,8 +582,10 @@ const parseCliArgs = (
     return error("Error: --only only applies to --build.");
   }
 
-  if (flags.target !== undefined && action !== "build") {
-    return error("Error: --target only applies to --build.");
+  if (flags.target !== undefined && action !== "build" && action !== "dev") {
+    return error(
+      "Error: --target only applies to --build or adapter dev mode.",
+    );
   }
 
   // A deployment bundle is one consistent release inventory; a partial rebuild
@@ -623,8 +626,8 @@ Options:
                      (only with --build; default: .bascik/build.log)
   --only <glob>      Only transpile pages matching the glob, relative to
                      directory.pages (repeatable; only with --build)
-  --target <name>    Also emit a serverless deployment bundle under
-                     dist/.bascik/<name>/ (only with --build).
+  --target <name>    Run an adapter's local runtime with watch and live reload.
+                     With --build, emit a deployment bundle under dist/.bascik/<name>/.
   --port <n>         Override the server port
                      (overrides BASCIK_SERVER_PORT and http.port)
   --host <name>      Override the server hostname

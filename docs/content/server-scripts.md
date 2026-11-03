@@ -8,7 +8,7 @@ This alert box demonstrates dynamic server script execution: in-process Node.js 
 
 > **See it live on Cloudflare Workers.** These pages render server scripts per request on a deployed Bascik site:
 >
-> - [Server script request context](https://cloudflare-adapter.bascik.dev/server?user=Jane&role=Architect): query parameters, headers, and the platform context rendered before headers commit.
+> - [Server script request context](https://cloudflare-adapter.bascik.dev/server?name=collin&role=Architect): query parameters, headers, and the platform context rendered before headers commit.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): a server script runs first, then a [stream script](/stream-scripts) flushes into the open connection.
 
 ## data-bascik-server
@@ -88,12 +88,12 @@ Both forms are compiled and parsed when the page is built, in dev and by `bascik
 </html>
 ```
 
-The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=Ada`, built with minification off. There is no Preview because this docs site is static and runs no server script.
+The Output is the `<body>` that `bascik --server` sent for `GET /hello?name=collin`, built with minification off. There is no Preview because this docs site is static and runs no server script.
 
 <!-- demo:ts-server-output-html -->
 
 ```html
-<p>Hello, Ada</p>
+<p>Hello, collin</p>
 ```
 
 ## Return Values

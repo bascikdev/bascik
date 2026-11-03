@@ -25,6 +25,12 @@ The codebase distinguishes test runners from testing levels:
 
 Integration tests in Bascik follow an explicit boundary contract: they do not mock away the primary boundary being verified. When testing worker thread lifecycle, real Node.js `worker_threads` run. When testing targeted-build persistence, real child processes invoke `bascik --build` against isolated disk fixtures. When testing scaffold output, the real `scaffold()` creates directory structures and files, and the real compiler parses and builds them into emitted artifacts. Mocks are reserved for external environment control (such as clock injection or network limits) rather than internal subsystem borders.
 
+### Adapter development versus production acceptance
+
+Watched adapter development (`bascik --target cloudflare` or `bascik --target netlify`) adds a source watcher, full production adapter rebuilds, a local HTTP proxy, and browser live reload around the real platform runtime. Tests of that workflow must cover edits and recovery after a failed build across the CLI, runtime, proxy, and browser boundaries. A rebuilding or failed build may return 503; recovery means the watcher remains alive and serves a successful subsequent edit, not guaranteed last-good serving. The proxy is HTTP only, and emitted production artifacts must stay free of live-reload injection.
+
+Production acceptance is distinct: build once with `--build --target ...` and serve the generated output directly in Wrangler or Netlify Dev. In particular, the Netlify E2E configuration runs `adapter:nf:demo:build` followed by the adapter workspace's `demo:serve`, not the watched `adapter:nf:demo:dev`. This keeps header, static bypass, streaming, and native-function assertions about production responses. The watched repository demos use port 8787 for Cloudflare and 9877 for Netlify; a normal Netlify project's default is 8888.
+
 Differential fuzzing is a separate opt-in developer check: `yarn workspace @bascik/bascik profile:fuzz` compares a built baseline and candidate on generated inputs and reports shrunk, replayable mismatches. The unit suite tests the runner itself without a baseline checkout. See [Benchmarking & Profiling](/internals/benchmarking#differential-fuzzing-and-cpu-summaries) for commands and scope.
 
 ## Running Unit Tests
@@ -128,7 +134,35 @@ yarn pkg:e2e:exec:build    # build-time pre/parallel/post ordering in temporary 
 
 # Cloudflare adapter suite in @bascik/adapter-cloudflare workspace (emitted Pages bundle in local workerd)
 yarn adapter:cf:e2e
+
+# Netlify adapter suite (real offline Netlify Dev runtime, or dedicated hosted project)
+yarn adapter:nf:e2e
+yarn adapter:nf:demo:test
+
+# Watched adapter development (build pkg and the relevant adapter first)
+yarn adapter:cf:e2e:dev
+yarn adapter:nf:e2e:dev
+yarn adapter:e2e:dev       # both platforms; requires both adapter builds
 ```
+
+The watched lanes use `adapters/e2e/playwright.dev.config.ts` and `adapter-dev.test.ts` to run actual Wrangler and Netlify Dev processes and verify source rebuilds and browser reloads through the HTTP proxy. CI runs each platform's watched lane after its build and production acceptance step. These tests are separate from the direct-runtime production acceptance contract below.
+
+Both adapter lanes also run the same browser contract in
+`adapters/e2e/demo-contract.test.ts` against their real hosting runtimes. Their
+demo sites use the same canonical routes, page titles, menu labels, and product
+data: overview, server scripts, stream swap, stream append, mixed execution,
+server-rendered cards, streamed cards, API client, and error demo. The shared
+suite checks those surfaces together with query escaping, component isolation,
+API methods and route precedence, no-JavaScript streaming paint order, safe
+failures, and private-path handling. Platform-specific tests remain separate:
+Cloudflare context and Worker routing, and Netlify context, cookies, and native
+function coexistence. A capability common to both adapters belongs in the shared
+contract, not just one platform's suite.
+
+Hosting layers can normalize a request before the adapter receives it. Netlify
+Dev collapses repeated URL slashes: the shared contract accepts only an HTTP 400
+rejection or the exact canonical catch-all segments for that case. Encoded
+separators, invalid encodings, and null bytes still require HTTP 400 on both.
 
 This builds the fixture site (using the current `dist/`) and then runs Playwright against it. The first run requires the package to be built first:
 
@@ -177,7 +211,7 @@ pkg/e2e/
   tests/                          ← Playwright test files
 ```
 
-The E2E suite supports four Bascik server modes plus three exec lanes and one adapter lane:
+The E2E suite supports four Bascik server modes plus three exec lanes and two adapter lanes:
 
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200 (base fixture on 9550).
 2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 (base fixture on 9552) to test `data-bascik-server` request-time script execution and cleartext server behavior.
@@ -186,10 +220,11 @@ The E2E suite supports four Bascik server modes plus three exec lanes and one ad
 5. **Exec lifecycle lanes (`playwright.dev-exec.config.ts`, `playwright.dev-exec-gated.config.ts`, `playwright.exec-build.config.ts`)**: prove exec producer/consumer lifecycle ownership. The dev lanes run against a dedicated `e2e/exec-fixture/` project via `yarn pkg:e2e:dev:exec`; the gated variant holds a `phase: 'parallel'` producer behind an HTTP gate to prove the dev server serves before the parallel entry finishes. The build lane (`yarn pkg:e2e:exec:build`) runs `bascik --build` in temporary projects, with and without worker threads, and checks that a `phase: 'parallel'` script joins after compilation and `post`, and that its failure fails the build.
 6. **Exec failure policy lane (`playwright.exec-policy.config.ts`)**: spawns the real CLI in temporary projects and checks `pipeline.onExecError`: exit codes, output, the build-error frame an open browser receives, and that a dev session survives a failing script and recovers on the next edit. It covers the dev default (`'warn'`), the build default (`'error'`), the option set explicitly, and the `dev` and `build` config exports. It runs via `yarn pkg:e2e:exec:policy` and is excluded from the four fixture-serving configs.
 7. **Cloudflare adapter suite (`adapters/cloudflare/e2e/playwright.config.ts`)**: builds the small fixture with `--target cloudflare-pages` and serves the emitted `_worker.js` and public tree inside local workerd (Miniflare) with the asset layer in front, on port 9876. It covers static bypass, worker-side pages and APIs, and a stream paint-order test with JavaScript disabled. Request-level Node-versus-Worker parity is a Vitest integration test (`serverless-parity.integration.test.ts`), which runs one build under both `bascik --server` and workerd and compares them. This lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
+8. **Netlify adapter suite (`adapters/netlify/e2e/playwright.config.ts`)**: builds the independent fixture workspace with the real CLI and installer, and runs its generated function, native function, and static output through offline Netlify Dev on ports 9877/9878. `yarn adapter:nf:e2e` covers static bypass, SSR, no-JavaScript stream paint order, runtime components, APIs, cookie/context transport, CSP/security headers, and failure/timeout behavior. CI runs this lane without credentials. `yarn adapter:nf:demo:test` runs the same suite against the dedicated HTTPS project; its exact foreign-origin 403 check is hosted-only because Netlify Dev 27.14.2 retries function 403s as static paths and returns 404. Identity, OAuth, databases and payments are not covered. The adapter's Vitest parity test separately compares a real CLI build, called in-process, with `bascik --server`.
 
 Each of the four main lanes also serves `e2e/base-fixture/`, a second project with its own config: it deploys under `base: "/sub/"` and opts in to `scoping.attributes.name`, which `pkg/e2e` itself leaves at the default (off). Its specs are `BASE_FIXTURE_SPECS` in each config (`base-serving.test.ts`, `base-name-scoping.test.ts`).
 
-Every port across the four main lanes, the exec lanes, the docs e2e (8080) and the adapter e2e (9876) is distinct, and each main lane config sets `BASCIK_E2E_OUT` (`dist-static`, `dist-dev`, `dist-http1`, `dist-http2`), which `pkg/e2e/bascik.config.ts` and `base-fixture/bascik.config.ts` use as `directory.out`. Each lane config also sets its own Playwright `outputDir` (`pkg/test-results/<lane>`), so no lane clears another's results or `.last-run.json`. Run the main lanes together only through `yarn pkg:e2e:all`: the dev lane edits `pkg/e2e/src` and `base-fixture/src`, which the other lanes build from, and the runner holds it back until their builds are serving. Starting `yarn pkg:e2e:dev` by hand next to another lane has no such guard. Specs read build output only through `outDir()` or `defaultOutDir()` in `tests/helpers/out-dir.ts`; the symlink fixture, exec fixture, and temporary projects keep plain `dist`. `e2e/scripts/run-lanes.test.ts` (in the unit project) fails on a port collision, a hardcoded `dist/` path or server origin in a spec, a file-writing spec left in `dev-readonly`, a `dev-mutating` edit of a module the production lanes import at request time (an API route other specs call, or a server-script dependency), or a Playwright config in `pkg/e2e/` that no package script and CI job runs.
+Every port across the four main lanes, the exec lanes, the docs e2e (8080) and the adapter e2e lanes (Cloudflare 9876, Netlify 9877/9878) is distinct, and each main lane config sets `BASCIK_E2E_OUT` (`dist-static`, `dist-dev`, `dist-http1`, `dist-http2`), which `pkg/e2e/bascik.config.ts` and `base-fixture/bascik.config.ts` use as `directory.out`. Each lane config also sets its own Playwright `outputDir` (`pkg/test-results/<lane>`), so no lane clears another's results or `.last-run.json`. Run the main lanes together only through `yarn pkg:e2e:all`: the dev lane edits `pkg/e2e/src` and `base-fixture/src`, which the other lanes build from, and the runner holds it back until their builds are serving. Starting `yarn pkg:e2e:dev` by hand next to another lane has no such guard. Specs read build output only through `outDir()` or `defaultOutDir()` in `tests/helpers/out-dir.ts`; the symlink fixture, exec fixture, and temporary projects keep plain `dist`. `e2e/scripts/run-lanes.test.ts` (in the unit project) fails on a port collision, a hardcoded `dist/` path or server origin in a spec, a file-writing spec left in `dev-readonly`, a `dev-mutating` edit of a module the production lanes import at request time (an API route other specs call, or a server-script dependency), or a Playwright config in `pkg/e2e/` that no package script and CI job runs.
 
 Each configuration owns its mode-specific `testIgnore` list on its main project (`default`, or `dev-readonly` in the dev config). Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports the four Bascik-server configs and pins their project exclusions before any browser starts; the Cloudflare config selects its single test file with `testMatch` and is excluded from the other four.
 
@@ -459,7 +494,7 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn unit:all`: runs unit test suites across all packages
 - `yarn integration:all`: runs the long-running integration test suite
 - `yarn linear-time:all`: runs the linear-time checks (`pkg`, `lsp`, and `skills-tests`)
-- `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and the Cloudflare adapter)
+- `yarn e2e:all`: runs Playwright E2E suites across the workspace (the four `pkg` lanes in parallel through `yarn pkg:e2e:all`, then docs and both adapter lanes)
 - `yarn coverage:all`: generates and updates coverage reports across all packages
 - `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, linear-time checks, and E2E suites in sequence (coverage excluded)
 

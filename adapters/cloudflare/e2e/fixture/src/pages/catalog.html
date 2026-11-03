@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Product Catalog (Components from Server Scripts)</title>
+    <title>Bascik · Server-rendered cards</title>
     <style>
       :root {
         color-scheme: dark;
@@ -220,20 +220,20 @@
         font-size: 0.8rem;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Components from Server Scripts</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1 data-testid="catalog-heading">Product Catalog</h1>
+      <h1 data-testid="catalog-heading">Server-rendered cards</h1>
       <p class="subtitle">
-        A <code>&lt;script data-bascik-server&gt;</code> returns one
-        <code>&lt;product-card&gt;</code> tag per product, and the Worker
-        renders each tag into the component's markup and scoped CSS at request
-        time, exactly as the build renders a tag written in a page.
+        Search for a product to see the Worker create a fresh set of cards for
+        your request. The server script returns a
+        <code>&lt;product-card&gt;</code> tag for each match; Bascik fills its
+        props and slots and includes its scoped CSS. The live-stock card below
+        also runs its own nested server script.
       </p>
     </header>
 

@@ -1,0 +1,19 @@
+[build]
+  base = "."
+  command = "yarn adapter:nf:demo:build"
+  publish = "adapters/netlify/e2e/fixture/publish"
+  functions = "adapters/netlify/e2e/fixture/netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "24"
+  BASCIK_SITE_URL = "https://bascik-netlify-adapter.netlify.app"
+
+[dev]
+  framework = "#static"
+  port = 9877
+  functionsPort = 9878
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"

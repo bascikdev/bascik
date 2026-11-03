@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head
+      data-bascik-prop-title="Server-rendered Cards - Netlify Adapter Fixture"
+    />
+  </head>
+  <body>
+    <fixture-nav />
+    <main data-testid="fixture-components">
+      <header class="hero">
+        <h1>Server-rendered cards</h1>
+        <p class="subtitle">
+          These cards are created for each request, not baked into the static
+          page. A server script reads the product names from the URL and returns
+          a component tag for each one. Bascik renders those tags into HTML on
+          Netlify before sending the response.
+        </p>
+      </header>
+      <div class="grid">
+        <script data-bascik-server type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+          export default (request: Request) => {
+            const names = (
+              new URL(request.url).searchParams.get("names") ?? "Milk frother,Travel cup"
+            ).split(",");
+            return names.map(
+              (name) =>
+                html`<fixture-card data-bascik-prop-name="${name}">
+                  <span data-testid="fixture-card-slot">Request-time slot</span>
+                </fixture-card>`,
+            );
+          };
+        </script>
+      </div>
+      <aside class="callout">
+        <strong>What this demonstrates:</strong>
+        Each product name is passed as a prop, “Request-time slot” is supplied
+        through a slot, and the stock line comes from the card's own nested
+        server script. Both cards share one scoped stylesheet.
+        <a href="/components?names=Your%20first%20component,Another%20component"
+          >Change the product names and render new cards &rarr;</a
+        >
+      </aside>
+      <p class="next-nav">
+        Learn more:
+        <a href="https://bascik.dev/server-scripts"
+          >Server scripts in the docs &nearr;</a
+        >
+      </p>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

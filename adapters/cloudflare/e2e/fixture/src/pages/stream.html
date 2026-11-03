@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Edge Stream Scripts Demo</title>
+    <title>Bascik · Stream swap</title>
     <style>
       :root {
         color-scheme: dark;
@@ -328,15 +328,14 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header data-testid="cf-header">
-      <div class="brand-nav">
-        <span class="brand-pill">Stream Swap Demo</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1>Progressive Stream (In-Place Swap)</h1>
+      <h1>Stream swap</h1>
       <p class="greeting" data-testid="cf-greeting">
         <script data-bascik-server>
           import { html } from "@bascik/bascik/html";

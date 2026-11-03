@@ -69,7 +69,7 @@ Docs visuals have three kinds, each with one home. Do not add a second mechanism
 - The testing docs (`docs/content/internals/testing.md`) describe the test approach, not an enumerated list of files. The "Unit Test Files" and "E2E Test Files" sections link to GitHub, which is always current. You only need to update the prose if the testing _patterns_ change (e.g. a new mock strategy, a new test runner, new helpers, or a new E2E server mode).
 - `pkg/` has three Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts` and `*.linear-time.test.ts`), `integration` (only `*.integration.test.ts`), and `linear-time` (only `*.linear-time.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (`pkg`, `docs`, and `skills-tests`) when a change touches a real process, server, or worker boundary.
 - A test that measures growth with `pkg/src/lib/linear-time.test-helper.ts` (`expectLinearTime`, `expectCostRatio`, and so on, with `LINEAR_TIME_TIMEOUT_MS`) goes in a sibling `<module>.linear-time.test.ts`, never in a unit test file: CPU-time sampling takes seconds per check on Windows. The helper throws in the `unit` project. Run them with `yarn pkg:linear-time` (or `yarn linear-time:all`); CI runs them once, on Linux, next to integration. `lsp` (`lsp/src/linear-time.test.util.ts`, `yarn lsp:linear-time`) and `skills-tests` (`skills-tests/tests/linear-time.test-helper.ts`, `yarn skills:linear-time`) have their own `growthOf` helper and `linear-time` project, under the same rule.
-- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Three exec lanes run outside `pkg:e2e:all` (CI runs each; run them by hand when you change exec): `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) cover dev-server exec lifecycle ownership, `playwright.exec-build.config.ts` (via `yarn pkg:e2e:exec:build`) covers pre/parallel/post ordering and failure in `bascik --build`, and `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError`. The last two spawn the CLI in temporary projects. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`. `yarn pkg:e2e:all [lane ...] [playwright args]` runs the four main lanes in parallel through `pkg/e2e/scripts/run-lanes.ts` (`yarn pkg:e2e:all:serial` keeps the old chain). Each lane has its own ports and builds into its own `BASCIK_E2E_OUT` directory (`pkg/e2e/dist-<lane>`), so specs read output only through `pkg/e2e/tests/helpers/out-dir.ts`, never a literal `dist/`.
+- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Three exec lanes run outside `pkg:e2e:all` (CI runs each; run them by hand when you change exec): `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) cover dev-server exec lifecycle ownership, `playwright.exec-build.config.ts` (via `yarn pkg:e2e:exec:build`) covers pre/parallel/post ordering and failure in `bascik --build`, and `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError`. The last two spawn the CLI in temporary projects. Both adapter browser lanes live in their own workspaces, not in `pkg/e2e/`: `yarn adapter:cf:e2e` uses local workerd; `yarn adapter:nf:e2e` builds the fixture workspace and uses offline Netlify Dev on ports 9877/9878. `yarn adapter:nf:demo:test` runs the same suite against the dedicated Netlify project, including its hosted-only exact 403 assertion (Netlify Dev retries 403s as static 404s). The Netlify parity test (`yarn adapter:nf:test:ci`) separately compares a real CLI build, called in-process, with `bascik --server`. Netlify deploys explicitly target only the dedicated fixture project; never reuse an application's Identity users, secrets, or database. `yarn pkg:e2e:all [lane ...] [playwright args]` runs the four main lanes in parallel through `pkg/e2e/scripts/run-lanes.ts` (`yarn pkg:e2e:all:serial` keeps the old chain). Each lane has its own ports and builds into its own `BASCIK_E2E_OUT` directory (`pkg/e2e/dist-<lane>`), so specs read output only through `pkg/e2e/tests/helpers/out-dir.ts`, never a literal `dist/`.
 - The coverage table on the testing page reads every coverage JSON file listed under "Coverage JSON Files" below at docs build time (`docs/src/lib/coverage-table.ts`). `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run the `pre-push` skill or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
 
 **The VS Code extension is a thin client of `@bascik/language-server`** (`extensions/vscode-bascik/build.mjs` bundles the server from `lsp/src` into the VSIX). Every diagnostic, completion, hover, and definition is implemented once, in `lsp/src/`; never add analysis code to the extension. When you change `lsp/src/server.ts` (project discovery, file watching, workspace folders, publishing), also run `yarn ext:unit` (starts the real server bundle) and `yarn ext:e2e` (real VS Code); fakes do not reproduce editor timing. See the `bascik-vscode-extension` skill.
@@ -130,18 +130,18 @@ High unit test coverage numbers can create false confidence if tests only exerci
 
 ## License Source of Truth
 
-All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik` and `@bascik/adapter-cloudflare`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
+All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik`, `@bascik/adapter-cloudflare`, and `@bascik/adapter-netlify`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
 
 - `docs/content/license.md`: the web-formatted MIT license rendered at `https://bascik.dev/license`
 - `LICENSE` (repo root): plain-text MIT license; **required** for GitHub license detection and as the `prepack` source
-- `pkg/LICENSE` and `adapters/cloudflare/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
+- `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, and `adapters/netlify/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
 
 **When updating the license terms:**
 
 1. Update the root `LICENSE` and mirror the terms in `docs/content/license.md`
-2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE` to sync the package copies immediately
+2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE && cp LICENSE adapters/netlify/LICENSE` to sync the package copies immediately
 
-Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE` or `adapters/cloudflare/LICENSE` directly; they are derived files.
+Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, or `adapters/netlify/LICENSE` directly; they are derived files.
 
 ## Node 24: Native TypeScript Support
 
@@ -198,6 +198,7 @@ Root script prefixes map to workspaces:
 | `docs:`       | `bascik-docs`                |
 | `ext:`        | `bascik-vscode`              |
 | `adapter:cf:` | `@bascik/adapter-cloudflare` |
+| `adapter:nf:` | `@bascik/adapter-netlify`    |
 | `lsp:`        | `@bascik/language-server`    |
 | `skills:`     | `bascik-skills-tests`        |
 
@@ -225,7 +226,7 @@ If one of these commands hangs or cannot access the required resource, the comma
 
 ### Token-Efficient Test Execution & Output Parsing
 
-- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`, `lsp`, `skills-tests`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (`pkg`, `docs`, and `skills-tests`). For the linear-time checks, use `yarn linear-time:all` (`pkg`, `lsp`, and `skills-tests`).
+- **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`, `adapters/cloudflare`, `adapters/netlify`, `lsp`, `skills-tests`), use `yarn test:all`. For unit tests only, use `yarn unit:all`. For the long-running integration suite, use `yarn integration:all` (`pkg`, `docs`, and `skills-tests`). For the linear-time checks, use `yarn linear-time:all` (`pkg`, `lsp`, and `skills-tests`).
 - **E2E tests**: Playwright E2E tests are configured in package scripts (`yarn pkg:e2e`, `yarn pkg:e2e:dev`, `yarn pkg:e2e:prod`, `yarn adapter:cf:e2e`, `yarn e2e:all`) with `--reporter=line` output to preserve context tokens. `yarn e2e:all` includes static build, live dev server, production HTTP/1.1, production HTTP/2, docs, and Cloudflare adapter configurations.
 - **Efficient output parsing**:
   - Always check the overall status first: **Did it pass or fail?**
@@ -281,13 +282,14 @@ Always choose clear, unambiguous names. When something could be confused with an
 npx --prefix pkg tsc -p pkg/tsconfig.json --noEmit
 ```
 
-`create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, and `lsp/` have their own tsconfigs; check them when editing files in those packages (or run that workspace's `typecheck` script):
+`create/`, `docs/`, `extensions/vscode-bascik/`, `adapters/cloudflare/`, `adapters/netlify/`, and `lsp/` have their own tsconfigs; check them when editing files in those packages (or run that workspace's `typecheck` script):
 
 ```sh
 npx --prefix create tsc -p create/tsconfig.json --noEmit
 npx --prefix pkg tsc -p docs/tsconfig.json --noEmit
 npx --prefix extensions/vscode-bascik tsc -p extensions/vscode-bascik/tsconfig.json --noEmit
 npx --prefix adapters/cloudflare tsc -p adapters/cloudflare/tsconfig.json --noEmit
+npx --prefix adapters/netlify tsc -p adapters/netlify/tsconfig.json --noEmit
 npx --prefix lsp tsc -p lsp/tsconfig.json --noEmit
 ```
 
@@ -300,4 +302,4 @@ Fix all errors before finishing. Do not suppress errors with `// @ts-ignore` or 
 - Web standards are checked using `webhint`.
 - Recommended extensions are configured in `.vscode/extensions.json`. Install both `Codespell.ai` (`codespellai.codespellai-vscode`) and `webhint` (`webhint.vscode-webhint`) in VS Code for automated spelling and web quality checks.
 - Code spelling, quality, and static analysis checks are integrated into the pre-push workspace checklist, the `pre-push` skill (`.github/skills/pre-push/SKILL.md`). Running `yarn check:spelling` (`codespell`), `yarn check:standards` (`webhint`), and static analysis (Jelly and Semgrep if installed) via CLI is part of the required pre-push routine.
-- `yarn check:spelling` covers `pkg/src`, `docs/content`, `docs/src`, and `create/src` only. It does **not** scan `extensions/vscode-bascik/`, `adapters/cloudflare/`, `lsp/`, or `skills/`; run codespell directly on those paths if you edit them.
+- `yarn check:spelling` covers `pkg/src`, `docs/content`, `docs/src`, and `create/src` only. It does **not** scan `extensions/vscode-bascik/`, `adapters/cloudflare/`, `adapters/netlify/`, `lsp/`, or `skills/`; run codespell directly on those paths if you edit them.

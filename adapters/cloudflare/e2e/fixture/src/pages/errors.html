@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <demo-head />
+  </head>
+  <body>
+    <demo-nav />
+    <main>
+      <h1>Error demo</h1>
+      <p class="subtitle">
+        These requests intentionally fail. Server errors return a safe HTTP 500
+        response without exposing a stack trace. A stream that fails after
+        headers commit keeps its HTTP 200 response and the shell already sent.
+      </p>
+      <section class="card">
+        <h2>Before headers commit</h2>
+        <ul>
+          <li><a href="/failure">Server failure (HTTP 500)</a></li>
+          <li><a href="/timeout">Server timeout (HTTP 500)</a></li>
+          <li><a href="/api/failure">API failure (HTTP 500)</a></li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>After headers commit</h2>
+        <p>
+          <a href="/stream-failure">Stream failure (HTTP 200)</a>: the
+          navigation, shell, and footer remain usable even though the delayed
+          work fails.
+        </p>
+      </section>
+    </main>
+    <footer><a href="https://bascik.dev">Back to bascik.dev</a></footer>
+  </body>
+</html>

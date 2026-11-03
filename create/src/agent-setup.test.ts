@@ -375,6 +375,21 @@ describe("AGENTS.md", () => {
     );
   });
 
+  it.each([
+    ["cloudflare", "workerd development", 8787],
+    ["netlify", "Netlify Dev", 8888],
+  ] as const)(
+    "names the %s template's watched platform runtime and public address",
+    (template, runtime, port) => {
+      const section = agentsSection({ template });
+      expect(section).toContain(
+        `- \`npm run dev\`: watched ${runtime} with browser live reload at http://127.0.0.1:${port}`,
+      );
+      expect(section).not.toContain("http://localhost:8080");
+      expect(section).toContain("`npm run preview`");
+    },
+  );
+
   it("misuse: names npx bascik when the project's npm scripts run something else, so an agent never mistakes them for Bascik", () => {
     const section = agentsSection({
       commands: { dev: "npx bascik", build: "npx bascik --build" },

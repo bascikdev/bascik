@@ -40,7 +40,7 @@ import {
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.ts";
@@ -54,6 +54,8 @@ const PKG_CLI = join(REPO_ROOT, "pkg/bin/bascik.js");
 const PKG_DIST_INDEX = join(REPO_ROOT, "pkg/dist/index.js");
 const ADAPTER_DIR = join(REPO_ROOT, "adapters/cloudflare");
 const ADAPTER_DIST_INDEX = join(ADAPTER_DIR, "dist/index.js");
+const NETLIFY_ADAPTER_DIR = join(REPO_ROOT, "adapters/netlify");
+const NETLIFY_ADAPTER_DIST_INDEX = join(NETLIFY_ADAPTER_DIR, "dist/index.js");
 
 /**
  * Built artifacts this file runs, and the root script that builds each. The
@@ -64,6 +66,7 @@ const ADAPTER_DIST_INDEX = join(ADAPTER_DIR, "dist/index.js");
 const PREREQUISITES = [
   { artifact: PKG_DIST_INDEX, script: "pkg:build" },
   { artifact: ADAPTER_DIST_INDEX, script: "adapter:cf:build" },
+  { artifact: NETLIFY_ADAPTER_DIST_INDEX, script: "adapter:nf:build" },
 ] as const;
 
 /** The message for missing prerequisites, or undefined when all are built. */
@@ -92,6 +95,7 @@ async function linkWorkspacePackages(projectDir: string): Promise<void> {
   await mkdir(scope, { recursive: true });
   await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");
   await symlink(ADAPTER_DIR, join(scope, "adapter-cloudflare"), "dir");
+  await symlink(NETLIFY_ADAPTER_DIR, join(scope, "adapter-netlify"), "dir");
 }
 
 /**
@@ -506,15 +510,15 @@ describe("scaffold-to-compiler integration", () => {
 
     // Run the emitted Worker in workerd and request the edge page: the card
     // arrives rendered, with its scoped stylesheet, around the greeting.
-    const html = await fetchFromWorker(targetDir, "/edge?name=Ada");
-    expect(html).toContain("Hello, Ada");
+    const html = await fetchFromWorker(targetDir, "/edge?name=collin");
+    expect(html).toContain("Hello, collin");
     expect(html).not.toContain("<feature-card");
     expect(html).not.toContain("data-bascik-slot");
     // The component's stylesheet is emitted once, in the body, right before
     // the card; the card's root carries the scoped class and the usage's
     // data-testid, with the greeting in its default slot.
     const card =
-      /<style>([^<]*flex-direction:column[^<]*)<\/style><article class="([^"]+)" data-testid="edge-card">[^]*?Hello, Ada[^]*?<\/article>/.exec(
+      /<style>([^<]*flex-direction:column[^<]*)<\/style><article class="([^"]+)" data-testid="edge-card">[^]*?Hello, collin[^]*?<\/article>/.exec(
         html,
       );
     expect(card, "the rendered card and its stylesheet").not.toBeNull();
@@ -534,6 +538,81 @@ describe("scaffold-to-compiler integration", () => {
       ),
       `the reload link inside an element with the footer class ${footer}`,
     ).toBe(true);
+  }, 60_000);
+
+  it("builds the netlify template into a Netlify Function with --target netlify", async () => {
+    const parentDir = await createTempDir("netlify-target");
+    const projectName = "netlify-site";
+    const projectDir = join(parentDir, projectName);
+
+    await scaffold(projectName, parentDir, { template: "netlify" });
+    await linkWorkspacePackages(projectDir);
+    expect(await readFile(join(projectDir, "netlify.toml"), "utf8")).toContain(
+      'publish = "publish"',
+    );
+
+    const buildResult = await runBascikBuild(projectDir, [
+      "--target",
+      "netlify",
+    ]);
+    const output = `${buildResult.stdout}\n${buildResult.stderr}`;
+    expect(buildResult.exitCode, `Netlify build failed: ${output}`).toBe(0);
+    expect(output).toContain("dynamic pages: 1, API routes: 1");
+    expect(output).not.toContain("does not declare components: true");
+
+    // The package's install step, as the template's build script runs it.
+    const install = spawnSync(
+      process.execPath,
+      [join(NETLIFY_ADAPTER_DIR, "dist/cli.js")],
+      { cwd: projectDir, encoding: "utf8" },
+    );
+    expect(install.status, install.stderr).toBe(0);
+    const publishDir = join(projectDir, "publish");
+    expect(existsSync(join(publishDir, "index.html"))).toBe(true);
+    expect(existsSync(join(publishDir, "edge.html"))).toBe(false);
+    expect(await readFile(join(publishDir, "_headers"), "utf8")).toContain(
+      "X-Content-Type-Options: nosniff",
+    );
+    const functionPath = join(
+      projectDir,
+      ".netlify/v1/functions/bascik-pages.mjs",
+    );
+    expect(existsSync(functionPath)).toBe(true);
+
+    // Call the function as Netlify does: the edge page's <feature-card> is
+    // rendered, and the API route reports the Netlify platform.
+    const fn = (await import(pathToFileURL(functionPath).href)) as {
+      default: (request: Request, context: object) => Promise<Response>;
+      config: { path: string[] };
+    };
+    expect(fn.config.path).toEqual(
+      expect.arrayContaining(["/edge", "/edge.html", "/api/hello"]),
+    );
+    const quiet = { info: console.info, log: console.log };
+    console.info = () => {};
+    console.log = () => {};
+    try {
+      const page = await fn.default(
+        new Request("https://example.com/edge?name=collin"),
+        { waitUntil: () => {} },
+      );
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain("Hello, collin");
+      expect(html).not.toContain("<feature-card");
+      expect(html).toContain('data-testid="edge-card"');
+      const api = await fn.default(
+        new Request("https://example.com/api/hello?name=collin"),
+        {},
+      );
+      expect(await api.json()).toEqual({
+        hello: "collin",
+        platform: "netlify",
+      });
+    } finally {
+      console.info = quiet.info;
+      console.log = quiet.log;
+    }
   }, 60_000);
 
   it.each(["default", "cloudflare"] as const)(
@@ -695,7 +774,7 @@ describe("scaffold-to-compiler integration", () => {
     60_000,
   );
 
-  it("the scaffolded default and cloudflare starters pass the bascik skill's semantic HTML audit", async () => {
+  it("the scaffolded default, cloudflare and netlify starters pass the bascik skill's semantic HTML audit", async () => {
     const audit = join(REPO_ROOT, "skills/bascik/scripts/audit-components.mjs");
     const semantic = new Set([
       "clickable-element",
@@ -705,7 +784,7 @@ describe("scaffold-to-compiler integration", () => {
       "unlabeled-control",
       "missing-main",
     ]);
-    for (const template of ["default", "cloudflare"] as const) {
+    for (const template of ["default", "cloudflare", "netlify"] as const) {
       const parentDir = await createTempDir(`audit-${template}`);
       await scaffold("audit-site", parentDir, { template });
       const run = await execFileAsync(
@@ -725,7 +804,7 @@ describe("scaffold-to-compiler integration", () => {
     }
   });
 
-  it("the scaffolded default and cloudflare starters give every component root, control, form, and landmark a data-testid", async () => {
+  it("the scaffolded default, cloudflare and netlify starters give every component root, control, form, and landmark a data-testid", async () => {
     const { testIdAdvisory } = (await import(
       join(REPO_ROOT, "skills/bascik/scripts/lib/testids.mjs")
     )) as {
@@ -733,7 +812,7 @@ describe("scaffold-to-compiler integration", () => {
         root: string,
       ) => { file: string; line: number; message: string }[];
     };
-    for (const template of ["default", "cloudflare"] as const) {
+    for (const template of ["default", "cloudflare", "netlify"] as const) {
       const parentDir = await createTempDir(`testids-${template}`);
       await scaffold("testid-site", parentDir, { template });
       expect(
@@ -858,12 +937,17 @@ describe("create-bascik test prerequisites", () => {
     expect(missingPrerequisites(() => true)).toBeUndefined();
     const onlyPkg = missingPrerequisites((path) => path === PKG_DIST_INDEX);
     expect(onlyPkg).toContain(ADAPTER_DIST_INDEX);
+    expect(onlyPkg).toContain(NETLIFY_ADAPTER_DIST_INDEX);
     expect(onlyPkg).not.toContain(PKG_DIST_INDEX);
-    expect(onlyPkg).toContain("`yarn adapter:cf:build`");
+    expect(onlyPkg).toContain(
+      "`yarn adapter:cf:build && yarn adapter:nf:build`",
+    );
     const neither = missingPrerequisites(() => false);
     expect(neither).toContain(PKG_DIST_INDEX);
     expect(neither).toContain(ADAPTER_DIST_INDEX);
-    expect(neither).toContain("`yarn pkg:build && yarn adapter:cf:build`");
+    expect(neither).toContain(
+      "`yarn pkg:build && yarn adapter:cf:build && yarn adapter:nf:build`",
+    );
   });
 
   it("reads each job's run commands, including run blocks and chained commands", () => {

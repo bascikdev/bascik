@@ -239,13 +239,15 @@ Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced
 
 ## Recipe C: Priority Source Order with CSS Positioning (The Early-Paint Footer Trick)
 
-In Bascik streaming, source order is network delivery order: all markup before the first `<script data-bascik-stream>` tag arrives in the initial chunk (Time-to-First-Byte), while streaming scripts resolve subsequently.
+In Bascik streaming, source order is network delivery order: after all `data-bascik-server` scripts finish, markup before the first `<script data-bascik-stream>` tag is flushed without waiting for stream results. Static markup after a slow stream waits too; later jobs finishing first cannot bypass it.
 
-Because of this, you can send your entire static page shell, including the navigation, hero, sidebar, and even the **footer**, in the very first byte flush before any slow backend stream script begins. You then use modern CSS (Flexbox `order` or CSS Grid `grid-template-areas`) to visually position the footer at the bottom of the layout.
+As an optional layout technique, place independent shell content such as help, a sidebar, or the **footer** before the first stream tag in source. Use Flexbox `order` or CSS Grid `grid-template-areas` on a shared layout container to display it below the streamed content. The homepage and [Cloudflare adapter stream demo](https://cloudflare-adapter.bascik.dev/stream) use this early-paint footer pattern.
 
-The browser paints the complete page container and footer immediately, with placeholder skeletons in between, while background streams fill in the gaps without any layout jump or client-side JavaScript.
+This lets the browser paint the shell while streams are pending, without client-side relocation or a Bascik runtime. Reserve space for expected results with `min-block-size` or `aspect-ratio` when layout stability matters: source reordering alone does not prevent layout shifts. Deferred and module scripts may still wait for parsing to finish, so early markup does not guarantee early interactivity.
 
-Ensure that visual reordering maintains an intuitive reading and focus order according to the [W3C CSS Grid Placement](https://www.w3.org/TR/css-grid-1/#order-accessibility) specification.
+**Keep logical source order by default.** Choose this option only when both the source reading order and visual layout remain understandable. CSS changes neither screen-reader order nor keyboard tab order; avoid it for sequential forms, instructions, or controls whose order matters. See [W3C CSS Grid Placement](https://www.w3.org/TR/css-grid-1/#order-accessibility). Authentication and authorization must still run before streaming, and protected content must not become unconditional static shell markup.
+
+To verify the technique, deliberately hold a stream unresolved and check that the intended shell bytes arrive before releasing it. Check desktop and mobile geometry with JavaScript disabled, keyboard navigation, and success, empty, and error results. The following examples illustrate layout options to adapt, not a requirement to reorder every streaming page.
 
 ### Option 1: Multi-Slot Grid with In-Place Skeleton Swapping (Recommended)
 

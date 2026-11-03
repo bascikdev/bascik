@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Edge User Profile (Server Script Demo)</title>
+    <title>Bascik · Server scripts</title>
     <style>
       :root {
         color-scheme: dark;
@@ -217,15 +217,14 @@
         text-decoration: underline;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Bascik Server Scripts</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1 data-testid="cf-server-heading">User Profile &amp; Request Info</h1>
+      <h1 data-testid="cf-server-heading">Server scripts</h1>
       <p class="subtitle">
         This page uses <code>&lt;script data-bascik-server&gt;</code> to render
         dynamic request-time data on the Edge Worker before committing headers.
@@ -240,13 +239,22 @@
             import { html } from "@bascik/bascik/html";
             export default function (request, context) {
               const url = new URL(request.url);
-              const user = url.searchParams.get("user") ?? "Developer";
+              const user =
+                url.searchParams.get("name") ??
+                url.searchParams.get("user") ??
+                "collin";
               const role = url.searchParams.get("role") ?? "Admin";
               return html`Hello, <strong>${user}</strong> · Role:
                 <span class="badge">${role}</span>`;
             }
           </script>
         </p>
+
+        <form class="search" action="/server" method="get">
+          <label for="visitor-name">Name</label>
+          <input id="visitor-name" name="name" value="collin" />
+          <button type="submit">Update greeting</button>
+        </form>
 
         <div class="table-container">
           <table>
@@ -296,7 +304,7 @@
 
       <p class="next-nav">
         Next: Explore <a href="/stream">Live Activity Stream</a> or
-        <a href="/api/ping">Edge API Route</a>.
+        <a href="/api-demo">API client</a>.
       </p>
     </main>
 

@@ -1,6 +1,6 @@
 ---
 name: bascik-scripts
-description: Node.js scripts inside Bascik pages and components. Use when writing <script data-bascik-build> (build-time HTML from files, Markdown, JSON, or APIs), <script data-bascik-build-once> (identical HTML shared by every use), <script data-bascik-routes> with [slug].html dynamic routes, <script data-bascik-server> or <script data-bascik-stream> for per-request rendering, API routes in src/api/, @/ import aliases, BASCIK_* environment variables, the build script cache, escaping untrusted output, or a blog or other Markdown collection with front matter, tags, drafts, and a feed. Includes a new-post script.
+description: Node.js scripts inside Bascik pages and components. Use when writing <script data-bascik-build> (build-time HTML from files, Markdown, JSON, or APIs), <script data-bascik-build-once> (identical HTML shared by every use), <script data-bascik-routes> with [slug].html dynamic routes, <script data-bascik-server> or <script data-bascik-stream> for per-request rendering, early-paint footers or CSS source-order streaming layouts, API routes in src/api/, @/ import aliases, BASCIK_* environment variables, the build script cache, escaping untrusted output, or a blog or other Markdown collection with front matter, tags, drafts, and a feed. Includes a new-post script.
 license: MIT
 metadata:
   author: bascik
@@ -22,7 +22,7 @@ Bascik runs Node.js code inside special `<script>` tags. Each is a standard ESM 
 | A slow per-request block that should not delay the page shell                             | `data-bascik-stream`                             | Every request, streamed in document order                        |
 | A JSON or HTTP endpoint                                                                   | `src/api/<name>.ts` exporting `GET`, `POST`, ... | Every request                                                    |
 
-Prefer build-time work. Server, stream, and API code needs `bascik --server` (or a serverless target such as Cloudflare); a plain static host cannot run it.
+Prefer build-time work. Server, stream, and API code needs `bascik --server` (or a serverless target such as Cloudflare or Netlify); a plain static host cannot run it.
 
 ## Rules for every Node-side script
 
@@ -111,6 +111,16 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 - All `server` scripts resolve before any byte is sent. Swap to `data-bascik-stream` when the shell should paint first; a stream failure renders an empty slot instead of a 500.
 - Source is moved to `.bascik/dist/server-scripts.json`; static `dist/` keeps an inert placeholder. They never run during `--build`.
 - Never block the event loop with synchronous work; timeouts cannot interrupt it.
+
+### Optional early-paint layout
+
+- **Default to logical source order.** Bascik flushes static markup only up to the first stream tag; static content after a slow stream waits too, even when later jobs finish first.
+- **Consider the early-paint footer technique** when independent help, a sidebar, footer, or other shell content should arrive before slow streamed content but appear below it. Put that markup before the first stream tag, then use Flexbox `order` or Grid areas on their shared layout container to restore visual placement. This needs no client relocation or Bascik runtime; all `server` scripts still finish before the initial flush.
+- **Use only when the reordered source still makes sense for reading and keyboard navigation.** CSS does not change screen-reader or tab order. Keep logical source order for sequential forms, instructions, or controls whose order matters. Reserve space for expected streamed output when layout stability matters; reordering alone does not prevent layout shift.
+- Early HTML is not necessarily interactive: deferred/module scripts can still wait for parsing to finish. Keep authentication/authorization gates before streaming and do not move protected markup into an unconditional shell.
+- Verify with a deliberately stalled stream that the intended shell bytes arrive first, then check visual placement on desktop/mobile with JavaScript disabled, keyboard order, and success/empty/error results.
+
+Recipe and examples: `read-doc.mjs /stream-scripts#recipe-c-priority-source-order-with-css-positioning-the-early-paint-footer-trick`, especially `/stream-scripts#option-3-flexbox-column-order` (the homepage and Cloudflare adapter demo use this pattern).
 
 ### Server and stream scripts may return component tags
 

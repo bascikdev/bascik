@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Overview" />
+  </head>
+  <body>
+    <fixture-nav />
+    <main data-testid="fixture-static">
+      <header class="hero">
+        <p class="section-label">Netlify adapter</p>
+        <h1>Overview</h1>
+        <p class="subtitle">
+          Static pages from the CDN. Server scripts when you need them. Explore
+          real Bascik components, streaming HTML, and API routes on Netlify
+          Functions.
+        </p>
+      </header>
+      <p class="banner">
+        <strong>Static CDN layer:</strong> Netlify serves this page without a
+        function invocation. All examples use synthetic test data.
+      </p>
+      <h2>Explore rendering features</h2>
+      <div class="grid">
+        <a class="card" href="/server?name=collin">
+          <span class="tag">&lt;script data-bascik-server&gt;</span>
+          <h3>Server scripts</h3>
+          <p>
+            Render a greeting and platform context for every request, before
+            headers commit.
+          </p>
+        </a>
+        <a class="card" href="/stream">
+          <span class="tag">&lt;script data-bascik-stream&gt;</span>
+          <h3>Stream swap</h3>
+          <p>
+            The shell arrives first. Delayed content follows, even with
+            JavaScript disabled.
+          </p>
+        </a>
+        <a class="card" href="/stream-append">
+          <span class="tag">Progressive HTML</span>
+          <h3>Stream append</h3>
+          <p>
+            Independent stream results arrive in order without placeholders.
+          </p>
+        </a>
+        <a class="card" href="/mixed">
+          <span class="tag">Server + stream scripts</span>
+          <h3>Mixed execution</h3>
+          <p>Server work completes before the shell and streamed result.</p>
+        </a>
+        <a class="card" href="/catalog">
+          <span class="tag">Request-time components</span>
+          <h3>Server-rendered cards</h3>
+          <p>
+            Turn product names from the URL into cards on each request, with
+            props, slots, scoped CSS, and a nested stock script.
+          </p>
+        </a>
+        <a class="card" href="/catalog-stream">
+          <span class="tag">Streamed components</span>
+          <h3>Streamed cards</h3>
+          <p>Product cards arrive in separate batches from stream scripts.</p>
+        </a>
+        <a class="card" href="/api-demo">
+          <span class="tag">GET /api/ping</span>
+          <h3>API client</h3>
+          <p>Make a request from the page and inspect the JSON response.</p>
+        </a>
+        <a class="card" href="/errors">
+          <span class="tag">Expected failures</span>
+          <h3>Error demo</h3>
+          <p>Explore server, stream, timeout, and API error handling.</p>
+        </a>
+        <a class="card" href="/static">
+          <span class="tag">Static HTML + client scripts</span>
+          <h3>Static interactivity</h3>
+          <p>
+            A static page served without a server invocation, with independent
+            interactive components powered by scoped client scripts.
+          </p>
+        </a>
+      </div>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

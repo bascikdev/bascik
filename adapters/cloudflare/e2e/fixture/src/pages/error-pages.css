@@ -1,0 +1,31 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  --accent: #d3ff8d;
+  --accent-border: rgba(211, 255, 141, 0.22);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: #18191b;
+  color: #f0f1f2;
+}
+
+main {
+  order: 1;
+}
+
+footer {
+  order: 2;
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+}
+
+.card {
+  margin-bottom: 20px;
+}

@@ -188,10 +188,28 @@ export const runCli = async (
       return { action: "server", exitCode: 0 };
     }
     case "dev":
+      if (decision.flags.target) {
+        const { startAdapterDev } = await import("./lib/adapter-dev.ts");
+        await startAdapterDev(args, decision.flags);
+        return { action: "dev", exitCode: 0 };
+      }
+    // Plain development uses the built-in server.
+    // falls through
     case "build":
     default: {
       const { runTranspile } = await import("./transpile.ts");
       try {
+        if (process.send && process.env.BASCIK_ADAPTER_DEV === "1") {
+          const { BascikConfig } = await import("./lib/config.ts");
+          process.send({
+            type: "bascik:adapter-directories",
+            distDir: resolve(BascikConfig.directory.out),
+            roots: [
+              resolve(BascikConfig.directory.pages),
+              ...BascikConfig.directory.components.map((root) => resolve(root)),
+            ],
+          });
+        }
         await runTranspile({ exitOnError: options.exitOnFinish !== false });
         return { action: decision.action, exitCode: 0 };
       } catch (err) {

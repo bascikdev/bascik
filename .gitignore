@@ -100,6 +100,8 @@ docs/.wrangler
 .vscode-test/
 .yarn/install-state.gz
 .wrangler
+.netlify/
+adapters/netlify/e2e/fixture/publish/
 .playwright-mcp/
 .headroom/
 .code-map/

@@ -9,6 +9,151 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
+test("demo inline styles are permitted by CSP", async ({ page }) => {
+  const violations: string[] = [];
+  await page.exposeFunction("recordStyleViolation", (directive: string) => {
+    violations.push(directive);
+  });
+  await page.addInitScript(`(() => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      if (event.effectiveDirective.startsWith("style-src"))
+        globalThis.recordStyleViolation(event.effectiveDirective);
+    });
+  })();`);
+  for (const path of ["/", "/api-demo", "/mixed", "/stream"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    expect(violations, path).toEqual([]);
+  }
+});
+
+test("the playground stays readable at desktop and mobile widths", async ({
+  page,
+}) => {
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of [
+      "/",
+      "/server",
+      "/stream",
+      "/stream-append",
+      "/mixed",
+      "/catalog",
+      "/catalog-stream",
+      "/api-demo",
+    ]) {
+      await page.goto(path);
+      await page.getByTestId("demo-menu").locator("summary").click();
+      await expect(
+        page.getByRole("navigation", { name: "Site" }),
+      ).toBeVisible();
+      const current = page
+        .getByTestId("demo-nav")
+        .locator('[aria-current="page"]');
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveCSS("color", "rgb(24, 25, 27)");
+      await expect(current).toHaveCSS("min-height", "40px");
+      expect(
+        await current.evaluate(
+          (link) =>
+            link.ownerDocument.defaultView?.getComputedStyle(link, "::before")
+              .backgroundColor,
+        ),
+      ).toBe("rgb(211, 255, 141)");
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      const logo = page.getByRole("img", { name: "Bascik", exact: true });
+      await expect(logo).toBeVisible();
+      expect(
+        await logo.evaluate((image) =>
+          "naturalWidth" in image ? image.naturalWidth : 0,
+        ),
+      ).toBeGreaterThan(0);
+      await expect(page.locator("body")).toHaveCSS(
+        "background-color",
+        "rgb(24, 25, 27)",
+      );
+      expect(
+        await page
+          .locator("html")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+        `${path} at ${width}px`,
+      ).toBe(true);
+    }
+  }
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Bascik home" })).toBeFocused();
+  await expect(page.getByRole("link", { name: "Bascik home" })).toHaveCSS(
+    "outline-style",
+    "solid",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/stream", { waitUntil: "commit" });
+  await expect(page.getByTestId("cf-skeleton-3")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
+});
+
+test("navigation links have hover feedback and open their example", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("demo-menu").locator("summary").click();
+  const server = page
+    .getByTestId("demo-nav")
+    .getByRole("link", { name: "Server scripts" });
+  await server.hover();
+  expect(
+    await server.evaluate(
+      (link) =>
+        link.ownerDocument.defaultView?.getComputedStyle(link, "::before")
+          .backgroundColor,
+    ),
+  ).toBe("rgb(36, 38, 40)");
+  await server.click();
+  await expect(page.getByTestId("cf-server-greeting")).toContainText("collin");
+  await expect(page.getByTestId("demo-nav")).toBeHidden();
+  await page.getByTestId("demo-menu").locator("summary").click();
+  await expect(server).toHaveAttribute("aria-current", "page");
+});
+
+test("the collapsible menu works without JavaScript on desktop and mobile", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    baseURL,
+  });
+  try {
+    const page = await context.newPage();
+    for (const width of [1280, 375, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      const menu = page.getByTestId("demo-menu");
+      const summary = menu.locator("summary");
+      await expect(page.getByTestId("demo-nav")).toBeHidden();
+      await summary.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("demo-nav")).toBeVisible();
+      expect(
+        await page.getByTestId("demo-nav").evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          return (
+            bounds.left >= 0 &&
+            bounds.right <= element.ownerDocument.documentElement.clientWidth
+          );
+        }),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("demo-nav")).toBeHidden();
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test.describe("cloudflare adapter: static bypass", () => {
   test("the static home page is served by the asset layer", async ({
     page,
@@ -34,7 +179,7 @@ test.describe("cloudflare adapter: static bypass", () => {
       "cross-origin-resource-policy",
     ];
     const staticHeaders = (await request.get("/")).headers();
-    const workerHeaders = (await request.get("/server?user=Alice")).headers();
+    const workerHeaders = (await request.get("/server?name=Alice")).headers();
     for (const name of names) {
       expect(staticHeaders[name], name).toBeDefined();
       expect(staticHeaders[name], name).toBe(workerHeaders[name]);
@@ -88,7 +233,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
   test("a pure server script page composes per request with context and headers", async ({
     page,
   }) => {
-    const res = await page.goto("/server?user=Alice&role=Architect");
+    const res = await page.goto("/server?name=Alice&role=Architect");
     expect(res?.status()).toBe(200);
     expect(res?.headers()["cache-control"]).toBe("private, no-store");
     await expect(page.getByTestId("cf-server-heading")).toBeVisible();
@@ -106,7 +251,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
     request,
   }) => {
     // The `security` defaults (Collin 2026-10-29), from the build's config.
-    const res = await request.get("/server?user=Alice");
+    const res = await request.get("/server?name=Alice");
     expect(res.status()).toBe(200);
     const headers = res.headers();
     expect(headers["x-content-type-options"]).toBe("nosniff");
@@ -143,7 +288,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
     const name = `<b data-testid="injected">Milk & "Foam"</b>`;
     const pages = [
       [
-        `/server?user=${encodeURIComponent(name)}&role=${encodeURIComponent("<i>Admin</i>")}`,
+        `/server?name=${encodeURIComponent(name)}&role=${encodeURIComponent("<i>Admin</i>")}`,
         "cf-server-greeting",
       ],
       [`/stream?name=${encodeURIComponent(name)}`, "cf-greeting"],
@@ -219,9 +364,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
     const res = await page.goto("/stream-append?delay=500");
     expect(res?.status()).toBe(200);
     expect(res?.headers()["cache-control"]).toBe("private, no-store");
-    await expect(page.locator("h1")).toContainText(
-      "Progressive Stream (Append Flow)",
-    );
+    await expect(page.locator("h1")).toContainText("Stream append");
     await expect(page.locator(".stream-card")).toHaveCount(3);
   });
 
@@ -231,7 +374,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
     const res = await page.goto("/mixed");
     expect(res?.status()).toBe(200);
     expect(res?.headers()["cache-control"]).toBe("private, no-store");
-    await expect(page.locator("h1")).toContainText("Mixed-Page Ordering Rule");
+    await expect(page.locator("h1")).toContainText("Mixed execution");
     await expect(page.locator(".stream-resolved")).toBeVisible();
     const html = await page.content();
     expect(html).not.toContain("text/bascik-server");
@@ -243,7 +386,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
   }) => {
     const res = await page.goto("/api-demo");
     expect(res?.status()).toBe(200);
-    await expect(page.locator("h1")).toContainText("Edge API Route Client");
+    await expect(page.locator("h1")).toContainText("API client");
     await page.click("#fetch-btn");
     await expect(page.locator("#response-status")).toContainText("HTTP 200 OK");
     await expect(page.locator("#json-display")).toContainText('"pong": true');
@@ -345,7 +488,7 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
         return footerTop - textBottom;
       });
       expect(gap).toBeGreaterThanOrEqual(20);
-      await expect(footer).toHaveCSS("padding-top", "20px");
+      await expect(footer).toHaveCSS("padding-top", "24px");
     });
   }
 
@@ -371,6 +514,9 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     await page.goto("/catalog");
     const results = page.getByTestId("catalog-results");
     const tiles = results.getByTestId("product-card");
+    await expect(
+      page.getByRole("heading", { name: "Server-rendered cards" }),
+    ).toBeVisible();
     await expect(tiles).toHaveCount(5);
     await expect(results.getByTestId("product-card-name")).toHaveText([
       "Pour-over kettle",

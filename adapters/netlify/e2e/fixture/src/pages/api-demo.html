@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · API client" />
+    <script src="/api-demo.js" defer></script>
+  </head>
+  <body>
+    <fixture-nav />
+    <main>
+      <section class="panel">
+        <h1>API client</h1>
+        <p>
+          Send a request to <code>GET /api/ping</code> or inspect the
+          Netlify-specific context response without leaving this page.
+        </p>
+        <button type="button" data-testid="demo-api-send">
+          Send ping request
+        </button>
+        <p class="request-status" role="status" data-testid="demo-api-status">
+          Ready to send.
+        </p>
+        <pre data-testid="demo-api-response" aria-label="API response">
+No response yet.</pre>
+        <details class="panel" open>
+          <summary>Netlify-specific function context</summary>
+          <p>
+            Inspect native platform context, cookies, and waitUntil support.
+          </p>
+          <button type="button" data-testid="fixture-api-send">
+            Send context request
+          </button>
+          <p
+            class="request-status"
+            role="status"
+            data-testid="fixture-api-status"
+          >
+            Ready to send.
+          </p>
+          <pre
+            data-testid="fixture-api-response"
+            aria-label="Netlify context response"
+          >
+No response yet.</pre>
+        </details>
+        <p>
+          The shared sample uses <code>/api/ping</code>. Netlify also exposes
+          <code>/api/context</code> to show native function context and cookies.
+        </p>
+        <noscript
+          ><p>Enable JavaScript to send requests from this demo.</p></noscript
+        >
+      </section>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

@@ -68,7 +68,7 @@ export const DEMOS: TsDemo[] = [
     sources: ["ts-server-usage"],
     output: "ts-server-output-html",
     site: "default",
-    from: { url: "/hello?name=Ada" },
+    from: { url: "/hello?name=collin" },
   },
   {
     id: "stream",

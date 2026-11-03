@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Server scripts" />
+  </head>
+  <body>
+    <fixture-nav />
+    <main data-testid="fixture-server">
+      <header class="hero">
+        <h1 data-testid="fixture-server-heading">Server scripts</h1>
+        <p class="subtitle">
+          Server scripts render request-time identity, platform, and request
+          details before response headers are committed.
+        </p>
+      </header>
+      <section class="panel">
+        <h2>Session identity</h2>
+        <div class="greeting" data-testid="fixture-server-greeting">
+          <script data-bascik-server type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default (request: Request) => {
+              const params = new URL(request.url).searchParams;
+              const name =
+                params.get("name") ?? params.get("user") ?? "collin";
+              const role = params.get("role") ?? "Admin";
+              return html`<h3 data-testid="fixture-greeting">
+                  Hello, <strong>${name}</strong>
+                </h3>
+                <p>Role: <span class="badge">${role}</span></p>`;
+            };
+          </script>
+        </div>
+        <form method="get" action="/server">
+          <label for="name">Name</label>
+          <div class="form-row">
+            <input
+              id="name"
+              name="name"
+              value="collin"
+              autocomplete="given-name"
+            />
+            <button type="submit">Update greeting</button>
+          </div>
+        </form>
+        <div class="table-container">
+          <table>
+            <tbody>
+              <tr>
+                <th scope="row">Platform</th>
+                <td data-testid="fixture-platform">
+                  <script data-bascik-server type="text/typescript">
+                    import type { NetlifyFixtureContext } from "@/lib/context.ts";
+                    export default (_request: Request, context: NetlifyFixtureContext) =>
+                      context.platform?.name ?? "unknown";
+                  </script>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Connecting client IP</th>
+                <td data-testid="fixture-remote-ip">
+                  <script data-bascik-server type="text/typescript">
+                    import type { NetlifyFixtureContext } from "@/lib/context.ts";
+                    export default (_request: Request, context: NetlifyFixtureContext) =>
+                      context.remoteIp ?? "127.0.0.1";
+                  </script>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Request method</th>
+                <td>
+                  <script data-bascik-server type="text/typescript">
+                    export default (request: Request) => request.method;
+                  </script>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Timestamp (UTC)</th>
+                <td>
+                  <script data-bascik-server type="text/typescript">
+                    export default () => new Date().toISOString();
+                  </script>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <p class="next-nav">
+        Next: Explore <a href="/stream">Stream swap</a> or
+        <a href="/api-demo">API client</a>.
+      </p>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

@@ -37,6 +37,9 @@ const OFFICIAL_TARGETS: Record<string, { package: string; variant?: string }> =
       package: "@bascik/adapter-cloudflare",
       variant: "workers",
     },
+    netlify: {
+      package: "@bascik/adapter-netlify",
+    },
   };
 
 /** The conditions Node's ESM loader matches for `import()` (plus "default"). */

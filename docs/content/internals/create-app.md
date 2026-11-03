@@ -130,7 +130,7 @@ yarn create:test-site
 
 This builds `create-bascik` and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The `-y` flag selects the defaults non-interactively, while `--no-skills`, `--no-install` and `--no-dev` skip the agent skills, npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
+The `-y` flag selects the defaults non-interactively, while `--no-skills`, `--no-install` and `--no-dev` skip the agent skills, npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template and `--template netlify` the Netlify template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
 
 ```text
 Build complete

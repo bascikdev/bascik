@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Stream Append Demo (Zero Placeholder)</title>
+    <title>Bascik · Stream append</title>
     <style>
       :root {
         color-scheme: dark;
@@ -247,15 +247,14 @@
         margin-top: auto;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Stream Append Demo</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1>Progressive Stream (Append Flow)</h1>
+      <h1>Stream append</h1>
       <p class="greeting" data-testid="cf-append-greeting">
         <script data-bascik-server>
           import { html } from "@bascik/bascik/html";

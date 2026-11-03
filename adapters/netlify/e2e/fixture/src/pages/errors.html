@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Error demo" />
+  </head>
+  <body>
+    <fixture-nav />
+    <main>
+      <header class="hero">
+        <h1>Error demo</h1>
+        <p class="subtitle">
+          These routes intentionally fail so you can see how the adapter treats
+          errors before and after a response starts.
+        </p>
+      </header>
+      <section class="panel">
+        <ul>
+          <li>
+            <a href="/failure">Server-rendered page failure (500)</a>
+            <p>A server script fails before response headers are committed.</p>
+          </li>
+          <li>
+            <a href="/stream-failure">Stream failure (200)</a>
+            <p>The shell survives because the response has already started.</p>
+          </li>
+          <li>
+            <a href="/timeout">Server script timeout (500)</a>
+            <p>
+              A non-resolving server script returns a generic error response.
+            </p>
+          </li>
+          <li>
+            <a href="/api/failure">API route failure (500)</a>
+            <p>
+              An API handler throws and the adapter hides its internal details.
+            </p>
+          </li>
+        </ul>
+      </section>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

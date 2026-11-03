@@ -12,6 +12,8 @@ import {
   GITIGNORE,
   HELLO_API_ROUTE,
   MY_COUNTER_CSS,
+  NETLIFY_GITIGNORE,
+  NETLIFY_TOML,
   MY_COUNTER_HTML,
   CONTACT_FORM_HTML,
   CONTACT_FORM_CSS,
@@ -154,7 +156,7 @@ describe("parseCliOptions", () => {
 
   it("rejects an unknown template with the available choices", () => {
     expect(() => parseCliOptions(["--template", "vercel"])).toThrow(
-      'Unknown template "vercel". Choose one of: default, cloudflare, static.',
+      'Unknown template "vercel". Choose one of: default, cloudflare, netlify, static.',
     );
     expect(() => parseCliOptions(["--template=vercel"])).toThrow(
       /Unknown template/,
@@ -163,7 +165,7 @@ describe("parseCliOptions", () => {
 
   it("rejects --template without a value, including when a flag follows it", () => {
     expect(() => parseCliOptions(["--template"])).toThrow(
-      "--template needs a value. Choose one of: default, cloudflare, static.",
+      "--template needs a value. Choose one of: default, cloudflare, netlify, static.",
     );
     expect(() => parseCliOptions(["--template", "-y"])).toThrow(
       /--template needs a value/,
@@ -394,6 +396,57 @@ describe("PACKAGE_JSON", () => {
     );
   });
 
+  it("pins @bascik/adapter-netlify to the workspace version for the netlify template", () => {
+    const repoRoot = resolve(import.meta.dirname, "../..");
+    const adapterJson = JSON.parse(
+      readFileSync(resolve(repoRoot, "adapters/netlify/package.json"), "utf8"),
+    ) as {
+      version: string;
+      peerDependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    const pkgJson = JSON.parse(
+      readFileSync(resolve(repoRoot, "pkg/package.json"), "utf8"),
+    ) as { version: string };
+    const netlify = JSON.parse(PACKAGE_JSON("my-app", "netlify"));
+    expect(netlify.devDependencies["@bascik/adapter-netlify"]).toBe(
+      `^${adapterJson.version}`,
+    );
+    expect(netlify.devDependencies["netlify-cli"]).toBe(
+      adapterJson.devDependencies["netlify-cli"],
+    );
+    expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(
+      `^${pkgJson.version}`,
+    );
+    expect(netlify.scripts.build).toBe(
+      "bascik --build --target netlify && bascik-netlify-install",
+    );
+    expect(netlify.scripts.dev).toBe("bascik --target netlify");
+    expect(netlify.scripts.preview).toBe(
+      "npx --yes netlify-cli dev --dir publish",
+    );
+    expect(netlify.scripts.deploy).toBe(
+      "npx --yes netlify-cli deploy --build --prod",
+    );
+    expect(netlify.devDependencies).not.toHaveProperty("wrangler");
+    for (const template of ["default", "cloudflare"] as const) {
+      expect(
+        JSON.parse(PACKAGE_JSON("my-app", template)).devDependencies,
+      ).not.toHaveProperty("netlify-cli");
+    }
+  });
+
+  it("parses --template netlify and ships its netlify.toml and ignores", () => {
+    expect(parseCliOptions(["my-site", "--template", "netlify"]).template).toBe(
+      "netlify",
+    );
+    expect(NETLIFY_TOML).toContain('publish = "publish"');
+    expect(NETLIFY_TOML).toContain("BASCIK_SITE_URL=${BASCIK_SITE_URL:-$URL}");
+    expect(NETLIFY_GITIGNORE).toContain("publish/\n");
+    expect(NETLIFY_GITIGNORE).toContain(".netlify/\n");
+    expect(NETLIFY_GITIGNORE.startsWith(GITIGNORE)).toBe(true);
+  });
+
   it("uses the supplied name", () => {
     const pkg = JSON.parse(PACKAGE_JSON("cool-site"));
     expect(pkg.name).toBe("cool-site");
@@ -410,6 +463,7 @@ describe("PACKAGE_JSON", () => {
 
   it("leaves wrangler and the adapter out of the default template", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.devDependencies["@bascik/adapter-cloudflare"]).toBeUndefined();
     expect(pkg.devDependencies.wrangler).toBeUndefined();
     expect(pkg.scripts.preview).toBeUndefined();
@@ -419,8 +473,8 @@ describe("PACKAGE_JSON", () => {
   describe("cloudflare template", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
 
-    it("builds the Cloudflare bundle and keeps the Bascik dev server as the authoring loop", () => {
-      expect(pkg.scripts.dev).toBe("bascik");
+    it("builds the Cloudflare bundle and develops in the watched platform runtime", () => {
+      expect(pkg.scripts.dev).toBe("bascik --target cloudflare");
       expect(pkg.scripts.build).toBe("bascik --build --target cloudflare");
     });
 
@@ -443,7 +497,8 @@ describe("PACKAGE_JSON", () => {
     it("keeps every default script and dependency", () => {
       const base = JSON.parse(PACKAGE_JSON("my-app"));
       for (const key of Object.keys(base.scripts)) {
-        if (key !== "build") expect(pkg.scripts[key]).toBe(base.scripts[key]);
+        if (key !== "build" && key !== "dev")
+          expect(pkg.scripts[key]).toBe(base.scripts[key]);
       }
       expect(pkg.dependencies).toEqual(base.dependencies);
       expect(pkg.devDependencies).toMatchObject(base.devDependencies);
@@ -573,7 +628,7 @@ describe("CLOUDFLARE_E2E_APP_SPEC", () => {
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain(
       "mobile navigation toggle expands and collapses menu",
     );
-    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("page.goto('/edge?name=Ada')");
+    expect(CLOUDFLARE_E2E_APP_SPEC).toContain("page.goto('/edge?name=collin')");
     expect(CLOUDFLARE_E2E_APP_SPEC).toContain("getByTestId('edge-greeting')");
     expect(CLOUDFLARE_E2E_APP_SPEC.endsWith("  });\n});\n")).toBe(true);
   });

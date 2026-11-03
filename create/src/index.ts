@@ -70,9 +70,12 @@ if (templateArg) {
 } else {
   const cloudflareAnswer = await rl.ask("Deploy to Cloudflare Workers? (y/N) ");
   // The other prompts default to yes, so "yes" typed in full is accepted here too.
-  template = /^y(es)?$/i.test(cloudflareAnswer.trim())
-    ? "cloudflare"
-    : "default";
+  if (/^y(es)?$/i.test(cloudflareAnswer.trim())) {
+    template = "cloudflare";
+  } else {
+    const netlifyAnswer = await rl.ask("Deploy to Netlify? (y/N) ");
+    template = /^y(es)?$/i.test(netlifyAnswer.trim()) ? "netlify" : "default";
+  }
 }
 
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
@@ -161,4 +164,11 @@ if (shouldDev && installed) {
 if (template === "cloudflare") {
   console.log("To preview in workerd:  npm run build && npm run preview");
   console.log("To deploy:              npm run build && npm run deploy\n");
+}
+
+if (template === "netlify") {
+  console.log("To preview with netlify dev:  npm run build && npm run preview");
+  console.log(
+    "To deploy:                    npm run deploy (or connect the repo in Netlify)\n",
+  );
 }

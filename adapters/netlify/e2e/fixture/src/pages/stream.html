@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Stream swap" />
+    <style>
+      .stream-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-areas: "one two three";
+        gap: 12px;
+      }
+
+      .cell-1 {
+        grid-area: one;
+      }
+
+      .cell-2 {
+        grid-area: two;
+      }
+
+      .cell-3 {
+        grid-area: three;
+      }
+
+      .stream-card,
+      .stream-skeleton {
+        min-width: 0;
+        min-height: 160px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        background: var(--surface);
+        box-shadow: var(--card-shadow);
+      }
+
+      .stream-card {
+        display: flex;
+        flex-direction: column;
+        animation: stream-appear 0.3s ease-out;
+      }
+
+      .stream-card h2 {
+        font-size: 0.95rem;
+      }
+
+      .stream-card .metric {
+        margin-top: auto;
+        color: var(--accent);
+        font-size: 1.15rem;
+        font-weight: 800;
+      }
+
+      .stream-card small {
+        color: var(--text-muted);
+      }
+
+      .stream-skeleton {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        animation: skeleton-pulse 1.5s ease-in-out infinite;
+      }
+
+      .stream-skeleton .skeleton-bar {
+        width: 75%;
+        height: 14px;
+        border-radius: 4px;
+        background: var(--elevated);
+      }
+
+      .stream-skeleton .skeleton-bar:first-child {
+        width: 55%;
+        height: 24px;
+      }
+
+      .stream-skeleton .loading-label {
+        margin-top: auto;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+      }
+
+      .stream-grid:has([data-testid="fixture-stream-result"])
+        [data-testid="fixture-stream-skeleton"],
+      .stream-grid:has([data-testid="fixture-stream-result-2"])
+        [data-testid="fixture-stream-skeleton-2"],
+      .stream-grid:has([data-testid="fixture-stream-result-3"])
+        [data-testid="fixture-stream-skeleton-3"] {
+        visibility: hidden;
+      }
+
+      @keyframes stream-appear {
+        from {
+          opacity: 0.3;
+          transform: scale(0.99);
+        }
+
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes skeleton-pulse {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+
+        50% {
+          opacity: 0.95;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .stream-grid {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-areas:
+            "one"
+            "two"
+            "three";
+        }
+
+        .stream-card,
+        .stream-skeleton {
+          min-height: 240px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .stream-card,
+        .stream-skeleton {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <fixture-nav />
+    <header class="hero">
+      <h1>Stream swap</h1>
+      <p class="subtitle" data-testid="fixture-stream-greeting">
+        <span data-testid="cf-greeting">
+          <script data-bascik-server type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+            import type { NetlifyFixtureContext } from "@/lib/context.ts";
+
+            export default (request: Request, context: NetlifyFixtureContext) => {
+              const name =
+                new URL(request.url).searchParams.get("name") ?? "Guest";
+              return html`Welcome back, ${name} · Edge host:
+                <span class="badge">${context.platform?.name ?? "local"}</span>`;
+            };
+          </script>
+        </span>
+      </p>
+    </header>
+    <fixture-footer />
+    <main data-testid="fixture-stream-shell">
+      <p class="subtitle">
+        Three live service panels stream independently into reserved CSS slots.
+        The shell and footer arrive first, even when JavaScript is disabled.
+      </p>
+      <p data-testid="fixture-stream-server">
+        <strong>Response started.</strong> Server context was rendered before
+        response headers were sent.
+      </p>
+      <div class="stream-grid" data-testid="fixture-stream-grid">
+        <div
+          class="stream-skeleton cell-1"
+          data-testid="fixture-stream-skeleton"
+          role="status"
+          aria-label="Loading system health"
+        >
+          <span class="skeleton-bar"></span>
+          <span class="skeleton-bar"></span>
+          <span class="loading-label">Loading System Health (Fast)...</span>
+        </div>
+        <div
+          class="stream-skeleton cell-2"
+          data-testid="fixture-stream-skeleton-2"
+          role="status"
+          aria-label="Loading data processing"
+        >
+          <span class="skeleton-bar"></span>
+          <span class="skeleton-bar"></span>
+          <span class="loading-label">Loading Data Processing...</span>
+        </div>
+        <div
+          class="stream-skeleton cell-3"
+          data-testid="fixture-stream-skeleton-3"
+          role="status"
+          aria-label="Loading storage replicas"
+        >
+          <span class="skeleton-bar"></span>
+          <span class="skeleton-bar"></span>
+          <span class="loading-label">Loading Storage Replicas...</span>
+        </div>
+        <div class="cell-1" data-testid="fixture-stream-slot" aria-busy="true">
+          <script data-bascik-stream type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default async (
+              request: Request,
+              _context: unknown,
+              { signal }: { signal?: AbortSignal },
+            ) => {
+              const requested = Number(
+                new URL(request.url).searchParams.get("delay") ?? 300,
+              );
+              const delay = Number.isFinite(requested)
+                ? Math.min(Math.max(requested, 0), 4000)
+                : 300;
+              if (delay > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const timer = setTimeout(resolve, delay);
+                  signal?.addEventListener(
+                    "abort",
+                    () => {
+                      clearTimeout(timer);
+                      reject(signal.reason);
+                    },
+                    { once: true },
+                  );
+                });
+              }
+              return html`<article
+                class="stream-card"
+                data-testid="fixture-stream-result"
+              >
+                <h2>System Health · Edge Ingress</h2>
+                <span class="badge">Operational</span>
+                <strong class="metric">99.99% Uptime</strong>
+                <small>Latency: 14ms · Streamed after ${delay}ms</small>
+              </article>`;
+            };
+          </script>
+        </div>
+        <div
+          class="cell-2"
+          data-testid="fixture-stream-slot-2"
+          aria-busy="true"
+        >
+          <script data-bascik-stream type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default async (
+              request: Request,
+              _context: unknown,
+              { signal }: { signal?: AbortSignal },
+            ) => {
+              const requested = Number(
+                new URL(request.url).searchParams.get("delay") ?? 300,
+              );
+              const base = Number.isFinite(requested)
+                ? Math.min(Math.max(requested, 0), 4000)
+                : 300;
+              const delay = Math.min(base + 500, 4000);
+              if (delay > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const timer = setTimeout(resolve, delay);
+                  signal?.addEventListener(
+                    "abort",
+                    () => {
+                      clearTimeout(timer);
+                      reject(signal.reason);
+                    },
+                    { once: true },
+                  );
+                });
+              }
+              return html`<article
+                class="stream-card"
+                data-testid="fixture-stream-result-2"
+              >
+                <h2>Data Processing · Worker Pool</h2>
+                <span class="badge">Operational</span>
+                <strong class="metric">1,420 req/s</strong>
+                <small>Queue: 0 pending · Streamed after ${delay}ms</small>
+              </article>`;
+            };
+          </script>
+        </div>
+        <div
+          class="cell-3"
+          data-testid="fixture-stream-slot-3"
+          aria-busy="true"
+        >
+          <script data-bascik-stream type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default async (
+              request: Request,
+              _context: unknown,
+              { signal }: { signal?: AbortSignal },
+            ) => {
+              const requested = Number(
+                new URL(request.url).searchParams.get("delay") ?? 300,
+              );
+              const base = Number.isFinite(requested)
+                ? Math.min(Math.max(requested, 0), 4000)
+                : 300;
+              const delay = Math.min(base + 1000, 4000);
+              if (delay > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const timer = setTimeout(resolve, delay);
+                  signal?.addEventListener(
+                    "abort",
+                    () => {
+                      clearTimeout(timer);
+                      reject(signal.reason);
+                    },
+                    { once: true },
+                  );
+                });
+              }
+              return html`<article
+                class="stream-card"
+                data-testid="fixture-stream-result-3"
+              >
+                <h2>Storage Replicas · Database Sync</h2>
+                <span class="badge">Syncing</span>
+                <strong class="metric">64.2 MB / 65 MB</strong>
+                <small>Replication: 98% · Streamed after ${delay}ms</small>
+              </article>`;
+            };
+          </script>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

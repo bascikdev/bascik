@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Timeout - Netlify Adapter Fixture" />
+  </head>
+  <body>
+    <main data-testid="fixture-timeout">
+      <h1>Expected server timeout</h1>
+      <script data-bascik-server type="text/typescript">
+        export default () => new Promise<never>(() => {});
+      </script>
+    </main>
+  </body>
+</html>

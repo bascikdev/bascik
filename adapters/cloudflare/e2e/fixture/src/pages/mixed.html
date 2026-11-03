@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Mixed Server &amp; Stream Execution Demo</title>
+    <title>Bascik · Mixed execution</title>
     <style>
       :root {
         color-scheme: dark;
@@ -341,15 +341,14 @@
         text-decoration: underline;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Mixed Execution Demo</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1>The Mixed-Page Ordering Rule</h1>
+      <h1>Mixed execution</h1>
       <p class="subtitle">
         Demonstrating pages that combine
         <code>&lt;script data-bascik-server&gt;</code> and

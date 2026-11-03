@@ -468,11 +468,16 @@ describe("cli helper tests", () => {
       expect(localDecision.flags.target).toBe("./my-adapter.ts");
     });
 
-    it("rejects --target without --build", () => {
+    it("starts adapter development for --target without --build", () => {
       const decision = resolveCliAction(["--target", "cloudflare-pages"]);
-      expect(decision.action).toBe("error");
-      expect(decision.errorMessage).toContain("--target");
-      expect(decision.errorMessage).toContain("--build");
+      expect(decision.action).toBe("dev");
+      expect(decision.flags.target).toBe("cloudflare-pages");
+    });
+
+    it.each(["--server", "--check"])("rejects --target with %s", (mode) => {
+      expect(resolveCliAction([mode, "--target", "netlify"]).action).toBe(
+        "error",
+      );
     });
 
     it("rejects --target with --only", () => {

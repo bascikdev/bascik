@@ -1,0 +1,1 @@
+Netlify adapter static asset

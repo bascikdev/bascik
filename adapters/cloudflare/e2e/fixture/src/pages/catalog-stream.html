@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Streamed Catalog (Components from Stream Scripts)</title>
+    <title>Bascik · Streamed cards</title>
     <style>
       :root {
         color-scheme: dark;
@@ -167,15 +167,14 @@
         font-weight: 600;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand-nav">
-        <span class="brand-pill">Components from Stream Scripts</span>
-        <a class="back-link" href="/">← Back to Demo Home</a>
-      </div>
-      <h1 data-testid="catalog-stream-heading">Streamed Catalog</h1>
+      <h1 data-testid="catalog-stream-heading">Streamed cards</h1>
       <p class="subtitle">
         Three <code>&lt;script data-bascik-stream&gt;</code> batches each return
         <code>&lt;product-card&gt;</code> tags, and the Worker renders them as

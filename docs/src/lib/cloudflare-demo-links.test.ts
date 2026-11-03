@@ -165,6 +165,48 @@ const DOC_FILES = walk("docs/content").filter((f) => f.endsWith(".md"));
 const SKILL_FILES = walk("skills").filter(isText);
 const LINK_FILES = [...DOC_FILES, ...SKILL_FILES, README];
 
+describe("adapter deployment guide demo parity", () => {
+  it.each(["cloudflare", "netlify"])(
+    "%s introduces the matching live demo before its setup instructions",
+    (adapter) => {
+      const markdown = read(`docs/content/deployment/${adapter}.md`);
+      const intro = markdown.split("\n## ")[0];
+      expect(intro).toContain("> **See it live on ");
+      const urls = [
+        ...intro.matchAll(
+          /https:\/\/(?:cloudflare|netlify)-adapter\.bascik\.dev[^\s)]*/g,
+        ),
+      ].map(([url]) => new URL(url));
+      expect(
+        urls.every((url) => url.hostname === `${adapter}-adapter.bascik.dev`),
+      ).toBe(true);
+      expect(urls.map((url) => url.pathname)).toEqual([
+        "/",
+        "/server",
+        "/stream",
+        "/stream-append",
+        "/mixed",
+        "/catalog",
+        "/catalog-stream",
+        "/api-demo",
+      ]);
+      for (const { pathname } of urls) {
+        const page = pathname === "/" ? "index" : pathname.slice(1);
+        expect(
+          existsSync(
+            path.join(
+              REPO_ROOT,
+              `adapters/${adapter}/e2e/fixture/src/pages/${page}.html`,
+            ),
+          ),
+          `${adapter}: ${pathname}`,
+        ).toBe(true);
+      }
+      expect(markdown).toContain("## What you get");
+    },
+  );
+});
+
 describe("live Cloudflare demo URLs name pages that exist in the fixture", () => {
   it("the fixture's pages folder is where the test looks", () => {
     expect(existsSync(path.join(FIXTURE_PAGES, "catalog.html"))).toBe(true);

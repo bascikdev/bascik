@@ -176,6 +176,9 @@ export const emitServerlessArtifacts = async (
   // 0. Clean outDir before assembling
   const targetDirName = sanitizeTargetDirName(target);
   const outDir = join(distDir, ".bascik", targetDirName);
+  if (process.send && process.env.BASCIK_ADAPTER_DEV === "1") {
+    process.send({ type: "bascik:adapter-output", distDir, outDir });
+  }
   await rm(outDir, { recursive: true, force: true });
 
   // 2. Read host-neutral SiteGraph

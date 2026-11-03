@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <demo-favicons />
-    <title>Bascik · Cloudflare Workers Architecture Demo</title>
+    <title>Bascik · Overview</title>
     <style>
       :root {
         color-scheme: dark;
@@ -214,36 +214,34 @@
         text-decoration: underline;
       }
     </style>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/navigation.css" />
   </head>
 
   <body>
+    <demo-nav />
     <header>
-      <div class="brand">
-        <span class="brand-pill">Bascik Example</span>
-        <span class="brand-sub">Cloudflare Workers + Assets</span>
-      </div>
-      <h1 data-testid="cf-static-heading">
-        Cloudflare Workers Architecture Demo
-      </h1>
+      <p class="section-label">Cloudflare adapter</p>
+      <h1 data-testid="cf-static-heading">Overview</h1>
       <p class="subtitle">
-        Zero-overhead static asset delivery from global CDN edge cache combined
-        with native edge script execution.
+        Static pages from the CDN. Server scripts when you need them. Explore
+        real Bascik components, streaming HTML, and API routes on Cloudflare
+        Workers.
       </p>
     </header>
 
     <main>
       <div class="banner">
-        ⚡ <strong>Static CDN Layer:</strong> This home page is served directly
-        from Cloudflare's static cache with zero compute latency or Worker
-        invocations.
+        <strong>Static CDN layer:</strong> Cloudflare serves this page from its
+        static asset layer, without invoking the Worker.
       </div>
 
-      <h2 class="section-title">Explore Edge Rendering Features</h2>
+      <h2 class="section-title">Explore rendering features</h2>
       <div class="grid">
         <a class="demo-card" href="/server" data-testid="cf-link-server">
           <div>
             <div class="demo-tag">&lt;script data-bascik-server&gt;</div>
-            <h3 class="demo-title">Server Scripts</h3>
+            <h3 class="demo-title">Server scripts</h3>
             <p class="demo-desc">
               Inspect dynamic request context (IP, headers, platform bindings)
               computed at request time before headers commit.
@@ -254,7 +252,7 @@
         <a class="demo-card" href="/stream" data-testid="cf-link-stream">
           <div>
             <div class="demo-tag">Stream Pattern 1</div>
-            <h3 class="demo-title">In-Place Skeleton Swap</h3>
+            <h3 class="demo-title">Stream swap</h3>
             <p class="demo-desc">
               Shimmer skeleton cards render immediately on initial paint and
               swap in-place with resolved content as streams deliver.
@@ -269,7 +267,7 @@
         >
           <div>
             <div class="demo-tag">Stream Pattern 2</div>
-            <h3 class="demo-title">Progressive Stream Append</h3>
+            <h3 class="demo-title">Stream append</h3>
             <p class="demo-desc">
               Zero-placeholder stream: page shell and footer paint first, then
               cards stream directly into the open response grid.
@@ -280,7 +278,7 @@
         <a class="demo-card" href="/mixed" data-testid="cf-link-mixed">
           <div>
             <div class="demo-tag">Server + Stream</div>
-            <h3 class="demo-title">Mixed-Page Ordering</h3>
+            <h3 class="demo-title">Mixed execution</h3>
             <p class="demo-desc">
               Demonstrates the two-phase lifecycle: pre-header server script
               execution followed by early flush and async streaming.
@@ -291,7 +289,7 @@
         <a class="demo-card" href="/api-demo" data-testid="cf-link-api-demo">
           <div>
             <div class="demo-tag">Interactive Client</div>
-            <h3 class="demo-title">Edge API Client</h3>
+            <h3 class="demo-title">API client</h3>
             <p class="demo-desc">
               Interactive frontend UI demonstrating client-side fetch calls
               dispatched directly to edge API routes (<code
@@ -305,7 +303,7 @@
         <a class="demo-card" href="/catalog" data-testid="cf-link-catalog">
           <div>
             <div class="demo-tag">Components from Server Scripts</div>
-            <h3 class="demo-title">Product Catalog</h3>
+            <h3 class="demo-title">Server-rendered cards</h3>
             <p class="demo-desc">
               A server script returns one component tag per product, and the
               Worker renders each tag with its scoped CSS at request time.
@@ -320,10 +318,30 @@
         >
           <div>
             <div class="demo-tag">Components from Stream Scripts</div>
-            <h3 class="demo-title">Streamed Catalog</h3>
+            <h3 class="demo-title">Streamed cards</h3>
             <p class="demo-desc">
               The same tiles appended in batches by stream scripts, in document
               order, with the component stylesheet sent once.
+            </p>
+          </div>
+        </a>
+        <a class="demo-card" href="/errors">
+          <div>
+            <div class="demo-tag">Error handling</div>
+            <h3 class="demo-title">Error demo</h3>
+            <p class="demo-desc">
+              Trigger server, API, timeout, and stream failures to see safe
+              error responses and a surviving streamed shell.
+            </p>
+          </div>
+        </a>
+        <a class="demo-card" href="/static">
+          <div>
+            <div class="demo-tag">Static HTML + client scripts</div>
+            <h3 class="demo-title">Static interactivity</h3>
+            <p class="demo-desc">
+              A static page served without a server invocation, with independent
+              interactive components powered by scoped client scripts.
             </p>
           </div>
         </a>

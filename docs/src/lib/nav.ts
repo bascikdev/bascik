@@ -118,6 +118,7 @@ export const NAV: NavSection[] = [
       { href: "/deployment", label: "Overview" },
       { href: "/deployment/static-hosting", label: "Static Hosting" },
       { href: "/deployment/cloudflare", label: "Cloudflare Adapter" },
+      { href: "/deployment/netlify", label: "Netlify Adapter" },
       { href: "/deployment/custom-adapters", label: "Custom Adapters" },
     ],
   },

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Streamed cards" />
+  </head>
+  <body>
+    <fixture-nav />
+    <footer data-testid="catalog-stream-footer">
+      <span>Bascik · Streamed cards on Netlify</span>
+      <a href="https://bascik.dev/stream-scripts">Stream scripts docs &rarr;</a>
+    </footer>
+    <main>
+      <header class="hero">
+        <h1 data-testid="catalog-stream-heading">Streamed cards</h1>
+        <p class="subtitle" data-testid="catalog-stream-intro">
+          Three independent stream scripts send component batches progressively,
+          without client-side JavaScript.
+        </p>
+      </header>
+      <section class="grid" data-testid="catalog-stream-grid">
+        <script data-bascik-stream type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 100);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 4000) : 100;
+            if (delay > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, delay);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return html`<product-card data-bascik-prop-name="Pour-over kettle" data-bascik-prop-price="$48"><span>New</span></product-card>
+              <product-card data-bascik-prop-name="Ceramic dripper" data-bascik-prop-price="$22"><span>Standard</span></product-card>`;
+          };
+        </script>
+        <script data-bascik-stream type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 100);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 4000) : 100;
+            const wait = Math.min(delay + 250, 4000);
+            if (wait > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, wait);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return html`<product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129"><span>Best seller</span></product-card>
+              <product-card data-bascik-prop-name="Glass carafe" data-bascik-prop-price="$31"><span>Standard</span></product-card>`;
+          };
+        </script>
+        <script data-bascik-stream type="text/typescript">
+          import { html } from "@bascik/bascik/html";
+
+          export default async (request: Request, _context: unknown, { signal }: { signal?: AbortSignal }) => {
+            const requested = Number(new URL(request.url).searchParams.get("delay") ?? 100);
+            const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 4000) : 100;
+            const wait = Math.min(delay + 500, 4000);
+            if (wait > 0) {
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, wait);
+                signal?.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  reject(signal.reason);
+                }, { once: true });
+              });
+            }
+            return html`<product-card data-bascik-prop-name="Filters & holder" data-bascik-prop-price="$9"><span>Standard</span></product-card>`;
+          };
+        </script>
+      </section>
+      <p class="next-nav">
+        Browse the <a href="/catalog">server-rendered catalog</a>.
+      </p>
+    </main>
+  </body>
+</html>

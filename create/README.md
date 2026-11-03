@@ -68,16 +68,17 @@ cd my-site
 npm run dev
 ```
 
-Your site will be live at `http://localhost:8080`.
+Your site will be live at `http://localhost:8080` for the default template, `http://127.0.0.1:8787` for Cloudflare, or `http://127.0.0.1:8888` for Netlify.
 
 ## Templates
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers; with `-y` and no flag, you get the default.
+Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers, then to Netlify; with `-y` and no flag, you get the default.
 
-| Template     | What you get                                                                                                          |
-| :----------- | :-------------------------------------------------------------------------------------------------------------------- |
-| `default`    | The static starter above. `static` is accepted as an alias.                                                           |
-| `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo. |
+| Template     | What you get                                                                                                             |
+| :----------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `default`    | The static starter above. `static` is accepted as an alias.                                                              |
+| `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo.    |
+| `netlify`    | The same starter plus the [Netlify adapter](https://bascik.dev/deployment/netlify), a `netlify.toml`, and the edge demo. |
 
 ```sh
 npm create bascik@rc my-site -- --template cloudflare
@@ -87,7 +88,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 
 The Cloudflare template differs from the default in these files only:
 
-- `package.json`: `@bascik/adapter-cloudflare` and `wrangler` as dev dependencies; `build` runs `bascik --build --target cloudflare`; new `preview` and `deploy` scripts run Wrangler from the emitted `dist/.bascik/cloudflare/` folder. `dev` is still the Bascik dev server.
+- `package.json`: `@bascik/adapter-cloudflare` and `wrangler` as dev dependencies; `dev` runs `bascik --target cloudflare` with source watching and browser live reload in the real local platform runtime; `build` runs `bascik --build --target cloudflare`; `preview` and `deploy` run Wrangler from the emitted `dist/.bascik/cloudflare/` folder.
 - `src/pages/edge.html`: a page with a `data-bascik-server` script that the Worker renders on every request, linked from a fourth feature card on the home page.
 - `src/api/hello.ts`: an API route served at `/api/hello`.
 - `e2e/app.spec.ts`: one extra test covering the edge page.
@@ -96,10 +97,30 @@ The Cloudflare template differs from the default in these files only:
 After scaffolding a Cloudflare project:
 
 ```sh
+npm run dev       # watched workerd development on http://127.0.0.1:8787
 npm run build     # bascik --build --target cloudflare
 npm run preview   # run the bundle locally in workerd
 npm run deploy    # wrangler deploy
 ```
+
+The Netlify template differs from the default in these files only:
+
+- `package.json`: `@bascik/adapter-netlify` and `netlify-cli` as dev dependencies; `dev` runs `bascik --target netlify` with source watching and browser live reload through the locally installed Netlify Dev; `build` runs `bascik --build --target netlify && bascik-netlify-install`; `preview` and `deploy` run the Netlify CLI through `npx`.
+- `netlify.toml`: builds with `npm run build`, publishes `publish/`, and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set.
+- `src/pages/edge.html` and `src/api/hello.ts`: the edge demo and API route, run in the Netlify Function.
+- `e2e/app.spec.ts`: one extra test covering the edge page.
+- `.gitignore`: ignores `publish/` and `.netlify/`.
+
+After scaffolding a Netlify project:
+
+```sh
+npm run dev       # watched Netlify development on http://127.0.0.1:8888
+npm run build     # bascik --build --target netlify && bascik-netlify-install
+npm run preview   # netlify dev --dir publish
+npm run deploy    # netlify deploy --build --prod
+```
+
+Both adapter development workflows use a local HTTP-only proxy; `--port` and `--host` override its public address. A rebuild or failed build may return 503, but the watcher stays alive and retries after the next source edit. Live reload is injected only by that proxy, never into production artifacts. `preview` remains a production-output workflow without Bascik's source watcher, and bare `bascik` remains the Node development server.
 
 ## Development & Testing
 

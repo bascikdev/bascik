@@ -48,6 +48,25 @@ describe("resolveAdapterTarget", () => {
     expect(resolved.variant).toBe("workers");
   });
 
+  it("resolves netlify to the official Netlify package", async () => {
+    const resolved = await resolveAdapterTarget("netlify", process.cwd(), {
+      load: false,
+    });
+    expect(resolved.package).toBe("@bascik/adapter-netlify");
+    expect(resolved.variant).toBeUndefined();
+  });
+
+  it("names the package to install when netlify's adapter is missing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bascik-netlify-missing-"));
+    try {
+      await expect(resolveAdapterTarget("netlify", root)).rejects.toThrow(
+        "npm install --save-dev @bascik/adapter-netlify",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("treats custom package name as package specifier", async () => {
     const resolved = await resolveAdapterTarget(
       "@acme/adapter-foo",

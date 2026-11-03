@@ -299,7 +299,7 @@ export const CLAUDE_IMPORT = "@AGENTS.md";
 const DOCS = "https://bascik.dev";
 
 export interface AgentsOptions {
-  template?: "default" | "cloudflare";
+  template?: "default" | "cloudflare" | "netlify";
   /**
    * The commands that run the Bascik dev server and build, when the
    * project's `dev` and `build` npm scripts do not, such as `bascik init` in
@@ -313,17 +313,25 @@ export interface AgentsOptions {
 export function agentsSection(options: AgentsOptions = {}): string {
   const dev = options.commands?.dev ?? "npm run dev";
   const build = options.commands?.build ?? "npm run build";
+  const devDescription =
+    options.template === "cloudflare"
+      ? "watched workerd development with browser live reload at http://127.0.0.1:8787"
+      : options.template === "netlify"
+        ? "watched Netlify Dev with browser live reload at http://127.0.0.1:8888"
+        : "dev server with live reload at http://localhost:8080";
   const preview =
     options.template === "cloudflare"
       ? "- `npm run preview`: run the built Worker locally in workerd (after `npm run build`)"
-      : "- `npx bascik --server`: serve the production build to preview it";
+      : options.template === "netlify"
+        ? "- `npm run preview`: serve the built site and its Netlify Function with `netlify dev` (after `npm run build`)"
+        : "- `npx bascik --server`: serve the production build to preview it";
   return `${AGENTS_SECTION_HEADING}
 
 This site is built with [Bascik](${DOCS}): HTML pages and components compiled to plain HTML, CSS and JavaScript.
 
 ### Commands
 
-- \`${dev}\`: dev server with live reload at http://localhost:8080
+- \`${dev}\`: ${devDescription}
 - \`${build}\`: production build into \`dist/\`; it needs the site's URL in \`BASCIK_SITE_URL\` or \`.env\` for the sitemap and robots.txt ([site URL](${DOCS}/cli#environment-files-and-the-site-url))
 - \`npx bascik --check\`: validate pages, components and config
 ${preview}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Static interactivity" />
+  </head>
+  <body>
+    <fixture-nav />
+    <main>
+      <h1>Static interactivity</h1>
+      <p class="subtitle">
+        This page is built ahead of time and served as a static asset, without
+        invoking the server runtime. Small client scripts add interactivity in
+        the browser.
+      </p>
+      <section class="interactive-demo">
+        <h2>Two components. Independent state.</h2>
+        <p>
+          Click Increment in either counter. Only that counter changes: each
+          component instance has its own scoped elements and client script.
+        </p>
+        <div class="grid">
+          <fixture-counter />
+          <fixture-counter />
+        </div>
+      </section>
+    </main>
+    <fixture-footer />
+  </body>
+</html>

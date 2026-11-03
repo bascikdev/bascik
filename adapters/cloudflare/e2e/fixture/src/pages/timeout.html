@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <demo-head data-bascik-prop-title="Bascik · Server timeout" />
+  </head>
+  <body>
+    <main>
+      <h1>Expected server timeout</h1>
+      <script data-bascik-server>
+        export default () => new Promise(() => {});
+      </script>
+    </main>
+  </body>
+</html>

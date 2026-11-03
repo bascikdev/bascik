@@ -289,7 +289,9 @@ describe("npm create bascik and the agent skills", () => {
     expect(status, output).toBe(0);
     expect(output).toContain("Project name (bascik-app): \n");
     expect(output).toContain("Deploy to Cloudflare Workers? (y/N) \n");
+    expect(output).toContain("Deploy to Netlify? (y/N) \n");
     expect(existsSync(join(parent, "bascik-app", "AGENTS.md"))).toBe(true);
+    expect(existsSync(join(parent, "bascik-app", "netlify.toml"))).toBe(false);
   });
 
   it("misuse: a skills install that fails still scaffolds, exits 0 and prints the command to run later", async () => {

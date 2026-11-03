@@ -1,8 +1,73 @@
-# Deploying bascik.dev and the Adapter Demo
+# Deploying bascik.dev and the Adapter Demos
 
 This repo deploys two sites to Cloudflare. Everything that can live in the repo does: each Worker is defined by a `wrangler.jsonc`, GitHub Actions builds and deploys both (CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml)), and root scripts build, check and preview each one locally. Nobody deploys by hand, and Cloudflare Workers Builds is not used. The steps that cannot live in the repo (credentials, the bascik.dev cutover, retiring the Pages project) are listed here with a check for each.
 
-The user-facing version of this material, written for people deploying their own Bascik sites, is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare).
+The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
+
+## Netlify Adapter Acceptance Project
+
+- Site: [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev) (also available at [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app)).
+- Project ID: `268cf8fb-826b-421a-8a34-abd78bf9be1e`.
+- Admin: [Netlify project](https://app.netlify.com/projects/bascik-netlify-adapter).
+- Source: `adapters/netlify/e2e/fixture/`; configuration: its `netlify.toml`.
+- Runtime: Node 24. Static output is `publish/`; generated function is
+  `.netlify/v1/functions/bascik-pages.mjs`; an authored native function checks coexistence.
+- Synthetic data only. No Identity users, database, OAuth providers, billing, or app secrets.
+  The cookie is a short-lived transport-test marker, not an authenticated session.
+- No Netlify Git repository connection is configured. Local acceptance tests run
+  in CI stage 4. After every stage 4 job passes, the `deploy-netlify` job uploads
+  a non-production alias deploy (`netlify deploy --alias <alias>`, never `--prod`)
+  to `https://<alias>--bascik-netlify-adapter.netlify.app` and smoke-tests it.
+  Production (`netlify-adapter.bascik.dev`) stays the manual command below.
+
+The PR preview table lists three previews of the same tested commit, all under
+one alias: `pr-<number>` when the branch has an open pull request in this
+repository, so #120 gets `pr-120-bascik`, `pr-120-cloudflare-adapter` and
+`pr-120--bascik-netlify-adapter`. A branch without one uses its branch alias.
+
+CI needs the repository secret `NETLIFY_AUTH_TOKEN`, a Netlify personal access
+token that can deploy the dedicated project; it reaches only the upload step. CI
+uploads with `yarn workspace @bascik/adapter-netlify demo:deploy:preview`, because
+`netlify-cli` is a devDependency of that workspace, not of the root.
+
+Run from the monorepo root:
+
+```sh
+yarn adapter:nf:e2e
+yarn adapter:nf:demo:deploy
+yarn adapter:nf:demo:test
+yarn adapter:nf:demo:logs
+```
+
+The deploy command builds current sources before uploading and pins `--site` to
+the project ID above. It never uses an application's `.netlify/state.json`.
+Do not substitute an application project ID, copy credentials into the fixture,
+or run these commands from an application checkout. Authenticate the local
+Netlify CLI as a project maintainer; tokens belong in the CLI's credential store
+or a protected `NETLIFY_AUTH_TOKEN`, never in Git.
+
+For local browsing, `yarn adapter:nf:demo:dev` uses offline Netlify Dev on ports
+9877/9878 (plus its static server). The fixture is a Yarn workspace, selected with
+`--filter` from the repository root. Explicit deploy directories prevent an
+incorrectly selected workspace from uploading repository sources. The config
+keeps the build base at the repository root and resolves publish/functions paths
+from there. Without workspace selection, Netlify may serve static files but fail
+to discover the generated/native functions. Generated `publish/`, `dist/` and `.netlify/`
+directories are ignored. Do not build/deploy while the local suite owns them.
+
+The same browser suite runs locally and hosted; only the exact cross-origin 403
+assertion is hosted-only because Netlify Dev 27.14.2 retries 403 responses as
+static paths and changes them to 404. The hosted check must pass before accepting
+a release. See the [adapter README](adapters/netlify/README.md#developing-and-testing-this-adapter)
+for coverage and preview-origin testing. `/failure`, `/api/failure`,
+`/stream-failure`, and `/timeout` deliberately fail so logs and client error
+behavior can be checked. Match `x-nf-request-id` to `request.start` and
+`script.error`/`request.error` in logs; delivery can be delayed several minutes.
+
+Netlify Database and Identity are not enabled for this fixture. A manual deploy
+alias is not a Git branch deploy and does not automatically provision a database
+branch. Add separate isolated integrations and provisioning checks if those
+services become part of this test project's scope.
 
 ## The Two Deployments
 
@@ -48,24 +113,24 @@ The workspace scripts behind them (`yarn workspace bascik-docs cf:*`, `yarn work
 
 ## How Deploys Happen
 
-CI runs on every branch push. On a branch other than `main`, it deploys a Preview of both Workers in stage 5, after every static, unit, integration and E2E job of that run has passed; nothing deploys when a test fails. A push to `main` is a merged pull request whose branch was already tested, so it skips stages 1 to 4 and only deploys both Workers to production.
+CI runs on every branch push. On a branch other than `main`, it deploys a Preview of both Workers and of the Netlify adapter demo in stage 5, after every static, unit, integration and E2E job of that run has passed; nothing deploys when a test fails. A push to `main` is a merged pull request whose branch was already tested, so it skips stages 1 to 4 and only deploys both Workers to production.
 
 **Production deploys come only from pull requests merged into `main`.** Because `main` runs no tests, each deploy job on `main` checks, after its build and before the newest-commit check and Wrangler, that `github.sha` came from a pull request merged into `main`: it runs `gh api repos/<owner>/<repo>/commits/<sha>/pulls` with the job's `github.token` (the deploy jobs have `pull-requests: read` for this) and `.github/scripts/merged-pull-request.mjs` on the answer. While the answer is an empty list (GitHub can take a few seconds to link a fresh merge commit to its pull request), it asks up to three times, 10 s apart. A commit pushed straight to `main`, or one whose pull request merged into another branch, fails both deploy jobs with an error naming the commit, and nothing deploys. To fix it, put the change through a pull request; the next merge deploys everything on `main`. Branch pushes are not affected: their Previews upload as before. The [manual emergency deploy](#manual-deploy-in-an-emergency) is the only bypass.
 
-| Event                                   | What CI does                                                                                                                                                                                                                                                                                                                                   |
-| :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Push to `main` (a merged pull request)  | No tests (the branch run tested it). Checks the commit came from a pull request merged into `main`, then `wrangler deploy` for `bascik` (job `deploy-docs`) and `cloudflare-adapter` (job `deploy-demo`), then checks `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview.                              |
-| Push to any other branch of this repo   | `wrangler versions upload --preview-alias <alias>` for both Workers and a check of each Preview. The `preview-comment` job then writes both URLs to the run's job summary and, when the branch has an open pull request in this repo, creates or updates the one Preview comment on it. A branch without a pull request gets the summary only. |
-| Pull request from a branch of this repo | Nothing: the stage 1 jobs skip, so every later job skips too. The branch's push run tests it, and its checks show on the pull request.                                                                                                                                                                                                         |
-| Pull request from a fork                | Stages 1 to 4 test the merge commit. Stage 5 never runs on a `pull_request` event, and a fork's pull request gets no secrets anyway.                                                                                                                                                                                                           |
-| Tag push                                | Nothing: the `push` trigger lists only `branches: ["**"]`, which skips tags. `release.yml` handles them.                                                                                                                                                                                                                                       |
-| Push in someone's fork of this repo     | Stages 1 to 4 only: the deploy jobs also check `github.repository == 'bascikdev/bascik'`, so a fork with Actions turned on does not fail on missing credentials.                                                                                                                                                                               |
+| Event                                   | What CI does                                                                                                                                                                                                                                                                                                                                                                                                |
+| :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to `main` (a merged pull request)  | No tests (the branch run tested it). Checks the commit came from a pull request merged into `main`, then `wrangler deploy` for `bascik` (job `deploy-docs`) and `cloudflare-adapter` (job `deploy-demo`), then checks `https://bascik.dev/` and `https://cloudflare-adapter.bascik.dev/catalog`. Never a Preview.                                                                                           |
+| Push to any other branch of this repo   | `wrangler versions upload --preview-alias <alias>` for both Workers, `netlify deploy --alias <alias>` for the Netlify demo, and a check of each Preview. The `preview-comment` job then writes the three URLs to the run's job summary and, when the branch has an open pull request in this repo, creates or updates the one Preview comment on it. A branch without a pull request gets the summary only. |
+| Pull request from a branch of this repo | Nothing: the stage 1 jobs skip, so every later job skips too. The branch's push run tests it, and its checks show on the pull request.                                                                                                                                                                                                                                                                      |
+| Pull request from a fork                | Stages 1 to 4 test the merge commit. Stage 5 never runs on a `pull_request` event, and a fork's pull request gets no secrets anyway.                                                                                                                                                                                                                                                                        |
+| Tag push                                | Nothing: the `push` trigger lists only `branches: ["**"]`, which skips tags. `release.yml` handles them.                                                                                                                                                                                                                                                                                                    |
+| Push in someone's fork of this repo     | Stages 1 to 4 only: the deploy jobs also check `github.repository == 'bascikdev/bascik'`, so a fork with Actions turned on does not fail on missing credentials.                                                                                                                                                                                                                                            |
 
 - **One test run per commit.** Without the stage 1 guard, a push to a branch with an open pull request would run CI twice: once for `push` and once for `pull_request`. The stage 1 jobs (`jelly`, `semgrep`, `typecheck`, `standards`) carry `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`, and every later job needs them directly or through another stage, so on a same-repo `pull_request` event the whole run skips: a job whose `needs` was skipped is skipped, not failed. The push run's check runs are on the branch's head commit, which is the pull request's head commit, so the pull request's Checks list shows them. It also lists the skipped jobs of the `pull_request` run under the same names; GitHub reports a skipped job as successful. The `main` ruleset requires no status checks today; if you add one, pick a check whose result you can confirm comes from the push run, because a skipped job of the same name passes.
 - **A branch run tests the branch, not the merge.** The push run builds and tests the branch's own commit (`github.sha`), not `refs/pull/<n>/merge`. A branch that is behind `main` is tested without `main`'s newer commits until it is updated; the ruleset's "branches must be up to date" setting covers this for merges once a required check exists. A fork's pull request is still tested as the merge commit.
 - **A Preview never touches production.** `wrangler versions upload` creates a new version with its own URL and leaves the deployed version, routes and custom domains alone. It is the generally available Versions feature, not the open-beta `wrangler preview`. The version message is `Preview <alias> at <sha>`.
 - **The comment and the summary name the commit CI built**, `github.sha`, and the branch: "Built from `<sha>` on `<branch>`". The `preview-comment` job finds the pull request with `GET /repos/bascikdev/bascik/pulls?head=bascikdev:<branch>&state=open` (a fork's branch of the same name has another owner, so it never matches), and edits only the comment that starts with the hidden marker and was written by `github-actions[bot]`. It is the only job with `pull-requests: write`; every other job has `contents: read` only.
-- **The alias is per branch** (`.github/scripts/preview-alias.mjs`, given `github.ref_name`). A branch name that is already lowercase `[a-z0-9-]`, starts with a letter and fits is used as is (`pre-release-20261026`). Any other name is lowercased, each run of other characters becomes one `-`, `b-` is prefixed when it starts with a digit, and a 6-character hash of the full branch name is appended (`collin/Foo` becomes `collin-foo-857f77`). The hash is added only when cleaning changed the name, so `feature/x` and `feature-x` get different aliases (`feature-x-<hash>` and `feature-x`) instead of overwriting each other's Preview, while a clean name stays readable. The alias is also shortened, before the hash, when `<alias>-cloudflare-adapter` would exceed one 63-character DNS label. Every push to the branch moves the same alias, so the URLs are `https://<alias>-bascik.<account-subdomain>.workers.dev` and `https://<alias>-cloudflare-adapter.<account-subdomain>.workers.dev` for the life of the branch. Both configs set `preview_urls: true`; Cloudflare adds `X-Robots-Tag: noindex` on `workers.dev` Preview URLs. Nothing in CI removes a Preview when its branch is deleted: the versions stay in `wrangler versions list`, and the alias keeps pointing at the last one.
+- **The alias is per pull request, else per branch** (`.github/scripts/preview-alias.mjs`). When the branch has an open pull request in this repository (looked up with `gh pr list --head`), the name passed in is `pr-<number>`; otherwise it is `github.ref_name`. A branch name that is already lowercase `[a-z0-9-]`, starts with a letter and fits is used as is (`pre-release-20261026`). Any other name is lowercased, each run of other characters becomes one `-`, `b-` is prefixed when it starts with a digit, and a 6-character hash of the full branch name is appended (`collin/Foo` becomes `collin-foo-857f77`). The hash is added only when cleaning changed the name, so `feature/x` and `feature-x` get different aliases (`feature-x-<hash>` and `feature-x`) instead of overwriting each other's Preview, while a clean name stays readable. The alias is also shortened, before the hash, when `<alias>-cloudflare-adapter` would exceed one 63-character DNS label. Every push to the branch moves the same alias, so the URLs are `https://<alias>-bascik.<account-subdomain>.workers.dev` and `https://<alias>-cloudflare-adapter.<account-subdomain>.workers.dev` for the life of the branch. Both configs set `preview_urls: true`; Cloudflare adds `X-Robots-Tag: noindex` on `workers.dev` Preview URLs. Nothing in CI removes a Preview when its branch is deleted: the versions stay in `wrangler versions list`, and the alias keeps pointing at the last one.
 - **The URL comes from Wrangler's machine-readable output** (`WRANGLER_OUTPUT_FILE_PATH`, read by `.github/scripts/wrangler-preview-url.mjs`), and the job fails when the upload reports no alias URL. Each deploy job also appends its own URL to the job summary, so one Worker's URL is visible even when the other's upload failed.
 - **Smoke checks** (`.github/scripts/smoke-test.mjs`, retried for about a minute): docs Preview `/` 200, `/components` 200, `/components/` 307, `/semantic-html` and `/name-attribute` 301, an unknown path 404; demo Preview and production `/`, `/catalog`, `/catalog-stream` 200; docs production `/`, `/components` 200 and `/semantic-html` 301.
 - **A newer push to a branch cancels the older run.** The workflow's concurrency group is per ref, with `cancel-in-progress` on for every ref except `main`, so a second push to a branch cancels the first push's whole run, its Preview upload included. Runs on `main` each get their own group (`ci-main-<run id>`), because a shared group would cancel a pending `main` run whenever a third one queued.
@@ -80,6 +145,7 @@ CI runs on every branch push. On a branch other than `main`, it deploys a Previe
 | :---------------------- | :------------------------------------------------ | :-------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`  | Repository secret                                 | The deploy API token described below          |
 | `CLOUDFLARE_ACCOUNT_ID` | Repository variable                               | The Cloudflare account that owns both Workers |
+| `NETLIFY_AUTH_TOKEN`    | Repository secret                                 | Netlify token for the Netlify demo's Preview  |
 
 Wrangler reads both from the environment. The workflow sets them only on the Wrangler steps, never on the build or install steps, and never prints them. Each deploy job starts with a step that fails with a pointer to this file when either is missing.
 

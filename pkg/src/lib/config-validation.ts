@@ -1827,7 +1827,7 @@ const checkHttpTimeoutOrder = (
  * config for one mode sees them: the layers' values over the defaults.
  * Wrong-typed values are skipped (the shape pass reports them).
  */
-const sourceFoldersFor = (
+export const sourceFoldersFor = (
   layers: unknown[],
 ): { out: string | undefined; sources: [string, string][] } => {
   let out: string | undefined = DEFAULT_DIRECTORY.out;
