@@ -66,7 +66,7 @@ When `http.tls.enabled: true` is active, `pki.ts` looks for local `bascik-cert.p
 `bascik --target cloudflare` and `bascik --target netlify` use a separate development path from the in-memory Node server below:
 
 1. Run a complete production compilation and adapter build, rather than a selective in-memory page update.
-2. Start the real platform runtime: Wrangler's local workerd for Cloudflare, or Netlify Dev from the project root after installing the Netlify output.
+2. Start the real platform runtime: Wrangler's local workerd for Cloudflare, or Netlify Dev from the project root after installing the Netlify output. Each start listens on a freshly allocated loopback port, so a restart never depends on the previous runtime's port still being free.
 3. Expose a local HTTP proxy at `http://127.0.0.1:8787` for Cloudflare or `http://127.0.0.1:8888` for Netlify, with `--port` and `--host` overrides.
 4. Watch source changes, rebuild the complete adapter bundle, and notify connected browsers to reload. Live-reload code is injected into local HTML responses, not written to the emitted production artifacts.
 

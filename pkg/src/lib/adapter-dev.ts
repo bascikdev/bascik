@@ -230,7 +230,9 @@ export const startAdapterDev = async (
   const port =
     flags.port ?? envPort ?? (adapter.name === "cloudflare" ? 8787 : 8888);
   const origin = formatServerOrigin("http", host, port);
-  const runtimePort = await availableDevPort();
+  // Reassigned on every runtime start: a port reused across restarts sits
+  // unreserved between stop and start, and anything can claim it meanwhile.
+  let runtimePort = 0;
   const location: BuildLocation = {
     distDir: join(projectRoot, "dist"),
     roots: [projectRoot],
@@ -476,6 +478,7 @@ export const startAdapterDev = async (
         throw new Error(
           "Build failed. Fix the error above and save a file to retry.",
         );
+      runtimePort = await availableDevPort();
       const command = await adapter.dev!({
         projectRoot,
         distDir: location.distDir,
