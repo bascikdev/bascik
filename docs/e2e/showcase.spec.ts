@@ -1,10 +1,18 @@
 import { test, expect } from "@playwright/test";
 
 const sites = [
-  { name: "Rinsesoft", url: "https://rinsesoft.com" },
-  { name: "Sunridge Counseling", url: "https://sunridgecounseling.com" },
-  { name: "Lateral EMDR", url: "https://lateralemdr.com" },
-  { name: "Bascik", url: "https://bascik.dev" },
+  { slug: "rinsesoft", name: "Rinsesoft", url: "https://rinsesoft.com" },
+  {
+    slug: "sunridge-counseling",
+    name: "Sunridge Counseling",
+    url: "https://sunridgecounseling.com",
+  },
+  {
+    slug: "lateral-emdr",
+    name: "Lateral EMDR",
+    url: "https://lateralemdr.com",
+  },
+  { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
 ];
 
 test("showcase has four real screenshots, working site links, and a submission link", async ({
@@ -22,6 +30,9 @@ test("showcase has four real screenshots, working site links, and a submission l
     const card = cards.filter({
       has: page.getByRole("heading", { name: site.name, exact: true }),
     });
+    await expect(
+      card.getByRole("heading", { name: site.name, exact: true }),
+    ).toHaveAttribute("id", site.slug);
     const link = card.getByTestId("showcase-card-link");
     await expect(link).toHaveAttribute("href", site.url);
     await expect(link).toHaveAttribute("target", "_blank");

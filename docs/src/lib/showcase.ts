@@ -1,4 +1,5 @@
 import { esc } from "@bascik/bascik/html";
+import { slugFromHeadingHtml } from "./heading-slug.ts";
 import { demoImage, renderMdRange } from "./md-renderer.ts";
 
 export const SHOWCASE_SITES = [
@@ -32,6 +33,7 @@ export async function renderShowcase(featured = false): Promise<string> {
         );
         return `<showcase-card
           data-bascik-prop-name="${esc(site.name)}"
+          data-bascik-prop-anchor="${esc(slugFromHeadingHtml(site.name))}"
           data-bascik-prop-url="${esc(site.url)}"
           data-bascik-prop-domain="${esc(new URL(site.url).hostname)}"
           data-bascik-prop-site="${esc(site.slug)}">

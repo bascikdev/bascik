@@ -94,6 +94,7 @@ describe("clearSpaceSvg", () => {
   it("uses the mark's cropped artwork, as the kit does", async () => {
     const svg = await clearSpaceSvg("mark", assets);
     const quarter = MARK_CROP.height / 4;
+    expect(MARK_CROP).toEqual({ x: 5, y: 5, width: 22, height: 22 });
     expect(boundary(svg)).toEqual([
       MARK_CROP.x - quarter,
       MARK_CROP.y - quarter,

@@ -2,7 +2,7 @@
 
 Build Bascik sites with faster navigation and earlier feedback. The official extension understands component boundaries, project configuration, scoped CSS and JavaScript, server-rendered output, streams, and API routes, so common mistakes surface in the editor instead of during a build or browser test.
 
-![Animated preview of Bascik component tag completion in VS Code](https://bascik.dev/assets/vscode/complete-component-tags@2x.webp)
+[![Static preview of Bascik component tag completion in VS Code](https://bascik.dev/assets/vscode/complete-component-tags-still@2x.webp?v=d35fa5ccce)](https://bascik.dev/assets/vscode/complete-component-tags@2x.webp?v=6650a7c704)
 
 ## Why Install It?
 
@@ -22,9 +22,9 @@ Type a partial opening tag to see matching project components in IntelliSense. S
 
 Components with a default slot complete as paired opening and closing tags (`<user-card>$0</user-card>`). Components without a default slot complete as self-closing void elements (`<site-nav />$0`). Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
 
-![Animated preview of component prop completions](https://bascik.dev/assets/vscode/complete-props@2x.webp)
+[![Static preview of component prop completions](https://bascik.dev/assets/vscode/complete-props-still@2x.webp?v=426e116dff)](https://bascik.dev/assets/vscode/complete-props@2x.webp?v=6827b9b93a)
 
-![Animated preview of named slot completions](https://bascik.dev/assets/vscode/complete-slots@2x.webp)
+[![Static preview of named slot completions](https://bascik.dev/assets/vscode/complete-slots-still@2x.webp?v=97cadc84e9)](https://bascik.dev/assets/vscode/complete-slots@2x.webp?v=2a889adf9b)
 
 Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution directives: `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`. Once one directive is present, competing directives are suppressed.
 
@@ -100,7 +100,7 @@ A `bascik.ext.ts` is read without running it, so it holds literal values only (`
 
 Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*` and `data-bascik-attr-*`, and infers named or default slots from `data-bascik-slot`.
 
-![Animated preview of a component hover showing its description, props, and slots](https://bascik.dev/assets/vscode/hover-component@2x.webp)
+[![Static preview of a component hover showing its description, props, and slots](https://bascik.dev/assets/vscode/hover-component-still@2x.webp?v=a9990320d2)](https://bascik.dev/assets/vscode/hover-component@2x.webp?v=f9bd06d821)
 
 Add a leading metadata header to enrich that inferred contract:
 
@@ -123,7 +123,7 @@ The header must precede markup, styles, and scripts. It can describe only member
 
 Press `Shift+F12` on a component tag, or on the first line, `<!-- @bascik` comment, or root tag line of a component file, to list every page and component that uses it with VS Code's standard Find All References. Usages that only appear in build script, Markdown, or server script output are not listed, because the index reads source files.
 
-![Animated preview of Find All References for a Bascik component](https://bascik.dev/assets/vscode/find-references@2x.webp)
+[![Static preview of Find All References for a Bascik component](https://bascik.dev/assets/vscode/find-references-still@2x.webp?v=383d2a5df7)](https://bascik.dev/assets/vscode/find-references@2x.webp?v=a6a639d563)
 
 Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and server scripts, including script `src` attributes. Dedicated highlighting makes Bascik attributes easy to recognize alongside standard HTML.
 
@@ -137,7 +137,7 @@ Names imported through `@/` or a relative path work as in a `.ts` file: hover sh
 
 The extension reports high-signal problems in the editor and Problems panel:
 
-![Animated preview of Bascik diagnostics appearing in the editor](https://bascik.dev/assets/vscode/diagnostics@2x.webp)
+[![Static preview of Bascik diagnostics appearing in the editor](https://bascik.dev/assets/vscode/diagnostics-still@2x.webp?v=1262648d84)](https://bascik.dev/assets/vscode/diagnostics@2x.webp?v=b617571bc1)
 
 - component naming and unclosed custom elements
 - self-closing suggestions and warnings for zero-slot void components (`<docs-head />` vs `<docs-head></docs-head>`)
@@ -152,7 +152,7 @@ The extension reports high-signal problems in the editor and Problems panel:
 
 Server and stream scripts receive additional contract and interpolation-sink checks. A markup template that interpolates a value without `html` from `@bascik/bascik/html` gets `server-script-unescaped-markup`, with a Quick Fix that wraps the template in `html` and adds the import. Build and routes scripts, and the `.ts` and `.js` files directive scripts and API routes import, get that rule too, and a function that escapes HTML by hand gets `hand-written-html-escaper`. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold route handlers with `request` and `context` arguments, typed in TypeScript (`params` is `Record<string, string | string[]>`, since a `[...name]` catch-all is a `string[]`) and without annotations in JavaScript. `bascik-post` parses the body in a `try` block and answers `400` on malformed JSON, so it passes the `api-unguarded-json` check.
 
-![Animated preview of the unescaped-markup diagnostic and its quick fix](https://bascik.dev/assets/vscode/unescaped-markup@2x.webp)
+[![Static preview of the unescaped-markup diagnostic and its quick fix](https://bascik.dev/assets/vscode/unescaped-markup-still@2x.webp?v=41b1d10469)](https://bascik.dev/assets/vscode/unescaped-markup@2x.webp?v=1730058f5e)
 
 ## Nested Projects and Custom Configuration
 

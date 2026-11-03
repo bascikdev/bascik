@@ -1387,10 +1387,13 @@ async function showcase(url: string): Promise<Frame[]> {
         );
       }),
     );
+    const description = page.locator('meta[name="description"]');
+    const descriptionContent =
+      (await description.count()) > 0
+        ? await description.first().getAttribute("content")
+        : null;
     console.log(
-      `${url}: ${await page.title()} — ${await page
-        .locator('meta[name="description"]')
-        .getAttribute("content")}`,
+      `${url}: ${await page.title()} — ${descriptionContent ?? "(no meta description)"}`,
     );
     return [
       { png: await page.screenshot({ animations: "disabled" }), hold: 0 },
