@@ -104,6 +104,10 @@ jobs:
       - name: Build Cloudflare adapter
         run: yarn adapter:cf:build
 
+      # create's scaffold integration tests also scaffold a Netlify project and need its adapter built.
+      - name: Build Netlify adapter
+        run: yarn adapter:nf:build
+
       - name: Run tests
         working-directory: create
         run: yarn test:ci
