@@ -133,7 +133,7 @@ describe("generate-search-index", () => {
     expect(home.heading).toBeNull();
     expect(home.section).toBe("Home");
     expect(home.title).toContain("Bascik");
-    expect(home.text).toContain("build tool for HTML components");
+    expect(home.text).toContain("zero-runtime HTML component builder");
     expect(home.sitelinks).toEqual(HOME_SITELINKS);
     expect(entries.filter((e) => e.sitelinks).length).toBe(1);
 
