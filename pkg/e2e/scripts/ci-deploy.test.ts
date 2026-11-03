@@ -1247,8 +1247,12 @@ describe("CI stages and the deploy stage", () => {
         "Smoke-test production",
       ]);
     expect(main.ran.has("preview-comment")).toBe(false);
-    // The Netlify demo's production deploy stays manual.
-    expect(main.ran.has("deploy-netlify")).toBe(false);
+    // The Netlify demo deploys to production on main like both Workers.
+    expect(
+      main.steps
+        .get("deploy-netlify")
+        ?.filter((name) => /^(Upload|Deploy|Smoke)/.test(name)),
+    ).toEqual(["Deploy to production", "Smoke-test production"]);
   });
 
   it("previews nothing when any stage 4 job of a branch fails", () => {
@@ -1333,7 +1337,9 @@ describe("CI stages and the deploy stage", () => {
     expect(upload.text).toContain(
       "NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}",
     );
-    expect(upload.if).toBe("steps.newest.outputs.newest == 'true'");
+    expect(upload.if).toBe(
+      "github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'",
+    );
     const script = JSON.parse(
       readFileSync(join(repoDir, "adapters/netlify/package.json"), "utf8"),
     ).scripts["demo:deploy:preview"] as string;
@@ -1343,7 +1349,24 @@ describe("CI stages and the deploy stage", () => {
     const smoke = job.steps.find(
       (step) => step.name === "Smoke-test the Preview",
     )!;
-    expect(smoke.if).toBe("steps.newest.outputs.newest == 'true'");
+    expect(smoke.if).toBe(
+      "github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'",
+    );
+    const production = job.steps.find(
+      (step) => step.name === "Deploy to production",
+    )!;
+    expect(production.if).toBe(
+      "github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'",
+    );
+    expect(production.text).toContain(
+      'yarn workspace @bascik/adapter-netlify demo:deploy --message "$MESSAGE"',
+    );
+    expect(production.text).toContain(
+      "NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}",
+    );
+    expect(
+      job.steps.find((step) => step.name === "Smoke-test production")!.text,
+    ).toContain("https://netlify-adapter.bascik.dev");
     expect(
       simulate(
         jobs,
@@ -1422,7 +1445,7 @@ describe("CI stages and the deploy stage", () => {
     const NAME = "Check the commit came from a merged pull request";
     const main = simulate(jobs, runContext("push", "refs/heads/main"));
     const branch = simulate(jobs, runContext("push", "refs/heads/feature/x"));
-    for (const id of ["deploy-docs", "deploy-demo"]) {
+    for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"]) {
       const job = jobs.get(id)!;
       const at = job.steps.findIndex((step) => step.name === NAME);
       expect(at, id).toBeGreaterThan(0);
@@ -1479,7 +1502,7 @@ describe("CI stages and the deploy stage", () => {
           base: { ref: "main" },
         },
       ]);
-      for (const id of ["deploy-docs", "deploy-demo"]) {
+      for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"]) {
         const step = jobs
           .get(id)!
           .steps.find(

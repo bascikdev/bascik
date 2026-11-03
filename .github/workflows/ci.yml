@@ -1051,7 +1051,7 @@ jobs:
 
   # ── Stage 5: Deploy to Cloudflare and Netlify (after every stage 4 job passes) ──────────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
-  # deploys both Workers to production; the Netlify demo's production stays manual. A push to any other branch uploads
+  # deploys both Workers and the Netlify demo to production. A push to any other branch uploads
   # a Preview of both Workers and the Netlify demo under one alias (pr-<number> when the branch has an open pull
   # request, else the branch name), lists the three URLs in the run summary, and updates the single Preview comment on
   # that pull request. Each token reaches only its upload or deploy steps. Runbook: DEPLOYMENT.md.
@@ -1331,17 +1331,18 @@ jobs:
         if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://cloudflare-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
-  # Netlify has no Git connection for this project, so CI uploads the tested build itself. `--alias` without `--prod`
-  # is a non-production deploy at https://<alias>--bascik-netlify-adapter.netlify.app, using the same alias as the
-  # Cloudflare previews. Production (netlify-adapter.bascik.dev) stays a manual `yarn adapter:nf:demo:deploy`.
+  # Netlify has no Git connection for this project, so CI uploads the build itself, like deploy-demo does for Cloudflare.
+  # On a branch, `--alias` without `--prod` is a non-production deploy at
+  # https://<alias>--bascik-netlify-adapter.netlify.app, using the same alias as the Cloudflare previews. On main,
+  # `--prod` deploys netlify-adapter.bascik.dev.
   deploy-netlify:
-    name: Deploy Netlify Adapter Preview
+    name: Deploy Netlify Adapter Demo (netlify-adapter.bascik.dev)
     runs-on: ubuntu-latest
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
-      github.ref != 'refs/heads/main' && github.repository == 'bascikdev/bascik' &&
-      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')
+      github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
       pull-requests: read
@@ -1383,6 +1384,26 @@ jobs:
       - name: Build package, adapter, and demo
         run: yarn adapter:nf:demo:build
 
+      # A push to main runs no tests (the pull request's branch was tested before the merge), so main deploys only a
+      # commit that a merged pull request put there; a commit pushed straight to main fails here. GitHub can take a few
+      # seconds to link a fresh merge commit to its pull request, so the step runs after the build and asks up to three
+      # times, 10 s apart, while the answer is an empty list. Emergency path: DEPLOYMENT.md.
+      - name: Check the commit came from a merged pull request
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PULLS: ${{ runner.temp }}/pulls.json
+        run: |
+          for attempt in 1 2 3; do
+            gh api "repos/$REPO/commits/$SHA/pulls" > "$PULLS"
+            [ "$(tr -d '[:space:]' < "$PULLS")" = "[]" ] && [ "$attempt" -lt 3 ] || break
+            echo "No pull request lists $SHA yet (try $attempt of 3); asking again in 10 s."
+            sleep 10
+          done
+          node .github/scripts/merged-pull-request.mjs "$SHA" "$PULLS"
+
       - name: Check this is still the newest commit
         id: newest
         env:
@@ -1393,6 +1414,7 @@ jobs:
           echo "newest=$newest" >> "$GITHUB_OUTPUT"
 
       - name: Compute the Preview alias
+        if: github.ref != 'refs/heads/main'
         id: alias
         env:
           BRANCH: ${{ github.ref_name }}
@@ -1407,7 +1429,7 @@ jobs:
 
       # netlify-cli is a devDependency of the adapter workspace, not the root, so the upload runs through its script.
       - name: Upload a Preview deploy
-        if: steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         id: upload
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
@@ -1422,10 +1444,22 @@ jobs:
           echo "Netlify adapter Preview: $url" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke-test the Preview
-        if: steps.newest.outputs.newest == 'true'
+        if: github.ref != 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         env:
           URL: ${{ steps.upload.outputs.url }}
         run: node .github/scripts/smoke-test.mjs "$URL" /=200 /catalog=200 /catalog-stream=200
+
+      - name: Deploy to production
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_TELEMETRY_DISABLED: "1"
+          MESSAGE: "main at ${{ github.sha }}"
+        run: yarn workspace @bascik/adapter-netlify demo:deploy --message "$MESSAGE"
+
+      - name: Smoke-test production
+        if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
+        run: node .github/scripts/smoke-test.mjs https://netlify-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
   # Runs after all three uploads, so the summary and the comment always list three URLs from the same commit. A run whose
   # commit was no longer the newest uploaded nothing and leaves them to the newer run. A branch without an open pull
