@@ -1,6 +1,7 @@
 name: CI
 
-# A push to a branch other than main runs every stage, then uploads a Preview of both Workers. A push to main (a
+# A push to a branch other than main runs every stage, then uploads a Preview of both Workers and of the Netlify
+# adapter demo. A push to main (a
 # merged pull request, already tested on its branch) skips stages 1 to 4 and only deploys both Workers to
 # production: the stage 1 jobs skip on main, every test job after them skips with them, and the deploy jobs run
 # anyway because their `if` starts with !cancelled(). On any other branch the deploy jobs still need every stage 4
@@ -1048,11 +1049,12 @@ jobs:
       - name: Run the extension tests in VS Code
         run: xvfb-run -a yarn ext:e2e
 
-  # ── Stage 5: Deploy to Cloudflare (after every stage 4 job passes) ──────────────
+  # ── Stage 5: Deploy to Cloudflare and Netlify (after every stage 4 job passes) ──────────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
-  # deploys both Workers to production. A push to any other branch uploads a Preview version of each under one alias
-  # per branch, lists both URLs in the run summary, and updates the single Preview comment on the branch's open pull
-  # request, if it has one. The token reaches only the Wrangler steps. Runbook: DEPLOYMENT.md.
+  # deploys both Workers to production; the Netlify demo's production stays manual. A push to any other branch uploads
+  # a Preview of both Workers and the Netlify demo under one alias (pr-<number> when the branch has an open pull
+  # request, else the branch name), lists the three URLs in the run summary, and updates the single Preview comment on
+  # that pull request. Each token reaches only its upload or deploy steps. Runbook: DEPLOYMENT.md.
 
   deploy-docs:
     name: Deploy Docs (bascik.dev)
@@ -1156,7 +1158,7 @@ jobs:
           pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
           name="$BRANCH"
           [ -z "$pr" ] || name="pr-$pr"
-          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter)"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
@@ -1290,7 +1292,7 @@ jobs:
           pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
           name="$BRANCH"
           [ -z "$pr" ] || name="pr-$pr"
-          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter)"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
@@ -1329,19 +1331,116 @@ jobs:
         if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://cloudflare-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
-  # Runs after both uploads, so the summary and the comment always list two URLs from the same commit. A run whose
-  # commit was no longer the newest uploaded nothing and leaves both to the newer run. A branch without an open pull
+  # Netlify has no Git connection for this project, so CI uploads the tested build itself. `--alias` without `--prod`
+  # is a non-production deploy at https://<alias>--bascik-netlify-adapter.netlify.app, using the same alias as the
+  # Cloudflare previews. Production (netlify-adapter.bascik.dev) stays a manual `yarn adapter:nf:demo:deploy`.
+  deploy-netlify:
+    name: Deploy Netlify Adapter Preview
+    runs-on: ubuntu-latest
+    if: >-
+      !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
+      github.ref != 'refs/heads/main' && github.repository == 'bascikdev/bascik' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
+    permissions:
+      contents: read
+      pull-requests: read
+    needs:
+      [
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-adapter-netlify,
+        e2e-docs,
+        e2e-create,
+        e2e-extension,
+      ]
+    outputs:
+      preview-url: ${{ steps.upload.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Check Netlify credentials
+        env:
+          HAS_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN != '' }}
+        run: |
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret NETLIFY_AUTH_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
+
+      - name: Build package, adapter, and demo
+        run: yarn adapter:nf:demo:build
+
+      - name: Check this is still the newest commit
+        id: newest
+        env:
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
+          echo "newest=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the Preview alias
+        id: alias
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
+          name="$BRANCH"
+          [ -z "$pr" ] || name="pr-$pr"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
+
+      # netlify-cli is a devDependency of the adapter workspace, not the root, so the upload runs through its script.
+      - name: Upload a Preview deploy
+        if: steps.newest.outputs.newest == 'true'
+        id: upload
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_TELEMETRY_DISABLED: "1"
+          DEPLOY_OUTPUT: ${{ runner.temp }}/netlify-preview.json
+          ALIAS: ${{ steps.alias.outputs.alias }}
+          MESSAGE: "Preview ${{ steps.alias.outputs.alias }} at ${{ github.sha }}"
+        run: |
+          yarn workspace @bascik/adapter-netlify demo:deploy:preview --alias "$ALIAS" --message "$MESSAGE" --json > "$DEPLOY_OUTPUT"
+          url="$(node .github/scripts/netlify-preview-url.mjs "$DEPLOY_OUTPUT" "$ALIAS")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Netlify adapter Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke-test the Preview
+        if: steps.newest.outputs.newest == 'true'
+        env:
+          URL: ${{ steps.upload.outputs.url }}
+        run: node .github/scripts/smoke-test.mjs "$URL" /=200 /catalog=200 /catalog-stream=200
+
+  # Runs after all three uploads, so the summary and the comment always list three URLs from the same commit. A run whose
+  # commit was no longer the newest uploaded nothing and leaves them to the newer run. A branch without an open pull
   # request in this repo gets the summary only.
   preview-comment:
     name: Publish Preview URLs
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'push' && github.ref != 'refs/heads/main' &&
-      needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != ''
+      needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != '' &&
+      needs.deploy-netlify.outputs.preview-url != ''
     permissions:
       contents: read
       pull-requests: write
-    needs: [deploy-docs, deploy-demo]
+    needs: [deploy-docs, deploy-demo, deploy-netlify]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1364,4 +1463,5 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DOCS_PREVIEW_URL: ${{ needs.deploy-docs.outputs.preview-url }}
           DEMO_PREVIEW_URL: ${{ needs.deploy-demo.outputs.preview-url }}
+          NETLIFY_PREVIEW_URL: ${{ needs.deploy-netlify.outputs.preview-url }}
         run: node .github/scripts/preview-comment.mjs

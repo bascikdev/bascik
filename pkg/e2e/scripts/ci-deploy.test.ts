@@ -21,6 +21,10 @@ import {
 } from "../../../.github/scripts/preview-alias.mjs";
 import { previewAliasUrl } from "../../../.github/scripts/wrangler-preview-url.mjs";
 import {
+  NETLIFY_SITE_ID,
+  netlifyPreviewUrl,
+} from "../../../.github/scripts/netlify-preview-url.mjs";
+import {
   parseChecks,
   smokeTest,
 } from "../../../.github/scripts/smoke-test.mjs";
@@ -246,6 +250,39 @@ describe("merged-pull-request", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("netlify-preview-url", () => {
+  const deploy = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      site_id: NETLIFY_SITE_ID,
+      site_name: "bascik-netlify-adapter",
+      deploy_id: "6ae960d60fae0bc1d09b949a",
+      deploy_url: "https://pr-120--bascik-netlify-adapter.netlify.app",
+      ...fields,
+    });
+
+  it("returns the alias URL of the dedicated adapter project", () => {
+    expect(netlifyPreviewUrl(deploy({}), "pr-120")).toBe(
+      "https://pr-120--bascik-netlify-adapter.netlify.app",
+    );
+  });
+
+  it("refuses production, another alias, another project, or a bad alias", () => {
+    for (const [output, alias] of [
+      [
+        deploy({ deploy_url: "https://bascik-netlify-adapter.netlify.app" }),
+        "pr-120",
+      ],
+      [deploy({ deploy_url: "https://netlify-adapter.bascik.dev" }), "pr-120"],
+      [deploy({}), "pr-121"],
+      [deploy({ site_id: "00000000-0000-0000-0000-000000000000" }), "pr-120"],
+      [deploy({}), "PR 120"],
+    ])
+      expect(() => netlifyPreviewUrl(output, alias), alias).toThrow(
+        /netlify-preview-url/,
+      );
   });
 });
 
@@ -529,9 +566,11 @@ describe("preview-comment", () => {
     RUN_URL: "https://github.com/bascikdev/bascik/actions/runs/1",
     DOCS_PREVIEW_URL: "https://feature-bascik.example.workers.dev",
     DEMO_PREVIEW_URL: "https://feature-cloudflare-adapter.example.workers.dev",
+    NETLIFY_PREVIEW_URL:
+      "https://feature-milk-frother-5c0e2f--bascik-netlify-adapter.netlify.app",
   };
 
-  it("writes both URLs to the job summary and succeeds without posting when the branch has no pull request", async () => {
+  it("writes all three URLs to the job summary and succeeds without posting when the branch has no pull request", async () => {
     const { calls, fetchImpl } = fakeGitHub(0);
     const summary: [string, string][] = [];
     const log: string[] = [];
@@ -553,12 +592,13 @@ describe("preview-comment", () => {
       "| Cloudflare adapter (branch preview) | `cloudflare-adapter` | [/](https://feature-cloudflare-adapter.example.workers.dev/)",
     );
     expect(summary[0][1]).toContain(
-      "| Netlify adapter (live site; manual deployment) | `Netlify: bascik-netlify-adapter` | [/](https://netlify-adapter.bascik.dev/)",
+      "| Netlify adapter (branch preview) | `Netlify: bascik-netlify-adapter` | [/](https://feature-milk-frother-5c0e2f--bascik-netlify-adapter.netlify.app/)",
     );
     expect(summary[0][1]).toContain(
-      "[/catalog-stream](https://netlify-adapter.bascik.dev/catalog-stream)",
+      "[/catalog-stream](https://feature-milk-frother-5c0e2f--bascik-netlify-adapter.netlify.app/catalog-stream)",
     );
-    expect(summary[0][1]).toContain("not a preview of this commit");
+    expect(summary[0][1]).not.toContain("netlify-adapter.bascik.dev");
+    expect(summary[0][1]).toContain("None of them is production.");
     expect(summary[0][1]).toContain(
       "hostname prefix is `pr-<number>` (or the branch name when there is no pull request), not the hosting provider",
     );
@@ -588,11 +628,25 @@ describe("preview-comment", () => {
       "BRANCH",
       "DOCS_PREVIEW_URL",
       "DEMO_PREVIEW_URL",
+      "NETLIFY_PREVIEW_URL",
     ])
       await expect(
         run({ ...env, [name]: "" }, { appendSummary: () => {} }),
         name,
       ).rejects.toThrow(new RegExp(`${name} is not set`));
+  });
+
+  it("refuses a Netlify URL that is production or another project", async () => {
+    for (const url of [
+      "https://netlify-adapter.bascik.dev",
+      "https://bascik-netlify-adapter.netlify.app",
+      "https://pr-1--some-other-site.netlify.app",
+      "http://pr-1--bascik-netlify-adapter.netlify.app",
+    ])
+      await expect(
+        run({ ...env, NETLIFY_PREVIEW_URL: url }, { appendSummary: () => {} }),
+        url,
+      ).rejects.toThrow(/not production/);
   });
 
   it("fails on an API error or bad input without printing the token", async () => {
@@ -845,6 +899,7 @@ function runContext(
     "steps.newest.outputs.newest": newest,
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
+    "needs.deploy-netlify.outputs.preview-url": "",
   };
 }
 
@@ -882,7 +937,10 @@ function simulate(
       .filter((step) => isTruthy(evaluate(step.if ?? "success()", scope)))
       .map((step) => step.name);
     steps.set(id, names);
-    if (names.includes("Upload a Preview version"))
+    if (
+      names.includes("Upload a Preview version") ||
+      names.includes("Upload a Preview deploy")
+    )
       scope[`needs.${id}.outputs.preview-url`] =
         `https://${id}.example.workers.dev`;
   }
@@ -1086,7 +1144,7 @@ describe("CI stages and the deploy stage", () => {
     );
     expect(keyStep).toBeGreaterThan(-1);
     expect(keyStep).toBeLessThan(job!.steps.indexOf(cache!));
-    for (const id of ["deploy-docs", "deploy-demo"])
+    for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"])
       expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
   });
 
@@ -1189,6 +1247,8 @@ describe("CI stages and the deploy stage", () => {
         "Smoke-test production",
       ]);
     expect(main.ran.has("preview-comment")).toBe(false);
+    // The Netlify demo's production deploy stays manual.
+    expect(main.ran.has("deploy-netlify")).toBe(false);
   });
 
   it("previews nothing when any stage 4 job of a branch fails", () => {
@@ -1198,13 +1258,13 @@ describe("CI stages and the deploy stage", () => {
         runContext("push", "refs/heads/feature/x"),
         new Set([failing]),
       );
-      for (const id of ["deploy-docs", "deploy-demo"])
+      for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"])
         expect(push.ran.has(id), `${failing} failed: ${id}`).toBe(false);
       expect(push.ran.has("preview-comment"), failing).toBe(false);
     }
   });
 
-  it("previews both Workers on every other branch push, and publishes the URLs", () => {
+  it("previews both Workers and the Netlify demo on every other branch push, and publishes the URLs", () => {
     for (const branch of [
       "pre-release-20261026",
       "feature/milk-frother",
@@ -1221,12 +1281,20 @@ describe("CI stages and the deploy stage", () => {
           "Smoke-test the Preview",
         ]);
       }
+      expect(push.steps.get("deploy-netlify"), branch).toEqual(
+        expect.arrayContaining([
+          "Compute the Preview alias",
+          "Upload a Preview deploy",
+          "Smoke-test the Preview",
+        ]),
+      );
       expect(push.ran.has("preview-comment"), branch).toBe(true);
     }
   });
 
-  it("uses pr-<number> as the Cloudflare alias when the branch has an open pull request", () => {
-    for (const id of ["deploy-docs", "deploy-demo"]) {
+  it("uses one pr-<number> alias for all three previews when the branch has an open pull request", () => {
+    const aliasScripts = new Set<string>();
+    for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"]) {
       const alias = jobs
         .get(id)!
         .steps.find((step) => step.name === "Compute the Preview alias")!;
@@ -1236,8 +1304,53 @@ describe("CI stages and the deploy stage", () => {
       expect(alias.text).toContain("isCrossRepository == false");
       expect(alias.text).toContain('name="pr-$pr"');
       expect(alias.text).toContain('preview-alias.mjs "$name"');
+      aliasScripts.add(alias.text.slice(alias.text.indexOf("run: |")));
     }
+    // Identical commands, so the three hostnames always share their prefix.
+    expect(aliasScripts.size).toBe(1);
     expect(previewAlias("pr-120", WORKERS)).toBe("pr-120");
+    // Netlify's `<alias>--bascik-netlify-adapter` label is the longest, so it
+    // is passed as `-bascik-netlify-adapter` to reserve the extra hyphen.
+    const names = [...WORKERS, "-bascik-netlify-adapter"];
+    const long = previewAlias(`feature/${"x".repeat(80)}`, names);
+    expect(`${long}--bascik-netlify-adapter`.length).toBeLessThanOrEqual(63);
+  });
+
+  it("uploads the Netlify demo as a non-production alias deploy with the adapter's own CLI", () => {
+    const job = jobs.get("deploy-netlify")!;
+    const upload = job.steps.find(
+      (step) => step.name === "Upload a Preview deploy",
+    )!;
+    // netlify-cli is a devDependency of the adapter workspace only; a root
+    // `yarn exec netlify` finds it only through a global install.
+    expect(upload.text).toContain(
+      'yarn workspace @bascik/adapter-netlify demo:deploy:preview --alias "$ALIAS"',
+    );
+    expect(upload.text).not.toMatch(/yarn exec netlify|npx netlify|--prod\b/);
+    expect(upload.text).toContain(
+      'netlify-preview-url.mjs "$DEPLOY_OUTPUT" "$ALIAS"',
+    );
+    expect(upload.text).toContain(
+      "NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}",
+    );
+    expect(upload.if).toBe("steps.newest.outputs.newest == 'true'");
+    const script = JSON.parse(
+      readFileSync(join(repoDir, "adapters/netlify/package.json"), "utf8"),
+    ).scripts["demo:deploy:preview"] as string;
+    expect(script).toContain("netlify deploy");
+    expect(script).toContain(`--site ${NETLIFY_SITE_ID}`);
+    expect(script).not.toMatch(/--prod\b/);
+    const smoke = job.steps.find(
+      (step) => step.name === "Smoke-test the Preview",
+    )!;
+    expect(smoke.if).toBe("steps.newest.outputs.newest == 'true'");
+    expect(
+      simulate(
+        jobs,
+        runContext("push", "refs/heads/feature/x", { newest: "false" }),
+      ).ran.has("preview-comment"),
+    ).toBe(false);
+    expect(jobs.get("preview-comment")!.needs).toContain("deploy-netlify");
   });
 
   it("never uploads or deploys on a tag, a pull_request event, or a fork's own push", () => {
@@ -1504,6 +1617,7 @@ describe("CI stages and the deploy stage", () => {
     expect(comment).toContain("BRANCH: ${{ github.ref_name }}");
     expect(comment).toContain("needs.deploy-docs.outputs.preview-url != ''");
     expect(comment).toContain("needs.deploy-demo.outputs.preview-url != ''");
+    expect(comment).toContain("needs.deploy-netlify.outputs.preview-url != ''");
     expect(comment).not.toMatch(/github\.event\.pull_request|github\.head_ref/);
   });
 

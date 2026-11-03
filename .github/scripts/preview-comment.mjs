@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Publishes branch previews and the independently deployed Netlify demo. It writes them
+// Publishes the three previews one CI run uploaded from the same commit. It writes them
 // to the run's job summary, and when the branch has an open pull request in
 // this repository, it creates or updates the one comment that lists them
 // there. A branch without a pull request gets the summary only.
@@ -11,7 +11,7 @@
 // Usage (in CI): node .github/scripts/preview-comment.mjs
 // Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), BRANCH
 // (github.ref_name), SHA (github.sha: the commit CI built), DOCS_PREVIEW_URL,
-// DEMO_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY and
+// DEMO_PREVIEW_URL, NETLIFY_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY and
 // GITHUB_API_URL.
 import { appendFileSync } from "node:fs";
 
@@ -54,15 +54,13 @@ export function commentBody({ sha, branch, previews, runUrl }) {
   const shownBranch = branch.replace(/`/g, "'");
   return [
     MARKER,
-    "### Site Previews and Adapter Demos",
+    "### Site Previews",
     "",
-    `Built from ${sha.slice(0, 12)} on \`${shownBranch}\`. Cloudflare preview URLs stay the same for this pull request and show its newest successful build. Their hostname prefix is \`pr-<number>\` (or the branch name when there is no pull request), not the hosting provider.`,
+    `Built from ${sha.slice(0, 12)} on \`${shownBranch}\`. Preview URLs stay the same for this pull request and show its newest successful build. Their hostname prefix is \`pr-<number>\` (or the branch name when there is no pull request), not the hosting provider. None of them is production.`,
     "",
     "| Site | Hosting resource | Links |",
     "| :--- | :----- | :------ |",
     ...rows,
-    "",
-    "The Netlify demo is a separate, manually deployed live site, not a preview of this commit.",
     "",
     runUrl ? `[Deploy run](${runUrl})` : "",
   ]
@@ -207,8 +205,22 @@ export async function run(
     appendSummary = (path, text) => appendFileSync(path, text),
   } = {},
 ) {
-  for (const name of ["DOCS_PREVIEW_URL", "DEMO_PREVIEW_URL", "SHA", "BRANCH"])
+  for (const name of [
+    "DOCS_PREVIEW_URL",
+    "DEMO_PREVIEW_URL",
+    "NETLIFY_PREVIEW_URL",
+    "SHA",
+    "BRANCH",
+  ])
     if (!env[name]) throw new Error(`preview-comment: ${name} is not set`);
+  if (
+    !/^https:\/\/[a-z][a-z0-9-]*--bascik-netlify-adapter\.netlify\.app\/?$/.test(
+      env.NETLIFY_PREVIEW_URL ?? "",
+    )
+  )
+    throw new Error(
+      "preview-comment: NETLIFY_PREVIEW_URL must be an alias deploy of bascik-netlify-adapter, not production",
+    );
   const branch = env.BRANCH ?? "";
   const body = commentBody({
     sha: env.SHA ?? "",
@@ -228,9 +240,9 @@ export async function run(
         paths: ["/", "/catalog", "/catalog-stream"],
       },
       {
-        label: "Netlify adapter (live site; manual deployment)",
+        label: "Netlify adapter (branch preview)",
         worker: "Netlify: bascik-netlify-adapter",
-        url: "https://netlify-adapter.bascik.dev",
+        url: env.NETLIFY_PREVIEW_URL ?? "",
         paths: ["/", "/catalog", "/catalog-stream"],
       },
     ],
