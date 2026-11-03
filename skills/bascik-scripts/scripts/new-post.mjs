@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HELP = `Usage: node new-post.mjs "Post title" [--description "..."] [--tags a,b] [--date YYYY-MM-DD] [--slug custom-slug] [--draft] [--dir content/posts]
 
 Writes content/posts/<slug>.md with the front matter that the starter site's src/lib/posts.ts validates (https://github.com/bascikdev/bascik/tree/main/examples/starter-site).
-The slug comes from the title unless --slug is given. Refuses to overwrite an existing post.`;
+The slug comes from the title unless --slug is given. Dates must be real calendar dates in YYYY-MM-DD format. Refuses to overwrite an existing post.`;
 
 /** Lowercase words joined by hyphens, ASCII only. Exported for tests. */
 export function slugify(title) {
@@ -74,7 +74,11 @@ function main() {
   const errors = [];
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
     errors.push(`slug "${slug}" must be lowercase words joined by hyphens`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    Number.isNaN(Date.parse(date)) ||
+    new Date(date).toISOString().slice(0, 10) !== date
+  )
     errors.push(`date "${date}" must be YYYY-MM-DD`);
   if (errors.length) {
     process.stderr.write(`new-post: ${errors.join("; ")}\n`);

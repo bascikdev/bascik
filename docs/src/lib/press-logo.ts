@@ -34,8 +34,8 @@ export interface LogoArtwork {
   ink: string;
 }
 
-/** The mark source has a 2 unit margin inside its 32 unit square; the kit crops to the artwork. */
-export const MARK_CROP: Box = { x: 2, y: 2, width: 28, height: 28 };
+/** The favicon tile spans x=5..27 and y=5..27; the kit crops to that artwork. */
+export const MARK_CROP: Box = { x: 5, y: 5, width: 22, height: 22 };
 
 /** The source file of each logo, in src/pages/assets. */
 export const LOGO_SOURCES = {
@@ -54,8 +54,9 @@ function round(n: number): number {
 
 /**
  * Extracts the tile polygon and ink elements from a logo SVG. The sources must
- * follow the brand contract: one lime polygon, and every other shape filled with
- * the ink color. Anything else fails loudly instead of producing a wrong kit.
+ * follow the brand contract: one lime polygon and ink-colored artwork. A full-canvas
+ * ink rectangle is treated as a favicon background, not part of the exported mark.
+ * Anything else fails loudly instead of producing a wrong kit.
  */
 export function parseLogo(source: string, crop?: Box): LogoArtwork {
   const svg = /<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*)<\/svg>/.exec(
@@ -82,6 +83,24 @@ export function parseLogo(source: string, crop?: Box): LogoArtwork {
   if (!polygon[0].includes(COLORS.lime)) {
     throw new Error(`press-kit: logo tile is not filled with ${COLORS.lime}`);
   }
+
+  const background = [...inner.matchAll(/<rect\b[^>]*\/?>/g)].find(
+    ([element]) => {
+      const attributes = Object.fromEntries(
+        [...element.matchAll(/\b([\w:-]+)="([^"]*)"/g)].map(
+          ([, name, value]) => [name, value],
+        ),
+      );
+      return (
+        Number(attributes.x ?? 0) === x &&
+        Number(attributes.y ?? 0) === y &&
+        Number(attributes.width) === width &&
+        Number(attributes.height) === height &&
+        attributes.fill === COLORS.ink
+      );
+    },
+  );
+  if (background) inner = inner.replace(background[0], () => "");
 
   const ink = inner
     .replace(polygon[0], () => "")

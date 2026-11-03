@@ -90,8 +90,11 @@ export default defineConfig({
       // <build-breakdown> counts pages and components by reading directories, which it cannot see either.
       // <docs-search> hashes the search index built from content/, which the cache key cannot see, and a stale
       // hash would let browsers keep an old index for a year.
+      // The homepage and showcase hash screenshot assets into their output, but the cache key cannot see those bytes.
       exclude: [
         "src/pages/example-components/**",
+        "src/pages/index.html",
+        "src/pages/showcase.html",
         "src/components/build-breakdown/**",
         "src/components/docs-search/**",
       ],

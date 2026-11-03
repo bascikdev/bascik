@@ -95,6 +95,7 @@ interface Root {
 //   build scopes per instance inside the script body;
 // - css-import plans a CSS @import while scoping, which the template
 //   recorder never reuses;
+// - showcase-card binds its stable heading id, which targets a scoped attribute;
 // (build-breakdown, a component that is only a build script, is supported:
 //   its script is data-bascik-build-once, so its markup is printed when the
 //   component is registered and the template already holds it.)
@@ -105,6 +106,7 @@ const ROOTS: Root[] = [
     unsupported: {
       "docs-pagination": "build-script-reads-page-context",
       "docs-sidebar": "build-script-reads-page-context",
+      "showcase-card": "attr-binding-to-scoped-attribute",
     },
   },
   {

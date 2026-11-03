@@ -62,6 +62,17 @@ describe("forbiddenNodes", () => {
 });
 
 describe("clearSpaceSvg", () => {
+  it("keeps the favicon canvas out of the exported logo artwork", async () => {
+    const source = await readFile(join(assets, "favicon.svg"), "utf8");
+    const art = parseLogo(source, MARK_CROP);
+
+    expect(source).toContain(
+      `<rect width="32" height="32" fill="${COLORS.ink}" />`,
+    );
+    expect(art.ink).toContain('width="1.5"');
+    expect(art.ink).not.toContain('width="32" height="32"');
+  });
+
   it("draws the dashed boundary one quarter of the wordmark's height outside the artwork", async () => {
     const svg = await clearSpaceSvg("wordmark", assets);
     const source = await readFile(join(assets, "bascik-logo.svg"), "utf8");
@@ -83,6 +94,7 @@ describe("clearSpaceSvg", () => {
   it("uses the mark's cropped artwork, as the kit does", async () => {
     const svg = await clearSpaceSvg("mark", assets);
     const quarter = MARK_CROP.height / 4;
+    expect(MARK_CROP).toEqual({ x: 5, y: 5, width: 22, height: 22 });
     expect(boundary(svg)).toEqual([
       MARK_CROP.x - quarter,
       MARK_CROP.y - quarter,

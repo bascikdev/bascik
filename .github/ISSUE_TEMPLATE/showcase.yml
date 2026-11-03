@@ -1,0 +1,48 @@
+name: Submit a site
+description: Share a website made with Bascik for the showcase.
+title: "[Showcase]: "
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Site name
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Public website URL
+      placeholder: https://example.com
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Short description
+      description: What is the site, and how does it use Bascik?
+    validations:
+      required: true
+  - type: input
+    id: creator
+    attributes:
+      label: Creator credit
+      description: The public name and optional link you want displayed.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source code URL (optional)
+      description: Only link a repository that is already public.
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Use a public page or demo data. Do not include personal information, private dashboards, or billing details.
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Permission
+      options:
+        - label: I own this site or have permission to submit it, and authorize Bascik to display its screenshot and the submitted credit in the showcase.
+          required: true

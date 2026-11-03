@@ -17,8 +17,9 @@ import { renderJsonLd } from "./json-ld.ts";
 import { readStableVersion } from "./package-version.ts";
 
 const SITE_URL = "https://bascik.dev";
+const SITE_HOME_URL = `${SITE_URL}/`;
 const DESCRIPTION =
-  "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote.";
+  "Bascik is a zero-runtime HTML component builder with automatically scoped CSS and JavaScript. Build reusable components without a client-side framework.";
 
 export async function homeSchema(packageJsonPath?: string): Promise<SafeHtml> {
   const softwareVersion = await readStableVersion(packageJsonPath);
@@ -27,7 +28,7 @@ export async function homeSchema(packageJsonPath?: string): Promise<SafeHtml> {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     name: "Bascik",
-    url: SITE_URL,
+    url: SITE_HOME_URL,
     description: DESCRIPTION,
     applicationCategory: "DeveloperApplication",
     operatingSystem: "macOS, Windows, Linux",
@@ -48,7 +49,9 @@ export async function homeSchema(packageJsonPath?: string): Promise<SafeHtml> {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Bascik",
-    url: SITE_URL,
+    alternateName: "Bascik.dev",
+    url: SITE_HOME_URL,
+    description: DESCRIPTION,
     logo: `${SITE_URL}/assets/apple-touch-icon.png`,
     sameAs: [...BRAND_SAME_AS],
   };

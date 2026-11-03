@@ -39,6 +39,31 @@ yarn docs:coverage                   # unit and integration tests with coverage 
 
 ## Testing & Auditing
 
+### Showcase
+
+The `/showcase` page and homepage preview share the site list in
+`src/lib/showcase.ts` and descriptions in `content/showcase.md`. The homepage
+features Rinsesoft and Lateral EMDR; the full showcase also includes Sunridge
+Counseling and Bascik itself.
+New submissions arrive through `.github/ISSUE_TEMPLATE/showcase.yml`.
+
+Capture public homepage screenshots with the existing recording script:
+
+```sh
+# from docs/, using Node 24
+node scripts/capture-demos.ts showcase-rinsesoft showcase-sunridge showcase-lateral showcase-bascik
+```
+
+Screenshots are committed WebP images, not fetched during builds. Keep them free
+of private account information. A new entry needs a site-list entry, a matching
+Markdown heading and description before "Submit your site", and a capture.
+
+The VS Code screenshots in [the extension README](../extensions/vscode-bascik/README.md)
+are served from the same immutable-cache folder but are embedded directly by
+GitHub. Keep each static preview linked to its matching animation, and keep both
+URLs' `?v=` values equal to the first 10 hex characters of that file's SHA-256.
+Refresh the hashes whenever either image changes.
+
 The documentation site maintains high quality and prevents regressions through automated tests and audits:
 
 ### Unit Tests

@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -420,6 +421,21 @@ describe("audit-seo", () => {
     ).toBe(true);
   });
 
+  it("labels title and description length warnings as editorial targets", () => {
+    const findings = auditPages([
+      page(
+        "/short",
+        '<title>Short</title><meta name=description content="Too brief">',
+      ),
+    ]);
+    const messages = findings.map(
+      (finding: { message: string }) => finding.message,
+    );
+    expect(
+      messages.some((message: string) => message.includes("editorial target")),
+    ).toBe(true);
+  });
+
   it("includes the base in the expected canonical and flags noindex pages listed in the sitemap", () => {
     const description =
       "A description that is comfortably longer than fifty characters.";
@@ -729,6 +745,74 @@ describe("check-tokens", () => {
 });
 
 describe("new-post and posts.ts", () => {
+  const script = fileURLToPath(
+    new URL(
+      "../../skills/bascik-scripts/scripts/new-post.mjs",
+      import.meta.url,
+    ),
+  );
+
+  it.each([
+    "2026-02-31",
+    "2026-02-29",
+    "1900-02-29",
+    "2026-04-31",
+    "2026-13-01",
+    "2026-01-00",
+    "2026-2-01",
+    "not-a-date",
+  ])("rejects invalid date %s without creating a post directory", (date) => {
+    const root = mkdtempSync(join(tmpdir(), "bascik-new-post-"));
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [script, "New post", "--date", date],
+        {
+          cwd: root,
+          encoding: "utf8",
+          timeout: 30_000,
+        },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toBe(
+        `new-post: date "${date}" must be YYYY-MM-DD\n`,
+      );
+      expect(result.stdout).toBe("");
+      expect(existsSync(join(root, "content"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["2026-02-28", "2024-02-29", "2000-02-29", "2026-04-30"])(
+    "writes valid date %s unchanged",
+    (date) => {
+      const root = mkdtempSync(join(tmpdir(), "bascik-new-post-"));
+      try {
+        const result = spawnSync(
+          process.execPath,
+          [script, "New post", "--date", date],
+          {
+            cwd: root,
+            encoding: "utf8",
+            timeout: 30_000,
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe("");
+        const source = readFileSync(
+          join(root, "content/posts/new-post.md"),
+          "utf8",
+        );
+        expect(toPost("new-post", source).date).toBe(date);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("slugifies titles into URL-safe names", () => {
     expect(slugify("Hello, World!")).toBe("hello-world");
     expect(slugify("Crème brûlée & tea")).toBe("creme-brulee-and-tea");
