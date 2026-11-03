@@ -16,6 +16,12 @@ const PACKAGES = [
     stage: 1,
   },
   {
+    id: "netlify",
+    dir: "adapters/netlify",
+    prefix: "adapter-netlify-v",
+    stage: 1,
+  },
+  {
     id: "extension",
     dir: "extensions/vscode-bascik",
     prefix: "ext-v",
@@ -66,8 +72,8 @@ export async function release(args, dependencies = {}) {
   } = dependencies;
   if (args.includes("--help")) {
     log(
-      "Usage: yarn release [pkg lsp create cloudflare extension] [--dry-run] [--extension-pre] [--latest]\n" +
-        "Default: release all five artifacts. Versions come from origin/main.\n" +
+      "Usage: yarn release [pkg lsp create cloudflare netlify extension] [--dry-run] [--extension-pre] [--latest]\n" +
+        "Default: release all six artifacts. Versions come from origin/main.\n" +
         "--extension-pre selects the Marketplace pre-release channel.\n" +
         "--latest prints npm dist-tag commands for selected packages without releasing.",
     );

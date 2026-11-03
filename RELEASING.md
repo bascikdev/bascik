@@ -6,9 +6,9 @@ Update package versions and dependent ranges, pass CI, and merge into `main`.
 Then, with Node 24, Git, and an authenticated GitHub CLI:
 
 ```sh
-yarn release                       # Publish all five artifacts
+yarn release                       # Publish all six artifacts
 yarn release pkg lsp               # Publish only selected packages
-yarn release create cloudflare
+yarn release create cloudflare netlify
 yarn release extension             # Marketplace stable
 yarn release extension --extension-pre
 yarn release --latest               # Print npm dist-tag commands; does not release
@@ -20,7 +20,7 @@ Versions come from fetched `origin/main`, not your working tree. One pinned
 commit ships in stages:
 
 1. Language server + Bascik.
-2. Scaffold + Cloudflare adapter.
+2. Scaffold + Cloudflare and Netlify adapters.
 3. VS Code extension.
 
 The script waits for successful Actions runs and npm availability between stages.
@@ -35,7 +35,7 @@ stable versions publish under `latest`. `--latest` is a command-generation
 mode: it prints `npm dist-tag add <package>@<version> latest` commands for the
 selected npm packages using versions from `origin/main`, and does not create
 release tags or run npm. With no package selection, it prints commands for all
-four npm packages and skips the Marketplace extension. Run the printed commands
+five npm packages and skips the Marketplace extension. Run the printed commands
 locally to update the tags; this lets npm handle any interactive 2FA prompt.
 Pointing `latest` at an RC means a plain `npm install` can install a prerelease.
 Extension versions must be plain `x.y.z`; `--extension-pre` uses
@@ -46,8 +46,8 @@ Extension versions must be plain `x.y.z`; `--extension-pre` uses
 ### npm
 
 On npmjs.com, open **Settings > Trusted Publisher** for each of
-`@bascik/bascik`, `@bascik/language-server`, `create-bascik`, and
-`@bascik/adapter-cloudflare`. Select **GitHub Actions**:
+`@bascik/bascik`, `@bascik/language-server`, `create-bascik`,
+`@bascik/adapter-cloudflare`, and `@bascik/adapter-netlify`. Select **GitHub Actions**:
 
 | Field                | Value               |
 | -------------------- | ------------------- |
@@ -60,6 +60,23 @@ On npmjs.com, open **Settings > Trusted Publisher** for each of
 No npm token is needed. After a successful OIDC publish, delete the unused
 `NPM_TOKEN` GitHub secret and revoke old npm publish tokens.
 See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+A package that has never been published (such as `@bascik/adapter-netlify`
+before `1.0.0-rc.1`) has no settings page yet, so its first version is
+published locally after its dependencies are on npm, then its trusted
+publisher is configured. Later versions use `yarn release`:
+
+```sh
+git switch main && git pull && yarn install --immutable
+yarn pkg:build && yarn adapter:nf:build
+(cd adapters/netlify && npm publish --access public --tag rc)
+git tag adapter-netlify-v1.0.0-rc.1 origin/main
+git push origin adapter-netlify-v1.0.0-rc.1
+```
+
+Pushing that tag still runs the Release job, which builds and tests the package,
+then skips publishing: `publish-npm.sh` exits successfully when the version is
+already on npm.
 
 ### VS Code Marketplace
 

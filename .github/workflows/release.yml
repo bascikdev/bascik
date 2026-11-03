@@ -10,6 +10,7 @@ name: Release
 # pkg:      git tag v1.0.0-rc.1 origin/main && git push origin v1.0.0-rc.1
 # create:   git tag create-v1.0.0-rc.1 origin/main && git push origin create-v1.0.0-rc.1
 # adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 origin/main && git push origin adapter-cloudflare-v1.0.0-rc.1
+#           git tag adapter-netlify-v1.0.0-rc.1 origin/main && git push origin adapter-netlify-v1.0.0-rc.1
 # lsp:      git tag lsp-v0.1.0-rc.1 origin/main && git push origin lsp-v0.1.0-rc.1
 # ext:      git tag ext-v0.2.0 origin/main && git push origin ext-v0.2.0            (Marketplace stable, even minor)
 #           git tag ext-pre-v0.1.0 origin/main && git push origin ext-pre-v0.1.0    (Marketplace pre-release, odd minor)
@@ -19,6 +20,7 @@ on:
       - "v*.*.*"
       - "create-v*.*.*"
       - "adapter-cloudflare-v*.*.*"
+      - "adapter-netlify-v*.*.*"
       - "lsp-v*.*.*"
       - "ext-v*.*.*"
       - "ext-pre-v*.*.*"
@@ -154,6 +156,47 @@ jobs:
       - name: Publish to npm
         working-directory: adapters/cloudflare
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh adapter-cloudflare-v
+
+  release-adapter-netlify:
+    name: Publish @bascik/adapter-netlify to npm
+    if: startsWith(github.ref_name, 'adapter-netlify-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # Full history, so the next step can see origin/main.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:nf:build
+
+      - name: Run tests
+        run: yarn adapter:nf:test:ci
+
+      - name: Publish to npm
+        working-directory: adapters/netlify
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh adapter-netlify-v
 
   release-language-server:
     name: Publish @bascik/language-server to npm

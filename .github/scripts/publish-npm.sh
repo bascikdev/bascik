@@ -19,5 +19,13 @@ else
   channel="latest"
 fi
 
+name="$(node -p "require('./package.json').name")"
+# A version already on npm (a package's first, manual publish, or a rerun after a
+# successful publish) is immutable, so there is nothing left to do.
+if [ "$(npm view "${name}@${version}" version 2>/dev/null || true)" = "${version}" ]; then
+  echo "${name}@${version} is already on npm; nothing to publish."
+  exit 0
+fi
+
 echo "Publishing ${version} with dist-tag ${channel}"
 npm publish --provenance --access public --tag "${channel}"
