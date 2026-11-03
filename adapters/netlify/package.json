@@ -31,7 +31,6 @@
     "build": "tsc -p tsconfig.build.json",
     "demo:build": "cd e2e/fixture && bascik --check && bascik --build --target netlify && bascik-netlify-install",
     "demo:deploy": "cd ../.. && netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --prod --site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
-    "demo:deploy:preview": "cd ../.. && netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
     "demo:dev": "cd e2e/fixture && bascik --target netlify --port 9877",
     "demo:serve": "cd ../.. && netlify dev --filter bascik-e2e-netlify-fixture --framework '#static' --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --port 9877 --functions-port 9878 --offline --no-open",
     "demo:logs": "cd ../.. && NETLIFY_SITE_ID=268cf8fb-826b-421a-8a34-abd78bf9be1e netlify logs --filter bascik-e2e-netlify-fixture --url https://netlify-adapter.bascik.dev --function bascik-pages --since 30m --json",

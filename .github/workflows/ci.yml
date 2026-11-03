@@ -1329,81 +1329,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://cloudflare-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
-  deploy-netlify:
-    name: Deploy Netlify Adapter Preview
-    runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
-      github.ref != 'refs/heads/main' && github.repository == 'bascikdev/bascik'
-    permissions:
-      contents: read
-    needs:
-      [
-        e2e-pkg-static,
-        e2e-pkg-dev,
-        e2e-pkg-prod-http1,
-        e2e-pkg-prod-http2,
-        e2e-adapter-cloudflare,
-        e2e-adapter-netlify,
-        e2e-docs,
-        e2e-create,
-        e2e-extension,
-      ]
-    outputs:
-      preview-url: ${{ steps.upload.outputs.url }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Enable Corepack
-        run: corepack enable
-      - name: Use Node.js 24
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: "yarn"
-      - name: Check Netlify credentials
-        env:
-          HAS_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN != '' }}
-        run: |
-          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret NETLIFY_AUTH_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
-      - name: Install dependencies
-        run: yarn install --immutable
-      - name: Build package, adapter, and demo
-        run: yarn adapter:nf:demo:build
-      - name: Check this is still the newest commit
-        id: newest
-        env:
-          REF: ${{ github.ref }}
-          SHA: ${{ github.sha }}
-        run: |
-          newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
-          echo "newest=$newest" >> "$GITHUB_OUTPUT"
-      - name: Upload a Preview version
-        if: steps.newest.outputs.newest == 'true'
-        id: upload
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_TELEMETRY_DISABLED: "1"
-          DEPLOY_OUTPUT: ${{ runner.temp }}/netlify-preview.json
-          MESSAGE: "Preview at ${{ github.sha }}"
-        run: |
-          yarn workspace @bascik/adapter-netlify demo:deploy:preview --message "$MESSAGE" --json > "$DEPLOY_OUTPUT"
-          url="$(node .github/scripts/netlify-preview-url.mjs "$DEPLOY_OUTPUT")"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Netlify adapter Preview: $url" >> "$GITHUB_STEP_SUMMARY"
-      - name: Smoke-test the Preview
-        if: steps.newest.outputs.newest == 'true'
-        env:
-          URL: ${{ steps.upload.outputs.url }}
-        run: node .github/scripts/smoke-test.mjs "$URL" /=200 /catalog=200 /catalog-stream=200
-      - name: Test the hosted Netlify preview
-        if: steps.newest.outputs.newest == 'true'
-        env:
-          NETLIFY_ADAPTER_TEST_URL: ${{ steps.upload.outputs.url }}
-        run: |
-          yarn workspace @bascik/adapter-netlify exec playwright install --with-deps chromium
-          yarn adapter:nf:e2e
-
-  # Runs after all three uploads, so the summary and the comment list URLs from the same commit. A run whose
+  # Runs after both uploads, so the summary and the comment always list two URLs from the same commit. A run whose
   # commit was no longer the newest uploaded nothing and leaves both to the newer run. A branch without an open pull
   # request in this repo gets the summary only.
   preview-comment:
@@ -1411,12 +1337,11 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'push' && github.ref != 'refs/heads/main' &&
-      needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != '' &&
-      needs.deploy-netlify.outputs.preview-url != ''
+      needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != ''
     permissions:
       contents: read
       pull-requests: write
-    needs: [deploy-docs, deploy-demo, deploy-netlify]
+    needs: [deploy-docs, deploy-demo]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1439,5 +1364,4 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DOCS_PREVIEW_URL: ${{ needs.deploy-docs.outputs.preview-url }}
           DEMO_PREVIEW_URL: ${{ needs.deploy-demo.outputs.preview-url }}
-          NETLIFY_PREVIEW_URL: ${{ needs.deploy-netlify.outputs.preview-url }}
         run: node .github/scripts/preview-comment.mjs

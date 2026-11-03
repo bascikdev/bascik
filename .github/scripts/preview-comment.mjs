@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Publishes the three previews built by the same CI run. It writes them
+// Publishes branch previews and the independently deployed Netlify demo. It writes them
 // to the run's job summary, and when the branch has an open pull request in
 // this repository, it creates or updates the one comment that lists them
 // there. A branch without a pull request gets the summary only.
@@ -11,7 +11,7 @@
 // Usage (in CI): node .github/scripts/preview-comment.mjs
 // Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), BRANCH
 // (github.ref_name), SHA (github.sha: the commit CI built), DOCS_PREVIEW_URL,
-// DEMO_PREVIEW_URL, NETLIFY_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY and
+// DEMO_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY and
 // GITHUB_API_URL.
 import { appendFileSync } from "node:fs";
 
@@ -54,13 +54,15 @@ export function commentBody({ sha, branch, previews, runUrl }) {
   const shownBranch = branch.replace(/`/g, "'");
   return [
     MARKER,
-    "### Site Previews",
+    "### Site Previews and Adapter Demos",
     "",
-    `All three previews were built from ${sha.slice(0, 12)} on \`${shownBranch}\`. Cloudflare aliases show the newest successful build; the Netlify link is an immutable draft deploy of this commit. None of these links point to production.`,
+    `Built from ${sha.slice(0, 12)} on \`${shownBranch}\`. Cloudflare preview URLs stay the same for this pull request and show its newest successful build. Their hostname prefix is \`pr-<number>\` (or the branch name when there is no pull request), not the hosting provider.`,
     "",
     "| Site | Hosting resource | Links |",
     "| :--- | :----- | :------ |",
     ...rows,
+    "",
+    "The Netlify demo is a separate, manually deployed live site, not a preview of this commit.",
     "",
     runUrl ? `[Deploy run](${runUrl})` : "",
   ]
@@ -205,22 +207,8 @@ export async function run(
     appendSummary = (path, text) => appendFileSync(path, text),
   } = {},
 ) {
-  for (const name of [
-    "DOCS_PREVIEW_URL",
-    "DEMO_PREVIEW_URL",
-    "NETLIFY_PREVIEW_URL",
-    "SHA",
-    "BRANCH",
-  ])
+  for (const name of ["DOCS_PREVIEW_URL", "DEMO_PREVIEW_URL", "SHA", "BRANCH"])
     if (!env[name]) throw new Error(`preview-comment: ${name} is not set`);
-  if (
-    !/^https:\/\/[a-f0-9]{24}--bascik-netlify-adapter\.netlify\.app\/?$/.test(
-      env.NETLIFY_PREVIEW_URL ?? "",
-    )
-  )
-    throw new Error(
-      "preview-comment: NETLIFY_PREVIEW_URL must be a draft deploy, not production",
-    );
   const branch = env.BRANCH ?? "";
   const body = commentBody({
     sha: env.SHA ?? "",
@@ -231,7 +219,7 @@ export async function run(
         label: "Bascik docs (Cloudflare branch preview)",
         worker: "bascik",
         url: env.DOCS_PREVIEW_URL ?? "",
-        paths: ["/", "/deployment/cloudflare", "/deployment/netlify"],
+        paths: ["/", "/components", "/deployment/cloudflare"],
       },
       {
         label: "Cloudflare adapter (branch preview)",
@@ -240,9 +228,9 @@ export async function run(
         paths: ["/", "/catalog", "/catalog-stream"],
       },
       {
-        label: "Netlify adapter (draft preview)",
+        label: "Netlify adapter (live site; manual deployment)",
         worker: "Netlify: bascik-netlify-adapter",
-        url: env.NETLIFY_PREVIEW_URL ?? "",
+        url: "https://netlify-adapter.bascik.dev",
         paths: ["/", "/catalog", "/catalog-stream"],
       },
     ],

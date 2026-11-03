@@ -7,7 +7,7 @@ export default defineConfig({
     directives: {
       "default-src": ["'self'"],
       "script-src": ["'self'"],
-      "style-src": ["'self'", "'unsafe-inline'"],
+      "style-src": ["'self'"],
       "connect-src": ["'self'"],
       "img-src": ["'self'", "data:"],
     },
