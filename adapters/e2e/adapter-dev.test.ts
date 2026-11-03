@@ -246,10 +246,16 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
       await expect
         .poll(
           async () => {
-            const response = await request.get(`${url}/api/ping`);
-            return response.status() === 200
-              ? (await response.json()).value
-              : "";
+            // A request in flight when the rebuild stops the old runtime is
+            // cut off; the next poll reaches the new one.
+            try {
+              const response = await request.get(`${url}/api/ping`);
+              return response.status() === 200
+                ? (await response.json()).value
+                : "";
+            } catch {
+              return "";
+            }
           },
           { timeout: 60_000 },
         )
