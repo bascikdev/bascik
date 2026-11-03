@@ -20,6 +20,7 @@ import {
   previewAlias,
 } from "../../../.github/scripts/preview-alias.mjs";
 import { previewAliasUrl } from "../../../.github/scripts/wrangler-preview-url.mjs";
+import { netlifyPreviewUrl } from "../../../.github/scripts/netlify-preview-url.mjs";
 import {
   parseChecks,
   smokeTest,
@@ -42,6 +43,37 @@ import {
 const repoDir = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKERS = ["bascik", "cloudflare-adapter"];
 const ALIAS_SHAPE = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+
+describe("Netlify draft preview URLs", () => {
+  const id = "a".repeat(24);
+  it("reads the actual immutable URL returned by the CLI", () => {
+    expect(
+      netlifyPreviewUrl(
+        JSON.stringify({
+          deploy_id: id,
+          deploy_url: `https://${id}--bascik-netlify-adapter.netlify.app`,
+        }),
+      ),
+    ).toBe(`https://${id}--bascik-netlify-adapter.netlify.app`);
+  });
+  it.each([
+    "https://netlify-adapter.bascik.dev/",
+    "https://bascik-netlify-adapter.netlify.app/",
+    `https://${"b".repeat(24)}--bascik-netlify-adapter.netlify.app/`,
+    `https://${id}--unrelated-project.netlify.app/`,
+  ])(
+    "rejects production, mismatched deploys, and other projects: %s",
+    (url) => {
+      expect(() =>
+        netlifyPreviewUrl(JSON.stringify({ deploy_id: id, deploy_url: url })),
+      ).toThrow(/draft deploy URL/);
+    },
+  );
+  it("rejects missing and malformed deploy output", () => {
+    expect(() => netlifyPreviewUrl("{}")).toThrow(/draft deploy URL/);
+    expect(() => netlifyPreviewUrl("not json")).toThrow();
+  });
+});
 
 describe("preview-alias", () => {
   it("uses a branch name that is already an alias as is", () => {
@@ -381,7 +413,7 @@ describe("preview-comment", () => {
     expect(body.startsWith(MARKER)).toBe(true);
     // A push run builds the branch commit itself, not a merge with main.
     expect(body).toContain(
-      "Built from fc70e85a0123 on `feature/milk-frother`.",
+      "All three previews were built from fc70e85a0123 on `feature/milk-frother`.",
     );
     expect(body).not.toContain("merge");
     expect(body).toContain(
@@ -529,6 +561,7 @@ describe("preview-comment", () => {
     RUN_URL: "https://github.com/bascikdev/bascik/actions/runs/1",
     DOCS_PREVIEW_URL: "https://feature-bascik.example.workers.dev",
     DEMO_PREVIEW_URL: "https://feature-cloudflare-adapter.example.workers.dev",
+    NETLIFY_PREVIEW_URL: `https://${"a".repeat(24)}--bascik-netlify-adapter.netlify.app`,
   };
 
   it("writes both URLs to the job summary and succeeds without posting when the branch has no pull request", async () => {
@@ -553,16 +586,15 @@ describe("preview-comment", () => {
       "| Cloudflare adapter (branch preview) | `cloudflare-adapter` | [/](https://feature-cloudflare-adapter.example.workers.dev/)",
     );
     expect(summary[0][1]).toContain(
-      "| Netlify adapter (live site; manual deployment) | `Netlify: bascik-netlify-adapter` | [/](https://netlify-adapter.bascik.dev/)",
+      `| Netlify adapter (draft preview) | \`Netlify: bascik-netlify-adapter\` | [/](https://${"a".repeat(24)}--bascik-netlify-adapter.netlify.app/)`,
     );
     expect(summary[0][1]).toContain(
-      "[/catalog-stream](https://netlify-adapter.bascik.dev/catalog-stream)",
+      `[/catalog-stream](${env.NETLIFY_PREVIEW_URL}/catalog-stream)`,
     );
-    expect(summary[0][1]).toContain("not a preview of this commit");
+    expect(summary[0][1]).not.toContain("https://netlify-adapter.bascik.dev");
     expect(summary[0][1]).toContain(
-      "hostname prefix is the branch name, not the hosting provider",
+      "All three previews were built from a18dc30c0123 on",
     );
-    expect(summary[0][1]).toContain("Built from a18dc30c0123 on");
     expect(log.join("\n")).toMatch(/No open pull request/);
   });
 
@@ -578,7 +610,7 @@ describe("preview-comment", () => {
     expect(result.comments).toEqual([{ pr: 113, action: "updated", id: 2 }]);
     const patch = calls.find((call) => call.method === "PATCH")!;
     const { body } = JSON.parse(patch.body!) as { body: string };
-    expect(body).toContain(`Built from ${env.SHA.slice(0, 12)} on`);
+    expect(body).toContain(`built from ${env.SHA.slice(0, 12)} on`);
     expect(body).toBe(result.body);
   });
 
@@ -588,6 +620,7 @@ describe("preview-comment", () => {
       "BRANCH",
       "DOCS_PREVIEW_URL",
       "DEMO_PREVIEW_URL",
+      "NETLIFY_PREVIEW_URL",
     ])
       await expect(
         run({ ...env, [name]: "" }, { appendSummary: () => {} }),
@@ -845,6 +878,7 @@ function runContext(
     "steps.newest.outputs.newest": newest,
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
+    "needs.deploy-netlify.outputs.preview-url": "",
   };
 }
 
@@ -1489,7 +1523,64 @@ describe("CI stages and the deploy stage", () => {
     expect(comment).toContain("BRANCH: ${{ github.ref_name }}");
     expect(comment).toContain("needs.deploy-docs.outputs.preview-url != ''");
     expect(comment).toContain("needs.deploy-demo.outputs.preview-url != ''");
+    expect(comment).toContain("needs.deploy-netlify.outputs.preview-url != ''");
+    expect(comment).toContain(
+      "NETLIFY_PREVIEW_URL: ${{ needs.deploy-netlify.outputs.preview-url }}",
+    );
     expect(comment).not.toMatch(/github\.event\.pull_request|github\.head_ref/);
+  });
+
+  it("uses PR aliases for Cloudflare and captures an actual non-production Netlify deploy", () => {
+    for (const id of ["deploy-docs", "deploy-demo"]) {
+      const alias = jobs
+        .get(id)!
+        .steps.find((step) => step.name === "Compute the Preview alias")!;
+      expect(alias.text).toContain(
+        'gh pr list --repo "$REPO" --head "$BRANCH"',
+      );
+      expect(alias.text).toContain('name="pr-$pr"');
+      expect(alias.text).toContain('preview-alias.mjs "$name"');
+      expect(previewAlias("pr-120", WORKERS)).toBe("pr-120");
+    }
+    const job = jobs.get("deploy-netlify")!;
+    const upload = job.steps.find(
+      (step) => step.name === "Upload a Preview version",
+    )!;
+    expect(upload.text).toContain(
+      "--site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
+    );
+    expect(upload.text).toContain('--json > "$DEPLOY_OUTPUT"');
+    expect(upload.text).toContain('netlify-preview-url.mjs "$DEPLOY_OUTPUT"');
+    expect(upload.text).not.toMatch(/--prod\b/);
+    expect(upload.text).toContain(
+      "NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}",
+    );
+    expect(jobs.get("preview-comment")!.needs).toContain("deploy-netlify");
+    const branch = runContext("push", "refs/heads/netlify-adapter");
+    expect(simulate(jobs, branch).ran.has("deploy-netlify")).toBe(true);
+    expect(
+      simulate(jobs, branch, new Set(["e2e-adapter-netlify"])).ran.has(
+        "deploy-netlify",
+      ),
+    ).toBe(false);
+    expect(
+      simulate(jobs, branch, new Set(["deploy-netlify"])).ran.has(
+        "preview-comment",
+      ),
+    ).toBe(false);
+    expect(
+      simulate(jobs, runContext("push", "refs/heads/main")).ran.has(
+        "deploy-netlify",
+      ),
+    ).toBe(false);
+    expect(
+      simulate(
+        jobs,
+        runContext("pull_request", "refs/pull/120/merge", {
+          prRepo: "other/repo",
+        }),
+      ).ran.has("deploy-netlify"),
+    ).toBe(false);
   });
 
   it("cancels an older run of a branch, but never cancels or leaves pending a run or deploy on main", () => {

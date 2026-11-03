@@ -70,6 +70,7 @@ test("the API client displays responses and failures without leaving the page", 
   await page.getByTestId("demo-menu").locator("summary").click();
   await page.getByTestId("fixture-nav-api").click();
   await expect(page).toHaveURL(/\/api-demo$/);
+  await page.waitForLoadState("load");
   const ping = page.getByTestId("demo-api-send");
   await ping.click();
   await expect(page.getByTestId("demo-api-status")).toContainText("HTTP 200");
@@ -226,9 +227,9 @@ test("static and dynamic security headers are present once, with CSP", async ({
     expect(response.headers()["content-security-policy"]).toContain(
       "default-src 'self'",
     );
-    expect(response.headers()["content-security-policy"]).not.toContain(
-      "unsafe-inline",
-    );
+    const policy = response.headers()["content-security-policy"];
+    expect(policy.match(/script-src[^;]*/)?.[0]).not.toContain("unsafe-inline");
+    expect(policy).toContain("style-src 'self' 'unsafe-inline'");
   }
 });
 
@@ -284,6 +285,10 @@ test("HTML streaming swaps three reserved skeleton panels without layout shift a
       page.getByTestId("fixture-stream-skeleton-3"),
     ];
     for (const skeleton of skeletons) await expect(skeleton).toBeVisible();
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(24, 25, 27)",
+    );
     const placeholder = await skeletons[0].boundingBox();
     const footer = page.getByTestId("fixture-footer");
     await expect(footer).toBeVisible();
