@@ -1,7 +1,7 @@
 /**
  * Release-time consistency the publish jobs in .github/workflows/release.yml
  * rely on but never check themselves: the manifests `npm publish` uploads
- * (pkg, create, the Cloudflare adapter, the language server) and the
+ * (pkg, create, the Cloudflare and Netlify adapters, the language server) and the
  * workflow's own instructions for pushing release tags.
  */
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,13 @@ type Manifest = {
 const manifest = (dir: string): Manifest =>
   JSON.parse(readFileSync(join(repoDir, dir, "package.json"), "utf8"));
 
-const PUBLISHED = ["pkg", "create", "adapters/cloudflare", "lsp"];
+const PUBLISHED = [
+  "pkg",
+  "create",
+  "adapters/cloudflare",
+  "adapters/netlify",
+  "lsp",
+];
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",

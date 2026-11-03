@@ -29,6 +29,7 @@ function fixture({
             "lsp/package.json": "@bascik/language-server",
             "create/package.json": "create-bascik",
             "adapters/cloudflare/package.json": "@bascik/adapter-cloudflare",
+            "adapters/netlify/package.json": "@bascik/adapter-netlify",
             "extensions/vscode-bascik/package.json": "bascik-vscode",
           };
           return JSON.stringify({
@@ -68,6 +69,7 @@ function fixture({
         "@bascik/bascik",
         "create-bascik",
         "@bascik/adapter-cloudflare",
+        "@bascik/adapter-netlify",
       ]).toContain(name);
       expect(registryVersion).toBe(version);
       registryChecks++;
@@ -100,6 +102,7 @@ describe("release script", () => {
         "origin",
         `${SHA}:refs/tags/create-v1.2.3`,
         `${SHA}:refs/tags/adapter-cloudflare-v1.2.3`,
+        `${SHA}:refs/tags/adapter-netlify-v1.2.3`,
       ],
       ["git", "push", "--atomic", "origin", `${SHA}:refs/tags/ext-v1.2.3`],
     ]);
@@ -111,7 +114,7 @@ describe("release script", () => {
     ).toHaveLength(4);
     expect(
       calls.slice(second, third).filter((call) => call[0] === "registry"),
-    ).toHaveLength(4);
+    ).toHaveLength(6);
     expect(calls.slice(third).some((call) => call[0] === "registry")).toBe(
       false,
     );
@@ -151,6 +154,7 @@ describe("release script", () => {
       "npm dist-tag add @bascik/bascik@1.2.3 latest --registry https://registry.npmjs.org",
       "npm dist-tag add create-bascik@1.2.3 latest --registry https://registry.npmjs.org",
       "npm dist-tag add @bascik/adapter-cloudflare@1.2.3 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add @bascik/adapter-netlify@1.2.3 latest --registry https://registry.npmjs.org",
     ]);
     expect(
       calls.some(

@@ -273,6 +273,7 @@ describe("release.yml publishes only commits on main", () => {
       "release",
       "release-create",
       "release-adapter-cloudflare",
+      "release-adapter-netlify",
       "release-language-server",
       "release-extension",
     ]);
@@ -284,11 +285,11 @@ describe("release.yml publishes only commits on main", () => {
     expect(unguardedJobs(workflow)).toEqual([]);
   });
 
-  it("uses tokenless npm trusted publishing for all four npm jobs", () => {
+  it("uses tokenless npm trusted publishing for all five npm jobs", () => {
     const npmJobs = workflow
       .split(/(?=^ {2}[\w-]+:\s*$)/m)
       .filter((job) => /publish-npm\.sh/.test(job));
-    expect(npmJobs).toHaveLength(4);
+    expect(npmJobs).toHaveLength(5);
     for (const job of npmJobs) {
       expect(job).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
       expect(job).toMatch(/^ {6}id-token: write$/m);
@@ -306,19 +307,30 @@ describe("release.yml publishes only commits on main", () => {
     expect(publishScript).toContain(
       'npm publish --provenance --access public --tag "${channel}"',
     );
+    // A version already on npm (a first manual publish, or a rerun) is skipped
+    // before `npm publish`, so its tag's Release run still succeeds.
+    const skip = publishScript.indexOf('npm view "${name}@${version}" version');
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(publishScript.indexOf("npm publish"));
   });
 
-  it("builds the Cloudflare adapter before create-bascik integration tests", () => {
-    const steps = jobSteps(workflow).get("release-create") ?? [];
-    const adapterBuild = steps.findIndex((step) =>
-      /name: Build Cloudflare adapter/.test(step),
-    );
-    const tests = steps.findIndex((step) => /name: Run tests/.test(step));
+  it.each([
+    ["Cloudflare", "yarn adapter:cf:build"],
+    ["Netlify", "yarn adapter:nf:build"],
+  ])(
+    "builds the %s adapter before create-bascik integration tests",
+    (platform, command) => {
+      const steps = jobSteps(workflow).get("release-create") ?? [];
+      const adapterBuild = steps.findIndex((step) =>
+        new RegExp(`name: Build ${platform} adapter`).test(step),
+      );
+      const tests = steps.findIndex((step) => /name: Run tests/.test(step));
 
-    expect(adapterBuild).toBeGreaterThan(-1);
-    expect(tests).toBeGreaterThan(adapterBuild);
-    expect(steps[adapterBuild]).toContain("yarn adapter:cf:build");
-  });
+      expect(adapterBuild).toBeGreaterThan(-1);
+      expect(tests).toBeGreaterThan(adapterBuild);
+      expect(steps[adapterBuild]).toContain(command);
+    },
+  );
 
   it("misuse: flags a publish job added without the guard, with a shallow checkout, or with a conditional guard", () => {
     const job = (id: string, checkout: string[], guard: string[]) =>
