@@ -2,13 +2,15 @@ import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NAV } from "./nav.ts";
+import { pageDescription, pageTitle } from "./meta-tags.ts";
 
 /**
  * SEO regression guard for page shells in the nav.
  *
- * Titles are covered by nav-label-h1.test.ts. This file covers the meta description (search engines show
- * it as the result snippet and truncate around 160 characters) and the structured data every docs article
- * is expected to carry.
+ * Titles are covered by nav-label-h1.test.ts. This file covers project-specific
+ * editorial length targets for meta descriptions and the structured data every
+ * docs article is expected to carry. Google may generate query-specific snippets
+ * from visible page text instead of using the meta description.
  */
 
 const DOCS_ROOT = path.resolve(import.meta.dirname, "../..");
@@ -21,6 +23,7 @@ const NO_ARTICLE_SCHEMA = new Set([
   "/faq", // FAQPage JSON-LD instead
   "/releases",
   "/press",
+  "/showcase", // A directory of sites, not a documentation article
   "/sponsor",
 ]);
 
@@ -55,6 +58,35 @@ function extractDescription(html: string): string | null {
 const localPages = NAV.flatMap((section) => section.pages).filter(
   (page) => !page.external,
 );
+
+describe("home page search metadata", () => {
+  it("clearly identifies Bascik as the HTML component builder", async () => {
+    const html = await readFile(
+      path.join(DOCS_ROOT, "src", "pages", "index.html"),
+      "utf8",
+    );
+
+    expect(pageTitle(html)).toBe(
+      "Bascik: HTML Component Builder with Scoped CSS and JS",
+    );
+    expect(pageDescription(html)).toBe(
+      "Bascik is a zero-runtime HTML component builder with automatically scoped CSS and JavaScript. Build reusable components without a client-side framework.",
+    );
+
+    const websites = [
+      ...html.matchAll(
+        /<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g,
+      ),
+    ]
+      .map(([, json]) => JSON.parse(json))
+      .filter((schema) => schema["@type"] === "WebSite");
+    expect(websites).toHaveLength(1);
+    const [website] = websites;
+    expect(website.name).toBe("Bascik");
+    expect(website.alternateName).toContain("Bascik.dev");
+    expect(website.url).toBe("https://bascik.dev/");
+  });
+});
 
 describe("page meta descriptions", () => {
   it(`every nav page has a description of ${DESCRIPTION_MIN_LENGTH}-${DESCRIPTION_MAX_LENGTH} characters`, async () => {

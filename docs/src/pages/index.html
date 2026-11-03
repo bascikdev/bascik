@@ -12,9 +12,9 @@
     </script>
     <meta
       name="description"
-      content="Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote."
+      content="Bascik is a zero-runtime HTML component builder with automatically scoped CSS and JavaScript. Build reusable components without a client-side framework."
     />
-    <title>Bascik - HTML Components Build Tool with Scoped CSS and JS</title>
+    <title>Bascik: HTML Component Builder with Scoped CSS and JS</title>
     <link rel="prefetch" href="/why-bascik" />
     <link rel="prefetch" href="/getting-started" />
     <script type="application/ld+json">
@@ -22,8 +22,8 @@
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "Bascik",
-        "alternateName": ["Bascik HTML components", "bascik.dev"],
-        "url": "https://bascik.dev",
+        "alternateName": ["Bascik.dev", "Bascik HTML components"],
+        "url": "https://bascik.dev/",
         "potentialAction": {
           "@type": "SearchAction",
           "target": {
@@ -848,7 +848,9 @@
                 <nav class="how-nav">
                   <a class="how-nav-link" href="/">Home</a>
                   <a class="how-nav-link" href="/why-bascik">Why Bascik</a>
-                  <a class="how-nav-link" href="/getting-started">Docs</a>
+                  <a class="how-nav-link" href="/getting-started"
+                    >Getting Started</a
+                  >
                 </nav>
                 <h3>Welcome</h3>
               </div>
@@ -1351,6 +1353,35 @@
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="home-section" data-testid="home-showcase">
+        <div class="container">
+          <p class="section-label">Showcase</p>
+          <h2 class="section-heading">Made with Bascik.</h2>
+          <p class="section-sub">
+            Choosing a new tool is a real decision. These sites already use
+            Bascik in production, from business websites to a SaaS app with a
+            server-rendered dashboard.
+          </p>
+          <p class="section-sub">
+            What ships is HTML, JavaScript, and CSS you can inspect yourself.
+            Turn off minification, test the behavior, and step through your code
+            with familiar debugging tools.
+          </p>
+          <showcase-grid>
+            <script data-bascik-build>
+              import { renderShowcase } from "@/lib/showcase.ts";
+              export default async () => await renderShowcase(true);
+            </script>
+          </showcase-grid>
+          <a
+            href="/showcase"
+            class="btn btn-ghost"
+            data-testid="home-showcase-link"
+            >See more on the showcase page &#8594;</a
+          >
         </div>
       </section>
 

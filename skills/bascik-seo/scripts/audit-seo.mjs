@@ -10,7 +10,8 @@ const HELP = `Usage: node audit-seo.mjs [--dist dist] [--site-url https://exampl
 
 Checks every HTML page in the build output:
   error  missing <title>, meta description, lang, or viewport; invalid JSON-LD; relative canonical or og:image
-  warn   duplicate titles or descriptions, odd lengths, not exactly one <h1>, images without alt,
+  warn   duplicate titles or descriptions, lengths outside editorial targets (not Google rules),
+         not exactly one <h1>, images without alt,
          missing canonical or Open Graph tags, canonical that points at another page, missing sitemap.xml/robots.txt
   info   noindex pages (warn when one is still listed in sitemap.xml), missing og:image
 
@@ -151,7 +152,7 @@ export function auditPages(
       add(
         "warn",
         page.path,
-        `title is ${page.title.length} characters; aim for 10 to 65: "${page.title}"`,
+        `title is ${page.title.length} characters; editorial target is 10 to 65: "${page.title}"`,
       );
     }
     if (!page.description)
@@ -160,7 +161,7 @@ export function auditPages(
       add(
         "warn",
         page.path,
-        `description is ${page.description.length} characters; aim for 50 to 160`,
+        `description is ${page.description.length} characters; editorial target is 50 to 160`,
       );
     }
     if (page.h1Count !== 1)

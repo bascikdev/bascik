@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <meta
+      name="description"
+      content="Explore production websites and SaaS made with Bascik. Inspect the HTML, CSS, and JavaScript output, explore testing and debugging tools, and submit your site."
+    />
+    <title>Showcase: Websites Made with Bascik</title>
+  </head>
+  <body>
+    <docs-nav />
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/showcase");
+          </script>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/showcase.md", { to: "Rinsesoft" });
+          </script>
+          <showcase-grid>
+            <script data-bascik-build>
+              import { renderShowcase } from "@/lib/showcase.ts";
+              export default async () => await renderShowcase();
+            </script>
+          </showcase-grid>
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/showcase.md", {
+                from: "Submit your site",
+              });
+          </script>
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+    <docs-footer />
+  </body>
+</html>

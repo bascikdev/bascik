@@ -43,6 +43,10 @@ describe("homeSchema", () => {
       String(await homeSchema(packageJson)),
     );
     expect(organization["@type"]).toBe("Organization");
+    expect(organization.name).toBe("Bascik");
+    expect(organization.alternateName).toBe("Bascik.dev");
+    expect(software.url).toBe("https://bascik.dev/");
+    expect(organization.url).toBe(software.url);
     expect(organization.sameAs).toEqual(software.sameAs);
     expect(software.sameAs).toContain("https://github.com/bascikdev/bascik");
   });

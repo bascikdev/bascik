@@ -3,6 +3,15 @@ import { NAV, HOME_SITELINKS } from "./nav.js";
 import { renderSectionLabel, renderPagination } from "./render-nav.js";
 
 describe("NAV structure", () => {
+  it("puts the showcase first under Community", () => {
+    expect(
+      NAV.find((section) => section.section === "Community")?.pages[0],
+    ).toEqual({
+      href: "/showcase",
+      label: "Showcase",
+    });
+  });
+
   it("contains non-empty sections and pages", () => {
     expect(NAV.length).toBeGreaterThan(0);
     for (const section of NAV) {
@@ -122,10 +131,17 @@ describe("renderPagination", () => {
     expect(html).toContain('data-bascik-prop-label="Press Resources"');
   });
 
-  it("links releases to the previous section and to press", () => {
-    const html = renderPagination("/releases");
+  it("links showcase to the previous section and to releases", () => {
+    const html = renderPagination("/showcase");
     expect(html).toContain('data-bascik-prop-section="Switch to Bascik"');
     expect(html).toContain('data-bascik-prop-label="From WordPress"');
+    expect(html).toContain('href="/releases"');
+  });
+
+  it("links releases to showcase and to press", () => {
+    const html = renderPagination("/releases");
+    expect(html).toContain('data-bascik-prop-section="Community"');
+    expect(html).toContain('data-bascik-prop-label="Showcase"');
     expect(html).toContain('href="/press"');
   });
 

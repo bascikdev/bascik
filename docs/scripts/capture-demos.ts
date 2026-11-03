@@ -18,6 +18,7 @@
  *   devtools-breakpoint  the browser above real Chrome DevTools: a breakpoint in a component script, on its file's line
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
+ *   showcase-<site>   a public website homepage for the showcase cards
  *
  * Terminal scenes record the real program. The dev server runs in a pseudo-terminal (node-pty) and
  * its output is replayed through a terminal emulator, so the color and the address pinned to the top row are
@@ -41,6 +42,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { chromium, type Browser, type Page } from "playwright";
+import { SHOWCASE_SITES } from "../src/lib/showcase.ts";
 import {
   browserWindow,
   roundCorners,
@@ -1361,6 +1363,43 @@ async function devtoolsBreakpoint(): Promise<Frame[]> {
   }
 }
 
+async function showcase(url: string): Promise<Frame[]> {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 800 },
+      colorScheme: "light",
+      reducedMotion: "reduce",
+    });
+    const response = await page.goto(url, { waitUntil: "load" });
+    if (!response?.ok())
+      throw new Error(
+        `Showcase capture failed: ${url} (${response?.status()})`,
+      );
+    await page.evaluate(async () => await document.fonts.ready);
+    await page.waitForFunction(() =>
+      Array.from(document.images).every((image) => {
+        const bounds = image.getBoundingClientRect();
+        return (
+          bounds.top >= innerHeight ||
+          bounds.bottom <= 0 ||
+          (image.complete && image.naturalWidth > 0)
+        );
+      }),
+    );
+    console.log(
+      `${url}: ${await page.title()} — ${await page
+        .locator('meta[name="description"]')
+        .getAttribute("content")}`,
+    );
+    return [
+      { png: await page.screenshot({ animations: "disabled" }), hold: 0 },
+    ];
+  } finally {
+    await browser.close();
+  }
+}
+
 const scenes: Record<string, () => Promise<Frame[]>> = {
   "live-reload": () => liveReload("side"),
   "live-reload-stacked": () => liveReload("stacked"),
@@ -1376,6 +1415,12 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   sitemap,
   "api-routes": apiRoutes,
   "devtools-breakpoint": devtoolsBreakpoint,
+  ...Object.fromEntries(
+    SHOWCASE_SITES.map((site) => [
+      `showcase-${site.slug}`,
+      () => showcase(site.url),
+    ]),
+  ),
 };
 
 const wanted = process.argv.slice(2);

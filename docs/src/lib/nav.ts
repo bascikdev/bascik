@@ -24,8 +24,9 @@ export interface NavSection {
 }
 
 /**
- * Pages the docs search shows nested under the Home result for brand queries
- * such as "bascik". Order is display order. Every href must exist in NAV.
+ * Pages Bascik's own docs search shows nested under its Home result for brand
+ * queries such as "bascik". This does not control Google sitelinks. Order is
+ * display order. Every href must exist in NAV.
  */
 export const HOME_SITELINKS: string[] = [
   "/getting-started",
@@ -217,6 +218,7 @@ export const NAV: NavSection[] = [
   {
     section: "Community",
     pages: [
+      { href: "/showcase", label: "Showcase" },
       { href: "/releases", label: "Releases" },
       { href: "/press", label: "Press Resources" },
       { href: "/sponsor", label: "Sponsor" },

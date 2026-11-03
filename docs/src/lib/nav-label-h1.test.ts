@@ -12,9 +12,9 @@ import { NAV } from "./nav.js";
  * another section ("Overview", "Build Scripts"), which need a distinct h1 so
  * their <title> is unique for search engines.
  *
- * <title> is deliberately NOT derived from the h1: it is written for search
- * results (keyword-rich, 15-65 characters, always naming Bascik) and must be
- * unique per page. The tests below enforce those rules.
+ * <title> is deliberately NOT derived from the h1: the repository's editorial
+ * convention requires a unique title of 15-65 characters that names Bascik.
+ * These are project rules, not Google's character limits or ranking guarantees.
  */
 
 const DOCS_ROOT = path.resolve(import.meta.dirname, "../..");
@@ -53,7 +53,7 @@ const LABEL_H1_EXCEPTIONS: Record<string, { label: string; h1: string }> = {
   },
 };
 
-/** Search engines truncate titles around 60 characters; leave a little headroom. */
+/** Repository editorial targets; Google does not specify a fixed title length. */
 const TITLE_MIN_LENGTH = 15;
 const TITLE_MAX_LENGTH = 65;
 

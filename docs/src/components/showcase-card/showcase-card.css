@@ -1,0 +1,79 @@
+article {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+article:focus-within,
+article:hover {
+  border-color: var(--border-hover);
+}
+
+a {
+  display: block;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: -3px;
+  border-radius: var(--r-lg);
+}
+
+.preview {
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: var(--elevated);
+}
+
+article .preview > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+  object-position: top;
+}
+
+.title {
+  padding: 20px 20px 0;
+}
+
+h3 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
+
+.domain {
+  color: var(--accent-fg);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  padding: 12px 20px 20px;
+}
+
+article .description > * {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.new-tab {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

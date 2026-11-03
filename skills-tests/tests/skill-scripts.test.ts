@@ -421,6 +421,21 @@ describe("audit-seo", () => {
     ).toBe(true);
   });
 
+  it("labels title and description length warnings as editorial targets", () => {
+    const findings = auditPages([
+      page(
+        "/short",
+        '<title>Short</title><meta name=description content="Too brief">',
+      ),
+    ]);
+    const messages = findings.map(
+      (finding: { message: string }) => finding.message,
+    );
+    expect(
+      messages.some((message: string) => message.includes("editorial target")),
+    ).toBe(true);
+  });
+
   it("includes the base in the expected canonical and flags noindex pages listed in the sitemap", () => {
     const description =
       "A description that is comfortably longer than fifty characters.";
