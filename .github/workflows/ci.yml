@@ -1386,7 +1386,7 @@ jobs:
           DEPLOY_OUTPUT: ${{ runner.temp }}/netlify-preview.json
           MESSAGE: "Preview at ${{ github.sha }}"
         run: |
-          yarn exec netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --site 268cf8fb-826b-421a-8a34-abd78bf9be1e --message "$MESSAGE" --json > "$DEPLOY_OUTPUT"
+          yarn workspace @bascik/adapter-netlify demo:deploy:preview --message "$MESSAGE" --json > "$DEPLOY_OUTPUT"
           url="$(node .github/scripts/netlify-preview-url.mjs "$DEPLOY_OUTPUT")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Netlify adapter Preview: $url" >> "$GITHUB_STEP_SUMMARY"

@@ -1546,9 +1546,18 @@ describe("CI stages and the deploy stage", () => {
     const upload = job.steps.find(
       (step) => step.name === "Upload a Preview version",
     )!;
+    // netlify-cli is a devDependency of the adapter workspace only, so the
+    // root workspace (`yarn exec netlify`) finds it only through a global install.
     expect(upload.text).toContain(
-      "--site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
+      "yarn workspace @bascik/adapter-netlify demo:deploy:preview",
     );
+    expect(upload.text).not.toMatch(/yarn exec netlify|npx netlify/);
+    const preview = JSON.parse(
+      readFileSync(join(repoDir, "adapters/netlify/package.json"), "utf8"),
+    ).scripts["demo:deploy:preview"] as string;
+    expect(preview).toContain("netlify deploy");
+    expect(preview).toContain("--site 268cf8fb-826b-421a-8a34-abd78bf9be1e");
+    expect(preview).not.toMatch(/--prod\b/);
     expect(upload.text).toContain('--json > "$DEPLOY_OUTPUT"');
     expect(upload.text).toContain('netlify-preview-url.mjs "$DEPLOY_OUTPUT"');
     expect(upload.text).not.toMatch(/--prod\b/);

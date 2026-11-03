@@ -29,6 +29,9 @@ Set the repository's `NETLIFY_AUTH_TOKEN` Actions secret to a Netlify token
 authorized to deploy the dedicated project. The token reaches only the draft
 upload step. A missing token or failed deployment fails the job and prevents
 publication of an incomplete preview table. No preview command uses `--prod`.
+CI uploads with `yarn workspace @bascik/adapter-netlify demo:deploy:preview`:
+`netlify-cli` is a devDependency of that workspace only, so a root
+`yarn exec netlify` works only where a global Netlify CLI happens to be installed.
 
 Run from the monorepo root:
 
