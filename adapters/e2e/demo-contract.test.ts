@@ -68,6 +68,15 @@ test.describe("shared adapter demo contract", () => {
         await expect(page.locator(`head link[href="${href}"]`)).toHaveCount(1);
       }
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+      const pathname = new URL(path, "http://example.test").pathname;
+      const file =
+        pathname === "/" ? "index.html" : `${pathname.slice(1)}.html`;
+      await expect(page.getByTestId("demo-source-link")).toHaveAttribute(
+        "href",
+        new RegExp(
+          `^https://github\\.com/bascikdev/bascik/blob/main/adapters/(cloudflare|netlify)/e2e/fixture/src/pages/${file.replace(".", "\\.")}$`,
+        ),
+      );
       const menu = page.getByTestId("demo-menu");
       await expect(menu).not.toHaveAttribute("open");
       await menu.locator("summary").click();
