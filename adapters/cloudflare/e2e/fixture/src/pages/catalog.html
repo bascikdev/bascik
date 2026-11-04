@@ -246,13 +246,20 @@
           <a href="/catalog?q=nothing-matches">a query with no match</a>.
         </p>
         <form class="search" method="get" action="/catalog">
-          <input
-            type="search"
-            name="q"
-            placeholder="Search books"
-            aria-label="Search books"
-            data-testid="catalog-search"
-          />
+          <script data-bascik-server>
+            import { html } from "@bascik/bascik/html";
+            export default function (request) {
+              const q = new URL(request.url).searchParams.get("q") ?? "";
+              return html`<input
+                type="search"
+                name="q"
+                value="${q}"
+                placeholder="Search books"
+                aria-label="Search books"
+                data-testid="catalog-search"
+              />`;
+            }
+          </script>
           <button type="submit">Search</button>
         </form>
         <div class="catalog-grid" data-testid="catalog-results">

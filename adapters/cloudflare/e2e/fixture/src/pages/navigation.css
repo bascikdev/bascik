@@ -80,6 +80,7 @@
 .docs-link {
   display: inline-flex;
   align-items: center;
+  gap: 0.25em;
   min-height: 44px;
   margin-left: auto;
   flex-shrink: 0;
@@ -91,6 +92,10 @@
   font-weight: 500;
   line-height: 22px;
   text-decoration: none;
+}
+
+.source-link + .docs-link {
+  margin-left: 0;
 }
 
 .docs-link:hover {
@@ -161,6 +166,15 @@ summary:focus-visible {
   @media (max-width: 400px) {
     .wordmark {
       flex-basis: 100%;
+    }
+
+    .platform {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
   }
 

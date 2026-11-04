@@ -68,6 +68,15 @@ test.describe("shared adapter demo contract", () => {
         await expect(page.locator(`head link[href="${href}"]`)).toHaveCount(1);
       }
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+      const pathname = new URL(path, "http://example.test").pathname;
+      const file =
+        pathname === "/" ? "index.html" : `${pathname.slice(1)}.html`;
+      await expect(page.getByTestId("demo-source-link")).toHaveAttribute(
+        "href",
+        new RegExp(
+          `^https://github\\.com/bascikdev/bascik/blob/main/adapters/(cloudflare|netlify)/e2e/fixture/src/pages/${file.replace(".", "\\.")}$`,
+        ),
+      );
       const menu = page.getByTestId("demo-menu");
       await expect(menu).not.toHaveAttribute("open");
       await menu.locator("summary").click();
@@ -225,12 +234,16 @@ test.describe("shared adapter demo contract", () => {
     await expect(results.getByTestId("book-card-title")).toHaveText([
       "Refactoring the Monolith",
     ]);
+    await expect(page.getByTestId("catalog-search")).toHaveValue("monolith");
     await page.goto("/catalog?q=nothing-matches");
     await expect(page.getByTestId("catalog-empty")).toBeVisible();
     await expect(results.getByTestId("book-card")).toHaveCount(0);
-    await page.goto(
-      `/catalog?q=${encodeURIComponent('<script data-testid="injected">bad()</script>')}`,
+    await expect(page.getByTestId("catalog-search")).toHaveValue(
+      "nothing-matches",
     );
+    const injection = '"><script data-testid="injected">bad()</script>';
+    await page.goto(`/catalog?q=${encodeURIComponent(injection)}`);
+    await expect(page.getByTestId("catalog-search")).toHaveValue(injection);
     await expect(page.getByTestId("catalog-empty")).toContainText("<script");
     await expect(page.getByTestId("injected")).toHaveCount(0);
   });

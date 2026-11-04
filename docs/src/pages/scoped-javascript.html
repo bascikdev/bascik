@@ -165,41 +165,6 @@
               });
           </script>
 
-          <diagram-figure
-            data-bascik-prop-title="Where a component script lands"
-          >
-            <diagram-row data-bascik-prop-direction="stack">
-              <diagram-panel
-                data-bascik-prop-label="Development server: the script stays after its component"
-              >
-                <code-block data-bascik-prop-lang="html">
-                  <script data-bascik-build>
-                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                    export default async () =>
-                      await extractDemoBlock(
-                        "./src/diagrams/scoped-javascript.md",
-                        "scoped-javascript-script-placement-dev",
-                      );
-                  </script>
-                </code-block>
-              </diagram-panel>
-              <diagram-panel
-                data-bascik-prop-label="Production build: the script moves to the end of the body"
-              >
-                <code-block data-bascik-prop-lang="html">
-                  <script data-bascik-build>
-                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                    export default async () =>
-                      await extractDemoBlock(
-                        "./src/diagrams/scoped-javascript.md",
-                        "scoped-javascript-script-placement-prod",
-                      );
-                  </script>
-                </code-block>
-              </diagram-panel>
-            </diagram-row>
-          </diagram-figure>
-
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
@@ -248,6 +213,122 @@
             export default async () =>
               await renderMdRange("./content/scoped-javascript.md", {
                 from: "Pitfall: Class-Based DOM Lookups",
+                to: "Where Component Scripts Run",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "Where Component Scripts Run",
+                to: "TypeScript in Component Scripts",
+              });
+          </script>
+
+          <diagram-figure
+            data-bascik-prop-title="Where a component script lands"
+          >
+            <diagram-row data-bascik-prop-direction="stack">
+              <diagram-panel
+                data-bascik-prop-label="Development server: the script stays after its component"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-script-placement-dev",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+              <diagram-panel
+                data-bascik-prop-label="Production build: the script moves to the end of the body"
+              >
+                <code-block data-bascik-prop-lang="html">
+                  <script data-bascik-build>
+                    import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                    export default async () =>
+                      await extractDemoBlock(
+                        "./src/diagrams/scoped-javascript.md",
+                        "scoped-javascript-script-placement-prod",
+                      );
+                  </script>
+                </code-block>
+              </diagram-panel>
+            </diagram-row>
+          </diagram-figure>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-javascript.md",
+                {
+                  from: "TypeScript in Component Scripts",
+                  to: "Multiple Script Blocks",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <!-- The Preview is this page's own TypeScript file, compiled and inlined by the docs build. -->
+          <component-demo data-bascik-prop-file="src/pages/counter.html">
+            <div data-bascik-slot="example">
+              <button
+                type="button"
+                id="page-counter"
+                data-testid="page-counter"
+              >
+                Clicked 0 times
+              </button>
+              <script src="./scoped-javascript-counter.ts"></script>
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "ts-page-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-js">
+              <code-block data-bascik-prop-lang="ts">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "ts-page-source-js",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-javascript.md",
+                      "ts-page-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "Multiple Script Blocks",
                 to: "Dynamic Runtime Classes",
               });
           </script>
@@ -345,65 +426,29 @@
             export default async () =>
               await renderMdRange(
                 "./content/scoped-javascript.md",
-                { from: "Supported Selectors", to: "How Scoping Works" },
+                {
+                  from: "Supported Selectors",
+                  to: "Source Maps and DevTools Debugging",
+                },
                 { stripDemoBlocks: true },
               );
           </script>
-          <!-- The Preview is this page's own TypeScript file, compiled and inlined by the docs build. -->
-          <component-demo data-bascik-prop-file="src/pages/counter.html">
-            <div data-bascik-slot="example">
-              <button
-                type="button"
-                id="page-counter"
-                data-testid="page-counter"
-              >
-                Clicked 0 times
-              </button>
-              <script src="./scoped-javascript-counter.ts"></script>
-            </div>
-            <div data-bascik-slot="source-usage">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-javascript.md",
-                      "ts-page-usage",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-js">
-              <code-block data-bascik-prop-lang="ts">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-javascript.md",
-                      "ts-page-source-js",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-javascript.md",
-                      "ts-page-output-html",
-                    );
-                </script>
-              </code-block>
-            </div>
-          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-javascript.md", {
+                from: "Source Maps and DevTools Debugging",
+                to: "Build-time Scripts",
+              });
+          </script>
+
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange(
                 "./content/scoped-javascript.md",
-                { from: "How Scoping Works" },
+                { from: "Build-time Scripts" },
                 { stripDemoBlocks: true },
               );
           </script>

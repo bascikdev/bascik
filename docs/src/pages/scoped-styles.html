@@ -37,17 +37,23 @@
             import { renderSectionLabel } from "@/lib/render-nav.ts";
             export default async () => renderSectionLabel("/scoped-styles");
           </script>
-          <!-- Intro and concise demo context rendered from docs/content/scoped-styles.md. -->
+          <!-- Intro, from docs/content/scoped-styles.md -->
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
-              (await renderMdRange("./content/scoped-styles.md", {
-                to: "Where Scoped CSS Can Live",
-              })) +
-              (await renderMdRange("./content/scoped-styles.md", {
-                from: "See it in action",
-                to: "Source and output",
-              }));
+              await renderMdRange("./content/scoped-styles.md", {
+                to: "Class Scoping",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-styles.md",
+                { from: "Class Scoping", to: "Element Selector Scoping" },
+                { stripDemoBlocks: true },
+              );
           </script>
 
           <component-demo data-bascik-prop-file="plan-card + alert-card">
@@ -123,93 +129,8 @@
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/scoped-styles.md", {
-                from: "Where Scoped CSS Can Live",
-                to: "Selector and animation lab",
-              });
-          </script>
-
-          <script data-bascik-build>
-            import { renderMdRange } from "@/lib/md-renderer.ts";
-            export default async () =>
-              await renderMdRange(
-                "./content/scoped-styles.md",
-                { from: "Selector and animation lab", to: "Class Scoping" },
-                { stripDemoBlocks: true },
-              );
-          </script>
-
-          <component-demo data-bascik-prop-file="src/components/scope-lab/">
-            <div data-bascik-slot="example">
-              <scope-lab />
-            </div>
-            <div data-bascik-slot="source-usage">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-styles.md",
-                      "scope-lab-usage",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-styles.md",
-                      "scope-lab-html",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-css">
-              <code-block data-bascik-prop-lang="css">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-styles.md",
-                      "scope-lab-css",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-styles.md",
-                      "scope-lab-output-html",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-css">
-              <code-block data-bascik-prop-lang="css">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/scoped-styles.md",
-                      "scope-lab-output-css",
-                    );
-                </script>
-              </code-block>
-            </div>
-          </component-demo>
-
-          <script data-bascik-build>
-            import { renderMdRange } from "@/lib/md-renderer.ts";
-            export default async () =>
-              await renderMdRange("./content/scoped-styles.md", {
-                from: "Class Scoping",
-                to: "Element Selector Scoping",
+                from: "Element Selector Scoping",
+                to: "CSS Custom Properties",
               });
           </script>
 
@@ -254,7 +175,7 @@
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/scoped-styles.md", {
-                from: "Element Selector Scoping",
+                from: "CSS Custom Properties",
                 to: "Using global design tokens in a component",
               });
           </script>
@@ -333,7 +254,94 @@
             export default async () =>
               await renderMdRange("./content/scoped-styles.md", {
                 from: "Using global design tokens in a component",
-                to: "See it in action",
+                to: "Selector and Animation Lab",
+              });
+          </script>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/scoped-styles.md",
+                {
+                  from: "Selector and Animation Lab",
+                  to: "Style Blocks and Companion Files",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo data-bascik-prop-file="src/components/scope-lab/">
+            <div data-bascik-slot="example">
+              <scope-lab />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-usage",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-output-html",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/scoped-styles.md",
+                      "scope-lab-output-css",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/scoped-styles.md", {
+                from: "Style Blocks and Companion Files",
               });
           </script>
 

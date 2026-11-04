@@ -2,94 +2,385 @@
 
 Scoped styles namespace a component's CSS at build time, keeping its selectors and animations from leaking into the rest of the page.
 
-## Where Scoped CSS Can Live
+## Class Scoping
 
-You can define component CSS in either of these places:
+Write ordinary class names. Bascik prefixes every class a component's CSS declares with the component's name, in the CSS and in the HTML, so two components can both use `.card` and never style each other.
 
-- one or more inline `<style>` tags inside the component HTML
-- a paired `.css` file next to the component HTML
+Two components sit side by side below. Their markup is identical: both use `.card`, `.tag`, and `.title`, and both style a bare `p`. Each keeps its own look, and neither stylesheet reaches the other card or the page around them. Open Source and Output to compare the class names.
 
-Both approaches are fully equivalent in functionality. At build time, Bascik extracts inline `<style>` tags from component HTML files, applies the full scoping pipeline, deduplicates the CSS across all instances on the page, and injects the compiled styles into the page `<head>`. Component markup in the `<body>` stays clean with no `<style>` tags left behind.
-
-<!-- demo:style-hoisting-example -->
+<!-- demo:source-usage -->
 
 ```html
-<!-- src/components/site-card.html -->
-<style>
-  .card {
-    padding: 20px;
-    border: 1px solid #3a3d40;
-  }
-</style>
+<plan-card></plan-card> <alert-card></alert-card>
+```
+
+<!-- demo:source-html -->
+
+```html
+<!-- src/components/plan-card/plan-card.html -->
 <article class="card">
-  <div data-bascik-slot></div>
+  <span class="tag">plan-card</span>
+  <h3 class="title">Pro plan</h3>
+  <p>Same class names as the card beside it.</p>
 </article>
 
-<!-- src/pages/index.html -->
-<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <site-card><p>Card content</p></site-card>
-  </body>
-</html>
+<!-- src/components/alert-card/alert-card.html -->
+<article class="card">
+  <span class="tag">alert-card</span>
+  <h3 class="title">Disk almost full</h3>
+  <p>Same class names, its own styles.</p>
+</article>
+```
 
+<!-- demo:source-css -->
+
+```css
+/* src/components/plan-card/plan-card.css */
+.card {
+  padding: 24px;
+  border-radius: 16px;
+  background: #1d2612;
+  border: 1px solid rgba(211, 255, 141, 0.35);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d3ff8d;
+  color: #16210a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-size: 1.3rem;
+  color: #d3ff8d;
+}
+
+p {
+  margin: 0;
+  color: #c9d6b5;
+}
+
+/* src/components/alert-card/alert-card.css */
+.card {
+  padding: 20px;
+  background: #2a1712;
+  border-left: 4px solid #ff8a5c;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #ff8a5c;
+  color: #ff8a5c;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a5c;
+}
+
+p {
+  margin: 0;
+  color: #e6c4b8;
+  font-style: italic;
+}
+```
+
+<!-- demo:output-html -->
+
+```html
+<article class="bascik__plan-card__card">
+  <span class="bascik__plan-card__tag">plan-card</span>
+  <h3 class="bascik__plan-card__title">Pro plan</h3>
+  <p class="b_el_plan-card_p">Same class names as the card beside it.</p>
+</article>
+
+<article class="bascik__alert-card__card">
+  <span class="bascik__alert-card__tag">alert-card</span>
+  <h3 class="bascik__alert-card__title">Disk almost full</h3>
+  <p class="b_el_alert-card_p">Same class names, its own styles.</p>
+</article>
+```
+
+<!-- demo:output-css -->
+
+```css
+/* Hoisted into the page <head>, one block per component */
+.bascik__plan-card__card {
+  padding: 24px;
+  border-radius: 16px;
+  background: #1d2612;
+  border: 1px solid rgba(211, 255, 141, 0.35);
+}
+
+.bascik__plan-card__tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d3ff8d;
+  color: #16210a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.bascik__plan-card__title {
+  margin: 12px 0 6px;
+  font-size: 1.3rem;
+  color: #d3ff8d;
+}
+
+.b_el_plan-card_p {
+  margin: 0;
+  color: #c9d6b5;
+}
+
+.bascik__alert-card__card {
+  padding: 20px;
+  background: #2a1712;
+  border-left: 4px solid #ff8a5c;
+}
+
+.bascik__alert-card__tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #ff8a5c;
+  color: #ff8a5c;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.bascik__alert-card__title {
+  margin: 12px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a5c;
+}
+
+.b_el_alert-card_p {
+  margin: 0;
+  color: #e6c4b8;
+  font-style: italic;
+}
+```
+
+## Element Selector Scoping
+
+A bare element selector such as `p { }` styles only the component's own paragraphs. Bascik turns it into a generated class and adds that class to the matching elements in the component:
+
+```html
+<!-- src/components/frother-status.html -->
+<style>
+  p {
+    margin: 0;
+  }
+</style>
+<p>Heating milk</p>
+```
+
+```html
 <!-- dist/index.html -->
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <style>
-      .bascik__site-card__card {
-        padding: 20px;
-        border: 1px solid #3a3d40;
-      }
-    </style>
-  </head>
-  <body>
-    <article class="bascik__site-card__card">
-      <p>Card content</p>
-    </article>
-  </body>
-</html>
+<style>
+  .b_el_frother-status_p {
+    margin: 0;
+  }
+</style>
+<p class="b_el_frother-status_p">Heating milk</p>
 ```
 
-If a component contains multiple `<style>` tags or both a paired `.css` file and inline `<style>` tags, Bascik combines all stylesheets before scoping.
+> **Isolation guarantee:** Element styles only affect elements inside the component. A `p {}` rule in `my-comp.css` will never affect `<p>` tags on the page or in other components.
 
-> **Readability & Maintainability:** While Bascik supports multiple `<style>` tags in a single component file, using multiple `<style>` tags (or mixing an inline `<style>` tag with a companion `.css` file) is not recommended for readability and maintainability. Choose one stylesheet pattern per component.
+## Global Utility & Accessibility Classes
 
-Use paired files for most components so the HTML and CSS stay easy to scan. Inline `<style>` tags are convenient when keeping a small component in a single file is preferred.
+Class names in a component's HTML template are only scoped if they are declared in the component's stylesheet (`.css` file or inline `<style>` block).
 
-## CSS File Pairing
+If a class name is **not** defined in the component's CSS, Bascik leaves it unscoped. This allows global utility classes (such as `skip-link`, `flex`, `hidden`, or global design tokens) defined in your global stylesheet (e.g. `src/css/styles.css`) to pass through and match normally across any component.
 
-Scoped styles are defined in a `.css` file with the same name as the component, placed in the same directory:
+This applies to every component, including one with no stylesheet at all. A header or footer that relies entirely on a global stylesheet needs no `.css` file and no placeholder comment: none of its classes are defined by the component, so none are scoped. The same holds for class names a component's script passes to `classList`, `querySelector`, or `className`.
 
-```text
-src/components/
-  site-nav/
-    site-nav.html
-    site-nav.css  ← scoped to site-nav
+> **A component without a stylesheet has no class isolation.** Scoping exists to keep a component's own rules from colliding with other components. With no rules of its own, there is nothing to isolate, so a script that queries `.item` in such a component matches every `.item` on the page. Add a stylesheet that defines the class to scope it.
+
+```html
+<!-- src/components/site-nav.html -->
+<a href="#main-content" class="skip-link logo">Skip to main content</a>
 ```
 
-## How Scoped Names Are Formed
-
-Class names are scoped to the **component type** so every instance of the same component shares identical scoped class names. This is intentional: it allows Bascik to emit a single `<style>` block per component regardless of how many times it appears on the page.
-
-ID attributes are scoped per **component instance** so multiple instances on the same page always have distinct DOM identifiers. `name` attributes ship as written: a `name` is the key a form field is submitted under and the group a radio or `<details>` belongs to, a contract with the rest of the page rather than a private identifier. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups), which also covers the `scoping.attributes.name` opt-in that scopes `name` per instance.
-
-```text
-class      →  bascik__<componentName>__<originalName>
-id         →  bascik__<componentName>__<instanceId>__<originalName>
-name       →  bascik__<componentName>__<instanceId>__<originalName>   (only with scoping.attributes.name: true)
-p { }      →  .b_el_<componentName>_p      (class added to every <p> in the template)
-#btn { }   →  .b_id_<componentName>_btn    (class added to the element with id="btn")
+```css
+/* src/components/site-nav.css */
+/* .logo is declared locally → Bascik scopes it */
+.logo {
+  display: inline-flex;
+  align-items: center;
+}
 ```
 
-Element and `#id` rules become classes because components have no shadow DOM: a bare `p { }` would style every paragraph on the page, and the scoped `id` differs per instance, so one rule could not match them all. Their names start with `b_el_` and `b_id_` so they never equal a class you write (`.el__p` becomes `bascik__<componentName>__el__p`). [The Scoping System](/internals/scoping-system#the-naming-scheme) explains the scheme in full.
+```css
+/* src/css/styles.css (global stylesheet) */
+/* .skip-link is NOT in site-nav.css → Bascik leaves it unscoped */
+.skip-link {
+  position: absolute;
+  top: -100px;
+}
+.skip-link:focus {
+  top: 16px;
+}
+```
 
-In production builds (`minify.identifiers: true`, the default), these verbose names are hashed to short alphanumeric strings such as `b2Y4G9eD1K8b` for name compression. The HTML, CSS, and JavaScript are all rewritten with the same hashed names so they stay in sync. This is entirely a build-time transformation with no runtime overhead.
+```html
+<!-- dist/index.html (compiled output) -->
+<a href="#main-content" class="skip-link bascik__site-nav__logo">
+  Skip to main content
+</a>
+```
 
-## Selector and animation lab
+## CSS Custom Properties
 
-This component combines a class, an ID selector, bare `h3` and `p` selectors, a local custom property, a media query, and a keyframe animation. Inspect Source and Output to see Bascik rewrite them while the meter sweeps in the preview.
+`--var-name` declarations in a component's CSS are automatically scoped. All `var(--var-name)` references within the same file are updated to match, so custom properties stay isolated to their component. The same names are renamed inside `style` attributes in the component's template, so a per-element override such as `<li style="--i: 2">` still reaches the scoped `var(--i)`. A `style` attribute on the component tag where a page uses it is not renamed: it belongs to the page, so a property the component declares cannot be overridden from there. The same holds inside a template: a `style` on a custom element tag, such as a child component's tag, is passed through as written, so `<child-btn style="--accent: blue">` sets the global `--accent` even when the parent declares an `--accent` of its own, and a child that reads `var(--accent)` without declaring it receives `blue`.
+
+> **Only locally-declared properties are scoped.** If a component uses `var(--global-var)` but doesn't declare `--global-var` in its own CSS, that reference is left untouched so it still resolves from a global stylesheet.
+
+### Using global design tokens in a component
+
+Define your design tokens once in a global stylesheet, then consume them inside any component. Because the component never declares those properties locally, Bascik leaves the `var()` references as-is and they resolve from the global stylesheet at render time.
+
+```css
+/* src/styles.css: design tokens, linked in every page <head> */
+:root {
+  --brand: #d3ff8d;
+  --card-bg: #1e2022;
+  --text-muted: #8d929e;
+}
+```
+
+```html
+<!-- src/components/brand-card.html -->
+<style>
+  .card {
+    padding: 24px 28px;
+    background: var(--card-bg); /* global: Bascik leaves untouched */
+    border-top: 3px solid var(--brand);
+    border-radius: 10px;
+  }
+  .label {
+    color: var(--text-muted);
+  }
+</style>
+<div class="card">
+  <p class="label" data-bascik-prop-label></p>
+  <div data-bascik-slot></div>
+</div>
+```
+
+```css
+/* dist/ output: class names scoped, var() refs preserved */
+.bascik__brand-card__card {
+  padding: 24px 28px;
+  background: var(--card-bg);
+  border-top: 3px solid var(--brand);
+  border-radius: 10px;
+}
+.bascik__brand-card__label {
+  color: var(--text-muted);
+}
+```
+
+The [Example Components](/example-components) use this pattern: each reads tokens such as `var(--color-surface, ...)` with a fallback, so it works with or without a token stylesheet. The [Modal Dialog](/example-components/modal-dialog) shows `html:has()` for a scroll lock, and the [Popover Menu](/example-components/popover-menu) shows anchor positioning without `anchor-name`.
+
+## @media Support
+
+Media queries work as written. Class names inside them are scoped like any other rule:
+
+```css
+/* you write */
+@media (prefers-reduced-motion: reduce) {
+  .meter {
+    animation: none;
+  }
+}
+
+/* Bascik emits */
+@media (prefers-reduced-motion: reduce) {
+  .bascik__frother-status__meter {
+    animation: none;
+  }
+}
+```
+
+## @keyframes Scoping
+
+Keyframe names are prefixed too, and so are the `animation` declarations that use them, so two components can both define `pulse` without colliding:
+
+```css
+/* you write */
+.meter {
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.4;
+  }
+}
+
+/* Bascik emits */
+.bascik__frother-status__meter {
+  animation: bascik__frother-status__keyframe__pulse 1s infinite alternate;
+}
+
+@keyframes bascik__frother-status__keyframe__pulse {
+  to {
+    opacity: 0.4;
+  }
+}
+```
+
+## CSS ID Selectors
+
+CSS `#id` selectors are converted to scoped class selectors, and the generated class is injected onto the matching element in the HTML. This means `#btn {}` in a component is fully isolated, the same ID name in another component or on the page produces a completely different selector.
+
+Each instance still gets its own `id`, while the generated class is shared, so one rule styles every instance:
+
+```html
+<!-- you write -->
+<style>
+  #heat {
+    border-radius: 999px;
+  }
+</style>
+<span id="heat"></span>
+
+<!-- Bascik emits, for two <frother-status /> tags -->
+<style>
+  .b_id_frother-status_heat {
+    border-radius: 999px;
+  }
+</style>
+<span
+  class="b_id_frother-status_heat"
+  id="bascik__frother-status__2f1cd31f__heat"
+></span>
+<span
+  class="b_id_frother-status_heat"
+  id="bascik__frother-status__2fecad85__heat"
+></span>
+```
+
+> **Specificity note:** Converting `#id` to a class drops specificity from `(0,1,0,0)` to `(0,0,1,0)`. `[id]` and `[id="…"]` attribute-selector forms are stripped at compile time, use a class selector instead.
+
+## Selector and Animation Lab
+
+This component puts everything above together: a class, an ID selector, bare `h3` and `p` selectors, a local custom property, a media query, and a keyframe animation. Inspect Source and Output to see Bascik rewrite them while the meter sweeps in the preview.
 
 <!-- demo:scope-lab-usage -->
 
@@ -215,82 +506,26 @@ p {
 }
 ```
 
-## Class Scoping
+## Style Blocks and Companion Files
 
-Every class name in the `.css` file is prefixed with the component's name. The corresponding HTML attributes are updated to match.
+Component CSS can live in a `<style>` block inside the component or in a `.css` file with the same name beside it. [Components](/components#add-styles-in-the-same-file) shows both. They work the same: Bascik scopes the CSS, writes it once per page however many instances there are, and moves it into the page `<head>`, so no `<style>` tags are left in the body.
 
-Both demos on this page show the source class names under Source and their rewritten names under Output.
+If a component contains multiple `<style>` tags or both a paired `.css` file and inline `<style>` tags, Bascik combines all stylesheets before scoping.
 
-## Global Utility & Accessibility Classes
+> **Readability & Maintainability:** While Bascik supports multiple `<style>` tags in a single component file, using multiple `<style>` tags (or mixing an inline `<style>` tag with a companion `.css` file) is not recommended for readability and maintainability. Choose one stylesheet pattern per component.
 
-Class names in a component's HTML template are only scoped if they are declared in the component's stylesheet (`.css` file or inline `<style>` block).
+Use paired files for most components so the HTML and CSS stay easy to scan. Inline `<style>` tags are convenient when keeping a small component in a single file is preferred.
 
-If a class name is **not** defined in the component's CSS, Bascik leaves it unscoped. This allows global utility classes (such as `skip-link`, `flex`, `hidden`, or global design tokens) defined in your global stylesheet (e.g. `src/css/styles.css`) to pass through and match normally across any component.
+## CSS @import
 
-This applies to every component, including one with no stylesheet at all. A header or footer that relies entirely on a global stylesheet needs no `.css` file and no placeholder comment: none of its classes are defined by the component, so none are scoped. The same holds for class names a component's script passes to `classList`, `querySelector`, or `className`.
+Bascik supports standard CSS `@import` statements in component CSS (`.css` files and inline `<style>` blocks):
 
-> **A component without a stylesheet has no class isolation.** Scoping exists to keep a component's own rules from colliding with other components. With no rules of its own, there is nothing to isolate, so a script that queries `.item` in such a component matches every `.item` on the page. Add a stylesheet that defines the class to scope it.
-
-```html
-<!-- src/components/site-nav.html -->
-<a href="#main-content" class="skip-link logo">Skip to main content</a>
-```
-
-```css
-/* src/components/site-nav.css */
-/* .logo is declared locally → Bascik scopes it */
-.logo {
-  display: inline-flex;
-  align-items: center;
-}
-```
-
-```css
-/* src/css/styles.css (global stylesheet) */
-/* .skip-link is NOT in site-nav.css → Bascik leaves it unscoped */
-.skip-link {
-  position: absolute;
-  top: -100px;
-}
-.skip-link:focus {
-  top: 16px;
-}
-```
-
-```html
-<!-- dist/index.html (compiled output) -->
-<a href="#main-content" class="skip-link bascik__site-nav__logo">
-  Skip to main content
-</a>
-```
-
-## Element Selector Scoping
-
-Bare element selectors like `p {}` or `h2 {}` are converted to generated class selectors and injected onto matching elements inside the component.
-
-The selector and animation lab above uses this exact pattern. Its Source CSS contains bare selectors; its Output tabs show the generated classes in both CSS and HTML.
-
-> **Isolation guarantee:** Element styles only affect elements inside the component. A `p {}` rule in `my-comp.css` will never affect `<p>` tags on the page or in other components.
-
-## @media Support
-
-Media queries work normally. Class names inside them are scoped like any other rule:
-
-The selector and animation lab includes a `prefers-reduced-motion` media query. Open Output → CSS to see its `.meter` selector rewritten inside the unchanged `@media` wrapper.
-
-## @keyframes Scoping
-
-Keyframe names are also prefixed so animations from different components never collide:
-
-The sweeping meter in the lab is driven by `@keyframes scope-sweep`. Open Output → CSS to see the scoped keyframe name and rewritten `animation` declaration.
-
-## CSS ID Selectors
-
-CSS `#id` selectors are converted to scoped class selectors, and the generated class is injected onto the matching element in the HTML. This means `#btn {}` in a component is fully isolated, the same ID name in another component or on the page produces a completely different selector.
-
-The lab styles `#signal`. Output → CSS shows its generated class selector; Output → HTML shows that class injected beside the per-instance scoped `id`.
-
-> **Specificity note:** Converting `#id` to a class drops specificity from `(0,1,0,0)` to `(0,0,1,0)`. `[id]` and `[id="…"]` attribute-selector forms are stripped at compile time, use a class selector instead.
+- **Local file imports:** Local relative paths (e.g. `@import "./tokens.css"`, `@import "../shared/theme.css"`) are resolved and inlined recursively at build time. All selectors, custom properties, and keyframes inside imported stylesheets are automatically scoped to the component instance.
+- **Remote URL imports:** External URLs (e.g. `@import "https://fonts.googleapis.com/..."`) are preserved and automatically hoisted to the top of the compiled stylesheet per W3C CSS specifications.
+- **Conditions & Cascade Layers:** Optional conditions such as `layer(...)`, `supports(...)`, and media query lists attached to `@import` rules are fully preserved and wrapped around the inlined CSS.
+- **Missing files:** An import whose file does not exist logs a warning and is replaced by a `/* @import "…" not found */` comment. The rules after it are still scoped and emitted.
+- **Comments and strings:** `@import` text inside a CSS comment or a quoted string is left as written.
+- **Dev server:** Editing, creating, or deleting an imported stylesheet rebuilds and reloads every page that uses a component importing it, directly or through another import. The stylesheet can live anywhere, including outside the components directory, as long as a dev watcher covers it (`directory.pages`, `directory.components`, or `pipeline.watchPaths`).
 
 ## CSS Fragment References
 
@@ -315,91 +550,23 @@ IDs are scoped per component instance. Under the default `deduplicateCss: true`,
 
 References to IDs inside a preserved subtree remain literal. Use [Preserve Scoping](/preserve) when another tool owns the SVG ID graph.
 
-## CSS Custom Properties
+## How Scoped Names Are Formed
 
-`--var-name` declarations in a component's CSS are automatically scoped. All `var(--var-name)` references within the same file are updated to match, so custom properties stay isolated to their component. The same names are renamed inside `style` attributes in the component's template, so a per-element override such as `<li style="--i: 2">` still reaches the scoped `var(--i)`. A `style` attribute on the component tag where a page uses it is not renamed: it belongs to the page, so a property the component declares cannot be overridden from there. The same holds inside a template: a `style` on a custom element tag, such as a child component's tag, is passed through as written, so `<child-btn style="--accent: blue">` sets the global `--accent` even when the parent declares an `--accent` of its own, and a child that reads `var(--accent)` without declaring it receives `blue`.
+Class names are scoped to the **component type** so every instance of the same component shares identical scoped class names. This is intentional: it allows Bascik to emit a single `<style>` block per component regardless of how many times it appears on the page.
 
-The lab declares `--signal-color` and uses it for the animated indicator. Its Output CSS shows both the scoped declaration and rewritten `var()` reference.
+ID attributes are scoped per **component instance** so multiple instances on the same page always have distinct DOM identifiers. `name` attributes ship as written: a `name` is the key a form field is submitted under and the group a radio or `<details>` belongs to, a contract with the rest of the page rather than a private identifier. See [Component Best Practices](/component-best-practices#name-form-controls-and-groups), which also covers the `scoping.attributes.name` opt-in that scopes `name` per instance.
 
-> **Only locally-declared properties are scoped.** If a component uses `var(--global-var)` but doesn't declare `--global-var` in its own CSS, that reference is left untouched so it still resolves from a global stylesheet.
-
-### Using global design tokens in a component
-
-Define your design tokens once in a global stylesheet, then consume them inside any component. Because the component never declares those properties locally, Bascik leaves the `var()` references as-is and they resolve from the global stylesheet at render time.
-
-```css
-/* src/styles.css: design tokens, linked in every page <head> */
-:root {
-  --brand: #d3ff8d;
-  --card-bg: #1e2022;
-  --text-muted: #8d929e;
-}
+```text
+class      →  bascik__<componentName>__<originalName>
+id         →  bascik__<componentName>__<instanceId>__<originalName>
+name       →  bascik__<componentName>__<instanceId>__<originalName>   (only with scoping.attributes.name: true)
+p { }      →  .b_el_<componentName>_p      (class added to every <p> in the template)
+#btn { }   →  .b_id_<componentName>_btn    (class added to the element with id="btn")
 ```
 
-```html
-<!-- src/components/brand-card.html -->
-<style>
-  .card {
-    padding: 24px 28px;
-    background: var(--card-bg); /* global: Bascik leaves untouched */
-    border-top: 3px solid var(--brand);
-    border-radius: 10px;
-  }
-  .label {
-    color: var(--text-muted);
-  }
-</style>
-<div class="card">
-  <p class="label" data-bascik-prop-label></p>
-  <div data-bascik-slot></div>
-</div>
-```
+Element and `#id` rules become classes because components have no shadow DOM: a bare `p { }` would style every paragraph on the page, and the scoped `id` differs per instance, so one rule could not match them all. Their names start with `b_el_` and `b_id_` so they never equal a class you write (`.el__p` becomes `bascik__<componentName>__el__p`). [The Scoping System](/internals/scoping-system#the-naming-scheme) explains the scheme in full.
 
-```css
-/* dist/ output: class names scoped, var() refs preserved */
-.bascik__brand-card__card {
-  padding: 24px 28px;
-  background: var(--card-bg);
-  border-top: 3px solid var(--brand);
-  border-radius: 10px;
-}
-.bascik__brand-card__label {
-  color: var(--text-muted);
-}
-```
-
-The [Example Components](/example-components) use this pattern: each reads tokens such as `var(--color-surface, ...)` with a fallback, so it works with or without a token stylesheet. The [Modal Dialog](/example-components/modal-dialog) shows `html:has()` for a scroll lock, and the [Popover Menu](/example-components/popover-menu) shows anchor positioning without `anchor-name`.
-
-## CSS @import
-
-Bascik supports standard CSS `@import` statements in component CSS (`.css` files and inline `<style>` blocks):
-
-- **Local file imports:** Local relative paths (e.g. `@import "./tokens.css"`, `@import "../shared/theme.css"`) are resolved and inlined recursively at build time. All selectors, custom properties, and keyframes inside imported stylesheets are automatically scoped to the component instance.
-- **Remote URL imports:** External URLs (e.g. `@import "https://fonts.googleapis.com/..."`) are preserved and automatically hoisted to the top of the compiled stylesheet per W3C CSS specifications.
-- **Conditions & Cascade Layers:** Optional conditions such as `layer(...)`, `supports(...)`, and media query lists attached to `@import` rules are fully preserved and wrapped around the inlined CSS.
-- **Missing files:** An import whose file does not exist logs a warning and is replaced by a `/* @import "…" not found */` comment. The rules after it are still scoped and emitted.
-- **Comments and strings:** `@import` text inside a CSS comment or a quoted string is left as written.
-- **Dev server:** Editing, creating, or deleting an imported stylesheet rebuilds and reloads every page that uses a component importing it, directly or through another import. The stylesheet can live anywhere, including outside the components directory, as long as a dev watcher covers it (`directory.pages`, `directory.components`, or `pipeline.watchPaths`).
-
-## Toggling Scoping
-
-Attribute scoping can be controlled in [`bascik.config.ts`](/configuration). The following is an illustrative reference showing the defaults, so do not add it unless a project needs to disable one of these options:
-
-```ts
-import { defineConfig } from "@bascik/bascik/config";
-
-export default defineConfig({
-  scoping: {
-    attributes: {
-      class: true, // scope class names
-      id: true, // scope id attributes
-      name: false, // name ships as written (true scopes it per instance)
-    },
-  },
-});
-```
-
-> **MDN reference.** Scoped CSS changes how selectors are rewritten at build time, but the CSS you write is still normal CSS. Use [MDN's CSS reference](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference) as the primary source for selectors, at-rules, and properties.
+In production builds (`minify.identifiers: true`, the default), these verbose names are hashed to short alphanumeric strings such as `b2Y4G9eD1K8b` for name compression. The HTML, CSS, and JavaScript are all rewritten with the same hashed names so they stay in sync. This is entirely a build-time transformation with no runtime overhead.
 
 ## Class Selectors in Component Scripts
 
@@ -517,6 +684,26 @@ Given two instances of `<my-card>` on the same page:
 
 Using the `id`-based pattern with `getElementById()` is recommended because it gives you per-instance JS isolation while keeping `deduplicateCss: true` for minimal CSS payload.
 
+## Toggling Scoping
+
+Attribute scoping can be controlled in [`bascik.config.ts`](/configuration). The following is an illustrative reference showing the defaults, so do not add it unless a project needs to disable one of these options:
+
+```ts
+import { defineConfig } from "@bascik/bascik/config";
+
+export default defineConfig({
+  scoping: {
+    attributes: {
+      class: true, // scope class names
+      id: true, // scope id attributes
+      name: false, // name ships as written (true scopes it per instance)
+    },
+  },
+});
+```
+
+> **MDN reference.** Scoped CSS changes how selectors are rewritten at build time, but the CSS you write is still normal CSS. Use [MDN's CSS reference](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference) as the primary source for selectors, at-rules, and properties.
+
 ## Vendor Prefixing & BYOMinifier Post-Processing (PostCSS, LightningCSS)
 
 Bascik's built-in CSS scoping pipeline is ultra-fast, zero-dependency, and lightweight. It handles selector scoping, custom property isolation, and whitespace minification out of the box.
@@ -572,180 +759,3 @@ When configured, Bascik runs your custom `minify.css` transformer on all scoped 
 This guide focuses on the CSS behavior you write and observe. The compiler implementation is documented separately.
 
 > **Under the hood.** Read the [Scoping System internals](/internals/scoping-system) for the scoping passes, generated attribute maps, selector transformations, and deduplication model.
-
-## See it in action
-
-Two components sit side by side on the same page. Their markup is identical: both use `.card`, `.tag`, and `.title`, and both style a bare `p`. Each still keeps its own look, because Bascik rewrites every selector into its component's namespace. Neither stylesheet reaches the other card or the page around them.
-
-### Source and output
-
-**Source** (`plan-card` and `alert-card`, each an `.html` file with a paired `.css` file):
-
-<!-- demo:source-usage -->
-
-```html
-<plan-card></plan-card> <alert-card></alert-card>
-```
-
-<!-- demo:source-html -->
-
-```html
-<!-- src/components/plan-card/plan-card.html -->
-<article class="card">
-  <span class="tag">plan-card</span>
-  <h3 class="title">Pro plan</h3>
-  <p>Same class names as the card beside it.</p>
-</article>
-
-<!-- src/components/alert-card/alert-card.html -->
-<article class="card">
-  <span class="tag">alert-card</span>
-  <h3 class="title">Disk almost full</h3>
-  <p>Same class names, its own styles.</p>
-</article>
-```
-
-<!-- demo:source-css -->
-
-```css
-/* src/components/plan-card/plan-card.css */
-.card {
-  padding: 24px;
-  border-radius: 16px;
-  background: #1d2612;
-  border: 1px solid rgba(211, 255, 141, 0.35);
-}
-
-.tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: #d3ff8d;
-  color: #16210a;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.title {
-  margin: 12px 0 6px;
-  font-size: 1.3rem;
-  color: #d3ff8d;
-}
-
-p {
-  margin: 0;
-  color: #c9d6b5;
-}
-
-/* src/components/alert-card/alert-card.css */
-.card {
-  padding: 20px;
-  background: #2a1712;
-  border-left: 4px solid #ff8a5c;
-}
-
-.tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border: 1px solid #ff8a5c;
-  color: #ff8a5c;
-  font-family: ui-monospace, monospace;
-  font-size: 0.7rem;
-}
-
-.title {
-  margin: 12px 0 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #ff8a5c;
-}
-
-p {
-  margin: 0;
-  color: #e6c4b8;
-  font-style: italic;
-}
-```
-
-**Compiled output** (each class and element selector carries its component's name):
-
-<!-- demo:output-html -->
-
-```html
-<article class="bascik__plan-card__card">
-  <span class="bascik__plan-card__tag">plan-card</span>
-  <h3 class="bascik__plan-card__title">Pro plan</h3>
-  <p class="b_el_plan-card_p">Same class names as the card beside it.</p>
-</article>
-
-<article class="bascik__alert-card__card">
-  <span class="bascik__alert-card__tag">alert-card</span>
-  <h3 class="bascik__alert-card__title">Disk almost full</h3>
-  <p class="b_el_alert-card_p">Same class names, its own styles.</p>
-</article>
-```
-
-<!-- demo:output-css -->
-
-```css
-/* Hoisted into the page <head>, one block per component */
-.bascik__plan-card__card {
-  padding: 24px;
-  border-radius: 16px;
-  background: #1d2612;
-  border: 1px solid rgba(211, 255, 141, 0.35);
-}
-
-.bascik__plan-card__tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: #d3ff8d;
-  color: #16210a;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.bascik__plan-card__title {
-  margin: 12px 0 6px;
-  font-size: 1.3rem;
-  color: #d3ff8d;
-}
-
-.b_el_plan-card_p {
-  margin: 0;
-  color: #c9d6b5;
-}
-
-.bascik__alert-card__card {
-  padding: 20px;
-  background: #2a1712;
-  border-left: 4px solid #ff8a5c;
-}
-
-.bascik__alert-card__tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border: 1px solid #ff8a5c;
-  color: #ff8a5c;
-  font-family: ui-monospace, monospace;
-  font-size: 0.7rem;
-}
-
-.bascik__alert-card__title {
-  margin: 12px 0 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #ff8a5c;
-}
-
-.b_el_alert-card_p {
-  margin: 0;
-  color: #e6c4b8;
-  font-style: italic;
-}
-```

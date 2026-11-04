@@ -2,14 +2,29 @@
 
 Components are the core building block in Bascik. Each component is a `.html` file in `src/components/`. The file name becomes the tag name used in your pages and in other components.
 
-## HTML with Companion CSS
+## Your First Component
 
-Components can pair an HTML file with a companion stylesheet and need no JavaScript.
+A component is a file of vanilla HTML. Save it as `src/components/hello-card.html`, then write `<hello-card />` in any page, as many times as you like. The file name is the tag name, so there is nothing to import or register.
 
-<!-- demo:source-usage-hello -->
+At build time Bascik swaps each tag for the component's markup, and the page ships as vanilla HTML. Components can use other components the same way.
+
+<!-- demo:source-html-first -->
 
 ```html
-<!DOCTYPE html>
+<article>
+  <p>One file. One tag.</p>
+  <h3>Plain HTML, ready to reuse.</h3>
+  <p>
+    Bascik replaces the custom tag at build time and ships the finished markup.
+  </p>
+</article>
+```
+
+<!-- demo:source-usage-first -->
+
+```html
+<!-- src/pages/index.html -->
+<!doctype html>
 <html lang="en">
   <body>
     <hello-card />
@@ -17,9 +32,65 @@ Components can pair an HTML file with a companion stylesheet and need no JavaScr
 </html>
 ```
 
-<!-- demo:source-html-hello -->
+<!-- demo:output-html-first -->
 
 ```html
+<!-- dist/index.html -->
+<!doctype html>
+<html lang="en">
+  <body>
+    <article>
+      <p>One file. One tag.</p>
+      <h3>Plain HTML, ready to reuse.</h3>
+      <p>
+        Bascik replaces the custom tag at build time and ships the finished
+        markup.
+      </p>
+    </article>
+  </body>
+</html>
+```
+
+## Add Styles in the Same File
+
+Put a `<style>` block above the markup. Bascik scopes it to the component at build time, so `article` and `.body` style only `hello-card`, never the rest of the page, and short class names are safe. The build renames the selectors and the elements they match, and moves the CSS into the page's `<head>`.
+
+> **More on the next page.** [Scoped Styles](/scoped-styles) covers exactly how class names and selectors are namespaced and what CSS patterns are supported.
+
+<!-- demo:source-html-styled -->
+
+```html
+<style>
+  article {
+    width: min(100%, 32rem);
+    padding: 24px;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 6px;
+  }
+
+  .kicker {
+    margin: 0 0 10px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  h3 {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-size: 1.1rem;
+  }
+
+  .body {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+</style>
 <article>
   <p class="kicker">One file. One tag.</p>
   <h3>Plain HTML, ready to reuse.</h3>
@@ -29,46 +100,11 @@ Components can pair an HTML file with a companion stylesheet and need no JavaScr
 </article>
 ```
 
-<!-- demo:source-css-hello -->
-
-```css
-article {
-  width: min(100%, 32rem);
-  padding: 24px;
-  background: var(--elevated);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
-  border-radius: 6px;
-}
-
-.kicker {
-  margin: 0 0 10px;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-h3 {
-  margin: 0 0 8px;
-  color: var(--text);
-  font-size: 1.1rem;
-}
-
-.body {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-```
-
-<!-- demo:output-html-hello -->
+<!-- demo:output-html-styled -->
 
 ```html
 <!-- dist/index.html -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <style>
@@ -86,7 +122,6 @@ h3 {
         font-family: var(--font-mono);
         font-size: 0.75rem;
         font-weight: 700;
-        letter-spacing: 0;
         text-transform: uppercase;
       }
       .b_el_hello-card_h3 {
@@ -103,11 +138,9 @@ h3 {
   </head>
   <body>
     <article class="b_el_hello-card_article">
-      <p class="b_el_hello-card_p bascik__hello-card__kicker">
-        One file. One tag.
-      </p>
+      <p class="bascik__hello-card__kicker">One file. One tag.</p>
       <h3 class="b_el_hello-card_h3">Plain HTML, ready to reuse.</h3>
-      <p class="b_el_hello-card_p bascik__hello-card__body">
+      <p class="bascik__hello-card__body">
         Bascik replaces the custom tag at build time and ships the finished
         markup.
       </p>
@@ -116,83 +149,41 @@ h3 {
 </html>
 ```
 
-Components can appear in other components too. If `site-layout.html` uses `<page-footer></page-footer>`, every page that uses `<site-layout>` gets the footer automatically.
+## Move Styles to a Companion File
 
-## HTML with Inline CSS
+When the `<style>` block grows, move its contents into a `.css` file with the same base name, beside the component. Bascik merges it automatically:
 
-Add a `<style>` block to style the component inline. Bascik scopes the CSS to the component at build time so selectors from one component never affect another.
-
-<!-- demo:source-usage-badge -->
-
-```html
-<comp-badge />
+```text
+src/components/
+  hello-card.html
+  hello-card.css
 ```
 
-<!-- demo:source-html-badge -->
+`hello-card.html` is back to markup only:
 
 ```html
-<style>
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: #d1fae5;
-    color: #065f46;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    background: #10b981;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-</style>
-<span class="badge">
-  <span class="badge-dot"></span>
-  All systems operational
-</span>
+<article>
+  <p class="kicker">One file. One tag.</p>
+  <h3>Plain HTML, ready to reuse.</h3>
+  <p class="body">
+    Bascik replaces the custom tag at build time and ships the finished markup.
+  </p>
+</article>
 ```
 
-<!-- demo:output-html-badge -->
-
-```html
-<span class="bascik__comp-badge__badge">
-  <span class="bascik__comp-badge__badge-dot"></span>
-  All systems operational
-</span>
-```
-
-<!-- demo:output-css-badge -->
+`hello-card.css` holds the rules, without the `<style>` tag:
 
 ```css
-.bascik__comp-badge__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: #d1fae5;
-  color: #065f46;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.bascik__comp-badge__badge-dot {
-  width: 6px;
-  height: 6px;
-  background: #10b981;
-  border-radius: 50%;
-  flex-shrink: 0;
+article {
+  width: min(100%, 32rem);
+  padding: 24px;
+  /* ...the rest of the rules from the <style> block */
 }
 ```
 
-> **More on the next page.** [Scoped Styles](/scoped-styles) covers exactly how class names and selectors are namespaced and what CSS patterns are supported.
+The output is the same as with the `<style>` block. Which one you use is a matter of preference; [Companion CSS and Script Files](#companion-css-and-script-files) covers the rules for both.
 
-## HTML with JavaScript
+## Add JavaScript
 
 Add a `<script>` block for interactive behavior. Use `id` on any element you need to target from JS and reach it with `getElementById`.
 

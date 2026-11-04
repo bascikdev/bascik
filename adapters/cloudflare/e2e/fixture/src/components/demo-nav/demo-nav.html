@@ -3,8 +3,26 @@
     <a class="wordmark" href="/" aria-label="Bascik home">
       <img src="/assets/bascik-logo.svg" alt="Bascik" width="106" height="26" />
     </a>
+    <script data-bascik-build type="text/typescript">
+      import { relative } from "node:path";
+      import { html } from "@bascik/bascik/html";
+
+      export default () => {
+        const page = relative(
+          process.env.BASCIK_PAGES_DIR ?? "",
+          process.env.BASCIK_PAGE_FILE ?? "",
+        ).replace(/\\/g, "/");
+        const href = `https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/e2e/fixture/src/pages/${page}`;
+        return html`<a
+          class="docs-link source-link"
+          href="${href}"
+          data-testid="demo-source-link"
+          >Source &nearr;</a
+        >`;
+      };
+    </script>
     <a class="docs-link" href="https://bascik.dev/deployment/cloudflare"
-      >Cloudflare docs &nearr;</a
+      ><span class="platform">Cloudflare</span> docs &nearr;</a
     >
     <details class="menu" data-testid="demo-menu">
       <summary>Menu <span aria-hidden="true">☰</span></summary>

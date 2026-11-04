@@ -14,19 +14,6 @@ A component script looks like ordinary JavaScript. Declare `id` on any element y
 
 Open Source → JS in the counter demo to see ordinary event listeners and `getElementById` calls. Output → JS shows the rewritten selectors and instance wrapper that Bascik generates.
 
-## Multiple Script Blocks
-
-Component templates can contain multiple `<script>` tags. Bascik processes each script tag according to its attributes:
-
-- **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scoping.scriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
-- **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.mts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
-- **Build scripts (`<script data-bascik-build>`):** Executed during build/dev time in Node.js to generate dynamic markup. Can also use `src="..."` to run a local script file.
-- **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). Can return component tags, which render at request time. Can also use `src="..."` to run a local script file.
-- **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker) with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
-- **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
-
-> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories. **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
-
 ## Multiple Instances
 
 Place the same component on a page more than once and each instance runs independently with no extra work needed:
@@ -36,18 +23,6 @@ The two counters at the top of this page are the same component. Change either c
 For a larger case, the [Tab Group](/example-components/tab-group) example builds a tab list at run time and derives every tab and panel ID from its scoped root ID, so several groups on one page never collide.
 
 Each instance carries its own copy of the component's scripts, so every instance gets its behavior without a runtime framework, a registry, or a bundling step. Seeing the same `<script>` once per instance in the page output is expected. Inline classic scripts are wrapped in an IIFE (with [`scoping.scriptBlocks`](/configuration#scopingscriptblocks), on by default) so their variables stay out of the global scope. In build output, from the second instance on, each copy's `//# sourceURL` ends in `?instance=N`, so browser devtools list the copies separately.
-
-## Where Component Scripts Run
-
-A component script is an inline classic script, and where it sits in the page depends on the mode:
-
-- **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
-- **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
-- **A component returned by a server or stream script.** The component is rendered at request time, and its script stays inside the rendered markup in every mode. With `minify.html` on it moves only to the end of the outermost component the script returned, never to the end of the document, so later page markup does not exist yet when it runs. Its scoped ids are derived from a request-time instance id; its class names are the ones the build uses, unless the component's CSS is per instance (`url(#id)` or `scoping.deduplicateCss: false`). See [Returning component tags](/scripts#returning-component-tags).
-
-Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
-
-There is no unmount step. A link loads a new document, so a script that must react to a page restored from the browser's back/forward cache listens for `pageshow`.
 
 ## HTML ID References
 
@@ -91,169 +66,17 @@ The `class` attribute can still coexist on the same element for styling, just ad
 
 > **Rule of thumb.** Use `getElementById` for elements you need to control per-instance (`getElementsByName` finds every element on the page with that `name`, since `name` ships as written). Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
 
-## Source Maps and DevTools Debugging
+## Where Component Scripts Run
 
-When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`), Bascik provides zero-overhead source mapping without generating external `.map` files:
+A component script is an inline classic script, and where it sits in the page depends on the mode:
 
-### Virtual Source Files in DevTools (`//# sourceURL`)
+- **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
+- **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
+- **A component returned by a server or stream script.** The component is rendered at request time, and its script stays inside the rendered markup in every mode. With `minify.html` on it moves only to the end of the outermost component the script returned, never to the end of the document, so later page markup does not exist yet when it runs. Its scoped ids are derived from a request-time instance id; its class names are the ones the build uses, unless the component's CSS is per instance (`url(#id)` or `scoping.deduplicateCss: false`). See [Returning component tags](/scripts#returning-component-tags).
 
-Bascik automatically appends a `//# sourceURL=src/components/name.html` directive to every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
 
-Each instance of a component on a page is its own file, because each instance's script has its own scoped IDs. The first instance is `card.html`, the second is `card.html?instance=2`, and so on. A component used once keeps the plain file name.
-
-### 1:1 Line Number Preservation
-
-Bascik pads each component script with blank lines so that line numbers in DevTools match the component file exactly, including when markup or `<style>` blocks sit above the script. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template. A companion script (`<script src="card.ts">`) is numbered from line 1 of its own file.
-
-Line numbers match when JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default, which joins lines; set `minify.js: false` to keep source line numbers in a build.
-
-### Setting Breakpoints and Inspecting State
-
-Because component scripts appear as virtual source files in DevTools:
-
-1. Open the **Sources** panel in DevTools and press `Cmd + P` (or `Ctrl + P`).
-2. Search for your component file (for example, `card.html`).
-3. Click any line number to set a breakpoint, or place a `debugger;` statement directly inside your component `<script>`.
-4. Interact with the component in your browser to pause execution, inspect variables, and step through code.
-
-A breakpoint pauses only the instance whose file it was set in. To pause every instance, write a `debugger;` statement in the component script instead.
-
-![A browser showing the starter's two counters above Chrome DevTools. Quick Open lists my-counter.html and my-counter.html?instance=2. my-counter.html opens at line 43, val.textContent = ++count, and a breakpoint is set there. Clicking the first counter's plus button pauses on line 43 with the call stack at my-counter.html:43, and resuming sets the count to 1](/assets/demos/devtools-breakpoint@2x.webp)
-
-### Accurate Console Stack Traces
-
-When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` (or `card.html?instance=2:18` for a second instance) instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
-
-## Dynamic Runtime Classes
-
-A class that a script only toggles at runtime (`classList.toggle("is-open")`) is scoped like any other class when the component's CSS defines it: Bascik rewrites the string in the `classList` call to the same scoped (and, in production, hashed) name the CSS uses, even when no element in the template carries the class. A class the component's CSS does not define stays unscoped on both sides.
-
-The toggle below applies its scoped `is-open` class at runtime.
-
-<!-- demo:runtime-class-usage -->
-
-```html
-<state-toggle />
-```
-
-<!-- demo:runtime-class-html -->
-
-```html
-<section>
-  <div class="is-open" hidden></div>
-  <p id="status">Panel closed</p>
-  <button id="toggle" type="button">Toggle panel</button>
-  <div class="panel" id="panel">Only this component instance changes.</div>
-</section>
-```
-
-<!-- demo:runtime-class-css -->
-
-```css
-.panel {
-  opacity: 0.55;
-}
-.panel.is-open {
-  border-color: #d3ff8d;
-  opacity: 1;
-}
-```
-
-<!-- demo:runtime-class-js -->
-
-```js
-const status = document.getElementById("status");
-const toggle = document.getElementById("toggle");
-const panel = document.getElementById("panel");
-
-toggle.addEventListener("click", () => {
-  const isOpen = panel.classList.toggle("is-open");
-  status.textContent = isOpen ? "Panel open" : "Panel closed";
-});
-```
-
-<!-- demo:runtime-class-output-html -->
-
-```html
-<section class="b_el_state-toggle_section">
-  <div class="bascik__state-toggle__is-open" hidden></div>
-  <p id="bascik__state-toggle__a1b2__status">Panel closed</p>
-  <button id="bascik__state-toggle__a1b2__toggle" type="button">
-    Toggle panel
-  </button>
-  <div
-    class="bascik__state-toggle__panel"
-    id="bascik__state-toggle__a1b2__panel"
-  >
-    Only this component instance changes.
-  </div>
-</section>
-```
-
-<!-- demo:runtime-class-output-js -->
-
-```js
-const status = document.getElementById("bascik__state-toggle__a1b2__status");
-const toggle = document.getElementById("bascik__state-toggle__a1b2__toggle");
-const panel = document.getElementById("bascik__state-toggle__a1b2__panel");
-
-toggle.addEventListener("click", () => {
-  const isOpen = panel.classList.toggle("bascik__state-toggle__is-open");
-  status.textContent = isOpen ? "Panel open" : "Panel closed";
-});
-```
-
-## Supported Selectors
-
-All of the following DOM methods are rewritten when they reference a scoped attribute:
-
-```js
-// id attribute
-document.getElementById("my-id");
-document.querySelector("#my-id");
-document.querySelectorAll("#my-id");
-
-// class attribute
-document.getElementsByClassName("my-class");
-document.querySelector(".my-class");
-document.querySelectorAll(".my-class");
-
-// name attribute, only with scoping.attributes.name: true
-document.getElementsByName("my-name");
-```
-
-Additional rewritten forms include `element.closest()`, `element.matches()`, `element.classList.add/remove/toggle/contains()`, `element.setAttribute("class", …)` and `element.setAttribute("id", …)` with string literal values, and `element.className` setter forms.
-
-## Build-time Scripts
-
-`<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. The script exports a default callable function returning an HTML string, which replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
-
-```html
-<!-- src/pages/about.html -->
-<script data-bascik-build>
-  import { readFile } from "node:fs/promises";
-  import { marked } from "marked";
-
-  export default async function () {
-    const md = await readFile("./content/posts/intro.md", "utf8");
-    return marked(md);
-  }
-</script>
-```
-
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
-
-## Non-JavaScript Script Types
-
-Script tags whose `type` is not JavaScript (anything other than no `type`, `text/javascript`, `module`, or another JavaScript MIME type) are left completely untouched, no IIFE, no scoping. A `type="module"` script has its selectors rewritten but is never wrapped in an IIFE:
-
-```html
-<script type="application/json" id="config-data">
-  { "theme": "dark" }
-</script>
-```
-
-> **Tip:** Disable JS scoping entirely by setting `scoping.scriptBlocks` to `false` in [bascik.config.ts](/configuration).
+There is no unmount step. A link loads a new document, so a script that must react to a page restored from the browser's back/forward cache listens for `pageshow`.
 
 ## TypeScript in Component Scripts
 
@@ -357,6 +180,183 @@ The Output is the page's `<body>` as `bascik --build` writes it: the reference i
   //# sourceURL=src/pages/counter.ts
 </script>
 ```
+
+## Multiple Script Blocks
+
+Component templates can contain multiple `<script>` tags. Bascik processes each script tag according to its attributes:
+
+- **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scoping.scriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
+- **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.mts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
+- **Build scripts (`<script data-bascik-build>`):** Executed during build/dev time in Node.js to generate dynamic markup. Can also use `src="..."` to run a local script file.
+- **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). Can return component tags, which render at request time. Can also use `src="..."` to run a local script file.
+- **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker) with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
+- **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
+
+> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories. **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
+
+## Dynamic Runtime Classes
+
+A class that a script only toggles at runtime (`classList.toggle("is-open")`) is scoped like any other class when the component's CSS defines it: Bascik rewrites the string in the `classList` call to the same scoped (and, in production, hashed) name the CSS uses, even when no element in the template carries the class. A class the component's CSS does not define stays unscoped on both sides.
+
+The toggle below applies its scoped `is-open` class at runtime.
+
+<!-- demo:runtime-class-usage -->
+
+```html
+<state-toggle />
+```
+
+<!-- demo:runtime-class-html -->
+
+```html
+<section>
+  <div class="is-open" hidden></div>
+  <p id="status">Panel closed</p>
+  <button id="toggle" type="button">Toggle panel</button>
+  <div class="panel" id="panel">Only this component instance changes.</div>
+</section>
+```
+
+<!-- demo:runtime-class-css -->
+
+```css
+.panel {
+  opacity: 0.55;
+}
+.panel.is-open {
+  border-color: #d3ff8d;
+  opacity: 1;
+}
+```
+
+<!-- demo:runtime-class-js -->
+
+```js
+const status = document.getElementById("status");
+const toggle = document.getElementById("toggle");
+const panel = document.getElementById("panel");
+
+toggle.addEventListener("click", () => {
+  const isOpen = panel.classList.toggle("is-open");
+  status.textContent = isOpen ? "Panel open" : "Panel closed";
+});
+```
+
+<!-- demo:runtime-class-output-html -->
+
+```html
+<section class="b_el_state-toggle_section">
+  <div class="bascik__state-toggle__is-open" hidden></div>
+  <p id="bascik__state-toggle__a1b2__status">Panel closed</p>
+  <button id="bascik__state-toggle__a1b2__toggle" type="button">
+    Toggle panel
+  </button>
+  <div
+    class="bascik__state-toggle__panel"
+    id="bascik__state-toggle__a1b2__panel"
+  >
+    Only this component instance changes.
+  </div>
+</section>
+```
+
+<!-- demo:runtime-class-output-js -->
+
+```js
+const status = document.getElementById("bascik__state-toggle__a1b2__status");
+const toggle = document.getElementById("bascik__state-toggle__a1b2__toggle");
+const panel = document.getElementById("bascik__state-toggle__a1b2__panel");
+
+toggle.addEventListener("click", () => {
+  const isOpen = panel.classList.toggle("bascik__state-toggle__is-open");
+  status.textContent = isOpen ? "Panel open" : "Panel closed";
+});
+```
+
+## Supported Selectors
+
+All of the following DOM methods are rewritten when they reference a scoped attribute:
+
+```js
+// id attribute
+document.getElementById("my-id");
+document.querySelector("#my-id");
+document.querySelectorAll("#my-id");
+
+// class attribute
+document.getElementsByClassName("my-class");
+document.querySelector(".my-class");
+document.querySelectorAll(".my-class");
+
+// name attribute, only with scoping.attributes.name: true
+document.getElementsByName("my-name");
+```
+
+Additional rewritten forms include `element.closest()`, `element.matches()`, `element.classList.add/remove/toggle/contains()`, `element.setAttribute("class", …)` and `element.setAttribute("id", …)` with string literal values, and `element.className` setter forms.
+
+## Source Maps and DevTools Debugging
+
+When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`), Bascik provides zero-overhead source mapping without generating external `.map` files:
+
+### Virtual Source Files in DevTools (`//# sourceURL`)
+
+Bascik automatically appends a `//# sourceURL=src/components/name.html` directive to every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+
+Each instance of a component on a page is its own file, because each instance's script has its own scoped IDs. The first instance is `card.html`, the second is `card.html?instance=2`, and so on. A component used once keeps the plain file name.
+
+### 1:1 Line Number Preservation
+
+Bascik pads each component script with blank lines so that line numbers in DevTools match the component file exactly, including when markup or `<style>` blocks sit above the script. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template. A companion script (`<script src="card.ts">`) is numbered from line 1 of its own file.
+
+Line numbers match when JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default, which joins lines; set `minify.js: false` to keep source line numbers in a build.
+
+### Setting Breakpoints and Inspecting State
+
+Because component scripts appear as virtual source files in DevTools:
+
+1. Open the **Sources** panel in DevTools and press `Cmd + P` (or `Ctrl + P`).
+2. Search for your component file (for example, `card.html`).
+3. Click any line number to set a breakpoint, or place a `debugger;` statement directly inside your component `<script>`.
+4. Interact with the component in your browser to pause execution, inspect variables, and step through code.
+
+A breakpoint pauses only the instance whose file it was set in. To pause every instance, write a `debugger;` statement in the component script instead.
+
+![A browser showing the starter's two counters above Chrome DevTools. Quick Open lists my-counter.html and my-counter.html?instance=2. my-counter.html opens at line 43, val.textContent = ++count, and a breakpoint is set there. Clicking the first counter's plus button pauses on line 43 with the call stack at my-counter.html:43, and resuming sets the count to 1](/assets/demos/devtools-breakpoint@2x.webp)
+
+### Accurate Console Stack Traces
+
+When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` (or `card.html?instance=2:18` for a second instance) instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
+
+## Build-time Scripts
+
+`<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. The script exports a default callable function returning an HTML string, which replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
+
+```html
+<!-- src/pages/about.html -->
+<script data-bascik-build>
+  import { readFile } from "node:fs/promises";
+  import { marked } from "marked";
+
+  export default async function () {
+    const md = await readFile("./content/posts/intro.md", "utf8");
+    return marked(md);
+  }
+</script>
+```
+
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
+
+## Non-JavaScript Script Types
+
+Script tags whose `type` is not JavaScript (anything other than no `type`, `text/javascript`, `module`, or another JavaScript MIME type) are left completely untouched, no IIFE, no scoping. A `type="module"` script has its selectors rewritten but is never wrapped in an IIFE:
+
+```html
+<script type="application/json" id="config-data">
+  { "theme": "dark" }
+</script>
+```
+
+> **Tip:** Disable JS scoping entirely by setting `scoping.scriptBlocks` to `false` in [bascik.config.ts](/configuration).
 
 ## How Scoping Works
 

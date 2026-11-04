@@ -96,6 +96,34 @@ The Output is the whole `<body>` that `bascik --server` sent for `GET /book?name
 
 Run this on Cloudflare Workers: the [mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed) renders a server script before its headers are sent, then streams a stream script into the open connection.
 
+## Rules for every script
+
+- **A default export.** Bascik calls the module's default export and uses what it returns, or what its promise resolves to.
+- **Imports.** Top-level `import` and `await` work. Relative imports resolve from the file the script is written in, `@/` resolves from the import root, and installed npm packages resolve as usual. See [Script Imports](/scripts/imports).
+- **TypeScript.** A script is TypeScript when its tag is marked `type="text/typescript"` or its `src` names a `.ts` or `.mts` file. Bascik strips the types before it runs, so errors name your source lines. See [TypeScript](/scripts/build#typescript).
+- **Escaping.** Build, server, and stream scripts return HTML. Build it with `html` from `@bascik/bascik/html`, which escapes each value for where it lands. See [Security](/scripts/security).
+- **Errors.** A failure is reported with a stack trace that points at your source. What happens next is set per kind: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (server and stream scripts) each take `'error'`, `'warn'`, or `'ignore'`. See [`scripts`](/configuration#scripts).
+- **Time limits.** Build and routes scripts are stopped after 60 seconds. Server and stream scripts are bounded by `scripts.timeout` (30 seconds by default) and receive an `AbortSignal` to pass to `fetch()` and database clients. See [Timeouts and Cancellation](/scripts/server#timeouts-and-cancellation-abortsignal).
+
+## Environment variables
+
+Every script reads its environment through `process.env`. On Node, values from your shell and from `./.env`, which Bascik loads at startup, are there in every kind. Bascik adds its own `BASCIK_*` variables, and which ones a script gets depends on where it runs:
+
+| Script                                        | Bascik variables                                                                                                                                                          |
+| :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `data-bascik-build`                           | `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BASE`, `BASCIK_BUILD`, `BASCIK_SITE_URL`, and `BASCIK_ROUTE` in a dynamic route |
+| `data-bascik-build-once`                      | The same, without page context: `BASCIK_PAGE_PATH` and `BASCIK_PAGE_FILE` are empty and `BASCIK_ROUTE` is unset                                                           |
+| `data-bascik-routes`                          | `BASCIK_PAGE_PATH` (the template's path), `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BUILD`, `BASCIK_SITE_URL`                                 |
+| `data-bascik-server` and `data-bascik-stream` | `BASCIK_SERVER`, `BASCIK_BUILD`, and `BASCIK_SITE_URL`                                                                                                                    |
+
+`BASCIK_SITE_URL` is present only when a site URL is set, with `--site-url`, the environment, or `.env`. Server and stream scripts read the environment of the server process, so they get no page variables: read the page from `request.url` instead. `BASCIK_SERVER` is `"1"` under `bascik --server` and `"0"` on the dev server.
+
+On Cloudflare Workers, Bascik does not fill `process.env`. Read secrets and bindings from `context.platform.env`; see [Bindings and secrets](/deployment/cloudflare#bindings-and-secrets). On Netlify, environment variables stay in `process.env`.
+
+> **Secrets.** A value a build script prints is baked into a page in `dist/`, where every visitor can read it. Read API keys and database credentials in server and stream scripts, or in [API Routes](/api-routes), and return only what the page should show.
+
+Each variable is described in [Environment Variables](/environment-variables). A build script whose output depends on a variable of your own must list it in `scripts.cache.environment`, or a cached result from the previous value is reused; see [Declaring environment inputs](/scripts/build#declaring-environment-inputs).
+
 ## Returning component tags
 
 A server or stream script can return the tags of your own components, and Bascik renders each one at request time with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. There is nothing to import and nothing to configure. A build script's output is expanded the same way at build time; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
@@ -147,31 +175,3 @@ Build the output with `html`. A value that slips through unescaped lets a visito
 - **Directive scripts in the output never run.** A `data-bascik-server` script a script returns is sent as written.
 
 Request-time rendering needs a host that runs server scripts: the [dev server](/development-server), the [production server](/production-server), or the [Cloudflare Adapter](/deployment/cloudflare). The Cloudflare demo renders the same shape live: a [book catalog](https://cloudflare-adapter.bascik.dev/catalog?q=monolith) and its [streamed version](https://cloudflare-adapter.bascik.dev/catalog-stream).
-
-## Environment variables
-
-Every script reads its environment through `process.env`. On Node, values from your shell and from `./.env`, which Bascik loads at startup, are there in every kind. Bascik adds its own `BASCIK_*` variables, and which ones a script gets depends on where it runs:
-
-| Script                                        | Bascik variables                                                                                                                                                          |
-| :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `data-bascik-build`                           | `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BASE`, `BASCIK_BUILD`, `BASCIK_SITE_URL`, and `BASCIK_ROUTE` in a dynamic route |
-| `data-bascik-build-once`                      | The same, without page context: `BASCIK_PAGE_PATH` and `BASCIK_PAGE_FILE` are empty and `BASCIK_ROUTE` is unset                                                           |
-| `data-bascik-routes`                          | `BASCIK_PAGE_PATH` (the template's path), `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BUILD`, `BASCIK_SITE_URL`                                 |
-| `data-bascik-server` and `data-bascik-stream` | `BASCIK_SERVER`, `BASCIK_BUILD`, and `BASCIK_SITE_URL`                                                                                                                    |
-
-`BASCIK_SITE_URL` is present only when a site URL is set, with `--site-url`, the environment, or `.env`. Server and stream scripts read the environment of the server process, so they get no page variables: read the page from `request.url` instead. `BASCIK_SERVER` is `"1"` under `bascik --server` and `"0"` on the dev server.
-
-On Cloudflare Workers, Bascik does not fill `process.env`. Read secrets and bindings from `context.platform.env`; see [Bindings and secrets](/deployment/cloudflare#bindings-and-secrets). On Netlify, environment variables stay in `process.env`.
-
-> **Secrets.** A value a build script prints is baked into a page in `dist/`, where every visitor can read it. Read API keys and database credentials in server and stream scripts, or in [API Routes](/api-routes), and return only what the page should show.
-
-Each variable is described in [Environment Variables](/environment-variables). A build script whose output depends on a variable of your own must list it in `scripts.cache.environment`, or a cached result from the previous value is reused; see [Declaring environment inputs](/scripts/build#declaring-environment-inputs).
-
-## Rules for every script
-
-- **A default export.** Bascik calls the module's default export and uses what it returns, or what its promise resolves to.
-- **Imports.** Top-level `import` and `await` work. Relative imports resolve from the file the script is written in, `@/` resolves from the import root, and installed npm packages resolve as usual. See [Script Imports](/scripts/imports).
-- **TypeScript.** A script is TypeScript when its tag is marked `type="text/typescript"` or its `src` names a `.ts` or `.mts` file. Bascik strips the types before it runs, so errors name your source lines. See [TypeScript](/scripts/build#typescript).
-- **Escaping.** Build, server, and stream scripts return HTML. Build it with `html` from `@bascik/bascik/html`, which escapes each value for where it lands. See [Security](/scripts/security).
-- **Errors.** A failure is reported with a stack trace that points at your source. What happens next is set per kind: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (server and stream scripts) each take `'error'`, `'warn'`, or `'ignore'`. See [`scripts`](/configuration#scripts).
-- **Time limits.** Build and routes scripts are stopped after 60 seconds. Server and stream scripts are bounded by `scripts.timeout` (30 seconds by default) and receive an `AbortSignal` to pass to `fetch()` and database clients. See [Timeouts and Cancellation](/scripts/server#timeouts-and-cancellation-abortsignal).

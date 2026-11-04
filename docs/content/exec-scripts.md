@@ -4,7 +4,32 @@ Lifecycle scripts allow you to execute arbitrary Node.js tasks at defined phases
 
 ## pipeline.exec
 
-Configure lifecycle scripts in `bascik.config.ts` under the `pipeline.exec` array. Each entry specifies a script path and optional execution settings:
+An exec script is an ordinary Node.js file. This one reads the Markdown files in `content/` and writes a search index into `dist/`:
+
+```ts
+// scripts/generate-search-index.ts
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+async function generateIndex() {
+  const files = await readdir("./content");
+  const index = [];
+
+  for (const file of files) {
+    if (!file.endsWith(".md")) continue;
+    const text = await readFile(join("./content", file), "utf8");
+    const title = text.match(/^#\s+(.+)$/m)?.[1] ?? file;
+    index.push({ file, title, length: text.length });
+  }
+
+  await writeFile("dist/search-index.json", JSON.stringify(index, null, 2));
+  console.log(`[search-index] Generated index for ${index.length} documents.`);
+}
+
+await generateIndex();
+```
+
+Register it in `bascik.config.ts` under `pipeline.exec`:
 
 ```ts
 // bascik.config.ts
@@ -12,16 +37,12 @@ import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
-    exec: [
-      {
-        script: "scripts/generate-search-index.ts",
-        phase: "post",
-        watch: ["content/"],
-      },
-    ],
+    exec: [{ script: "scripts/generate-search-index.ts", phase: "post" }],
   },
 });
 ```
+
+`phase: "post"` runs it after every page is written to `dist/`, in the dev server and in `bascik --build`. To run it again whenever a file in `content/` changes during development, add `watch: ["content/**"]`; see [Watching source inputs](#watching-source-inputs).
 
 Every entry is an object with at least a `script` key. A bare string such as `exec: ['scripts/generate-sitemap.ts']` is rejected at startup, and the error shows the object form to write instead: `{ script: 'scripts/generate-sitemap.ts' }`.
 
@@ -45,6 +66,34 @@ export default defineConfig({
     ],
   },
 });
+```
+
+## The Output Rule: Write to `dist/`, Not `src/`
+
+> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated artifacts directly to the output directory (`dist/`), never into source files or any watched files or directories. This includes pre, post, and parallel scripts. Do not add generated outputs to `pipeline.watchPaths` or `pipeline.exec[].watch`. There is no `outputs` option.
+
+The coordinated watcher excludes the output directory, including when a broad source pattern would otherwise cover it. Bascik cannot safely distinguish a child process writing a source file from a user editing that same file. It does not suppress edits using time windows, rewrite counts, or script-path exclusions. Accidental writes to watched sources can therefore loop; fix the script's destination rather than relying on loop detection.
+
+## Example: Bundling npm Packages for the Browser
+
+Bascik does not rewrite bare specifiers in client scripts. Use an exec script with esbuild to bundle client-side npm libraries into `dist/assets/`:
+
+```ts
+// scripts/bundle-client.ts
+import * as esbuild from "esbuild";
+
+await esbuild.build({
+  entryPoints: ["scripts/client-entry.ts"],
+  bundle: true,
+  format: "esm",
+  outfile: "dist/assets/bundle.js",
+  minify: process.env.NODE_ENV === "production",
+});
+```
+
+```html
+<!-- src/pages/index.html -->
+<script type="module" src="/assets/bundle.js"></script>
 ```
 
 ## Configuration Options
@@ -118,12 +167,6 @@ export default defineConfig({
 
 Known source dependents rebuild once per cycle. If an external source input or watched script has no known dependents, all pages rebuild conservatively, but unmatched exec scripts do not rerun. For selective rebuilding, page build scripts should read their source inputs so the dependency graph can associate them with pages. Generated dependency bytes are rechecked after pre finishes; result caching remains enabled.
 
-## The Output Rule: Write to `dist/`, Not `src/`
-
-> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated artifacts directly to the output directory (`dist/`), never into source files or any watched files or directories. This includes pre, post, and parallel scripts. Do not add generated outputs to `pipeline.watchPaths` or `pipeline.exec[].watch`. There is no `outputs` option.
-
-The coordinated watcher excludes the output directory, including when a broad source pattern would otherwise cover it. Bascik cannot safely distinguish a child process writing a source file from a user editing that same file. It does not suppress edits using time windows, rewrite counts, or script-path exclusions. Accidental writes to watched sources can therefore loop; fix the script's destination rather than relying on loop detection.
-
 ## File Watching in Dev Mode
 
 When running `bascik` in development mode:
@@ -188,73 +231,5 @@ Because metadata is finalized after post settles, a post script cannot read the 
 ### Overlapping watches share one cycle
 
 Listing a source in both `pipeline.watchPaths` and `pipeline.exec[].watch`, or watching a page source with exec, does not create independent rebuilds. The same edit selects matching scripts and affected pages once, preserving pre and post ordering. No generated output watcher or completion-driven second pass is needed.
-
-## Example: Generating a Search Index
-
-A common pattern is reading content files and writing a lightweight JSON search index:
-
-```ts
-// scripts/generate-search-index.ts
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-async function generateIndex() {
-  const files = await readdir("./content");
-  const index = [];
-
-  for (const file of files) {
-    if (!file.endsWith(".md")) continue;
-    const text = await readFile(join("./content", file), "utf8");
-    const title = text.match(/^#\s+(.+)$/m)?.[1] ?? file;
-    index.push({ file, title, length: text.length });
-  }
-
-  await writeFile("dist/search-index.json", JSON.stringify(index, null, 2));
-  console.log(`[search-index] Generated index for ${index.length} documents.`);
-}
-
-await generateIndex();
-```
-
-Register it in `bascik.config.ts`:
-
-```ts
-// bascik.config.ts
-import { defineConfig } from "@bascik/bascik/config";
-
-export default defineConfig({
-  pipeline: {
-    exec: [
-      {
-        script: "scripts/generate-search-index.ts",
-        phase: "post",
-        watch: ["content/**"],
-      },
-    ],
-  },
-});
-```
-
-## Example: Bundling npm Packages for the Browser
-
-Bascik does not rewrite bare specifiers in client scripts. Use an exec script with esbuild to bundle client-side npm libraries into `dist/assets/`:
-
-```ts
-// scripts/bundle-client.ts
-import * as esbuild from "esbuild";
-
-await esbuild.build({
-  entryPoints: ["scripts/client-entry.ts"],
-  bundle: true,
-  format: "esm",
-  outfile: "dist/assets/bundle.js",
-  minify: process.env.NODE_ENV === "production",
-});
-```
-
-```html
-<!-- src/pages/index.html -->
-<script type="module" src="/assets/bundle.js"></script>
-```
 
 > **Testing Exec Scripts:** Read the [Exec Scripts Testing Guide](/testing/exec-scripts) to learn how to structure lifecycle scripts for unit testing with Vitest.

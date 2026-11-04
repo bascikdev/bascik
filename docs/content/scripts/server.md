@@ -176,26 +176,6 @@ The helpers are plain functions you import; nothing is injected into scope. Besi
 
 > **Without html.** Code that builds markup as plain strings must escape each text or quoted-attribute value with `esc(value)` from the same module and check each URL with `safeUrl(value)`. Do not write an escaper of your own. `esc` does nothing for a `javascript:` URL, an event handler, a `<script>` body or an unquoted attribute, which is why `html` reads where each value lands and is the way to build markup in every script and helper.
 
-## Timeouts and Cancellation (`AbortSignal`)
-
-Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. Pass the provided `signal` to `fetch()` or database clients so long-running async calls are canceled automatically when the deadline expires or the client disconnects:
-
-```html
-<script data-bascik-server>
-  import { html } from "@bascik/bascik/html";
-
-  export default async function (request, context, { signal }) {
-    const res = await fetch("https://api.example.com/user", { signal });
-    const data = await res.json();
-    return html`<div class="user-profile">User: ${data.name}</div>`;
-  }
-</script>
-```
-
-Once the deadline passes, the result is a timeout even if the script settles afterwards, including a script that returns a value from inside its own `abort` listener. The timeout is then handled by `scripts.onServerScriptError` like any other timeout. A script that returned before the deadline keeps its output. When the client disconnects instead, the script's output is discarded without a report.
-
-> **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or heavy CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts, so every concurrent request waits until it finishes. Always use asynchronous I/O and standard timers, and move CPU-heavy work to a worker thread.
-
 ## Shared Helper Modules
 
 Create a shared helper file such as `src/lib/server.ts` or `lib/server.mjs` for utilities used across server scripts:
@@ -297,6 +277,26 @@ Top-level `await` and ESM imports work seamlessly:
   }
 </script>
 ```
+
+## Timeouts and Cancellation (`AbortSignal`)
+
+Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. Pass the provided `signal` to `fetch()` or database clients so long-running async calls are canceled automatically when the deadline expires or the client disconnects:
+
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
+  export default async function (request, context, { signal }) {
+    const res = await fetch("https://api.example.com/user", { signal });
+    const data = await res.json();
+    return html`<div class="user-profile">User: ${data.name}</div>`;
+  }
+</script>
+```
+
+Once the deadline passes, the result is a timeout even if the script settles afterwards, including a script that returns a value from inside its own `abort` listener. The timeout is then handled by `scripts.onServerScriptError` like any other timeout. A script that returned before the deadline keeps its output. When the client disconnects instead, the script's output is discarded without a report.
+
+> **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or heavy CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts, so every concurrent request waits until it finishes. Always use asynchronous I/O and standard timers, and move CPU-heavy work to a worker thread.
 
 ## Combining Build and Server Scripts
 

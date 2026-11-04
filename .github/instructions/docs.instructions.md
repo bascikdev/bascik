@@ -127,6 +127,20 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 - Callout/tip boxes: Markdown blockquote (`> **Label.** body text`)
 - No inline HTML in MD files: keep MD pure Markdown
 
+## Page Order: Simple First, One Idea at a Time
+
+Readers go through a page top to bottom, so a page's order is part of its content. Check it whenever you add or move a section.
+
+- **Open with the simplest working case.** The first example is the smallest thing that works and is useful, with nothing optional in it. On `/components` that is an HTML-only `hello-card.html` used as `<hello-card />`, before any CSS.
+- **Add one idea per section, each building on the last.** For example: HTML only, then a `<style>` block in the same file, then the same CSS moved to a companion file. Do not lead with the variant that needs the most explanation.
+- **Introduce a feature only after what it depends on.** Do not mention build, server, or stream scripts on a page the reader reaches before the Scripts section, except as a pointer to a later section or page.
+- **Show each feature with its own small example before a combined demo.** A demo that combines many features is a recap at the end of those sections, not the opener.
+- **Everyday use before reference material.** Practical examples come before config option tables, edge cases, timeouts, caching, performance, internals, and tooling integrations (PostCSS, source maps). Those go last.
+- **Do not reteach an earlier page.** Link to it (`/components#add-styles-in-the-same-file`) and state only what this page adds.
+- **Write prose that reads without the code under it.** When a section's demo blocks are pulled into a `<component-demo>` (`stripDemoBlocks: true`), a sentence ending in "like this:" points at nothing. Describe the example, then let the demo follow.
+- **Outputs come from a real build.** Generate the "Bascik emits" code in a temporary project (`bascik --build` with `minify.identifiers: false`), never by hand.
+- **Keep linked anchors.** Before renaming or removing a heading, search `docs/`, `skills/`, `pkg/src/`, and `lsp/src/` for links to its `#anchor` and for tests that find a section by its heading text.
+
 ## Updating the Agent Skills (`skills/`)
 
 **Do not run the `pre-push` skill (`.github/skills/pre-push/SKILL.md`) or pre-push scripts automatically.** The user handles running pre-push steps.

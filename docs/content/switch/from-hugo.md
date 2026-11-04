@@ -2,6 +2,27 @@
 
 Hugo is a static site generator; Bascik is a build tool for HTML components. Both produce vanilla HTML with no client-side framework runtime. The main conceptual shift is that Hugo uses Go template syntax in `.html` layout files, while Bascik uses vanilla HTML component files composed by tag name. Partials become component files, base template blocks become slot-based layout components, and Go template logic becomes Node.js build scripts.
 
+## Mental Model Comparison
+
+| Concept            | Hugo                                          | Bascik                                                 |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------ |
+| Partial            | `layouts/partials/nav.html` (`{{ partial }}`) | `src/components/site-nav/site-nav.html` (`<site-nav>`) |
+| Base template      | `baseof.html` with `{{ block }}`              | `<site-layout>` with `data-bascik-slot`                |
+| Template variables | `{{ .Title }}`, `{{ .Params.x }}`             | `data-bascik-prop-*` and `data-bascik-attr-*`          |
+| Loops and data     | `{{ range }}`, front matter, `data/`          | `<script data-bascik-build>` with Node.js              |
+| Shortcode          | `layouts/shortcodes/callout.html`             | A component tag such as `<my-callout>`                 |
+| Styles             | SCSS through Hugo Pipes                       | Plain CSS in paired `.css` files (auto-scoped)         |
+
+## A Low-Risk First Step
+
+Migrate a simple partial (like a header or footer) into a Bascik component:
+
+1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+2. Create `src/components/site-footer/site-footer.html`.
+3. Copy the markup from `layouts/partials/footer.html` into it. Replace Go template values such as `{{ .Site.Title }}` with fixed text.
+4. Use `<site-footer />` inside `src/pages/index.html`.
+5. Run `npm run dev` to inspect the generated HTML.
+
 ## Layouts and Partials → HTML Component Files
 
 Hugo organizes templates under `layouts/` with partials in `layouts/partials/`. In Bascik, every reusable piece of markup is a plain `.html` file under `src/components/`, identified by its hyphenated folder name.
