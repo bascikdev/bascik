@@ -13,7 +13,7 @@ export const POST = (request: Request, { platform }: NetlifyFixtureContext) => {
   }
   platform.context.cookies.set({
     name: "bascik_fixture",
-    value: "milk-frother",
+    value: "refactoring-the-monolith",
     path: "/",
     httpOnly: true,
     secure: url.protocol === "https:",

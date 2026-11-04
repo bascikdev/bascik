@@ -659,7 +659,7 @@ export interface AdapterBuildResult {
 Return `components: true` only when your runtime renders `graph.components` as described in [Rendering component tags](#rendering-component-tags-sitegraphcomponents). When the graph has components that can be rendered and the result does not declare it, the build still succeeds and prints a warning naming the adapter and the affected components:
 
 ```terminal
-[bascik] --target my-platform: adapter "my-platform" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written (.bascik/dist/components.json lists <product-card>). Upgrade the adapter, or keep component tags out of script output for this target.
+[bascik] --target my-platform: adapter "my-platform" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written (.bascik/dist/components.json lists <book-card>). Upgrade the adapter, or keep component tags out of script output for this target.
 ```
 
 ---
@@ -750,7 +750,7 @@ A job with `outputScope` is a script inside a component. Apply it to the job's o
 
 ### Rendering component tags (`SiteGraph.components`)
 
-A server or stream script may return component tags, and the runtime renders them per request (see [Returning component tags](/server-scripts#returning-component-tags)). `graph.components` is present when the site has any server or stream script; a static-only site has none, and an adapter can ignore the field entirely for it. It holds:
+A server or stream script may return component tags, and the runtime renders them per request (see [Returning component tags](/scripts#returning-component-tags)). `graph.components` is present when the site has any server or stream script; a static-only site has none, and an adapter can ignore the field entirely for it. It holds:
 
 - `manifest`: every component recorded as a scoping template, with its CSS, its staged scripts, and, for the ones that cannot be rendered, the reason.
 - `jobs`: the server and stream scripts inside components, keyed by job ID. They belong to no page, because any page's script may return any component. Stage and bundle them like page jobs; inline sources are staged under the same rules.

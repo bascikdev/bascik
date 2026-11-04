@@ -16,7 +16,7 @@ Yes. In fact some of my earliest exposure to programming was to TI-Basic on my f
 
 Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote. You write reusable components in vanilla HTML, CSS, and JavaScript. At build time, Bascik resolves your custom tags to their component source, scopes CSS and JavaScript so they never collide across instances, and outputs a directory of vanilla HTML files.
 
-By default the output is fully static and can be hosted anywhere. If you need per-request dynamic content, the [production server](/production-server) lets you run [server scripts](/server-scripts) that inject into specific sections of a page at request time, while everything else stays static.
+By default the output is fully static and can be hosted anywhere. If you need per-request dynamic content, the [production server](/production-server) lets you run [server scripts](/scripts/server) that inject into specific sections of a page at request time, while everything else stays static.
 
 For a deeper look: [Getting Started](/getting-started), [Scoped CSS](/scoped-styles), [Scoped JavaScript](/scoped-javascript), [Switch to Bascik](/switch).
 
@@ -167,11 +167,11 @@ Bascik supports custom error pages by convention without needing any configurati
 
 ## How do I keep server scripts safe?
 
-Build every server and stream script's output with `html` from `@bascik/bascik/html`: `` return html`<p>${q}</p>` ``. It escapes each value for where it lands, turns `javascript:` URLs into `about:invalid`, and throws on places escaping cannot make safe, such as an `onclick` value or a `<script>` body. Sanitize CMS or Markdown HTML, then insert it with `raw()`; give client scripts data through `data-*` attributes or `json()`; and turn on a Content-Security-Policy with the `contentSecurityPolicy` option. The linter warns about templates that skip `html`. See [Security](/security) for the whole picture and [HTML Helpers](/html-helpers) for the API.
+Build every server and stream script's output with `html` from `@bascik/bascik/html`: `` return html`<p>${q}</p>` ``. It escapes each value for where it lands, turns `javascript:` URLs into `about:invalid`, and throws on places escaping cannot make safe, such as an `onclick` value or a `<script>` body. Sanitize CMS or Markdown HTML, then insert it with `raw()`; give client scripts data through `data-*` attributes or `json()`; and turn on a Content-Security-Policy with the `contentSecurityPolicy` option. The linter warns about templates that skip `html`. See [Security](/scripts/security) for the whole picture and [HTML Helpers](/html-helpers) for the API.
 
 ## How do I generate pages dynamically from a CMS, database, or API?
 
-Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
+Use [Dynamic Routes](/scripts/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
 
 The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and exports a default callable function returning an array of `{ params, data? }` route objects. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
 
@@ -197,7 +197,7 @@ Restart the dev server after changing configuration. Each dev startup clears `di
 
 Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standard ECMAScript modules outside the browser. They export a callable default function that returns their result: an HTML string for build scripts, or an array of route entries for dynamic route scripts.
 
-Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract-console-logging).
+Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/scripts/build#handler-contract-console-logging).
 
 ## Can I rebuild only part of my site?
 
@@ -284,7 +284,7 @@ Configure your orchestrator or reverse proxy to use `GET /_health` as the readin
 
 ## Can a server script return a component?
 
-Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<product-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/server-scripts#returning-component-tags) for a worked example and the rules, or see it live on Cloudflare Workers in the [product catalog demo](https://cloudflare-adapter.bascik.dev/catalog?q=frother).
+Yes. A `data-bascik-server` or `data-bascik-stream` script can return the tags of your own components, such as one `<book-card>` per search result, and Bascik renders each tag at request time with the component's markup, props, slots, and scoped CSS. There is no import and no setting. Escape the values you put into props, and sanitize HTML from a CMS or an API before returning it, because every tag in the output renders. A few component shapes cannot be rendered this way and are left as written; `bascik --check` lists them. See [Returning component tags](/scripts#returning-component-tags) for a worked example and the rules, or see it live on Cloudflare Workers in the [book catalog demo](https://cloudflare-adapter.bascik.dev/catalog?q=monolith).
 
 ## Can Bascik handle form submissions and API requests?
 

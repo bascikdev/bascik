@@ -1,0 +1,24 @@
+<article id="tile" class="tile" data-testid="book-card-live">
+  <h2 class="tile-title" data-testid="book-card-title" data-bascik-prop-title>
+    Untitled book
+  </h2>
+  <p class="tile-author" data-testid="book-card-author" data-bascik-prop-author>
+    Unknown author
+  </p>
+  <div class="tile-badge" data-testid="book-card-badge">
+    <span data-bascik-slot>Paperback</span>
+  </div>
+  <script data-bascik-server>
+    import { html } from "@bascik/bascik/html";
+
+    export default function (request) {
+      const path = new URL(request.url).pathname;
+      return html`<p class="stock" data-testid="book-card-stock">
+        Copies in stock · checked for ${path} at request time
+      </p>`;
+    }
+  </script>
+  <script>
+    window.__bookCards = (window.__bookCards ?? 0) + 1;
+  </script>
+</article>

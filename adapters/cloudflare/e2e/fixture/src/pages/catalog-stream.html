@@ -177,8 +177,8 @@
       <h1 data-testid="catalog-stream-heading">Streamed cards</h1>
       <p class="subtitle">
         Three <code>&lt;script data-bascik-stream&gt;</code> batches each return
-        <code>&lt;product-card&gt;</code> tags, and the Worker renders them as
-        each batch resolves.
+        <code>&lt;book-card&gt;</code> tags, and the Worker renders them as each
+        batch resolves.
       </p>
     </header>
 
@@ -187,7 +187,7 @@
     <footer data-testid="catalog-stream-footer">
       <div>Bascik · Components from Stream Scripts on Cloudflare Workers</div>
       <div>
-        <a href="https://bascik.dev/stream-scripts">Stream Scripts Docs →</a>
+        <a href="https://bascik.dev/scripts/stream">Stream Scripts Docs →</a>
       </div>
     </footer>
 
@@ -224,16 +224,20 @@
                 );
               });
             }
-            const products = [
-              { name: "Pour-over kettle", price: "$48", badge: "New" },
-              { name: "Ceramic dripper", price: "$22" },
+            const books = [
+              {
+                title: "Practical Type Systems",
+                author: "Ada Okafor",
+                badge: "New",
+              },
+              { title: "Testing at the Edges", author: "Priya Nair" },
             ];
-            return html`${products.map(
+            return html`${books.map(
               (p) =>
-                html`<product-card
-                  data-bascik-prop-name="${p.name}"
-                  data-bascik-prop-price="${p.price}"
-                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                html`<book-card
+                  data-bascik-prop-title="${p.title}"
+                  data-bascik-prop-author="${p.author}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</book-card
                 >`,
             )}`;
           }
@@ -263,16 +267,20 @@
                 );
               });
             }
-            const products = [
-              { name: "Milk frother", price: "$129", badge: "Best seller" },
-              { name: "Glass carafe", price: "$31" },
+            const books = [
+              {
+                title: "Refactoring the Monolith",
+                author: "Grace Lin",
+                badge: "Best seller",
+              },
+              { title: "Shipping Small Changes", author: "Sam Rivera" },
             ];
-            return html`${products.map(
+            return html`${books.map(
               (p) =>
-                html`<product-card
-                  data-bascik-prop-name="${p.name}"
-                  data-bascik-prop-price="${p.price}"
-                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                html`<book-card
+                  data-bascik-prop-title="${p.title}"
+                  data-bascik-prop-author="${p.author}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</book-card
                 >`,
             )}`;
           }
@@ -302,13 +310,15 @@
                 );
               });
             }
-            const products = [{ name: "Filters & holder", price: "$9" }];
-            return html`${products.map(
+            const books = [
+              { title: "Pairing & Code Review", author: "Jonah Weiss" },
+            ];
+            return html`${books.map(
               (p) =>
-                html`<product-card
-                  data-bascik-prop-name="${p.name}"
-                  data-bascik-prop-price="${p.price}"
-                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                html`<book-card
+                  data-bascik-prop-title="${p.title}"
+                  data-bascik-prop-author="${p.author}"
+                  >${p.badge ? html`<span>${p.badge}</span>` : ""}</book-card
                 >`,
             )}`;
           }

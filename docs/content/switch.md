@@ -47,7 +47,7 @@ Write modern CSS in paired `.css` files (e.g. `src/components/post-card/post-car
 
 ### 4. Set Up Pages and Routes
 
-Place static `.html` files in `src/pages/`. For parameterized routes like blogs, use [Dynamic Routes](/dynamic-routes) with `[slug].html` templates.
+Place static `.html` files in `src/pages/`. For parameterized routes like blogs, use [Dynamic Routes](/scripts/dynamic-routes) with `[slug].html` templates.
 
 ### 5. Retain Interactive JS
 
@@ -65,10 +65,10 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 | Text props                                           | `data-bascik-prop-name="value"`                                | [Props](/props)                                                       |
 | Attribute props                                      | `data-bascik-attr-href="link"`                                 | [Props](/props#put-a-prop-in-an-attribute)                            |
 | CSS Modules / scoped CSS                             | Paired `.css` file or `<style>` block (auto-scoped)            | [Scoped Styles](/scoped-styles)                                       |
-| File-based routing                                   | Files in `src/pages/`                                          | [Dynamic Routes](/dynamic-routes)                                     |
-| Dynamic routes (`[slug].js`)                         | `src/pages/[slug].html` build-time route generation            | [Dynamic Routes](/dynamic-routes)                                     |
-| Build-time data fetching (`getStaticProps`)          | `<script data-bascik-build>`                                   | [Build Scripts](/build-scripts)                                       |
-| Request-time SSR / Streaming                         | `<script data-bascik-server>` / `<script data-bascik-stream>`  | [Server Scripts](/server-scripts) · [Stream Scripts](/stream-scripts) |
+| File-based routing                                   | Files in `src/pages/`                                          | [Dynamic Routes](/scripts/dynamic-routes)                             |
+| Dynamic routes (`[slug].js`)                         | `src/pages/[slug].html` build-time route generation            | [Dynamic Routes](/scripts/dynamic-routes)                             |
+| Build-time data fetching (`getStaticProps`)          | `<script data-bascik-build>`                                   | [Build Scripts](/scripts/build)                                       |
+| Request-time SSR / Streaming                         | `<script data-bascik-server>` / `<script data-bascik-stream>`  | [Server Scripts](/scripts/server) · [Stream Scripts](/scripts/stream) |
 | API endpoints                                        | Handlers in `src/api/` using standard `Request` and `Response` | [API Routes](/api-routes)                                             |
 | Client interactivity / hooks                         | Vanilla JS in `<script>` tags                                  | [Scoped JavaScript](/scoped-javascript)                               |
 

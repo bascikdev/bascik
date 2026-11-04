@@ -26,7 +26,7 @@ const read = (rel: string) => readFile(path.join(REPO_ROOT, rel), "utf8");
 
 /** Every place that describes what a render failure does to a response. */
 const POLICY_PAGES = [
-  "docs/content/server-scripts.md",
+  "docs/content/scripts.md",
   "docs/content/compatibility.md",
   "docs/content/testing/troubleshooting.md",
   "docs/content/internals/server.md",

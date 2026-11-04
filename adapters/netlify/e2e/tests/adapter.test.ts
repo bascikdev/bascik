@@ -236,7 +236,7 @@ test("server scripts render escaped values and every page alias", async ({
   page,
   request,
 }) => {
-  const name = '<b data-testid="injected">Milk & "Foam"</b>';
+  const name = '<b data-testid="injected">Books & "Notes"</b>';
   const response = await page.goto(`/server?name=${encodeURIComponent(name)}`);
   expect(response?.headers()["x-bascik-handler"]).toBe("bascik-pages");
   expect(response?.headers()["cache-control"]).toContain("no-store");
@@ -273,7 +273,7 @@ test("HTML streaming swaps three reserved skeleton panels without layout shift a
   });
   try {
     const page = await context.newPage();
-    const name = '<b data-testid="injected">Milk & "Foam"</b>';
+    const name = '<b data-testid="injected">Books & "Notes"</b>';
     await page.goto(`/stream?name=${encodeURIComponent(name)}&delay=1500`, {
       waitUntil: "commit",
     });
@@ -368,7 +368,7 @@ test("request-time components keep props, slots, nested scripts and scoped style
   page,
 }) => {
   const response = await page.goto(
-    "/components?names=Milk%20frother,Travel%20cup",
+    "/components?names=Refactoring%20the%20Monolith,Shipping%20Small%20Changes",
   );
   expect(response?.status()).toBe(200);
   await expect(
@@ -376,8 +376,8 @@ test("request-time components keep props, slots, nested scripts and scoped style
   ).toBeVisible();
   await expect(page.getByTestId("fixture-card")).toHaveCount(2);
   await expect(page.getByTestId("fixture-card-name")).toHaveText([
-    "Milk frother",
-    "Travel cup",
+    "Refactoring the Monolith",
+    "Shipping Small Changes",
   ]);
   await expect(page.getByTestId("fixture-card-slot")).toHaveText([
     "Request-time slot",
@@ -398,17 +398,17 @@ test("request-time components keep props, slots, nested scripts and scoped style
   await expect(page.getByTestId("fixture-card").locator("img")).toHaveCount(0);
 });
 
-test("canonical catalogs render request-time and streamed product cards", async ({
+test("canonical catalogs render request-time and streamed book cards", async ({
   page,
 }) => {
-  await page.goto("/catalog?q=frother");
+  await page.goto("/catalog?q=monolith");
   const results = page.getByTestId("catalog-results");
-  await expect(results.getByTestId("product-card")).toHaveCount(1);
-  await expect(results.getByTestId("product-card-name")).toHaveText(
-    "Milk frother",
+  await expect(results.getByTestId("book-card")).toHaveCount(1);
+  await expect(results.getByTestId("book-card-title")).toHaveText(
+    "Refactoring the Monolith",
   );
   await expect(
-    page.getByTestId("catalog-live").getByTestId("product-card-live"),
+    page.getByTestId("catalog-live").getByTestId("book-card-live"),
   ).toHaveCount(1);
   await expect(page.getByTestId("catalog-live")).toContainText(
     "/catalog at request time",
@@ -421,13 +421,13 @@ test("canonical catalogs render request-time and streamed product cards", async 
 
   await page.goto("/catalog-stream?delay=0");
   const streamed = page.getByTestId("catalog-stream-grid");
-  await expect(streamed.getByTestId("product-card")).toHaveCount(5);
-  await expect(streamed.getByTestId("product-card-name")).toHaveText([
-    "Pour-over kettle",
-    "Ceramic dripper",
-    "Milk frother",
-    "Glass carafe",
-    "Filters & holder",
+  await expect(streamed.getByTestId("book-card")).toHaveCount(5);
+  await expect(streamed.getByTestId("book-card-title")).toHaveText([
+    "Practical Type Systems",
+    "Testing at the Edges",
+    "Refactoring the Monolith",
+    "Shipping Small Changes",
+    "Pairing & Code Review",
   ]);
 });
 
@@ -441,10 +441,12 @@ test("API routes dispatch methods, parameters and catch-all precedence", async (
   expect(await (await request.get("/api/echo")).json()).toEqual({
     fixture: "netlify",
   });
-  const post = await request.post("/api/echo", { data: "milk-frother" });
+  const post = await request.post("/api/echo", {
+    data: "refactoring-the-monolith",
+  });
   expect(post.status()).toBe(201);
   expect(post.headers()["x-fixture"]).toBe("echo");
-  expect(await post.json()).toEqual({ body: "milk-frother" });
+  expect(await post.json()).toEqual({ body: "refactoring-the-monolith" });
   const options = await request.fetch("/api/echo", { method: "OPTIONS" });
   expect(options.status()).toBe(204);
   expect(options.headers()["allow"]).toContain("POST");
@@ -487,7 +489,7 @@ test("Netlify runtime cookie writes survive the adapter and stay private", async
   });
   expect(response.status()).toBe(200);
   expect(response.headers()["set-cookie"]).toContain(
-    "bascik_fixture=milk-frother",
+    "bascik_fixture=refactoring-the-monolith",
   );
   expect(response.headers()["set-cookie"].toLowerCase()).toContain("httponly");
   if (new URL(baseURL!).protocol === "https:") {
@@ -495,7 +497,7 @@ test("Netlify runtime cookie writes survive the adapter and stay private", async
   }
   expect(response.headers()["cache-control"]).toContain("no-store");
   expect(await (await request.get("/api/cookie")).json()).toEqual({
-    value: "milk-frother",
+    value: "refactoring-the-monolith",
   });
 });
 

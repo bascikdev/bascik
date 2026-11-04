@@ -31,7 +31,7 @@ pages/                           src/pages/
 
 ### Dynamic Routes: [slug].html Templates
 
-In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` (Pages Router) and `app/blog/[slug]/page.tsx` uses `generateStaticParams` (App Router) to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that returns the array of routes to generate at build time (see [Dynamic Routes](/dynamic-routes)).
+In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` (Pages Router) and `app/blog/[slug]/page.tsx` uses `generateStaticParams` (App Router) to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that returns the array of routes to generate at build time (see [Dynamic Routes](/scripts/dynamic-routes)).
 
 A template is a full page, like every file in `src/pages/`: it needs `<html>`, `<head>`, and a non-empty `<body>`. The routes script can sit in the `<head>`. The template below writes `dist/blog/<slug>.html`, served at `/blog/<slug>`; use `src/pages/blog/[slug]/index.html` instead for `/blog/<slug>/` URLs.
 
@@ -72,7 +72,7 @@ A template is a full page, like every file in `src/pages/`: it needs `<html>`, `
 </html>
 ```
 
-`marked` is not part of a new project: install it with `npm install marked`. A script that reads `content/` cannot be cached by its imports, so add the template to `scripts.cache.exclude` and `content/` to `pipeline.watchPaths` (see [Build Scripts](/build-scripts)). An unknown slug gets the site's 404 page.
+`marked` is not part of a new project: install it with `npm install marked`. A script that reads `content/` cannot be cached by its imports, so add the template to `scripts.cache.exclude` and `content/` to `pipeline.watchPaths` (see [Build Scripts](/scripts/build)). An unknown slug gets the site's 404 page.
 
 ## App Router Layouts → Shared Layout Components
 
@@ -213,7 +213,7 @@ In Bascik, you do not need a runtime framework or synthetic data payloads. When 
 </script>
 ```
 
-See [Passing Data to Client Scripts](/build-scripts#passing-data-to-client-scripts-json-hydration) for safety details and scoping rules.
+See [Passing Data to Client Scripts](/scripts/build#passing-data-to-client-scripts-json-hydration) for safety details and scoping rules.
 
 ### Escaping and Shared Helpers
 

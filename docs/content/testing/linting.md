@@ -173,7 +173,7 @@ cSpell reports `Unknown word` for names it has never seen. That is not a Bascik 
 ```json
 {
   "version": "0.2",
-  "words": ["bascik", "frother"]
+  "words": ["bascik", "okafor"]
 }
 ```
 

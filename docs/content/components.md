@@ -64,8 +64,6 @@ h3 {
 }
 ```
 
-> Output examples show unminified HTML, CSS, JavaScript, and identifier names for readability.
-
 <!-- demo:output-html-hello -->
 
 ```html
@@ -233,7 +231,7 @@ btn.addEventListener("click", () => {
 });
 ```
 
-> **Styles omitted for clarity.** This demo component includes a companion `.css` file that styles the card. The CSS is not shown in the source view so the demo stays focused on the JavaScript. Note that output code examples across the documentation show unminified output (HTML, CSS, JS, and identifier names) for readability.
+> **Styles omitted for clarity.** This demo component includes a companion `.css` file that styles the card. The CSS is not shown in the source view so the demo stays focused on the JavaScript.
 
 <!-- demo:output-html-toggle -->
 
@@ -742,8 +740,8 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 
 - **Client scripts:** Standard JavaScript blocks (without `data-bascik-server` or `data-bascik-build`) are each wrapped in an isolated IIFE `(function() { ... })();`. You can include multiple client scripts in a component template, and each receives its own scope so local variables do not bleed into other blocks.
 - **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js for each component use, with that page's context. Returned HTML replaces the tag.
-- **Build-once scripts (`<script data-bascik-build-once>`):** Executed once when the component is registered, without page or route context. The same returned HTML is reused at every component use, then scoped and expanded normally. Their output is cached like other build script output. See [`data-bascik-build-once`](/build-scripts#data-bascik-build-once).
-- **Server and stream scripts (`<script data-bascik-server>`, `<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). They are not wrapped in browser IIFEs, and the component tags they return render at request time; see [Returning component tags](/server-scripts#returning-component-tags).
+- **Build-once scripts (`<script data-bascik-build-once>`):** Executed once when the component is registered, without page or route context. The same returned HTML is reused at every component use, then scoped and expanded normally. Their output is cached like other build script output. See [`data-bascik-build-once`](/scripts/build#data-bascik-build-once).
+- **Server and stream scripts (`<script data-bascik-server>`, `<script data-bascik-stream>`):** Executed on the server at request time (Node.js or a Cloudflare Worker). They are not wrapped in browser IIFEs, and the component tags they return render at request time; see [Returning component tags](/scripts#returning-component-tags).
 - **Data scripts (e.g., `type="application/ld+json"`):** Preserved intact without IIFE wrapping or JavaScript minification.
 
 > **Clean Code Recommendation:** Using separate `<script>` tags for distinct, unrelated concerns within a component (for example, a modal controller vs. an analytics handler) is recommended for code readability and maintainability. Because Bascik wraps each client script in its own IIFE, local variables stay safely isolated without polluting a single monolithic script block. Avoid splitting closely related code for no reason, but use separate `<script>` tags whenever a component handles multiple independent interactive features.

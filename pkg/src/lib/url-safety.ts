@@ -212,7 +212,7 @@ export const urlVerdict = (
 /**
  * How a warning names what was blocked: a `data:` URL by its scheme, every
  * other blocked URL as a script URL. The full scheme list lives on one docs
- * page (/security), not in messages.
+ * page (/scripts/security), not in messages.
  */
 export const BLOCKED_URL_REASONS = {
   script: "a script URL such as javascript:",

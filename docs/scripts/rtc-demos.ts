@@ -1,11 +1,11 @@
 /**
  * The Output panes of the "Returning component tags" demos, produced by the real request renderer.
  *
- * The demo boxes (server-scripts.md, stream-scripts.md, testing/troubleshooting.md, security.md) show what a
+ * The demo boxes (scripts/server.md, scripts/stream.md, testing/troubleshooting.md, security.md) show what a
  * server or stream script that returns component tags sends. Their Output blocks are never written by hand: this library
  * builds ONE site from the Markdown source blocks only (each written whole, path comment included, to the path its
- * first-line comment names, exactly as a reader's copy button would paste it, plus the documented bascik.config.ts
- * with minification off), runs the real `bascik --build`, `bascik --check` and
+ * first-line comment names, exactly as a reader's copy button would paste it, plus a bascik.config.ts with
+ * minification off), runs the real `bascik --build`, `bascik --check` and
  * `bascik --server`, and fetches each demo URL. The server is always stopped before this returns.
  *
  * Why committed blocks instead of running this during the docs build: a nested build plus a server process on a
@@ -19,7 +19,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -55,26 +54,26 @@ export interface Demo {
 
 /** The query the security page's malicious demo sends: a component tag and an onerror payload. */
 export const MALICIOUS_Q =
-  "<product-card data-bascik-prop-name=x><img src=x onerror=alert(1)></product-card>";
+  "<book-card data-bascik-prop-title=x><img src=x onerror=alert(1)></book-card>";
 
 export const DEMOS: Demo[] = [
   {
     id: "search",
-    md: "content/server-scripts.md",
+    md: "content/scripts/server.md",
     url: "/search",
     format: "prettier",
     outputMarker: "rtc-search-output-html",
   },
   {
     id: "live",
-    md: "content/server-scripts.md",
+    md: "content/scripts/server.md",
     url: "/featured",
     format: "prettier",
     outputMarker: "rtc-live-output-html",
   },
   {
     id: "stream",
-    md: "content/stream-scripts.md",
+    md: "content/scripts/stream.md",
     url: "/new-arrivals",
     format: "prettier",
     outputMarker: "rtc-stream-output-html",
@@ -88,14 +87,14 @@ export const DEMOS: Demo[] = [
   },
   {
     id: "security-search",
-    md: "content/security.md",
-    url: "/find?q=kettle",
+    md: "content/scripts/security.md",
+    url: "/find?q=types",
     format: "prettier",
     outputMarker: "security-search-output",
   },
   {
     id: "security-malicious",
-    md: "content/security.md",
+    md: "content/scripts/security.md",
     url: `/find?q=${encodeURIComponent(MALICIOUS_Q)}`,
     format: "prettier",
     outputMarker: "security-malicious-q-output",
@@ -104,20 +103,25 @@ export const DEMOS: Demo[] = [
 
 /** Every source block a reader copies into a site, by Markdown file and marker. */
 export const SOURCE_BLOCKS: [md: string, marker: string][] = [
-  ["content/server-scripts.md", "rtc-search-source-usage"],
-  ["content/server-scripts.md", "rtc-search-source-html"],
-  ["content/server-scripts.md", "rtc-search-source-css"],
-  ["content/server-scripts.md", "rtc-search-source-js"],
-  ["content/server-scripts.md", "rtc-live-source-usage"],
-  ["content/server-scripts.md", "rtc-live-source-html"],
-  ["content/server-scripts.md", "rtc-live-source-css"],
-  ["content/stream-scripts.md", "rtc-stream-source-usage"],
+  ["content/scripts/server.md", "rtc-search-source-usage"],
+  ["content/scripts/server.md", "rtc-search-source-html"],
+  ["content/scripts/server.md", "rtc-search-source-css"],
+  ["content/scripts/server.md", "rtc-search-source-js"],
+  ["content/scripts/server.md", "rtc-live-source-usage"],
+  ["content/scripts/server.md", "rtc-live-source-html"],
+  ["content/scripts/server.md", "rtc-live-source-css"],
+  ["content/scripts/stream.md", "rtc-stream-source-usage"],
   ["content/testing/troubleshooting.md", "rtc-passthrough-source-usage"],
-  ["content/security.md", "security-search-source-usage"],
+  ["content/scripts/security.md", "security-search-source-usage"],
 ];
 
-/** The Markdown file that documents the bascik.config.ts the Output was made with. */
-const CONFIG_MD = "content/server-scripts.md";
+/** Minification off, so class names and whitespace stay readable in the Output. */
+export const DEMO_CONFIG = `import { defineConfig } from "@bascik/bascik/config";
+
+export default defineConfig({
+  minify: { html: false, css: false, js: false, identifiers: false },
+});
+`;
 
 /** The path a block's first-line comment names: `<!-- p -->`, `/* p *\/` or `// p`. */
 export function pathComment(code: string): string {
@@ -137,23 +141,10 @@ async function block(md: string, marker: string): Promise<string> {
   return result.code;
 }
 
-/** The documented config: the ```ts block whose first line is `// bascik.config.ts`, minus that line. */
-function documentedConfig(): string {
-  const md = readFileSync(path.join(DOCS_ROOT, CONFIG_MD), "utf8");
-  const config = /```ts\n\/\/ bascik\.config\.ts\n([\s\S]*?)\n```/.exec(
-    md,
-  )?.[1];
-  if (config === undefined)
-    throw new Error(
-      `${CONFIG_MD} documents no \`\`\`ts // bascik.config.ts block`,
-    );
-  return config + "\n";
-}
-
 /**
  * The demo site: each source block, whole, at the path its first line names, plus bascik.config.ts. The path comment
  * stays in the file because a reader who copies the block gets it too, and it shows in the Output when minification
- * is off. The config's own comment line is dropped; it never reaches a response.
+ * is off.
  */
 export async function demoSiteFiles(): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -164,7 +155,7 @@ export async function demoSiteFiles(): Promise<Record<string, string>> {
       throw new Error(`two demo blocks write ${sitePath}`);
     files[sitePath] = code + "\n";
   }
-  files["bascik.config.ts"] = documentedConfig();
+  files["bascik.config.ts"] = DEMO_CONFIG;
   return files;
 }
 

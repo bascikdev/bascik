@@ -521,17 +521,17 @@ describe("createCloudflareWorker: dynamic pages", () => {
         graphOf({
           pages: {
             "/list": page("/list", () => [
-              ["<li>Milk frother</li>", null],
+              ["<li>Refactoring the Monolith</li>", null],
               brand,
               undefined,
-              ["<li>Kettle</li>"],
+              ["<li>Practical Type Systems</li>"],
             ]),
           },
         }),
       ).fetch(get("/list"), {}, ctx());
       expect(res.status).toBe(200);
       expect(await res.text()).toBe(
-        "<main><li>Milk frother</li><li>html</li><li>Kettle</li></main>",
+        "<main><li>Refactoring the Monolith</li><li>html</li><li>Practical Type Systems</li></main>",
       );
     });
 
@@ -539,7 +539,7 @@ describe("createCloudflareWorker: dynamic pages", () => {
       it(`misuse: under "${policy}" an object, a Response or an async .map is an empty slot, never a 500 or [object ...], logged once per script with its owner`, async () => {
         for (const [handler, received] of [
           [
-            () => ({ name: "Milk frother" }),
+            () => ({ name: "Refactoring the Monolith" }),
             "returned an object ([object Object])",
           ],
           [() => new Response("<p>x</p>"), "returned a Response"],

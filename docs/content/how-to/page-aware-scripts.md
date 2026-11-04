@@ -110,7 +110,7 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 ## Component Build Scripts
 
-`<script data-bascik-build>` inside a component runs when Bascik expands that component into a page. It receives that page's context, just like a build script written directly in the page. If a component appears more than once, each occurrence has its own build script output. When the script never reads the page context, Bascik reuses its output on other pages instead of running it again (see [Output Caching](/build-scripts#performance-output-caching)).
+`<script data-bascik-build>` inside a component runs when Bascik expands that component into a page. It receives that page's context, just like a build script written directly in the page. If a component appears more than once, each occurrence has its own build script output. When the script never reads the page context, Bascik reuses its output on other pages instead of running it again (see [Output Caching](/scripts/build#performance-output-caching)).
 
 That means shared components can derive navigation state, breadcrumbs, canonical links, or other output from the page path without a special marker. An imported helper can read `BASCIK_PAGE_PATH` directly. The script below is `data-bascik-build` because `pagePath()` returns the page being built, so every page gets its own canonical link:
 
@@ -142,7 +142,7 @@ For output that is the same at every use of a component, use `data-bascik-build-
 </footer>
 ```
 
-It runs once while that component is registered, before page compilation, and every page that uses `<site-footer />` gets the same `&copy; 2026 Example Co.` line. It has no page or route context; the generated markup is still scoped and expanded normally. This is useful for shared navigation data, embedded assets, or footer values that do not vary by page. In a dynamic route template, it runs once for all of the template's routes. See [`data-bascik-build-once`](/build-scripts#data-bascik-build-once).
+It runs once while that component is registered, before page compilation, and every page that uses `<site-footer />` gets the same `&copy; 2026 Example Co.` line. It has no page or route context; the generated markup is still scoped and expanded normally. This is useful for shared navigation data, embedded assets, or footer values that do not vary by page. In a dynamic route template, it runs once for all of the template's routes. See [`data-bascik-build-once`](/scripts/build#data-bascik-build-once).
 
 Use a `pre` exec script instead when expensive preparation should be shared across different components or at a project-wide scope. See [Exec Scripts](/exec-scripts) for lifecycle hooks.
 

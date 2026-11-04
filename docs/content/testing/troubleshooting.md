@@ -143,7 +143,7 @@ Props are text. Bascik HTML-escapes them when it injects them, so markup from a 
 
 ### `<link-card> (components/link-card/link-card.html): data-bascik-attr-href="url" received a script URL such as javascript:, so href is set to about:invalid.`
 
-A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried a script URL such as `javascript:`, so the link points nowhere. The same message says `received a data: URL` when the value was a `data:` URL that is not an image, and `inherited attribute data received ...` when the value reached the root through [attribute inheritance](/attribute-inheritance#attributes-that-become-urls-on-the-root). [Security](/security#what-bascik-guarantees) lists every scheme the check blocks. An image slot such as `<img src>` keeps a `data:image/...` URL. Any `http:` or `https:` URL, another site's included, is kept. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or check it in the script with `safeUrl(value)` from `@bascik/bascik/html` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
+A prop bound to a URL attribute (`href`, `src`, `srcset`, `action`, `formaction`, `poster`, SVG animation values, and the like) carried a script URL such as `javascript:`, so the link points nowhere. The same message says `received a data: URL` when the value was a `data:` URL that is not an image, and `inherited attribute data received ...` when the value reached the root through [attribute inheritance](/attribute-inheritance#attributes-that-become-urls-on-the-root). [Security](/scripts/security#what-bascik-guarantees) lists every scheme the check blocks. An image slot such as `<img src>` keeps a `data:image/...` URL. Any `http:` or `https:` URL, another site's included, is kept. The value comes from the usage tag: a page at build time, or a server or stream script at request time, where it is often a visitor's input. Pass a relative or `https:` URL, or check it in the script with `safeUrl(value)` from `@bascik/bascik/html` before returning the tag. See [Put a Prop in an Attribute](/props#put-a-prop-in-an-attribute).
 
 ### `<my-card> (components/my-card/my-card.html): Ignoring data-bascik-attr-onclick="action": an event handler's value is code, so a prop is never bound to one.`
 
@@ -197,11 +197,11 @@ By design: each instance carries its own copy of the component's scripts, so eve
 
 ### `[bascik] build script error in "src/pages/index.html" at (line 12, column 5)`
 
-The script threw. The stack below the message is remapped to your source file, so the first frame is the line to fix. By default the page fails (in dev, with the overlay; in `bascik --build`, the build exits nonzero). `scripts.onBuildScriptError: 'warn'` logs and emits an empty string instead. See [Error Handling & Stack Remapping](/build-scripts#error-handling-stack-remapping).
+The script threw. The stack below the message is remapped to your source file, so the first frame is the line to fix. By default the page fails (in dev, with the overlay; in `bascik --build`, the build exits nonzero). `scripts.onBuildScriptError: 'warn'` logs and emits an empty string instead. See [Error Handling & Stack Remapping](/scripts/build#error-handling-stack-remapping).
 
 ### Nothing appears where my build script is
 
-The script printed with `console.log()` instead of returning. Build scripts export a default function whose return value becomes the HTML; console output goes to the terminal only. See [Handler Contract & Console Logging](/build-scripts#handler-contract-console-logging).
+The script printed with `console.log()` instead of returning. Build scripts export a default function whose return value becomes the HTML; console output goes to the terminal only. See [Handler Contract & Console Logging](/scripts/build#handler-contract-console-logging).
 
 ### `Directive script (data-bascik-build) timed out after 60000ms`
 
@@ -216,19 +216,19 @@ The limit is fixed at 60 seconds for build and routes scripts (a routes script r
 
 ### Build script output is stale
 
-The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key; the warning `build script reads process.env.X but "X" is not declared in scripts.cache.environment` names any you missed. See [Invalidation Limits & Cache Exclusions](/build-scripts#invalidation-limits-cache-exclusions) for the full cache key and invalidation limits.
+The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key; the warning `build script reads process.env.X but "X" is not declared in scripts.cache.environment` names any you missed. See [Invalidation Limits & Cache Exclusions](/scripts/build#invalidation-limits-cache-exclusions) for the full cache key and invalidation limits.
 
 ### `<script> tag has both data-bascik-build and data-bascik-server`
 
-One script cannot run at build time and at request time. Remove one directive; split the work into two scripts if you need both. See [Directive Conflicts](/build-scripts#directive-conflicts).
+One script cannot run at build time and at request time. Remove one directive; split the work into two scripts if you need both. See [Directive Conflicts](/scripts/build#directive-conflicts).
 
 ### `build script output ... contained <script data-bascik-build>. Printed directive scripts never run; they were removed.`
 
-HTML returned by a build script is expanded like page markup, but a directive script inside it is removed rather than executed. Write directives in source files, and sanitize HTML that comes from a CMS or an API before printing it. See [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
+HTML returned by a build script is expanded like page markup, but a directive script inside it is removed rather than executed. Write directives in source files, and sanitize HTML that comes from a CMS or an API before printing it. See [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
 
 ### A build script reads the wrong `process.env` values
 
-Build scripts receive `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page-context variables; your own `.env` values are loaded from the project root. A variable that changes the output must also be listed in `scripts.cache.environment`, or the cached output from the previous value is reused. See [Environment Variables](/build-scripts#environment-variables).
+Build scripts receive `BASCIK_SITE_URL`, `BASCIK_BASE`, and the page-context variables; your own `.env` values are loaded from the project root. A variable that changes the output must also be listed in `scripts.cache.environment`, or the cached output from the previous value is reused. See [Environment Variables](/scripts/build#environment-variables).
 
 ## Server and stream scripts
 
@@ -238,19 +238,19 @@ Server and stream scripts run only in `bascik --server` or through a deployment 
 
 ### `Inline server script must export default a function`
 
-Like build scripts, server scripts export a default function; it receives the request and returns HTML. See [Handler Signature](/server-scripts#handler-signature).
+Like build scripts, server scripts export a default function; it receives the request and returns HTML. See [Handler Signature](/scripts/server#handler-signature).
 
 ### `[bascik] server script error at "/pricing":`
 
-The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. See [Rules and Behavior](/server-scripts#rules-and-behavior).
+The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. See [Rules and Behavior](/scripts/server#rules-and-behavior).
 
 ### `Script execution timed out` on a request
 
-The handler exceeded `scripts.timeout`. Pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled with the request, and keep synchronous CPU work out of handlers. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
+The handler exceeded `scripts.timeout`. Pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled with the request, and keep synchronous CPU work out of handlers. See [Timeouts and Cancellation](/scripts/server#timeouts-and-cancellation-abortsignal).
 
 ### My script returned at the deadline but the page still failed with a timeout
 
-Once `scripts.timeout` passes, the result is a timeout even if the script settles afterwards. A script that answers the `abort` event by returning a value, even synchronously inside the listener, is still a timeout, handled by `scripts.onServerScriptError`: under `'error'` a server script gives a 500 and a stream script, whose response has already started, an empty slot with a logged error (see [Error Policy](/stream-scripts#error-policy)); `'warn'` and `'ignore'` give an empty section. API routes follow the same rule with `http.apiTimeout` and a `504`. Return before the deadline, or raise the limit if the work genuinely needs it. Use the `signal` to stop work, not to produce a last-moment result. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
+Once `scripts.timeout` passes, the result is a timeout even if the script settles afterwards. A script that answers the `abort` event by returning a value, even synchronously inside the listener, is still a timeout, handled by `scripts.onServerScriptError`: under `'error'` a server script gives a 500 and a stream script, whose response has already started, an empty slot with a logged error (see [Error Policy](/scripts/stream#error-policy)); `'warn'` and `'ignore'` give an empty section. API routes follow the same rule with `http.apiTimeout` and a `504`. Return before the deadline, or raise the limit if the work genuinely needs it. Use the `signal` to stop work, not to produce a last-moment result. See [Timeouts and Cancellation](/scripts/server#timeouts-and-cancellation-abortsignal).
 
 ### `Server script placeholder "..." could not be resolved from sidecar`
 
@@ -262,7 +262,7 @@ Same family: a build that has server or stream scripts also writes a component m
 
 ### A component tag in script output reaches the browser as written
 
-A server or stream script returned `<product-card>`, and the HTML the browser receives still contains the tag, so its content shows as unstyled text. In the dev server the terminal names the cause once per route and tag, as long as at least one of the site's components can be rendered at request time:
+A server or stream script returned `<book-card>`, and the HTML the browser receives still contains the tag, so its content shows as unstyled text. In the dev server the terminal names the cause once per route and tag, as long as at least one of the site's components can be rendered at request time:
 
 ```terminal
 [bascik] Unresolved component tag <prodcut-card> in server-script output at "/search": no matching component file found, so it reaches the client as written.
@@ -280,9 +280,9 @@ Here `src/components/bad-card/bad-card.html` binds a prop onto `class` on line 2
 <div class="w"><span data-bascik-attr-class="variant">x</span></div>
 ```
 
-The first is a typo or a missing component file: fix the tag name, or list a third-party element in [`components.external`](/configuration#componentsexternal) to silence it. The second is a component that cannot be rendered at request time; the next entry lists the reasons. A third message, `is left unexpanded: the scoped names computed for instance ... collide with each other`, means the instance's generated ids or names clashed; it is rare, and renaming the colliding ids in the component clears it. The production server and the Cloudflare Worker log none of these. A misspelled tag shows only in the dev server log: `bascik --check` reads the build's component manifest, so it lists unsupported components but never sees the tags a script returns at request time. A site whose components are all unsupported, or that has none, gets no dev log either; use `bascik --check` for the unsupported ones. Also make sure the tag is markup: an escaped tag (`&lt;product-card&gt;`) or one inside a comment, `<script>`, `<style>`, `<textarea>`, or attribute value is text by design. A custom deployment adapter that does not declare `components: true` serves every tag as written and says so at build time. See [Returning component tags](/server-scripts#returning-component-tags).
+The first is a typo or a missing component file: fix the tag name, or list a third-party element in [`components.external`](/configuration#componentsexternal) to silence it. The second is a component that cannot be rendered at request time; the next entry lists the reasons. A third message, `is left unexpanded: the scoped names computed for instance ... collide with each other`, means the instance's generated ids or names clashed; it is rare, and renaming the colliding ids in the component clears it. The production server and the Cloudflare Worker log none of these. A misspelled tag shows only in the dev server log: `bascik --check` reads the build's component manifest, so it lists unsupported components but never sees the tags a script returns at request time. A site whose components are all unsupported, or that has none, gets no dev log either; use `bascik --check` for the unsupported ones. Also make sure the tag is markup: an escaped tag (`&lt;book-card&gt;`) or one inside a comment, `<script>`, `<style>`, `<textarea>`, or attribute value is text by design. A custom deployment adapter that does not declare `components: true` serves every tag as written and says so at build time. See [Returning component tags](/scripts#returning-component-tags).
 
-The demo below is the safe fallback in action. The help page's server script returns a misspelled `<prodcut-card>` and a code sample that shows a `<product-card>` tag. The sample tag is escaped (`&lt;product-card ...&gt;`), so it is text; a raw `<product-card>` inside `<pre>` would be markup and would render. The Output is the body `bascik --server` sent for `GET /help`, byte for byte: both tags arrive as written, with no `<style>` and no request-time ids, in the same site where the [search page](/server-scripts#render-a-card-per-search-result) renders `<product-card>`.
+The demo below is the safe fallback in action. The help page's server script returns a misspelled `<bok-card>` and a code sample that shows a `<book-card>` tag. The sample tag is escaped (`&lt;book-card ...&gt;`), so it is text; a raw `<book-card>` inside `<pre>` would be markup and would render. The Output is the body `bascik --server` sent for `GET /help`, byte for byte: both tags arrive as written, with no `<style>` and no request-time ids, in the same site where the [search page](/scripts/server#render-a-card-per-search-result) renders `<book-card>`.
 
 <!-- demo:rtc-passthrough-source-usage -->
 
@@ -298,8 +298,8 @@ The demo below is the safe fallback in action. The help page's server script ret
       <script data-bascik-server>
         export default function () {
           return `<p>A misspelled tag, then a tag shown as code:</p>
-    <prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>
-    <pre><code>&lt;product-card data-bascik-prop-name="Milk frother"&gt;&lt;/product-card&gt;</code></pre>`;
+    <bok-card data-bascik-prop-title="Refactoring the Monolith"></bok-card>
+    <pre><code>&lt;book-card data-bascik-prop-title="Refactoring the Monolith"&gt;&lt;/book-card&gt;</code></pre>`;
         }
       </script>
     </div>
@@ -320,8 +320,8 @@ The demo below is the safe fallback in action. The help page's server script ret
   <body>
     <div class="help">
       <p>A misspelled tag, then a tag shown as code:</p>
-    <prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>
-    <pre><code>&lt;product-card data-bascik-prop-name="Milk frother"&gt;&lt;/product-card&gt;</code></pre>
+    <bok-card data-bascik-prop-title="Refactoring the Monolith"></bok-card>
+    <pre><code>&lt;book-card data-bascik-prop-title="Refactoring the Monolith"&gt;&lt;/book-card&gt;</code></pre>
     </div>
   </body>
 </html>
@@ -349,11 +349,11 @@ The table in [Request-Time Component Rendering](/compatibility#request-time-comp
 
 ### `server-script output at "/search" expands to more than 1000 component instances (...); the limit is 1000 instances per script output.`
 
-A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). The log is the usual `[bascik] server script error at "/search":` line followed by the message. The failure follows `scripts.onServerScriptError` like a script that throws: under `'error'` (the default) a server script's response is a 500 and a stream script's slot is empty with the error logged, `'warn'` logs it and leaves the slot empty, and `'ignore'` leaves the slot empty without a log. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. Each message ends by naming the [`scripts.renderLimits`](/configuration#scriptsrenderlimits) key to raise if the output is expected. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/server-scripts#returning-component-tags).
+A request-time render budget was exceeded. The related messages are `rendered to N characters, over the 4 MiB (4194304 characters) limit per script output`, `grew past N characters while expanding components ..., over the 4 MiB (4194304 characters) limit per script output` (the usual one for a large overrun), `is N characters before rendering, over twice the 4 MiB (4194304 characters) limit per script output, and has component tags in it, so it is refused before they are expanded`, `would run more than 64 nested component scripts in one response`, and `nests component scripts deeper than 4 levels`. Each names the route, and all but the refused-before-rendering one name the component file (`RequestRenderError`). The log is the usual `[bascik] server script error at "/search":` line followed by the message. The failure follows `scripts.onServerScriptError` like a script that throws: under `'error'` (the default) a server script's response is a 500 and a stream script's slot is empty with the error logged, `'warn'` logs it and leaves the slot empty, and `'ignore'` leaves the slot empty without a log. Return fewer results per request (paginate with `?page=`), or render a long list with fewer components per item. Each message ends by naming the [`scripts.renderLimits`](/configuration#scriptsrenderlimits) key to raise if the output is expected. A component whose script returns itself, directly or through another component, hits the depth limit. See the budgets in [Returning component tags](/scripts#returning-component-tags).
 
 ### `server-script output at "/search" made the renderer rescan more than N characters while expanding components (...)`
 
-The full message ends `over the limit of 16 times the output's N characters plus 33554432. Component tags in it are cut off mid-tag, left unclosed, or nested many levels deep around long content, which usually means text reached the output unescaped.` Component tags in the output were nested hundreds of levels deep around long text, or left unclosed ahead of a closing tag of the same name (`<my-card>` repeated, with one `</my-card>` at the end), so each nested tag made the renderer read the whole output, or everything inside it, again. This is the shape a visitor's unescaped `<` produces, and the budget stops it before it costs seconds per request. It is a `RequestRenderError` and follows `scripts.onServerScriptError` like the budgets above. Escape every value you put into the output (see [Escaping and injection](/server-scripts#escaping-and-injection)) and close every component tag you return. Pages that write their tags whole never come near the limit. See [Security](/server-scripts#security).
+The full message ends `over the limit of 16 times the output's N characters plus 33554432. Component tags in it are cut off mid-tag, left unclosed, or nested many levels deep around long content, which usually means text reached the output unescaped.` Component tags in the output were nested hundreds of levels deep around long text, or left unclosed ahead of a closing tag of the same name (`<my-card>` repeated, with one `</my-card>` at the end), so each nested tag made the renderer read the whole output, or everything inside it, again. This is the shape a visitor's unescaped `<` produces, and the budget stops it before it costs seconds per request. It is a `RequestRenderError` and follows `scripts.onServerScriptError` like the budgets above. Escape every value you put into the output (see [Escaping and injection](/scripts/server#escaping-and-injection)) and close every component tag you return. Pages that write their tags whole never come near the limit. See [Security](/scripts#security).
 
 ### `Rendering <echo-card> (components/echo-card/echo-card.html) from server-script output at "/echo" failed during slot resolution: Invalid string length`
 
@@ -379,15 +379,15 @@ To reproduce, put the same tag in a page's own markup and run `bascik --build`. 
     ...
 ```
 
-Slot resolution, attribute inheritance, and substitution run the same code in both places. Prop injection does not: the build applies `data-bascik-attr-*` props before scoping and the request renderer after it, so a `prop injection` failure can appear at request time only. Like the budgets above, the failure follows `scripts.onServerScriptError`. See [Returning component tags](/server-scripts#returning-component-tags).
+Slot resolution, attribute inheritance, and substitution run the same code in both places. Prop injection does not: the build applies `data-bascik-attr-*` props before scoping and the request renderer after it, so a `prop injection` failure can appear at request time only. Like the budgets above, the failure follows `scripts.onServerScriptError`. See [Returning component tags](/scripts#returning-component-tags).
 
 ### One slow server script delays every request
 
-Server scripts and API routes run in-process, in the same process as the server, and JavaScript runs on one thread (in Node.js for the built-in server, in the Worker isolate on Cloudflare). Synchronous work in a handler (a CPU loop, heavy regex matching, a large synchronous parse) blocks the event loop while it runs, so every concurrent request waits. `scripts.timeout` (and `http.apiTimeout` for API routes) cannot interrupt synchronous code; it only cancels asynchronous work. Use asynchronous APIs and `await` them, pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled at the deadline or when the client disconnects, and move CPU-heavy work to a worker thread. See [Timeouts and Cancellation](/server-scripts#timeouts-and-cancellation-abortsignal).
+Server scripts and API routes run in-process, in the same process as the server, and JavaScript runs on one thread (in Node.js for the built-in server, in the Worker isolate on Cloudflare). Synchronous work in a handler (a CPU loop, heavy regex matching, a large synchronous parse) blocks the event loop while it runs, so every concurrent request waits. `scripts.timeout` (and `http.apiTimeout` for API routes) cannot interrupt synchronous code; it only cancels asynchronous work. Use asynchronous APIs and `await` them, pass the `signal` the handler receives to `fetch()` and database clients so the work is canceled at the deadline or when the client disconnects, and move CPU-heavy work to a worker thread. See [Timeouts and Cancellation](/scripts/server#timeouts-and-cancellation-abortsignal).
 
 ## Server script safety
 
-These messages come from `html` and the other helpers in `@bascik/bascik/html`, and from the linter. An `html` error is thrown inside your call, so it reaches the page like any other script error: a 500 under `scripts.onServerScriptError: 'error'` (an empty slot for a stream script), with the message and your file and line in the log. In development the browser shows only a plain `500 Internal Server Error` page; the message is in the terminal that runs `bascik`. Each message starts with `html: hole N in html` and the template's static text with every hole shown as `${…}`; the hole number counts the template's `${...}` from 1. See [HTML Helpers](/html-helpers#errors) and [Security](/security).
+These messages come from `html` and the other helpers in `@bascik/bascik/html`, and from the linter. An `html` error is thrown inside your call, so it reaches the page like any other script error: a 500 under `scripts.onServerScriptError: 'error'` (an empty slot for a stream script), with the message and your file and line in the log. In development the browser shows only a plain `500 Internal Server Error` page; the message is in the terminal that runs `bascik`. Each message starts with `html: hole N in html` and the template's static text with every hole shown as `${…}`; the hole number counts the template's `${...}` from 1. See [HTML Helpers](/html-helpers#errors) and [Security](/scripts/security).
 
 ### ``html: hole 2 in html`<a class=${…}>` is an unquoted attribute value (class).``
 
@@ -411,7 +411,7 @@ Escaping HTML does not make CSS safe. Choose between fixed classes in code.
 
 ### ``html: hole 1 in html`<${…}>` is a tag name.``
 
-A value never chooses which element to write. Choose between fixed `html` fragments in code, as in [Dynamic components with html fragments](/security#dynamic-components-with-html-fragments).
+A value never chooses which element to write. Choose between fixed `html` fragments in code, as in [Dynamic components with html fragments](/scripts/security#dynamic-components-with-html-fragments).
 
 ### ``html: hole 1 in html`<input ${…}>` is where an attribute name goes, inside <input>.``
 
@@ -568,25 +568,25 @@ Commas between cards mean an array became a string with `String(array)`. A scrip
 
 ### `The server script in src/pages/shop.html:12 returned an array holding a Promise at [0], which is not markup.`
 
-A server or stream script returned a value that `String()` would print as `[object ...]`: a plain object or `Map` (`returned an object ([object Object])`), a `Response` (`returned a Response`; that belongs in an [API route](/api-routes)), a caught `Error` (`returned an Error (TypeError)`; throw it instead, so `scripts.onServerScriptError` handles it), a function, a symbol, or an array holding a Promise, which an `async` callback in `.map` makes. Return markup instead: a string, an `html` value or an array of them, and for an async `.map`, `return await Promise.all(items.map(async (item) => ...))`. In dev the message is a server script error under `scripts.onServerScriptError`; in production the slot is empty and the message is logged once per script. See [Return Values](/server-scripts#return-values).
+A server or stream script returned a value that `String()` would print as `[object ...]`: a plain object or `Map` (`returned an object ([object Object])`), a `Response` (`returned a Response`; that belongs in an [API route](/api-routes)), a caught `Error` (`returned an Error (TypeError)`; throw it instead, so `scripts.onServerScriptError` handles it), a function, a symbol, or an array holding a Promise, which an `async` callback in `.map` makes. Return markup instead: a string, an `html` value or an array of them, and for an async `.map`, `return await Promise.all(items.map(async (item) => ...))`. In dev the message is a server script error under `scripts.onServerScriptError`; in production the slot is empty and the message is logged once per script. See [Return Values](/scripts/server#return-values).
 
 ## Dynamic routes
 
 ### `Bracket filename "blog/[slug].html" has no <script data-bascik-routes> tag. Skipping template.`
 
-A page whose filename has bracket parameters needs exactly one routes script that returns the parameter list. Add it, or rename the file if the brackets were a mistake. The reverse message, `<script data-bascik-routes> found in "about.html" which has no bracket parameters`, means the script is on a page with nothing to expand. See [data-bascik-routes](/dynamic-routes#data-bascik-routes).
+A page whose filename has bracket parameters needs exactly one routes script that returns the parameter list. Add it, or rename the file if the brackets were a mistake. The reverse message, `<script data-bascik-routes> found in "about.html" which has no bracket parameters`, means the script is on a page with nothing to expand. See [data-bascik-routes](/scripts/dynamic-routes#data-bascik-routes).
 
 ### `routes template "..." produced 0 routes.`
 
-The routes script returned an empty array, so no pages were written. Usually the data source returned nothing, or the script returned the wrong shape (an array of `{ params }` objects is expected). See [Route Object Format](/dynamic-routes#route-object-format).
+The routes script returned an empty array, so no pages were written. Usually the data source returned nothing, or the script returned the wrong shape (an array of `{ params }` objects is expected). See [Route Object Format](/scripts/dynamic-routes#route-object-format).
 
 ### A generated route returns 404
 
-Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename. See [Route Object Format](/dynamic-routes#route-object-format).
+Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename. See [Route Object Format](/scripts/dynamic-routes#route-object-format).
 
 ### `[bascik] routes script error`
 
-The routes script threw or returned something that is not an array of route objects. The message names the page and line; `scripts.onRoutesScriptError` chooses between failing the build and skipping the template. See [Error Handling and Diagnostics](/dynamic-routes#error-handling-and-diagnostics).
+The routes script threw or returned something that is not an array of route objects. The message names the page and line; `scripts.onRoutesScriptError` chooses between failing the build and skipping the template. See [Error Handling and Diagnostics](/scripts/dynamic-routes#error-handling-and-diagnostics).
 
 ## API routes
 
@@ -692,7 +692,7 @@ Bascik checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`
 
 With `base: '/docs/'` the site is served only below `/docs/`, matching a static subdirectory host, so a request without the prefix returns 404. See [Subdirectory deploys](/deployment#subdirectory-deploys).
 
-A `fetch('/api/x')` in client code fails under `base` because Bascik cannot safely infer URLs assembled or used inside JavaScript, so it does not rewrite them. Emit `process.env.BASCIK_BASE` into a data attribute from a build script, read that value from the DOM, and prefix the request path in client code. This keeps the deployment value build-time and adds no Bascik runtime. See [`BASCIK_BASE`](/build-scripts#bascik_base) for an illustrative pattern.
+A `fetch('/api/x')` in client code fails under `base` because Bascik cannot safely infer URLs assembled or used inside JavaScript, so it does not rewrite them. Emit `process.env.BASCIK_BASE` into a data attribute from a build script, read that value from the DOM, and prefix the request path in client code. This keeps the deployment value build-time and adds no Bascik runtime. See [`BASCIK_BASE`](/environment-variables#bascik_base) for an illustrative pattern.
 
 ### Part of the page disappeared after minification
 

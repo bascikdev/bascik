@@ -7,13 +7,13 @@ Deploy a Bascik site to Netlify so the CDN serves your static files and one gene
 > - [Server scripts](https://netlify-adapter.bascik.dev/server?name=collin): request context and platform information rendered before headers commit.
 > - [In-place skeleton swap](https://netlify-adapter.bascik.dev/stream) and [progressive append](https://netlify-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML.
 > - [Mixed server and stream page](https://netlify-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
-> - [Product catalog](https://netlify-adapter.bascik.dev/catalog?q=frother) and [streamed catalog](https://netlify-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the function renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
+> - [Book catalog](https://netlify-adapter.bascik.dev/catalog?q=monolith) and [streamed catalog](https://netlify-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<book-card>` tags that the function renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
 > - [API client](https://netlify-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
 
 ## How it works: CDN-first with Netlify Functions
 
 - **Static pages and assets come from the CDN:** pages without request-time scripts, CSS, client JavaScript, images, and fonts are plain files in `publish/`. The function is never invoked for them.
-- **Dynamic pages and API routes run in one function:** `bascik-pages` (Netlify Functions API v2, streaming) carries each `data-bascik-server` and `data-bascik-stream` job, the precompiled templates they render into, every API route in `src/api/`, and the component manifest, so component tags a script returns are rendered with the component's markup and scoped CSS. See [Returning component tags](/server-scripts#returning-component-tags).
+- **Dynamic pages and API routes run in one function:** `bascik-pages` (Netlify Functions API v2, streaming) carries each `data-bascik-server` and `data-bascik-stream` job, the precompiled templates they render into, every API route in `src/api/`, and the component manifest, so component tags a script returns are rendered with the component's markup and scoped CSS. See [Returning component tags](/scripts#returning-component-tags).
 - **Netlify routes only those paths to it:** the function's `config.path` lists every URL of each dynamic page (`/account`, `/account.html`, `/account/`) and each API route, written as URLPattern paths (`/api/items/[id]` becomes `/api/items/:id`, a final `[...rest]` becomes `*`).
 
 The function produces the same status, body bytes, and headers as `bascik --server` for pages, streamed pages, rendered components, and API routes; the adapter's parity tests compare the two on every change.

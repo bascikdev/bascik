@@ -1,6 +1,6 @@
 /**
- * The TypeScript script demos: a build script (/build-scripts), a server script (/server-scripts), a stream script
- * (/stream-scripts), a page's own `.ts` file (/scoped-javascript), and a `scripts.typescript` esbuild compiler
+ * The TypeScript script demos: a page with all three request-path kinds (/scripts), a build script (/scripts/build), a server script (/scripts/server), a stream script
+ * (/scripts/stream), a page's own `.ts` file (/scoped-javascript), and a `scripts.typescript` esbuild compiler
  * (/configuration).
  *
  * The Markdown is the single source: the Usage and Source panes are <!-- demo:ts-* --> blocks, and each Output pane
@@ -28,9 +28,9 @@ const block = async (md: string, marker: string): Promise<string> => {
   return result.code!;
 };
 
-/** The page shell that renders a content file: content/x.md is shown by src/pages/x.html. */
+/** The page shell that renders a content file: content/x.md is shown by src/pages/x.html, content/a/b.md by src/pages/a/b.html. */
 const shellFor = (md: string) =>
-  readDocs(`src/pages/${path.basename(md, ".md")}.html`);
+  readDocs(md.replace(/^content\//, "src/pages/").replace(/\.md$/, ".html"));
 
 /** The body of the first `<script ...attrs>` whose open tag contains `attrs`, with each line trimmed. */
 const scriptBody = (html: string, attrs: string): string => {
@@ -52,7 +52,7 @@ describe("TypeScript script demos: source blocks and the docs pages that show th
       for (const marker of demo.sources) {
         const first = (await block(demo.md, marker)).split("\n")[0];
         expect(first, marker).toMatch(
-          /^(<!-- (src\/pages\/[\w-]+\.html) -->|\/\/ (bascik\.config\.ts|src\/pages\/[\w-]+\.ts))$/,
+          /^(<!-- (src\/pages\/[\w/-]+\.html) -->|\/\/ (bascik\.config\.ts|src\/pages\/[\w-]+\.ts))$/,
         );
       }
     },
@@ -77,8 +77,8 @@ describe("TypeScript script demos: source blocks and the docs pages that show th
   );
 
   it("the build demo's Preview runs the same TypeScript build script the Usage block shows", async () => {
-    const usage = await block("content/build-scripts.md", "ts-build-usage");
-    const shell = readDocs("src/pages/build-scripts.html");
+    const usage = await block("content/scripts/build.md", "ts-build-usage");
+    const shell = readDocs("src/pages/scripts/build.html");
     const attrs = 'data-bascik-build type="text/typescript"';
     expect(scriptBody(shell, attrs)).toBe(scriptBody(usage, attrs));
   });
@@ -97,7 +97,7 @@ describe("TypeScript script demos: source blocks and the docs pages that show th
   });
 
   it("the build demo is a page-dependent data-bascik-build script, as the guidance says it must be", async () => {
-    const usage = await block("content/build-scripts.md", "ts-build-usage");
+    const usage = await block("content/scripts/build.md", "ts-build-usage");
     expect(usage).toContain("data-bascik-build ");
     expect(usage).toContain("BASCIK_PAGE_PATH");
     expect(usage).not.toMatch(/getFullYear/);
@@ -148,11 +148,19 @@ describe("TypeScript script demos: generated Output", () => {
   });
 
   it("each Output shows what its script did", () => {
+    expect(run.raw.overview).toContain("<li>Find the seams</li>");
+    expect(run.raw.overview).toContain("<p>Welcome back, Ada.</p>");
+    expect(run.raw.overview).toContain(
+      '<p class="score">Rated 4.6 out of 5</p>',
+    );
+    expect(run.raw.overview).not.toContain("<script");
     expect(run.raw.build).toBe(
-      '<nav aria-label="Breadcrumb">Home / build-scripts</nav>',
+      '<nav aria-label="Breadcrumb">Home / scripts / build</nav>',
     );
     expect(run.raw.server).toContain("<p>Hello, collin</p>");
-    expect(run.raw.stream).toContain("<li>Pour-over kettle: 12 left</li>");
+    expect(run.raw.stream).toContain(
+      "<li>Practical Type Systems: 12 left</li>",
+    );
     expect(run.raw.page).toContain("//# sourceURL=src/pages/counter.ts");
     expect(run.raw.page).not.toContain('src="./counter.ts"');
     expect(run.raw.config).toContain('Size2["Medium"] = "M"');

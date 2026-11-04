@@ -78,17 +78,17 @@ Both directories can be overridden in `bascik.config.ts`.
 
 Full feature documentation lives at **[bascik.dev](https://bascik.dev)**.
 
-| Topic                   | URL                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| Getting started         | [bascik.dev/getting-started](https://bascik.dev/getting-started)             |
-| Dynamic routes          | [bascik.dev/dynamic-routes](https://bascik.dev/dynamic-routes)               |
-| Slots                   | [bascik.dev/slots](https://bascik.dev/slots)                                 |
-| Props                   | [bascik.dev/props](https://bascik.dev/props)                                 |
-| Attribute inheritance   | [bascik.dev/attribute-inheritance](https://bascik.dev/attribute-inheritance) |
-| Scoped styles           | [bascik.dev/scoped-styles](https://bascik.dev/scoped-styles)                 |
-| Scoped JavaScript       | [bascik.dev/scoped-javascript](https://bascik.dev/scoped-javascript)         |
-| Configuration reference | [bascik.dev/configuration](https://bascik.dev/configuration)                 |
-| CSS/JS compatibility    | [bascik.dev/compatibility](https://bascik.dev/compatibility)                 |
+| Topic                   | URL                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| Getting started         | [bascik.dev/getting-started](https://bascik.dev/getting-started)               |
+| Dynamic routes          | [bascik.dev/scripts/dynamic-routes](https://bascik.dev/scripts/dynamic-routes) |
+| Slots                   | [bascik.dev/slots](https://bascik.dev/slots)                                   |
+| Props                   | [bascik.dev/props](https://bascik.dev/props)                                   |
+| Attribute inheritance   | [bascik.dev/attribute-inheritance](https://bascik.dev/attribute-inheritance)   |
+| Scoped styles           | [bascik.dev/scoped-styles](https://bascik.dev/scoped-styles)                   |
+| Scoped JavaScript       | [bascik.dev/scoped-javascript](https://bascik.dev/scoped-javascript)           |
+| Configuration reference | [bascik.dev/configuration](https://bascik.dev/configuration)                   |
+| CSS/JS compatibility    | [bascik.dev/compatibility](https://bascik.dev/compatibility)                   |
 
 ---
 

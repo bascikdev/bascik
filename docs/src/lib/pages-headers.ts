@@ -90,6 +90,12 @@ export const PAGE_REDIRECTS: ReadonlyArray<readonly [string, string]> = [
     "/name-attribute",
     "/component-best-practices#name-form-controls-and-groups",
   ],
+  ["/build-scripts", "/scripts/build"],
+  ["/server-scripts", "/scripts/server"],
+  ["/stream-scripts", "/scripts/stream"],
+  ["/security", "/scripts/security"],
+  ["/script-imports", "/scripts/imports"],
+  ["/dynamic-routes", "/scripts/dynamic-routes"],
 ];
 
 /** The Cloudflare Pages `_redirects` file: one `from to 301` line per moved page. */

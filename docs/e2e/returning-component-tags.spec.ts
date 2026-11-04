@@ -1,13 +1,13 @@
 /**
  * The "Returning component tags" demo boxes in the browser.
  *
- * - /server-scripts#render-a-card-per-search-result: the Preview shows three product cards, expanded by the docs
+ * - /scripts/server#render-a-card-per-search-result: the Preview shows three book cards, expanded by the docs
  *   site's own static build and styled by the component's scoped CSS; Save toggles one card only; the Source tabs
  *   switch between the page with its server script and the component's HTML, CSS and JS; the Output shows the
  *   request-time HTML (one <style> before the first card, request-time ids) with the same cards as the Preview.
- * - /server-scripts#a-card-with-its-own-server-script: no Preview (the stock line exists only per request), Output
+ * - /scripts/server#a-card-with-its-own-server-script: no Preview (the stock line exists only per request), Output
  *   shows the nested script's line.
- * - /stream-scripts#stream-cards-in-batches: three cards in the Preview, one <style> in the Output.
+ * - /scripts/stream#stream-cards-in-batches: three cards in the Preview, one <style> in the Output.
  * - /testing/troubleshooting: the pass-through demo has no Preview and shows the misspelled and escaped tags as sent.
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
@@ -23,7 +23,7 @@ const REQUEST_ID = /(?<=\bbascik__[a-z][a-z0-9-]*__)r[0-9a-f]{7}(?=__)/g;
 /** At desktop width the Preview's cards sit side by side: the grid fills the pane and has more than one column. */
 const expectMultiColumnGrid = async (preview: Locator) => {
   const layout = await preview
-    .getByTestId("product-card")
+    .getByTestId("book-card")
     .first()
     .evaluate((card) => {
       const grid = card.parentElement!;
@@ -73,21 +73,21 @@ test.describe("Returning component tags demos", () => {
   test("search demo: Preview renders three scoped cards and Save toggles one", async ({
     page,
   }) => {
-    await page.goto("/server-scripts");
+    await page.goto("/scripts/server");
     const box = boxAfter(page, "render-a-card-per-search-result");
     await expect(box).toBeVisible();
 
     const preview = box.getByTestId("demo-pane-preview");
     await expect(preview).toBeVisible();
-    const cards = preview.getByTestId("product-card");
+    const cards = preview.getByTestId("book-card");
     await expect(cards).toHaveCount(3);
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectMultiColumnGrid(preview);
-    await expect(cards.nth(0)).toContainText("Milk frother");
-    await expect(cards.nth(0)).toContainText("$129");
+    await expect(cards.nth(0)).toContainText("Refactoring the Monolith");
+    await expect(cards.nth(0)).toContainText("Grace Lin");
     await expect(cards.nth(0)).toContainText("Best seller");
-    await expect(cards.nth(2)).toContainText("Glass carafe");
-    await expect(cards.nth(2)).toContainText("Standard");
+    await expect(cards.nth(2)).toContainText("Shipping Small Changes");
+    await expect(cards.nth(2)).toContainText("Paperback");
 
     // The component's CSS is applied, through a scoped class.
     const first = cards.nth(0);
@@ -101,12 +101,12 @@ test.describe("Returning component tags demos", () => {
     ).toBe(true);
 
     // The client script runs per instance: Save in one card leaves the others alone.
-    const save = first.getByTestId("product-card-save");
+    const save = first.getByTestId("book-card-save");
     await expect(save).toHaveAttribute("aria-pressed", "false");
     await save.click();
     await expect(save).toHaveAttribute("aria-pressed", "true");
     await expect(save).toHaveText("Saved");
-    await expect(cards.nth(1).getByTestId("product-card-save")).toHaveAttribute(
+    await expect(cards.nth(1).getByTestId("book-card-save")).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -115,7 +115,7 @@ test.describe("Returning component tags demos", () => {
   test("search demo: Source tabs switch between the page and the component files", async ({
     page,
   }) => {
-    await page.goto("/server-scripts");
+    await page.goto("/scripts/server");
     const box = boxAfter(page, "render-a-card-per-search-result");
     await box.getByTestId("demo-tab-code").click();
     const code = box.getByTestId("demo-pane-code");
@@ -126,12 +126,12 @@ test.describe("Returning component tags demos", () => {
     await code.locator('[data-language="usage"]').first().click();
     await expect(visibleLanguage("usage")).toBeVisible();
     await expect(visibleLanguage("usage")).toContainText("data-bascik-server");
-    await expect(visibleLanguage("usage")).toContainText("products.map");
+    await expect(visibleLanguage("usage")).toContainText("books.map");
 
     await code.locator('[data-language="html"]').first().click();
     await expect(visibleLanguage("html")).toBeVisible();
     await expect(visibleLanguage("html")).toContainText(
-      "data-bascik-prop-name",
+      "data-bascik-prop-title",
     );
     await expect(visibleLanguage("usage")).toBeHidden();
 
@@ -147,7 +147,7 @@ test.describe("Returning component tags demos", () => {
   test("search demo: Output shows the request-time HTML with the Preview's cards", async ({
     page,
   }) => {
-    await page.goto("/server-scripts");
+    await page.goto("/scripts/server");
     const box = boxAfter(page, "render-a-card-per-search-result");
     await box.getByTestId("demo-tab-output").click();
     const output = box.getByTestId("demo-pane-output");
@@ -157,7 +157,7 @@ test.describe("Returning component tags demos", () => {
     const html = await paneText(output, "html");
     expect(html.indexOf("<style")).toBeGreaterThanOrEqual(0);
     expect(html.indexOf("<style")).toBeLessThan(html.indexOf("<article"));
-    expect(html).not.toContain("<product-card");
+    expect(html).not.toContain("<book-card");
     // The card's script has no scoped id, so no request-time id is sent and
     // the three copies of the script are identical (one CSP hash).
     expect(html.match(REQUEST_ID) ?? []).toEqual([]);
@@ -167,7 +167,7 @@ test.describe("Returning component tags demos", () => {
 
     const previewNames = await box
       .getByTestId("demo-pane-preview")
-      .getByTestId("product-card")
+      .getByTestId("book-card")
       .locator("h3")
       .allTextContents();
     expect(outputNames(html)).toEqual(previewNames.map((n) => n.trim()));
@@ -176,25 +176,25 @@ test.describe("Returning component tags demos", () => {
   test("nested script demo: no Preview tab, Output shows the stock line", async ({
     page,
   }) => {
-    await page.goto("/server-scripts");
+    await page.goto("/scripts/server");
     const box = boxAfter(page, "a-card-with-its-own-server-script");
     await expect(box).toBeVisible();
     await expect(box.getByTestId("demo-tab-preview")).toBeHidden();
     await box.getByTestId("demo-tab-output").click();
     const output = box.getByTestId("demo-pane-output");
     await expect(output).toBeVisible();
-    await expect(output).toContainText("In stock");
+    await expect(output).toContainText("copies left");
     expect(await paneText(output, "html")).not.toContain("<stock-line");
   });
 
   test("stream demo: Preview has three cards, Output has one <style>", async ({
     page,
   }) => {
-    await page.goto("/stream-scripts");
+    await page.goto("/scripts/stream");
     const box = boxAfter(page, "stream-cards-in-batches");
     await expect(box).toBeVisible();
     await expect(
-      box.getByTestId("demo-pane-preview").getByTestId("product-card"),
+      box.getByTestId("demo-pane-preview").getByTestId("book-card"),
     ).toHaveCount(3);
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectMultiColumnGrid(box.getByTestId("demo-pane-preview"));
@@ -218,8 +218,8 @@ test.describe("Returning component tags demos", () => {
     const output = box.getByTestId("demo-pane-output");
     await expect(output).toBeVisible();
     const html = await paneText(output, "html");
-    expect(html).toContain("<prodcut-card");
-    expect(html).toContain("&lt;product-card");
+    expect(html).toContain("<bok-card");
+    expect(html).toContain("&lt;book-card");
     expect(html).not.toContain("<style");
   });
 });

@@ -162,7 +162,7 @@ describe("Lighthouse CI configuration", () => {
       ),
     );
     expect(config.ci.collect.settings.preset).toBe("desktop");
-    for (const page of ["/getting-started", "/stream-scripts", "/sitemap"])
+    for (const page of ["/getting-started", "/scripts/stream", "/sitemap"])
       expect(config.ci.collect.url).toContain(`${ORIGIN}${page}`);
     const all = config.ci.assert.assertMatrix.find(
       (entry: { matchingUrlPattern: string }) =>
@@ -351,7 +351,7 @@ describe("SEO scoring leaves out the noindex /search route", () => {
     for (const path of [
       "/search",
       "/search/",
-      "/search?q=frother",
+      "/search?q=refactoring",
       "/search?theme=light",
       "/search#results",
     ])
@@ -374,7 +374,7 @@ describe("SEO scoring leaves out the noindex /search route", () => {
 describe("The generated sweep leaves /search out of SEO scoring, as the gates do", () => {
   const nav: NavSection[] = [
     {
-      section: "Milk frother",
+      section: "Books",
       pages: [
         { href: "/getting-started", label: "Getting started" },
         { href: "/search", label: "Search" },
@@ -382,7 +382,7 @@ describe("The generated sweep leaves /search out of SEO scoring, as the gates do
         { href: "/searching", label: "Searching" },
         { href: "/search-tips", label: "Search tips" },
         { href: "/how-to/search", label: "How to search" },
-        { href: "https://example.com/frother", label: "Shop", external: true },
+        { href: "https://example.com/books", label: "Shop", external: true },
       ],
     },
   ];

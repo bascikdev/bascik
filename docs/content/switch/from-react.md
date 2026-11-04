@@ -296,7 +296,7 @@ The `<p>` lands in the inner component's slot. With no content between the `<out
 
 ## React Router → One .html File Per Route
 
-Replace client-side route definitions with files in `src/pages/`. There is no client-side navigation, every link triggers a full page load. Static routes are one `.html` file per URL. A parameterized route such as `/blog/:slug` is a [dynamic route](/dynamic-routes): one template with a bracketed folder name and a `<script data-bascik-routes>` block that returns the list of slugs.
+Replace client-side route definitions with files in `src/pages/`. There is no client-side navigation, every link triggers a full page load. Static routes are one `.html` file per URL. A parameterized route such as `/blog/:slug` is a [dynamic route](/scripts/dynamic-routes): one template with a bracketed folder name and a `<script data-bascik-routes>` block that returns the list of slugs.
 
 ```text
 Before (React Router)        After (Bascik)

@@ -26,14 +26,14 @@ Prefer build-time work. Server, stream, and API code needs `bascik --server` (or
 
 ## Rules for every Node-side script
 
-1. **Export a default function that returns markup:** a string or an `html` value. A server or stream script may also return an array of them, joined with no separator (``return items.map((p) => html`...`)``). Never return data, a `Response` (that is an API route), a caught `Error` (throw it) or an async `.map` (use `await Promise.all(...)`): a server or stream script that does is refused, a located error in dev and an empty slot with one warning in production (`read-doc.mjs /server-scripts`). `console.log()` output goes to the terminal only; it never becomes markup.
+1. **Export a default function that returns markup:** a string or an `html` value. A server or stream script may also return an array of them, joined with no separator (``return items.map((p) => html`...`)``). Never return data, a `Response` (that is an API route), a caught `Error` (throw it) or an async `.map` (use `await Promise.all(...)`): a server or stream script that does is refused, a located error in dev and an empty slot with one warning in production (`read-doc.mjs /scripts/server`). `console.log()` output goes to the terminal only; it never becomes markup.
 2. **One directive per tag.** Combining `data-bascik-build`, `data-bascik-build-once`, `-routes`, `-server`, or `-stream` is a hard error.
 3. **Imports, and where modules live:** top-level `import` and `await` work. A module (data, helper, types) one component uses lives in that component's folder with its tests and is imported with `./` (`import { faqs } from "./faqs.ts"`), which resolves against the file containing the script, inline or `src=`. A module one page uses sits beside the page as a `.ts` file (the pages folder publishes `.json` and `.js` files). Content lives with the component that renders it: a page that also needs it (JSON-LD) imports `@/components/faq-list/faqs.ts`. Only modules several components or pages share, or that config, exec scripts, or API routes import, go in `src/lib/`, imported with `@/` (`import { renderMd } from '@/lib/md.ts'`, resolved against `scripts.importRoot`, default `src`, from any depth). `audit-components.mjs` in the `bascik` skill reports a `src/lib/` module with one user. Bare npm packages work.
 4. **Never import with a bare leading `/`.** `import x from '/lib/x.ts'` and `src="/lib/x.ts"` are hard errors. Use `@/lib/x.ts` or `./lib/x.ts`. A `data-bascik-*` tag with `src=` has an empty body: a tag with both is rejected, and a `src=` file that cannot be read is the reported error.
 5. **Helpers import helpers with relative paths.** `@/` is rewritten only inside script tags; a `.ts` helper that imports another helper uses `./other.ts` (with the extension) and `import type` for type-only imports. tsconfig `paths` do not apply.
 6. **Data paths are relative to the project root.** `readFile('./content/post.md')` resolves from `process.cwd()`, not from the page.
 7. **Watch helpers.** Add `src/lib/` and data folders such as `content/` to `pipeline.watchPaths` so edits rebuild dependent pages in dev. Modules in a component's folder or beside a page need no entry: those folders are watched already, and an edit rebuilds every page whose scripts import the module.
-8. **Build all markup with `html` from `@bascik/bascik/html`.** This covers every build, build-once, routes, server and stream script, API route, and every `.ts` helper that returns markup (`src/lib/` or a component's companion). Plain template strings do not escape, and a hand-written escaper (`escapeHtml`, a `.replace(/&/g, "&amp;")` chain, an entity map) misses URLs and script contexts: never write one, and replace one you find with `html`. A feed or sitemap is XML, not HTML: build it as a string and escape each value with `esc()`. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts return `html` values like server scripts do. An `html` value is an object, not a string: `String(output)` in tests of a helper, `serverScriptOutput(output).text` from `@bascik/bascik/runtime` for a handler's whole return (an array included), `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). One hole per URL attribute: build the URL in code first (`` const href = `${siteUrl}${path}` ``, then `href="${href}"`). `html` throws `url-scheme-split` on two holes before the URL's first `/`, `?` or `#`, because together two values could spell a scheme such as `javascript:`; a hole after a written `/` (`href="/blog/${slug}"`) is fine. A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /security`, `/html-helpers`.
+8. **Build all markup with `html` from `@bascik/bascik/html`.** This covers every build, build-once, routes, server and stream script, API route, and every `.ts` helper that returns markup (`src/lib/` or a component's companion). Plain template strings do not escape, and a hand-written escaper (`escapeHtml`, a `.replace(/&/g, "&amp;")` chain, an entity map) misses URLs and script contexts: never write one, and replace one you find with `html`. A feed or sitemap is XML, not HTML: build it as a string and escape each value with `esc()`. `html` escapes each value for where it lands (text, quoted attribute, URL) and throws on places escaping cannot make safe (`on*`, `<script>`, `style`, unquoted attributes). Nest `html` values and arrays of them (`.map` with no `.join`). Use `raw(value)` only for HTML a sanitizer with an allowlist (for example `sanitize-html`) already cleaned, `json(value)` for `<script type="application/json">`, and `safeUrl(value, { origins })` when a script or stylesheet URL comes from data. Build scripts return `html` values like server scripts do. An `html` value is an object, not a string: `String(output)` in tests of a helper, `serverScriptOutput(output).text` from `@bascik/bascik/runtime` for a handler's whole return (an array included), `SafeHtml` as a helper's return type. Never `.join("")` fragments (the joined string is escaped and shows `&lt;li&gt;`). One hole per URL attribute: build the URL in code first (`` const href = `${siteUrl}${path}` ``, then `href="${href}"`). `html` throws `url-scheme-split` on two holes before the URL's first `/`, `?` or `#`, because together two values could spell a scheme such as `javascript:`; a hole after a written `/` (`href="/blog/${slug}"`) is fine. A hole cannot add an attribute: for `selected`, `checked` or `disabled`, write the tag twice and choose in code (`checked="${false}"` is still checked). An `html` error shows a plain 500 in the browser; the located message is in the terminal. Details: `read-doc.mjs /scripts/security`, `/html-helpers`.
 9. **TypeScript by default.** Helpers and data modules (in a component's folder, beside a page, or in `src/lib/`), API routes (`src/api/*.ts`), `pipeline.exec` scripts (`scripts/*.ts`), and `bascik.config.ts` are TypeScript; Node strips their types, so there is no build step. Keep to erasable syntax (no `enum`, namespaces with code, or parameter properties), or pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS`. A `data-bascik-*` script is TypeScript when its `src=` names a `.ts` file (`<script data-bascik-build src="./nav.ts">`) or its tag is marked `type="text/typescript"`; Bascik strips its types before it runs, on Node and in the Cloudflare Worker, and errors keep the source's lines; a syntax error or `enum` fails `bascik --build` (and the page in dev) with file:line:column, never only at request time. An unmarked block is JavaScript, so mark it. Keep each block to a few lines that import typed helpers. Helpers import each other with the `.ts` extension. Use JavaScript only when the person asks for it; when refactoring TypeScript, keep the types. Browser TypeScript and esbuild: the `bascik` skill, and `read-doc.mjs /scoped-javascript`, `/configuration`, `/how-to/bundling-npm-packages`.
 10. **Directives in output never run.** If a build script prints another `data-bascik-*` script, it is removed with a warning; in server and stream output it is sent as written and never runs on the server. Printed component tags do expand, in build, server, and stream output.
 
@@ -71,7 +71,9 @@ export const postCard = (post: { slug: string; title: string }): SafeHtml =>
 - **Component context:** `data-bascik-build` runs for each use with that page's context. Use `data-bascik-build-once` for identical output with no page or route context: in a component every use shares one run, and in a dynamic route template every route shares one run. Its output is cached like any build script. Use a build-wide `pre` exec script when work should be shared across different files.
 - Errors follow `scripts.onBuildScriptError` (`'error'` by default): dev shows the error on that page and keeps serving; `--build` fails.
 
-Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BUILD` (`"1"` in `--build`), `BASCIK_SITE_URL` (absent when unset), `BASCIK_BASE`, and `BASCIK_ROUTE` (dynamic routes). Details: `read-doc.mjs /build-scripts`, `/environment-variables`, `/how-to/page-aware-scripts`.
+Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), `BASCIK_PAGE_FILE`, `BASCIK_SOURCE_FILE`, `BASCIK_PAGES_DIR`, `BASCIK_BUILD` (`"1"` in `--build`), `BASCIK_SITE_URL` (absent when unset), `BASCIK_BASE`, and `BASCIK_ROUTE` (dynamic routes). Details: `read-doc.mjs /scripts/build`, `/environment-variables`, `/how-to/page-aware-scripts`.
+
+Server and stream scripts read the server's own `process.env` (`.env` values, secrets, `BASCIK_SERVER`, `BASCIK_SITE_URL`) and get no page variables: read the page from `request.url`. On Cloudflare Workers, read secrets and bindings from `context.platform.env`. Never print a secret from a build script; it ships in the page. Details: `read-doc.mjs /scripts#environment-variables`.
 
 ## Dynamic routes
 
@@ -93,7 +95,7 @@ Per-page values come from environment variables: `BASCIK_PAGE_PATH` (`/about`), 
 </script>
 ```
 
-Every bracket name needs a matching `params` key; a param cannot contain `/` (use one template per depth). Use `src/pages/blog/[slug]/index.html` for trailing-slash URLs. Never generate page files into `src/pages/`. Details: `read-doc.mjs /dynamic-routes`.
+Every bracket name needs a matching `params` key; a param cannot contain `/` (use one template per depth). Use `src/pages/blog/[slug]/index.html` for trailing-slash URLs. Never generate page files into `src/pages/`. Details: `read-doc.mjs /scripts/dynamic-routes`.
 
 ## Server and stream scripts
 
@@ -120,20 +122,19 @@ Every bracket name needs a matching `params` key; a param cannot contain `/` (us
 - Early HTML is not necessarily interactive: deferred/module scripts can still wait for parsing to finish. Keep authentication/authorization gates before streaming and do not move protected markup into an unconditional shell.
 - Verify with a deliberately stalled stream that the intended shell bytes arrive first, then check visual placement on desktop/mobile with JavaScript disabled, keyboard order, and success/empty/error results.
 
-Recipe and examples: `read-doc.mjs /stream-scripts#recipe-c-priority-source-order-with-css-positioning-the-early-paint-footer-trick`, especially `/stream-scripts#option-3-flexbox-column-order` (the homepage and Cloudflare adapter demo use this pattern).
+Recipe and examples: `read-doc.mjs /scripts/stream#recipe-c-priority-source-order-with-css-positioning-the-early-paint-footer-trick`, especially `/scripts/stream#option-3-flexbox-column-order` (the homepage and Cloudflare adapter demo use this pattern).
 
 ### Server and stream scripts may return component tags
 
 ```html
 <script data-bascik-server>
   import { html } from "@bascik/bascik/html";
-  import { searchProducts } from "@/lib/products.ts";
+  import { searchBooks } from "@/lib/books.ts";
   export default async function (request) {
     const q = new URL(request.url).searchParams.get("q") ?? "";
-    const products = await searchProducts(q);
-    return html`${products.map(
-      (p) =>
-        html`<product-card data-bascik-prop-name="${p.name}"></product-card>`,
+    const books = await searchBooks(q);
+    return html`${books.map(
+      (b) => html`<book-card data-bascik-prop-title="${b.title}"></book-card>`,
     )}`;
   }
 </script>
@@ -151,7 +152,7 @@ Recipe and examples: `read-doc.mjs /stream-scripts#recipe-c-priority-source-orde
 - **Unsupported, left unexpanded** (listed by `bascik --check` after a build): `attr-binding-to-scoped-attribute` (a `data-bascik-attr-*` binding onto `id`, `class`, `style`, an SVG reference attribute, or `name`/`usemap` when `scoping.attributes.name` is on; bind a `data-*` attribute instead), `instance-scoped-server-script` (the component's server or stream script names its scoped ids or field names, or the component has such a script and its stylesheet uses `url(#id)` or `scoping.deduplicateCss: false`; a `url(#id)` component with no script renders, with one style block per instance), `build-script-reads-page-context` (a `data-bascik-build` script reads `BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, or `BASCIK_ROUTE`; use `data-bascik-build-once`), `attr-src-on-directive-script`, and `scoping-template-unavailable` (the `--check` detail says why).
 - With `generate.cspHashes`, server and stream routes list every renderable component's hashes, except components with per-instance CSS or client scripts that use scoped ids.
 
-Details: `read-doc.mjs /server-scripts` (Returning component tags), `/compatibility` (Request-Time Component Rendering).
+Details: `read-doc.mjs /scripts` (Returning component tags), `/compatibility` (Request-Time Component Rendering).
 
 ## API routes
 
@@ -165,7 +166,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Every script file in `src/api/` is a route except `*.d.ts` and tests beside a route (`*.test.ts`, `*.spec.ts`), so keep shared helpers in `src/lib/` and import them as `@/lib/<name>.ts`. Unexported methods, and any method other than `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` and `HEAD` (an exported `PURGE` is never called), return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/server-scripts`, `/stream-scripts`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
+Every script file in `src/api/` is a route except `*.d.ts` and tests beside a route (`*.test.ts`, `*.spec.ts`), so keep shared helpers in `src/lib/` and import them as `@/lib/<name>.ts`. Unexported methods, and any method other than `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` and `HEAD` (an exported `PURGE` is never called), return 405 with an `Allow` header; `HEAD` derives from `GET`; `OPTIONS` is automatic. Handlers receive `(request, { params, remoteIp, platform }, { signal })`. Details: `read-doc.mjs /api-routes`, `/scripts/server`, `/scripts/stream`. A handler that accepts both JSON and a no-JavaScript form post: `add-example.mjs starter-site/src/api/contact.ts`.
 
 ## Blogs and Markdown collections
 
@@ -190,7 +191,8 @@ Details: `read-doc.mjs /how-to/markdown`, and the working blog in `add-example.m
 
 | How do I...                                                | Read                                                |
 | ---------------------------------------------------------- | --------------------------------------------------- |
-| Import helpers, use `@/`, or load TypeScript               | `/script-imports`                                   |
+| Choose between build, routes, server, and stream scripts   | `/scripts`                                          |
+| Import helpers, use `@/`, or load TypeScript               | `/scripts/imports`                                  |
 | Read the page's own path or source, set per-page head tags | `/how-to/page-aware-scripts`                        |
 | Render Markdown, front matter, a collection                | `/how-to/markdown`                                  |
 | Bundle npm packages for the browser                        | `/how-to/bundling-npm-packages`                     |

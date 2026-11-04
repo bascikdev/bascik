@@ -125,7 +125,7 @@ VS Code's standard Find All References works on components, so the shortcuts you
 - **From a usage.** Put the cursor on a component tag name, opening or closing, in any page or component, and press `Shift+F12`.
 - **From the component itself.** In the component's own file, press `Shift+F12` on its first line, anywhere in its `<!-- @bascik` comment, or on its root element's tag line. You do not need to find a usage first.
 
-![VS Code: Shift+F12 on the @bascik comment of product-card.html opens Peek References listing featured-row.html, gifts.html, and shop.html; selecting the usage in gifts.html previews it, and Enter opens the page at that tag](/assets/vscode/find-references@2x.webp)
+![VS Code: Shift+F12 on the @bascik comment of book-card.html opens Peek References listing featured-row.html, gifts.html, and shop.html; selecting the usage in featured-row.html previews it, and Enter opens that component at the tag](/assets/vscode/find-references@2x.webp)
 
 `Shift+F12` opens Peek References, which previews each usage in place. Select one and press `Enter` to open it. To list them in the References panel instead, right-click and choose **Find All References**, or press `Shift+Option+F12` (`Shift+Alt+F12` on Windows and Linux). Each result is the tag name in an opening tag, and self-closing tags count. A tag inside an HTML comment, an attribute value, or a `<script>`, `<style>`, or `<textarea>` body is not a usage, because Bascik does not expand it there. Results include unsaved edits in open files, and follow files you add, change, or delete.
 
@@ -145,7 +145,7 @@ A `<script type="text/typescript">` block is colored as TypeScript, with the gra
   import { marked } from "marked";
 
   export default async function (): Promise<string> {
-    const md: string = await readFile("./content/milk-frother.md", "utf8");
+    const md: string = await readFile("./content/refactoring-the-monolith.md", "utf8");
     return marked(md);
   }
 </script>
@@ -163,16 +163,16 @@ A type error in a `<script type="text/typescript">` block is underlined with Typ
 
 ```html
 <script type="text/typescript">
-  import { frotherSpeed } from "@/lib/frother.ts";
+  import { readingTime } from "@/lib/books.ts";
 
-  const rpm: number = "fast"; // TS2322: Type 'string' is not assignable to type 'number'.
+  const minutes: number = "long"; // TS2322: Type 'string' is not assignable to type 'number'.
 </script>
 ```
 
 Each block is checked the way Bascik compiles it:
 
 - **Each block is checked in the scope it runs in.** A page's browser blocks become plain `<script>` elements, so they share the page's scope: a block can call a function another block declares, and declaring the same `const` in two blocks is an error. A component's browser blocks are each wrapped in a function when [`scoping.scriptBlocks`](/configuration#scopingscriptblocks) is on (the default), so they never see each other's names. A server-side block is a module of its own. Top-level `await` is reported in a browser block, which runs as a classic script, and allowed in a server-side block.
-- **A page's browser blocks are checked as the classic script they are.** Names a page's plain `<script>` elements declare are known to its TypeScript blocks, and so are the names declared by the scripts of components it uses when `scoping.scriptBlocks` is off (those are `any`). A top-level name is never reported as unused, even with `noUnusedLocals`, since markup such as `onclick="toggleFrother()"` and later scripts can use it. A top-level `var` or `function`, and a name a plain `<script>` declares, is also a property of `window`, `self` and `globalThis`, so `function gtag() {}` followed by `window.gtag("js", new Date())` is not reported; `let`, `const` and `class` names are not properties of `window`, in TypeScript as in a browser. A `var` that a block types again (`var shared: number;`) after a plain script sets it is not reported as used before being assigned. `interface Window { dataLayer: unknown[] }` adds to the browser's `Window`, as it does in a classic script, for that page only: no two pages run together, so one page's additions never reach another page's checks. A component's additions hold on every page that uses it, scoped or not, since its script runs there: a `<ga-tag />` component that declares `interface Window { dataLayer: unknown[] }` lets the page call `window.dataLayer.push(...)`. A block with a syntax error is reported on its own and the page's other blocks are checked without it, as a browser skips that one script and runs the rest.
+- **A page's browser blocks are checked as the classic script they are.** Names a page's plain `<script>` elements declare are known to its TypeScript blocks, and so are the names declared by the scripts of components it uses when `scoping.scriptBlocks` is off (those are `any`). A top-level name is never reported as unused, even with `noUnusedLocals`, since markup such as `onclick="toggleSample()"` and later scripts can use it. A top-level `var` or `function`, and a name a plain `<script>` declares, is also a property of `window`, `self` and `globalThis`, so `function gtag() {}` followed by `window.gtag("js", new Date())` is not reported; `let`, `const` and `class` names are not properties of `window`, in TypeScript as in a browser. A `var` that a block types again (`var shared: number;`) after a plain script sets it is not reported as used before being assigned. `interface Window { dataLayer: unknown[] }` adds to the browser's `Window`, as it does in a classic script, for that page only: no two pages run together, so one page's additions never reach another page's checks. A component's additions hold on every page that uses it, scoped or not, since its script runs there: a `<ga-tag />` component that declares `interface Window { dataLayer: unknown[] }` lets the page call `window.dataLayer.push(...)`. A block with a syntax error is reported on its own and the page's other blocks are checked without it, as a browser skips that one script and runs the rest.
 - **A browser block and a server-side block see different globals.** A block with no directive runs in the browser, so it gets the DOM (`document`, `HTMLButtonElement`) and no Node.js. A block with `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` runs in Node.js, so it gets Node.js's types when the project has `@types/node` installed, and no DOM. Without `@types/node`, it gets the web globals Node.js and workerd share (`Request`, `Response`, `URL`, `fetch`, `import.meta.url`), and Node.js's own globals (`process`) and built-in modules (`node:fs`) are known but untyped, so code that runs is never reported. Install `@types/node` to have them checked.
 - **A directive script's `export default` is typed.** A server or stream script's `request`, `context`, and `{ signal }` get their types (`ServerScript` from `@bascik/bascik`), a build script must return a string or an `html` value (`BuildScript`), and a routes script must return route objects (`RoutesScript`). This needs a version of `@bascik/bascik` that publishes these types; with an older one the parameters are not checked.
 - **Imports resolve as Bascik resolves them.** Relative imports resolve from the page's folder, `@/` resolves against [`scripts.importRoot`](/configuration#scriptsimportroot), and `.ts` extensions in import paths are allowed. A misspelled import path is underlined on the path.
@@ -185,20 +185,20 @@ The check uses VS Code's own TypeScript, so there is nothing to install, and it 
 
 In a `<script type="text/typescript">` block, what comes from another file works as it does in a `.ts` file:
 
-- **Hover** a name imported through `@/` or a relative path to see its type and documentation. A name whose type comes from another file shows that type too, such as `const settings = frotherSettings`, or a server script's `request` and `context`, which `@bascik/bascik` types.
+- **Hover** a name imported through `@/` or a relative path to see its type and documentation. A name whose type comes from another file shows that type too, such as `const settings = bookSettings`, or a server script's `request` and `context`, which `@bascik/bascik` types.
 - **Go to Definition** (`F12` or `Cmd`/`Ctrl`-click) on an imported name opens the file and line that declare it, and on an import path opens the file.
 - **Completion** lists an imported object's members as you type the `.`, and the files and folders inside an import path, `@/` paths included.
 - **Signature help** shows an imported function's parameters as you type its arguments.
 
 ```html
 <script type="text/typescript">
-  import { frotherSettings, froth } from "@/lib/frother-settings.ts";
+  import { bookSettings, readingTime } from "@/lib/book-settings.ts";
 
-  froth(frotherSettings.rpm); // hover, F12, completion and signature help reach src/lib/frother-settings.ts
+  readingTime(bookSettings.wordsPerMinute); // hover, F12, completion and signature help reach src/lib/book-settings.ts
 </script>
 ```
 
-VS Code's HTML support keeps answering for the names the page declares itself and for the DOM's globals, and the extension leaves those to it, so a suggestion or a signature is never listed twice. VS Code reads a server-side block with the DOM too, whatever its directive, so there a global that Node.js and the DOM both have (`console`, `setTimeout`, `fetch`, `URL`) and its members come from VS Code's library, and the extension adds only what VS Code does not know: Node.js's own globals and members (`process`, `Buffer`, `console.Console`) and the types Bascik gives the default export's parameters. Because VS Code sees every import as `any`, the extension also completes the names a module exports inside an import's braces (`import { | } from "@/lib/frother.ts"`), and the members, methods and signatures of a library type reached through an import, such as `froth(1).` on a string or `frothers.map(` on an imported array. Hovering an imported name can show two cards, VS Code's (which sees the import as `any`) and the extension's. VS Code reads a block as TypeScript only when its `type` attribute is written exactly `type="text/typescript"` (or with single quotes). A block Bascik still compiles but VS Code does not recognize, such as `type="text/TypeScript"` or an unquoted `type=text/typescript`, gets every answer from the extension, its own names too. A block whose attribute is written in capitals, `TYPE="text/typescript"`, is read by VS Code as JavaScript, together with the page's plain scripts, so there VS Code answers the page's own names and the extension adds only what needs another file. With VS Code's built-in HTML Language Features extension disabled, the extension answers for the page's own names in every block.
+VS Code's HTML support keeps answering for the names the page declares itself and for the DOM's globals, and the extension leaves those to it, so a suggestion or a signature is never listed twice. VS Code reads a server-side block with the DOM too, whatever its directive, so there a global that Node.js and the DOM both have (`console`, `setTimeout`, `fetch`, `URL`) and its members come from VS Code's library, and the extension adds only what VS Code does not know: Node.js's own globals and members (`process`, `Buffer`, `console.Console`) and the types Bascik gives the default export's parameters. Because VS Code sees every import as `any`, the extension also completes the names a module exports inside an import's braces (`import { | } from "@/lib/books.ts"`), and the members, methods and signatures of a library type reached through an import, such as `readingTime(1).` on a string or `books.map(` on an imported array. Hovering an imported name can show two cards, VS Code's (which sees the import as `any`) and the extension's. VS Code reads a block as TypeScript only when its `type` attribute is written exactly `type="text/typescript"` (or with single quotes). A block Bascik still compiles but VS Code does not recognize, such as `type="text/TypeScript"` or an unquoted `type=text/typescript`, gets every answer from the extension, its own names too. A block whose attribute is written in capitals, `TYPE="text/typescript"`, is read by VS Code as JavaScript, together with the page's plain scripts, so there VS Code answers the page's own names and the extension adds only what needs another file. With VS Code's built-in HTML Language Features extension disabled, the extension answers for the page's own names in every block.
 
 These features use the same TypeScript as the errors, so the [TypeScript settings](#typescript-settings) apply, and they need no setup. Scripts without `type="text/typescript"` get none of them. Rename, quick fixes, and adding a missing import are not offered.
 
@@ -257,7 +257,7 @@ Server and stream script diagnostics enforce the runtime contract and flag outpu
 
 ![VS Code: the hole in a server script's template is underlined, the hover names server-script-unescaped-markup, and the Quick Fix wraps the template in html and adds the import from @bascik/bascik/html](/assets/vscode/unescaped-markup@2x.webp)
 
-These diagnostics identify risky sinks. They do not replace application-specific validation, escaping, or authorization. See [Security](/security) and the [Linter](/tools/linter#server-script-unescaped-markup) for complete guidance.
+These diagnostics identify risky sinks. They do not replace application-specific validation, escaping, or authorization. See [Security](/scripts/security) and the [Linter](/tools/linter#server-script-unescaped-markup) for complete guidance.
 
 ### Validate API Routes
 

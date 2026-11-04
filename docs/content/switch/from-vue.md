@@ -12,17 +12,17 @@ A client widget in Bascik ships only the inline script it needs, with no framewo
 
 ## Mental Model Comparison
 
-| Concept                        | Vue (SFC)                                            | Bascik                                                          |
-| ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------- |
-| Component file                 | `InfoCard.vue` (`<template>`, `<script>`, `<style>`) | `info-card.html` in `src/components/info-card/`                 |
-| Component usage                | `<InfoCard />` (imported or registered)              | `<info-card></info-card>` (auto-resolved by file name)          |
-| Scoped styles                  | `<style scoped>`                                     | Paired `.css` file or inline `<style>` (auto-scoped)            |
-| Slots                          | `<slot />` / `<slot name="…" />`                     | `data-bascik-slot` / `data-bascik-slot="name"`                  |
-| Component props                | `defineProps(['title'])`                             | `data-bascik-prop-title` / `data-bascik-attr-*` (text only)     |
-| Arrays and objects as props    | `:data="rows"`                                       | JSON in a `<script type="application/json">` slot               |
-| Events up (`$emit`, `v-model`) | `emit('change')`, `@change`                          | DOM events, `CustomEvent`, `addEventListener`                   |
-| Client interactivity           | `ref()`, `computed()`, directives (`v-if`, `v-for`)  | Vanilla JavaScript DOM APIs in `<script>` tags                  |
-| Routes                         | `vue-router`                                         | One `.html` file per URL, or a [dynamic route](/dynamic-routes) |
+| Concept                        | Vue (SFC)                                            | Bascik                                                                  |
+| ------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| Component file                 | `InfoCard.vue` (`<template>`, `<script>`, `<style>`) | `info-card.html` in `src/components/info-card/`                         |
+| Component usage                | `<InfoCard />` (imported or registered)              | `<info-card></info-card>` (auto-resolved by file name)                  |
+| Scoped styles                  | `<style scoped>`                                     | Paired `.css` file or inline `<style>` (auto-scoped)                    |
+| Slots                          | `<slot />` / `<slot name="…" />`                     | `data-bascik-slot` / `data-bascik-slot="name"`                          |
+| Component props                | `defineProps(['title'])`                             | `data-bascik-prop-title` / `data-bascik-attr-*` (text only)             |
+| Arrays and objects as props    | `:data="rows"`                                       | JSON in a `<script type="application/json">` slot                       |
+| Events up (`$emit`, `v-model`) | `emit('change')`, `@change`                          | DOM events, `CustomEvent`, `addEventListener`                           |
+| Client interactivity           | `ref()`, `computed()`, directives (`v-if`, `v-for`)  | Vanilla JavaScript DOM APIs in `<script>` tags                          |
+| Routes                         | `vue-router`                                         | One `.html` file per URL, or a [dynamic route](/scripts/dynamic-routes) |
 
 ## A Low-Risk First Step
 
@@ -369,7 +369,7 @@ src/router/index.js          src/pages/
 </html>
 ```
 
-This writes `dist/blog/my-first-post.html` and `dist/blog/another-post.html`. Name the file `[slug]/index.html` to get `/blog/my-first-post/` instead. Do not generate page files into `src/pages/`. See [Dynamic Routes](/dynamic-routes).
+This writes `dist/blog/my-first-post.html` and `dist/blog/another-post.html`. Name the file `[slug]/index.html` to get `/blog/my-first-post/` instead. Do not generate page files into `src/pages/`. See [Dynamic Routes](/scripts/dynamic-routes).
 
 Route guards, nested layouts with `<RouterView>`, and `<RouterLink>` active classes have no direct equivalent. A layout is a set of components that each page uses, and an active link is computed at build time from the page path ([Build Scripts with Page Context](/how-to/page-aware-scripts)).
 

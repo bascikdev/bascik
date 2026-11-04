@@ -13,14 +13,20 @@ const pages = [
   ["/static", "Static interactivity"],
 ] as const;
 
-const products = [
-  "Pour-over kettle",
-  "Ceramic dripper",
-  "Milk frother",
-  "Glass carafe",
-  "Filters & holder",
+const bookTitles = [
+  "Practical Type Systems",
+  "Testing at the Edges",
+  "Refactoring the Monolith",
+  "Shipping Small Changes",
+  "Pairing & Code Review",
 ];
-const prices = ["$48", "$22", "$129", "$31", "$9"];
+const authors = [
+  "Ada Okafor",
+  "Priya Nair",
+  "Grace Lin",
+  "Sam Rivera",
+  "Jonah Weiss",
+];
 
 test.describe("shared adapter demo contract", () => {
   test("every overview card contains its own visible title and description", async ({
@@ -166,7 +172,7 @@ test.describe("shared adapter demo contract", () => {
   test("server query input is escaped, and page aliases preserve it", async ({
     page,
   }) => {
-    const name = '<b data-testid="injected">Milk & "Foam"</b>';
+    const name = '<b data-testid="injected">Books & "Notes"</b>';
     for (const route of ["/server", "/server/", "/server.html"]) {
       const response = await page.goto(
         `${route}?name=${encodeURIComponent(name)}`,
@@ -197,31 +203,31 @@ test.describe("shared adapter demo contract", () => {
     }
   });
 
-  test("server-rendered cards share product data, slots, filtering, and nested scripts", async ({
+  test("server-rendered cards share book data, slots, filtering, and nested scripts", async ({
     page,
   }) => {
     await page.goto("/catalog");
     const results = page.getByTestId("catalog-results");
-    await expect(results.getByTestId("product-card-name")).toHaveText(products);
-    await expect(results.getByTestId("product-card-price")).toHaveText(prices);
-    await expect(results.getByTestId("product-card-badge")).toHaveText([
+    await expect(results.getByTestId("book-card-title")).toHaveText(bookTitles);
+    await expect(results.getByTestId("book-card-author")).toHaveText(authors);
+    await expect(results.getByTestId("book-card-badge")).toHaveText([
       "New",
-      "Standard",
+      "Paperback",
       "Best seller",
-      "Standard",
-      "Standard",
+      "Paperback",
+      "Paperback",
     ]);
-    await expect(page.getByTestId("product-card-live")).toContainText(
-      "In stock",
+    await expect(page.getByTestId("book-card-live")).toContainText(
+      "Copies in stock",
     );
-    await page.getByTestId("catalog-search").fill("frother");
+    await page.getByTestId("catalog-search").fill("monolith");
     await page.getByTestId("catalog-search").press("Enter");
-    await expect(results.getByTestId("product-card-name")).toHaveText([
-      "Milk frother",
+    await expect(results.getByTestId("book-card-title")).toHaveText([
+      "Refactoring the Monolith",
     ]);
     await page.goto("/catalog?q=nothing-matches");
     await expect(page.getByTestId("catalog-empty")).toBeVisible();
-    await expect(results.getByTestId("product-card")).toHaveCount(0);
+    await expect(results.getByTestId("book-card")).toHaveCount(0);
     await page.goto(
       `/catalog?q=${encodeURIComponent('<script data-testid="injected">bad()</script>')}`,
     );
@@ -235,12 +241,12 @@ test.describe("shared adapter demo contract", () => {
     const ping = await request.get("/api/ping");
     expect(ping.status()).toBe(200);
     expect(await ping.json()).toMatchObject({ pong: true });
-    const echo = await request.post("/api/echo", { data: "Milk & foam" });
+    const echo = await request.post("/api/echo", { data: "Books & notes" });
     expect(echo.status()).toBe(201);
     expect(echo.headers()["x-fixture"]).toBe("echo");
-    expect(await echo.json()).toEqual({ body: "Milk & foam" });
-    const item = await request.get("/api/items/milk%20frother");
-    expect(await item.json()).toEqual({ id: "milk frother" });
+    expect(await echo.json()).toEqual({ body: "Books & notes" });
+    const item = await request.get("/api/items/type%20systems");
+    expect(await item.json()).toEqual({ id: "type systems" });
     const files = await request.get("/api/files/reports/caf%C3%A9%20menu");
     expect(await files.json()).toMatchObject({
       route: "catch-all",
@@ -283,7 +289,7 @@ test.describe("shared adapter demo contract", () => {
     request,
   }) => {
     await page.goto("/catalog");
-    const cards = page.getByTestId(/^(product-card|product-card-live)$/);
+    const cards = page.getByTestId(/^(book-card|book-card-live)$/);
     const ids = await cards.evaluateAll((elements) =>
       elements.map((element) => element.id),
     );
@@ -293,23 +299,21 @@ test.describe("shared adapter demo contract", () => {
     expect(
       await page.locator("body").evaluate((element) => {
         const view = element.ownerDocument.defaultView;
-        return view && "__productCards" in view
-          ? view.__productCards
-          : undefined;
+        return view && "__bookCards" in view ? view.__bookCards : undefined;
       }),
     ).toBe(6);
     await expect(
       page
         .getByTestId("catalog-results")
-        .getByTestId("product-card-name")
+        .getByTestId("book-card-title")
         .first(),
     ).toHaveCSS("color", "rgb(211, 255, 141)");
-    await expect(page.getByTestId("product-card-stock")).toHaveCSS(
+    await expect(page.getByTestId("book-card-stock")).toHaveCSS(
       "color",
       "rgb(254, 240, 138)",
     );
     const className = await page
-      .getByTestId("product-card")
+      .getByTestId("book-card")
       .first()
       .getAttribute("class");
     expect(className).toMatch(/^\S+$/);
@@ -320,7 +324,7 @@ test.describe("shared adapter demo contract", () => {
     ].filter((match) => match[1].includes(`.${className}{`));
     expect(styles).toHaveLength(1);
     expect(html.indexOf(styles[0][0])).toBeLessThan(
-      html.indexOf('data-testid="product-card"'),
+      html.indexOf('data-testid="book-card"'),
     );
     expect(html).not.toMatch(
       /text\/bascik-server|data-bascik-server-id|bascik-job:/,
@@ -421,7 +425,7 @@ test.describe("shared adapter demo contract", () => {
       await expect(streamed).toBeVisible();
     });
 
-    test("streamed cards arrive after the shell in the same product order", async ({
+    test("streamed cards arrive after the shell in the same book order", async ({
       page,
       request,
     }) => {
@@ -429,17 +433,15 @@ test.describe("shared adapter demo contract", () => {
       await expect(page.getByRole("contentinfo")).toBeVisible();
       const cards = page
         .getByTestId("catalog-stream-grid")
-        .getByTestId("product-card-name");
+        .getByTestId("book-card-title");
       expect(await cards.count()).toBe(0);
-      await expect(cards).toHaveText(products);
+      await expect(cards).toHaveText(bookTitles);
       await expect(
-        page
-          .getByTestId("catalog-stream-grid")
-          .getByTestId("product-card-price"),
-      ).toHaveText(prices);
+        page.getByTestId("catalog-stream-grid").getByTestId("book-card-author"),
+      ).toHaveText(authors);
       await expect(cards.first()).toHaveCSS("color", "rgb(211, 255, 141)");
       const className = await page
-        .getByTestId("product-card")
+        .getByTestId("book-card")
         .first()
         .getAttribute("class");
       const html = await (await request.get("/catalog-stream?delay=0")).text();
@@ -448,7 +450,7 @@ test.describe("shared adapter demo contract", () => {
       ].filter((match) => match[1].includes(`.${className}{`));
       expect(styles).toHaveLength(1);
       expect(html.indexOf(styles[0][0])).toBeLessThan(
-        html.indexOf('data-testid="product-card"'),
+        html.indexOf('data-testid="book-card"'),
       );
     });
   });

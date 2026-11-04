@@ -2,7 +2,7 @@
  * Request-time component rendering, attacker lens (prompt 157 security
  * audit, 2026-10-28). The baseline is documented: a server or stream
  * script's output is HTML, and its author escapes every visitor value
- * (server-scripts.md, "Escaping and injection"). What is new is that tags in
+ * (scripts/server.md, "Escaping and injection"). What is new is that tags in
  * that output expand into components. Each test here plays a visitor who
  * controls one value `q` that a script escapes into a prop, a slot or an
  * attribute of a returned component tag, and asserts the SAFE outcome:

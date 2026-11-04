@@ -155,17 +155,17 @@ describe("articleSchema", () => {
   it("keeps a double quote inside a single-quoted description, in either attribute order", async () => {
     expect(
       await schemaDescription(
-        `<meta content='Say "frothy" milk.' name='description' />`,
+        `<meta content='Say "well-rated" books.' name='description' />`,
       ),
-    ).toBe('Say "frothy" milk.');
+    ).toBe('Say "well-rated" books.');
   });
 
   it("decodes entities written in the description, so the schema says what the page says", async () => {
     expect(
       await schemaDescription(
-        `<meta name="description" content="Milk &amp; foam: Bascik&#39;s frother." />`,
+        `<meta name="description" content="Titles &amp; authors: Bascik&#39;s books." />`,
       ),
-    ).toBe("Milk & foam: Bascik's frother.");
+    ).toBe("Titles & authors: Bascik's books.");
   });
 
   it("decodes an entity in the title for the headline", async () => {
@@ -176,7 +176,7 @@ describe("articleSchema", () => {
 <html>
 <head>
   <title>Benchmarking &amp; Profiling - Bascik Docs</title>
-  <meta name="description" content="Measure the frother build." />
+  <meta name="description" content="Measure the book site build." />
 </head>
 <body></body>
 </html>`,

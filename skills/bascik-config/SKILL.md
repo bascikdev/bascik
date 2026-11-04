@@ -176,7 +176,7 @@ Bascik changes the author's output only to protect it, and each change has a swi
 - The binding keys and `stripDirectiveScripts` apply at build time (default or `build` export; Bascik warns in `server`). The Cloudflare Worker uses the build's values for all of them.
 - Limits are their own settings, not `security`: `scripts.renderLimits` (request-time rendering, `maxInstances: 1000` and five more) and `components.expansionLimits` (build guard, `maxInstances: 10000`, `maxPageLength`). `scripts.stripAnsi: false` keeps terminal color codes in script output.
 
-Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /security`.
+Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /scripts/security`.
 
 ## Deploy
 

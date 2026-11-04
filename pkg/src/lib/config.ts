@@ -247,7 +247,7 @@ export const defaultConfig: Omit<
   },
   base: "/",
   // Every protection that changes the author's output is on by default and
-  // can be turned off by name (see docs/content/security.md).
+  // can be turned off by name (see docs/content/scripts/security.md).
   security: {
     blockScriptUrls: true,
     blockCodeBindings: true,

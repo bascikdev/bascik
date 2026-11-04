@@ -26,7 +26,7 @@ In this repository the site lists `../components` as a second component folder t
 `bascik.config.ts`:
 
 - `pipeline.watchPaths` rebuilds pages in the dev server when a post or a helper in `src/lib/` changes.
-- The blog pages and the home page call `getPosts()`, which reads a directory. The [build script cache](https://bascik.dev/build-scripts) keys only on files a script names literally, so those pages are excluded from it; otherwise a new post would not appear.
+- The blog pages and the home page call `getPosts()`, which reads a directory. The [build script cache](https://bascik.dev/scripts/build) keys only on files a script names literally, so those pages are excluded from it; otherwise a new post would not appear.
 - Two `post` exec scripts read the finished output: `scripts/feed.ts` writes `feed.xml`, and `scripts/llms-txt.ts` writes `llms.txt`.
 
 ## Layout Components
@@ -49,7 +49,7 @@ The helper also exports `jsonLd()` (it writes the data with `json()`, so a value
 
 Posts are Markdown files in `content/posts/`. `src/lib/posts.ts` is the only code that reads them: it parses front matter, validates every post (a missing title, description, or `YYYY-MM-DD` date fails the build with the file name), renders the body with `marked`, and leaves out `draft: true` posts in `bascik --build`.
 
-`src/pages/blog/[slug]/index.html` is a [dynamic route](https://bascik.dev/dynamic-routes): its routes script returns one route per post with the post as `data`, and the page's head script passes the post's fields to `seo()` and `article()`.
+`src/pages/blog/[slug]/index.html` is a [dynamic route](https://bascik.dev/scripts/dynamic-routes): its routes script returns one route per post with the post as `data`, and the page's head script passes the post's fields to `seo()` and `article()`.
 
 Rendered Markdown is styled by `src/pages/css/prose.css`, a global stylesheet, so plain selectors such as `.prose h2` match the generated HTML. In a component, an element selector only matches elements written in the component's template.
 

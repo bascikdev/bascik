@@ -42,11 +42,11 @@ Attribute inheritance is root-only. To send a prop to an attribute on a non-root
 
 ### Attributes That Become URLs on the Root
 
-Bascik copies an inherited attribute exactly as written, with one exception. An attribute that becomes a URL only because of the root's tag gets the same URL check that `html` and URL prop bindings use (see [Security](/security#what-bascik-guarantees)). That means `data` on an `<object>` root, and `to`, `from`, `by` and `values` on an SVG animation root such as `<animate>`. Values that are script URLs such as `javascript:` become `about:invalid` there. So does any `data:` URL (`data:image/...` included), because an `<object>` can load any page, and Bascik prints a warning that names the component file. Every other URL, such as `https:` or a relative path, is kept as written. To inherit such a value as written, for example a `data:application/pdf` URL you control, turn the check off with [`security.blockScriptUrls: false`](/configuration#security); it then applies to every URL binding, so do it only when no visitor can choose the URL.
+Bascik copies an inherited attribute exactly as written, with one exception. An attribute that becomes a URL only because of the root's tag gets the same URL check that `html` and URL prop bindings use (see [Security](/scripts/security#what-bascik-guarantees)). That means `data` on an `<object>` root, and `to`, `from`, `by` and `values` on an SVG animation root such as `<animate>`. Values that are script URLs such as `javascript:` become `about:invalid` there. So does any `data:` URL (`data:image/...` included), because an `<object>` can load any page, and Bascik prints a warning that names the component file. Every other URL, such as `https:` or a relative path, is kept as written. To inherit such a value as written, for example a `data:application/pdf` URL you control, turn the check off with [`security.blockScriptUrls: false`](/configuration#security); it then applies to every URL binding, so do it only when no visitor can choose the URL.
 
-Only this case is checked because [`html`](/security), or your own escaping, sees `<my-embed data="...">` and cannot know the root is an `<object>`, where `data` loads a page.
+Only this case is checked because [`html`](/scripts/security), or your own escaping, sees `<my-embed data="...">` and cannot know the root is an `<object>`, where `data` loads a page.
 
-Everything else is yours and is inherited as written, including your own `onclick`, `style` and `href`. To put visitor data in markup safely, build it with `html` as [Security](/security) shows: `html` already refuses visitor data in event handlers, `srcdoc` and `style`, and checks `href`, `src`, `action` and `formaction` as URLs on any tag.
+Everything else is yours and is inherited as written, including your own `onclick`, `style` and `href`. To put visitor data in markup safely, build it with `html` as [Security](/scripts/security) shows: `html` already refuses visitor data in event handlers, `srcdoc` and `style`, and checks `href`, `src`, `action` and `formaction` as URLs on any tag.
 
 In the demo below, the `https:` URL is kept and the `javascript:` URL becomes `about:invalid`. The first line of each code block names the file; it is an ordinary comment, so it also appears in the Output. The docs site blocks `<object>` embeds, so the Preview shows each embed's fallback text, and the difference is in the `data` attribute in the Output. The build prints this warning for the second usage:
 
@@ -61,10 +61,10 @@ In the demo below, the `https:` URL is kept and the `javascript:` URL becomes `a
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Frother manual</title>
+    <title>Book sample</title>
   </head>
   <body>
-    <my-embed data="https://example.com/frother-manual.html"></my-embed>
+    <my-embed data="https://example.com/book-sample.html"></my-embed>
     <my-embed data="javascript:alert(1)"></my-embed>
   </body>
 </html>
@@ -86,7 +86,7 @@ In the demo below, the `https:` URL is kept and the `javascript:` URL becomes `a
 <object
   type="text/html"
   data-testid="my-embed"
-  data="https://example.com/frother-manual.html"
+  data="https://example.com/book-sample.html"
 >
   <p>The embedded page is not shown here.</p>
 </object>

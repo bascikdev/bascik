@@ -112,7 +112,7 @@ The port and output directory live in `lighthouse/site.ts`; the `lighthouserc*.j
 
 ```sh
 # Gate: mobile (/, /getting-started, /components, /search, /libraries, /sitemap), then desktop
-# (/, /getting-started, /stream-scripts, /sitemap, /search), then light-theme accessibility
+# (/, /getting-started, /scripts/stream, /sitemap, /search), then light-theme accessibility
 yarn docs:lighthouse
 
 # Audit all documentation routes (generated dynamically from nav.ts)

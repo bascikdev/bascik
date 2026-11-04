@@ -781,7 +781,7 @@ describe("HELLO_API_ROUTE", () => {
 });
 
 describe("semantic HTML in the starter", () => {
-  const brand = "Milk frother";
+  const brand = "Okafor Books";
   const pages = {
     index: indexPage(brand),
     about: aboutPage(brand),

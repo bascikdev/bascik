@@ -58,10 +58,15 @@ describe("heading ids", () => {
   });
 
   it("finds the line of a repeated heading", () => {
-    const markdown = "# T\n\n## Milk Frother\n\nText.\n\n### Milk frother\n";
+    const markdown =
+      "# T\n\n## Practical Type Systems\n\nText.\n\n### Practical type systems\n";
     expect(headingIds(markdown)).toEqual([
-      { id: "milk-frother", text: "Milk Frother", line: 3 },
-      { id: "milk-frother", text: "Milk frother", line: 7 },
+      { id: "practical-type-systems", text: "Practical Type Systems", line: 3 },
+      {
+        id: "practical-type-systems",
+        text: "Practical type systems",
+        line: 7,
+      },
     ]);
   });
 });

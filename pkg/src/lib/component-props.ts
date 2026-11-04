@@ -178,7 +178,7 @@ const EVENT_HANDLER_REASON =
  *   animation's values are checked entry by entry;
  * - a URL the page runs or applies (`<script src>`, `<base href>`, a
  *   stylesheet `<link href>`) takes any http(s) URL, as browsers allow:
- *   protecting what a site loads is CSP's job (see /security);
+ *   protecting what a site loads is CSP's job (see /scripts/security);
  * - a `style` value that runs script or imports CSS is not bound.
  *
  * Every other target binds the value as it is. The value is escaped by the

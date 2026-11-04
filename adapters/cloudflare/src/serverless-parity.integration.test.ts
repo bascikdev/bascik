@@ -786,12 +786,12 @@ const numberInstanceNames = (text: string): string => {
   );
 };
 
-const PRODUCT_NAMES = [
-  "Pour-over kettle",
-  "Ceramic dripper",
-  "Milk frother",
-  "Glass carafe",
-  "Filters &amp; holder",
+const BOOK_TITLES = [
+  "Practical Type Systems",
+  "Testing at the Edges",
+  "Refactoring the Monolith",
+  "Shipping Small Changes",
+  "Pairing &amp; Code Review",
 ];
 
 for (const config of [
@@ -832,20 +832,20 @@ for (const config of [
       cf: await observe(await cloudflare.fetch(at(path), init)),
     });
 
-    it("catalog.html: identical bytes on both hosts, every <product-card> rendered, with and without ?q=", async () => {
-      for (const query of ["", "?q=frother", "?q=FILTERS", "?q=nothing"]) {
+    it("catalog.html: identical bytes on both hosts, every <book-card> rendered, with and without ?q=", async () => {
+      for (const query of ["", "?q=monolith", "?q=PAIRING", "?q=nothing"]) {
         const { node: n, cf } = await both(`/catalog${query}`);
         expect(n.status, `node ${query}`).toBe(200);
         expect(cf.status, `cf ${query}`).toBe(200);
         // The oracle renders; the Worker must not hand the tag to the client.
-        expect(markup(n.body), `node ${query}`).not.toContain("<product-card");
-        expect(markup(cf.body), `cf ${query}`).not.toContain("<product-card");
+        expect(markup(n.body), `node ${query}`).not.toContain("<book-card");
+        expect(markup(cf.body), `cf ${query}`).not.toContain("<book-card");
         expect(cf.body, query).toBe(n.body);
       }
       const all = (await both("/catalog")).cf.body;
-      for (const name of PRODUCT_NAMES) expect(all).toContain(`>${name}<`);
-      const one = (await both("/catalog?q=frother")).cf.body;
-      expect(instancesOf(one, "product-card")).toHaveLength(1);
+      for (const name of BOOK_TITLES) expect(all).toContain(`>${name}<`);
+      const one = (await both("/catalog?q=monolith")).cf.body;
+      expect(instancesOf(one, "book-card")).toHaveLength(1);
       expect(one).toContain(">Best seller<");
       expect((await both("/catalog?q=nothing")).cf.body).toContain(
         'data-testid="catalog-empty"',
@@ -858,11 +858,11 @@ for (const config of [
         ["node", n.body],
         ["cloudflare", cf.body],
       ] as const) {
-        const cards = instancesOf(body, "product-card");
+        const cards = instancesOf(body, "book-card");
         expect(cards, label).toHaveLength(5);
         const className = cards[0].className;
         if (!config.identifiers)
-          expect(className, label).toBe("bascik__product-card__tile");
+          expect(className, label).toBe("bascik__book-card__tile");
         for (const card of cards) expect(card.className, label).toBe(className);
         const blocks = styleBlocksDefining(body, className);
         expect(blocks, label).toHaveLength(1);
@@ -875,32 +875,30 @@ for (const config of [
 
     it("catalog.html: each instance gets a distinct request-time id, the same on both hosts", async () => {
       const { node: n, cf } = await both("/catalog");
-      const ids = instancesOf(cf.body, "product-card").map((c) => c.id);
-      expect(ids).toEqual(instancesOf(n.body, "product-card").map((c) => c.id));
+      const ids = instancesOf(cf.body, "book-card").map((c) => c.id);
+      expect(ids).toEqual(instancesOf(n.body, "book-card").map((c) => c.id));
       expect(new Set(ids).size).toBe(5);
       if (!config.identifiers)
         for (const id of ids)
-          expect(id).toMatch(/^bascik__product-card__r[0-9a-f]{7}__tile$/);
+          expect(id).toMatch(/^bascik__book-card__r[0-9a-f]{7}__tile$/);
     });
 
-    it("catalog.html: the nested job of <product-card-live> ran with the request and its output carries the component's classes", async () => {
+    it("catalog.html: the nested job of <book-card-live> ran with the request and its output carries the component's classes", async () => {
       const { node: n, cf } = await both("/catalog");
-      const stock = `In stock · checked for ${at("/catalog")} at request time`;
+      const stock = `Copies in stock · checked for ${at("/catalog")} at request time`;
       expect(n.body).toContain(stock);
       expect(cf.body).toContain(stock);
-      expect(markup(cf.body)).not.toContain("<product-card-live");
+      expect(markup(cf.body)).not.toContain("<book-card-live");
       if (!config.identifiers)
         expect(cf.body).toContain(
-          `<p class="bascik__product-card-live__stock" data-testid="product-card-stock">${stock}</p>`,
+          `<p class="bascik__book-card-live__stock" data-testid="book-card-stock">${stock}</p>`,
         );
       expect(cf.body).not.toContain("text/bascik-server");
     });
 
     it("catalog.html: the escaped sample in <pre><code> is page markup and stays text", async () => {
       const { cf } = await both("/catalog");
-      expect(cf.body).toContain(
-        "<code>&lt;product-card data-bascik-prop-name=",
-      );
+      expect(cf.body).toContain("<code>&lt;book-card data-bascik-prop-title=");
     });
 
     it("catalog.html: HEAD content-length equals the GET body length on both hosts", async () => {
@@ -978,15 +976,13 @@ for (const config of [
       const cfBody = (await cfStream.all()).map((c) => c.text).join("");
       expect(cfStream.status).toBe(200);
       expect(cfStream.headers["content-length"]).toBeUndefined();
-      expect(markup(nodeBody)).not.toContain("<product-card");
-      expect(markup(cfBody)).not.toContain("<product-card");
+      expect(markup(nodeBody)).not.toContain("<book-card");
+      expect(markup(cfBody)).not.toContain("<book-card");
       expect(cfBody).toBe(nodeBody);
-      const positions = PRODUCT_NAMES.map((name) =>
-        cfBody.indexOf(`>${name}<`),
-      );
+      const positions = BOOK_TITLES.map((name) => cfBody.indexOf(`>${name}<`));
       expect(positions.every((p) => p > 0)).toBe(true);
       expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-      const cards = instancesOf(cfBody, "product-card");
+      const cards = instancesOf(cfBody, "book-card");
       expect(cards).toHaveLength(5);
       const blocks = styleBlocksDefining(cfBody, cards[0].className);
       expect(blocks).toHaveLength(1);
@@ -1002,19 +998,19 @@ for (const config of [
       expect(cf.status).toBe(200);
       expect(cf.body).toBe(n.body);
       expect(cf.body).toContain(
-        '<product-crad data-testid="typo">typo stays</product-crad>',
+        '<book-crad data-testid="typo">typo stays</book-crad>',
       );
-      expect(cf.body).toContain("&lt;product-card&gt; stays text");
-      expect(cf.body).toContain('title="<product-card>"');
+      expect(cf.body).toContain("&lt;book-card&gt; stays text");
+      expect(cf.body).toContain('title="<book-card>"');
       // Unsupported (a prop bound to id): left as the author wrote it.
       expect(cf.body).toContain(
         '<bound-id-card data-bascik-prop-anchor="x"></bound-id-card>',
       );
       // A guessed staged placeholder is author text: nothing runs.
       expect(cf.body).toContain(
-        `data-bascik-server-id="${componentScriptId("product-card-live")}"`,
+        `data-bascik-server-id="${componentScriptId("book-card-live")}"`,
       );
-      expect(cf.body).not.toContain("product-card-stock");
+      expect(cf.body).not.toContain("book-card-stock");
       // The supported tag renders, and its bound href is below the base.
       expect(markup(cf.body)).not.toContain("<link-card");
       expect(cf.body).toMatch(
@@ -1048,7 +1044,7 @@ for (const config of [
         expect(n.status, `node ${query}`).toBe(status);
         expect(cf.status, `cf ${query}`).toBe(status);
         expect(cf.body, query).toBe(n.body);
-        expect(markup(cf.body), query).not.toContain("<product-card");
+        expect(markup(cf.body), query).not.toContain("<book-card");
       }
     });
 
@@ -1093,8 +1089,8 @@ for (const config of [
       }
       expect(bodies.size).toBe(1);
       const [body] = bodies;
-      expect(markup(body)).not.toContain("<product-card");
-      const inner = instancesOf(body, "product-card");
+      expect(markup(body)).not.toContain("<book-card");
+      const inner = instancesOf(body, "book-card");
       expect(inner).toHaveLength(3);
       expect(new Set(inner.map((card) => card.id)).size).toBe(3);
     });
@@ -1110,12 +1106,12 @@ for (const config of [
       }
       expect(bodies.size).toBe(1);
       const [body] = bodies;
-      // link-card (returned by the first site) before product-card (the
+      // link-card (returned by the first site) before book-card (the
       // second), each found by its color however the CSS minifier spells it.
       const link = body.search(/#040506|rgb\(4, ?5, ?6\)/);
-      const product = body.search(/#d3ff8d|rgb\(211, ?255, ?141\)/);
+      const book = body.search(/#d3ff8d|rgb\(211, ?255, ?141\)/);
       expect(link).toBeGreaterThan(-1);
-      expect(product).toBeGreaterThan(link);
+      expect(book).toBeGreaterThan(link);
     });
 
     it("misuse: ANSI escapes printed by a component script and by a page script are stripped the same way on both hosts", async () => {
@@ -1131,8 +1127,8 @@ for (const config of [
     it("misuse: a percent-encoded spelling of the route gets the plain route's instance ids on both hosts", async () => {
       const ids = (html: string) =>
         [
-          ...instancesOf(html, "product-card"),
-          ...instancesOf(html, "product-card-live"),
+          ...instancesOf(html, "book-card"),
+          ...instancesOf(html, "book-card-live"),
         ].map((card) => card.id);
       const plain = await both("/catalog");
       expect(ids(plain.cf.body)).toHaveLength(6);
@@ -1242,12 +1238,12 @@ for (const policy of ["error", "warn", "ignore"] as const) {
         expect(r.cf.status, path).toBe(200);
         expect(r.cf.body, path).toBe(r.node.body);
         expect(r.cf.body, path).toContain(
-          "<li>Milk frother</li><li>Kettle</li>",
+          "<li>Refactoring the Monolith</li><li>Practical Type Systems</li>",
         );
         expect(r.cf.body, path).not.toContain("</li>,");
       }
       expect((await both("/returns-array")).cf.body).toContain(
-        'data-testid="product-card"',
+        'data-testid="book-card"',
       );
     });
 
@@ -1336,12 +1332,12 @@ for (const policy of ["error", "warn", "ignore"] as const) {
       {
         path: "/components-budget?n=1001",
         message:
-          /expands to more than 1000 component instances \(<product-card>, components\/product-card\/product-card\.html\)/,
+          /expands to more than 1000 component instances \(<book-card>, components\/book-card\/book-card\.html\)/,
       },
       {
         path: "/components-budget?n=65&kind=live",
         message:
-          /would run more than 64 nested component scripts in one response \(<product-card-live>, components\/product-card-live\/product-card-live\.html:\d+\)/,
+          /would run more than 64 nested component scripts in one response \(<book-card-live>, components\/book-card-live\/book-card-live\.html:\d+\)/,
       },
       {
         path: "/components-chain",
@@ -1391,7 +1387,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
           expect(r.cf.status, `cf ${path}`).toBe(status);
           expect(r.cf.body, path).toBe(r.node.body);
           for (const tag of [
-            "<product-card",
+            "<book-card",
             "<chain-card",
             "<once-card",
             "<twice-card",
@@ -1403,7 +1399,7 @@ for (const policy of ["error", "warn", "ignore"] as const) {
             expect(r.cf.body, path).toContain('data-testid="shell"');
             expect(r.cf.body, path).toContain('data-testid="tail"');
             // The slot is empty: nothing of the failed output is sent.
-            expect(r.cf.body, path).not.toContain('data-testid="product-card"');
+            expect(r.cf.body, path).not.toContain('data-testid="book-card"');
             expect(r.cf.body, path).not.toContain('data-testid="chain-card"');
             expect(r.cf.body, path).not.toContain("xxxxxxxx");
           }
@@ -1607,7 +1603,7 @@ describe("serverless parity: escaped visitor input in returned component tags (p
       `</textarea><img src=x onerror=alert(1)>`,
       `--><img src=x onerror=alert(1)>`,
       `&lt;img src=x onerror=alert(1)&gt;`,
-      `<product-card-live></product-card-live>`,
+      `<book-card-live></book-card-live>`,
       `<script type="text/bascik-server" data-bascik-job="${"0".repeat(32)}:0"></script>`,
     ];
     for (const q of payloads) {
@@ -1619,7 +1615,7 @@ describe("serverless parity: escaped visitor input in returned component tags (p
         const body = markup(cf.body);
         // Visitor text is only ever text: no element it spelled, no job it named.
         expect(body, q).not.toMatch(
-          /<img|<script>alert|<script type="text\/bascik-server"|<product-card-live|product-card-stock/,
+          /<img|<script>alert|<script type="text\/bascik-server"|<book-card-live|book-card-stock/,
         );
       }
     }
@@ -1631,7 +1627,9 @@ describe("serverless parity: escaped visitor input in returned component tags (p
     expect(cf.status).toBe(200);
     expect(cf.body).toBe(n.body);
     const stock = [
-      ...cf.body.matchAll(/In stock · checked for ([^<]*) at request time/g),
+      ...cf.body.matchAll(
+        /Copies in stock · checked for ([^<]*) at request time/g,
+      ),
     ];
     expect(stock).toHaveLength(1);
     expect(stock[0][1]).toBe("/components-security");
@@ -1857,9 +1855,9 @@ describe("serverless parity: @bascik/bascik/html in server, stream and component
     cf: await observe(await cloudflare.fetch(path)),
   });
 
-  const ATTACK = `<product-card data-bascik-prop-name=x><img src=x onerror=alert(1)>`;
+  const ATTACK = `<book-card data-bascik-prop-title=x><img src=x onerror=alert(1)>`;
 
-  it("?q=<product-card ...><img onerror> renders as text with no expanded component, byte-identical on both hosts", async () => {
+  it("?q=<book-card ...><img onerror> renders as text with no expanded component, byte-identical on both hosts", async () => {
     for (const path of [
       `/html-search?q=${encodeURIComponent(ATTACK)}`,
       `/html-stream?q=${encodeURIComponent(ATTACK)}`,
@@ -1869,7 +1867,7 @@ describe("serverless parity: @bascik/bascik/html in server, stream and component
       expect(cf.status, path).toBe(200);
       expect(cf.body, path).toBe(n.body);
       const body = markup(cf.body);
-      expect(body, path).not.toMatch(/<img[\s>]|<product-card/i);
+      expect(body, path).not.toMatch(/<img[\s>]|<book-card/i);
       expect(body.match(/data-testid="safe-card"/g), path).toHaveLength(1);
       expect(body, path).toContain("&lt;img src=x onerror=alert(1)&gt;");
     }

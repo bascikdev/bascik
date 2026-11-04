@@ -37,7 +37,7 @@ For markup built in a server, stream or build script, start with [`html`](/html-
 </script>
 ```
 
-Server and stream scripts handle data from the request, so they are where escaping matters most; see [Security](/security). The template libraries below suit templates that live in their own files, and they are fine in any script. Like `html`, they escape text by default, but none of them checks URL schemes: `href="{{url}}"` keeps `javascript:alert(1)`. Pass a URL that comes from data through `safeUrl` from `@bascik/bascik/html` before it reaches the template.
+Server and stream scripts handle data from the request, so they are where escaping matters most; see [Security](/scripts/security). The template libraries below suit templates that live in their own files, and they are fine in any script. Like `html`, they escape text by default, but none of them checks URL schemes: `href="{{url}}"` keeps `javascript:alert(1)`. Pass a URL that comes from data through `safeUrl` from `@bascik/bascik/html` before it reaches the template.
 
 ## Handlebars
 
@@ -137,7 +137,7 @@ Use it from a build script:
 
 If the helper grows past about twenty lines, that is the signal to reach for Handlebars. A helper that keeps growing new features is a template engine you now have to maintain yourself.
 
-> **Why nothing escapes automatically.** Bascik injects the returned HTML of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping happens where you put a value into markup: `html` does it for you, one value at a time, and a template library or this helper does it for its own placeholders. See [Security](/security).
+> **Why nothing escapes automatically.** Bascik injects the returned HTML of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping happens where you put a value into markup: `html` does it for you, one value at a time, and a template library or this helper does it for its own placeholders. See [Security](/scripts/security).
 
 ## EJS and Nunjucks, if you already know them
 
@@ -277,7 +277,7 @@ The same `data` object can feed a second script on the page, a JSON payload for 
 > });
 > ```
 >
-> See [Build Scripts](/build-scripts#performance-output-caching) for the full cache key and invalidation limits.
+> See [Build Scripts](/scripts/build#performance-output-caching) for the full cache key and invalidation limits.
 
 ## A JSON payload for client JavaScript
 

@@ -229,9 +229,9 @@
     <header>
       <h1 data-testid="catalog-heading">Server-rendered cards</h1>
       <p class="subtitle">
-        Search for a product to see the Worker create a fresh set of cards for
-        your request. The server script returns a
-        <code>&lt;product-card&gt;</code> tag for each match; Bascik fills its
+        Search for a book to see the Worker create a fresh set of cards for your
+        request. The server script returns a
+        <code>&lt;book-card&gt;</code> tag for each match; Bascik fills its
         props and slots and includes its scoped CSS. The live-stock card below
         also runs its own nested server script.
       </p>
@@ -242,15 +242,15 @@
         <h2>Search the catalog</h2>
         <p class="explain">
           The list below is filtered by <code>?q=</code> on every request. Try
-          <a href="/catalog?q=frother">frother</a> or
+          <a href="/catalog?q=monolith">monolith</a> or
           <a href="/catalog?q=nothing-matches">a query with no match</a>.
         </p>
         <form class="search" method="get" action="/catalog">
           <input
             type="search"
             name="q"
-            placeholder="Search products"
-            aria-label="Search products"
+            placeholder="Search books"
+            aria-label="Search books"
             data-testid="catalog-search"
           />
           <button type="submit">Search</button>
@@ -259,30 +259,38 @@
           <script data-bascik-server>
             import { html } from "@bascik/bascik/html";
             export default function (request) {
-              const products = [
-                { name: "Pour-over kettle", price: "$48", badge: "New" },
-                { name: "Ceramic dripper", price: "$22" },
-                { name: "Milk frother", price: "$129", badge: "Best seller" },
-                { name: "Glass carafe", price: "$31" },
-                { name: "Filters & holder", price: "$9" },
+              const books = [
+                {
+                  title: "Practical Type Systems",
+                  author: "Ada Okafor",
+                  badge: "New",
+                },
+                { title: "Testing at the Edges", author: "Priya Nair" },
+                {
+                  title: "Refactoring the Monolith",
+                  author: "Grace Lin",
+                  badge: "Best seller",
+                },
+                { title: "Shipping Small Changes", author: "Sam Rivera" },
+                { title: "Pairing & Code Review", author: "Jonah Weiss" },
               ];
               const q = (new URL(request.url).searchParams.get("q") ?? "")
                 .trim()
                 .toLowerCase();
-              const matches = products.filter((p) =>
-                p.name.toLowerCase().includes(q),
+              const matches = books.filter((p) =>
+                p.title.toLowerCase().includes(q),
               );
               if (matches.length === 0) {
                 return html`<p class="empty" data-testid="catalog-empty">
-                  No products match "${q}".
+                  No books match "${q}".
                 </p>`;
               }
               return html`${matches.map(
                 (p) =>
-                  html`<product-card
-                    data-bascik-prop-name="${p.name}"
-                    data-bascik-prop-price="${p.price}"
-                    >${p.badge ? html`<span>${p.badge}</span>` : ""}</product-card
+                  html`<book-card
+                    data-bascik-prop-title="${p.title}"
+                    data-bascik-prop-author="${p.author}"
+                    >${p.badge ? html`<span>${p.badge}</span>` : ""}</book-card
                   >`,
               )}`;
             }
@@ -293,18 +301,18 @@
       <div class="card">
         <h2>Live stock (a nested server script)</h2>
         <p class="explain">
-          This tile is a <code>&lt;product-card-live&gt;</code>, which carries
-          its own server script. The Worker runs that script once for the
-          rendered tile with the current request and splices its stock line into
-          the tile.
+          This tile is a <code>&lt;book-card-live&gt;</code>, which carries its
+          own server script. The Worker runs that script once for the rendered
+          tile with the current request and splices its stock line into the
+          tile.
         </p>
         <div class="catalog-grid" data-testid="catalog-live">
           <script data-bascik-server>
             export default function () {
               return (
-                `<product-card-live data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129">` +
+                `<book-card-live data-bascik-prop-title="Refactoring the Monolith" data-bascik-prop-author="Grace Lin">` +
                 `<span>Live</span>` +
-                `</product-card-live>`
+                `</book-card-live>`
               );
             }
           </script>
@@ -319,7 +327,7 @@
         </p>
         <pre
           data-testid="catalog-code"
-        ><code>&lt;product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129"&gt;&lt;span&gt;Best seller&lt;/span&gt;&lt;/product-card&gt;</code></pre>
+        ><code>&lt;book-card data-bascik-prop-title="Refactoring the Monolith" data-bascik-prop-author="Grace Lin"&gt;&lt;span&gt;Best seller&lt;/span&gt;&lt;/book-card&gt;</code></pre>
       </div>
 
       <p class="next-nav" data-testid="catalog-next-nav">
@@ -332,7 +340,7 @@
     <footer data-testid="catalog-footer">
       <div>Bascik · Components from Server Scripts on Cloudflare Workers</div>
       <div>
-        <a href="https://bascik.dev/server-scripts">Server Scripts Guide →</a>
+        <a href="https://bascik.dev/scripts/server">Server Scripts Guide →</a>
       </div>
     </footer>
   </body>

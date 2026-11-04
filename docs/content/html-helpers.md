@@ -1,6 +1,6 @@
 # HTML Helpers
 
-`@bascik/bascik/html` is a small module of plain functions for building HTML safely. It is the way to build markup in every script and helper: build, build-once, routes, server and stream scripts, API routes, and the `.ts` helpers in `src/lib/` or beside a component that they import. A project needs no escaper of its own: build the markup with `html`, insert HTML you trust or sanitized with `raw()`, write JSON-LD and other JSON scripts with `json()`, and use `esc()` or `safeUrl()` where a string is built without `html`. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/security) for why it exists and how it fits with the rest of a site's protection.
+`@bascik/bascik/html` is a small module of plain functions for building HTML safely. It is the way to build markup in every script and helper: build, build-once, routes, server and stream scripts, API routes, and the `.ts` helpers in `src/lib/` or beside a component that they import. A project needs no escaper of its own: build the markup with `html`, insert HTML you trust or sanitized with `raw()`, write JSON-LD and other JSON scripts with `json()`, and use `esc()` or `safeUrl()` where a string is built without `html`. You import each function and call it; nothing is injected and nothing runs on its own. Each function returns a value you can return from a script. See [Security](/scripts/security) for why it exists and how it fits with the rest of a site's protection.
 
 ## Import
 
@@ -21,8 +21,8 @@ A tagged template with contextual escaping. The first time a template runs, `htm
 It returns a `SafeHtml` value. Nested inside another `html` template, it is inserted as it is. It is an object, not a string: `typeof` gives `"object"` and it has no string methods such as `includes` or `replace`. It turns into the HTML string where JavaScript converts a value to a string (`String(value)`, a plain `${value}`, `JSON.stringify`), and every host accepts it as a script's return value. Call `String(value)` before you treat it as text, for example in a test:
 
 ```js
-const output = await handler(new Request("https://example.com/?q=kettle"));
-expect(String(output)).toContain("kettle");
+const output = await handler(new Request("https://example.com/?q=types"));
+expect(String(output)).toContain("types");
 ```
 
 In TypeScript, a helper that returns `html` declares `SafeHtml`, not `string`:
@@ -31,11 +31,11 @@ In TypeScript, a helper that returns `html` declares `SafeHtml`, not `string`:
 // src/lib/card.ts
 import { html, type SafeHtml } from "@bascik/bascik/html";
 
-export function card(product: { name: string; price: string }): SafeHtml {
-  return html`<product-card
-    data-bascik-prop-name="${product.name}"
-    data-bascik-prop-price="${product.price}"
-  ></product-card>`;
+export function card(book: { title: string; author: string }): SafeHtml {
+  return html`<book-card
+    data-bascik-prop-title="${book.title}"
+    data-bascik-prop-author="${book.author}"
+  ></book-card>`;
 }
 ```
 
@@ -59,7 +59,7 @@ export function card(product: { name: string; price: string }): SafeHtml {
 | Tag or attribute name                                                | `<${tag}>`, `<input ${attr}>`                                 | Throws `tag-name`, `attribute-name`                                                                 |
 | Comment, `<!DOCTYPE>`, CDATA                                         | `<!-- ${x} -->`                                               | Throws `comment`                                                                                    |
 
-URL attributes are `href`, `xlink:href`, `src`, `action`, `formaction`, `poster`, `background`, `cite`, `codebase`, `longdesc`, `lowsrc`, `dynsrc`, `manifest`, `icon`, and `data` on `<object>`, on any element. Image slots (`<img src>`, `<img srcset>`, `<source srcset>`, `<video poster>`, `<input src>`, `<link imagesrcset>`) keep `data:image/*` URLs. Any `http:` or `https:` URL, another site's included, is kept, as the browser takes it; see [Loading scripts and styles from other sites](/security#loading-scripts-and-styles-from-other-sites). This is the same rule Bascik applies to props bound to URL attributes.
+URL attributes are `href`, `xlink:href`, `src`, `action`, `formaction`, `poster`, `background`, `cite`, `codebase`, `longdesc`, `lowsrc`, `dynsrc`, `manifest`, `icon`, and `data` on `<object>`, on any element. Image slots (`<img src>`, `<img srcset>`, `<source srcset>`, `<video poster>`, `<input src>`, `<link imagesrcset>`) keep `data:image/*` URLs. Any `http:` or `https:` URL, another site's included, is kept, as the browser takes it; see [Loading scripts and styles from other sites](/scripts/security#loading-scripts-and-styles-from-other-sites). This is the same rule Bascik applies to props bound to URL attributes.
 
 Give each URL attribute one hole, and build the URL in code first. `html` checks a URL's scheme (`https:`, `javascript:`) from the start of the attribute to its first `/`, `?` or `#`. Two values side by side there could together spell `javascript:`, one supplying `java` and the next `script:`, so `html` refuses the split instead of guessing (`url-scheme-split`), on every call. Join the parts in code and pass the whole URL, which `html` then checks as one value:
 
@@ -121,7 +121,7 @@ return html`<ul>
 
 Keep `html` at every level. Joining fragments with `+` or `.join("")` makes a plain string, and a plain string in an outer `html` is escaped. A shared helper in `src/lib/` can return `html` values, and fragments from two copies of the module (a monorepo duplicate, a Worker bundle) nest too: the brand is a registered symbol. Data from JSON, a query string, headers or `structuredClone` can never carry it, so a visitor cannot forge an `html` value. `raw()` is the only intended way to make one from a string.
 
-A server or stream script can also return the array itself: its items are joined the same way, with no separator, so ``return items.map((item) => html`<li>${item.name}</li>`)`` works without an outer `html`. A plain template literal around an array still prints commas, because JavaScript turns the array into a string with `String(array)`; see [Return Values](/server-scripts#return-values).
+A server or stream script can also return the array itself: its items are joined the same way, with no separator, so ``return items.map((item) => html`<li>${item.name}</li>`)`` works without an outer `html`. A plain template literal around an array still prints commas, because JavaScript turns the array into a string with `String(array)`; see [Return Values](/scripts/server#return-values).
 
 ## raw
 
@@ -129,7 +129,7 @@ A server or stream script can also return the array itself: its items are joined
 raw(sanitizedHtml);
 ```
 
-Marks a string of trusted HTML, such as sanitized CMS or Markdown output, so `html` inserts it as it is. `null` and `undefined` give empty HTML, a number gives its digits, and an `html` value is returned unchanged. It takes one string: called as a tag, with an array or a plain object, or with a Promise, it throws a `TypeError`. Sanitize with an allowlist before you call it; see [CMS and Markdown content](/security#cms-and-markdown-content).
+Marks a string of trusted HTML, such as sanitized CMS or Markdown output, so `html` inserts it as it is. `null` and `undefined` give empty HTML, a number gives its digits, and an `html` value is returned unchanged. It takes one string: called as a tag, with an array or a plain object, or with a Promise, it throws a `TypeError`. Sanitize with an allowlist before you call it; see [CMS and Markdown content](/scripts/security#cms-and-markdown-content).
 
 ## esc
 
@@ -244,7 +244,7 @@ Refused when a value arrives:
 
 ## Performance
 
-`html` reads each template's static parts once, on its first call, and caches what it found per call site. Every later call is a loop over the holes. On a list of 1,000 product cards with four holes each, nested with `.map` (`pkg/bench/html.bench.ts`, Node 24, Apple silicon):
+`html` reads each template's static parts once, on its first call, and caches what it found per call site. Every later call is a loop over the holes. On a list of 1,000 book cards with four holes each, nested with `.map` (`pkg/bench/html.bench.ts`, Node 24, Apple silicon):
 
 | Variant                                       | Renders per second | Relative |
 | :-------------------------------------------- | -----------------: | -------: |

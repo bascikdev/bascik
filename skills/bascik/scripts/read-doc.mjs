@@ -17,7 +17,7 @@ Prints a docs page from https://bascik.dev as plain text, one section per headin
 Examples:
   node read-doc.mjs /scoped-javascript
   node read-doc.mjs switch/from-vue
-  node read-doc.mjs https://bascik.dev/dynamic-routes#route-object-format
+  node read-doc.mjs https://bascik.dev/scripts/dynamic-routes#route-object-format
 
 Options:
   --list   List every docs page path with its title

@@ -10,7 +10,7 @@
  * 2. Each place a reader learns about returning component tags points at the live /catalog or /catalog-stream page.
  * 3. No paragraph links the same URL twice, and the top callouts use the "See it live" style.
  * 4. The retired demo product word (RETIRED_WORD below) appears nowhere a reader or the demo can see it: it
- *    reads as the name of a dating app. The example product is the "Milk frother" and the query is ?q=frother.
+ *    reads as the name of a dating app. The demo catalog lists books, and the query is ?q=monolith.
  *
  * Misuse lens: a typo'd demo path, a renamed fixture page, a pointer dropped in an edit, and the old product name
  * left behind in one copy.
@@ -229,8 +229,8 @@ describe("live Cloudflare demo URLs name pages that exist in the fixture", () =>
   });
 
   it("misuse: a typo'd demo path maps to no page", () => {
-    expect(fixturePageFor(`${DEMO_ORIGIN}/catalogs?q=frother`)).toBeNull();
-    expect(fixturePageFor(`${DEMO_ORIGIN}/catalog?q=frother#x`)).toBe(
+    expect(fixturePageFor(`${DEMO_ORIGIN}/catalogs?q=monolith`)).toBeNull();
+    expect(fixturePageFor(`${DEMO_ORIGIN}/catalog?q=monolith#x`)).toBe(
       "catalog.html",
     );
     expect(fixturePageFor(`${DEMO_ORIGIN}/`)).toBe("index.html");
@@ -240,33 +240,34 @@ describe("live Cloudflare demo URLs name pages that exist in the fixture", () =>
 });
 
 describe("each place about returning component tags points at the live demo", () => {
-  const serverMd = read("docs/content/server-scripts.md");
-  const streamMd = read("docs/content/stream-scripts.md");
+  const overviewMd = read("docs/content/scripts.md");
+  const serverMd = read("docs/content/scripts/server.md");
+  const streamMd = read("docs/content/scripts/stream.md");
 
-  it("server-scripts.md: a See it live callout at the top of Returning component tags links /catalog and /catalog-stream", () => {
-    const top = sectionTop(section(serverMd, /^Returning component tags$/));
+  it("scripts.md: a See it live callout at the top of Returning component tags links /catalog and /catalog-stream", () => {
+    const top = sectionTop(section(overviewMd, /^Returning component tags$/));
     expect(top).toContain(CALLOUT);
     expect(linksTo(top, "/catalog").length).toBeGreaterThan(0);
     expect(linksTo(top, "/catalog-stream").length).toBeGreaterThan(0);
     expect(
       linksTo(top, "/catalog").some(
-        (url) => new URL(url).searchParams.get("q") === "frother",
+        (url) => new URL(url).searchParams.get("q") === "monolith",
       ),
-      "the top callout shows a search with ?q=frother",
+      "the top callout shows a search with ?q=monolith",
     ).toBe(true);
   });
 
-  it("server-scripts.md: the line before the search demo box points at /catalog?q=frother", () => {
+  it("scripts/server.md: the line before the search demo box points at /catalog?q=monolith", () => {
     const last = lastParagraph(
       section(serverMd, /^Render a card per search result$/),
     );
     expect(last).toMatch(/^Run this on Cloudflare Workers:/);
     expect(
       linksTo(last, "/catalog").map((u) => new URL(u).searchParams.get("q")),
-    ).toEqual(["frother"]);
+    ).toEqual(["monolith"]);
   });
 
-  it("server-scripts.md: the line before the nested-script demo box points at the live card on /catalog", () => {
+  it("scripts/server.md: the line before the nested-script demo box points at the live card on /catalog", () => {
     const last = lastParagraph(
       section(serverMd, /^A card with its own server script$/),
     );
@@ -274,28 +275,28 @@ describe("each place about returning component tags points at the live demo", ()
     expect(linksTo(last, "/catalog")).toHaveLength(1);
   });
 
-  it("server-scripts.md: the closing paragraph keeps its catalog links, with ?q=frother", () => {
-    const rules = section(serverMd, /^Rules for returned tags$/);
+  it("scripts.md: the closing paragraph keeps its catalog links, with ?q=monolith", () => {
+    const rules = section(overviewMd, /^Rules for returned tags$/);
     const catalog = linksTo(rules, "/catalog");
     expect(catalog.map((u) => new URL(u).searchParams.get("q"))).toContain(
-      "frother",
+      "monolith",
     );
     expect(linksTo(rules, "/catalog-stream").length).toBeGreaterThan(0);
   });
 
-  it("stream-scripts.md: a See it live callout at the top of Returning component tags links /catalog-stream", () => {
+  it("scripts/stream.md: a See it live callout at the top of Returning component tags links /catalog-stream", () => {
     const top = sectionTop(section(streamMd, /^Returning component tags$/));
     expect(top).toContain(CALLOUT);
     expect(linksTo(top, "/catalog-stream").length).toBeGreaterThan(0);
   });
 
-  it("stream-scripts.md: the line before the streaming demo box points at /catalog-stream", () => {
+  it("scripts/stream.md: the line before the streaming demo box points at /catalog-stream", () => {
     const last = lastParagraph(section(streamMd, /^Stream cards in batches$/));
     expect(last).toMatch(/^Run this on Cloudflare Workers:/);
     expect(linksTo(last, "/catalog-stream")).toHaveLength(1);
   });
 
-  it("stream-scripts.md: the closing paragraph keeps its catalog-stream link", () => {
+  it("scripts/stream.md: the closing paragraph keeps its catalog-stream link", () => {
     const rules = section(streamMd, /^Rules when streaming$/);
     expect(linksTo(rules, "/catalog-stream").length).toBeGreaterThan(0);
   });

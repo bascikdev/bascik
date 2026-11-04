@@ -17,7 +17,7 @@ bascik --build --site-url https://example.com
 
 That's all, `generate.sitemap` and `generate.robots` both default to `true`, so no other change is needed. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
 
-This recording builds a new project that has one [dynamic route](/dynamic-routes) template, then prints the sitemap the build wrote. Each generated blog post is listed, and the 404 page is not:
+This recording builds a new project that has one [dynamic route](/scripts/dynamic-routes) template, then prints the sitemap the build wrote. Each generated blog post is listed, and the 404 page is not:
 
 ![A terminal running bascik --build --site-url https://example.com followed by cat dist/sitemap.xml. The build transpiles six pages, including two blog posts generated from one template, and reports generated: dist/sitemap.xml and dist/robots.txt. The printed sitemap lists absolute example.com URLs for the home, about, contact, and both blog post pages](/assets/demos/sitemap@2x.webp)
 
@@ -135,9 +135,9 @@ When `base` is not `/`, every generated absolute URL composes `BASCIK_SITE_URL`,
 
 ### Dynamic route expansion and percent-encoding
 
-When using [Dynamic Routes](/dynamic-routes), Bascik discovers all concrete HTML pages generated from your templates and adds their final URLs to `sitemap.xml`. The unexpanded template path with literal brackets (such as `/blog/[slug]`) is omitted from the sitemap.
+When using [Dynamic Routes](/scripts/dynamic-routes), Bascik discovers all concrete HTML pages generated from your templates and adds their final URLs to `sitemap.xml`. The unexpanded template path with literal brackets (such as `/blog/[slug]`) is omitted from the sitemap.
 
-Parameter segments containing non-ASCII characters are automatically percent-encoded (for example, `/products/caf%C3%A9` for the param `café`) to ensure valid XML sitemap output. Spaces and characters such as `#`, `%`, `&` and `+` are rejected in route params (see [Error Handling and Diagnostics](/dynamic-routes#error-handling-and-diagnostics)), so they never reach the sitemap.
+Parameter segments containing non-ASCII characters are automatically percent-encoded (for example, `/products/caf%C3%A9` for the param `café`) to ensure valid XML sitemap output. Spaces and characters such as `#`, `%`, `&` and `+` are rejected in route params (see [Error Handling and Diagnostics](/scripts/dynamic-routes#error-handling-and-diagnostics)), so they never reach the sitemap.
 
 ## Opting out
 

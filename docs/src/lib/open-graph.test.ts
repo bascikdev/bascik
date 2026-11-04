@@ -184,20 +184,23 @@ describe("openGraph", () => {
   it("keeps a double quote inside a single-quoted description, escaped once", async () => {
     expect(
       await ogDescription(
-        `<meta content='Say "frothy" milk.' name='description' />`,
+        `<meta content='Say "well-rated" books.' name='description' />`,
       ),
-    ).toEqual(["Say &quot;frothy&quot; milk.", "Say &quot;frothy&quot; milk."]);
+    ).toEqual([
+      "Say &quot;well-rated&quot; books.",
+      "Say &quot;well-rated&quot; books.",
+    ]);
   });
 
   // The page's own meta tag is already HTML, so its entities are decoded once before the OG tag escapes again.
   it("does not double-escape entities written in the description", async () => {
     expect(
       await ogDescription(
-        `<meta name="description" content="Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;." />`,
+        `<meta name="description" content="Titles &amp; authors: Bascik&#39;s &lt;book-card&gt;." />`,
       ),
     ).toEqual([
-      "Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;.",
-      "Milk &amp; foam: Bascik&#39;s &lt;milk-frother&gt;.",
+      "Titles &amp; authors: Bascik&#39;s &lt;book-card&gt;.",
+      "Titles &amp; authors: Bascik&#39;s &lt;book-card&gt;.",
     ]);
   });
 
@@ -210,7 +213,7 @@ describe("openGraph", () => {
 <html>
 <head>
   <title>Benchmarking &amp; Profiling - Bascik Docs</title>
-  <meta name="description" content="Measure the frother build." />
+  <meta name="description" content="Measure the book site build." />
 </head>
 <body></body>
 </html>`,

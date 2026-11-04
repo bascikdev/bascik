@@ -66,7 +66,7 @@ test.describe('"On this page" table of contents', () => {
   for (const [path, nth] of [
     ["/configuration", "last"],
     ["/configuration", "middle"],
-    ["/stream-scripts", "last"],
+    ["/scripts/stream", "last"],
   ] as const) {
     test(`a smooth-scrolled click on a late link in ${path} (${nth}) lands on its heading`, async ({
       page,
@@ -128,7 +128,7 @@ test.describe('"On this page" table of contents', () => {
       .getByRole("link", { name: /Script Imports › Import Root Aliases/ })
       .click();
 
-    await expect(page).toHaveURL(/\/script-imports#import-root-aliases$/);
+    await expect(page).toHaveURL(/\/scripts\/imports#import-root-aliases$/);
     const toc = page.getByRole("navigation", { name: "On this page" });
     const target = toc.getByRole("link", {
       name: "Import Root Aliases (@/)",

@@ -14,7 +14,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax. Server scripts and stream scripts receive this same `Request` object; see [Server Scripts](/server-scripts).
+Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax. Server scripts and stream scripts receive this same `Request` object; see [Server Scripts](/scripts/server).
 
 The [Contact Form](/example-components/contact-form) example posts to a route like this one.
 

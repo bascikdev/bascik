@@ -285,7 +285,7 @@ test.describe("cloudflare adapter: request-time pages", () => {
   }) => {
     // The demo builds its greeting with html from @bascik/bascik/html, so a name is escaped where it lands instead
     // of having < > & and quotes deleted (which turned "Fish & Chips" into "Fish  Chips").
-    const name = `<b data-testid="injected">Milk & "Foam"</b>`;
+    const name = `<b data-testid="injected">Books & "Notes"</b>`;
     const pages = [
       [
         `/server?name=${encodeURIComponent(name)}&role=${encodeURIComponent("<i>Admin</i>")}`,
@@ -435,7 +435,7 @@ test.describe("cloudflare adapter: streamed paint order", () => {
 // ─── Components returned by scripts (prompt 157) ────────────────────────────
 //
 // catalog.html and catalog-stream.html are the live demo the docs link to.
-// No page uses <product-card> or <product-card-live> in its own markup, so
+// No page uses <book-card> or <book-card-live> in its own markup, so
 // every tile observed here was rendered by the Worker per request.
 
 /**
@@ -499,46 +499,46 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     expect(res.status()).toBe(200);
     expect(res.headers()["cache-control"]).toBe("private, no-store");
     const html = await res.text();
-    expect(markup(html)).not.toContain("<product-card");
-    expect(markup(html)).not.toContain("</product-card");
+    expect(markup(html)).not.toContain("<book-card");
+    expect(markup(html)).not.toContain("</book-card");
     expectNoInternals(html);
     // The escaped sample in <pre><code> is page markup and stays text.
-    expect(html).toContain("&lt;product-card data-bascik-prop-name=");
+    expect(html).toContain("&lt;book-card data-bascik-prop-title=");
   });
 
-  test("every product renders as a visible tile with its props, badge slot and the component's CSS", async ({
+  test("every book renders as a visible tile with its props, badge slot and the component's CSS", async ({
     page,
   }) => {
     const errors: string[] = [];
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
     await page.goto("/catalog");
     const results = page.getByTestId("catalog-results");
-    const tiles = results.getByTestId("product-card");
+    const tiles = results.getByTestId("book-card");
     await expect(
       page.getByRole("heading", { name: "Server-rendered cards" }),
     ).toBeVisible();
     await expect(tiles).toHaveCount(5);
-    await expect(results.getByTestId("product-card-name")).toHaveText([
-      "Pour-over kettle",
-      "Ceramic dripper",
-      "Milk frother",
-      "Glass carafe",
-      "Filters & holder",
+    await expect(results.getByTestId("book-card-title")).toHaveText([
+      "Practical Type Systems",
+      "Testing at the Edges",
+      "Refactoring the Monolith",
+      "Shipping Small Changes",
+      "Pairing & Code Review",
     ]);
-    await expect(results.getByTestId("product-card-price").first()).toHaveText(
-      "$48",
+    await expect(results.getByTestId("book-card-author").first()).toHaveText(
+      "Ada Okafor",
     );
     // Slot content replaces the fallback; an empty slot keeps it.
-    await expect(results.getByTestId("product-card-badge")).toHaveText([
+    await expect(results.getByTestId("book-card-badge")).toHaveText([
       "New",
-      "Standard",
+      "Paperback",
       "Best seller",
-      "Standard",
-      "Standard",
+      "Paperback",
+      "Paperback",
     ]);
     await expect(tiles.first()).toBeVisible();
     // Computed from the component stylesheet the Worker emitted in the body.
-    await expect(results.getByTestId("product-card-name").first()).toHaveCSS(
+    await expect(results.getByTestId("book-card-title").first()).toHaveCSS(
       "color",
       "rgb(211, 255, 141)",
     );
@@ -551,7 +551,7 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     request,
   }) => {
     await page.goto("/catalog");
-    const className = await classOf(page, "product-card");
+    const className = await classOf(page, "book-card");
     expect(className).toMatch(/^\S+$/);
     expect(className).not.toBe("tile");
     const html = await (await request.get("/catalog")).text();
@@ -559,7 +559,7 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
     expect(blocks).toHaveLength(1);
     expect(html.indexOf(blocks[0])).toBeGreaterThan(html.indexOf("</head>"));
     expect(html.indexOf(blocks[0])).toBeLessThan(
-      html.indexOf('data-testid="product-card"'),
+      html.indexOf('data-testid="book-card"'),
     );
   });
 
@@ -568,34 +568,31 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
   }) => {
     await page.goto("/catalog");
     const ids = await page
-      .locator(
-        '[data-testid="product-card"], [data-testid="product-card-live"]',
-      )
+      .locator('[data-testid="book-card"], [data-testid="book-card-live"]')
       .evaluateAll((els) => els.map((el) => el.id));
     expect(ids).toHaveLength(6);
     for (const id of ids) expect(id).not.toBe("");
     expect(new Set(ids).size).toBe(6);
     expect(
       await page.evaluate(
-        () =>
-          (globalThis as unknown as { __productCards?: number }).__productCards,
+        () => (globalThis as unknown as { __bookCards?: number }).__bookCards,
       ),
     ).toBe(6);
   });
 
-  test("the nested server script of <product-card-live> ran with the request and is styled by the component", async ({
+  test("the nested server script of <book-card-live> ran with the request and is styled by the component", async ({
     page,
   }) => {
     await page.goto("/catalog");
     const live = page.getByTestId("catalog-live");
-    await expect(live.getByTestId("product-card-live")).toHaveCount(1);
-    await expect(live.getByTestId("product-card-name")).toHaveText(
-      "Milk frother",
+    await expect(live.getByTestId("book-card-live")).toHaveCount(1);
+    await expect(live.getByTestId("book-card-title")).toHaveText(
+      "Refactoring the Monolith",
     );
-    await expect(live.getByTestId("product-card-badge")).toHaveText("Live");
-    const stock = live.getByTestId("product-card-stock");
+    await expect(live.getByTestId("book-card-badge")).toHaveText("Live");
+    const stock = live.getByTestId("book-card-stock");
     await expect(stock).toHaveText(
-      "In stock · checked for /catalog at request time",
+      "Copies in stock · checked for /catalog at request time",
     );
     // The output scope gave the returned <p class="stock"> the scoped class.
     await expect(stock).toHaveCSS("color", "rgb(254, 240, 138)");
@@ -604,25 +601,25 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
   test("?q= filters the tiles on every request, and the search form drives it", async ({
     page,
   }) => {
-    await page.goto("/catalog?q=frother");
+    await page.goto("/catalog?q=monolith");
     const results = page.getByTestId("catalog-results");
-    await expect(results.getByTestId("product-card")).toHaveCount(1);
-    await expect(results.getByTestId("product-card-name")).toHaveText(
-      "Milk frother",
+    await expect(results.getByTestId("book-card")).toHaveCount(1);
+    await expect(results.getByTestId("book-card-title")).toHaveText(
+      "Refactoring the Monolith",
     );
 
     await page.goto("/catalog?q=nothing-matches");
-    await expect(results.getByTestId("product-card")).toHaveCount(0);
+    await expect(results.getByTestId("book-card")).toHaveCount(0);
     await expect(page.getByTestId("catalog-empty")).toContainText(
-      'No products match "nothing-matches"',
+      'No books match "nothing-matches"',
     );
 
     await page.goto("/catalog");
-    await page.getByTestId("catalog-search").fill("kettle");
+    await page.getByTestId("catalog-search").fill("type");
     await page.getByTestId("catalog-search").press("Enter");
-    await expect(page).toHaveURL(/\/catalog\?q=kettle$/);
-    await expect(results.getByTestId("product-card-name")).toHaveText([
-      "Pour-over kettle",
+    await expect(page).toHaveURL(/\/catalog\?q=type$/);
+    await expect(results.getByTestId("book-card-title")).toHaveText([
+      "Practical Type Systems",
     ]);
   });
 
@@ -631,14 +628,12 @@ test.describe("cloudflare adapter: components returned by server scripts (prompt
   }) => {
     const html = await (
       await request.get(
-        `/catalog?q=${encodeURIComponent('<product-card data-bascik-prop-name="x">')}`,
+        `/catalog?q=${encodeURIComponent('<book-card data-bascik-prop-title="x">')}`,
       )
     ).text();
-    expect(markup(html)).not.toContain(
-      '<product-card data-bascik-prop-name="x"',
-    );
+    expect(markup(html)).not.toContain('<book-card data-bascik-prop-title="x"');
     expect(html).toContain(
-      "&lt;product-card data-bascik-prop-name=&quot;x&quot;",
+      "&lt;book-card data-bascik-prop-title=&quot;x&quot;",
     );
   });
 });
@@ -649,30 +644,30 @@ test.describe("cloudflare adapter: components returned by stream scripts (prompt
     request,
   }) => {
     const html = await (await request.get("/catalog-stream?delay=0")).text();
-    expect(markup(html)).not.toContain("<product-card");
+    expect(markup(html)).not.toContain("<book-card");
     expectNoInternals(html);
     const names = [
-      "Pour-over kettle",
-      "Ceramic dripper",
-      "Milk frother",
-      "Glass carafe",
-      "Filters &amp; holder",
+      "Practical Type Systems",
+      "Testing at the Edges",
+      "Refactoring the Monolith",
+      "Shipping Small Changes",
+      "Pairing &amp; Code Review",
     ].map((name) => html.indexOf(`>${name}<`));
     expect(names.every((i) => i > 0)).toBe(true);
     expect([...names].sort((a, b) => a - b)).toEqual(names);
 
     await page.goto("/catalog-stream?delay=0");
     const grid = page.getByTestId("catalog-stream-grid");
-    await expect(grid.getByTestId("product-card")).toHaveCount(5);
-    await expect(grid.getByTestId("product-card-name").first()).toHaveCSS(
+    await expect(grid.getByTestId("book-card")).toHaveCount(5);
+    await expect(grid.getByTestId("book-card-title").first()).toHaveCSS(
       "color",
       "rgb(211, 255, 141)",
     );
-    const className = await classOf(page, "product-card");
+    const className = await classOf(page, "book-card");
     const blocks = styleBlocksDefining(html, className);
     expect(blocks).toHaveLength(1);
     expect(html.indexOf(blocks[0])).toBeLessThan(
-      html.indexOf('data-testid="product-card"'),
+      html.indexOf('data-testid="book-card"'),
     );
   });
 });
@@ -689,10 +684,10 @@ test.describe("cloudflare adapter: streamed catalog paint order (prompt 157)", (
     await expect(page.getByTestId("catalog-stream-footer")).toBeVisible();
     await expect(page.getByTestId("catalog-stream-intro")).toBeVisible();
     const tShell = Date.now() - t0;
-    expect(await page.getByTestId("product-card").count()).toBe(0);
+    expect(await page.getByTestId("book-card").count()).toBe(0);
 
     await expect(
-      page.getByTestId("catalog-stream-grid").getByTestId("product-card"),
+      page.getByTestId("catalog-stream-grid").getByTestId("book-card"),
     ).toHaveCount(5, { timeout: 10_000 });
     const tTiles = Date.now() - t0;
     expect(tShell).toBeLessThan(1200);

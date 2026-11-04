@@ -9,7 +9,7 @@
  * - /attribute-inheritance has a subsection for it, with its anchor, a component-demo box (Usage, HTML, Output), the
  *   exact warning Bascik prints, why only this case is checked, and that your own onclick, style and href are copied
  *   as written, with a link to /security.
- * - security.md, server-scripts.md and compatibility.md each link to that subsection instead of restating the rule.
+ * - security.md, scripts/server.md and compatibility.md each link to that subsection instead of restating the rule.
  * - The quoted warning is the implementation's message, with the prefix the compiler adds.
  *
  * docs/scripts/url-root-demos.test.ts builds the demo with the real compiler and compares the Output and the warning.
@@ -129,11 +129,11 @@ describe("/attribute-inheritance: Attributes That Become URLs on the Root", () =
     expect(text).toContain("`html`");
   });
 
-  it("says your own onclick, style and href are copied as written, and links to /security for visitor data", () => {
+  it("says your own onclick, style and href are copied as written, and links to /scripts/security for visitor data", () => {
     const text = prose(sub);
     for (const name of ["`onclick`", "`style`", "`href`"])
       expect(text, name).toContain(name);
-    expect(text).toMatch(/\]\(\/security(#[\w-]+)?\)/);
+    expect(text).toMatch(/\]\(\/scripts\/security(#[\w-]+)?\)/);
     // Misuse: nothing suggests your own markup is filtered.
     expect(text).not.toMatch(/onclick[^.]*(removed|dropped|stripped)/i);
   });
@@ -185,8 +185,8 @@ describe("/attribute-inheritance: Attributes That Become URLs on the Root", () =
 
 describe("the other pages link to the subsection instead of restating it", () => {
   it.each([
-    "content/security.md",
-    "content/server-scripts.md",
+    "content/scripts/security.md",
+    "content/scripts.md",
     "content/compatibility.md",
   ])("%s links to the anchor and no longer restates the data: rule", (file) => {
     const text = read(file);

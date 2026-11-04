@@ -154,7 +154,8 @@ describe(PAGE, () => {
       expect(existsSync(path.join(DOCS, `src/pages${page}.html`)), to).toBe(
         true,
       );
-      expect(anchors.has(anchor), to).toBe(true);
+      // A whole-page move keeps the old URL's own #fragment, so only this page's section redirects name one.
+      if (page === PAGE) expect(anchors.has(anchor), to).toBe(true);
     }
   });
 

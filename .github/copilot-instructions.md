@@ -10,7 +10,7 @@ Repository-wide instructions are labeled accordingly.
 - **Component-first pages.** A page reads like a list of component tags, not big blocks of HTML. Balance it: no tiny single-use wrappers and no props passed through components that do not use them.
 - **Semantic HTML.** Pick the element the HTML standard defines for the job; a component's root is that element, not a wrapper `<div>`.
 - **`data-testid`** on every component root (`<name>`) and interactive part (`<name>-<part>`); carry existing test hooks over when refactoring.
-- **Demo product names:** the demo product is the Milk frother. Never use "grinder" in examples, and check sample names against app names.
+- **Demo data:** use books and authors for demo data (titles, authors, ratings), such as the `book-card` component, and check sample names against app names.
 
 ## Keeping the Changelog Up to Date
 

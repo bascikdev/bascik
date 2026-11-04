@@ -1,24 +1,24 @@
 # Environment Variables
 
-Bascik automatically populates a collection of dedicated environment variables inside child processes when executing build scripts, dynamic route generators, and lifecycle tasks. These variables give your scripts direct access to the active page path, filesystem locations, site configuration, dynamic route parameters, and compiler execution modes without requiring manual configuration or boilerplate.
+Bascik automatically populates a collection of dedicated environment variables for your scripts: build scripts, dynamic route generators, and exec scripts get them in their own processes, and server and stream scripts read them from the server's environment. These variables give your scripts direct access to the active page path, filesystem locations, site configuration, dynamic route parameters, and compiler execution modes without requiring manual configuration or boilerplate.
 
-You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
+You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`. [Environment variables](/scripts#environment-variables) on the scripts overview shows which ones each kind of script gets.
 
 ## Environment Variable Reference
 
-| Variable             | Available In                                            | Description                                                                                                                                                                  |
-| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BASCIK_PAGE_PATH`   | `data-bascik-build`, `data-bascik-routes`               | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`).                                     |
-| `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes`               | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages).                             |
-| `BASCIK_PAGE_FILE`   | `data-bascik-build`, `data-bascik-routes`               | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components.                      |
-| `BASCIK_SITE_URL`    | `data-bascik-build`, `data-bascik-routes`, exec scripts | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
-| `BASCIK_PAGES_DIR`   | `data-bascik-build`, `data-bascik-routes`, exec scripts | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`).                                                              |
-| `BASCIK_BASE`        | `data-bascik-build`, exec scripts                       | The normalized [`base`](/configuration#base) deployment prefix, always present (defaults to `/`).                                                                            |
-| `BASCIK_OUT_DIR`     | Exec scripts                                            | Absolute filesystem path to the configured output directory (`directory.out`, defaults to `<root>/dist`).                                                                    |
-| `BASCIK_ROUTE`       | `data-bascik-build` (dynamic routes)                    | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`.                                                         |
-| `BASCIK_BUILD`       | All build scripts, worker threads, and exec scripts     | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`).                                                                         |
-| `BASCIK_SERVER`      | Server scripts and worker threads                       | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.                                                                                               |
-| `BASCIK_BUILD_LOG`   | CLI runtime                                             | Absolute filesystem path to the build log destination when invoked with `--log`.                                                                                             |
+| Variable             | Available In                                                                       | Description                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASCIK_PAGE_PATH`   | `data-bascik-build`, `data-bascik-routes`                                          | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`).                                     |
+| `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes`                                          | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages).                             |
+| `BASCIK_PAGE_FILE`   | `data-bascik-build`, `data-bascik-routes`                                          | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components.                      |
+| `BASCIK_SITE_URL`    | `data-bascik-build`, `data-bascik-routes`, exec scripts, server and stream scripts | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
+| `BASCIK_PAGES_DIR`   | `data-bascik-build`, `data-bascik-routes`, exec scripts                            | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`).                                                              |
+| `BASCIK_BASE`        | `data-bascik-build`, exec scripts                                                  | The normalized [`base`](/configuration#base) deployment prefix, always present (defaults to `/`).                                                                            |
+| `BASCIK_OUT_DIR`     | Exec scripts                                                                       | Absolute filesystem path to the configured output directory (`directory.out`, defaults to `<root>/dist`).                                                                    |
+| `BASCIK_ROUTE`       | `data-bascik-build` (dynamic routes)                                               | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`.                                                         |
+| `BASCIK_BUILD`       | All scripts, worker threads, and exec scripts                                      | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`).                                                                         |
+| `BASCIK_SERVER`      | Server and stream scripts, worker threads                                          | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.                                                                                               |
+| `BASCIK_BUILD_LOG`   | CLI runtime                                                                        | Absolute filesystem path to the build log destination when invoked with `--log`.                                                                                             |
 
 `data-bascik-build-once` scripts do not receive page or route context, because their output is shared wherever the file is used. `BASCIK_SOURCE_FILE` names the file the script is written in; `BASCIK_PAGE_FILE` and `BASCIK_PAGE_PATH` are empty, and `BASCIK_ROUTE` is unset.
 
@@ -43,7 +43,7 @@ const isCurrent = currentPath === "/components";
 
 Component scripts can read this variable directly or through an imported helper; they always run in the context of the page that uses the component.
 
-This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere. [Why there is no page path](/build-scripts#why-there-is-no-page-path) shows what would go wrong otherwise.
+This applies to `data-bascik-build`. A `data-bascik-build-once` script has no page path, because one run serves every use of a component and every route of a dynamic template; use it only when its output is identical everywhere. [Why there is no page path](/scripts/build#why-there-is-no-page-path) shows what would go wrong otherwise.
 
 ### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 
@@ -63,7 +63,7 @@ const pageMarkup = await readFile(process.env.BASCIK_PAGE_FILE!, "utf8");
 
 ### `BASCIK_SITE_URL` and `BASCIK_PAGES_DIR`
 
-`BASCIK_SITE_URL` provides the deployment origin set via `--site-url`, the environment, or a `.env` file, while `BASCIK_PAGES_DIR` provides the resolved directory containing page templates. Together with `BASCIK_PAGE_PATH`, they enable automatic canonical URL and structured data generation:
+`BASCIK_SITE_URL` provides the deployment origin set via `--site-url`, the environment, or a `.env` file. When none of them sets it, the variable is absent rather than an empty string, so `"BASCIK_SITE_URL" in process.env` tells the two apart. `BASCIK_PAGES_DIR` provides the resolved directory containing page templates. Together with `BASCIK_PAGE_PATH`, they enable automatic canonical URL and structured data generation:
 
 ```ts
 // src/lib/canonical.ts
@@ -73,6 +73,19 @@ export function getCanonicalUrl(): string {
   return siteUrl ? `${siteUrl}${path}` : path;
 }
 ```
+
+### `BASCIK_BASE`
+
+Bascik forwards the normalized [`base`](/configuration#base) config value to every build script and exec script as `BASCIK_BASE`. It is always present and defaults to `/`. This is useful when build output must expose the deployment prefix to client code, because Bascik deliberately does not rewrite URLs assembled inside JavaScript:
+
+```html
+<!-- src/pages/index.html: emit the base at build time into a data attribute. In a component on every page, use data-bascik-build-once. -->
+<script data-bascik-build>
+  export default () => `data-base="${process.env.BASCIK_BASE ?? "/"}"`;
+</script>
+```
+
+Client code can read the emitted data attribute and prefix a runtime URL.
 
 ### `BASCIK_ROUTE`
 
@@ -94,7 +107,7 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 
 > **Dynamic Route Safety.** `process.env.BASCIK_ROUTE` is only defined when transpiling dynamic routes. For static pages, the variable is omitted from the environment.
 
-> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Returning `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write)).
+> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Returning `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write)).
 
 ## Dynamic Route Scripts (`data-bascik-routes`)
 
@@ -120,6 +133,33 @@ Dynamic route scripts receive:
 - `BASCIK_PAGES_DIR`: Absolute pages directory.
 - `BASCIK_SITE_URL`: Configured site URL.
 - `BASCIK_BUILD`: `"1"` in build mode, `"0"` in dev mode.
+
+## Server and Stream Scripts (`data-bascik-server`, `data-bascik-stream`)
+
+Server and stream scripts run inside the server that answers the request, so `process.env` is that server's environment: your shell, `./.env` (or the file passed to `--env-file`), and these Bascik variables:
+
+- `BASCIK_SERVER`: `"1"` under the production server (`bascik --server`), `"0"` on the dev server.
+- `BASCIK_BUILD`: `"0"`, because no build is running.
+- `BASCIK_SITE_URL`: the configured site URL, when one is set.
+
+They get no page variables (`BASCIK_PAGE_PATH`, `BASCIK_PAGE_FILE`, `BASCIK_ROUTE`): the same process serves every page, so read the page from `request.url` instead. This is where secrets belong, such as a `DATABASE_URL` or an API token, because a value a server script reads never reaches the browser unless the script returns it.
+
+```html
+<script data-bascik-server>
+  import { html } from "@bascik/bascik/html";
+
+  export default async function (request, context, { signal }) {
+    const response = await fetch("https://api.example.com/stock", {
+      headers: { authorization: `Bearer ${process.env.STOCK_API_TOKEN}` },
+      signal,
+    });
+    const { count } = await response.json();
+    return html`<p>${count} in stock</p>`;
+  }
+</script>
+```
+
+On Cloudflare Workers, Bascik does not fill `process.env`. Read secrets and bindings from `context.platform.env` instead; see [Bindings and secrets](/deployment/cloudflare#bindings-and-secrets). On Netlify, environment variables stay in `process.env`.
 
 ## Compiler & Runtime Flags
 
