@@ -95,45 +95,6 @@ Inside your template, `<script data-bascik-build>` blocks can read the current r
 </html>
 ```
 
-## Coexistence with Server Scripts
-
-Dynamic route templates can contain both `<script data-bascik-build>` and `<script data-bascik-server>` blocks.
-
-- The `<script data-bascik-routes>` script expands the template into concrete HTML files at build time (for example, `dist/blog/hello-world.html` and `dist/blog/second-post.html`).
-- The `<script data-bascik-server>` blocks remain in the generated HTML files and execute per request when served by the dev server, `bascik --server`, or a serverless target such as the [Cloudflare Adapter](/deployment/cloudflare).
-- Note that `<script data-bascik-routes>` cannot be combined with `<script data-bascik-build>` or `<script data-bascik-server>` on the same script tag.
-
-## Cache Invalidation
-
-Bascik caches build script executions to optimize build performance. When compiling dynamic routes, the current `BASCIK_ROUTE` environment payload is incorporated into the build script cache key.
-
-This ensures that build scripts in the same template re-execute accurately for each unique route without returning stale cached content from preceding routes.
-
-## Worker Pool Parallelization
-
-When compiling large sets of dynamic routes, Bascik distributes page rendering jobs across all available worker threads in the worker pool.
-
-Each route job receives its specific parameters and data payload, enabling fast parallel static generation across multi-core CPUs.
-
-## Sitemap Integration
-
-Dynamic routes automatically integrate into Bascik's built-in sitemap generator (`sitemap.xml` and `robots.txt`).
-
-- Concrete generated paths (such as `/blog/hello-world` and `/blog/second-post`) are included in `sitemap.xml`.
-- The template file with literal brackets (like `/blog/[slug]`) is never added to the sitemap.
-- Non-ASCII or special characters in route parameters are percent-encoded according to the XML sitemap standard.
-
-## Error Handling and Diagnostics
-
-Bascik validates routes scripts, route parameters, and output destinations during the build:
-
-- **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources, with or without `pipeline.workers`. Paths that differ only in letter case (`About.html` and `about.html`) collide too, because case-insensitive file systems and hosts would serve one file for both.
-- **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected: the entry is skipped with a warning that names it.
-- **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
-- **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik skips that entry with a warning that parameter `id` is missing.
-- **Invalid Output Format:** If the default export does not resolve to an array, Bascik throws a descriptive error detailing the invalid return value. An entry without a `params` object is skipped with a warning.
-- **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
-
 ## Common How-to Examples
 
 ### 1. Markdown Blog Posts
@@ -206,3 +167,42 @@ Generate localized pages using multiple parameters in filenames such as `src/pag
   }
 </script>
 ```
+
+## Coexistence with Server Scripts
+
+Dynamic route templates can contain both `<script data-bascik-build>` and `<script data-bascik-server>` blocks.
+
+- The `<script data-bascik-routes>` script expands the template into concrete HTML files at build time (for example, `dist/blog/hello-world.html` and `dist/blog/second-post.html`).
+- The `<script data-bascik-server>` blocks remain in the generated HTML files and execute per request when served by the dev server, `bascik --server`, or a serverless target such as the [Cloudflare Adapter](/deployment/cloudflare).
+- Note that `<script data-bascik-routes>` cannot be combined with `<script data-bascik-build>` or `<script data-bascik-server>` on the same script tag.
+
+## Cache Invalidation
+
+Bascik caches build script executions to optimize build performance. When compiling dynamic routes, the current `BASCIK_ROUTE` environment payload is incorporated into the build script cache key.
+
+This ensures that build scripts in the same template re-execute accurately for each unique route without returning stale cached content from preceding routes.
+
+## Worker Pool Parallelization
+
+When compiling large sets of dynamic routes, Bascik distributes page rendering jobs across all available worker threads in the worker pool.
+
+Each route job receives its specific parameters and data payload, enabling fast parallel static generation across multi-core CPUs.
+
+## Sitemap Integration
+
+Dynamic routes automatically integrate into Bascik's built-in sitemap generator (`sitemap.xml` and `robots.txt`).
+
+- Concrete generated paths (such as `/blog/hello-world` and `/blog/second-post`) are included in `sitemap.xml`.
+- The template file with literal brackets (like `/blog/[slug]`) is never added to the sitemap.
+- Non-ASCII or special characters in route parameters are percent-encoded according to the XML sitemap standard.
+
+## Error Handling and Diagnostics
+
+Bascik validates routes scripts, route parameters, and output destinations during the build:
+
+- **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources, with or without `pipeline.workers`. Paths that differ only in letter case (`About.html` and `about.html`) collide too, because case-insensitive file systems and hosts would serve one file for both.
+- **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected: the entry is skipped with a warning that names it.
+- **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
+- **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik skips that entry with a warning that parameter `id` is missing.
+- **Invalid Output Format:** If the default export does not resolve to an array, Bascik throws a descriptive error detailing the invalid return value. An entry without a `params` object is skipped with a warning.
+- **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
