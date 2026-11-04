@@ -286,7 +286,7 @@ describe("data-bascik-build-once explains why it has no page context", () => {
     const md = await read("scripts/build.md");
     const section = md.slice(
       md.indexOf("## `data-bascik-build-once`"),
-      md.indexOf("## Example Patterns"),
+      md.indexOf("## Error Handling & Stack Remapping"),
     );
     expect(section).toContain("### Why There Is No Page Path");
     // The failure mode: one run, many pages, so the path would be whichever
