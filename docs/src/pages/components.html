@@ -38,153 +38,137 @@
             export default async () => renderSectionLabel("/components");
           </script>
 
-          <!-- Intro through end of first section heading, from docs/content/components.md -->
+          <!-- Intro, from docs/content/components.md -->
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange("./content/components.md", {
-                to: "HTML with Companion CSS",
+                to: "Your First Component",
               });
           </script>
 
-          <!-- Section: HTML with companion CSS -->
-          <script data-bascik-build>
-            import { renderMdRange } from "@/lib/md-renderer.ts";
-            export default async () =>
-              await renderMdRange(
-                "./content/components.md",
-                { from: "HTML with Companion CSS", to: "HTML with Inline CSS" },
-                { stripDemoBlocks: true },
-              );
-          </script>
-
-          <component-demo data-bascik-prop-file="src/components/hello-card/">
-            <div data-bascik-slot="example">
-              <hello-card />
-            </div>
-            <div data-bascik-slot="source-usage">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "source-usage-hello",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "source-html-hello",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-css">
-              <code-block data-bascik-prop-lang="css">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "source-css-hello",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "output-html-hello",
-                    );
-                </script>
-              </code-block>
-            </div>
-          </component-demo>
-
-          <!-- Section: HTML with inline CSS -->
-          <script data-bascik-build>
-            import { renderMdRange } from "@/lib/md-renderer.ts";
-            export default async () =>
-              await renderMdRange(
-                "./content/components.md",
-                { from: "HTML with Inline CSS", to: "HTML with JavaScript" },
-                { stripDemoBlocks: true },
-              );
-          </script>
-
-          <component-demo data-bascik-prop-file="src/components/comp-badge/">
-            <div data-bascik-slot="example">
-              <comp-badge />
-            </div>
-            <div data-bascik-slot="source-usage">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "source-usage-badge",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="source-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "source-html-badge",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-html">
-              <code-block data-bascik-prop-lang="html">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "output-html-badge",
-                    );
-                </script>
-              </code-block>
-            </div>
-            <div data-bascik-slot="output-css">
-              <code-block data-bascik-prop-lang="css">
-                <script data-bascik-build>
-                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
-                  export default async () =>
-                    await extractDemoBlock(
-                      "./content/components.md",
-                      "output-css-badge",
-                    );
-                </script>
-              </code-block>
-            </div>
-          </component-demo>
-
-          <!-- Section: HTML with JavaScript -->
+          <!-- Section: your first component (HTML only) -->
           <script data-bascik-build>
             import { renderMdRange } from "@/lib/md-renderer.ts";
             export default async () =>
               await renderMdRange(
                 "./content/components.md",
                 {
-                  from: "HTML with JavaScript",
+                  from: "Your First Component",
+                  to: "Add Styles in the Same File",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo
+            data-bascik-prop-file="src/components/hello-card.html"
+          >
+            <div data-bascik-slot="example">
+              <hello-card-first />
+            </div>
+            <div data-bascik-slot="source-usage">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-usage-first",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-first",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-first",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <!-- Section: add styles in the same file -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "Add Styles in the Same File",
+                  to: "Move Styles to a Companion File",
+                },
+                { stripDemoBlocks: true },
+              );
+          </script>
+
+          <component-demo
+            data-bascik-prop-file="src/components/hello-card.html"
+          >
+            <div data-bascik-slot="example">
+              <hello-card-styled />
+            </div>
+            <div data-bascik-slot="source-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "source-html-styled",
+                    );
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock(
+                      "./content/components.md",
+                      "output-html-styled",
+                    );
+                </script>
+              </code-block>
+            </div>
+          </component-demo>
+
+          <!-- Section: move styles to a companion file -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange("./content/components.md", {
+                from: "Move Styles to a Companion File",
+                to: "Add JavaScript",
+              });
+          </script>
+
+          <!-- Section: add JavaScript -->
+          <script data-bascik-build>
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMdRange(
+                "./content/components.md",
+                {
+                  from: "Add JavaScript",
                   to: "HTML, CSS, and JavaScript Together",
                 },
                 { stripDemoBlocks: true },
