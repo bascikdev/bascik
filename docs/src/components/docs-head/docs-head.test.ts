@@ -15,11 +15,22 @@ describe("docs-head component", () => {
     expect(html).toContain('name="viewport"');
     expect(html).toContain('name="theme-color"');
     expect(html).toContain('href="/site.webmanifest"');
-    expect(html).toContain('href="/favicon.ico"');
+    expect(html).toContain('href="/favicon.ico" sizes="16x16 32x32"');
     expect(html).toContain('href="/assets/favicon-32x32.png"');
-    expect(html).toContain('href="/assets/favicon.svg"');
+    expect(html).toContain('href="/assets/favicon.svg" sizes="any"');
     expect(html).toContain('href="/assets/apple-touch-icon.png"');
     expect(html).toContain('sessionStorage.getItem("theme")');
+  });
+
+  it("keeps the tab favicon static while preserving the original mark", async () => {
+    const favicon = await readFile(
+      join(process.cwd(), "src/pages/assets/favicon.svg"),
+      "utf8",
+    );
+
+    expect(favicon).toContain('points="9,2 30,2 23,30 2,30"');
+    expect(favicon).toContain('x="15" y="9" width="2" height="14"');
+    expect(favicon).not.toContain("<animate");
   });
 
   it("applies the theme again when a prerendered page is shown", async () => {

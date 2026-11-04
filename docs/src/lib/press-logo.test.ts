@@ -62,14 +62,20 @@ describe("forbiddenNodes", () => {
 });
 
 describe("clearSpaceSvg", () => {
-  it("keeps the favicon canvas out of the exported logo artwork", async () => {
+  it("keeps a full-canvas background out of the exported logo artwork", async () => {
     const source = await readFile(join(assets, "favicon.svg"), "utf8");
-    const art = parseLogo(source, MARK_CROP);
-
-    expect(source).toContain(
-      `<rect width="32" height="32" fill="${COLORS.ink}" />`,
+    const canvas = `<rect width="32" height="32" fill="${COLORS.ink}" />`;
+    const sourceWithCanvas = source.replace(
+      "<polygon",
+      `${canvas}\n  <polygon`,
     );
-    expect(art.ink).toContain('width="1.5"');
+
+    expect(source).not.toContain(canvas);
+    expect(sourceWithCanvas).not.toBe(source);
+
+    const art = parseLogo(sourceWithCanvas, MARK_CROP);
+
+    expect(art.ink).toContain('width="2"');
     expect(art.ink).not.toContain('width="32" height="32"');
   });
 
@@ -94,7 +100,7 @@ describe("clearSpaceSvg", () => {
   it("uses the mark's cropped artwork, as the kit does", async () => {
     const svg = await clearSpaceSvg("mark", assets);
     const quarter = MARK_CROP.height / 4;
-    expect(MARK_CROP).toEqual({ x: 5, y: 5, width: 22, height: 22 });
+    expect(MARK_CROP).toEqual({ x: 2, y: 2, width: 28, height: 28 });
     expect(boundary(svg)).toEqual([
       MARK_CROP.x - quarter,
       MARK_CROP.y - quarter,

@@ -2,15 +2,15 @@
 
 A Bascik page can run your own JavaScript or TypeScript on the server, in a `<script>` tag marked with a `data-bascik-*` directive. Part of a page can be written once when the site is built, part on every request, and part streamed in after the rest of the page has arrived. None of these scripts ships to the browser: the tag is replaced by what the script returns.
 
-## Choosing a script
+## Choosing a Script Type
 
-| Script                   | When it runs                                                                   | What it returns                                 | Guide                                                  |
+| Script Type              | When it runs                                                                   | What it returns                                 | Guide                                                  |
 | :----------------------- | :----------------------------------------------------------------------------- | :---------------------------------------------- | :----------------------------------------------------- |
 | `data-bascik-build`      | At build time and on the dev server, once for each page that uses it           | HTML that replaces the tag                      | [Build Scripts](/scripts/build)                        |
 | `data-bascik-build-once` | At build time and on the dev server, once for each file, whatever pages use it | HTML that replaces the tag, the same everywhere | [Build Scripts](/scripts/build#data-bascik-build-once) |
-| `data-bascik-routes`     | At build time, once per dynamic route template                                 | An array of `{ params, data }` route objects    | [Dynamic Routes](/scripts/dynamic-routes)              |
 | `data-bascik-server`     | On every request, before the response headers are sent                         | HTML that replaces the tag                      | [Server Scripts](/scripts/server)                      |
 | `data-bascik-stream`     | On every request, after the page shell has been sent                           | HTML streamed into the tag's place              | [Stream Scripts](/scripts/stream)                      |
+| `data-bascik-routes`     | At build time, once per dynamic route template                                 | An array of `{ params, data }` route objects    | [Dynamic Routes](/scripts/dynamic-routes)              |
 
 Build and routes scripts each run in their own Node.js process, and what they produce is fixed in `dist/`. Server and stream scripts run inside whatever answers the request: the [dev server](/development-server), the [production server](/production-server), or a serverless function such as the [Cloudflare Adapter](/deployment/cloudflare). A static host serves the build output and runs neither.
 
@@ -18,7 +18,7 @@ Two other kinds of server code sit beside these. [API Routes](/api-routes) are f
 
 ## See it in action
 
-One book page, three scripts. The chapter list comes from a build script, written once when the site is built. The greeting comes from a server script that reads `?name=` on every request. The rating comes from a stream script: the rest of the page is already on screen while it waits for a slow reviews service, and the rating replaces the "Loading rating" line when it arrives.
+This book page uses a build script, a server script, and a stream script. The build script writes the chapter list once, when the site is built. The server script greets the visitor by reading `?name=` on every request. The stream script fetches the rating from a slow reviews service. The rest of the page is already on screen while it waits, and the rating replaces the "Loading rating" line when it arrives.
 
 ![An editor above a browser. The editor shows book.html with a build script, a server script, and a stream script. The browser loads /book?name=Ada: the title, the chapter list, and Welcome back, Ada. appear at once with Loading rating, and Rated 4.6 out of 5 replaces it a moment later. Loading /book?name=Grace greets Grace, and the rating streams in again](/assets/demos/scripts-page@2x.webp)
 
@@ -126,7 +126,7 @@ Each variable is described in [Environment Variables](/environment-variables). A
 
 ## Returning component tags
 
-A server or stream script can return the tags of your own components, and Bascik renders each one at request time with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. There is nothing to import and nothing to configure. A build script's output is expanded the same way at build time; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
+Any script can return the tags of your own components, and Bascik renders each one with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. A build script's tags render once at build time; a server or stream script's tags render on every request. There is nothing to import and nothing to configure. The example, rules, and limits below are for server and stream scripts, whose output renders per request.
 
 ```html
 <script data-bascik-server>
@@ -146,6 +146,8 @@ A server or stream script can return the tags of your own components, and Bascik
   };
 </script>
 ```
+
+![An editor shows the server script returning book-card tags. Below it, the browser first shows three book cards, then one matching Refactoring the Monolith after the URL changes to ?q=monolith](/assets/demos/returning-tags@2x.webp)
 
 Worked examples, with the Output each one sends: [Render a card per search result](/scripts/server#render-a-card-per-search-result) and [A card with its own server script](/scripts/server#a-card-with-its-own-server-script) on Server Scripts, and [Stream cards in batches](/scripts/stream#stream-cards-in-batches) on Stream Scripts.
 

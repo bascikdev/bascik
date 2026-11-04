@@ -12,6 +12,7 @@
  *   markdown-watch    editor above a browser: a watched Markdown file is edited, and the page that reads it updates
  *   server-request    editor above a browser: a server script renders a different page for each request
  *   scripts-page      editor above a browser: one page with a build, a server, and a stream script, for two requests
+ *   returning-tags    editor above a browser: a server script returns book-card tags, then filters them per request
  *   exec-watch        the terminal: editing a watched file reruns an exec script and rebuilds only its page
  *   dynamic-routes    editor above a browser: a URL is a 404 until a route is added to the template's routes script
  *   sitemap           the terminal: `bascik --build` with a site URL, then the generated sitemap.xml
@@ -38,7 +39,13 @@
  *
  * Output: docs/src/pages/assets/demos/<scene>@2x.webp, plus <scene>-still@2x.webp for animated scenes.
  */
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
@@ -979,6 +986,127 @@ async function scriptsPage(): Promise<Frame[]> {
   }
 }
 
+/** Reads the actual server-script example in the "Returning component tags" section. */
+async function returningTagsSource(): Promise<string> {
+  const markdown = await readFile(join(docsDir, "content/scripts.md"), "utf8");
+  const sectionStart = markdown.indexOf("## Returning component tags");
+  if (sectionStart === -1)
+    throw new Error('Missing "Returning component tags" section in scripts.md');
+  const sectionEnd = markdown.indexOf("\n## ", sectionStart + 1);
+  const section =
+    sectionEnd === -1
+      ? markdown.slice(sectionStart)
+      : markdown.slice(sectionStart, sectionEnd);
+  const match = /```html\n([\s\S]*?)\n```/.exec(section);
+  if (!match)
+    throw new Error("Missing HTML example in Returning component tags");
+  return match[1];
+}
+
+const RETURNING_TAGS_BOOKS = `const books = [
+  { title: "Refactoring the Monolith", author: "Grace Lin" },
+  { title: "Practical Type Systems", author: "Ada Okafor" },
+  { title: "Shipping Small Changes", author: "Sam Rivera" },
+];
+
+export async function searchBooks(query: string) {
+  const normalized = query.trim().toLowerCase();
+  return books.filter((book) =>
+    book.title.toLowerCase().includes(normalized),
+  );
+}
+`;
+
+async function returningTags(): Promise<Frame[]> {
+  const source = await returningTagsSource();
+  const rig = await openEditorAndBrowser({
+    layout: "stacked",
+    path: "/catalog",
+    editorHeight: 360,
+    editorSettings: {
+      "editor.lightbulb.enabled": "off",
+      "editor.fontSize": 12,
+      "editor.lineHeight": 16,
+    },
+    prepare: async (dir) => {
+      const componentDir = join(dir, "src/components/book-card");
+      await mkdir(componentDir, { recursive: true });
+      for (const file of ["book-card.html", "book-card.css", "book-card.js"])
+        await copyFile(
+          join(docsDir, "src/components/book-card", file),
+          join(componentDir, file),
+        );
+      await mkdir(join(dir, "src/lib"), { recursive: true });
+      await writeFile(join(dir, "src/lib/books.ts"), RETURNING_TAGS_BOOKS);
+      await writeFile(
+        join(dir, "src/pages/catalog.html"),
+        `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Book catalog</title>
+    <style>
+      body {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 18px;
+        color: #f0f1f2;
+        background: #18191b;
+        font-family: system-ui, sans-serif;
+      }
+      h1 { margin: 0 0 6px; font-size: 1.3rem; }
+      p { margin: 0 0 14px; color: #a4a8ae; }
+      .results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Book catalog</h1>
+      <p>Cards returned for this request</p>
+      <div class="results">
+${source}
+      </div>
+    </main>
+  </body>
+</html>
+`,
+      );
+    },
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const titles = () =>
+    rig.page.getByTestId("book-card").locator("h3").allTextContents();
+  try {
+    await openFile(editor, "catalog.html");
+    const file = join(rig.project.dir, "src/pages/catalog.html");
+    const script = await readLine(file, "<script data-bascik-server>");
+    await gotoLine(
+      editor,
+      script.line + Math.floor(source.split("\n").length / 2),
+      1,
+    );
+    const allBooks = await titles();
+    if (allBooks.length !== 3)
+      throw new Error(
+        `Expected three book cards, got ${allBooks.length}:\n${await rig.page.locator("body").innerText()}`,
+      );
+    await rig.snap(frames, INTRO_HOLD + 1800);
+
+    await rig.page.goto(
+      new URL("/catalog?q=monolith", rig.page.url()).toString(),
+    );
+    const filteredBooks = await titles();
+    if (filteredBooks.join() !== "Refactoring the Monolith")
+      throw new Error(`Unexpected filtered cards: ${filteredBooks.join(", ")}`);
+    await rig.snap(frames, OUTRO_HOLD);
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
 async function execWatch(): Promise<Frame[]> {
   const project = await createStarterProject();
   await addNotes(project.dir, { exec: true });
@@ -1479,6 +1607,7 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   "markdown-watch": markdownWatch,
   "server-request": serverRequest,
   "scripts-page": scriptsPage,
+  "returning-tags": returningTags,
   "exec-watch": execWatch,
   "dynamic-routes": dynamicRoutes,
   sitemap,

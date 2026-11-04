@@ -197,7 +197,7 @@ describe("request-time component rendering docs", () => {
   it("faq.md answers whether a server script can return a component and links the section", async () => {
     const body = section(
       await read("faq.md"),
-      "Can a server script return a component?",
+      "Can a script return a component?",
     );
     expect(body).not.toBe("");
     expect(body).toContain("(/scripts#returning-component-tags)");

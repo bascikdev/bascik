@@ -887,7 +887,12 @@ const REPO = "bascikdev/bascik";
 function runContext(
   event: "push" | "pull_request",
   ref: string,
-  { repository = REPO, prRepo = null as string | null, newest = "true" } = {},
+  {
+    repository = REPO,
+    prRepo = null as string | null,
+    newest = "true",
+    docsOnly = false,
+  } = {},
 ): Record<string, Value> {
   return {
     "github.event_name": event,
@@ -897,6 +902,8 @@ function runContext(
     "github.run_id": "4242",
     "github.event.pull_request.head.repo.full_name": prRepo,
     "steps.newest.outputs.newest": newest,
+    // What the `changes` job outputs when it runs; `simulate` blanks it when that job is skipped.
+    "needs.changes.outputs.docs-only": String(docsOnly),
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
     "needs.deploy-netlify.outputs.preview-url": "",
@@ -921,6 +928,7 @@ function simulate(
   const results = new Map<string, string>();
   const steps = new Map<string, string[]>();
   const scope: Record<string, Value> = { ...context };
+  for (const id of jobs.keys()) scope[`needs.${id}.result`] = "skipped";
   for (const [id, job] of jobs) {
     const needResults = job.needs.map((need) => results.get(need) ?? "skipped");
     const statusCheck = /\b(?:success|always|cancelled|failure)\(/.test(
@@ -929,9 +937,13 @@ function simulate(
     if (!statusCheck && needResults.some((result) => result !== "success"))
       continue;
     scope["needs.*.result"] = needResults;
-    if (!isTruthy(evaluate(job.if ?? "success()", scope))) continue;
+    if (!isTruthy(evaluate(job.if ?? "success()", scope))) {
+      if (id === "changes") scope["needs.changes.outputs.docs-only"] = "";
+      continue;
+    }
     ran.add(id);
     results.set(id, failed.has(id) ? "failure" : "success");
+    scope[`needs.${id}.result`] = results.get(id)!;
     if (job.stage !== 5) continue;
     const names = job.steps
       .filter((step) => isTruthy(evaluate(step.if ?? "success()", scope)))
@@ -1096,11 +1108,13 @@ describe("CI stages and the deploy stage", () => {
   it("makes every job wait on every job of the stage before it", () => {
     const missing: string[] = [];
     for (const [id, job] of jobs) {
+      // `changes` (docs-only detection) is the one job any job may wait on: it gates the run, not a stage.
+      const needs = job.needs.filter((need) => need !== "changes");
       if (job.stage === 1) {
-        if (job.needs.length) missing.push(`${id}: stage 1 needs nothing`);
+        if (needs.length) missing.push(`${id}: stage 1 needs nothing`);
         continue;
       }
-      for (const need of job.needs) {
+      for (const need of needs) {
         const needed = jobs.get(need);
         if (!needed) missing.push(`${id}: needs unknown job ${need}`);
         else if (needed.stage !== job.stage - 1 && needed.stage !== job.stage)
@@ -1212,9 +1226,13 @@ describe("CI stages and the deploy stage", () => {
   });
 
   it("skips same-repo pull_request runs at stage 1, so the branch's push run is the only test run", () => {
+    const sameRun =
+      "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)";
     for (const id of stage(1))
       expect(jobs.get(id)!.if, id).toBe(
-        "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
+        ["changes", "standards"].includes(id)
+          ? sameRun
+          : `needs.changes.outputs.docs-only != 'true' && (${sameRun})`,
       );
     // Every later job needs stage 1 (directly or not), so the whole run skips.
     const sameRepo = simulate(
@@ -1253,6 +1271,69 @@ describe("CI stages and the deploy stage", () => {
         .get("deploy-netlify")
         ?.filter((name) => /^(Upload|Deploy|Smoke)/.test(name)),
     ).toEqual(["Deploy to production", "Smoke-test production"]);
+  });
+
+  describe("a docs-only run", () => {
+    const docsOnly = () =>
+      simulate(
+        jobs,
+        runContext("push", "refs/heads/docs-update-20261104", {
+          docsOnly: true,
+        }),
+      );
+
+    it("runs only the cheap checks, the three docs suites and the docs Preview", () => {
+      const { ran, steps } = docsOnly();
+      expect([...ran]).toEqual([
+        "changes",
+        "standards",
+        "unit-docs",
+        "integration-docs",
+        "e2e-docs",
+        "deploy-docs",
+      ]);
+      expect(wranglerSteps(steps.get("deploy-docs"))).toEqual([
+        "Upload a Preview version",
+        "Smoke-test the Preview",
+      ]);
+    });
+
+    it("runs a full run when the changes are not all docs", () => {
+      const full = simulate(jobs, runContext("push", "refs/heads/feature/x"));
+      expect(full.ran.size).toBe(jobs.size);
+    });
+
+    it("stops after the first failing docs job", () => {
+      for (const [failing, after] of [
+        ["standards", ["unit-docs", "integration-docs", "e2e-docs"]],
+        ["unit-docs", ["integration-docs", "e2e-docs"]],
+        ["integration-docs", ["e2e-docs"]],
+        ["e2e-docs", []],
+      ] as const) {
+        const { ran } = simulate(
+          jobs,
+          runContext("push", "refs/heads/docs-update-20261104", {
+            docsOnly: true,
+          }),
+          new Set([failing]),
+        );
+        for (const id of after)
+          expect(ran.has(id), `${failing}: ${id}`).toBe(false);
+        expect(ran.has("deploy-docs"), failing).toBe(false);
+      }
+    });
+
+    it("detects docs-only changes only when every file since the merge base is under docs/content/", () => {
+      const step = jobs
+        .get("changes")!
+        .steps.find((candidate) => /id: diff/.test(candidate.text))!;
+      expect(step.text).toContain("git merge-base origin/main HEAD");
+      expect(step.text).toContain("grep -qv '^docs/content/'");
+      // An empty diff or a failed fetch is a full run, never a docs-only one.
+      expect(step.text).toContain("docs_only=false");
+      expect(step.text).toContain('[ -n "$files" ]');
+      expect(jobs.get("changes")!.body.join("\n")).toContain("fetch-depth: 0");
+    });
   });
 
   it("previews nothing when any stage 4 job of a branch fails", () => {
