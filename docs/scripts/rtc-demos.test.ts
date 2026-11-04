@@ -358,6 +358,16 @@ const boxFor = (spec: Spec) => {
   return { items, index };
 };
 
+/** The text of a fragment: tags removed until none are left, then any stray `<`, so no tag can survive. */
+const textOf = (html: string): string => {
+  let text = html;
+  for (let previous = ""; text !== previous;) {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  return text.replace(/</g, "");
+};
+
 /** Preview cards: the <book-card> tags written in a box's example slot. */
 const previewCards = (example: string) =>
   [
@@ -366,7 +376,7 @@ const previewCards = (example: string) =>
   ].map((m) => ({
     title: /data-bascik-prop-title="([^"]*)"/.exec(m[1])?.[1],
     author: /data-bascik-prop-author="([^"]*)"/.exec(m[1])?.[1],
-    badge: m[2].replace(/<[^>]+>/g, "").trim() || "Paperback",
+    badge: textOf(m[2]).trim() || "Paperback",
   }));
 
 /**
