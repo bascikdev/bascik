@@ -200,16 +200,16 @@ This gives the same client hydration capability as `getStaticProps` in Next.js (
 
 > **Safety and Scoping.** Serialize the data with `json(value)` from `@bascik/bascik/html`, never a bare `JSON.stringify`: it writes `<`, `>` and `&` as `\u003c`, `\u003e` and `\u0026`, so a string containing `</script>` cannot break out of the tag, and `html` refuses anything else in that spot. When this pattern lives inside a component, write `document.getElementById('catalog-data')` with the source ID as usual. Bascik automatically rewrites both the element ID and the selector at build time to the same scoped identifier.
 
-### Printing HTML You Did Not Write
+### Printing Untrusted HTML
 
-Build script output is transpiled again, so it can contain component tags and client scripts. When a script prints HTML from somewhere else, such as a CMS post body, an API response, or converted Markdown, that HTML lands in the page with the same power as your own markup:
+Bascik processes what a build script prints the same way it processes your own markup. That is what lets the output contain component tags. It also means that HTML from outside your repository, such as a CMS post body, an API response, or converted Markdown, can do whatever your own HTML can:
 
 - An ordinary `<script>`, an `onerror` handler, or a `javascript:` link runs in every visitor's browser.
 - A component tag such as `<site-header>` expands into your component.
 
 Pass such HTML through an allowlist sanitizer (for example `sanitize-html`), insert the result with `raw()`, and build everything around it with [`html`](/html-helpers), which escapes plain text.
 
-Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-build-once>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
+Directive scripts are the one thing Bascik removes for you. A `<script data-bascik-build>`, `<script data-bascik-build-once>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, or `<script data-bascik-routes>` in a build script's output never runs, and the build warns:
 
 ```terminal
 [bascik] warning: build script output in "pages/index.html" contained <script data-bascik-build>.
@@ -519,7 +519,7 @@ rm -rf node_modules/.cache/bascik/script-cache
 - **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Other files, including helpers under the import root (`src/lib/`), need a `pipeline.watchPaths` entry or a restart (see [Watch Paths](/watch-paths)).
 - **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax and a callable default export. Write helpers as `.ts` (preferred on Node 22.22+), `.js`, or `.mjs`.
 - **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
-- **Printed directives never run:** A directive script in a build script's output is removed with a warning. Directives only run where they are written in a source file. See [Printing HTML You Did Not Write](#printing-html-you-did-not-write).
+- **Printed directives never run:** A directive script in a build script's output is removed with a warning. Directives only run where they are written in a source file. See [Printing Untrusted HTML](#printing-untrusted-html).
 
 For per-request server-side rendering, see [Server Scripts](/scripts/server).
 

@@ -107,7 +107,7 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 
 > **Dynamic Route Safety.** `process.env.BASCIK_ROUTE` is only defined when transpiling dynamic routes. For static pages, the variable is omitted from the environment.
 
-> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Returning `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write)).
+> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Returning `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing Untrusted HTML](/scripts/build#printing-untrusted-html)).
 
 ## Dynamic Route Scripts (`data-bascik-routes`)
 

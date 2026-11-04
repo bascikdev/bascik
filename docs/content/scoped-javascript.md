@@ -344,7 +344,7 @@ When `console.log()` runs or an uncaught exception occurs inside a component scr
 </script>
 ```
 
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing Untrusted HTML](/scripts/build#printing-untrusted-html).
 
 ## Non-JavaScript Script Types
 

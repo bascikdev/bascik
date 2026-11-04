@@ -18,7 +18,7 @@ Two other kinds of server code sit beside these. [API Routes](/api-routes) are f
 
 ## See it in action
 
-One book page, three scripts. The chapter list comes from a build script, written once when the site is built. The greeting comes from a server script that reads `?name=` on every request. The rating comes from a stream script: the rest of the page is already on screen while it waits for a slow reviews service, and the rating replaces the "Loading rating" line when it arrives.
+This book page uses a build script, a server script, and a stream script. The build script writes the chapter list once, when the site is built. The server script greets the visitor by reading `?name=` on every request. The stream script fetches the rating from a slow reviews service. The rest of the page is already on screen while it waits, and the rating replaces the "Loading rating" line when it arrives.
 
 ![An editor above a browser. The editor shows book.html with a build script, a server script, and a stream script. The browser loads /book?name=Ada: the title, the chapter list, and Welcome back, Ada. appear at once with Loading rating, and Rated 4.6 out of 5 replaces it a moment later. Loading /book?name=Grace greets Grace, and the rating streams in again](/assets/demos/scripts-page@2x.webp)
 
@@ -126,7 +126,7 @@ Each variable is described in [Environment Variables](/environment-variables). A
 
 ## Returning component tags
 
-A server or stream script can return the tags of your own components, and Bascik renders each one at request time with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. There is nothing to import and nothing to configure. A build script's output is expanded the same way at build time; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
+Any script can return the tags of your own components, and Bascik renders each one with the component's markup, props, slots, and scoped CSS, the same way it renders a tag written in a page. A build script's tags render once at build time; a server or stream script's tags render on every request. There is nothing to import and nothing to configure. The example, rules, and limits below are for server and stream scripts, whose output renders per request.
 
 ```html
 <script data-bascik-server>

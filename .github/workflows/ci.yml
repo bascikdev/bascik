@@ -18,6 +18,11 @@ name: CI
 # request; the stage 1 jobs skip on such a pull_request event, and every later job needs them, so the rest of that
 # run skips too (a skipped `needs` skips the job instead of failing it). A fork's pull request runs stages 1 to 4
 # and never stage 5, which runs only on push.
+#
+# A push whose every change since the branch left main is under docs/content/ is a docs-only run. The `changes` job
+# detects it, and the run then skips Jelly, Semgrep, the typechecks, and every test job except formatting, spelling
+# and web standards and the three docs suites (unit, integration, E2E), and uploads only the docs Preview. Any other
+# changed file makes the run a full one.
 on:
   push:
     branches: ["**"]
@@ -35,13 +40,51 @@ concurrency:
 jobs:
   # ── Stage 1: Static analysis, typechecks, formatting, and spelling ──────────────
 
-  jelly:
-    name: Jelly Static Analysis
+  # A run whose changes all sit under docs/content/ (compared with where the branch left main) is a docs-only run: it
+  # skips Jelly, Semgrep, the typechecks and every test job except formatting, spelling and web standards and the three
+  # docs suites, which run one after another, then uploads the docs Preview only. The two adapter demos are not touched
+  # by a docs page, so their Previews and the Preview comment wait for the next full run. Any file outside
+  # docs/content/ makes the run a full one, so the check never has to know what a change could break.
+  changes:
+    name: Detect Docs-Only Changes
     runs-on: ubuntu-latest
     # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    permissions:
+      contents: read
+    outputs:
+      docs-only: ${{ steps.diff.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Compares the commit with the merge base of main, so one non-docs commit anywhere on the branch keeps every
+      # later push a full run. An empty or unreadable comparison counts as a full run.
+      - name: Check whether only docs/content/ changed
+        id: diff
+        run: |
+          docs_only=false
+          if git fetch --no-tags origin main && base="$(git merge-base origin/main HEAD)"; then
+            files="$(git diff --name-only "$base" HEAD)"
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qv '^docs/content/'; then
+              docs_only=true
+            fi
+          fi
+          echo "docs-only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "Docs-only run: $docs_only"
+
+  jelly:
+    name: Jelly Static Analysis
+    runs-on: ubuntu-latest
+    needs: [changes]
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
+    if: >-
+      needs.changes.outputs.docs-only != 'true' &&
+      ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -71,10 +114,12 @@ jobs:
   semgrep:
     name: Semgrep Static Analysis
     runs-on: ubuntu-latest
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    needs: [changes]
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
     if: >-
-      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      needs.changes.outputs.docs-only != 'true' &&
+      ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -88,10 +133,12 @@ jobs:
   typecheck:
     name: Workspace Typechecks
     runs-on: ubuntu-latest
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    needs: [changes]
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
     if: >-
-      (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      needs.changes.outputs.docs-only != 'true' &&
+      ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -118,7 +165,9 @@ jobs:
   standards:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
+    needs: [changes]
+    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file). Runs on a docs-only
+    # run too: formatting, spelling and web standards are the cheap checks a docs page needs.
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
@@ -158,7 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -185,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -213,7 +262,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -241,7 +290,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -295,7 +344,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -322,7 +371,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -346,9 +395,15 @@ jobs:
   unit-docs:
     name: Docs Unit Tests
     runs-on: ubuntu-latest
+    # A docs-only run (see `changes`) needs only standards; any other run needs every job it waits on.
+    if: >-
+      !cancelled() && (
+      (needs.changes.outputs.docs-only == 'true' && needs.standards.result == 'success') ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -372,7 +427,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -396,7 +451,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, semgrep, typecheck, standards]
+    needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -476,10 +531,17 @@ jobs:
   integration-docs:
     name: Docs Integration Tests
     runs-on: ubuntu-latest
+    # A docs-only run (see `changes`) needs only unit-docs; any other run needs every job it waits on.
+    if: >-
+      !cancelled() && (
+      (needs.changes.outputs.docs-only == 'true' && needs.unit-docs.result == 'success') ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
     needs:
       [
+        changes,
         unit-pkg,
         unit-create,
         unit-lsp,
@@ -927,10 +989,17 @@ jobs:
   e2e-docs:
     name: Docs E2E
     runs-on: ubuntu-latest
+    # A docs-only run (see `changes`) needs only integration-docs; any other run needs every job it waits on.
+    if: >-
+      !cancelled() && (
+      (needs.changes.outputs.docs-only == 'true' && needs.integration-docs.result == 'success') ||
+      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')))
     permissions:
       contents: read
     needs:
       [
+        changes,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -1059,16 +1128,20 @@ jobs:
   deploy-docs:
     name: Deploy Docs (bascik.dev)
     runs-on: ubuntu-latest
+    # A docs-only run (see `changes`) uploads the docs Preview after the docs suites alone; every other branch run
+    # needs every stage 4 job. The adapter demos below keep requiring all of them, so a docs-only run skips them.
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
       github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
       (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      (!contains(needs.*.result, 'skipped') ||
+      (needs.changes.outputs.docs-only == 'true' && needs.e2e-docs.result == 'success'))))
     permissions:
       contents: read
       pull-requests: read
     needs:
       [
+        changes,
         e2e-pkg-static,
         e2e-pkg-dev,
         e2e-pkg-prod-http1,

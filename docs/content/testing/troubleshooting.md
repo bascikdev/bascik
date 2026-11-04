@@ -224,7 +224,7 @@ One script cannot run at build time and at request time. Remove one directive; s
 
 ### `build script output ... contained <script data-bascik-build>. Printed directive scripts never run; they were removed.`
 
-HTML returned by a build script is expanded like page markup, but a directive script inside it is removed rather than executed. Write directives in source files, and sanitize HTML that comes from a CMS or an API before printing it. See [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
+HTML returned by a build script is expanded like page markup, but a directive script inside it is removed rather than executed. Write directives in source files, and sanitize HTML that comes from a CMS or an API before printing it. See [Printing Untrusted HTML](/scripts/build#printing-untrusted-html).
 
 ### A build script reads the wrong `process.env` values
 

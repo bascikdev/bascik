@@ -301,10 +301,10 @@ describe("each place about returning component tags points at the live demo", ()
     expect(linksTo(rules, "/catalog-stream").length).toBeGreaterThan(0);
   });
 
-  it("faq.md: the answer to Can a server script return a component? links the live catalog", () => {
+  it("faq.md: the answer to Can a script return a component? links the live catalog", () => {
     const answer = section(
       read("docs/content/faq.md"),
-      /^Can a server script return a component\?$/,
+      /^Can a script return a component\?$/,
     );
     expect(
       linksTo(answer, "/catalog").length +
