@@ -18,7 +18,7 @@ describe("docs-nav component", () => {
     expect(html).toContain('<nav aria-label="Main">');
     expect(html).toContain("<docs-logo />");
     expect(html).toContain("<docs-search />");
-    expect(html).toContain('<a href="/getting-started">Getting Started</a>');
+    expect(html).toContain('<a href="/getting-started">Docs</a>');
     expect(html).toContain('from "@/lib/nav.ts"');
   });
 
