@@ -4,6 +4,18 @@ Next.js and Bascik share intuitive file-based routing, but they serve different 
 
 Switching to Bascik replaces framework abstractions with standard web platform primitives: JSX components become vanilla HTML files, data-fetching functions become build scripts or server scripts, and specialized Next.js components become standard HTML tags.
 
+## Mental Model Comparison
+
+| Concept              | Next.js                                  | Bascik                                      |
+| -------------------- | ---------------------------------------- | ------------------------------------------- |
+| Page                 | `pages/about.js` or `app/about/page.tsx` | `src/pages/about.html`                      |
+| Shared layout        | `layout.tsx` with `children`             | `<site-layout>` with `data-bascik-slot`     |
+| Build-time data      | Server Components, `getStaticProps`      | `<script data-bascik-build>`                |
+| Per-request data     | `getServerSideProps`, dynamic rendering  | `<script data-bascik-server>`               |
+| Client interactivity | `"use client"` components and hooks      | A `<script>` in the component, no hydration |
+| Links, images, fonts | `next/link`, `next/image`, `next/font`   | `<a>`, `<img>`, `@font-face`                |
+| API endpoints        | `pages/api/` or route handlers           | `src/api/` with `Request` and `Response`    |
+
 ## A Low-Risk First Step
 
 To evaluate Bascik on an existing Next.js codebase, migrate a single static marketing page (like an `/about` page) and a shared header component before touching complex application routes:

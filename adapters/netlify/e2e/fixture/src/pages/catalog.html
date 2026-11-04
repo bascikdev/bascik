@@ -17,12 +17,17 @@
       <form method="get" action="/catalog" class="panel">
         <label for="catalog-query">Find a book</label>
         <div class="form-row">
-          <input
-            id="catalog-query"
-            name="q"
-            value=""
-            data-testid="catalog-search"
-          />
+          <script data-bascik-server type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            export default (request: Request) =>
+              html`<input
+                id="catalog-query"
+                name="q"
+                value="${new URL(request.url).searchParams.get("q") ?? ""}"
+                data-testid="catalog-search"
+              />`;
+          </script>
           <button type="submit">Search</button>
         </div>
         <p>

@@ -225,12 +225,16 @@ test.describe("shared adapter demo contract", () => {
     await expect(results.getByTestId("book-card-title")).toHaveText([
       "Refactoring the Monolith",
     ]);
+    await expect(page.getByTestId("catalog-search")).toHaveValue("monolith");
     await page.goto("/catalog?q=nothing-matches");
     await expect(page.getByTestId("catalog-empty")).toBeVisible();
     await expect(results.getByTestId("book-card")).toHaveCount(0);
-    await page.goto(
-      `/catalog?q=${encodeURIComponent('<script data-testid="injected">bad()</script>')}`,
+    await expect(page.getByTestId("catalog-search")).toHaveValue(
+      "nothing-matches",
     );
+    const injection = '"><script data-testid="injected">bad()</script>';
+    await page.goto(`/catalog?q=${encodeURIComponent(injection)}`);
+    await expect(page.getByTestId("catalog-search")).toHaveValue(injection);
     await expect(page.getByTestId("catalog-empty")).toContainText("<script");
     await expect(page.getByTestId("injected")).toHaveCount(0);
   });

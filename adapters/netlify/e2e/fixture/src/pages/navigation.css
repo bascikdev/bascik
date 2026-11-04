@@ -93,6 +93,10 @@
   text-decoration: none;
 }
 
+.source-link + .docs-link {
+  margin-left: 0;
+}
+
 .docs-link:hover {
   border-color: var(--accent);
   color: var(--accent);
