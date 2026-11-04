@@ -43,7 +43,7 @@ A component script is an inline classic script, and where it sits in the page de
 
 - **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
 - **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
-- **A component returned by a server or stream script.** The component is rendered at request time, and its script stays inside the rendered markup in every mode. With `minify.html` on it moves only to the end of the outermost component the script returned, never to the end of the document, so later page markup does not exist yet when it runs. Its scoped ids are derived from a request-time instance id; its class names are the ones the build uses, unless the component's CSS is per instance (`url(#id)` or `scoping.deduplicateCss: false`). See [Returning component tags](/server-scripts#returning-component-tags).
+- **A component returned by a server or stream script.** The component is rendered at request time, and its script stays inside the rendered markup in every mode. With `minify.html` on it moves only to the end of the outermost component the script returned, never to the end of the document, so later page markup does not exist yet when it runs. Its scoped ids are derived from a request-time instance id; its class names are the ones the build uses, unless the component's CSS is per instance (`url(#id)` or `scoping.deduplicateCss: false`). See [Returning component tags](/scripts#returning-component-tags).
 
 Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
 
@@ -241,7 +241,7 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 </script>
 ```
 
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-build-once`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/scripts/build#printing-html-you-did-not-write).
 
 ## Non-JavaScript Script Types
 
@@ -338,7 +338,7 @@ button.addEventListener("click", () => {
 });
 ```
 
-The Output is the page's `<body>` as `bascik --build` writes it, with minification off: the reference is gone, and the script holds the file's JavaScript with its types removed.
+The Output is the page's `<body>` as `bascik --build` writes it: the reference is gone, and the script holds the file's JavaScript with its types removed.
 
 <!-- demo:ts-page-output-html -->
 

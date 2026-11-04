@@ -4,7 +4,7 @@ src/pages/scoped-javascript.html
 src/pages/scoped-styles.html
 src/pages/props.html
 src/pages/slots.html
-src/pages/build-scripts.html
+src/pages/scripts/build.html
 src/pages/index.html
 
 # Generated output — don't format

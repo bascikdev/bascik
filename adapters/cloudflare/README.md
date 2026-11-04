@@ -15,7 +15,7 @@ npm install --save-dev @bascik/adapter-cloudflare wrangler
 
 See the [Cloudflare deployment guide](https://bascik.dev/deployment/cloudflare) for setup instructions, recipes, and limits.
 
-See it live: [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its [product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) renders the `<product-card>` tags a server script returns, and the [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) streams them in batches from the Worker.
+See it live: [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its [book catalog](https://cloudflare-adapter.bascik.dev/catalog?q=monolith) renders the `<book-card>` tags a server script returns, and the [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream) streams them in batches from the Worker.
 
 ## Targets and Variants
 
@@ -106,7 +106,7 @@ against their real runtimes. Both demos expose `/`, `/server?name=collin`,
 `/errors`, and `/static` with matching titles and navigation. The `/static`
 page demonstrates scoped client scripts and independent counters; the overview
 only links to the demos. The contract checks static
-client scripts, escaped input, product rendering and filtering, API dispatch,
+client scripts, escaped input, book rendering and filtering, API dispatch,
 no-JavaScript stream ordering, and safe failures. Platform-specific context and
 routing assertions remain in this adapter's own suite. Error-demo requests
 intentionally generate diagnostics.

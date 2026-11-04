@@ -3,8 +3,8 @@
  * site gets exactly the Output the docs show.
  *
  * The test scaffolds a fresh project with create-bascik into /tmp/bascik-rtc-docs-demos/copy-test, writes each
- * Usage/HTML/CSS/JS block to the path named in its first-line comment (as a reader would), adds the documented
- * bascik.config.ts, links this repository's Bascik, then builds, serves with the real `bascik --server`, fetches
+ * Usage/HTML/CSS/JS block to the path named in its first-line comment (as a reader would), adds the demo
+ * bascik.config.ts (minification off), links this repository's Bascik, then builds, serves with the real `bascik --server`, fetches
  * each demo URL, formats the body the way the committed Output was formatted, and compares. The generator library
  * (scripts/rtc-demos.ts) starts and always stops the server; nothing is left listening.
  *
@@ -12,13 +12,7 @@
  * normalized, bijectively by order of first appearance.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readDemoBlock } from "../src/lib/md-renderer.ts";
@@ -31,16 +25,16 @@ const PROJECT_DIR = path.join(SCRATCH, PROJECT);
 
 /** Every source block a reader copies, by md file and marker. */
 const SOURCE_BLOCKS: [string, string][] = [
-  ["content/server-scripts.md", "rtc-search-source-usage"],
-  ["content/server-scripts.md", "rtc-search-source-html"],
-  ["content/server-scripts.md", "rtc-search-source-css"],
-  ["content/server-scripts.md", "rtc-search-source-js"],
-  ["content/server-scripts.md", "rtc-live-source-usage"],
-  ["content/server-scripts.md", "rtc-live-source-html"],
-  ["content/server-scripts.md", "rtc-live-source-css"],
-  ["content/stream-scripts.md", "rtc-stream-source-usage"],
+  ["content/scripts/server.md", "rtc-search-source-usage"],
+  ["content/scripts/server.md", "rtc-search-source-html"],
+  ["content/scripts/server.md", "rtc-search-source-css"],
+  ["content/scripts/server.md", "rtc-search-source-js"],
+  ["content/scripts/server.md", "rtc-live-source-usage"],
+  ["content/scripts/server.md", "rtc-live-source-html"],
+  ["content/scripts/server.md", "rtc-live-source-css"],
+  ["content/scripts/stream.md", "rtc-stream-source-usage"],
   ["content/testing/troubleshooting.md", "rtc-passthrough-source-usage"],
-  ["content/security.md", "security-search-source-usage"],
+  ["content/scripts/security.md", "security-search-source-usage"],
 ];
 
 const OUTPUTS: {
@@ -56,17 +50,17 @@ const OUTPUTS: {
 }[] = [
   {
     id: "search",
-    md: "content/server-scripts.md",
+    md: "content/scripts/server.md",
     marker: "rtc-search-output-html",
   },
   {
     id: "live",
-    md: "content/server-scripts.md",
+    md: "content/scripts/server.md",
     marker: "rtc-live-output-html",
   },
   {
     id: "stream",
-    md: "content/stream-scripts.md",
+    md: "content/scripts/stream.md",
     marker: "rtc-stream-output-html",
   },
   {
@@ -76,12 +70,12 @@ const OUTPUTS: {
   },
   {
     id: "security-search",
-    md: "content/security.md",
+    md: "content/scripts/security.md",
     marker: "security-search-output",
   },
   {
     id: "security-malicious",
-    md: "content/security.md",
+    md: "content/scripts/security.md",
     marker: "security-malicious-q-output",
   },
 ];
@@ -134,19 +128,8 @@ describe("a reader copying the Returning component tags blocks into a new site",
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, code + "\n");
     }
-    // The documented config, pasted as shown.
-    const section = readFileSync(
-      path.join(DOCS_ROOT, "content/server-scripts.md"),
-      "utf8",
-    );
-    const config = /```ts\n(\/\/ bascik\.config\.ts\n[\s\S]*?)\n```/.exec(
-      section,
-    )?.[1];
-    if (!config)
-      throw new Error(
-        "server-scripts.md documents no ```ts // bascik.config.ts block",
-      );
-    writeFileSync(path.join(PROJECT_DIR, "bascik.config.ts"), config + "\n");
+    // The docs Output is made with minification off.
+    writeFileSync(path.join(PROJECT_DIR, "bascik.config.ts"), lib.DEMO_CONFIG);
 
     // A scaffold has no node_modules: point @bascik/bascik at this repository's package.
     const scope = path.join(PROJECT_DIR, "node_modules", "@bascik");

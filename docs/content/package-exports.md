@@ -10,7 +10,7 @@ Bascik ships as a single npm package, `@bascik/bascik`, with a small set of subp
 | `@bascik/bascik/config`  | `defineConfig` plus the full `BascikConfig` type for `bascik.config.ts`                                                     | [Configuration](/configuration)                                                          |
 | `@bascik/bascik/runtime` | Host-neutral request execution: buffered and streamed page composition, deadline-bounded invocation, and API route dispatch | [Custom Adapters](/deployment/custom-adapters), [Server Architecture](/internals/server) |
 | `@bascik/bascik/adapter` | Hosting adapter contract: `defineAdapter`, the `SiteGraph` types, and site-graph readers                                    | [Custom Adapters](/deployment/custom-adapters)                                           |
-| `@bascik/bascik/html`    | Safe HTML for server, stream and build scripts: `html`, `raw`, `esc`, `safeUrl`, `json`                                     | [HTML Helpers](/html-helpers), [Security](/security)                                     |
+| `@bascik/bascik/html`    | Safe HTML for server, stream and build scripts: `html`, `raw`, `esc`, `safeUrl`, `json`                                     | [HTML Helpers](/html-helpers), [Security](/scripts/security)                             |
 
 ## `@bascik/bascik`
 
@@ -101,4 +101,4 @@ The html subpath is the one export meant for server and stream scripts (build sc
 </script>
 ```
 
-It has no Node builtins, so the Cloudflare adapter bundles it into the Worker. See [HTML Helpers](/html-helpers) for the API reference and [Security](/security) for how it fits with the rest of a site's protection.
+It has no Node builtins, so the Cloudflare adapter bundles it into the Worker. See [HTML Helpers](/html-helpers) for the API reference and [Security](/scripts/security) for how it fits with the rest of a site's protection.

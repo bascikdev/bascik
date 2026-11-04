@@ -601,7 +601,7 @@ export default defineConfig({
 </html>
 ```
 
-The Output is the page's `<body>` from `bascik --build` with this config and minification off: esbuild turned the `enum` into plain JavaScript. There is no Preview because this docs site uses the default compiler, which rejects an `enum`.
+The Output is the page's `<body>` from `bascik --build` with this config: esbuild turned the `enum` into plain JavaScript. There is no Preview because this docs site uses the default compiler, which rejects an `enum`.
 
 <!-- demo:ts-config-output-html -->
 
@@ -627,7 +627,7 @@ Controls error handling for both `data-bascik-server` and `data-bascik-stream` s
 
 ### `scripts.importRoot`
 
-The directory that `@/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. A bare leading `/` is not an alias and is rejected with an error that points at `@/` or `./`. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Script Imports](/script-imports#import-root-aliases) for the alias rules.
+The directory that `@/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. A bare leading `/` is not an alias and is rejected with an error that points at `@/` or `./`. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Script Imports](/scripts/imports#import-root-aliases) for the alias rules.
 
 Pages, components, and the import root are **three independent directories**. Bascik never derives one from another and none of them need to share a parent, which is what makes a monorepo layout work:
 
@@ -647,7 +647,7 @@ Default `true`. Removes ANSI terminal color codes (`\u001b[31m` and the like) fr
 
 ### `scripts.renderLimits`
 
-Limits on what one server or stream script's output may render when it returns component tags (see [Returning component tags](/server-scripts#returning-component-tags)). They stop a runaway or hostile output, such as unescaped visitor text full of tags, from tying up the server. Past a limit, the script fails with a message that names the setting and the configured number, and the failure follows `scripts.onServerScriptError` like a script that throws.
+Limits on what one server or stream script's output may render when it returns component tags (see [Returning component tags](/scripts#returning-component-tags)). They stop a runaway or hostile output, such as unescaped visitor text full of tags, from tying up the server. Past a limit, the script fails with a message that names the setting and the configured number, and the failure follows `scripts.onServerScriptError` like a script that throws.
 
 | Key                | Default            | What it bounds                                                                                          |
 | ------------------ | ------------------ | ------------------------------------------------------------------------------------------------------- |
@@ -792,7 +792,7 @@ Which keys apply when:
 - `headers`, `hsts` and `privateDynamicPages` act on responses. The dev server and `bascik --server` read their own config, so the `server` export can change them. The Cloudflare Worker has no config at request time: it uses the values from the build (the default export plus `build`), as it does for `scripts.timeout`. On Cloudflare, static files are served by the platform, not the Worker, so the build writes `headers` and `hsts` into the generated `public/_headers` for them; see [Security settings on Cloudflare](/deployment/cloudflare#security-settings-on-cloudflare).
 - `hideDotfiles` acts twice: the build decides whether dotfiles in `src/pages` are published, and the server whether it answers them. Set it in the default export so both agree; when the `build` and `server` exports give it different values, Bascik warns, because dotfiles are then either left out of the build or published but answered with 404.
 
-See [Turning protections off](/security#turning-protections-off) for when turning one off is reasonable.
+See [Turning protections off](/scripts/security#turning-protections-off) for when turning one off is reasonable.
 
 ### `security.headers`
 

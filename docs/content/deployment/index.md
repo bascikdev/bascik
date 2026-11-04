@@ -32,7 +32,7 @@ If you prefer self-hosting on a VPS, Docker container, or cloud virtual machine,
 - **How it works:** Run `bascik --build` followed by `bascik --server`.
 - **Capabilities:** High-throughput HTTP/2, automatic Brotli and Gzip compression, health-check probes, and zero-downtime draining.
 
-> **Read the Guide:** See [Production Server](/production-server) and [Server Scripts](/server-scripts) for configuration details.
+> **Read the Guide:** See [Production Server](/production-server) and [Server Scripts](/scripts/server) for configuration details.
 
 ---
 
@@ -63,7 +63,7 @@ bascik --build   # compile to dist/
 bascik --server   # start the HTTP server; runs server scripts per request
 ```
 
-See [Production Server](/production-server) for full documentation on server configuration and [Server Scripts](/server-scripts) for the request context API.
+See [Production Server](/production-server) for full documentation on server configuration and [Server Scripts](/scripts/server) for the request context API.
 
 ---
 

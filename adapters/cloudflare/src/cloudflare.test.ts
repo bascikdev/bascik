@@ -325,10 +325,10 @@ describe("cloudflare adapter: missing binding diagnostics", () => {
 
 // ─── Request-time components (prompt 157) ───────────────────────────────────
 
-const LIVE_ID = componentScriptId("product-card-live");
+const LIVE_ID = componentScriptId("book-card-live");
 const STOCK_SCOPE = encodeURIComponent(
   JSON.stringify({
-    classes: { stock: "bascik__product-card-live__stock" },
+    classes: { stock: "bascik__book-card-live__stock" },
     elements: {},
   }),
 );
@@ -408,7 +408,7 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
       }),
     );
     await expect(run(LIVE_ID, new AbortController().signal)).resolves.toBe(
-      '<p class="bascik__product-card-live__stock">in stock</p>',
+      '<p class="bascik__book-card-live__stock">in stock</p>',
     );
   });
 
@@ -419,7 +419,7 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
     const run = runnerFor(unitGraph(), unitPage({ server_script_x: pageJob }));
     await expect(
       run("server_script_x", new AbortController().signal),
-    ).resolves.toBe('<p class="bascik__product-card-live__stock">s</p>');
+    ).resolves.toBe('<p class="bascik__book-card-live__stock">s</p>');
   });
 
   it("a component job runs under the graph's script deadline", async () => {
@@ -511,16 +511,16 @@ describe("createGraphJobRunner: component jobs (prompt 157)", () => {
     );
     const signal = new AbortController().signal;
     await expect(run(LIVE_ID, signal)).resolves.toBe(
-      '<p class="bascik__product-card-live__stock">red</p>',
+      '<p class="bascik__book-card-live__stock">red</p>',
     );
     await expect(run("server_script_x", signal)).resolves.toBe("plain bold");
   });
 
   it("misuse: a failing component job's message names its component file (the bundled stack never does): a throw, a timeout and a missing default export, under error and warn", async () => {
     const OWNER =
-      "server script in src/components/product-card-live/product-card-live.html:25";
+      "server script in src/components/book-card-live/book-card-live.html:25";
     const located =
-      /\n {4}in the server script in src\/components\/product-card-live\/product-card-live\.html:25$/;
+      /\n {4}in the server script in src\/components\/book-card-live\/book-card-live\.html:25$/;
     const failing: Array<[string, GraphScriptJob, RegExp]> = [
       [
         "throw",
@@ -759,7 +759,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
   });
 
   const liveScope = () =>
-    manifest.components["product-card-live"].jobs[0].outputScope;
+    manifest.components["book-card-live"].jobs[0].outputScope;
 
   const workerFor = (
     pageHandler: unknown,
@@ -809,7 +809,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
   const markup = (html: string) =>
     html.replace(/<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g, "");
   const LIVE_TAG =
-    '<product-card-live data-bascik-prop-name="Kettle"></product-card-live>';
+    '<book-card-live data-bascik-prop-title="Practical Type Systems"></book-card-live>';
 
   it("markup() drops comments where the HTML parser ends them, so it never hides a tag a browser would see", () => {
     // A comment ends at "--!>" too, and "<!-->" is an empty comment. Ending
@@ -834,10 +834,10 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     );
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(markup(html)).not.toContain("<product-card-live");
-    expect(html).toContain("Kettle");
+    expect(markup(html)).not.toContain("<book-card-live");
+    expect(html).toContain("Practical Type Systems");
     expect(html).toContain(
-      '<p class="bascik__product-card-live__stock" data-testid="stock">in stock</p>',
+      '<p class="bascik__book-card-live__stock" data-testid="stock">in stock</p>',
     );
   });
 
@@ -849,7 +849,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     const plain = await (
       await worker.fetch(new Request("https://example.test/catalog"), {}, ctx)
     ).text();
-    expect(plain).toMatch(/id="bascik__product-card-live__r[0-9a-f]{7}__tile"/);
+    expect(plain).toMatch(/id="bascik__book-card-live__r[0-9a-f]{7}__tile"/);
     for (const spelling of ["/c%61talog", "/%63%61talog", "/%63%61%74alog"]) {
       const res = await worker.fetch(
         new Request(`https://example.test${spelling}`),
@@ -946,8 +946,8 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
       );
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(markup(html)).not.toContain("<product-card-live");
-      expect(html).toContain("Kettle");
+      expect(markup(html)).not.toContain("<book-card-live");
+      expect(html).toContain("Practical Type Systems");
       expect(html).not.toContain("SECRET_DETAIL");
       expect(logged.some((m) => m.includes("SECRET_DETAIL"))).toBe(
         policy === "warn",
@@ -977,7 +977,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
   // 2026-10-29): the configured limit, named in the located message.
   it("graph.renderLimits: maxInstances 2 refuses three cards, naming the setting; no renderLimits keeps 1000", async () => {
     const three = () =>
-      '<product-card data-bascik-prop-name="item"></product-card>'.repeat(3);
+      '<book-card data-bascik-prop-title="item"></book-card>'.repeat(3);
     const graphWith = (extra: Record<string, unknown>) =>
       ({
         ...unitGraph({ onServerScriptError: "warn" }),
@@ -1014,7 +1014,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     expect(free.status).toBe(200);
     const freeHtml = markup(await free.text());
     expect(freeHtml).toContain("item");
-    expect(freeHtml).not.toContain("<product-card ");
+    expect(freeHtml).not.toContain("<book-card ");
   });
 
   // D4.6: a request-time render failure (here the instance budget) is a
@@ -1026,9 +1026,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
     "a request-time render failure under onServerScriptError %s",
     (policy) => {
       const overBudget = () =>
-        '<product-card data-bascik-prop-name="item"></product-card>'.repeat(
-          1001,
-        );
+        '<book-card data-bascik-prop-title="item"></book-card>'.repeat(1001);
       const pageWorker = (mode: "server" | "stream", logged: string[]) =>
         createCloudflareWorker(
           {
@@ -1057,7 +1055,7 @@ describe("createCloudflareWorker: components rendered from a built manifest (pro
         // The file as the manifest records it, the form bascik --check and
         // the dev server print, never the project-relative source path.
         expect(message).toContain(
-          "(<product-card>, components/product-card/product-card.html)",
+          "(<book-card>, components/book-card/book-card.html)",
         );
         expect(message).not.toContain("src/components/");
         expect(message).not.toContain("RequestRenderError");

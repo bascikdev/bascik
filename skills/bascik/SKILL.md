@@ -248,7 +248,7 @@ Run `list-components.mjs` before creating a component so you reuse what exists i
 The docs at https://bascik.dev are the reference; this skill only holds the rules. Read the page for any task below before writing code, instead of guessing:
 
 ```sh
-node <skill-dir>/scripts/read-doc.mjs /dynamic-routes
+node <skill-dir>/scripts/read-doc.mjs /scripts/dynamic-routes
 node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 ```
 

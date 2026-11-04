@@ -8,8 +8,8 @@ import { metaDescription, pageDescription, pageTitle } from "./meta-tags.ts";
 describe("meta-tags", () => {
   it("decodes entities once, so an escaped entity stays an entity", () => {
     expect(decodeHtmlText("&amp;lt;b&amp;gt;")).toBe("&lt;b&gt;");
-    expect(decodeHtmlText("Bascik&#39;s &quot;frother&quot; &AMP; more")).toBe(
-      `Bascik's "frother" & more`,
+    expect(decodeHtmlText("Bascik&#39;s &quot;book&quot; &AMP; more")).toBe(
+      `Bascik's "book" & more`,
     );
     // Entities a page shell never needs stay as written.
     expect(decodeHtmlText("&nbsp;&copy;")).toBe("&nbsp;&copy;");
@@ -17,13 +17,11 @@ describe("meta-tags", () => {
 
   it("reads the description with an apostrophe or double quote inside the other quote style", () => {
     expect(
-      metaDescription(
-        `<meta name="description" content="Bascik's frother." />`,
-      ),
-    ).toBe("Bascik's frother.");
+      metaDescription(`<meta name="description" content="Bascik's book." />`),
+    ).toBe("Bascik's book.");
     expect(
-      metaDescription(`<meta content='Say "froth".' name="description">`),
-    ).toBe('Say "froth".');
+      metaDescription(`<meta content='Say "read".' name="description">`),
+    ).toBe('Say "read".');
   });
 
   it("reads a description whose quoted value holds a `>` (PR 115 review)", () => {
@@ -34,13 +32,13 @@ describe("meta-tags", () => {
       metaDescription(`<meta name="description" content="A > B, then C." />`),
     ).toBe("A > B, then C.");
     expect(
-      metaDescription(`<meta content='Froth > foam.' name='description'>`),
-    ).toBe("Froth > foam.");
+      metaDescription(`<meta content='Draft > edit.' name='description'>`),
+    ).toBe("Draft > edit.");
     expect(
       pageDescription(
-        `<meta data-note="x>y" name="description" content="Steam -> froth" />`,
+        `<meta data-note="x>y" name="description" content="Draft -> book" />`,
       ),
-    ).toBe("Steam -> froth");
+    ).toBe("Draft -> book");
     // An earlier tag with a `>` in a value is skipped whole, not reread.
     expect(
       metaDescription(
@@ -61,8 +59,8 @@ describe("meta-tags", () => {
       ),
     ).toBe("Real.");
     // An unquoted value is read as the browser reads it.
-    expect(metaDescription(`<meta name=description content=Frother>`)).toBe(
-      "Frother",
+    expect(metaDescription(`<meta name=description content=Books>`)).toBe(
+      "Books",
     );
     // An unclosed quote never ends the tag early: no description is read.
     expect(
@@ -71,13 +69,13 @@ describe("meta-tags", () => {
   });
 
   it("reads a title holding a `<` or a `>`, which a title may hold as text", () => {
-    expect(pageTitle("<title>Steam < froth > foam</title>")).toBe(
-      "Steam < froth > foam",
+    expect(pageTitle("<title>Draft < book > shelf</title>")).toBe(
+      "Draft < book > shelf",
     );
-    expect(pageTitle(`<title data-x="a>b">Frother</title >`)).toBe("Frother");
-    expect(pageTitle("<TITLE>Frother</TITLE>")).toBe("Frother");
+    expect(pageTitle(`<title data-x="a>b">Books</title >`)).toBe("Books");
+    expect(pageTitle("<TITLE>Books</TITLE>")).toBe("Books");
     // An end tag may carry attributes; `</titles>` is not one.
-    expect(pageTitle("<title>Frother</title x>")).toBe("Frother");
+    expect(pageTitle("<title>Books</title x>")).toBe("Books");
     expect(pageTitle("<title>a</titles>b</title>")).toBe("a</titles>b");
   });
 
@@ -90,9 +88,9 @@ describe("meta-tags", () => {
   it("collapses whitespace in a description wrapped over several lines", () => {
     expect(
       pageDescription(
-        `<meta\n  name="description"\n  content="Froth the milk,\n    then serve."\n/>`,
+        `<meta\n  name="description"\n  content="Read the book,\n    then rate it."\n/>`,
       ),
-    ).toBe("Froth the milk, then serve.");
+    ).toBe("Read the book, then rate it.");
   });
 
   it("reads a title with attributes and entities", () => {

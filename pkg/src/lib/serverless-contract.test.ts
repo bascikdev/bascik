@@ -182,8 +182,8 @@ describe("serverless contract: documentation says what works today", () => {
     expect(staticSection).toMatch(/API route/i);
   });
 
-  it("server-scripts.md and stream-scripts.md name the serverless target", async () => {
-    for (const page of ["server-scripts.md", "stream-scripts.md"]) {
+  it("scripts/server.md and scripts/stream.md name the serverless target", async () => {
+    for (const page of ["scripts/server.md", "scripts/stream.md"]) {
       const md = await read(page);
       expect(md, page).toMatch(/serverless|Cloudflare/i);
     }

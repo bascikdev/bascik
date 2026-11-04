@@ -241,10 +241,10 @@ describe("node builtin policy for the pinned Cloudflare target", () => {
 
 type Manifest = NonNullable<SiteGraph["components"]>["manifest"];
 
-const LIVE_ID = "component_script_70726f647563742d636172642d6c6976653a3a31"; // hex("product-card-live::1")
+const LIVE_ID = "component_script_626f6f6b2d636172642d6c6976653a3a31"; // hex("book-card-live::1")
 const LIVE_SCOPE = encodeURIComponent(
   JSON.stringify({
-    classes: { stock: "bascik__product-card-live__stock" },
+    classes: { stock: "bascik__book-card-live__stock" },
     elements: {},
   }),
 );
@@ -255,7 +255,7 @@ const TILE_TEMPLATE = {
   tokenCount: 1,
   steps: [],
   fileContent: {
-    parts: ['<article class="bascik__product-card__tile"></article>'],
+    parts: ['<article class="bascik__book-card__tile"></article>'],
     tokens: [],
   },
   cssFileContent: undefined,
@@ -275,21 +275,21 @@ const manifestFixture = (): Manifest => ({
   base: "/",
   inheritAttributes: true,
   components: {
-    "product-card": {
-      name: "product-card",
-      filePath: "components/product-card/product-card.html",
+    "book-card": {
+      name: "book-card",
+      filePath: "components/book-card/book-card.html",
       template: TILE_TEMPLATE,
       css: {
-        text: ".bascik__product-card__tile{color:rgb(1,2,3)}",
+        text: ".bascik__book-card__tile{color:rgb(1,2,3)}",
         hash: "sha256-AAAA",
       },
       jobs: [],
       cspStable: { style: true, script: true },
       scriptHashes: [],
     },
-    "product-card-live": {
-      name: "product-card-live",
-      filePath: "components/product-card-live/product-card-live.html",
+    "book-card-live": {
+      name: "book-card-live",
+      filePath: "components/book-card-live/book-card-live.html",
       template: null,
       css: null,
       jobs: [
@@ -297,7 +297,7 @@ const manifestFixture = (): Manifest => ({
           id: LIVE_ID,
           mode: "server",
           ordinal: 1,
-          sourceFile: "src/components/product-card-live/product-card-live.html",
+          sourceFile: "src/components/book-card-live/book-card-live.html",
           sourceLine: 25,
           outputScope: LIVE_SCOPE,
         },
@@ -361,7 +361,7 @@ const graphFor = async (
 ): Promise<SiteGraph> => {
   const pageJob = await project.stage(
     "page-job",
-    `export default () => '<product-card data-bascik-prop-name="Kettle"></product-card>';`,
+    `export default () => '<book-card data-bascik-prop-title="Practical Type Systems"></book-card>';`,
   );
   return {
     base: "/",
@@ -537,14 +537,14 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     const unrenderable: Manifest = {
       ...fixture,
       components: {
-        "product-card": {
-          ...fixture.components["product-card"],
+        "book-card": {
+          ...fixture.components["book-card"],
           unsupported: {
             reason: "attr-binding-to-scoped-attribute",
             detail: "id",
           },
         },
-        "product-card-live": fixture.components["product-card-live"],
+        "book-card-live": fixture.components["book-card-live"],
       },
     };
     const liveJob = await project.stage("live-job", `export default () => "";`);
@@ -610,7 +610,7 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     );
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain('class="bascik__product-card-live__stock"');
+    expect(html).toContain('class="bascik__book-card-live__stock"');
     expect(html).not.toContain('class="stock"');
   });
 
@@ -629,7 +629,7 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
           [LIVE_ID]: inlineJob(
             LIVE_ID,
             liveJob,
-            "server script in src/components/product-card-live/product-card-live.html:25",
+            "server script in src/components/book-card-live/book-card-live.html:25",
           ),
         },
       }),
@@ -638,7 +638,7 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     expect(entry).toContain(JSON.stringify(manifest));
     expect(entry).toContain("componentJobs");
     expect(entry).toContain(
-      `${JSON.stringify(LIVE_ID)}: { id: ${JSON.stringify(LIVE_ID)}, mode: "server", outputScope: ${JSON.stringify(LIVE_SCOPE)}, owner: "server script in src/components/product-card-live/product-card-live.html:25", load: () => import("<root>/dist/.bascik/cloudflare-pages/.staging/live-job.mjs") }`,
+      `${JSON.stringify(LIVE_ID)}: { id: ${JSON.stringify(LIVE_ID)}, mode: "server", outputScope: ${JSON.stringify(LIVE_SCOPE)}, owner: "server script in src/components/book-card-live/book-card-live.html:25", load: () => import("<root>/dist/.bascik/cloudflare-pages/.staging/live-job.mjs") }`,
     );
     // The owner is what a failing component job's log names (the bundled
     // stack never does); page job literals stay as they were.
@@ -659,10 +659,10 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
       "</script><script>x()</script>\u2028\u2029\"'`${a}*/\\\n<!--";
     const project = await createProject();
     const manifest = manifestFixture();
-    manifest.components["product-card"].template!.fileContent.parts = [
-      `<article class="bascik__product-card__tile">${hostile}</article>`,
+    manifest.components["book-card"].template!.fileContent.parts = [
+      `<article class="bascik__book-card__tile">${hostile}</article>`,
     ];
-    manifest.components["product-card"].filePath = `components/${hostile}.html`;
+    manifest.components["book-card"].filePath = `components/${hostile}.html`;
     const liveJob = await project.stage("live-job", "export default () => '';");
     await runBuild(
       project,
@@ -714,7 +714,7 @@ describe("build: request-time components in worker-entry.mjs (prompt 157)", () =
     );
     const worker = await readFile(result.workerPath!, "utf8");
     expect(worker).toContain("STOCK_MARKER");
-    expect(worker).toContain(".bascik__product-card__tile{color:rgb(1,2,3)}");
+    expect(worker).toContain(".bascik__book-card__tile{color:rgb(1,2,3)}");
     expect(worker).toContain(LIVE_ID);
   });
 

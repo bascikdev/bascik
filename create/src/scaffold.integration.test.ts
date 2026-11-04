@@ -675,9 +675,9 @@ describe("scaffold-to-compiler integration", () => {
     },
     {
       source: "BASCIK_SITE_URL in the shell, over .env",
-      shellUrl: "https://frother.example.com",
+      shellUrl: "https://books.example.com",
       dotEnvUrl: "https://dotenv.example.com",
-      expected: "https://frother.example.com",
+      expected: "https://books.example.com",
     },
     {
       source: "the project's .env",

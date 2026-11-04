@@ -1,9 +1,9 @@
 /**
  * The Output panes of the TypeScript script demos, produced by the real compiler and server.
  *
- * Five demo boxes show a script written in TypeScript: a build script (/build-scripts), a server script
- * (/server-scripts), a stream script (/stream-scripts), a page's own `.ts` file (/scoped-javascript), and a
- * `scripts.typescript` esbuild compiler (/configuration). Their Output blocks are never written by hand.
+ * Six demo boxes show a script written in TypeScript: a page with a build, a server, and a stream script (/scripts),
+ * a build script (/scripts/build), a server script (/scripts/server), a stream script (/scripts/stream), a page's own
+ * `.ts` file (/scoped-javascript), and a `scripts.typescript` esbuild compiler (/configuration). Their Output blocks are never written by hand.
  *
  * The Markdown is the single source. This library writes each demo's source blocks into a temp site under
  * /tmp/bascik-ts-script-demos/ (each block whole, at the path its first-line comment names, exactly as a reader's copy
@@ -37,7 +37,8 @@ const DOCS_ROOT = path.resolve(import.meta.dirname, "..");
 export const SCRATCH = "/tmp/bascik-ts-script-demos";
 const BASCIK_BIN = path.join(repoRoot, "pkg/bin/bascik.js");
 
-export type TsDemoId = "build" | "server" | "stream" | "page" | "config";
+export type TsDemoId =
+  "overview" | "build" | "server" | "stream" | "page" | "config";
 
 export interface TsDemo {
   id: TsDemoId;
@@ -55,16 +56,24 @@ export interface TsDemo {
 
 export const DEMOS: TsDemo[] = [
   {
+    id: "overview",
+    md: "content/scripts.md",
+    sources: ["scripts-page-usage"],
+    output: "scripts-page-output-html",
+    site: "default",
+    from: { url: "/book?name=Ada" },
+  },
+  {
     id: "build",
-    md: "content/build-scripts.md",
+    md: "content/scripts/build.md",
     sources: ["ts-build-usage"],
     output: "ts-build-output-html",
     site: "default",
-    from: { built: "build-scripts.html" },
+    from: { built: "scripts/build.html" },
   },
   {
     id: "server",
-    md: "content/server-scripts.md",
+    md: "content/scripts/server.md",
     sources: ["ts-server-usage"],
     output: "ts-server-output-html",
     site: "default",
@@ -72,7 +81,7 @@ export const DEMOS: TsDemo[] = [
   },
   {
     id: "stream",
-    md: "content/stream-scripts.md",
+    md: "content/scripts/stream.md",
     sources: ["ts-stream-usage"],
     output: "ts-stream-output-html",
     site: "default",

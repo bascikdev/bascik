@@ -56,7 +56,7 @@ describe("renderSectionLabel", () => {
     expect(renderSectionLabel("/components")).toBe(
       '<p class="section-label">Components</p>',
     );
-    expect(renderSectionLabel("/script-imports")).toBe(
+    expect(renderSectionLabel("/scripts/imports")).toBe(
       '<p class="section-label">Scripts & Routing</p>',
     );
     expect(renderSectionLabel("/environment-variables")).toBe(
@@ -211,12 +211,12 @@ describe("renderPagination", () => {
 
   it("reads process.env.BASCIK_PAGE_PATH directly when no argument is provided", () => {
     const originalPath = process.env.BASCIK_PAGE_PATH;
-    process.env.BASCIK_PAGE_PATH = "/dynamic-routes";
+    process.env.BASCIK_PAGE_PATH = "/scripts/dynamic-routes";
     try {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/security"');
+      expect(html).toContain('href="/scripts/security"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
@@ -231,13 +231,14 @@ describe("renderPagination", () => {
 
     delete process.env.BASCIK_PAGE_PATH;
     process.env.BASCIK_PAGES_DIR = "/abs/docs/src/pages";
-    process.env.BASCIK_SOURCE_FILE = "/abs/docs/src/pages/dynamic-routes.html";
+    process.env.BASCIK_SOURCE_FILE =
+      "/abs/docs/src/pages/scripts/dynamic-routes.html";
 
     try {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/security"');
+      expect(html).toContain('href="/scripts/security"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_SOURCE_FILE = originalFile;

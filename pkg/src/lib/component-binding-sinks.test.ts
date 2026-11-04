@@ -211,7 +211,7 @@ describe("a prop bound to a URL whose content runs or styles the page", () => {
   // applies takes any http(s) URL, third-party included, as the browser
   // does; the script-scheme block still holds, so correctly escaped data
   // never becomes code. CSP script-src/style-src and safeUrl(value,
-  // { origins }) are the opt-in protections (docs /security).
+  // { origins }) are the opt-in protections (docs /scripts/security).
   const RUNS_OR_APPLIES: [string, string, string][] = [
     ["script", "src", ""],
     ["script", "href", ""],

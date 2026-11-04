@@ -7,8 +7,8 @@
  * - Its checklist says a page with more than one <nav> names each one, so the demo Previews must not add a landmark
  *   whose name another landmark already has (the docs header is navigation "Main"; a demo <site-nav aria-label="Main" />
  *   made a second one, which a screen reader's landmark list shows as two identical entries).
- * - Two <froth-picker> copies, each with its radios in a form of its own, are two radio groups.
- * - Three <frother-question> copies, each one <details name="faq">, are one exclusive accordion.
+ * - Two <format-picker> copies, each with its radios in a form of its own, are two radio groups.
+ * - Three <faq-question> copies, each one <details name="faq">, are one exclusive accordion.
  */
 import { test, expect } from "@playwright/test";
 
@@ -38,26 +38,26 @@ test.describe("/component-best-practices", () => {
     expect(repeated, snapshot).toEqual([]);
   });
 
-  test("each froth-picker copy keeps its own choice", async ({ page }) => {
-    const pickers = page.getByTestId("froth-picker");
+  test("each format-picker copy keeps its own choice", async ({ page }) => {
+    const pickers = page.getByTestId("format-picker");
     await expect(pickers).toHaveCount(2);
-    const morning = pickers.nth(0);
-    const evening = pickers.nth(1);
-    await expect(morning.getByTestId("froth-light")).toHaveAttribute(
+    const monolith = pickers.nth(0);
+    const types = pickers.nth(1);
+    await expect(monolith.getByTestId("format-ebook")).toHaveAttribute(
       "name",
-      "froth",
+      "format",
     );
-    await morning.getByTestId("froth-light").check();
-    await evening.getByTestId("froth-thick").check();
-    await expect(morning.getByTestId("froth-light")).toBeChecked();
-    await expect(evening.getByTestId("froth-thick")).toBeChecked();
+    await monolith.getByTestId("format-ebook").check();
+    await types.getByTestId("format-paperback").check();
+    await expect(monolith.getByTestId("format-ebook")).toBeChecked();
+    await expect(types.getByTestId("format-paperback")).toBeChecked();
   });
 
-  test("the frother-question copies are one exclusive accordion", async ({
+  test("the faq-question copies are one exclusive accordion", async ({
     page,
   }) => {
-    const items = page.getByTestId("frother-question");
-    const summaries = page.getByTestId("frother-question-summary");
+    const items = page.getByTestId("faq-question");
+    const summaries = page.getByTestId("faq-question-summary");
     await expect(items).toHaveCount(3);
     for (let i = 0; i < 3; i++)
       await expect(items.nth(i)).toHaveAttribute("name", "faq");

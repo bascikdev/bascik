@@ -11,6 +11,7 @@
  *   stream            a browser loading a page whose slow part streams in
  *   markdown-watch    editor above a browser: a watched Markdown file is edited, and the page that reads it updates
  *   server-request    editor above a browser: a server script renders a different page for each request
+ *   scripts-page      editor above a browser: one page with a build, a server, and a stream script, for two requests
  *   exec-watch        the terminal: editing a watched file reruns an exec script and rebuilds only its page
  *   dynamic-routes    editor above a browser: a URL is a 404 until a route is added to the template's routes script
  *   sitemap           the terminal: `bascik --build` with a site URL, then the generated sitemap.xml
@@ -42,6 +43,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { chromium, type Browser, type Page } from "playwright";
+import { readDemoBlock } from "../src/lib/md-renderer.ts";
 import { SHOWCASE_SITES } from "../src/lib/showcase.ts";
 import {
   browserWindow,
@@ -914,6 +916,69 @@ async function serverRequest(): Promise<Frame[]> {
   }
 }
 
+/** The page the /scripts overview shows in its demo box, read from the docs so the recording runs the same code. */
+async function scriptsOverviewPage(): Promise<string> {
+  const result = await readDemoBlock(
+    join(docsDir, "content/scripts.md"),
+    "scripts-page-usage",
+  );
+  if (result.code === undefined) throw new Error(result.problem);
+  return result.code + "\n";
+}
+
+async function scriptsPage(): Promise<Frame[]> {
+  const source = await scriptsOverviewPage();
+  const rig = await openEditorAndBrowser({
+    layout: "stacked",
+    path: "/book?name=Ada",
+    // A smaller font fits the page from <h1> to the end of the stream script in one view.
+    editorHeight: 660,
+    editorSettings: {
+      "editor.lightbulb.enabled": "off",
+      "editor.fontSize": 12,
+      "editor.lineHeight": 17,
+    },
+    prepare: async (dir) => {
+      await writeFile(join(dir, "src/pages/book.html"), source);
+    },
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const greeting = () => rig.page.locator("body > p").first().textContent();
+  try {
+    await openFile(editor, "book.html");
+    // Go to line reveals its line in the middle, so aim between the <h1> and the end of the stream script.
+    const file = join(rig.project.dir, "src/pages/book.html");
+    const top = await readLine(file, "<h1>");
+    const bottom = await readLine(file, "</div>");
+    await gotoLine(editor, Math.round((top.line + bottom.line) / 2), 1);
+
+    // Each request: the shell and the "Loading rating" line paint first, then the streamed rating replaces it.
+    for (const [name, firstHold] of [
+      ["Ada", INTRO_HOLD + 600],
+      ["Grace", 1400],
+    ] as const) {
+      await rig.page.goto(rig.page.url().replace(/name=\w+/, `name=${name}`), {
+        waitUntil: "commit",
+      });
+      await rig.page.waitForSelector(".pending", {
+        state: "visible",
+        timeout: 10_000,
+      });
+      if ((await greeting()) !== `Welcome back, ${name}.`)
+        throw new Error(`Unexpected greeting: ${await greeting()}`);
+      if (await rig.page.locator(".score").count())
+        throw new Error("The rating arrived before the first frame");
+      await rig.snap(frames, firstHold);
+      await rig.page.waitForSelector(".score", { timeout: 10_000 });
+      await rig.snap(frames, name === "Grace" ? OUTRO_HOLD : 2600);
+    }
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
 async function execWatch(): Promise<Frame[]> {
   const project = await createStarterProject();
   await addNotes(project.dir, { exec: true });
@@ -1413,6 +1478,7 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   lint,
   "markdown-watch": markdownWatch,
   "server-request": serverRequest,
+  "scripts-page": scriptsPage,
   "exec-watch": execWatch,
   "dynamic-routes": dynamicRoutes,
   sitemap,

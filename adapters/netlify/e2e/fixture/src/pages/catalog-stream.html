@@ -7,7 +7,7 @@
     <fixture-nav />
     <footer data-testid="catalog-stream-footer">
       <span>Bascik · Streamed cards on Netlify</span>
-      <a href="https://bascik.dev/stream-scripts">Stream scripts docs &rarr;</a>
+      <a href="https://bascik.dev/scripts/stream">Stream scripts docs &rarr;</a>
     </footer>
     <main>
       <header class="hero">
@@ -33,8 +33,8 @@
                 }, { once: true });
               });
             }
-            return html`<product-card data-bascik-prop-name="Pour-over kettle" data-bascik-prop-price="$48"><span>New</span></product-card>
-              <product-card data-bascik-prop-name="Ceramic dripper" data-bascik-prop-price="$22"><span>Standard</span></product-card>`;
+            return html`<book-card data-bascik-prop-title="Practical Type Systems" data-bascik-prop-author="Ada Okafor"><span>New</span></book-card>
+              <book-card data-bascik-prop-title="Testing at the Edges" data-bascik-prop-author="Priya Nair"><span>Paperback</span></book-card>`;
           };
         </script>
         <script data-bascik-stream type="text/typescript">
@@ -53,8 +53,8 @@
                 }, { once: true });
               });
             }
-            return html`<product-card data-bascik-prop-name="Milk frother" data-bascik-prop-price="$129"><span>Best seller</span></product-card>
-              <product-card data-bascik-prop-name="Glass carafe" data-bascik-prop-price="$31"><span>Standard</span></product-card>`;
+            return html`<book-card data-bascik-prop-title="Refactoring the Monolith" data-bascik-prop-author="Grace Lin"><span>Best seller</span></book-card>
+              <book-card data-bascik-prop-title="Shipping Small Changes" data-bascik-prop-author="Sam Rivera"><span>Paperback</span></book-card>`;
           };
         </script>
         <script data-bascik-stream type="text/typescript">
@@ -73,7 +73,7 @@
                 }, { once: true });
               });
             }
-            return html`<product-card data-bascik-prop-name="Filters & holder" data-bascik-prop-price="$9"><span>Standard</span></product-card>`;
+            return html`<book-card data-bascik-prop-title="Pairing & Code Review" data-bascik-prop-author="Jonah Weiss"><span>Paperback</span></book-card>`;
           };
         </script>
       </section>

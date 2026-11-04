@@ -286,10 +286,10 @@
               );
           </script>
 
-          <component-demo data-bascik-prop-file="src/components/froth-picker/">
+          <component-demo data-bascik-prop-file="src/components/format-picker/">
             <div data-bascik-slot="example">
-              <froth-picker data-bascik-prop-cup="Morning cup" />
-              <froth-picker data-bascik-prop-cup="Evening cup" />
+              <format-picker data-bascik-prop-book="Refactoring the Monolith" />
+              <format-picker data-bascik-prop-book="Practical Type Systems" />
             </div>
             <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
@@ -351,24 +351,25 @@
               );
           </script>
 
-          <component-demo
-            data-bascik-prop-file="src/components/frother-question/"
-          >
+          <component-demo data-bascik-prop-file="src/components/faq-question/">
             <div data-bascik-slot="example">
-              <frother-question>
-                <span data-bascik-slot="question">Which milk froths best?</span>
-                Cold whole milk gives the thickest foam.
-              </frother-question>
-              <frother-question>
-                <span data-bascik-slot="question">Can it froth oat milk?</span>
-                Yes. Use a barista blend for a finer foam.
-              </frother-question>
-              <frother-question>
+              <faq-question>
+                <span data-bascik-slot="question">Who is this book for?</span>
+                Developers who maintain a large codebase and want to split it
+                safely.
+              </faq-question>
+              <faq-question>
                 <span data-bascik-slot="question"
-                  >How do I clean the whisk?</span
+                  >Do I need to know TypeScript?</span
                 >
-                Rinse it under warm water right after use.
-              </frother-question>
+                No. The ideas apply to any language.
+              </faq-question>
+              <faq-question>
+                <span data-bascik-slot="question"
+                  >Is there an ebook edition?</span
+                >
+                Yes. It comes as EPUB and PDF.
+              </faq-question>
             </div>
             <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">

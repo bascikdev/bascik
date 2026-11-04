@@ -3,12 +3,12 @@
  *
  * Six <component-demo> boxes show what a server or stream script that returns component tags sends:
  *
- *   search       server-scripts.md   ### Render a card per search result     GET /search
- *   live         server-scripts.md   ### A card with its own server script   GET /featured
- *   stream       stream-scripts.md   ### Stream cards in batches             GET /new-arrivals
+ *   search       scripts/server.md   ### Render a card per search result     GET /search
+ *   live         scripts/server.md   ### A card with its own server script   GET /featured
+ *   stream       scripts/stream.md   ### Stream cards in batches             GET /new-arrivals
  *   passthrough  troubleshooting.md  ### A component tag in script output…   GET /help
- *   security-search     security.md  ### Search with html                  GET /find?q=kettle
- *   security-malicious  security.md  ### The same page, attacked           GET /find?q=<product-card…onerror…>
+ *   security-search     security.md  ### Search with html                  GET /find?q=types
+ *   security-malicious  security.md  ### The same page, attacked           GET /find?q=<book-card…onerror…>
  *
  * The Markdown is the single source: every Source and Output pane is a <!-- demo:rtc-* --> block, so llms.txt and
  * the bundled skill get the same text the boxes show.
@@ -85,25 +85,25 @@ interface Spec {
   >;
 }
 
-const SERVER_MD = "content/server-scripts.md";
-const STREAM_MD = "content/stream-scripts.md";
+const SERVER_MD = "content/scripts/server.md";
+const STREAM_MD = "content/scripts/stream.md";
 const TROUBLE_MD = "content/testing/troubleshooting.md";
-const SECURITY_MD = "content/security.md";
+const SECURITY_MD = "content/scripts/security.md";
 const MALICIOUS_URL =
-  "/find?q=%3Cproduct-card%20data-bascik-prop-name%3Dx%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E%3C%2Fproduct-card%3E";
+  "/find?q=%3Cbook-card%20data-bascik-prop-title%3Dx%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E%3C%2Fbook-card%3E";
 
 const SPECS: Spec[] = [
   {
     id: "search",
     md: SERVER_MD,
-    page: "src/pages/server-scripts.html",
+    page: "src/pages/scripts/server.html",
     heading: "Render a card per search result",
     anchor: "render-a-card-per-search-result",
     successor: "A card with its own server script",
     url: "/search",
     format: "prettier",
     preview: true,
-    pointer: { path: "/catalog", q: "frother" },
+    pointer: { path: "/catalog", q: "monolith" },
     slots: {
       "source-usage": [SERVER_MD, "rtc-search-source-usage"],
       "source-html": [SERVER_MD, "rtc-search-source-html"],
@@ -113,18 +113,18 @@ const SPECS: Spec[] = [
     },
     paths: {
       "source-usage": "src/pages/search.html",
-      "source-html": "src/components/product-card/product-card.html",
-      "source-css": "src/components/product-card/product-card.css",
-      "source-js": "src/components/product-card/product-card.js",
+      "source-html": "src/components/book-card/book-card.html",
+      "source-css": "src/components/book-card/book-card.css",
+      "source-js": "src/components/book-card/book-card.js",
     },
   },
   {
     id: "live",
     md: SERVER_MD,
-    page: "src/pages/server-scripts.html",
+    page: "src/pages/scripts/server.html",
     heading: "A card with its own server script",
     anchor: "a-card-with-its-own-server-script",
-    successor: "Rules for returned tags",
+    successor: "Server Scripts vs API Routes",
     url: "/featured",
     format: "prettier",
     preview: false,
@@ -144,7 +144,7 @@ const SPECS: Spec[] = [
   {
     id: "stream",
     md: STREAM_MD,
-    page: "src/pages/stream-scripts.html",
+    page: "src/pages/scripts/stream.html",
     heading: "Stream cards in batches",
     anchor: "stream-cards-in-batches",
     successor: "Rules when streaming",
@@ -181,11 +181,11 @@ const SPECS: Spec[] = [
   {
     id: "security-search",
     md: SECURITY_MD,
-    page: "src/pages/security.html",
+    page: "src/pages/scripts/security.html",
     heading: "Search with html",
     anchor: "search-with-html",
     successor: "A malicious ?q= comes back as text",
-    url: "/find?q=kettle",
+    url: "/find?q=types",
     format: "prettier",
     preview: false,
     pointer: null,
@@ -198,7 +198,7 @@ const SPECS: Spec[] = [
   {
     id: "security-malicious",
     md: SECURITY_MD,
-    page: "src/pages/security.html",
+    page: "src/pages/scripts/security.html",
     heading: "The same page, attacked",
     anchor: "the-same-page-attacked",
     successor: "The helpers",
@@ -215,11 +215,15 @@ const SPECS: Spec[] = [
   },
 ];
 
-/** The products the search demo's Usage lists, in order. A missing badge renders the slot fallback. */
-const PRODUCTS = [
-  { name: "Milk frother", price: "$129", badge: "Best seller" },
-  { name: "Pour-over kettle", price: "$48", badge: "New" },
-  { name: "Glass carafe", price: "$31", badge: "Standard" },
+/** The books the search demo's Usage lists, in order. A missing badge renders the slot fallback. */
+const BOOKS = [
+  {
+    title: "Refactoring the Monolith",
+    author: "Grace Lin",
+    badge: "Best seller",
+  },
+  { title: "Practical Type Systems", author: "Ada Okafor", badge: "New" },
+  { title: "Shipping Small Changes", author: "Sam Rivera", badge: "Paperback" },
 ];
 
 /** The md text of a block, failing with the reader-facing problem when it is missing. */
@@ -354,17 +358,25 @@ const boxFor = (spec: Spec) => {
   return { items, index };
 };
 
-/** Preview cards: the <product-card> tags written in a box's example slot. */
+/** The text of a fragment: tags removed until none are left, then any stray `<`, so no tag can survive. */
+const textOf = (html: string): string => {
+  let text = html;
+  for (let previous = ""; text !== previous;) {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  return text.replace(/</g, "");
+};
+
+/** Preview cards: the <book-card> tags written in a box's example slot. */
 const previewCards = (example: string) =>
   [
-    // Prettier may wrap the closing tag as `</product-card\n>`.
-    ...example.matchAll(
-      /<product-card\b([^>]*)>([\s\S]*?)<\/product-card\s*>/g,
-    ),
+    // Prettier may wrap the closing tag as `</book-card\n>`.
+    ...example.matchAll(/<book-card\b([^>]*)>([\s\S]*?)<\/book-card\s*>/g),
   ].map((m) => ({
-    name: /data-bascik-prop-name="([^"]*)"/.exec(m[1])?.[1],
-    price: /data-bascik-prop-price="([^"]*)"/.exec(m[1])?.[1],
-    badge: m[2].replace(/<[^>]+>/g, "").trim() || "Standard",
+    title: /data-bascik-prop-title="([^"]*)"/.exec(m[1])?.[1],
+    author: /data-bascik-prop-author="([^"]*)"/.exec(m[1])?.[1],
+    badge: textOf(m[2]).trim() || "Paperback",
   }));
 
 /**
@@ -428,11 +440,11 @@ const prettierFence = async (raw: string, mdFile: string): Promise<string> => {
 describe("returning component tags demos: markdown blocks", () => {
   it("misuse: the id normalizer is bijective and leaves ordinary words alone", () => {
     const html =
-      'id="bascik__product-card__r1a2b3c4__save" for="bascik__product-card__r1a2b3c4__save" ' +
-      'id="bascik__stock-line__rabcdefa__x" rdeadbee r1234567 save-r1234567 bascik__product-card__r1234567x__';
+      'id="bascik__book-card__r1a2b3c4__save" for="bascik__book-card__r1a2b3c4__save" ' +
+      'id="bascik__stock-line__rabcdefa__x" rdeadbee r1234567 save-r1234567 bascik__book-card__r1234567x__';
     expect(normalizeRequestIds(html)).toBe(
-      'id="bascik__product-card__r<ID 1>__save" for="bascik__product-card__r<ID 1>__save" ' +
-        'id="bascik__stock-line__r<ID 2>__x" rdeadbee r1234567 save-r1234567 bascik__product-card__r1234567x__',
+      'id="bascik__book-card__r<ID 1>__save" for="bascik__book-card__r<ID 1>__save" ' +
+        'id="bascik__stock-line__r<ID 2>__x" rdeadbee r1234567 save-r1234567 bascik__book-card__r1234567x__',
     );
   });
 
@@ -453,13 +465,9 @@ describe("returning component tags demos: markdown blocks", () => {
     const output = await block(SERVER_MD, "rtc-search-output-html");
     const shown = {
       page: output.includes("<!-- src/pages/search.html -->"),
-      html: output.includes(
-        "<!-- src/components/product-card/product-card.html -->",
-      ),
-      css: output.includes(
-        "/* src/components/product-card/product-card.css */",
-      ),
-      js: output.includes("// src/components/product-card/product-card.js"),
+      html: output.includes("<!-- src/components/book-card/book-card.html -->"),
+      css: output.includes("/* src/components/book-card/book-card.css */"),
+      js: output.includes("// src/components/book-card/book-card.js"),
     };
     expect(shown).toEqual({ page: true, html: true, css: false, js: true });
     expect(section).not.toMatch(/so it also appears in the Output/);
@@ -517,22 +525,22 @@ describe("returning component tags demos: markdown blocks", () => {
     },
   );
 
-  it("search: the Usage is the documented shape (reads ?q=, maps products to <product-card> with html)", async () => {
+  it("search: the Usage is the documented shape (reads ?q=, maps books to <book-card> with html)", async () => {
     const usage = await block(SERVER_MD, "rtc-search-source-usage");
     expect(usage).toContain('searchParams.get("q")');
     expect(usage).toMatch(
-      /products\s*\.filter[\s\S]*\.map\(|products\.map\(|\.map\(\s*\(p\)/,
+      /books\s*\.filter[\s\S]*\.map\(|books\.map\(|\.map\(\s*\(b\)/,
     );
     expect(usage).toContain('import { html } from "@bascik/bascik/html";');
     expect(usage).toMatch(
-      /html`<product-card\s+data-bascik-prop-name="\$\{p\.name\}"\s+data-bascik-prop-price="\$\{p\.price\}"/,
+      /html`<book-card\s+data-bascik-prop-title="\$\{b\.title\}"\s+data-bascik-prop-author="\$\{b\.author\}"/,
     );
     expect(usage).not.toContain(".join(");
     expect(usage).not.toMatch(/const escape\b/);
     expect(usage).toContain("#escaping-and-injection");
-    for (const p of PRODUCTS) {
-      expect(usage).toContain(p.name);
-      expect(usage).toContain(p.price);
+    for (const b of BOOKS) {
+      expect(usage).toContain(b.title);
+      expect(usage).toContain(b.author);
     }
     // The one import is the published package, so the Usage works in a new site.
     expect(usage.match(/import\s/g)).toHaveLength(1);
@@ -545,40 +553,26 @@ describe("returning component tags demos: markdown blocks", () => {
     expect(html).not.toMatch(/\bid=/);
     const usage = await block(SERVER_MD, "rtc-live-source-usage");
     expect(usage).toMatch(
-      /<product-card[^>]*><stock-line><\/stock-line><\/product-card>/,
+      /<book-card[^>]*><stock-line><\/stock-line><\/book-card>/,
     );
   });
 
   it("passthrough: the Usage returns a misspelled tag and an ESCAPED tag inside <pre><code>", async () => {
     const usage = await block(TROUBLE_MD, "rtc-passthrough-source-usage");
     expect(usage).toContain(
-      '<prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>',
+      '<bok-card data-bascik-prop-title="Refactoring the Monolith"></bok-card>',
     );
     expect(usage).toContain(
-      '<pre><code>&lt;product-card data-bascik-prop-name="Milk frother"&gt;&lt;/product-card&gt;</code></pre>',
+      '<pre><code>&lt;book-card data-bascik-prop-title="Refactoring the Monolith"&gt;&lt;/book-card&gt;</code></pre>',
     );
-    // A raw <product-card> inside <pre> is markup and IS rendered; the demo must not teach otherwise.
-    expect(usage).not.toMatch(/<pre>[\s\S]*<product-card/);
+    // A raw <book-card> inside <pre> is markup and IS rendered; the demo must not teach otherwise.
+    expect(usage).not.toMatch(/<pre>[\s\S]*<book-card/);
   });
 
   it("passthrough: the Output block sits under <!-- prettier-ignore --> so it stays the verbatim bytes", () => {
     const md = readDocs(TROUBLE_MD);
     expect(md).toMatch(
       /<!--\s*demo:rtc-passthrough-output-html\s*-->\s*\n\s*<!--\s*prettier-ignore\s*-->\s*\n\s*```html\n/,
-    );
-  });
-
-  it("the documented bascik.config.ts turns all four minify flags off, as the Output was made", () => {
-    const section = sectionOf(readDocs(SERVER_MD), "Returning component tags");
-    const config = /```ts\n(\/\/ bascik\.config\.ts\n[\s\S]*?)\n```/.exec(
-      section,
-    )?.[1];
-    expect(
-      config,
-      "a ```ts block starting with // bascik.config.ts",
-    ).toBeDefined();
-    expect(config).toMatch(
-      /minify:\s*\{\s*html:\s*false,\s*css:\s*false,\s*js:\s*false,\s*identifiers:\s*false\s*\}/,
     );
   });
 });
@@ -650,7 +644,7 @@ describe("returning component tags demos: prose around each box", () => {
       ),
     ).join(" ");
     expect(text).toMatch(/escaped/);
-    expect(text).toContain("&lt;product-card");
+    expect(text).toContain("&lt;book-card");
   });
 });
 
@@ -708,10 +702,10 @@ describe("returning component tags demos: the page boxes", () => {
   );
 
   it.each([
-    "src/pages/server-scripts.html",
-    "src/pages/stream-scripts.html",
+    "src/pages/scripts/server.html",
+    "src/pages/scripts/stream.html",
     "src/pages/testing/troubleshooting.html",
-    "src/pages/security.html",
+    "src/pages/scripts/security.html",
   ])(
     "%s: the ranges cover the whole md in order, and every range holding an rtc block strips demo blocks",
     (page) => {
@@ -744,7 +738,7 @@ describe("returning component tags demos: the page boxes", () => {
       expect(box?.kind).toBe("demo");
       if (box?.kind !== "demo") return;
       expect(previewCards(slotsOf(box.body).get("example") ?? "")).toEqual(
-        PRODUCTS,
+        BOOKS,
       );
     },
   );
@@ -754,31 +748,31 @@ describe("returning component tags demos: the page boxes", () => {
     async (spec) => {
       const output = await block(...spec.slots["output-html"]!);
       const cards = outputCards(output);
-      expect(cards).toHaveLength(PRODUCTS.length);
-      PRODUCTS.forEach((p, i) => {
-        expect(cards[i]).toContain(p.name);
-        expect(cards[i]).toContain(p.price);
-        expect(cards[i]).toContain(p.badge);
+      expect(cards).toHaveLength(BOOKS.length);
+      BOOKS.forEach((b, i) => {
+        expect(cards[i]).toContain(b.title);
+        expect(cards[i]).toContain(b.author);
+        expect(cards[i]).toContain(b.badge);
       });
     },
   );
 });
 
-describe("returning component tags demos: the docs product-card is the component a reader copies", () => {
+describe("returning component tags demos: the docs book-card is the component a reader copies", () => {
   const strip = (file: string, text: string) =>
     file.endsWith(".html")
       ? text.replace(/^<!--\s*@bascik[\s\S]*?-->\n/, "")
       : text;
   it.each([
-    ["product-card.html", "rtc-search-source-html"],
-    ["product-card.css", "rtc-search-source-css"],
-    ["product-card.js", "rtc-search-source-js"],
+    ["book-card.html", "rtc-search-source-html"],
+    ["book-card.css", "rtc-search-source-css"],
+    ["book-card.js", "rtc-search-source-js"],
   ])(
-    "src/components/product-card/%s equals the md block %s (minus the path comment)",
+    "src/components/book-card/%s equals the md block %s (minus the path comment)",
     async (name, marker) => {
       const code = await block(SERVER_MD, marker);
       const withoutPath = code.split("\n").slice(1).join("\n");
-      const file = readDocs(`src/components/product-card/${name}`);
+      const file = readDocs(`src/components/book-card/${name}`);
       expect(strip(name, file).trim()).toBe(withoutPath.trim());
     },
   );
@@ -822,7 +816,7 @@ describe("returning component tags demos: Output is the real bascik --server res
     );
   });
 
-  it("the generator site is only the md blocks plus the documented config", async () => {
+  it("the generator site is only the md blocks plus the demo config", async () => {
     const files = await lib.demoSiteFiles();
     for (const spec of SPECS) {
       for (const [slot, sitePath] of Object.entries(spec.paths)) {
@@ -831,11 +825,10 @@ describe("returning component tags demos: Output is the real bascik --server res
         expect(files[sitePath]?.trim(), sitePath).toBe(code.trim());
       }
     }
-    const section = sectionOf(readDocs(SERVER_MD), "Returning component tags");
-    const config = /```ts\n\/\/ bascik\.config\.ts\n([\s\S]*?)\n```/.exec(
-      section,
-    )?.[1];
-    expect(files["bascik.config.ts"]?.trim()).toBe(config?.trim());
+    expect(files["bascik.config.ts"]).toBe(lib.DEMO_CONFIG);
+    expect(lib.DEMO_CONFIG).toMatch(
+      /minify:\s*\{\s*html:\s*false,\s*css:\s*false,\s*js:\s*false,\s*identifiers:\s*false\s*\}/,
+    );
   });
 
   it.each(SPECS)(
@@ -858,7 +851,7 @@ describe("returning component tags demos: Output is the real bascik --server res
 
   it("search: one <style> before the first card, scoped classes, a client script per instance with the same text (one CSP hash)", () => {
     const raw = run.raw.search;
-    expect(raw).not.toContain("<product-card");
+    expect(raw).not.toContain("<book-card");
     expect(raw.match(/<style\b/g)).toHaveLength(1);
     expect(raw.indexOf("<style")).toBeLessThan(raw.indexOf("<article"));
     const cardClass = /<article class="([^"]+)"/.exec(raw)?.[1];
@@ -872,21 +865,21 @@ describe("returning component tags demos: Output is the real bascik --server res
     const scripts = [...raw.matchAll(SCRIPT_ELEMENT)].map((m) => m[1]);
     expect(scripts).toHaveLength(3);
     expect(new Set(scripts).size).toBe(1);
-    const names = PRODUCTS.map((p) => raw.indexOf(p.name));
-    expect(names.every((n) => n >= 0)).toBe(true);
-    expect([...names].sort((a, b) => a - b)).toEqual(names);
-    expect(outputCards(raw)[2]).toContain("Standard");
+    const titles = BOOKS.map((b) => raw.indexOf(b.title));
+    expect(titles.every((n) => n >= 0)).toBe(true);
+    expect([...titles].sort((a, b) => a - b)).toEqual(titles);
+    expect(outputCards(raw)[2]).toContain("Paperback");
   });
 
   it("live: the nested stock line is inside the card, scoped, and sent with no component tag left", () => {
     const raw = run.raw.live;
-    expect(raw).not.toContain("<product-card");
+    expect(raw).not.toContain("<book-card");
     expect(raw).not.toContain("<stock-line");
     const article = /<article\b[\s\S]*?<\/article>/.exec(raw)?.[0] ?? "";
-    expect(article).toContain("In stock");
+    expect(article).toContain("copies left");
     expect(article).toContain("/featured");
     // The stock line fills the card's badge slot, a <span>, so it is a <span> too.
-    const stockClass = /<span class="([^"]+)">In stock/.exec(raw)?.[1];
+    const stockClass = /<span class="([^"]+)">3 copies left/.exec(raw)?.[1];
     expect(stockClass).toBeDefined();
     expect(stockClass).not.toBe("stock");
     const styles = [...raw.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map(
@@ -899,17 +892,19 @@ describe("returning component tags demos: Output is the real bascik --server res
 
   it("stream: one <style>, sent with the first batch before the first card; cards in source order with identical scripts", () => {
     const raw = run.raw.stream;
-    expect(raw).not.toContain("<product-card");
+    expect(raw).not.toContain("<book-card");
     expect(raw.match(/<style\b/g)).toHaveLength(1);
     const style = raw.indexOf("<style");
     const first = raw.indexOf("<article");
     expect(style).toBeLessThan(first);
-    // Batch 2 (Glass carafe) carries no <style>.
-    expect(style).toBeLessThan(raw.indexOf("Milk frother"));
-    expect(raw.slice(raw.indexOf("Pour-over kettle"))).not.toContain("<style");
-    const names = PRODUCTS.map((p) => raw.indexOf(p.name));
-    expect(names.every((n) => n >= 0)).toBe(true);
-    expect([...names].sort((a, b) => a - b)).toEqual(names);
+    // Batch 2 (Shipping Small Changes) carries no <style>.
+    expect(style).toBeLessThan(raw.indexOf("Refactoring the Monolith"));
+    expect(raw.slice(raw.indexOf("Practical Type Systems"))).not.toContain(
+      "<style",
+    );
+    const titles = BOOKS.map((b) => raw.indexOf(b.title));
+    expect(titles.every((n) => n >= 0)).toBe(true);
+    expect([...titles].sort((a, b) => a - b)).toEqual(titles);
     const scripts = [...raw.matchAll(SCRIPT_ELEMENT)].map((m) => m[1]);
     expect(scripts).toHaveLength(3);
     expect(new Set(scripts).size).toBe(1);
@@ -918,9 +913,9 @@ describe("returning component tags demos: Output is the real bascik --server res
   it("passthrough: the body holds the script's exact return string, unexpanded, with no <style> or ids", async () => {
     const raw = run.raw.passthrough;
     expect(raw).toContain(
-      '<prodcut-card data-bascik-prop-name="Milk frother"></prodcut-card>',
+      '<bok-card data-bascik-prop-title="Refactoring the Monolith"></bok-card>',
     );
-    expect(raw).toContain("&lt;product-card");
+    expect(raw).toContain("&lt;book-card");
     expect(raw).not.toContain("<style");
     expect(distinctIds(raw).size).toBe(0);
     // Run the Usage's own function and look for its output, byte for byte.

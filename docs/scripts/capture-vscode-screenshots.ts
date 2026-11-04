@@ -126,9 +126,9 @@ A small label that marks a person's status.
 `;
 
 /** The component the find-references scene opens, with only valid Bascik markup so no squiggle distracts. */
-const productCard = `<!-- @bascik
-Shows one product with a buy button.
-@slot default - The product name and price.
+const bookCard = `<!-- @bascik
+Shows one book with a save button.
+@slot default - The book title and author.
 -->
 <style>
   .card {
@@ -139,27 +139,27 @@ Shows one product with a buy button.
 
 <article class="card">
   <div data-bascik-slot></div>
-  <button type="button">Buy</button>
+  <button type="button">Save</button>
 </article>
 `;
 
-/** Pages and a component that use product-card, so Find All References has something to list. */
-const productCardUsages: Record<string, string> = {
+/** Pages and a component that use book-card, so Find All References has something to list. */
+const bookCardUsages: Record<string, string> = {
   "src/pages/shop.html": `<main>
-  <h1>Shop</h1>
-  <product-card>Milk frother, $49</product-card>
-  <product-card>Pour-over kettle, $65</product-card>
+  <h1>Bookshop</h1>
+  <book-card>Refactoring the Monolith, Grace Lin</book-card>
+  <book-card>Practical Type Systems, Ada Okafor</book-card>
 </main>
 `,
   "src/pages/gifts.html": `<main>
   <h1>Gift ideas</h1>
   <p>Our most popular gift this year:</p>
-  <product-card>Milk frother, $49</product-card>
+  <book-card>Refactoring the Monolith, Grace Lin</book-card>
 </main>
 `,
   "src/components/featured-row/featured-row.html": `<section class="featured">
   <h2>Featured</h2>
-  <product-card>Milk frother, $49</product-card>
+  <book-card>Refactoring the Monolith, Grace Lin</book-card>
 </section>
 `,
 };
@@ -425,8 +425,8 @@ const scenes: Scene[] = [
     // Find All References from the component's own file: Shift+F12 on its @bascik doc comment lists the pages
     // and components that use it in Peek References, and Enter on a usage jumps there.
     name: "find-references",
-    file: "src/components/product-card/product-card.html",
-    content: productCard.replace("Shows one", "Shows| one"),
+    file: "src/components/book-card/book-card.html",
+    content: bookCard.replace("Shows one", "Shows| one"),
     lines: 3,
     extraHeight: 330,
     width: 900,
@@ -511,12 +511,12 @@ async function buildProject(root: string, sceneList: Scene[]): Promise<void> {
   );
   await mkdir(join(root, "src/pages"), { recursive: true });
   await writeFile(join(root, "src/pages/index.html"), "<site-header />\n");
-  await mkdir(join(root, "src/components/product-card"), { recursive: true });
+  await mkdir(join(root, "src/components/book-card"), { recursive: true });
   await writeFile(
-    join(root, "src/components/product-card/product-card.html"),
-    productCard,
+    join(root, "src/components/book-card/book-card.html"),
+    bookCard,
   );
-  for (const [file, content] of Object.entries(productCardUsages)) {
+  for (const [file, content] of Object.entries(bookCardUsages)) {
     await mkdir(dirname(join(root, file)), { recursive: true });
     await writeFile(join(root, file), content);
   }

@@ -530,8 +530,8 @@ describe("an API route that upgrades to a WebSocket", () => {
         resolve(String(event.data)),
       ),
     );
-    socket!.send("frother");
-    expect(await reply).toBe("echo:frother");
+    socket!.send("monolith");
+    expect(await reply).toBe("echo:monolith");
     socket!.close();
   }, 60_000);
 

@@ -164,10 +164,10 @@ describe("/configuration", () => {
   });
 });
 
-// ─── /security ──────────────────────────────────────────────────────────────
+// ─── /scripts/security ──────────────────────────────────────────────────────────────
 
-describe("/security", () => {
-  const md = read("content/security.md");
+describe("/scripts/security", () => {
+  const md = read("content/scripts/security.md");
   const off = sectionOf(md, /^Turning protections off$/);
 
   it("has a Turning protections off section with the default rule", () => {
@@ -244,7 +244,10 @@ describe("script URLs such as javascript:", () => {
       ...files(path.join(DOCS, "content")),
       path.join(REPO, "skills/bascik-scripts/SKILL.md"),
     ]
-      .filter((file) => !file.endsWith(path.join("content", "security.md")))
+      .filter(
+        (file) =>
+          !file.endsWith(path.join("content", "scripts", "security.md")),
+      )
       .filter((file) =>
         /\b(livescript|vbscript):|`mocha:`/i.test(readFileSync(file, "utf8")),
       )
@@ -253,12 +256,12 @@ describe("script URLs such as javascript:", () => {
   });
 
   it("the Security page lists it once", () => {
-    const md = read("content/security.md");
+    const md = read("content/scripts/security.md");
     expect(md).toMatch(/javascript:.*vbscript:.*livescript:.*mocha:/s);
   });
 
   it.each([
-    "content/server-scripts.md",
+    "content/scripts.md",
     "content/props.md",
     "content/attribute-inheritance.md",
     "content/html-helpers.md",
@@ -322,10 +325,10 @@ describe("production server, Cloudflare and compatibility pages", () => {
   });
 
   it.each([
-    ["content/server-scripts.md", "security.blockScriptUrls"],
+    ["content/scripts.md", "security.blockScriptUrls"],
     ["content/props.md", "security.blockCodeBindings"],
     ["content/attribute-inheritance.md", "security.blockScriptUrls"],
-    ["content/build-scripts.md", "security.stripDirectiveScripts"],
+    ["content/scripts/build.md", "security.stripDirectiveScripts"],
     ["content/faq.md", "security.hideDotfiles"],
     ["content/cli.md", "components.expansionLimits"],
   ])("%s links the protection to %s", (rel, key) => {
@@ -394,7 +397,7 @@ describe("static files on Cloudflare get the response headers from the generated
 
   it("the Security page's guarantee about headers says so, with a link", () => {
     const guarantees = sectionOf(
-      read("content/security.md"),
+      read("content/scripts/security.md"),
       /^What Bascik guarantees$/,
     );
     const bullet = guarantees
@@ -431,7 +434,7 @@ describe("static files on Cloudflare get the response headers from the generated
 
 describe("plain words for a reader who is not a security expert", () => {
   const config = read("content/configuration.md");
-  const security = read("content/security.md");
+  const security = read("content/scripts/security.md");
 
   it("the headers are not said to block cross-origin access; CORP is described truthfully", () => {
     for (const md of [config, security]) {

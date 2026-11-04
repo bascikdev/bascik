@@ -7,7 +7,7 @@ Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static 
 > - [Server scripts](https://cloudflare-adapter.bascik.dev/server): request context and platform bindings rendered before headers commit.
 > - [In-place skeleton swap](https://cloudflare-adapter.bascik.dev/stream) and [progressive append](https://cloudflare-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML from the edge.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
-> - [Product catalog](https://cloudflare-adapter.bascik.dev/catalog?q=frother) and [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<product-card>` tags that the Worker renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
+> - [Book catalog](https://cloudflare-adapter.bascik.dev/catalog?q=monolith) and [streamed catalog](https://cloudflare-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<book-card>` tags that the Worker renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
 > - [Edge API client](https://cloudflare-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
 
 ## How it works: CDN-first with Edge Workers
@@ -24,7 +24,7 @@ The Cloudflare adapter eliminates the need to run, configure, or pay for a separ
 Build once on Node with `bascik --build --target cloudflare` (or `--target cloudflare-workers`). The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
 
 - a **public tree** (`public/`): every static file uploaded to Cloudflare's global CDN;
-- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, the precompiled page templates those jobs render into, and the component manifest (`.bascik/dist/components.json`) with the scripts inside components, so component tags the jobs return are rendered in the Worker. See [Returning component tags](/server-scripts#returning-component-tags).
+- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, the precompiled page templates those jobs render into, and the component manifest (`.bascik/dist/components.json`) with the scripts inside components, so component tags the jobs return are rendered in the Worker. See [Returning component tags](/scripts#returning-component-tags).
 
 At request time the flow is:
 
@@ -231,8 +231,8 @@ Create, check and remove a Preview from the generated folder:
 
 ```sh
 cd dist/.bascik/cloudflare
-npx wrangler preview --name milk-frother-sale
-npx wrangler preview delete --name milk-frother-sale -y
+npx wrangler preview --name book-sale
+npx wrangler preview delete --name book-sale -y
 ```
 
 `--name` defaults to the current git branch, which is what Workers Builds uses for branch builds. Wrangler prints the Preview's URLs; `--json` prints them for a script. `wrangler preview` is in open beta, and it uploads code without touching your routes or custom domains.
@@ -252,7 +252,7 @@ A custom domain serves Previews when its `routes` entry (the one with `custom_do
 
 The generated `name` in `wrangler.jsonc` is resolved in this order:
 
-1. **Environment variables:** `CLOUDFLARE_WORKER_NAME`, `WORKER_NAME`, or `CF_PAGES_PROJECT_NAME` (for example `CLOUDFLARE_WORKER_NAME=milk-frother-shop` in the Workers Builds build variables).
+1. **Environment variables:** `CLOUDFLARE_WORKER_NAME`, `WORKER_NAME`, or `CF_PAGES_PROJECT_NAME` (for example `CLOUDFLARE_WORKER_NAME=book-shop` in the Workers Builds build variables).
 2. **Your Wrangler config:** the `name` in a `wrangler.jsonc`, `wrangler.json`, or `wrangler.toml` in your project root (first match wins, in that order; JSONC comments, trailing commas and TOML are supported).
 3. **Project `package.json`:** the `name` from your root `package.json` (with an npm `@scope/` prefix stripped).
 4. **Fallback:** `"bascik-site"`, only if none of the above is found.
@@ -269,13 +269,13 @@ The generated `dist/.bascik/cloudflare/wrangler.jsonc` is rebuilt on every build
 
 ### Keeping deployment config in the repo
 
-With a `wrangler.jsonc` in the project root, the build reads it and writes the generated config from it. Bascik never edits your file. Leave out `main` and `assets.directory`: the build supplies both. A shop for the Milk frother might keep this:
+With a `wrangler.jsonc` in the project root, the build reads it and writes the generated config from it. Bascik never edits your file. Leave out `main` and `assets.directory`: the build supplies both. A bookshop might keep this:
 
 ```jsonc
 // wrangler.jsonc (project root)
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "milk-frother-shop",
+  "name": "book-shop",
   "compatibility_date": "2026-08-01",
   "routes": [{ "pattern": "shop.example.com", "custom_domain": true }],
   "workers_dev": false,
@@ -293,7 +293,7 @@ With a `wrangler.jsonc` in the project root, the build reads it and writes the g
 // dist/.bascik/cloudflare/wrangler.jsonc (generated)
 {
   "$schema": "../../../node_modules/wrangler/config-schema.json",
-  "name": "milk-frother-shop",
+  "name": "book-shop",
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -425,7 +425,7 @@ With no `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` in the project root
 // dist/.bascik/cloudflare/wrangler.jsonc (generated, no config of yours)
 {
   "$schema": "../../../node_modules/wrangler/config-schema.json",
-  "name": "milk-frother-shop",
+  "name": "book-shop",
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -461,7 +461,7 @@ The wrapper is deployed with its own config, because its `main` is the wrapper, 
 ```jsonc
 // wrangler.wrapper.jsonc
 {
-  "name": "milk-frother-shop",
+  "name": "book-shop",
   "main": "worker-wrapper.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -511,7 +511,7 @@ Put a `wrangler.jsonc` in the project root:
 // wrangler.jsonc
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "milk-frother-docs",
+  "name": "book-shop-docs",
   "compatibility_date": "2026-08-01",
   "assets": {
     "directory": "./dist",
@@ -667,7 +667,7 @@ Provider limits are deployment constraints, not Bascik defaults, and they change
 
 ## Streaming and caching behavior
 
-The request-time contract is the one documented for [Stream Scripts](/stream-scripts): `server` jobs settle before headers commit, so a failure there can still be a 500 with your authored `500.html`; a `stream` job that fails after commit yields an empty slot and the document completes. Fragments stay in source order behind a bounded lookahead.
+The request-time contract is the one documented for [Stream Scripts](/scripts/stream): `server` jobs settle before headers commit, so a failure there can still be a 500 with your authored `500.html`; a `stream` job that fails after commit yields an empty slot and the document completes. Fragments stay in source order behind a bounded lookahead.
 
 Two details are specific to the edge:
 

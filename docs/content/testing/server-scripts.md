@@ -148,7 +148,7 @@ describe("fetchCityWeather", () => {
 
 Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes.
 
-A handler's return is not always a string: one that builds its markup with [`html`](/html-helpers#html) returns a `SafeHtml` object, and one that returns `items.map(...)` returns an array, which the page joins with no separator (see [Return Values](/server-scripts#return-values)). Pass the result to `serverScriptOutput` from `@bascik/bascik/runtime`, the function Bascik uses to print it, and assert on its `text`: those are the bytes the page gets. `String(output)` is right only for a single string or `html` value; for an array it adds the commas the page never shows (`<li>a</li>,<li>b</li>`).
+A handler's return is not always a string: one that builds its markup with [`html`](/html-helpers#html) returns a `SafeHtml` object, and one that returns `items.map(...)` returns an array, which the page joins with no separator (see [Return Values](/scripts/server#return-values)). Pass the result to `serverScriptOutput` from `@bascik/bascik/runtime`, the function Bascik uses to print it, and assert on its `text`: those are the bytes the page gets. `String(output)` is right only for a single string or `html` value; for an array it adds the commas the page never shows (`<li>a</li>,<li>b</li>`).
 
 ```ts
 // src/components/weather-widget/weather-widget.server.test.ts
@@ -182,7 +182,9 @@ import { it, expect } from "vitest";
 import { serverScriptOutput } from "@bascik/bascik/runtime";
 
 it("names a refused return", () => {
-  const printed = serverScriptOutput([Promise.resolve("<li>Kettle</li>")]);
+  const printed = serverScriptOutput([
+    Promise.resolve("<li>Practical Type Systems</li>"),
+  ]);
   expect(printed.text).toBeUndefined();
   expect(printed.error?.kind).toBe("promise");
   expect(printed.error?.received).toBe("an array holding a Promise at [0]");

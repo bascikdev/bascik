@@ -16,7 +16,7 @@ WordPress is a PHP content management system that renders pages from a database 
 | Page templates                                      | `page.php`, `single.php`, `archive.php`           | Files in `src/pages/` plus slot-based layout components                                              |
 | The Loop                                            | `while ( have_posts() ) : the_post();`            | `<script data-bascik-build>` with Node.js                                                            |
 | Template tags                                       | `the_title()`, `the_permalink()`                  | `data-bascik-prop-*` and `data-bascik-attr-*`                                                        |
-| Posts and pages in the database                     | Markdown files or the REST API at build time      | [Dynamic Routes](/dynamic-routes)                                                                    |
+| Posts and pages in the database                     | Markdown files or the REST API at build time      | [Dynamic Routes](/scripts/dynamic-routes)                                                            |
 | Shortcodes and blocks                               | `[callout]...[/callout]`                          | Component tags with `data-bascik-slot`                                                               |
 | `style.css` and enqueued assets                     | `wp_enqueue_style()`                              | Paired `.css` files (auto-scoped and deduplicated)                                                   |
 | `functions.php` hooks                               | `add_action()` and `add_filter()`                 | Build scripts, [Exec Scripts](/exec-scripts), and [API Routes](/api-routes)                          |
@@ -182,11 +182,11 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
 </ul>
 ```
 
-Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text: `html` from `@bascik/bascik/html` escapes it, and every other value, for where it lands; see [HTML Helpers](/html-helpers). A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
+Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text: `html` from `@bascik/bascik/html` escapes it, and every other value, for where it lands; see [HTML Helpers](/html-helpers). A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/scripts/build#invalidation-limits-cache-exclusions).
 
 ## Single Posts → Dynamic Routes
 
-`single.php` renders one template for every post. In Bascik, a file named `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block expands into one static page per post. See [Dynamic Routes](/dynamic-routes) for the full route object format.
+`single.php` renders one template for every post. In Bascik, a file named `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block expands into one static page per post. See [Dynamic Routes](/scripts/dynamic-routes) for the full route object format.
 
 ```html
 <!-- src/pages/blog/[slug].html (Bascik - after; the routes script, in the page <head>) -->

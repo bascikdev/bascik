@@ -1,0 +1,23 @@
+<!-- @bascik
+A book card for search results and listings. The "Returning component tags"
+demos on the server-scripts and stream-scripts pages render it: the Preview
+expands the tags at build time, and the Output shows what a server script that
+returns the same tags sends at request time.
+@prop title - Book title, shown as the card heading.
+@prop author - Author name, such as "Grace Lin".
+@slot - Badge text, such as "Best seller". Defaults to "Paperback".
+-->
+<article class="card" data-testid="book-card">
+  <h3 class="title" data-bascik-prop-title>Untitled book</h3>
+  <p class="author" data-bascik-prop-author>Unknown author</p>
+  <span class="badge"><span data-bascik-slot>Paperback</span></span>
+  <button
+    class="save"
+    type="button"
+    aria-pressed="false"
+    data-testid="book-card-save"
+  >
+    Save
+  </button>
+</article>
+<script src="book-card.js"></script>

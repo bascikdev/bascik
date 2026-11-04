@@ -12,13 +12,15 @@
   }
 </style>
 <article class="card" data-testid="fixture-card">
-  <h2 data-bascik-prop-name data-testid="fixture-card-name">Milk frother</h2>
-  <p><span data-bascik-slot>Standard</span></p>
+  <h2 data-bascik-prop-name data-testid="fixture-card-name">
+    Refactoring the Monolith
+  </h2>
+  <p><span data-bascik-slot>Paperback</span></p>
   <script data-bascik-server type="text/typescript">
     import { html } from "@bascik/bascik/html";
     export default (request: Request) =>
       html`<p class="stock" data-testid="fixture-card-stock">
-        In stock at ${new URL(request.url).pathname}
+        Copies in stock at ${new URL(request.url).pathname}
       </p>`;
   </script>
 </article>

@@ -60,7 +60,7 @@ Use the tag in any page or component. There is no import, export, or registratio
 
 - [Components](https://bascik.dev/components) and [Slots](https://bascik.dev/slots)
 - [Scoped CSS without Shadow DOM](https://bascik.dev/scoped-styles) and [Scoped JavaScript](https://bascik.dev/scoped-javascript)
-- [Build Scripts](https://bascik.dev/build-scripts), [Dynamic Routes](https://bascik.dev/dynamic-routes), and [Deployment](https://bascik.dev/deployment)
+- [Build Scripts](https://bascik.dev/scripts/build), [Dynamic Routes](https://bascik.dev/scripts/dynamic-routes), and [Deployment](https://bascik.dev/deployment)
 - [Bascik vs React, Vue, Svelte, and Astro](https://bascik.dev/vs-frameworks)
 
 ## Repository Layout

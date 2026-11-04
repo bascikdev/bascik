@@ -46,14 +46,14 @@ describe("search sections follow the rendered headings", () => {
       "## Steps",
       "",
       "```sh",
-      "# install the frother dependencies",
+      "# install the bookshop dependencies",
       "yarn install",
       "```",
     ].join("\n");
     const entries = sections(md);
     expect(entries[0].title).toBe("Install");
     expect(entries.find((entry) => entry.heading === "Steps")?.text).toContain(
-      "install the frother dependencies",
+      "install the bookshop dependencies",
     );
   });
 

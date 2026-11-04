@@ -321,10 +321,10 @@ describe("serverless build artifacts: request-time components (prompt 157)", () 
             { css: { text?: string } | null; jobs: Array<{ id: string }> }
           >;
         };
-        const css = manifest.components["product-card"].css?.text;
-        expect(css).toContain(".bascik__product-card__tile{");
+        const css = manifest.components["book-card"].css?.text;
+        expect(css).toContain(".bascik__book-card__tile{");
         expect(worker).toContain(css);
-        const [liveJob] = manifest.components["product-card-live"].jobs;
+        const [liveJob] = manifest.components["book-card-live"].jobs;
         expect(worker).toContain(liveJob.id);
         // The nested job's own source, not just its id.
         expect(worker).toContain("at request time");
@@ -394,7 +394,7 @@ export default {
       expect(text).toContain(
         `adapter "stub-host" does not declare components: true, so component tags returned by server and stream scripts are not rendered on this host and reach the client as written`,
       );
-      expect(text).toContain("<product-card>, <product-card-live>");
+      expect(text).toContain("<book-card>, <book-card-live>");
       // An unsupported component is never listed as renderable.
       expect(text).not.toContain("<bound-id-card>");
     } finally {

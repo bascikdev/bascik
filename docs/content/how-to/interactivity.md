@@ -117,7 +117,7 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 
 - Write data with `textContent`. If you must build HTML, create elements or escape every value.
 - Cancel stale requests with an `AbortController` when input changes faster than responses arrive.
-- When the data is the same for every visitor, fetch it at build time in a [build script](/build-scripts) instead.
+- When the data is the same for every visitor, fetch it at build time in a [build script](/scripts/build) instead.
 
 ## Debounce
 

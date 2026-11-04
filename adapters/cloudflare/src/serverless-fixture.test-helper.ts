@@ -12,7 +12,7 @@
  * - API routes: static, dynamic, multi-method, streaming body, cookies,
  * - an authored 404 and 500 page,
  * - with `components: true`, the catalog demo of the e2e fixture (prompt 157:
- *   `<product-card>` and `<product-card-live>` returned by server and stream
+ *   `<book-card>` and `<book-card-live>` returned by server and stream
  *   scripts) plus test-only pages for the misuse lens: an unsupported
  *   component, a bound href, a nested job that throws, a self-returning
  *   component (depth), a component script without a default export,
@@ -379,11 +379,7 @@ export const componentScriptId = (name: string, ordinal = 1): string =>
  * and pages the misuse lens needs (prompt 157).
  */
 const addComponentPages = async (root: string): Promise<void> => {
-  for (const component of [
-    "product-card",
-    "product-card-live",
-    "demo-favicons",
-  ]) {
+  for (const component of ["book-card", "book-card-live", "demo-favicons"]) {
     await cp(
       join(E2E_FIXTURE, "src/components", component),
       join(root, "src/components", component),
@@ -498,10 +494,10 @@ ${body}
     "Misuse",
     `<script data-bascik-server>
 export default function () {
-  return '<product-crad data-testid="typo">typo stays</product-crad>' +
-    '<p data-testid="escaped">&lt;product-card&gt; stays text</p>' +
-    '<p data-testid="attr" title="<product-card>">attr stays</p>' +
-    '<script type="text/bascik-server" data-bascik-server-id="${componentScriptId("product-card-live")}"></' + 'script>' +
+  return '<book-crad data-testid="typo">typo stays</book-crad>' +
+    '<p data-testid="escaped">&lt;book-card&gt; stays text</p>' +
+    '<p data-testid="attr" title="<book-card>">attr stays</p>' +
+    '<script type="text/bascik-server" data-bascik-server-id="${componentScriptId("book-card-live")}"></' + 'script>' +
     '<bound-id-card data-bascik-prop-anchor="x"></bound-id-card>' +
     '<link-card data-bascik-prop-target="/pricing"></link-card>';
 }
@@ -519,7 +515,7 @@ export default function () {
 }
 </script>`,
   );
-  // Budgets: ?n= instances of <product-card>, or of <product-card-live>
+  // Budgets: ?n= instances of <book-card>, or of <book-card-live>
   // (one nested job each) with ?kind=live.
   await page(
     "src/pages/components-budget.html",
@@ -528,9 +524,9 @@ export default function () {
 export default function (request) {
   const url = new URL(request.url);
   const n = Number(url.searchParams.get("n") ?? 1);
-  const tag = url.searchParams.get("kind") === "live" ? "product-card-live" : "product-card";
+  const tag = url.searchParams.get("kind") === "live" ? "book-card-live" : "book-card";
   let out = "";
-  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-name="item ' + i + '"></' + tag + ">";
+  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-title="item ' + i + '"></' + tag + ">";
   return out;
 }
 </script>`,
@@ -543,9 +539,9 @@ export default function (request) {
 export default async function (request) {
   const url = new URL(request.url);
   const n = Number(url.searchParams.get("n") ?? 1);
-  const tag = url.searchParams.get("kind") === "live" ? "product-card-live" : "product-card";
+  const tag = url.searchParams.get("kind") === "live" ? "book-card-live" : "book-card";
   let out = "";
-  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-name="item ' + i + '"></' + tag + ">";
+  for (let i = 0; i < n; i++) out += "<" + tag + ' data-bascik-prop-title="item ' + i + '"></' + tag + ">";
   return out;
 }
 </script></section>`,
@@ -561,10 +557,10 @@ export default async function (request) {
   const slotted = (tag, length) => "<" + tag + ">" + "x".repeat(length) + "</" + tag + ">";
   if (kind === "rendered") return slotted("twice-card", 2500000);
   if (kind === "grew") return slotted("four-card", 2500000);
-  if (kind === "refused") return "x".repeat(${2 * 4 * 1024 * 1024 + 1}) + "<product-card></product-card>";
+  if (kind === "refused") return "x".repeat(${2 * 4 * 1024 * 1024 + 1}) + "<book-card></book-card>";
   if (kind === "stage") return slotted("wide-card", 3000000);
   if (kind === "scan") return "<once-card>".repeat(999) + "x".repeat(1000000) + "</once-card>".repeat(999);
-  return "<product-card></product-card>";
+  return "<book-card></book-card>";
 }
 </script>`;
   await page("src/pages/components-size.html", "Size", sizeScript("server"));
@@ -596,7 +592,7 @@ export default function () { return "<chain-card></chain-card>"; }
     "Returns array",
     `<ul data-testid="list"><script data-bascik-server>
 export default function () {
-  return [["<li>Milk frother</li>", null], ["<li>Kettle</li>", ["<product-card></product-card>"]]];
+  return [["<li>Refactoring the Monolith</li>", null], ["<li>Practical Type Systems</li>", ["<book-card></book-card>"]]];
 }
 </script></ul>`,
   );
@@ -605,7 +601,7 @@ export default function () {
     "Returns array stream",
     `<ul data-testid="list"><script data-bascik-stream>
 export default async function () {
-  return ["<li>Milk frother</li>", undefined, ["<li>Kettle</li>"]];
+  return ["<li>Refactoring the Monolith</li>", undefined, ["<li>Practical Type Systems</li>"]];
 }
 </script></ul>`,
   );
@@ -613,7 +609,7 @@ export default async function () {
     "src/pages/returns-object.html",
     "Returns object",
     `<section data-testid="slot"><script data-bascik-server>
-export default function () { return { name: "Milk frother" }; }
+export default function () { return { name: "Refactoring the Monolith" }; }
 </script></section>`,
   );
   await page(
@@ -684,7 +680,7 @@ export default function () { return "<nodefault-card></nodefault-card>"; }
 <script data-bascik-server>
 export default async function () {
   await new Promise((resolve) => setTimeout(resolve, Math.random() * 40));
-  return '<product-card data-bascik-prop-name="inner"></product-card>';
+  return '<book-card data-bascik-prop-title="inner"></book-card>';
 }
 </script>
 </div>
@@ -1027,8 +1023,8 @@ export default function (request) {
     "inherit-plain": '<sec-badge online one="1" style="overscroll-behavior: contain; max-height: 20rem; --caption: \\'Data: ' + e(q) + '\\'"></sec-badge>',
     "inherit-url": '<sec-embed data="' + e(q) + '"></sec-embed><sec-frame src="' + e(q) + '" srcdoc="' + e(q) + '" onload="' + e(q) + '"></sec-frame>',
     "inherit-kept": '<sec-sty onclick="go()"></sec-sty><sec-anchor href="javascript:void(0)"></sec-anchor>',
-    card: '<product-card data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '" title="' + e(q) + '">' + e(q) + '</product-card>',
-    live: '<product-card-live data-bascik-prop-name="' + e(q) + '" data-bascik-prop-price="' + e(q) + '"><span>' + e(q) + '</span></product-card-live>',
+    card: '<book-card data-bascik-prop-title="' + e(q) + '" data-bascik-prop-author="' + e(q) + '" title="' + e(q) + '">' + e(q) + '</book-card>',
+    live: '<book-card-live data-bascik-prop-title="' + e(q) + '" data-bascik-prop-author="' + e(q) + '"><span>' + e(q) + '</span></book-card-live>',
   };
   return only ? parts[only] : Object.values(parts).join("");
 }

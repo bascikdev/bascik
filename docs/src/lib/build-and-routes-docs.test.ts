@@ -124,13 +124,13 @@ describe("request-time component rendering docs", () => {
     "scoping-template-unavailable",
   ];
 
-  it.each(["server-scripts.md", "stream-scripts.md"])(
+  it.each(["scripts.md", "scripts/stream.md"])(
     "%s has a Returning component tags section with the documented rules",
     async (file) => {
       const body = section(await read(file), "Returning component tags");
       expect(body, `${file} needs "## Returning component tags"`).not.toBe("");
       // The worked example returns the site's shared card from a script.
-      expect(body).toMatch(/<product-card data-bascik-prop-name=/);
+      expect(body).toMatch(/<book-card\s+data-bascik-prop-title=/);
       // Script output is HTML by contract: the tags in it run with the same
       // power as the author's own markup, so outside HTML is sanitized first.
       expect(body).toMatch(/sanitize HTML from a CMS or an API/i);
@@ -143,9 +143,9 @@ describe("request-time component rendering docs", () => {
     },
   );
 
-  it("stream-scripts.md says a nested stream script resolves with its parent", async () => {
+  it("scripts/stream.md says a nested stream script resolves with its parent", async () => {
     const body = section(
-      await read("stream-scripts.md"),
+      await read("scripts/stream.md"),
       "Returning component tags",
     );
     expect(body).toMatch(/resolves with (?:its|the) parent/);
@@ -200,7 +200,7 @@ describe("request-time component rendering docs", () => {
       "Can a server script return a component?",
     );
     expect(body).not.toBe("");
-    expect(body).toContain("(/server-scripts#returning-component-tags)");
+    expect(body).toContain("(/scripts#returning-component-tags)");
   });
 
   it("troubleshooting.md carries the request-time component messages", async () => {
@@ -246,7 +246,7 @@ describe("request-time component rendering docs", () => {
   });
 
   it("stream CSS goes to the first slot in document order, not the first to finish", async () => {
-    for (const file of ["server-scripts.md", "stream-scripts.md"]) {
+    for (const file of ["scripts.md", "scripts/stream.md"]) {
       const body = section(await read(file), "Returning component tags");
       expect(body, file).toMatch(
         /first (?:slot )?in document order|first instance in document order/,
@@ -256,10 +256,7 @@ describe("request-time component rendering docs", () => {
   });
 
   it("the unexpanded-tag dev log is documented as needing a renderable component", async () => {
-    const body = section(
-      await read("server-scripts.md"),
-      "Returning component tags",
-    );
+    const body = section(await read("scripts.md"), "Returning component tags");
     expect(body).toMatch(
       /at least one component can be rendered at request time/,
     );
@@ -285,8 +282,8 @@ describe("data-bascik-build-once explains why it has no page context", () => {
   const read = (rel: string) =>
     readFile(path.join(DOCS_ROOT, "content", rel), "utf8");
 
-  it("build-scripts.md shows what a page path would do to a run shared by every page", async () => {
-    const md = await read("build-scripts.md");
+  it("scripts/build.md shows what a page path would do to a run shared by every page", async () => {
+    const md = await read("scripts/build.md");
     const section = md.slice(
       md.indexOf("## `data-bascik-build-once`"),
       md.indexOf("## Example Patterns"),
@@ -302,6 +299,6 @@ describe("data-bascik-build-once explains why it has no page context", () => {
 
   it("environment-variables.md links to the explanation", async () => {
     const md = await read("environment-variables.md");
-    expect(md).toContain("/build-scripts#why-there-is-no-page-path");
+    expect(md).toContain("/scripts/build#why-there-is-no-page-path");
   });
 });

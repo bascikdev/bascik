@@ -167,7 +167,7 @@ description: Learn about Acme Corp.
 </html>
 ```
 
-For many pages sharing a data-driven title pattern, extract the title into a `data-bascik-prop-title` prop on the layout component, or generate the pages from a [dynamic route](/dynamic-routes).
+For many pages sharing a data-driven title pattern, extract the title into a `data-bascik-prop-title` prop on the layout component, or generate the pages from a [dynamic route](/scripts/dynamic-routes).
 
 Markdown posts keep their front matter. Your helper parses it with `gray-matter` (`npm install gray-matter`) and should validate it, for example with a `zod` schema, so a missing `date` fails the build instead of producing a broken page.
 
@@ -243,13 +243,13 @@ Eleventy's Collections API reads a directory of Markdown files and makes them av
 </ul>
 ```
 
-In a real site, move the reading and sorting into `src/lib/posts.ts` so the home page, the archive, tag pages, and the feed share one list. Scripts that read `content/` need `scripts.cache.exclude` and `pipeline.watchPaths`, because Bascik cannot see that folder as an import; see [Invalidation Limits & Cache Exclusions](/build-scripts#invalidation-limits-cache-exclusions).
+In a real site, move the reading and sorting into `src/lib/posts.ts` so the home page, the archive, tag pages, and the feed share one list. Scripts that read `content/` need `scripts.cache.exclude` and `pipeline.watchPaths`, because Bascik cannot see that folder as an import; see [Invalidation Limits & Cache Exclusions](/scripts/build#invalidation-limits-cache-exclusions).
 
 > **Build scripts run first:** A build script's output can itself contain Bascik component tags. They are resolved in the next pass, so you can output `<post-card>` tags from a build script and Bascik will expand them.
 
 ### Tag Pages and Post Pages
 
-Eleventy's pagination over `collections` becomes a [dynamic route](/dynamic-routes). `src/pages/blog/[slug]/index.html` produces `/blog/<slug>/` for each post, and `src/pages/tags/[tag]/index.html` produces `/tags/<tag>/`. A route parameter cannot contain `/`, so a nested URL such as `/blog/2026/post/` needs its own template, `src/pages/blog/[year]/[slug]/index.html`.
+Eleventy's pagination over `collections` becomes a [dynamic route](/scripts/dynamic-routes). `src/pages/blog/[slug]/index.html` produces `/blog/<slug>/` for each post, and `src/pages/tags/[tag]/index.html` produces `/tags/<tag>/`. A route parameter cannot contain `/`, so a nested URL such as `/blog/2026/post/` needs its own template, `src/pages/blog/[year]/[slug]/index.html`.
 
 ## Passthrough File Copy → Automatic
 

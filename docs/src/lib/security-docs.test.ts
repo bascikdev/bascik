@@ -2,7 +2,7 @@
  * Docs for @bascik/bascik/html and server script safety (Collin 2026-10-28:
  * "cover all of it, usage, how to keep people safe, how to use it, and why").
  *
- * - /security (Scripts & Routing, after Stream Scripts) has every required
+ * - /scripts/security (Scripts & Routing, after Stream Scripts) has every required
  *   section, the two component-demo boxes, and the third-party loading
  *   section; /html-helpers (Reference, after Package Exports) documents every
  *   export, every context and every error.
@@ -51,10 +51,10 @@ describe("navigation", () => {
 
   it("Security sits in Scripts & Routing right after Stream Scripts", () => {
     const pages = section("Scripts & Routing")!.pages;
-    const at = pages.findIndex((p) => p.href === "/security");
+    const at = pages.findIndex((p) => p.href === "/scripts/security");
     expect(at).toBeGreaterThan(-1);
     expect(pages[at].label).toBe("Security");
-    expect(pages[at - 1].href).toBe("/stream-scripts");
+    expect(pages[at - 1].href).toBe("/scripts/stream");
   });
 
   it("HTML Helpers sits in Reference right after Package Exports", () => {
@@ -66,17 +66,19 @@ describe("navigation", () => {
   });
 
   it("both pages have content and a page shell", () => {
-    for (const name of ["security", "html-helpers"]) {
+    for (const name of ["scripts/security", "html-helpers"]) {
       expect(exists(`content/${name}.md`), name).toBe(true);
       expect(exists(`src/pages/${name}.html`), name).toBe(true);
     }
   });
 });
 
-// ─── /security ──────────────────────────────────────────────────────────────
+// ─── /scripts/security ──────────────────────────────────────────────────────────────
 
-describe("/security", () => {
-  const md = exists("content/security.md") ? read("content/security.md") : "";
+describe("/scripts/security", () => {
+  const md = exists("content/scripts/security.md")
+    ? read("content/scripts/security.md")
+    : "";
   const headings = h2s(md);
 
   it("starts with the h1 Security", () => {
@@ -180,13 +182,13 @@ describe("/security", () => {
     expect(text).toContain("tag name");
   });
 
-  it("the self-test sends ?q=<product-card and an onerror payload and expects text", () => {
+  it("the self-test sends ?q=<book-card and an onerror payload and expects text", () => {
     const text = sectionOf(
       md,
       headings.find((h) => /self-test/i.test(h)) ?? "",
     );
     expect(text).toContain("?q=");
-    expect(text).toMatch(/product-card/);
+    expect(text).toMatch(/book-card/);
     expect(text).toMatch(/onerror/);
     expect(text).toMatch(/curl/);
   });
@@ -206,10 +208,10 @@ describe("/security", () => {
 });
 
 describe("rtc-demos generates the security demos from the real server", () => {
-  it("DEMOS has the search and malicious ?q= entries in content/security.md", async () => {
+  it("DEMOS has the search and malicious ?q= entries in content/scripts/security.md", async () => {
     const { DEMOS } = await import("../../scripts/rtc-demos.ts");
     const security = DEMOS.filter(
-      (d: { md: string }) => d.md === "content/security.md",
+      (d: { md: string }) => d.md === "content/scripts/security.md",
     );
     expect(
       security.map((d: { outputMarker: string }) => d.outputMarker).sort(),
@@ -221,12 +223,14 @@ describe("rtc-demos generates the security demos from the real server", () => {
     const q = decodeURIComponent(
       new URL(malicious.url, "http://x").searchParams.get("q") ?? "",
     );
-    expect(q).toContain("<product-card");
+    expect(q).toContain("<book-card");
     expect(q).toContain("onerror");
   });
 
   it("the committed malicious ?q= Output shows the payload as text", () => {
-    const md = exists("content/security.md") ? read("content/security.md") : "";
+    const md = exists("content/scripts/security.md")
+      ? read("content/scripts/security.md")
+      : "";
     const at = md.indexOf("<!-- demo:security-malicious-q-output");
     expect(at).toBeGreaterThan(-1);
     // The Output is the first fence after its marker.
@@ -238,7 +242,7 @@ describe("rtc-demos generates the security demos from the real server", () => {
         break;
       }
     }
-    expect(output).toContain("&lt;product-card");
+    expect(output).toContain("&lt;book-card");
     expect(output).toContain("onerror");
     expect(output).not.toMatch(/<img[\s>]/);
   });
@@ -338,8 +342,8 @@ describe("/html-helpers API reference", () => {
     expect(text).toMatch(/Cloudflare Workers?/);
   });
 
-  it("links /security and Troubleshooting", () => {
-    expect(md).toContain("](/security");
+  it("links /scripts/security and Troubleshooting", () => {
+    expect(md).toContain("](/scripts/security");
     expect(md).toContain("](/testing/troubleshooting");
   });
 
@@ -352,10 +356,10 @@ describe("/html-helpers API reference", () => {
   });
 });
 
-// ─── server-scripts.md and the same-site undo ───────────────────────────────
+// ─── scripts/server.md and the same-site undo ───────────────────────────────
 
-describe("server-scripts.md escaping and injection", () => {
-  const md = read("content/server-scripts.md");
+describe("scripts/server.md escaping and injection", () => {
+  const md = read("content/scripts/server.md");
 
   it("drops the claim that a framework cannot know which row and that Bascik exports nothing for scripts", () => {
     expect(md).not.toContain("A framework cannot know which row");
@@ -368,7 +372,7 @@ describe("server-scripts.md escaping and injection", () => {
     const text = sectionOf(md, "Escaping and injection");
     expect(text).toContain('import { html } from "@bascik/bascik/html"');
     expect(text).toContain("html`");
-    expect(text).toContain("](/security");
+    expect(text).toContain("](/scripts/security");
     const escaper = text.indexOf("replace(/[&<>");
     if (escaper !== -1) expect(text.indexOf("html`")).toBeLessThan(escaper);
   });
@@ -387,7 +391,7 @@ describe("the same-site rule from bca0714e is gone from the docs", () => {
   it.each([
     "content/props.md",
     "content/compatibility.md",
-    "content/server-scripts.md",
+    "content/scripts/server.md",
     "content/testing/troubleshooting.md",
     "content/how-to/content-security-policy.md",
   ])("%s", (file) => {
@@ -397,9 +401,9 @@ describe("the same-site rule from bca0714e is gone from the docs", () => {
     expect(md).not.toContain("received a URL outside this site");
   });
 
-  it("props.md points URLs the page runs to the third-party section of /security", () => {
+  it("props.md points URLs the page runs to the third-party section of /scripts/security", () => {
     expect(read("content/props.md")).toContain(
-      "/security#loading-scripts-and-styles-from-other-sites",
+      "/scripts/security#loading-scripts-and-styles-from-other-sites",
     );
   });
 });
@@ -497,7 +501,7 @@ describe("troubleshooting and FAQ", () => {
     expect(faq).toMatch(/^#+ How do I keep server scripts safe\?$/m);
     const at = faq.indexOf("How do I keep server scripts safe?");
     const answer = faq.slice(at, at + 2000);
-    expect(answer).toContain("](/security");
+    expect(answer).toContain("](/scripts/security");
     expect(answer).toContain("](/html-helpers");
   });
 });
@@ -505,7 +509,7 @@ describe("troubleshooting and FAQ", () => {
 // ─── CSP docs ───────────────────────────────────────────────────────────────
 
 describe("CSP docs (opt-in contentSecurityPolicy)", () => {
-  it("the how-to has a recipe per host and links safeUrl origins on /security", () => {
+  it("the how-to has a recipe per host and links safeUrl origins on /scripts/security", () => {
     const md = read("content/how-to/content-security-policy.md");
     for (const host of [
       /node|production server|bascik --server/i,
@@ -521,7 +525,7 @@ describe("CSP docs (opt-in contentSecurityPolicy)", () => {
       ).toBe(true);
     expect(md).toContain("contentSecurityPolicy");
     expect(md).toContain("reportOnly");
-    expect(md).toContain("](/security");
+    expect(md).toContain("](/scripts/security");
     expect(md).toMatch(/curl -I/);
   });
 
@@ -667,7 +671,7 @@ describe("the html-helpers Errors table and Troubleshooting quote the real messa
   it("documents boolean attributes and the false-in-an-attribute trap", () => {
     expect(helpers).toMatch(/## Boolean attributes/);
     expect(helpers).toContain('checked=""');
-    expect(read("content/security.md")).toContain(
+    expect(read("content/scripts/security.md")).toContain(
       "/html-helpers#boolean-attributes",
     );
   });
@@ -694,7 +698,7 @@ describe("the html-helpers Errors table and Troubleshooting quote the real messa
   });
 
   it("says the html error is in the terminal in dev (the browser shows a plain 500)", () => {
-    expect(read("content/security.md")).toMatch(/terminal/);
+    expect(read("content/scripts/security.md")).toMatch(/terminal/);
     expect(helpers).toMatch(/terminal/);
   });
 });
@@ -702,7 +706,7 @@ describe("the html-helpers Errors table and Troubleshooting quote the real messa
 describe("the linter docs match the CLI", () => {
   const CLI_FORMAT =
     /src\/pages\/search\.html:\d+:\d+ - warning: \(server-script-unescaped-markup\) This markup template/;
-  it.each(["content/tools/linter.md", "content/security.md"])(
+  it.each(["content/tools/linter.md", "content/scripts/security.md"])(
     "%s shows bascik --check output in its real format",
     (file) => {
       const md = read(file);
@@ -733,18 +737,20 @@ describe("the rest of the docs teach html too", () => {
   it("the templating how-to leads with html for server and stream scripts", () => {
     const md = read("content/how-to/templating.md");
     expect(md).toContain('import { html } from "@bascik/bascik/html"');
-    expect(md).toContain("](/security");
+    expect(md).toContain("](/scripts/security");
     expect(md).toContain("](/html-helpers");
   });
 
   it("build-script examples next to html examples use html", () => {
-    const server = read("content/server-scripts.md");
+    const server = read("content/scripts/server.md");
     expect(server).not.toContain('(l) => `<a href="${l.href}">');
     expect(server).toContain('(l) => html`<a href="${l.href}">');
     expect(read("content/exec-scripts.md")).not.toContain(
       "(item) => `<li>${item.title}</li>`",
     );
-    expect(read("content/security.md")).toMatch(/build time|build script/i);
+    expect(read("content/scripts/security.md")).toMatch(
+      /build time|build script/i,
+    );
   });
 
   it("the testing page's helper builds its markup with html", () => {
@@ -756,16 +762,16 @@ describe("the rest of the docs teach html too", () => {
   // The full scheme list lives on the Security page only (Collin
   // 2026-10-29); the table names the rule with "script URLs such as".
   it("the What html does table names the script-URL rule", () => {
-    const md = read("content/server-scripts.md");
+    const md = read("content/scripts/server.md");
     const at = md.indexOf("## Escaping and injection");
     expect(md.slice(at, at + 6000)).toContain(
       "script URLs such as `javascript:`",
     );
-    expect(read("content/security.md")).toContain("`livescript:`");
+    expect(read("content/scripts/security.md")).toContain("`livescript:`");
   });
 
   it("the CMS recipe shows the sanitize call", () => {
-    const md = read("content/security.md");
+    const md = read("content/scripts/security.md");
     const at = md.indexOf("## CMS and Markdown content");
     expect(md.slice(at, at + 3000)).toMatch(/sanitize\w*\(/);
   });
@@ -775,7 +781,7 @@ describe("the rest of the docs teach html too", () => {
     expect(md).toContain("### Components rendered at request time");
     expect(md).toContain('closest(".save")');
     expect(md).toContain("hashes: { scripts: true, styles: false }");
-    expect(read("content/security.md")).toContain(
+    expect(read("content/scripts/security.md")).toContain(
       "/how-to/content-security-policy#components-rendered-at-request-time",
     );
     expect(read("content/configuration.md")).toContain("styles: false");

@@ -5,7 +5,7 @@
  * Legitimate outputs come from the pages themselves: each page's server and
  * stream scripts are run as written (they import nothing) and their output
  * is rendered with a manifest built from the components on disk: the docs'
- * request-time demos (server-scripts.md, stream-scripts.md), the Cloudflare
+ * request-time demos (scripts/server.md, scripts/stream.md), the Cloudflare
  * catalog fixture the live demo is deployed from, the pkg e2e
  * server-components pages, and 1000 small cards in one output. Each must
  * spend at most a tenth of its budget. The hostile shapes, a visitor's
@@ -218,8 +218,8 @@ beforeEach(() => {
 describe("the scan budget leaves legitimate pages far under it", () => {
   const FAR_UNDER = 0.1;
 
-  it("the docs' request-time demos (server-scripts.md, stream-scripts.md)", async () => {
-    const files = await docsDemoFiles("server-scripts.md", "stream-scripts.md");
+  it("the docs' request-time demos (scripts/server.md, scripts/stream.md)", async () => {
+    const files = await docsDemoFiles("scripts/server.md", "scripts/stream.md");
     const list: ComponentList = {};
     for (const [path, body] of files) {
       const match = /^src\/components\/([\w-]+)\/\1\.(html|css|js)$/.exec(path);
@@ -231,7 +231,7 @@ describe("the scan budget leaves legitimate pages far under it", () => {
       if (ext === "js") list[name].fileContent += `<script>${body}</script>`;
       if (ext === "css") list[name].cssFileContent = body;
     }
-    expect(Object.keys(list).sort()).toEqual(["product-card", "stock-line"]);
+    expect(Object.keys(list).sort()).toEqual(["book-card", "stock-line"]);
     const manifest = await build(list);
     const pages = [...files].filter(([path]) => path.startsWith("src/pages/"));
     expect(pages.length).toBeGreaterThanOrEqual(3);
@@ -257,7 +257,7 @@ describe("the scan budget leaves legitimate pages far under it", () => {
     let rendered = 0;
     for (const page of ["catalog.html", "catalog-stream.html"]) {
       const text = await readFile(join(root, "pages", page), "utf8");
-      for (const q of ["", "frother", "kettle"]) {
+      for (const q of ["", "monolith", "types"]) {
         for (const output of await pageOutputs(
           text,
           `http://localhost/${page}?q=${q}`,

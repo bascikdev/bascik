@@ -36,7 +36,7 @@ const withoutPathComment = (code: string) =>
 
 const DEMOS = [
   {
-    tag: "froth-picker",
+    tag: "format-picker",
     usage: "name-radio-usage",
     usagePath: "src/pages/index.html",
     source: "name-radio-source-html",
@@ -44,7 +44,7 @@ const DEMOS = [
     copies: 2,
   },
   {
-    tag: "frother-question",
+    tag: "faq-question",
     usage: "name-details-usage",
     usagePath: "src/pages/faq.html",
     source: "name-details-source-html",
@@ -147,14 +147,14 @@ describe("name-attribute demos: generated Output", () => {
     },
   );
 
-  it("ships name as written: each froth-picker keeps name=froth inside a form of its own", () => {
+  it("ships name as written: each format-picker keeps name=format inside a form of its own", () => {
     const raw = outputOf("name-radio-output-html").raw;
-    expect(raw.match(/name="froth"/g)).toHaveLength(4);
+    expect(raw.match(/name="format"/g)).toHaveLength(4);
     expect(raw.match(/<form\b/g)).toHaveLength(2);
     expect(raw).not.toContain("bascik__");
   });
 
-  it("ships name as written: every frother-question is one details name=faq group", () => {
+  it("ships name as written: every faq-question is one details name=faq group", () => {
     const raw = outputOf("name-details-output-html").raw;
     expect(raw.match(/<details name="faq"/g)).toHaveLength(3);
     expect(raw).not.toContain("bascik__");

@@ -61,7 +61,7 @@ src/components/faq-list/
 
 - **Content lives with the component that renders it.** A page that also needs the data, for JSON-LD say, imports it from the component's folder: `import { faqs } from "@/components/faq-list/faqs.ts"`.
 - **A module one page uses sits beside that page** as a `.ts` file (`src/pages/pricing/plans.ts` for `src/pages/pricing/index.html`). The pages folder publishes every other file, so a `.json` or `.js` data file there would be copied to the site as a public file; a `.ts` file never is.
-- **Only shared modules go in `src/lib/`:** a helper several components or pages call, such as an SEO helper or a collection reader, or a module that `bascik.config.ts`, an [exec script](/exec-scripts), or an [API route](/api-routes) also imports. Import those with `@/lib/...` ([Script Imports](/script-imports)).
+- **Only shared modules go in `src/lib/`:** a helper several components or pages call, such as an SEO helper or a collection reader, or a module that `bascik.config.ts`, an [exec script](/exec-scripts), or an [API route](/api-routes) also imports. Import those with `@/lib/...` ([Script Imports](/scripts/imports)).
 - **No watch entry needed.** The dev server watches component folders and the pages folder already, and an edit to a module there rebuilds every page whose scripts import it. Only `src/lib/` and other folders outside them need [`pipeline.watchPaths`](/watch-paths).
 
 The `bascik` agent skill's `audit-components.mjs` checks this (`single-use-module`). It reports a `src/lib/` module that exactly one component or page imports, and content one component renders that pages also read for JSON-LD: a module that exports values rather than functions, even when those values are built with `html`. Each finding names the folder to move the module to and the `@/components/...` path the pages then import. It leaves genuine shared helpers alone: a module that exports functions a component and a page both call, a module several components use, and a module two other `src/lib/` modules import (a `site.ts` that `seo.ts` and `schema.ts` both read), whoever reaches those modules. A module that config, an exec script or an API route imports stays too.
@@ -84,9 +84,9 @@ The `bascik` agent skill's `audit-components.mjs` checks this (`single-use-modul
 
 Default to build time. A page that is the same for every visitor ships as vanilla HTML, served from any static host.
 
-- A [`data-bascik-build`](/build-scripts) script runs at build time for each page that uses it, and `data-bascik-build-once` runs once per file, with no page context, for output that is the same everywhere.
-- A [`data-bascik-routes`](/dynamic-routes) script turns one template into many pages.
-- A [`data-bascik-server`](/server-scripts) or [`data-bascik-stream`](/stream-scripts) script runs per request, only for what differs per request. It can [return component tags](/server-scripts#returning-component-tags), and builds its markup with [`html`](/html-helpers) from `@bascik/bascik/html`, which escapes each value for where it lands.
+- A [`data-bascik-build`](/scripts/build) script runs at build time for each page that uses it, and `data-bascik-build-once` runs once per file, with no page context, for output that is the same everywhere.
+- A [`data-bascik-routes`](/scripts/dynamic-routes) script turns one template into many pages.
+- A [`data-bascik-server`](/scripts/server) or [`data-bascik-stream`](/scripts/stream) script runs per request, only for what differs per request. It can [return component tags](/scripts#returning-component-tags), and builds its markup with [`html`](/html-helpers) from `@bascik/bascik/html`, which escapes each value for where it lands.
 
 ## Give Tests a Handle
 
@@ -102,7 +102,7 @@ Bascik ships the code you wrote. A component tag is replaced by its template, an
 
 `<site-nav>` and `<faq-item>` exist only in your source. At build time each one is replaced by its template, so the browser, search engines, and screen readers never see the tag name. A component tag does not have to be a semantic element, and it cannot be one: what visitors get is the root element and the markup inside it. That markup is where the HTML standard's elements belong.
 
-Still name a component after what it is. `<site-nav>`, `<product-card>`, and `<faq-item>` read like the page they build, so a page made of components reads almost like an outline. `<blue-box>` or `<wrapper-2>` says nothing. A good name often echoes its root element: `<site-nav>` has a `<nav>` root, and `<faq-item>` has a `<details>` root. The name is for the people reading your code, and the root element is for everyone else.
+Still name a component after what it is. `<site-nav>`, `<book-card>`, and `<faq-item>` read like the page they build, so a page made of components reads almost like an outline. `<blue-box>` or `<wrapper-2>` says nothing. A good name often echoes its root element: `<site-nav>` has a `<nav>` root, and `<faq-item>` has a `<details>` root. The name is for the people reading your code, and the root element is for everyone else.
 
 ## Why Semantic HTML Matters
 
@@ -128,7 +128,7 @@ A component's root element is the element that replaces its tag, and attributes 
 | A disclosure (show more, FAQ answer)  | `<details>` with `<summary>`         |
 | A list of links or items              | `<ul>` or `<ol>` with `<li>` per row |
 
-A card is an [`<article>`](https://html.spec.whatwg.org/multipage/sections.html#the-article-element) only when it stands on its own, something that could be shared or reused as a whole, such as a blog post or a product. A stat, icon, or feature card is fine as a `<div>`, or as an `<li>` when the cards form a list. Every `<article>` adds an entry to the accessibility tree, so a page of them is noise for a screen reader user.
+A card is an [`<article>`](https://html.spec.whatwg.org/multipage/sections.html#the-article-element) only when it stands on its own, something that could be shared or reused as a whole, such as a blog post or a book. A stat, icon, or feature card is fine as a `<div>`, or as an `<li>` when the cards form a list. Every `<article>` adds an entry to the accessibility tree, so a page of them is noise for a screen reader user.
 
 ### Bad: A Wrapper Div
 
@@ -141,12 +141,12 @@ This `<site-nav>` looks the same as the good one below, but its output is a `<di
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother</title>
+    <title>Refactoring the Monolith</title>
   </head>
   <body>
     <site-nav aria-label="Demo site" />
     <main id="main">
-      <h1>Milk frother</h1>
+      <h1>Refactoring the Monolith</h1>
     </main>
   </body>
 </html>
@@ -181,7 +181,7 @@ This `<site-nav>` looks the same as the good one below, but its output is a `<di
 </div>
 
 <main id="main">
-  <h1>Milk frother</h1>
+  <h1>Refactoring the Monolith</h1>
 </main>
 ```
 
@@ -196,12 +196,12 @@ The root is a `<nav>`, the links are a list, and the `aria-label` from the usage
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother</title>
+    <title>Refactoring the Monolith</title>
   </head>
   <body>
     <site-nav aria-label="Demo site" />
     <main id="main">
-      <h1>Milk frother</h1>
+      <h1>Refactoring the Monolith</h1>
     </main>
   </body>
 </html>
@@ -247,7 +247,7 @@ The root is a `<nav>`, the links are a list, and the `aria-label` from the usage
 </nav>
 
 <main id="main">
-  <h1>Milk frother</h1>
+  <h1>Refactoring the Monolith</h1>
 </main>
 ```
 
@@ -286,11 +286,11 @@ The fix is a `<button>`. `aria-pressed` tells a screen reader whether it is on, 
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother</title>
+    <title>Refactoring the Monolith</title>
   </head>
   <body>
     <main id="main">
-      <h1>Milk frother</h1>
+      <h1>Refactoring the Monolith</h1>
       <like-button />
     </main>
   </body>
@@ -338,12 +338,12 @@ The fix is a `<button>`. `aria-pressed` tells a screen reader whether it is on, 
 
 ```html
 <main id="main">
-  <h1>Milk frother</h1>
+  <h1>Refactoring the Monolith</h1>
   <!-- src/components/like-button/like-button.html -->
 
   <button
     class="bascik__like-button__like"
-    id="bascik__like-button__bc33f42c__like"
+    id="bascik__like-button__fd3ae71c__like"
     type="button"
     aria-pressed="false"
     data-testid="like-button"
@@ -353,7 +353,7 @@ The fix is a `<button>`. `aria-pressed` tells a screen reader whether it is on, 
   <script>
     (function () {
       const like = document.getElementById(
-        "bascik__like-button__bc33f42c__like",
+        "bascik__like-button__fd3ae71c__like",
       );
       like.addEventListener("click", () => {
         const pressed = like.getAttribute("aria-pressed") === "true";
@@ -383,11 +383,11 @@ This FAQ item opens and closes with a click, Enter, or Space, and screen readers
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother</title>
+    <title>Refactoring the Monolith</title>
   </head>
   <body>
     <main id="main">
-      <h1>Milk frother</h1>
+      <h1>Refactoring the Monolith</h1>
       <faq-item
         data-bascik-prop-question="Does Bascik add JavaScript?"
         data-bascik-prop-answer="No. Every script in the output is one you wrote."
@@ -421,7 +421,7 @@ This FAQ item opens and closes with a click, Enter, or Space, and screen readers
 
 ```html
 <main id="main">
-  <h1>Milk frother</h1>
+  <h1>Refactoring the Monolith</h1>
   <!-- src/components/faq-item/faq-item.html -->
 
   <details class="bascik__faq-item__item" data-testid="faq-item">
@@ -488,7 +488,7 @@ Write the field names your server reads. A plain form post works with or without
 <form action="/api/subscribe" method="post" data-testid="newsletter-signup">
   <label for="email">Email</label>
   <input id="email" name="email" type="email" required />
-  <button type="submit">Get frother tips</button>
+  <button type="submit">Get reading tips</button>
 </form>
 ```
 
@@ -509,7 +509,7 @@ export async function POST(request: Request): Promise<Response> {
 
 Radios are one group when they share a `name` and a form owner. A radio outside any `<form>` has no form owner, so radios with one `name` and no form are one group across the whole page, whichever component they came from. A component that holds a whole radio group needs a `<form>` of its own so each copy on a page is its own group. The form does not have to submit anywhere; it gives the radios their own owner.
 
-Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<form>`, so choosing thick foam for the evening cup leaves the morning cup's choice alone:
+Here the same `format-picker` appears twice. Each copy wraps its radios in a `<form>`, so choosing the paperback of one book leaves the format chosen for the other alone:
 
 <!-- demo:name-radio-usage -->
 
@@ -518,11 +518,11 @@ Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<fo
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother</title>
+    <title>Refactoring the Monolith</title>
   </head>
   <body>
-    <froth-picker data-bascik-prop-cup="Morning cup" />
-    <froth-picker data-bascik-prop-cup="Evening cup" />
+    <format-picker data-bascik-prop-book="Refactoring the Monolith" />
+    <format-picker data-bascik-prop-book="Practical Type Systems" />
   </body>
 </html>
 ```
@@ -530,27 +530,27 @@ Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<fo
 <!-- demo:name-radio-source-html -->
 
 ```html
-<!-- src/components/froth-picker/froth-picker.html -->
-<form data-testid="froth-picker">
+<!-- src/components/format-picker/format-picker.html -->
+<form data-testid="format-picker">
   <fieldset>
-    <legend data-bascik-prop-cup>Cup</legend>
+    <legend data-bascik-prop-book>Book</legend>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="light"
-        data-testid="froth-light"
+        name="format"
+        value="ebook"
+        data-testid="format-ebook"
       />
-      Light foam
+      Ebook
     </label>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="thick"
-        data-testid="froth-thick"
+        name="format"
+        value="paperback"
+        data-testid="format-paperback"
       />
-      Thick foam
+      Paperback
     </label>
   </fieldset>
 </form>
@@ -559,52 +559,52 @@ Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<fo
 <!-- demo:name-radio-output-html -->
 
 ```html
-<!-- src/components/froth-picker/froth-picker.html -->
-<form data-testid="froth-picker">
+<!-- src/components/format-picker/format-picker.html -->
+<form data-testid="format-picker">
   <fieldset>
-    <legend>Morning cup</legend>
+    <legend>Refactoring the Monolith</legend>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="light"
-        data-testid="froth-light"
+        name="format"
+        value="ebook"
+        data-testid="format-ebook"
       />
-      Light foam
+      Ebook
     </label>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="thick"
-        data-testid="froth-thick"
+        name="format"
+        value="paperback"
+        data-testid="format-paperback"
       />
-      Thick foam
+      Paperback
     </label>
   </fieldset>
 </form>
 
-<!-- src/components/froth-picker/froth-picker.html -->
-<form data-testid="froth-picker">
+<!-- src/components/format-picker/format-picker.html -->
+<form data-testid="format-picker">
   <fieldset>
-    <legend>Evening cup</legend>
+    <legend>Practical Type Systems</legend>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="light"
-        data-testid="froth-light"
+        name="format"
+        value="ebook"
+        data-testid="format-ebook"
       />
-      Light foam
+      Ebook
     </label>
     <label>
       <input
         type="radio"
-        name="froth"
-        value="thick"
-        data-testid="froth-thick"
+        name="format"
+        value="paperback"
+        data-testid="format-paperback"
       />
-      Thick foam
+      Paperback
     </label>
   </fieldset>
 </form>
@@ -612,46 +612,46 @@ Here the same `froth-picker` appears twice. Each copy wraps its radios in a `<fo
 
 ### Radios Inside a Larger Form
 
-When the radios already sit inside a larger form, such as a checkout with one size per line item, a `<form>` per copy is not an option: forms cannot nest. Give each copy its own name through a prop instead. Bind `name` with `data-bascik-attr-name` and leave out the literal `name`:
+When the radios already sit inside a larger form, such as a checkout with one format per line item, a `<form>` per copy is not an option: forms cannot nest. Give each copy its own name through a prop instead. Bind `name` with `data-bascik-attr-name` and leave out the literal `name`:
 
 ```html
-<!-- src/components/froth-picker/froth-picker.html -->
+<!-- src/components/format-picker/format-picker.html -->
 <fieldset>
-  <legend data-bascik-prop-cup>Cup</legend>
+  <legend data-bascik-prop-book>Book</legend>
   <label>
-    <input type="radio" data-bascik-attr-name="group" value="light" />
-    Light foam
+    <input type="radio" data-bascik-attr-name="group" value="ebook" />
+    Ebook
   </label>
   <label>
-    <input type="radio" data-bascik-attr-name="group" value="thick" />
-    Thick foam
+    <input type="radio" data-bascik-attr-name="group" value="paperback" />
+    Paperback
   </label>
 </fieldset>
 ```
 
 ```html
 <!-- src/pages/order.html, inside <form action="/api/order" method="post"> -->
-<froth-picker
-  data-bascik-prop-cup="Morning cup"
-  data-bascik-prop-group="morning-froth"
+<format-picker
+  data-bascik-prop-book="Refactoring the Monolith"
+  data-bascik-prop-group="monolith-format"
 />
-<froth-picker
-  data-bascik-prop-cup="Evening cup"
-  data-bascik-prop-group="evening-froth"
+<format-picker
+  data-bascik-prop-book="Practical Type Systems"
+  data-bascik-prop-group="types-format"
 />
 ```
 
-The server then receives `morning-froth=light&evening-froth=thick`, one key per cup. One radio per component, such as a `size-option` used three times to build one group, is the opposite case: there the shared `name` is what makes the copies one group.
+The server then receives `monolith-format=ebook&types-format=paperback`, one key per book. One radio per component, such as a `size-option` used three times to build one group, is the opposite case: there the shared `name` is what makes the copies one group.
 
-The linter catches the mistake. A `froth-picker` with a literal `name="froth"` on both radios and no `<form>` of its own, used twice on a page, gets a `shared-name-group` warning on the first `name`, in the editor and in `bascik --check`:
+The linter catches the mistake. A `format-picker` with a literal `name="format"` on both radios and no `<form>` of its own, used twice on a page, gets a `shared-name-group` warning on the first `name`, in the editor and in `bascik --check`:
 
 ```text
-src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group) name="froth" is on 2 radios with no <form> of their own, and <froth-picker> is used 2 times on src/pages/index.html, so the copies act as one radio group on the page: choosing in one copy clears the others. Wrap the radios in the component's own <form>, or give each copy its own name through a prop: data-bascik-attr-name="group" in place of name here, and data-bascik-prop-group="..." with a different value on each <froth-picker>.
+src/components/format-picker/format-picker.html:4:25 - warning: (shared-name-group) name="format" is on 2 radios with no <form> of their own, and <format-picker> is used 2 times on src/pages/index.html, so the copies act as one radio group on the page: choosing in one copy clears the others. Wrap the radios in the component's own <form>, or give each copy its own name through a prop: data-bascik-attr-name="group" in place of name here, and data-bascik-prop-group="..." with a different value on each <format-picker>.
 ```
 
 ## Exclusive `<details>` Accordions
 
-`<details name="faq">` makes every `<details>` on the page with that `name` one exclusive accordion: opening one closes the one that was open. Because `name` ships as written, an accordion can be built from one component per item. Open one question and the open one closes, though each comes from a separate `frother-question`:
+`<details name="faq">` makes every `<details>` on the page with that `name` one exclusive accordion: opening one closes the one that was open. Because `name` ships as written, an accordion can be built from one component per item. Open one question and the open one closes, though each comes from a separate `faq-question`:
 
 <!-- demo:name-details-usage -->
 
@@ -660,21 +660,21 @@ src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Milk frother FAQ</title>
+    <title>Refactoring the Monolith FAQ</title>
   </head>
   <body>
-    <frother-question>
-      <span data-bascik-slot="question">Which milk froths best?</span>
-      Cold whole milk gives the thickest foam.
-    </frother-question>
-    <frother-question>
-      <span data-bascik-slot="question">Can it froth oat milk?</span>
-      Yes. Use a barista blend for a finer foam.
-    </frother-question>
-    <frother-question>
-      <span data-bascik-slot="question">How do I clean the whisk?</span>
-      Rinse it under warm water right after use.
-    </frother-question>
+    <faq-question>
+      <span data-bascik-slot="question">Who is this book for?</span>
+      Developers who maintain a large codebase and want to split it safely.
+    </faq-question>
+    <faq-question>
+      <span data-bascik-slot="question">Do I need to know TypeScript?</span>
+      No. The ideas apply to any language.
+    </faq-question>
+    <faq-question>
+      <span data-bascik-slot="question">Is there an ebook edition?</span>
+      Yes. It comes as EPUB and PDF.
+    </faq-question>
   </body>
 </html>
 ```
@@ -682,9 +682,9 @@ src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group
 <!-- demo:name-details-source-html -->
 
 ```html
-<!-- src/components/frother-question/frother-question.html -->
-<details name="faq" data-testid="frother-question">
-  <summary data-testid="frother-question-summary">
+<!-- src/components/faq-question/faq-question.html -->
+<details name="faq" data-testid="faq-question">
+  <summary data-testid="faq-question-summary">
     <span data-bascik-slot="question"></span>
   </summary>
   <p data-bascik-slot></p>
@@ -694,28 +694,26 @@ src/components/froth-picker/froth-picker.html:4:25 - warning: (shared-name-group
 <!-- demo:name-details-output-html -->
 
 ```html
-<!-- src/components/frother-question/frother-question.html -->
-<details name="faq" data-testid="frother-question">
-  <summary data-testid="frother-question-summary">
-    Which milk froths best?
-  </summary>
-  Cold whole milk gives the thickest foam.
+<!-- src/components/faq-question/faq-question.html -->
+<details name="faq" data-testid="faq-question">
+  <summary data-testid="faq-question-summary">Who is this book for?</summary>
+  Developers who maintain a large codebase and want to split it safely.
 </details>
 
-<!-- src/components/frother-question/frother-question.html -->
-<details name="faq" data-testid="frother-question">
-  <summary data-testid="frother-question-summary">
-    Can it froth oat milk?
+<!-- src/components/faq-question/faq-question.html -->
+<details name="faq" data-testid="faq-question">
+  <summary data-testid="faq-question-summary">
+    Do I need to know TypeScript?
   </summary>
-  Yes. Use a barista blend for a finer foam.
+  No. The ideas apply to any language.
 </details>
 
-<!-- src/components/frother-question/frother-question.html -->
-<details name="faq" data-testid="frother-question">
-  <summary data-testid="frother-question-summary">
-    How do I clean the whisk?
+<!-- src/components/faq-question/faq-question.html -->
+<details name="faq" data-testid="faq-question">
+  <summary data-testid="faq-question-summary">
+    Is there an ebook edition?
   </summary>
-  Rinse it under warm water right after use.
+  Yes. It comes as EPUB and PDF.
 </details>
 ```
 
@@ -725,28 +723,30 @@ A component that holds the whole accordion, used twice on one page, makes one ac
 
 ## `<iframe>` Targets and Image Maps
 
-An `<iframe name="manual">` is a target: `<a href="/manual/descaling" target="manual">` anywhere on the page loads into it, and so does a form with `target="manual"`. Because the name ships as written, links in other components and in the page shell reach it.
+An `<iframe name="sample">` is a target: `<a href="/sample/find-the-seams" target="sample">` anywhere on the page loads into it, and so does a form with `target="sample"`. Because the name ships as written, links in other components and in the page shell reach it.
 
 ```html
-<!-- src/components/manual-viewer/manual-viewer.html -->
+<!-- src/components/sample-viewer/sample-viewer.html -->
 <iframe
-  name="manual"
-  src="/manual/"
-  title="Milk frother manual"
-  data-testid="manual-viewer"
+  name="sample"
+  src="/sample/"
+  title="Refactoring the Monolith sample chapters"
+  data-testid="sample-viewer"
 ></iframe>
 ```
 
 ```html
 <!-- src/pages/support.html -->
 <nav>
-  <a href="/manual/descaling" target="manual">Descaling</a>
-  <a href="/manual/whisk" target="manual">Replacing the whisk</a>
+  <a href="/sample/find-the-seams" target="sample">Find the seams</a>
+  <a href="/sample/strangle-the-old-code" target="sample">
+    Strangle the old code
+  </a>
 </nav>
-<manual-viewer></manual-viewer>
+<sample-viewer></sample-viewer>
 ```
 
-Two copies of `manual-viewer` would be two targets with one name, and a link loads into the first. `usemap="#parts"` works the same way: it uses the first `<map name="parts">` in the page, so a component with a `<map>` used twice gets a `shared-name-group` warning. Give each copy its own names through props (`data-bascik-attr-name` on the `<map>`, `data-bascik-attr-usemap` on the `<img>`), or move the map into the page.
+Two copies of `sample-viewer` would be two targets with one name, and a link loads into the first. `usemap="#parts"` works the same way: it uses the first `<map name="parts">` in the page, so a component with a `<map>` used twice gets a `shared-name-group` warning. Give each copy its own names through props (`data-bascik-attr-name` on the `<map>`, `data-bascik-attr-usemap` on the `<img>`), or move the map into the page.
 
 ## Do Not Name a Control After a Form Property
 
@@ -772,4 +772,4 @@ Do not name a control `action`, `method`, `target`, `submit`, `reset`, `requestS
 - **`id` and `class` are still scoped.** `<label for>`, `aria-*` id lists, `form="id"`, and other id references are rewritten together with their ids, so a component's labels and controls keep pointing at their own copy.
 - **`data-bascik-attr-name="prop"`** sets `name` per usage from a prop, at build time and in server-script output, for a group per copy.
 - **The linter warns `shared-name-group`** when a component used more than once on a page holds a whole radio group outside its own `<form>`, two or more `<details>` with one `name`, or a `<map name>`. See [Linter](/tools/linter#shared-name-group).
-- **Name scoping is an opt-in.** [`scoping.attributes.name: true`](/configuration#scopingattributesname) renames every `name` except `<meta name>` per component instance, the default in earlier Bascik releases. Each copy's radios and `<details>` are then their own group without a `<form>` or a prop, but everything that reads a name from outside the component breaks: field names a server reads come out as `bascik__froth-picker__a1b2c3d4__froth` and need [`data-bascik-preserve="name"`](/preserve) on the form, and an `<iframe>` target no longer matches the links that point at it. Turn it on only for a site with many components that each hold a whole radio group or accordion, where opting the few page-wide names out is less work than a form or a prop per component. The linter then checks forms that post to another site for `data-bascik-preserve="name"` (`external-form-missing-preserve-name`) and stops reporting `shared-name-group`.
+- **Name scoping is an opt-in.** [`scoping.attributes.name: true`](/configuration#scopingattributesname) renames every `name` except `<meta name>` per component instance, the default in earlier Bascik releases. Each copy's radios and `<details>` are then their own group without a `<form>` or a prop, but everything that reads a name from outside the component breaks: field names a server reads come out as `bascik__format-picker__a1b2c3d4__format` and need [`data-bascik-preserve="name"`](/preserve) on the form, and an `<iframe>` target no longer matches the links that point at it. Turn it on only for a site with many components that each hold a whole radio group or accordion, where opting the few page-wide names out is less work than a form or a prop per component. The linter then checks forms that post to another site for `data-bascik-preserve="name"` (`external-form-missing-preserve-name`) and stops reporting `shared-name-group`.

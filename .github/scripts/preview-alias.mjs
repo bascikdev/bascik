@@ -24,7 +24,7 @@ const HASH_LENGTH = 6;
 const MIN_ALIAS_LENGTH = 8;
 
 /**
- * @param {string} branch The branch name, such as `feature/Milk-Frother_v2`.
+ * @param {string} branch The branch name, such as `feature/Book-Catalog_v2`.
  * @param {readonly string[]} workerNames Every Worker the alias is used with.
  * @returns {string} Lowercase `[a-z0-9-]`, starting with a letter, not ending
  *   with `-`, short enough for the longest Worker name, and in practice

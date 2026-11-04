@@ -116,7 +116,7 @@ export function structuralRefusal(
   const strings = Object.assign(sample.raw.map(cook), {
     raw: sample.raw,
   }) as unknown as TemplateStringsArray;
-  const values = sample.raw.slice(1).map(() => "milk-frother");
+  const values = sample.raw.slice(1).map(() => "book-card");
   try {
     html(strings, ...values);
     return undefined;

@@ -59,8 +59,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * workflow guidance and code examples (the built index measures 1,399,032 bytes).
  * 1.43 MB: Netlify deployment and watched adapter development add searchable documentation
  * (the index measures about 1,416,524 bytes).
+ * 1.44 MB: the /scripts overview adds the script kinds table and per-kind environment variables
+ * (the index measures about 1,431,518 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_430_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_440_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

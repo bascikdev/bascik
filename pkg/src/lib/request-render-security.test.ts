@@ -2,7 +2,7 @@
  * Request-time component rendering, attacker lens (prompt 157 security
  * audit, 2026-10-28). The baseline is documented: a server or stream
  * script's output is HTML, and its author escapes every visitor value
- * (server-scripts.md, "Escaping and injection"). What is new is that tags in
+ * (scripts/server.md, "Escaping and injection"). What is new is that tags in
  * that output expand into components. Each test here plays a visitor who
  * controls one value `q` that a script escapes into a prop, a slot or an
  * attribute of a returned component tag, and asserts the SAFE outcome:
@@ -327,7 +327,7 @@ const expectSameBrowserView = (
 
 // ─── Escapers an author may use ─────────────────────────────────────────────
 
-/** server-scripts.md's escaper (all five characters). */
+/** scripts/server.md's escaper (all five characters). */
 const escapeFull = (value: string): string =>
   value.replace(
     /[&<>"']/g,
@@ -336,7 +336,7 @@ const escapeFull = (value: string): string =>
         c
       ]!,
   );
-/** The escaper in server-scripts.md's "Render a card per search result". */
+/** The escaper in scripts/server.md's "Render a card per search result". */
 const escapeCatalog = (value: string): string =>
   value
     .replaceAll("&", "&amp;")
@@ -444,7 +444,7 @@ beforeEach(() => {
 // ─── A. prop and slot values in every escaping position ─────────────────────
 
 describe.each([
-  ["escapeFull (server-scripts.md)", escapeFull],
+  ["escapeFull (scripts/server.md)", escapeFull],
   ["escapeCatalog (& < \" only, the docs' search example)", escapeCatalog],
 ] as const)(
   "A. an escaped visitor value never becomes markup: %s",

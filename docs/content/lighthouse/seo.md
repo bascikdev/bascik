@@ -173,7 +173,7 @@ An [enriched search result](https://developers.google.com/search/docs/appearance
 
 ### Generate Structured Data at Build Time
 
-Google can process JSON-LD added by JavaScript, but the markup must be present in the rendered page and match its visible content; rendering can also add processing delay. Bascik's [build scripts](/build-scripts) are a natural fit for generating JSON-LD from data files at build time, with no browser JavaScript required. Verify the built HTML contains the intended data. See Google's guidance for [generating structured data with JavaScript](https://developers.google.com/search/docs/appearance/structured-data/generate-structured-data-with-javascript).
+Google can process JSON-LD added by JavaScript, but the markup must be present in the rendered page and match its visible content; rendering can also add processing delay. Bascik's [build scripts](/scripts/build) are a natural fit for generating JSON-LD from data files at build time, with no browser JavaScript required. Verify the built HTML contains the intended data. See Google's guidance for [generating structured data with JavaScript](https://developers.google.com/search/docs/appearance/structured-data/generate-structured-data-with-javascript).
 
 > **Validate before shipping.** Use [Google's Rich Results Test](https://search.google.com/test/rich-results) to check markup for Google-supported rich results, then inspect the deployed pages in Search Console. Passing a test does not guarantee that Google will show a rich result. Use [Schema.org](https://schema.org) for the broader vocabulary; not every Schema.org type has a Google search appearance.
 

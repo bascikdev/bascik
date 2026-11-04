@@ -6,7 +6,7 @@
       "url": [
         "http://localhost:8097/",
         "http://localhost:8097/getting-started",
-        "http://localhost:8097/stream-scripts",
+        "http://localhost:8097/scripts/stream",
         "http://localhost:8097/sitemap",
         "http://localhost:8097/search"
       ],

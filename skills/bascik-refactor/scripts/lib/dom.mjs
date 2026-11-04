@@ -106,7 +106,7 @@ function capText(text, max) {
  * collectNodes in geometry-diff.mjs reads text the same way (it must be self-contained); keep the two in step.
  *
  * Markup formatting still shows in the result: React writes no whitespace between elements, formatted HTML has
- * newlines there, so "MILK<br>FROTHER" reads "MILKFROTHER" on one side and "MILK FROTHER" on the other. Compare keys
+ * newlines there, so "TYPE<br>SYSTEMS" reads "TYPESYSTEMS" on one side and "TYPE SYSTEMS" on the other. Compare keys
  * with keyMatch (lib/checks.mjs; matchKeyInPage in the page), which removes all whitespace; keep this text for messages.
  */
 function keyText(el, max) {

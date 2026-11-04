@@ -164,7 +164,7 @@ Browsers ignore some directives in a `<meta>` policy: `frame-ancestors`, `sandbo
 
 ## Third-party scripts
 
-A script loaded from another origin needs that origin in `script-src` (and a stylesheet, in `style-src`). With `contentSecurityPolicy`, list it in `directives`; the meta recipe adds it automatically. Bascik itself allows a script or stylesheet URL on any site, as browsers do, so when such a URL can come from visitor-influenced data, the policy is what stops another origin. A script can also check the URL with `safeUrl(value, { origins })`; see [Loading scripts and styles from other sites](/security#loading-scripts-and-styles-from-other-sites). Some libraries also need `'unsafe-eval'`. Alpine and petite-vue compile directive expressions with `new Function`, so a page that loads them needs `'unsafe-eval'` to work. Add it only for those pages. See [JavaScript Libraries](/libraries).
+A script loaded from another origin needs that origin in `script-src` (and a stylesheet, in `style-src`). With `contentSecurityPolicy`, list it in `directives`; the meta recipe adds it automatically. Bascik itself allows a script or stylesheet URL on any site, as browsers do, so when such a URL can come from visitor-influenced data, the policy is what stops another origin. A script can also check the URL with `safeUrl(value, { origins })`; see [Loading scripts and styles from other sites](/scripts/security#loading-scripts-and-styles-from-other-sites). Some libraries also need `'unsafe-eval'`. Alpine and petite-vue compile directive expressions with `new Function`, so a page that loads them needs `'unsafe-eval'` to work. Add it only for those pages. See [JavaScript Libraries](/libraries).
 
 Scripts injected by your host after the build are not in the emitted HTML, so the recipe cannot discover them. If Cloudflare Web Analytics is enabled, explicitly add `https://static.cloudflareinsights.com` to `sources` in the recipe. The beacon does not need `'unsafe-inline'` or `'unsafe-eval'`. This docs site allows that origin in every page's policy so Cloudflare's injected beacon can run.
 
@@ -196,9 +196,9 @@ The `post` recipe above hashes the built pages, so it never sees what a server o
 
 ### Components rendered at request time
 
-A server or stream script can also return component tags, which Bascik renders with their `<style>` block and client scripts at request time (see [Returning component tags](/server-scripts#returning-component-tags)). With `generate.cspHashes: true`, the `csp-hashes.json` entry of every route that has a server or stream script therefore also lists, in its own `styles` and `scripts` arrays, the style hash and first-instance client script hashes of every component that can be rendered at request time. Any component can be returned, so every one of them is listed. The emitted `<style>` text is exactly the hashed text. A targeted `--only` build keeps these entries.
+A server or stream script can also return component tags, which Bascik renders with their `<style>` block and client scripts at request time (see [Returning component tags](/scripts#returning-component-tags)). With `generate.cspHashes: true`, the `csp-hashes.json` entry of every route that has a server or stream script therefore also lists, in its own `styles` and `scripts` arrays, the style hash and first-instance client script hashes of every component that can be rendered at request time. Any component can be returned, so every one of them is listed. The emitted `<style>` text is exactly the hashed text. A targeted `--only` build keeps these entries.
 
-The policy still blocks a `<script>` or `<style>` a visitor manages to write, because its hash is not listed. It cannot block a component tag injected through an escaping bug: that component's client script and stylesheet are listed, so they run, with their usual text, on elements whose props, classes, and inherited attributes the visitor chose. Build script output with `html` from `@bascik/bascik/html`, and write component scripts that treat their own markup as data. See [Security](/security).
+The policy still blocks a `<script>` or `<style>` a visitor manages to write, because its hash is not listed. It cannot block a component tag injected through an escaping bug: that component's client script and stylesheet are listed, so they run, with their usual text, on elements whose props, classes, and inherited attributes the visitor chose. Build script output with `html` from `@bascik/bascik/html`, and write component scripts that treat their own markup as data. See [Security](/scripts/security).
 
 Two kinds of component cannot be covered by a hash-only policy when a script returns them, because their bytes change with each instance:
 
@@ -207,15 +207,15 @@ Two kinds of component cannot be covered by a hash-only policy when a script ret
 
 With `generate.cspHashes` on, `bascik --check` lists these under `Components without stable CSP hashes at request time`, and their hashes are not in `csp-hashes.json`. The starter's `<my-counter>` and `<site-header>` are listed, because their scripts use `getElementById`. On pages served under a strict policy, use such components only in page markup, where the build hashes each instance, or change them so their CSS and scripts do not depend on the instance.
 
-To make a script the same in every instance, drop the scoped id and find the element from the event. This is the `<product-card>` script from [Render a card per search result](/server-scripts#render-a-card-per-search-result): one listener on the document serves every card, `closest(".save")` finds the button that was clicked (Bascik rewrites the class to the component's scoped class, which is the same in every instance), and the attribute on `<html>` keeps a second copy of the script from adding a second listener.
+To make a script the same in every instance, drop the scoped id and find the element from the event. This is the `<book-card>` script from [Render a card per search result](/scripts/server#render-a-card-per-search-result): one listener on the document serves every card, `closest(".save")` finds the button that was clicked (Bascik rewrites the class to the component's scoped class, which is the same in every instance), and the attribute on `<html>` keeps a second copy of the script from adding a second listener.
 
 ```js
-// src/components/product-card/product-card.js
+// src/components/book-card/book-card.js
 // One click listener serves every card on the page. The text is the same in
 // every instance (no scoped id), so one CSP hash covers cards a server script
 // renders at request time too.
-if (!document.documentElement.hasAttribute("data-product-card-save")) {
-  document.documentElement.setAttribute("data-product-card-save", "");
+if (!document.documentElement.hasAttribute("data-book-card-save")) {
+  document.documentElement.setAttribute("data-book-card-save", "");
   document.addEventListener("click", (event) => {
     const save = event.target.closest(".save");
     if (save === null) return;
@@ -226,7 +226,7 @@ if (!document.documentElement.hasAttribute("data-product-card-save")) {
 }
 ```
 
-The button in `product-card.html` has `class="save"` and no `id`. After the change, `bascik --check` no longer lists the component, and its hash is in `csp-hashes.json` for every route with a server or stream script.
+The button in `book-card.html` has `class="save"` and no `id`. After the change, `bascik --check` no longer lists the component, and its hash is in `csp-hashes.json` for every route with a server or stream script.
 
 ## Check that it works
 
