@@ -90,6 +90,7 @@ interface Root {
 // - docs-pagination and docs-sidebar render the current page's navigation
 //   from BASCIK_PAGE_PATH / BASCIK_PAGE_FILE;
 // - site-header highlights the current page from BASCIK_PAGE_PATH;
+// - demo-nav links to the current page's source from BASCIK_PAGE_FILE;
 // - page-aware-badge and shared-build-badge print BASCIK_PAGE_PATH;
 // - server-script-comp returns `<p id="comp-server-output">`, an id the
 //   build scopes per instance inside the script body;
@@ -133,7 +134,7 @@ const ROOTS: Root[] = [
   {
     dir: "adapters/cloudflare/e2e/fixture",
     components: ["src/components"],
-    unsupported: {},
+    unsupported: { "demo-nav": "build-script-reads-page-context" },
   },
 ];
 
