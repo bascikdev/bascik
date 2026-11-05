@@ -14,7 +14,7 @@ Bascik itself is checked with [unit, integration, and end-to-end tests](/interna
 
 ### Rinsesoft
 
-A business website built with Bascik's HTML components and scoped styles.
+A founder-led practice helping businesses improve operations and build the systems and capacity to grow.
 
 ### Sunridge Counseling
 
