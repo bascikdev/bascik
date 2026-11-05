@@ -381,6 +381,41 @@ describe("audit-seo", () => {
     expect(facts.h1Count).toBe(1);
   });
 
+  it("flags image properties placed before their image tag", () => {
+    const image = "https://example.com/og.jpg";
+    expect(
+      inspectPage(
+        `<head><meta name=twitter:image:alt content=a><meta property=og:image:alt content=a>` +
+          `<meta property=og:image content=${image}><meta property=og:image:width content=1200>` +
+          `<meta name=twitter:image content=${image}></head>`,
+      ).imageTagsBeforeRoot,
+    ).toEqual([
+      { tag: "twitter:image:alt", root: "twitter:image" },
+      { tag: "og:image:alt", root: "og:image" },
+    ]);
+    expect(
+      inspectPage(
+        `<head><meta property=og:image content=${image}><meta property=og:image:alt content=a>` +
+          `<meta name=twitter:image content=${image}><meta name=twitter:image:alt content=a></head>`,
+      ).imageTagsBeforeRoot,
+    ).toEqual([]);
+    const findings = auditPages(
+      [
+        page(
+          "/",
+          `<title>Home - Example Site</title><meta name=twitter:image:alt content=a><meta property=og:image content=${image}>`,
+        ),
+      ],
+      { siteUrl: "https://example.com" },
+    );
+    expect(findings).toContainEqual({
+      level: "error",
+      page: "/",
+      message:
+        "twitter:image:alt comes before twitter:image; put it after the image tag or iMessage link previews drop the image",
+    });
+  });
+
   it("maps dist files to the same paths the sitemap and BASCIK_PAGE_PATH use", () => {
     expect(pagePathOf("index.html")).toBe("/");
     expect(pagePathOf("about.html")).toBe("/about");
