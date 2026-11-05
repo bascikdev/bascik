@@ -75,11 +75,19 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 
 ```html
 <!-- src/components/load-more/load-more.html -->
+<style>
+  .item {
+    padding: 0.5rem;
+  }
+</style>
 <div class="load-more" data-testid="load-more">
   <button class="load" id="load" type="button" data-testid="load-more-button">
     Load more
   </button>
   <ul class="list" id="list"></ul>
+  <template id="item-template">
+    <li class="item"></li>
+  </template>
   <p class="status" id="status" role="status"></p>
 </div>
 <script type="text/typescript">
@@ -89,6 +97,9 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 
   const load = document.getElementById("load") as HTMLButtonElement;
   const list = document.getElementById("list")!;
+  const itemTemplate = document.getElementById(
+    "item-template",
+  ) as HTMLTemplateElement;
   const status = document.getElementById("status")!;
 
   load.addEventListener("click", async () => {
@@ -101,7 +112,9 @@ Keep state in variables, write one function that applies all of it to the DOM, a
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const items: Item[] = await response.json();
       for (const item of items) {
-        const li = document.createElement("li");
+        const li = itemTemplate.content.firstElementChild!.cloneNode(
+          true,
+        ) as HTMLLIElement;
         li.textContent = item.name;
         list.append(li);
       }
@@ -115,7 +128,7 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 </script>
 ```
 
-- Write data with `textContent`. If you must build HTML, create elements or escape every value.
+- Clone a `<template>` when runtime-created markup needs the component's element-selector styles. Put data in with `textContent`, not HTML parsing.
 - Cancel stale requests with an `AbortController` when input changes faster than responses arrive.
 - When the data is the same for every visitor, fetch it at build time in a [build script](/scripts/build) instead.
 

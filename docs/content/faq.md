@@ -60,6 +60,14 @@ A directory of plain `.html` files (and your assets). No client-side JavaScript 
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
+## How does Bascik's scoping compare with `<template>` and Web Components?
+
+A native `<template>` stores inert markup for a script to clone; it does not resolve reusable component files or scope CSS. Bascik components are expanded at build time instead. You can still put a `<template>` inside a Bascik component and clone it at runtime: Bascik scopes its authored markup and CSS during the build, and the cloned elements keep those scoped names. See the [runtime template example](/how-to/interactivity#fetch-with-loading-and-error-states).
+
+Web Components are browser-native custom elements, and Shadow DOM can isolate their styles. Bascik component tags are build-time source markers, compiled away before the browser sees them. Bascik rewrites CSS selectors and markup names in the regular DOM; it does not create a Shadow DOM boundary, so global CSS can still affect the elements.
+
+Use `<template>` for a fragment a script will clone, Web Components when you need browser-native custom elements or Shadow DOM, and Bascik components for reusable source markup expanded at build time with scoped CSS and no component runtime.
+
 ## Does Bascik enforce semantic HTML?
 
 No. Bascik ships the markup you wrote and never rewrites or rejects it, so a `<div>` stays a `<div>` and a `<nav>` stays a `<nav>`. It guides and warns instead. [Component Best Practices](/component-best-practices#use-htmls-elements) has the checklist, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a component whose root is a `<div>` where a `<nav>` or `<article>` fits, a skipped heading level, an image with no `alt`, a form control with no label, and a page with no `<main>`.
