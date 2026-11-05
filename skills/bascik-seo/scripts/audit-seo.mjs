@@ -9,7 +9,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HELP = `Usage: node audit-seo.mjs [--dist dist] [--site-url https://example.com] [--strict] [--json]
 
 Checks every HTML page in the build output:
-  error  missing <title>, meta description, lang, or viewport; invalid JSON-LD; relative canonical or og:image
+  error  missing <title>, meta description, lang, or viewport; invalid JSON-LD; relative canonical or og:image;
+         og:image:* or twitter:image:* tags placed before their image tag
   warn   duplicate titles or descriptions, lengths outside editorial targets (not Google rules),
          not exactly one <h1>, images without alt,
          missing canonical or Open Graph tags, canonical that points at another page, missing sitemap.xml/robots.txt
@@ -54,6 +55,28 @@ function tags(html, name) {
       );
     }
     out.push(attrs);
+  }
+  return out;
+}
+
+/**
+ * og:image:* and twitter:image:* tags describe the image tag before them. Any that come before the first
+ * image tag of their prefix, such as twitter:image:alt above og:image, make Apple LinkPresentation (iMessage
+ * link previews) drop the image.
+ */
+function imageTagsBeforeRoot(metas) {
+  const roots = {
+    og: ["og:image", "og:image:url"],
+    twitter: ["twitter:image", "twitter:image:src"],
+  };
+  const seen = new Set();
+  const out = [];
+  for (const meta of metas) {
+    const key = (meta.property ?? meta.name ?? "").toLowerCase();
+    const prefix = /^(og|twitter):image(?::|$)/.exec(key)?.[1];
+    if (!prefix) continue;
+    if (roots[prefix].includes(key)) seen.add(prefix);
+    else if (!seen.has(prefix)) out.push({ tag: key, root: roots[prefix][0] });
   }
   return out;
 }
@@ -104,6 +127,7 @@ export function inspectPage(html) {
       url: metaBy("property", "og:url"),
       image: metaBy("property", "og:image"),
     },
+    imageTagsBeforeRoot: imageTagsBeforeRoot(metas),
     h1Count: (body.match(/<h1\b/gi) ?? []).length,
     imagesWithoutAlt: tags(body, "img").filter((img) => !("alt" in img)).length,
     jsonLd,
@@ -209,6 +233,12 @@ export function auditPages(
         "error",
         page.path,
         `og:image must be an absolute URL: ${page.og.image}`,
+      );
+    for (const { tag, root } of page.imageTagsBeforeRoot)
+      add(
+        "error",
+        page.path,
+        `${tag} comes before ${root}; put it after the image tag or iMessage link previews drop the image`,
       );
 
     page.jsonLd.forEach((block, index) => {

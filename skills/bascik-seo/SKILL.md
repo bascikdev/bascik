@@ -34,7 +34,8 @@ Bascik outputs static HTML, so search engines and AI crawlers read every word wi
 8. **Treat lengths as editorial targets, not Google rules.** The SEO audit warns outside its 10–65 title and 50–160 description ranges, but Google has no fixed character limit for either. Google may rewrite title links and generate query-specific snippets from visible page text; a meta description is only one possible snippet source.
 9. **Keep site identity consistent.** For Google site-name guidance, use the same recognizable brand in the home page's visible content, title, and `og:site_name`. You may provide one `WebSite` structured-data item on the home page with the canonical home-page URL and site name; Google selects the displayed name automatically, and `alternateName` is optional.
 10. **Use structured data only when it accurately describes visible page content and fits a Google-supported feature.** Follow the general and feature-specific policies, keep markup current and complete, and validate the deployed page. Valid markup can make a page eligible for a rich result, but never guarantees one or improves ordinary ranking by itself. A JavaScript-injected JSON-LD block can be processed after rendering; Bascik's build-time output avoids needing that client-side step.
-11. **Do not promise a ranking or treat Preferred Sources as an SEO control.** Google uses many signals; no title, schema, sitemap, or domain name can guarantee first place. Preferred Sources is a separate feature for eligible publications and specific Search experiences, not a way to control ordinary rankings or sitelinks.
+11. **Put every `og:image:*` and `twitter:image:*` tag after the image tag it describes.** Width, height, type, and alt are properties of the image tag before them. An alt tag placed first, such as `twitter:image:alt` above `og:image`, makes iMessage link previews drop the image and show only the title and icon. Messages caches previews by URL, so test a fix with a new query string such as `?v=2`.
+12. **Do not promise a ranking or treat Preferred Sources as an SEO control.** Google uses many signals; no title, schema, sitemap, or domain name can guarantee first place. Preferred Sources is a separate feature for eligible publications and specific Search experiences, not a way to control ordinary rankings or sitelinks.
 
 Copy a tested helper instead of writing one: `add-example.mjs starter-site/src/lib/seo.ts` gives `seo({ title, description, image, type, noindex, ... })`, `jsonLd()`, `breadcrumbList()`, and `article()`. `add-example.mjs starter-site/scripts/llms-txt.ts` adds a post-phase exec script that writes `llms.txt` from every indexable page's title and description; `bascik-refactor/scripts/llms-txt.mjs`, from the opt-in `bascik-refactor` skill (`npx skills add bascikdev/bascik --skill bascik-refactor`), does the same with sections per first path segment and canonical URLs.
 
@@ -46,7 +47,7 @@ node <skills-dir>/bascik-seo/scripts/audit-seo.mjs            # reads the site U
 node <skills-dir>/bascik-seo/scripts/audit-seo.mjs --strict   # fail on warnings too (CI)
 ```
 
-- **error**: missing title, description, `lang`, or viewport; invalid JSON-LD; relative canonical or `og:image`.
+- **error**: missing title, description, `lang`, or viewport; invalid JSON-LD; relative canonical or `og:image`; an `og:image:*` or `twitter:image:*` tag before its image tag.
 - **warn**: lengths outside the audit's editorial targets, duplicate titles or descriptions, not exactly one `<h1>`, images without `alt`, missing canonical or Open Graph tags, a canonical that points at another page, a noindex page still in `sitemap.xml`, missing `sitemap.xml` or `robots.txt`.
 - **info**: noindex pages and pages without `og:image`.
 
@@ -57,6 +58,7 @@ Also run `node <skills-dir>/bascik/scripts/check-links.mjs` for broken links and
 | How do I...                                                        | Read                                                                                |
 | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | Write the essential head tags and JSON-LD                          | `/lighthouse/seo`                                                                   |
+| Order social preview image tags so iMessage shows the image        | `/lighthouse/seo#social-preview-image-tags`                                         |
 | Follow Google's guidance for site names, title links, and snippets | `/lighthouse/seo#site-names-titles-and-snippets`                                    |
 | Help Google understand the home page and choose sitelinks          | `/lighthouse/seo#help-google-choose-sitelinks`                                      |
 | Use structured data for an eligible rich result                    | `/lighthouse/seo#structured-data-with-json-ld`                                      |

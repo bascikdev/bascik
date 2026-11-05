@@ -54,6 +54,21 @@ Bascik also helps with one of the easy-to-miss SEO assets: once `BASCIK_SITE_URL
 
 Two audits depend on how you deploy rather than on the markup. A page returning a non-success status code, or carrying `noindex`, is not crawlable. And a `robots.txt` that blocks all crawlers on a staging site will fail the audit on that host, so run the final audit against production-equivalent settings.
 
+### Social Preview Image Tags
+
+Open Graph treats `og:image:width`, `og:image:height`, `og:image:type`, and `og:image:alt` as properties of the `og:image` tag before them, and `twitter:image:alt` belongs to `twitter:image` in the same way. Put each one directly after its image tag. Apple's LinkPresentation framework, which builds iMessage link previews, drops the image when `twitter:image:alt` comes before the image tags, and the preview shows only the title and site icon.
+
+```html
+<meta property="og:image" content="https://yourdomain.com/og/page-path.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Page title" />
+<meta name="twitter:image" content="https://yourdomain.com/og/page-path.jpg" />
+<meta name="twitter:image:alt" content="Page title" />
+```
+
+Messages caches a preview for each URL, so a link sent before a fix keeps its old preview. Test a fix with a URL Messages has not seen, such as one with `?v=2` appended.
+
 ## Site Names, Titles, and Snippets
 
 Google automatically determines the site name, title link, and snippet shown for a result. Use consistent, clear signals, but treat them as guidance rather than controls. See [site names](https://developers.google.com/search/docs/appearance/site-names), [title links](https://developers.google.com/search/docs/appearance/title-link), and [snippets](https://developers.google.com/search/docs/appearance/snippet).
