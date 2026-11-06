@@ -421,7 +421,9 @@ if (element("[data-order-status]")) {
           submitted: "Your order is with Printful.",
           test_draft:
             "Test payment received. Printful draft created. Nothing will be produced or shipped.",
-          failed: "Your order needs attention. Our team has been notified.",
+          failed: order.testMode
+            ? "Sandbox order needs attention. Nothing will be produced or shipped."
+            : "Your order needs attention. Our team has been notified.",
           shipped: "Your order has shipped.",
           cancelled: "Your order was cancelled.",
         };

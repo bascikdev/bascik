@@ -310,7 +310,8 @@ export async function checkoutRequest(request: Request, env: Env) {
   const quote: Quote = JSON.parse(row.snapshot);
   const rate = quote.rates.find((entry) => entry.id === data.shippingId);
   if (!rate) throw new ShopError("Invalid shipping selection.");
-  const id = crypto.randomUUID();
+  // Printful external references have a 32-character limit.
+  const id = crypto.randomUUID().replaceAll("-", "");
   await env.DB.prepare(
     "INSERT OR IGNORE INTO orders(id,quote_id,shipping_id,snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?)",
   )

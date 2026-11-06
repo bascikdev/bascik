@@ -148,7 +148,7 @@ export const printfulWebhook = handler(async (request, env) => {
   if (String(event.store_id) !== env.PRINTFUL_STORE_ID)
     throw new ShopError("Wrong Printful store.");
   const id = event.data?.order?.external_id;
-  if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))
+  if (typeof id !== "string" || !/^(?:[a-f0-9]{32}|[a-f0-9-]{36})$/.test(id))
     return json({ received: true });
   // Notifications only trigger an authenticated provider re-fetch, never a trusted status update.
   await env.DB.prepare(
@@ -163,7 +163,7 @@ export const orderStatus = handler(async (request, env: Env) => {
   sameOrigin(request, env);
   const data = await body(request);
   const token = typeof data.token === "string" ? data.token : "";
-  if (!/^[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(token))
+  if (!/^(?:[a-f0-9]{32}|[a-f0-9-]{36})\.[a-f0-9]{64}$/.test(token))
     throw new ShopError("Order link not found.", 404);
   const id = token.split(".")[0];
   if (!env.ORDER_TOKEN_SECRET || !equal(token, await orderToken(env, id)))

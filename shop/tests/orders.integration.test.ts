@@ -25,7 +25,7 @@ let runtime: Miniflare;
 let env: Env;
 const origin = "https://shop.example.com";
 const quoteId = "quote_fixture";
-const id = "32ce1859-bfe2-4c8f-a5c6-8863b425379f";
+const id = "32ce1859bfe24c8fa5c68863b425379f";
 const variantId = products[0].variants[0].id;
 const snapshot: Quote = {
   recipient: {
@@ -812,11 +812,24 @@ test("hosted Checkout uses the fixed destination and does not recollect shipping
     false,
   );
   expect(session.get("automatic_tax[enabled]")).toBe("true");
+  expect(session.get("metadata[order_id]")).toMatch(/^[a-f0-9]{32}$/);
   expect(
     session.get(
       "shipping_options[0][shipping_rate_data][fixed_amount][amount]",
     ),
   ).toBe("500");
+});
+test("existing UUID order links remain readable", async () => {
+  const legacyId = "32ce1859-bfe2-4c8f-a5c6-8863b425379f";
+  await env.DB.prepare("UPDATE orders SET id=? WHERE id=?")
+    .bind(legacyId, id)
+    .run();
+  const result = await orderStatus(
+    post("/api/order", { token: await orderToken(env, legacyId) }),
+    { platform: { env } },
+  );
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({ orderId: legacyId });
 });
 test("quotes require verified private mappings and server prices", async () => {
   await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
