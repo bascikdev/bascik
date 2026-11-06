@@ -1,0 +1,9 @@
+.output/
+.dev.vars*
+!.dev.vars.example
+src/pages/products/
+src/pages/*.html
+src/pages/assets/shop.js
+.local/
+playwright-report/
+catalog/source.json

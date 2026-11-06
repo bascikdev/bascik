@@ -1,6 +1,27 @@
 {
   "version": 1,
   "skills": {
+    "connect-recommend": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "ea56f413bad1817dbfb1e48501676a71e61ddc88e33923e494439eb466cb6d4e",
+      "wellKnownDigest": "sha256:a33e37d5881b435ae3aa47b39f03280d9f8db6edc1763734f1b15714b997c82d"
+    },
+    "connect-required-verification-information": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "e3270fd22bdcf4eced5c8f4893b88af0548af2ad28ffaade4a8524b185a65088",
+      "wellKnownDigest": "sha256:89999eefddb4c57fb3028ff8910cb85e4153f33082e73ea04481caca3b2f32ba"
+    },
+    "metronome": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "b7b614bdbce2a81dd8c54e32472b2947679b1b51c94abe83955b1f3af4f3baf8",
+      "wellKnownDigest": "sha256:34ad5c4b6bfe34233b5f0d643c0ab0edf231fd831c3898147f512e2fece468d3"
+    },
     "playwright-cli": {
       "source": "microsoft/playwright-cli",
       "sourceType": "github",
@@ -12,6 +33,55 @@
       "sourceType": "github",
       "skillPath": ".agents/skills/specmap/SKILL.md",
       "computedHash": "588f7c071895c1cad04b8acb66a0d9c1beb2f931ebb2d013564218ca959267c6"
+    },
+    "stripe-apps": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "3c93395fbfacdd7b0365a747d425953a507c9c29c09f90abdf70bec9a5059e90",
+      "wellKnownDigest": "sha256:d2123a451b2520662dc1cb88ff5387cf9b2e5ab9bcde802cbf61033db30d0193"
+    },
+    "stripe-best-practices": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "7e1641c9d20740942259db6e0dfc69ad288bc57bca281f78125449e42ec287b1",
+      "wellKnownDigest": "sha256:35504f313ee859c2ed40a637d681f4d068af29364380b36bb41c163b888dbfc7"
+    },
+    "stripe-directory": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "e9d4de3fd038de1d2e5a9be580cd7260182f990a3e0d398a659cc085b3d5d475",
+      "wellKnownDigest": "sha256:bb82f5cc795d1905aa1964120f05b9143a5ef3cb2461b71232db101ccb12bb7e"
+    },
+    "stripe-docs": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "ee4a51d34f11386fe6c9f991d5b2d32da69c851124a78a01403412bcf87e73d7",
+      "wellKnownDigest": "sha256:354fb04e9c979223bfecabc994fff41c8da5b5ea155684f1b4ade3a6fed07bac"
+    },
+    "stripe-pay": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "716111154a2f568cd6834cba7660b00be2c10f243bbc44b2e76cd97960d20d4e",
+      "wellKnownDigest": "sha256:9577944516f408c0367ecc63d5425ec5288dd9faeb044bc5d32e09679dd49c78"
+    },
+    "stripe-projects": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "d37d6e7c4f0408ec285cd45d9b755970d2aadc5cdc304ceb772330f1bc9f145e",
+      "wellKnownDigest": "sha256:26f10f14f6460047a4f48ebfc52a608df3ba4bab7d27eef3c62bc2bab94ad716"
+    },
+    "upgrade-stripe": {
+      "source": "docs.stripe.com",
+      "sourceUrl": "https://docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "1a39009e8e812a27b5c8ff17a83ee2806a3ea619c15c8542d93f7e8e1085b58f",
+      "wellKnownDigest": "sha256:6e36e1e0360480ea7a35faa502ad2a4e0fbad90306ee7c7e536c8d8181c1e48c"
     },
     "vitest": {
       "source": "antfu/skills",

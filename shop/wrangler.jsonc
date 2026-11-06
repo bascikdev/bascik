@@ -1,0 +1,32 @@
+{
+  "name": "bascik-shop",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "SHOP_ENABLED": "false",
+    "SHOP_MODE": "test",
+    "SHOP_ORIGIN": "http://127.0.0.1:8790",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bascik-shop-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "bascik-shop-jobs" }],
+    "consumers": [
+      {
+        "queue": "bascik-shop-jobs",
+        "max_batch_size": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "bascik-shop-dead",
+      },
+    ],
+  },
+  "send_email": [{ "name": "EMAIL" }],
+}

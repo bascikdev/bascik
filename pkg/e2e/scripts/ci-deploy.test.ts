@@ -892,6 +892,7 @@ function runContext(
     prRepo = null as string | null,
     newest = "true",
     docsOnly = false,
+    shopOnlyHead = false,
   } = {},
 ): Record<string, Value> {
   return {
@@ -904,6 +905,7 @@ function runContext(
     "steps.newest.outputs.newest": newest,
     // What the `changes` job outputs when it runs; `simulate` blanks it when that job is skipped.
     "needs.changes.outputs.docs-only": String(docsOnly),
+    "needs.changes.outputs.shop-only-head": String(shopOnlyHead),
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
     "needs.deploy-netlify.outputs.preview-url": "",
@@ -1225,21 +1227,33 @@ describe("CI stages and the deploy stage", () => {
     expect(on).not.toMatch(/tags/);
   });
 
-  it("skips same-repo pull_request runs at stage 1, so the branch's push run is the only test run", () => {
+  it("uses the branch push for a normal same-repo pull request and tests a mixed PR after a shop-only commit", () => {
     const sameRun =
-      "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)";
+      "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true'))";
     for (const id of stage(1))
       expect(jobs.get(id)!.if, id).toBe(
-        ["changes", "standards"].includes(id)
-          ? sameRun
-          : `needs.changes.outputs.docs-only != 'true' && (${sameRun})`,
+        id === "changes"
+          ? "(github.event_name == 'push' && github.ref != 'refs/heads/main') || github.event_name == 'pull_request'"
+          : id === "standards"
+            ? sameRun
+            : `needs.changes.outputs.docs-only != 'true' && (${sameRun})`,
       );
     // Every later job needs stage 1 (directly or not), so the whole run skips.
     const sameRepo = simulate(
       jobs,
       runContext("pull_request", "refs/pull/113/merge", { prRepo: REPO }),
     );
-    expect([...sameRepo.ran]).toEqual([]);
+    expect([...sameRepo.ran]).toEqual(["changes"]);
+    const mixed = simulate(
+      jobs,
+      runContext("pull_request", "refs/pull/113/merge", {
+        prRepo: REPO,
+        shopOnlyHead: true,
+      }),
+    );
+    for (const n of [1, 2, 3, 4])
+      for (const id of stage(n)) expect(mixed.ran.has(id), id).toBe(true);
+    for (const id of stage(5)) expect(mixed.ran.has(id), id).toBe(false);
   });
 
   it("tests a fork's pull request in stages 1 to 4 and never deploys it", () => {

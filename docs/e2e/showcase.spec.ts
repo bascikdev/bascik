@@ -7,6 +7,7 @@ const sites = [
     name: "Sunridge Counseling",
     url: "https://sunridgecounseling.com",
   },
+  { slug: "dgco", name: "DGCO", url: "https://dgcocpa.com" },
   {
     slug: "lateral-emdr",
     name: "Lateral EMDR",
@@ -15,7 +16,7 @@ const sites = [
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
 ];
 
-test("showcase has four real screenshots, working site links, and a submission link", async ({
+test("showcase has five real screenshots, working site links, and a submission link", async ({
   page,
   request,
 }) => {
@@ -25,7 +26,7 @@ test("showcase has four real screenshots, working site links, and a submission l
   ).toBeVisible();
   const cards = page.getByTestId("showcase-card");
   await expect(page.getByTestId("showcase-grid")).toBeVisible();
-  await expect(cards).toHaveCount(4);
+  await expect(cards).toHaveCount(5);
   for (const site of sites) {
     const card = cards.filter({
       has: page.getByRole("heading", { name: site.name, exact: true }),
@@ -108,7 +109,7 @@ for (const width of [1440, 390]) {
     await page.getByTestId("home-showcase-link").click();
     await expect(page).toHaveURL(/\/showcase$/);
     const cards = page.getByTestId("showcase-card");
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(5);
     const bounds = await cards.evaluateAll((elements) =>
       elements.map((element) => {
         const { x, width } = element.getBoundingClientRect();

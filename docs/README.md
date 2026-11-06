@@ -44,14 +44,14 @@ yarn docs:coverage                   # unit and integration tests with coverage 
 The `/showcase` page and homepage preview share the site list in
 `src/lib/showcase.ts` and descriptions in `content/showcase.md`. The homepage
 features Rinsesoft and Lateral EMDR; the full showcase also includes Sunridge
-Counseling and Bascik itself.
+Counseling, DGCO, and Bascik itself.
 New submissions arrive through `.github/ISSUE_TEMPLATE/showcase.yml`.
 
 Capture public homepage screenshots with the existing recording script:
 
 ```sh
 # from docs/, using Node 24
-node scripts/capture-demos.ts showcase-rinsesoft showcase-sunridge showcase-lateral showcase-bascik
+node scripts/capture-demos.ts showcase-rinsesoft showcase-sunridge showcase-dgco showcase-lateral showcase-bascik
 ```
 
 Screenshots are committed WebP images, not fetched during builds. Keep them free

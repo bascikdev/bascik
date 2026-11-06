@@ -1,0 +1,419 @@
+/* Docs Nav: all styles live here so bascik scopes them alongside the HTML */
+
+nav {
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.cart {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+.theme-toggle {
+  background: none;
+}
+.moon {
+  display: none;
+}
+
+.banner {
+  max-width: var(--site-max-width);
+  margin: 0 auto;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent-border);
+  border-left: 1px solid var(--accent-border);
+  border-right: 1px solid var(--accent-border);
+  border-bottom-left-radius: var(--r-sm);
+  border-bottom-right-radius: var(--r-sm);
+  text-align: center;
+}
+
+.banner-inner {
+  max-width: var(--site-max-width);
+  margin: 0 auto;
+  padding: 6px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: #18191b;
+  flex-shrink: 0;
+}
+
+/* The inner container sets the maximum width and centers the navigation. */
+.container {
+  max-width: var(--site-max-width);
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.logo {
+  text-decoration: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  transition: none;
+}
+
+.logo:hover {
+  opacity: 1;
+}
+
+/* Icon visibility driven by data-theme / system preference */
+.icon {
+  display: none;
+  pointer-events: none;
+}
+
+.sun {
+  display: block;
+}
+
+:root[data-theme="light"] .sun {
+  display: none;
+}
+
+:root[data-theme="light"] .moon {
+  display: block;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 7px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  transition:
+    color 0.15s,
+    background 0.15s;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background: var(--elevated);
+  color: var(--text);
+}
+
+/* Desktop: links wrapper always visible; order:-1 keeps it left of search (which moved first in DOM for mobile) */
+@media (min-width: 769px) {
+  .links-wrapper {
+    display: flex;
+    align-items: center;
+    order: -1;
+  }
+}
+
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.links li a {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  display: block;
+  position: relative;
+  transition: color 0.15s;
+}
+
+/* Parallelogram background: matches the logo's exact angle (7px / 28px ≈ 14°) */
+.links li a::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(7px 0%, 100% 0%, calc(100% - 7px) 100%, 0% 100%);
+  z-index: -1;
+  transition: background 0.15s;
+}
+
+.links li a:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.links li a:hover::before {
+  background: var(--elevated);
+}
+
+.links li a[aria-current="page"] {
+  color: #18191b;
+  border: none;
+}
+
+.links li a[aria-current="page"]::before {
+  background: var(--accent);
+}
+
+/* Mobile hamburger button */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  z-index: 110;
+  border-radius: var(--r-sm);
+  transition: background 0.15s;
+}
+
+.menu-toggle:hover {
+  background: var(--elevated);
+}
+
+.toggle-icon {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--text-muted);
+  position: relative;
+  transition: background 0.15s;
+}
+
+.toggle-icon::before,
+.toggle-icon::after {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--text-muted);
+  position: absolute;
+  left: 0;
+  transition:
+    transform 0.15s,
+    top 0.15s;
+}
+
+.toggle-icon::before {
+  top: -6px;
+}
+
+.toggle-icon::after {
+  top: 6px;
+}
+
+/* Hamburger → X when expanded */
+.menu-toggle[aria-expanded="true"] .toggle-icon {
+  background: transparent;
+}
+
+.menu-toggle[aria-expanded="true"] .toggle-icon::before {
+  top: 0;
+  transform: rotate(45deg);
+  background: var(--text);
+}
+
+.menu-toggle[aria-expanded="true"] .toggle-icon::after {
+  top: 0;
+  transform: rotate(-45deg);
+  background: var(--text);
+}
+
+.mobile-sections {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: flex;
+  }
+
+  /* Hide compact top-level links on mobile; full list is in the overlay */
+  .links {
+    display: none;
+  }
+
+  /* Full-screen overlay */
+  .links-wrapper {
+    display: none;
+    flex-direction: column;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: calc(100dvh - 88px);
+    overflow-y: auto;
+    padding: 20px 0 40px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    z-index: 99;
+  }
+
+  .menu-toggle[aria-expanded="true"] ~ .links-wrapper {
+    display: flex;
+  }
+
+  .links-wrapper .links {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0 28px;
+  }
+
+  .mobile-sections {
+    display: block;
+    width: 100%;
+    padding: 0 28px;
+  }
+
+  .separator {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px 0 20px;
+  }
+
+  .section-heading {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent-fg);
+    margin-bottom: 12px;
+    margin-top: 24px;
+  }
+
+  .section-heading:first-of-type {
+    margin-top: 0;
+  }
+
+  .section-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .section-links li {
+    width: 100%;
+  }
+
+  .section-links li a {
+    display: block;
+    padding: 8px 12px;
+    border-radius: var(--r-sm);
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .section-links li a:hover {
+    color: var(--text);
+    background: var(--elevated);
+  }
+
+  .section-links li a[aria-current="page"] {
+    color: #18191b !important;
+    background: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .mobile-theme:hover {
+    color: var(--text);
+    background: var(--elevated);
+  }
+}
+
+/* Print: keep only the logo, in grayscale, as the page header */
+@media print {
+  nav {
+    position: static;
+    background: none;
+    border: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .banner,
+  .controls {
+    display: none !important;
+  }
+
+  .container {
+    max-width: 100%;
+    padding: 0;
+    height: auto;
+    margin-bottom: 8pt;
+  }
+
+  .logo {
+    filter: grayscale(1);
+  }
+}

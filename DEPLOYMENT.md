@@ -4,6 +4,22 @@ This repo deploys two sites to Cloudflare. Everything that can live in the repo 
 
 The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
 
+## Shop prelaunch
+
+The independent [shop application](shop/README.md) is being prepared for
+`shop.bascik.dev`. Its [Shop workflow](.github/workflows/shop.yml) validates
+the application but does not deploy it. Checkout and Printful submissions
+default to disabled, and no custom-domain route is configured. Keep Shopify
+serving the hostname until the provider, tax, email, policy, and cutover gates
+in the shop runbook are satisfied. Shop resources and secrets must stay
+separate from docs and adapter demos.
+
+Pushes and pull requests that change only `shop/**` run Shop validation, not
+the main CI or CodeQL workflows. Mixed changes still run the main workflows.
+For a mixed pull request whose latest commit only changes the shop, the
+pull-request CI run covers the main checks that the filtered push would skip.
+Scheduled CodeQL runs are unchanged.
+
 ## Netlify Adapter Acceptance Project
 
 - Site: [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev) (also available at [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app)).

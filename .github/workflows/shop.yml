@@ -1,0 +1,49 @@
+name: Shop
+
+on:
+  push:
+    paths:
+      - "shop/**"
+      - "pkg/**"
+      - "adapters/cloudflare/**"
+      - "package.json"
+      - "yarn.lock"
+      - ".github/workflows/shop.yml"
+  pull_request:
+    paths:
+      - "shop/**"
+      - "pkg/**"
+      - "adapters/cloudflare/**"
+      - "package.json"
+      - "yarn.lock"
+      - ".github/workflows/shop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --immutable
+      - run: yarn pkg:build && yarn adapter:cf:build
+      - run: yarn shop:build
+      - run: yarn shop:typecheck && yarn shop:unit
+      - run: yarn workspace bascik-shop integration
+      - run: yarn workspace bascik-shop exec playwright install --with-deps chromium
+      - run: yarn shop:e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shop-cloudflare-build
+          path: shop/.output/worker.js
