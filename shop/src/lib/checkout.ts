@@ -11,6 +11,12 @@ import {
   type Env,
 } from "./platform.ts";
 import { cents, printful, stripe } from "./providers.ts";
+import {
+  placements,
+  shippingPlacements,
+  type PrintfulPlacement,
+  type PrintfulShippingPlacement,
+} from "./printful-design.ts";
 
 export interface Recipient {
   name: string;
@@ -22,14 +28,26 @@ export interface Recipient {
   country_code: string;
   zip: string;
 }
-export interface Item {
+interface ItemDetails {
   variantId: string;
   quantity: number;
   price: number;
   title: string;
-  sync_variant_id: number;
   variant_id: number;
 }
+export type Item = ItemDetails &
+  (
+    | {
+        product_template_id: number;
+        shipping_placements: PrintfulShippingPlacement[];
+        placements?: never;
+      }
+    | {
+        product_template_id?: never;
+        shipping_placements?: never;
+        placements: PrintfulPlacement[];
+      }
+  );
 export interface Rate {
   id: string;
   name: string;
@@ -137,10 +155,35 @@ export function cartItems(
   });
 }
 export const printfulItems = (quote: Quote) =>
+  quote.items.map((item) => {
+    if (
+      item.product_template_id !== undefined &&
+      (!Number.isSafeInteger(item.product_template_id) ||
+        item.product_template_id <= 0)
+    )
+      throw new ShopError("Invalid Printful template reference.", 503);
+    return {
+      catalog_variant_id: item.variant_id,
+      ...(item.product_template_id !== undefined
+        ? {
+            source: "product_template",
+            product_template_id: item.product_template_id,
+          }
+        : { source: "catalog", placements: placements(item.placements) }),
+      quantity: item.quantity,
+      retail_price: (item.price / 100).toFixed(2),
+    };
+  });
+export const printfulShippingItems = (quote: Quote) =>
   quote.items.map((item) => ({
-    sync_variant_id: item.sync_variant_id,
+    source: "catalog",
+    catalog_variant_id: item.variant_id,
     quantity: item.quantity,
     retail_price: (item.price / 100).toFixed(2),
+    placements:
+      item.product_template_id !== undefined
+        ? shippingPlacements(item.shipping_placements)
+        : placements(item.placements),
   }));
 export async function quoteRequest(request: Request, env: Env) {
   sameOrigin(request, env);
@@ -151,20 +194,54 @@ export async function quoteRequest(request: Request, env: Env) {
   const cart = cartItems(data.items);
   const items: Item[] = [];
   for (const entry of cart) {
+    const template = await env.DB.prepare(
+      "SELECT catalog_variant_id,product_template_id,shipping_placements FROM printful_template_mappings WHERE variant_id=? AND store_id=? AND verified=1",
+    )
+      .bind(entry.variant.id, Number(env.PRINTFUL_STORE_ID))
+      .first<{
+        catalog_variant_id: number;
+        product_template_id: number;
+        shipping_placements: string;
+      }>();
+    if (template) {
+      if (
+        !Number.isSafeInteger(template.catalog_variant_id) ||
+        template.catalog_variant_id <= 0 ||
+        !Number.isSafeInteger(template.product_template_id) ||
+        template.product_template_id <= 0
+      )
+        throw new ShopError("Invalid Printful template mapping.", 503);
+      items.push({
+        variantId: entry.variant.id,
+        quantity: entry.quantity,
+        price: entry.product.price,
+        title: `${entry.product.title} / ${entry.variant.title}`,
+        variant_id: template.catalog_variant_id,
+        product_template_id: template.product_template_id,
+        shipping_placements: shippingPlacements(
+          JSON.parse(template.shipping_placements),
+        ),
+      });
+      continue;
+    }
     const mapping = await env.DB.prepare(
-      "SELECT sync_variant_id, catalog_variant_id FROM variant_mappings WHERE variant_id=? AND verified=1",
+      "SELECT placements, catalog_variant_id FROM printful_v2_mappings WHERE variant_id=? AND verified=1",
     )
       .bind(entry.variant.id)
-      .first<{ sync_variant_id: number; catalog_variant_id: number }>();
-    if (!mapping)
+      .first<{ placements: string; catalog_variant_id: number }>();
+    if (
+      !mapping ||
+      !Number.isSafeInteger(mapping.catalog_variant_id) ||
+      mapping.catalog_variant_id <= 0
+    )
       throw new ShopError("This item is not ready for ordering yet.", 503);
     items.push({
       variantId: entry.variant.id,
       quantity: entry.quantity,
       price: entry.product.price,
       title: `${entry.product.title} / ${entry.variant.title}`,
-      sync_variant_id: mapping.sync_variant_id,
       variant_id: mapping.catalog_variant_id,
+      placements: placements(JSON.parse(mapping.placements)),
     });
   }
   const quote: Quote = {
@@ -173,19 +250,16 @@ export async function quoteRequest(request: Request, env: Env) {
     rates: [],
     subtotal: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
   };
-  await printful(env, "/orders/estimate-costs", {
-    recipient: address,
-    items: printfulItems(quote),
-    retail_costs: { currency: "USD" },
-  });
   const rates = await printful<
-    { id: string; name: string; rate: string; currency: string }[]
-  >(env, "/shipping/rates", {
+    {
+      shipping: string;
+      shipping_method_name: string;
+      rate: string;
+      currency: string;
+    }[]
+  >(env, "/shipping-rates", {
     recipient: address,
-    items: items.map((item) => ({
-      variant_id: item.variant_id,
-      quantity: item.quantity,
-    })),
+    order_items: printfulShippingItems(quote),
     currency: "USD",
   });
   if (!Array.isArray(rates) || !rates.length)
@@ -193,13 +267,13 @@ export async function quoteRequest(request: Request, env: Env) {
   quote.rates = rates.map((rate) => {
     if (
       rate.currency !== "USD" ||
-      typeof rate.id !== "string" ||
-      typeof rate.name !== "string"
+      typeof rate.shipping !== "string" ||
+      typeof rate.shipping_method_name !== "string"
     )
       throw new ShopError("Invalid shipping response.", 502);
     return {
-      id: rate.id,
-      name: rate.name,
+      id: rate.shipping,
+      name: rate.shipping_method_name,
       amount: cents(rate.rate),
       currency: "usd",
     };

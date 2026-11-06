@@ -13,13 +13,83 @@ Stripe-hosted Checkout follows a shop-owned delivery step. Printful quotes the a
 ### Provider audit performed
 
 - Read-only Stripe API checks confirmed the provided secret is sandbox-only.
-- The authenticated sandbox account ID ends in **ZAC7**, while the configured `STRIPE_ACCOUNT` ends in **4ucM**. A sandbox can have a different account ID from its parent; ownership must be confirmed before changing either account. **No Stripe products, prices, webhooks, customers, tax settings, or payments were created.**
-- Stripe Tax reports `pending` because its head-office configuration is missing. Do not invent a business address or tax registrations. Configure these in the Bascik sandbox before an actual hosted-checkout test.
+- The owner confirmed that sandbox **ZAC7** belongs to Bascik account **4ucM**. The local `STRIPE_ACCOUNT` still names the parent; provisioning used the API-returned, owner-confirmed sandbox ID as a process-only override. Set `STRIPE_ACCOUNT` to the full sandbox account ID when rerunning sandbox setup; do not use the parent ID to bypass the script's account guard.
+- Stripe Tax is now `active`, with a configured head-office address and exclusive-tax pricing. No sandbox registrations exist yet, so this does not demonstrate tax collection. The account-wide default remains general tangible goods. The owner approved `txcd_30011000` (Clothing & Footwear) for both shirts and hats; configure `TAX_CODE_SHIRT` and `TAX_CODE_HAT` to that value for sandbox checkout.
+- Created or reused four app-tagged sandbox products with $30 shirt and $25 hat USD prices, all exclusive of tax and classified as Clothing & Footwear. Re-fetched every product and price to verify mode, ownership metadata, amounts, and classification; IDs are recorded privately in `.local/stripe-readiness.json`. No live products, webhook endpoints, customers, tax registrations, or payments were created. No account-wide tax settings were changed by the agent.
 - The CLI was not available on the agent process PATH or in standard executable locations. The setup scripts use the Stripe API directly with the same sandbox credentials instead.
-- Read-only Printful inspection found a single Bascik store of type `shopify`. All four products and 24 print-ready variant mappings were exported privately to `.local/printful-shopify.json`. **No store, webhook, or order was changed.**
+- Printful access now includes the original Shopify store `18630655` and the owner-created Manual/API store `19022802` (Shop Bascik). The refreshed token was verified against both through v2. All four original products and 24 print-ready variant references were exported privately to `.local/printful-shopify.json`. **No Shopify product, webhook, or order was changed.**
 - The current local Printful key is named `PRINTFUL_TOEKN`. The audit accepts that spelling with a warning; the application requires the correctly named `PRINTFUL_TOKEN`.
 
-These are launch blockers, not successful setup substitutes. Local provider audits are ignored by Git and contain no customer orders.
+The remaining provider, deployment, and policy gates below still block launch. Local provider audits are ignored by Git and contain no customer orders.
+
+### Provisioned sandbox infrastructure
+
+The authenticated Cloudflare account `8572c3fcc06b71dbf05fe590e8b3f74e` now has:
+
+| Resource           | Name / ID                                                     |
+| ------------------ | ------------------------------------------------------------- |
+| D1                 | `bascik-shop-sandbox`, `17c831f5-82a4-4094-ad10-5489830c6ae2` |
+| Processing queue   | `bascik-shop-sandbox-jobs`                                    |
+| Dead-letter queue  | `bascik-shop-sandbox-dead`                                    |
+| GitHub environment | `shop-sandbox`, restricted to branch `main`                   |
+
+All three checked-in migrations have been applied to the sandbox database. All 24 owner-approved saved-template mappings have been installed for API store `19022802`. The authored configuration targets these isolated resources and the dedicated Printful API store, and explicitly disables checkout and fulfillment. Email Sending has no configured subdomains in this account; the sandbox deliberately has no email binding.
+
+No Worker has been deployed, production resource has been created, or DNS/MX record has been changed. Stripe sandbox inventory provisioning and the single unconfirmed Printful validation draft are recorded here. To remove the unused infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
+
+### Printful v2
+
+Shipping, draft creation, external-reference lookup, confirmation, shipment polling, and callback verification use v2 contracts from `printful-v2-openapi.json`. The read-only Shopify artwork export still uses v1 sync-product endpoints because v2 does not provide them. It is an import-time tool, not a runtime fallback.
+
+Runtime orders support `source: "product_template"` with saved Printful designs, or `source: "catalog"` with explicit print placements. Migration `0002_printful_v2.sql` adds explicit-design mappings; `0003_printful_templates.sql` adds store-scoped template mappings. The old `variant_mappings` table remains for historical audit only. Unverified templates and templates for another store cannot enable checkout.
+
+The read-only template audit found all four original templates accessible to store `19022802`:
+
+| Product          | Template    | Technique / placements       |
+| ---------------- | ----------- | ---------------------------- |
+| Logo shirt       | `109921208` | DTG, front                   |
+| Insignia shirt   | `109921207` | DTG, front and outside label |
+| Logo dad hat     | `109921204` | DTF, `front_dtf_hat`         |
+| Insignia dad hat | `109921206` | DTF, `front_dtf_hat`         |
+
+The hats are printed, not embroidered; unused embroidery options in the legacy sync response must not override the template's actual DTF technique. Saved templates retain the provider's design positioning. The legacy sync export lacks that positioning, so reconstructing catalog designs from its image dimensions would be unreliable.
+
+Run the read-only audit with the refreshed local token:
+
+```sh
+cd shop
+PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/audit-templates.ts
+```
+
+It checks each template's title, variant membership, original sync variant IDs, size/color, and shipping techniques, and saves all 24 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs; all 24 validated references have now been installed in sandbox D1 with `verified=1`, scoped to store `19022802`.
+
+```sh
+cd shop
+node scripts/setup-printful-mappings.ts --write
+```
+
+This checks the saved draft evidence and the exact sandbox database ID before importing mappings. It does not enable checkout or fulfillment. Runtime v2 orders use the original account-level product templates directly in the API store; there is no need to recreate artwork or duplicate sync-product listings. The v1 store-product API has no template-to-product copy field, and rebuilding from its incomplete artwork data would not preserve the exact saved design.
+
+The owner-approved draft validation uses Printful's public documentation example address, not a customer destination:
+
+```sh
+cd shop
+PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/validate-printful-draft.ts
+```
+
+This created draft **`185170769`**, external reference `bascik-v2-audit-19022802`, in store `19022802`. It contains all 24 variants, with one of each, labelled **VALIDATION ONLY**. Costs calculated successfully; item catalog IDs, quantities, placement/technique sets, and preserved inch positions were checked. Standard and carbon-offset standard shipping were available for the sample destination. Rerunning reconciles the same external reference rather than creating another draft; the script contains no confirmation call.
+
+Printful returns blank status fields, artwork URLs, and file IDs for these template-derived placements. These are not explicit artwork approvals or files that can safely be reconstructed into catalog designs. The script reports all 34 unspecified placement statuses; it validates template references, quantities, techniques, positions, and calculated costs rather than claiming a provider artwork-status approval. The owner-prepared templates are the source of truth, not a request to redesign or reapprove artwork. Detailed responses remain private in `.local/printful-validation-draft.json`.
+
+**Do not confirm or pay for this validation draft.** It has not been charged, submitted to production, or shipped. After review, the owner may delete this uncharged draft through Printful; never use the v2 deletion endpoint as a substitute for canceling a paid production order.
+
+For explicit catalog designs, do not reuse sync variant IDs or translate pixel placement coordinates to inches by guessing. Every reviewed mapping must include the exact technique, HTTPS artwork, positioning in inches, and any embroidery thread/layer or placement options. Missing positioning is rejected instead of silently centering the design.
+
+The v2 shipping quote receives the saved template's actual shipping placements/techniques, or the explicit design's placements. The shipping endpoint accepts catalog items, not template items; fulfillment uses template references to preserve the saved design. There is no v2 `/orders/estimate-costs` call. A shipping quote is not artwork or production-cost verification: inspect unconfirmed v2 drafts for all 24 variants in the dedicated API store before marking mappings verified or enabling checkout. No prepayment draft is created for each browser quote. New artwork or production errors after payment are routed to operator review; reconcile/refund rather than submitting blindly.
+
+Draft costs may be `calculating`: the worker releases its lease and retries the same external reference before confirmation. Failed calculations and exhausted attempts require operator attention. Shipments are fetched separately with pagination. v2 DELETE deletes eligible uncharged orders, so it is not used as a cancellation substitute.
+
+v2 webhooks require Printful's one-time `secret_key` and its `public_key`. Configure them as `PRINTFUL_WEBHOOK_SECRET` (hexadecimal) and `PRINTFUL_WEBHOOK_PUBLIC_KEY`. The handler verifies `x-pf-webhook-public-key` and an HMAC-SHA256 `x-pf-webhook-signature` over the raw JSON using the hex-decoded secret. Reformatting the body invalidates the signature. Signed `store_id` callbacks only schedule an authenticated re-fetch. The old query-string token mechanism is no longer used.
 
 ## Commands
 
@@ -73,17 +143,33 @@ Required before enabling checkout:
 - Configure `STRIPE_WEBHOOK_SECRET` for `/api/webhooks/stripe`, receiving `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired`. Stripe receipts need a receipt email; the code supplies one.
 - Set a random, private `ORDER_TOKEN_SECRET` of at least 32 characters. Keep it stable; rotating it invalidates existing order links. Links expire after 90 days and can be individually revoked in D1.
 - Set `TAX_CODE_SHIRT` and `TAX_CODE_HAT` to owner-reviewed Stripe tax codes. Configure Stripe Tax origin and applicable registrations; international service sales on the same Stripe account do not automatically settle physical-goods tax obligations. Product price, customer tax, Printful's charges to the business, and recipient customs duties are separate.
-- Create a separate Printful **Manual/API store** in the dashboard. Preserve all exact artwork placements, print files, embroidery options, and blank product variant IDs from the private source audit. Store IDs from the Shopify store cannot simply be reused in the new store.
-- Obtain appropriate new-store credentials, set `PRINTFUL_TOKEN` and `PRINTFUL_STORE_ID`, verify funding, and verify all 24 variants using estimates/drafts without submitting production.
-- Populate `variant_mappings` with the shop variant ID, new store sync variant ID, and blank catalog variant ID. Set `verified=1` only after inspecting the exact artwork and size/color match. Never seed guessed IDs.
-- Create D1, the `bascik-shop-jobs` queue and `bascik-shop-dead` dead-letter queue. Replace the local-only D1 placeholder in authored configuration. Apply `migrations/` to the intended database before enabling requests.
+- The separate Printful **Manual/API store** `19022802` is created and accessible. Preserve exact saved templates, artwork placements, print files, applicable options, and blank product variant IDs. Store IDs from the Shopify store cannot simply be reused in the new store.
+- Use the refreshed `PRINTFUL_TOKEN` and `PRINTFUL_STORE_ID=19022802`, verify funding, and validate all 24 variants using unconfirmed v2 drafts without submitting production.
+- All 24 store-scoped `printful_template_mappings` are installed from the validated owner-approved templates. Keep them tied to store `19022802`; production needs its own reviewed mapping import. Never seed guessed IDs or rebuild these saved designs from incomplete legacy file metadata.
+- Sandbox D1 and queues are provisioned above. Production needs its own D1 and processing/dead-letter queues, an explicitly reviewed production configuration, and all three migrations applied to the intended database.
 - Enable Cloudflare Email Sending on Workers Paid, verify sender-domain access and external delivery, and configure `EMAIL_FROM`, monitored `SUPPORT_EMAIL`, and `ALERT_EMAIL`. Preserve Gmail's existing MX. Review bounce-domain, SPF, DKIM, and DMARC additions rather than replacing incoming routing.
-- Configure `/api/webhooks/printful?key=<private random token>` on the **new** store only, setting `PRINTFUL_WEBHOOK_TOKEN`. Treat the token as a secret and redact its query string in platform logs. A callback is only a hint; its content never directly changes fulfillment state without an authenticated Printful re-fetch.
+- Configure `/api/webhooks/printful` through `/v2/webhooks` on the **new** store only, saving its one-time signature secret securely. Subscribe to order and shipment lifecycle events, including hold removal. Do not overwrite the Shopify store's webhook configuration. A callback is only a hint; its content never directly changes fulfillment state without an authenticated Printful re-fetch.
 - Approve and publish actual seller/support, sizing, shipping, refund/return, privacy, retention, customs, and terms information. The current policy pages explicitly say they are pending. Remove the checkout prelaunch notice only after these gates pass.
 
 `SHOP_ENABLED=true` opens quote/payment creation. `SHOP_FULFILLMENT_ENABLED=true` separately permits Printful submissions. Do not enable either on generic previews. Use separate sandbox D1, queues, webhook secrets, and sender restrictions for every preview that tests checkout. Stripe test mode alone does not prevent real Printful production.
 
-The authored `wrangler.jsonc` deliberately contains no custom-domain route. Packaging rebases the generated deployment paths and preserves Bascik's selective static-asset routing and security headers. Production resource IDs and domain ownership remain owner-controlled.
+The authored `wrangler.jsonc` deliberately contains no custom-domain route. Packaging copies static assets and migrations into `.output/` with relative deployment paths and preserves Bascik's selective static-asset routing and security headers. This entire directory's deployable files, not just `worker.js`, travel through CI. Production resource IDs and domain ownership remain owner-controlled.
+
+### Sandbox deployment through CI
+
+The independent Shop workflow preserves shop-only CI filtering and always validates before deployment. It deploys only when a maintainer manually runs the workflow on `main` with `deploy_sandbox=true`. Pushes and pull requests do not deploy; there is no production deployment lane or hostname cutover.
+
+Create a dedicated Cloudflare API token for this account with Workers Scripts edit, D1 edit, and Queues edit permissions (plus Account Settings read for discovery). Store it as environment secret `SHOP_CLOUDFLARE_API_TOKEN` in the GitHub `shop-sandbox` environment. The existing shared docs token is documented with Workers permissions only, so it is not reused or replaced. The agent's Wrangler OAuth session is not a CI credential and has not been copied into GitHub.
+
+The owner-supplied dedicated token has now been verified active and securely installed as `SHOP_CLOUDFLARE_API_TOKEN` in the GitHub `shop-sandbox` environment. Read-only access checks for Workers Scripts, D1, and Queues succeeded. No token value was logged or committed; the shared docs token was not changed.
+
+After these changes are merged:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_sandbox=true
+```
+
+CI reapplies migrations and deploys the disabled-commerce sandbox to its Workers hostname. It rejects commerce-enabled, email-enabled, or custom-domain configurations. No Stripe or Printful secrets are needed for this storefront-only preview. Verify the resulting URL before any later sandbox-commerce configuration. Real checkout testing also requires setting `SHOP_ORIGIN` to that exact deployed origin.
 
 Builds default to `SHOP_BUILD_MODE=test` and send a global noindex header.
 An owner-approved `SHOP_BUILD_MODE=live yarn shop:build` creates indexable

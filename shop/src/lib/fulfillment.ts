@@ -1,11 +1,12 @@
 import { type Env, now, orderToken } from "./platform.ts";
 import { type Order, type Quote, printfulItems } from "./checkout.ts";
-import { printful, ProviderError, stripe } from "./providers.ts";
+import { printful, printfulList, ProviderError, stripe } from "./providers.ts";
 
 interface PrintfulOrder {
   id: number;
   external_id: string;
   status: string;
+  costs: { calculation_status: "done" | "calculating" | "failed" };
   shipments: {
     id: number;
     carrier?: string;
@@ -177,7 +178,10 @@ async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
     await failOrder(env, order.id, `Printful status: ${remote.status}`);
     return;
   }
-  const shipments = remote.shipments ?? [];
+  const shipments = await printfulList<PrintfulOrder["shipments"][number]>(
+    env,
+    `/orders/${remote.id}/shipments`,
+  );
   const status = remote.status === "fulfilled" ? "shipped" : "submitted";
   await env.DB.prepare(
     "UPDATE orders SET status=?,shipments=?,updated_at=?,lease_until=0,retry_at=?,attempts=0,last_error=NULL WHERE id=?",
@@ -220,20 +224,15 @@ export async function processOrder(env: Env, orderId: string) {
       )
         .bind(now(), claim.id)
         .run();
-      remote = await printful<PrintfulOrder>(
-        env,
-        "/orders?confirm=false&update_existing=false",
-        {
-          external_id: claim.id,
-          shipping: claim.shipping_id,
-          recipient: quote.recipient,
-          items: printfulItems(quote),
-          retail_costs: {
-            currency: "USD",
-            subtotal: (quote.subtotal / 100).toFixed(2),
-          },
+      remote = await printful<PrintfulOrder>(env, "/orders", {
+        external_id: claim.id,
+        shipping: claim.shipping_id,
+        recipient: quote.recipient,
+        order_items: printfulItems(quote),
+        retail_costs: {
+          currency: "USD",
         },
-      );
+      });
       if (remote.external_id !== claim.id || !Number.isSafeInteger(remote.id))
         throw new FulfillmentInvariantError(
           "Printful order reference mismatch",
@@ -243,9 +242,25 @@ export async function processOrder(env: Env, orderId: string) {
         .run();
     }
     if (remote.status === "draft") {
+      if (remote.costs?.calculation_status === "calculating") {
+        if (claim.attempts >= 8)
+          throw new FulfillmentInvariantError(
+            "Printful v2 draft costs did not finish calculating",
+          );
+        await env.DB.prepare(
+          "UPDATE orders SET lease_until=0,retry_at=? WHERE id=?",
+        )
+          .bind(now() + 60, claim.id)
+          .run();
+        return;
+      }
+      if (remote.costs?.calculation_status !== "done")
+        throw new FulfillmentInvariantError(
+          "Printful v2 draft costs are not ready",
+        );
       remote = await printful<PrintfulOrder>(
         env,
-        `/orders/${remote.id}/confirm`,
+        `/orders/${remote.id}/confirmation`,
         {},
       );
     }

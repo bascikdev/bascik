@@ -18,6 +18,11 @@ on:
       - "yarn.lock"
       - ".github/workflows/shop.yml"
   workflow_dispatch:
+    inputs:
+      deploy_sandbox:
+        description: "Deploy the disabled-commerce sandbox from main"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,4 +51,35 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: shop-cloudflare-build
-          path: shop/.output/worker.js
+          include-hidden-files: true
+          path: |
+            shop/.output/worker.js
+            shop/.output/wrangler.json
+            shop/.output/public/
+            shop/.output/migrations/
+  deploy-sandbox:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_sandbox && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: shop-sandbox
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: actions/download-artifact@v4
+        with:
+          name: shop-cloudflare-build
+          path: shop/.output
+      - name: Deploy isolated sandbox
+        working-directory: shop
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.SHOP_CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Set SHOP_CLOUDFLARE_API_TOKEN in the shop-sandbox environment."; exit 1; }
+          node --input-type=module -e 'import{readFile}from"node:fs/promises";const c=JSON.parse(await readFile(".output/wrangler.json"));if(c.name!=="bascik-shop-sandbox"||c.vars.SHOP_MODE!=="test"||c.vars.SHOP_ENABLED!=="false"||c.vars.SHOP_FULFILLMENT_ENABLED!=="false"||c.routes?.length||c.send_email?.length)throw Error("Unsafe sandbox configuration");'
+          yarn exec wrangler d1 migrations apply DB --remote --config .output/wrangler.json
+          yarn exec wrangler deploy --config .output/wrangler.json

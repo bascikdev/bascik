@@ -40,3 +40,16 @@ test("shop workflow includes the shop and shared dependencies on both events", (
 test("scheduled CodeQL remains enabled", () => {
   expect(eventBlock("codeql", "schedule")).toContain("cron:");
 });
+test("sandbox deployment is manual, main-only, and includes the entire asset bundle", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  expect(workflow).toContain(
+    "github.event_name == 'workflow_dispatch' && inputs.deploy_sandbox && github.ref == 'refs/heads/main'",
+  );
+  expect(workflow).toContain("needs: validate");
+  expect(workflow).toContain("environment: shop-sandbox");
+  for (const path of ["worker.js", "wrangler.json", "public/", "migrations/"])
+    expect(workflow).toContain(`shop/.output/${path}`);
+  expect(workflow).toContain("secrets.SHOP_CLOUDFLARE_API_TOKEN");
+  expect(workflow).toContain('c.vars.SHOP_ENABLED!=="false"');
+  expect(workflow).toContain('c.vars.SHOP_FULFILLMENT_ENABLED!=="false"');
+});

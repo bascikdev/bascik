@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { readFile } from "node:fs/promises";
+import { createHmac } from "node:crypto";
 import { Miniflare } from "miniflare";
 import { type Env, hmac, now, orderToken } from "../src/lib/platform.ts";
 import { products } from "../src/lib/catalog.ts";
 import {
   quoteRequest,
   checkoutRequest,
+  printfulItems,
   type Quote,
 } from "../src/lib/checkout.ts";
 import {
@@ -42,8 +44,20 @@ const snapshot: Quote = {
       quantity: 1,
       price: 3000,
       title: "Test shirt",
-      sync_variant_id: 123,
       variant_id: 456,
+      placements: [
+        {
+          placement: "front",
+          technique: "dtg",
+          layers: [
+            {
+              type: "file",
+              url: "https://example.com/art.png",
+              position: { width: 10, height: 10, top: 1, left: 1 },
+            },
+          ],
+        },
+      ],
     },
   ],
   rates: [{ id: "STANDARD", name: "Standard", amount: 500, currency: "usd" }],
@@ -68,7 +82,12 @@ beforeAll(async () => {
     d1Databases: ["DB"],
   });
   const DB = await runtime.getD1Database("DB");
-  const sql = await readFile("migrations/0001_shop.sql", "utf8");
+  const sql =
+    (await readFile("migrations/0001_shop.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0002_printful_v2.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0003_printful_templates.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -87,7 +106,8 @@ beforeAll(async () => {
     ORDER_TOKEN_SECRET: "fixture-order-token-secret-long-enough",
     PRINTFUL_TOKEN: "fixture",
     PRINTFUL_STORE_ID: "123",
-    PRINTFUL_WEBHOOK_TOKEN: "fixture-webhook-secret",
+    PRINTFUL_WEBHOOK_SECRET: "ab".repeat(32),
+    PRINTFUL_WEBHOOK_PUBLIC_KEY: "fixture-public-key",
     EMAIL_FROM: "sender@example.com",
     ALERT_EMAIL: "operator@example.com",
     SUPPORT_EMAIL: "support@example.com",
@@ -104,6 +124,8 @@ beforeEach(async () => {
     "orders",
     "quotes",
     "variant_mappings",
+    "printful_v2_mappings",
+    "printful_template_mappings",
     "rate_limits",
   ])
     await env.DB.prepare(`DELETE FROM ${table}`).run();
@@ -390,7 +412,7 @@ test("private order tokens work, public payment IDs and forged tokens do not", a
 test("forged Printful events cannot mutate order state", async () => {
   const response = await printfulWebhook(
     post("/api/webhooks/printful?key=wrong", {
-      store: 123,
+      store_id: 123,
       data: { order: { external_id: id } },
     }),
     { platform: { env } },
@@ -415,17 +437,47 @@ test("concurrent consumers create and confirm only one physical order", async ()
     if (url.includes("api.stripe.com")) return Response.json(payment);
     if (url.includes("/orders/@"))
       return Response.json({ code: 404 }, { status: 404 });
+    if (url.includes("/shipments"))
+      return Response.json({
+        data: [],
+        paging: { total: 0, offset: 0, limit: 100 },
+      });
+    if (url.endsWith("/v2/orders")) {
+      const submitted = JSON.parse(String(init?.body));
+      expect(submitted.order_items).toEqual([
+        {
+          source: "catalog",
+          catalog_variant_id: 456,
+          quantity: 1,
+          retail_price: "30.00",
+          placements: snapshot.items[0].placements,
+        },
+      ]);
+      expect(submitted.items).toBeUndefined();
+    }
     if (url.includes("/confirm"))
       return Response.json({
-        result: { id: 100, external_id: id, status: "pending", shipments: [] },
+        data: {
+          id: 100,
+          external_id: id,
+          status: "pending",
+          costs: { calculation_status: "done" },
+        },
       });
     return Response.json({
-      result: { id: 100, external_id: id, status: "draft", shipments: [] },
+      data: {
+        id: 100,
+        external_id: id,
+        status: "draft",
+        costs: { calculation_status: "done" },
+      },
     });
   });
   await Promise.all([processOrder(env, id), processOrder(env, id)]);
   expect(
-    requests.filter((request) => request.includes("confirm=false")),
+    requests.filter(
+      (request) => request === "POST https://api.printful.com/v2/orders",
+    ),
   ).toHaveLength(1);
   expect(
     requests.filter((request) => request.includes("/confirm")),
@@ -467,6 +519,122 @@ test("an ambiguous submission goes to operator review rather than creating anoth
       }>()
     ).results[0].kind,
   ).toBe("alert");
+});
+test("v2 draft calculation waits and reuses the external reference before confirmation", async () => {
+  await env.DB.prepare("UPDATE orders SET status='paid' WHERE id=?")
+    .bind(id)
+    .run();
+  let created = false;
+  let calculated = false;
+  const calls: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (url.includes("api.stripe.com")) return Response.json(payment);
+    if (url.includes("/shipments"))
+      return Response.json({
+        data: [],
+        paging: { total: 0, limit: 100, offset: 0 },
+      });
+    if (url.includes("/orders/@") && !created)
+      return Response.json({}, { status: 404 });
+    if (init?.method === "POST" && url.endsWith("/orders")) created = true;
+    return Response.json({
+      data: {
+        id: 100,
+        external_id: id,
+        status: url.endsWith("/confirmation") ? "pending" : "draft",
+        costs: { calculation_status: calculated ? "done" : "calculating" },
+      },
+    });
+  });
+  await processOrder(env, id);
+  expect(calls.filter((url) => url.includes("/confirmation"))).toHaveLength(0);
+  expect(
+    await env.DB.prepare("SELECT status,lease_until FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "submitting", lease_until: 0 });
+  calculated = true;
+  await env.DB.prepare("UPDATE orders SET retry_at=0 WHERE id=?")
+    .bind(id)
+    .run();
+  await processOrder(env, id);
+  expect(
+    calls.filter((url) => url === "POST https://api.printful.com/v2/orders"),
+  ).toHaveLength(1);
+  expect(calls.filter((url) => url.includes("/confirmation"))).toHaveLength(1);
+});
+test.each(["failed", "calculating"])(
+  "v2 draft costs %s cannot confirm after exhausted attempts",
+  async (calculation_status) => {
+    await env.DB.prepare(
+      "UPDATE orders SET status='submitting',attempts=7 WHERE id=?",
+    )
+      .bind(id)
+      .run();
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) =>
+        String(input).includes("api.stripe.com")
+          ? Response.json(payment)
+          : Response.json({
+              data: {
+                id: 100,
+                external_id: id,
+                status: "draft",
+                costs: { calculation_status },
+              },
+            }),
+      );
+    await processOrder(env, id);
+    expect(
+      (
+        await env.DB.prepare("SELECT status FROM orders WHERE id=?")
+          .bind(id)
+          .first()
+      )?.status,
+    ).toBe("failed");
+    expect(
+      fetcher.mock.calls.some(([input]) =>
+        String(input).includes("/confirmation"),
+      ),
+    ).toBe(false);
+  },
+);
+test("v2 callbacks use store_id and only schedule authenticated reconciliation", async () => {
+  await env.DB.prepare(
+    "UPDATE orders SET status='submitted',retry_at=? WHERE id=?",
+  )
+    .bind(now() + 900, id)
+    .run();
+  const text = JSON.stringify({
+    store_id: 123,
+    type: "shipment_sent",
+    data: { order: { external_id: id } },
+  });
+  const response = await printfulWebhook(
+    new Request(`${origin}/api/webhooks/printful`, {
+      method: "POST",
+      body: text,
+      headers: {
+        "x-pf-webhook-public-key": env.PRINTFUL_WEBHOOK_PUBLIC_KEY,
+        "x-pf-webhook-signature": createHmac(
+          "sha256",
+          Buffer.from(env.PRINTFUL_WEBHOOK_SECRET, "hex"),
+        )
+          .update(text)
+          .digest("hex"),
+      },
+    }),
+    { platform: { env } },
+  );
+  expect(response.status).toBe(200);
+  expect(
+    await env.DB.prepare("SELECT status,retry_at FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "submitted", retry_at: 0 });
 });
 test("customer notification retries survive failure and concurrent delivery", async () => {
   await env.DB.prepare(
@@ -517,13 +685,20 @@ test("partial shipment updates retain tracking and deduplicate earlier shipments
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     if (String(input).includes("api.stripe.com")) return Response.json(payment);
+    if (String(input).includes("/shipments")) {
+      const shipments = polls === 1 ? [first] : [first, second];
+      return Response.json({
+        data: shipments,
+        paging: { total: shipments.length, offset: 0, limit: 100 },
+      });
+    }
     ++polls;
     return Response.json({
-      result: {
+      data: {
         id: 100,
         external_id: id,
         status: polls === 1 ? "partial" : "fulfilled",
-        shipments: polls === 1 ? [first] : [first, second],
+        costs: { calculation_status: "done" },
       },
     });
   });
@@ -579,13 +754,20 @@ test("hosted Checkout uses the fixed destination and does not recollect shipping
   ).toBe("500");
 });
 test("quotes require verified private mappings and server prices", async () => {
-  await env.DB.prepare("INSERT INTO variant_mappings VALUES (?,?,?,1)")
-    .bind(variantId, 123, 456)
+  await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+    .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
     .run();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
     Response.json({
-      result: String(input).endsWith("/shipping/rates")
-        ? [{ id: "STANDARD", name: "Standard", rate: "5.00", currency: "USD" }]
+      data: String(input).endsWith("/v2/shipping-rates")
+        ? [
+            {
+              shipping: "STANDARD",
+              shipping_method_name: "Standard",
+              rate: "5.00",
+              currency: "USD",
+            },
+          ]
         : { costs: {} },
     }),
   );
@@ -598,3 +780,107 @@ test("quotes require verified private mappings and server prices", async () => {
   );
   expect((await result.json()).subtotal).toBe(6000);
 });
+test("legacy sync mappings cannot enable a v2 quote", async () => {
+  await env.DB.prepare("INSERT INTO variant_mappings VALUES (?,?,?,1)")
+    .bind(variantId, 123, 456)
+    .run();
+  const fetcher = vi.spyOn(globalThis, "fetch");
+  await expect(
+    quoteRequest(
+      post("/api/quote", {
+        items: [{ variantId, quantity: 1 }],
+        recipient: snapshot.recipient,
+      }),
+      env,
+    ),
+  ).rejects.toThrow("not ready for ordering");
+  expect(fetcher).not.toHaveBeenCalled();
+});
+test("template quotes preserve shipping techniques and orders use saved template designs", async () => {
+  const design = [{ placement: "front_dtf_hat", technique: "dtfilm" }];
+  await env.DB.prepare(
+    "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
+  )
+    .bind(
+      variantId,
+      Number(env.PRINTFUL_STORE_ID),
+      456,
+      789,
+      JSON.stringify(design),
+    )
+    .run();
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      expect(String(input)).toBe("https://api.printful.com/v2/shipping-rates");
+      expect(JSON.parse(String(init?.body)).order_items).toEqual([
+        {
+          source: "catalog",
+          catalog_variant_id: 456,
+          quantity: 1,
+          retail_price: "30.00",
+          placements: design,
+        },
+      ]);
+      return Response.json({
+        data: [
+          {
+            shipping: "STANDARD",
+            shipping_method_name: "Standard",
+            rate: "5.00",
+            currency: "USD",
+          },
+        ],
+      });
+    });
+  const result = await quoteRequest(
+    post("/api/quote", {
+      items: [{ variantId, quantity: 1 }],
+      recipient: snapshot.recipient,
+    }),
+    env,
+  );
+  const output = (await result.json()) as { quoteId: string };
+  const saved = await env.DB.prepare("SELECT snapshot FROM quotes WHERE id=?")
+    .bind(output.quoteId)
+    .first<{ snapshot: string }>();
+  expect(printfulItems(JSON.parse(saved!.snapshot))).toEqual([
+    {
+      source: "product_template",
+      product_template_id: 789,
+      catalog_variant_id: 456,
+      quantity: 1,
+      retail_price: "30.00",
+    },
+  ]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+test.each([
+  ["unverified", 123, 0],
+  ["different store", 999, 1],
+])(
+  "a %s template cannot authorize checkout",
+  async (_label, store, verified) => {
+    await env.DB.prepare(
+      "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,?)",
+    )
+      .bind(
+        variantId,
+        store,
+        456,
+        789,
+        JSON.stringify([{ placement: "front", technique: "dtg" }]),
+        verified,
+      )
+      .run();
+    await expect(
+      quoteRequest(
+        post("/api/quote", {
+          items: [{ variantId, quantity: 1 }],
+          recipient: snapshot.recipient,
+        }),
+        env,
+      ),
+    ).rejects.toThrow("not ready for ordering");
+  },
+);

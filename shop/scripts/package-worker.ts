@@ -1,4 +1,11 @@
-import { readFile, mkdir, writeFile, appendFile } from "node:fs/promises";
+import {
+  readFile,
+  mkdir,
+  writeFile,
+  appendFile,
+  cp,
+  rm,
+} from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
 
@@ -61,14 +68,17 @@ await build({
   minify: true,
 });
 generated.main = "./worker.js";
-generated.assets.directory = publicDirectory;
-if (generated.$schema)
-  generated.$schema = resolve("dist/.bascik/cloudflare", generated.$schema);
+await rm(".output/public", { recursive: true, force: true });
+await rm(".output/migrations", { recursive: true, force: true });
+await cp(publicDirectory, ".output/public", { recursive: true });
+await cp("migrations", ".output/migrations", { recursive: true });
+generated.assets.directory = "./public";
+delete generated.$schema;
 generated.triggers = { crons: ["*/5 * * * *"] };
 generated.d1_databases = generated.d1_databases.map(
   (database: Record<string, unknown>) => ({
     ...database,
-    migrations_dir: resolve("migrations"),
+    migrations_dir: "./migrations",
   }),
 );
 await writeFile(".output/wrangler.json", JSON.stringify(generated, null, 2));

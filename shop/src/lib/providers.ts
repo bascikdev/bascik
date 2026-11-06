@@ -22,12 +22,15 @@ export class ProviderError extends Error {
       : 0;
   }
 }
-export async function printful<T>(
-  env: Env,
+async function printfulResponse<T>(
+  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">,
   path: string,
   data?: unknown,
-): Promise<T> {
-  const response = await fetch(`https://api.printful.com${path}`, {
+): Promise<{
+  data: T;
+  paging?: { total: number; offset: number; limit: number };
+}> {
+  const response = await fetch(`https://api.printful.com/v2${path}`, {
     method: data === undefined ? "GET" : "POST",
     headers: {
       Authorization: `Bearer ${env.PRINTFUL_TOKEN}`,
@@ -43,8 +46,49 @@ export async function printful<T>(
       response.status,
       response.headers.get("retry-after"),
     );
-  const payload = (await response.json()) as { result: T };
-  return payload.result;
+  const payload = (await response.json()) as {
+    data: T;
+    paging?: { total: number; offset: number; limit: number };
+  };
+  if (!payload || typeof payload !== "object" || !("data" in payload))
+    throw new ProviderError("Printful response", 502);
+  return payload;
+}
+export async function printful<T>(
+  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">,
+  path: string,
+  data?: unknown,
+): Promise<T> {
+  return (await printfulResponse<T>(env, path, data)).data;
+}
+export async function printfulList<T>(
+  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">,
+  path: string,
+): Promise<T[]> {
+  const results: T[] = [];
+  let offset = 0;
+  for (let page = 0; page < 100; ++page) {
+    const payload = await printfulResponse<T[]>(
+      env,
+      `${path}${path.includes("?") ? "&" : "?"}limit=100&offset=${offset}`,
+    );
+    if (
+      !Array.isArray(payload.data) ||
+      !payload.paging ||
+      !Number.isSafeInteger(payload.paging.total) ||
+      payload.paging.total < 0 ||
+      !Number.isSafeInteger(payload.paging.limit) ||
+      payload.paging.limit <= 0 ||
+      payload.paging.offset !== offset
+    )
+      throw new ProviderError("Printful pagination", 502);
+    results.push(...payload.data);
+    if (results.length >= payload.paging.total) return results;
+    if (!payload.data.length)
+      throw new ProviderError("Printful pagination", 502);
+    offset += payload.paging.limit;
+  }
+  throw new ProviderError("Printful pagination limit", 502);
 }
 export async function stripe<T>(
   env: Env,

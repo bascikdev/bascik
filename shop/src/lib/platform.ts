@@ -10,7 +10,8 @@ export interface Env {
   ORDER_TOKEN_SECRET: string;
   PRINTFUL_TOKEN: string;
   PRINTFUL_STORE_ID: string;
-  PRINTFUL_WEBHOOK_TOKEN: string;
+  PRINTFUL_WEBHOOK_SECRET: string;
+  PRINTFUL_WEBHOOK_PUBLIC_KEY: string;
   EMAIL_FROM: string;
   ALERT_EMAIL: string;
   SUPPORT_EMAIL: string;
@@ -31,11 +32,10 @@ export interface Context {
   platform?: { env?: unknown };
 }
 export class ShopError extends Error {
-  constructor(
-    message: string,
-    public status = 400,
-  ) {
+  status: number;
+  constructor(message: string, status = 400) {
     super(message);
+    this.status = status;
   }
 }
 export function environment(context: Context): Env {

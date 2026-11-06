@@ -35,6 +35,31 @@ export async function verifyStripeSignature(
   )
     throw new ShopError("Invalid payment signature.", 400);
 }
+export async function verifyPrintfulSignature(
+  secret: string,
+  payload: string,
+  signature: string,
+) {
+  if (!/^(?:[a-f0-9]{2}){32,}$/i.test(secret))
+    throw new ShopError("Printful signature is not configured.", 503);
+  if (!/^[a-f0-9]{64}$/i.test(signature))
+    throw new ShopError("Invalid Printful signature.", 403);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from(secret.match(/../g)!, (byte) => parseInt(byte, 16)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)),
+  );
+  const expected = Array.from(digest, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  if (!equal(expected, signature.toLowerCase()))
+    throw new ShopError("Invalid Printful signature.", 403);
+}
 export const stripeWebhook = handler(async (request, env) => {
   configuration(env);
   const text = await request.text();
@@ -98,18 +123,29 @@ export const stripeWebhook = handler(async (request, env) => {
   return json({ received: true });
 });
 export const printfulWebhook = handler(async (request, env) => {
-  if (!env.PRINTFUL_WEBHOOK_TOKEN)
+  if (!env.PRINTFUL_WEBHOOK_SECRET || !env.PRINTFUL_WEBHOOK_PUBLIC_KEY)
     throw new ShopError("Webhook not configured.", 503);
-  const supplied = new URL(request.url).searchParams.get("key") ?? "";
-  if (!equal(supplied, env.PRINTFUL_WEBHOOK_TOKEN))
+  if (
+    !equal(
+      request.headers.get("x-pf-webhook-public-key") ?? "",
+      env.PRINTFUL_WEBHOOK_PUBLIC_KEY,
+    )
+  )
     throw new ShopError("Invalid webhook.", 403);
   const text = await request.text();
   if (text.length > 262_144) throw new ShopError("Request too large.", 413);
+  await verifyPrintfulSignature(
+    env.PRINTFUL_WEBHOOK_SECRET,
+    text,
+    request.headers.get("x-pf-webhook-signature") ?? "",
+  );
   const event = JSON.parse(text) as {
-    store: number;
+    store_id: number;
     data?: { order?: { external_id?: string } };
   };
-  if (String(event.store) !== env.PRINTFUL_STORE_ID)
+  if (!event || !Number.isSafeInteger(event.store_id))
+    throw new ShopError("Invalid Printful event.");
+  if (String(event.store_id) !== env.PRINTFUL_STORE_ID)
     throw new ShopError("Wrong Printful store.");
   const id = event.data?.order?.external_id;
   if (typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))

@@ -19,7 +19,7 @@ const runtime = new Miniflare({
   },
   d1Databases: ["DB"],
   assets: {
-    directory: config.assets.directory,
+    directory: resolve(".output", config.assets.directory),
     binding: "ASSETS",
     assetConfig: {
       not_found_handling: "404-page",

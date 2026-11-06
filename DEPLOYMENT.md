@@ -233,6 +233,22 @@ cd adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare && npx wrangler secre
 
 A build-time value goes in a GitHub Actions secret, passed to the build step's `env` only. Check runtime secrets with `cf workers secrets list --worker cloudflare-adapter` (or `--worker bascik`).
 
+## Shop Sandbox
+
+The shop remains separate from both existing Workers. Its setup and remaining commerce gates are documented in [shop/README.md](shop/README.md). The authored shop configuration has no domain route and cannot take over the Shopify hostname.
+
+Provisioning created only the `bascik-shop-sandbox` D1 database (`17c831f5-82a4-4094-ad10-5489830c6ae2`), `bascik-shop-sandbox-jobs` processing queue, and `bascik-shop-sandbox-dead` dead-letter queue in the existing Cloudflare account. All three shop migrations have been applied remotely. The GitHub environment `shop-sandbox` allows only `main`. No Worker, email service, or production database was deployed or created. The owner separately created Printful API store `19022802`; sandbox Stripe products/prices and read-only Printful template discovery are recorded in the shop runbook.
+
+The Shop workflow publishes a complete self-contained Worker/assets/migrations artifact. A maintainer can request a disabled-commerce sandbox deployment with:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_sandbox=true
+```
+
+This requires the changes on `main` and a dedicated `SHOP_CLOUDFLARE_API_TOKEN` environment secret with Workers Scripts edit, D1 edit, Queues edit, and Account Settings read. The existing docs token is not replaced or reused. Only a successful Shop validation run can deploy, and automatic pushes/PRs never trigger this manual sandbox lane. Checkout, fulfillment, and customer email remain disabled. Production and domain cutover are separate owner-approved work after commerce verification.
+
+The owner-supplied shop token is installed in the `shop-sandbox` GitHub environment. Active-token verification and read-only access checks for Workers Scripts, D1, and Queues succeeded. Deployment still requires the shop changes merged into `main`; no deployment has been performed by the agent.
+
 ## Pages and Workers Differ Here
 
 Measured for bascik.dev by comparing the Pages preview of the same commit with `wrangler dev` (the same asset code as production) and the production demo Worker:
