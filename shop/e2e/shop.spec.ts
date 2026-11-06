@@ -320,6 +320,40 @@ test("order polling follows payment and asynchronous draft readiness", async ({
   expect(calls).toBe(4);
 });
 
+test("published customer policies preserve previous shop routes and decisions", async ({
+  page,
+}) => {
+  for (const [route, title] of [
+    ["/policies/refund-policy", "Refund policy"],
+    ["/policies/privacy-policy", "Privacy policy"],
+    ["/policies/terms-of-service", "Terms of service"],
+    ["/policies/contact-information", "Contact information"],
+    ["/pages/contact", "Contact"],
+    ["/pages/data-sharing-opt-out", "Privacy choices"],
+    ["/shipping", "Shipping & returns"],
+    ["/privacy", "Privacy policy"],
+    ["/terms", "Terms of service"],
+  ]) {
+    const response = await page.goto(route);
+    expect(response?.status()).toBe(200);
+    await expect(
+      page.getByTestId("shop-policy").getByRole("heading", { level: 1 }),
+    ).toHaveText(title);
+    await expect(
+      page
+        .getByTestId("shop-policy")
+        .getByRole("link", { name: "collin@bascik.dev" })
+        .first(),
+    ).toHaveAttribute("href", "mailto:collin@bascik.dev");
+  }
+  await page.goto("/policies/refund-policy");
+  await expect(page.getByTestId("shop-policy")).toContainText("within 14 days");
+  await expect(page.getByTestId("shop-policy")).toContainText(
+    "within 10 business days",
+  );
+  await expect(page.getByTestId("shop-policy")).toContainText("within 7 days");
+});
+
 test.describe("high-density image selection", () => {
   test.use({ deviceScaleFactor: 2 });
   test("selects appropriately sized native candidates in a fresh context", async ({

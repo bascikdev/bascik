@@ -8,6 +8,13 @@ import { equal, hmac, now, boundedText, body } from "../src/lib/platform.ts";
 import { verifyStripeSignature } from "../src/lib/webhooks.ts";
 import { imageColor } from "../src/lib/image-colors.ts";
 import { productDescription } from "../scripts/product-description.ts";
+import {
+  policyPages,
+  refundPolicy,
+  termsPolicy,
+  privacyPolicy,
+  supportEmail,
+} from "../src/lib/policies.ts";
 import { originalImagePath } from "../scripts/image-cache.ts";
 import {
   templateFingerprint,
@@ -15,6 +22,37 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("carries owner-approved policy decisions and legacy URLs into the new shop", () => {
+    expect(supportEmail).toBe("collin@bascik.dev");
+    for (const text of [
+      "All sales are final",
+      "within 7 days",
+      "within 14 days",
+      "within 10 business days",
+      "responsibility of the customer",
+      "without prior authorization",
+    ])
+      expect(refundPolicy).toContain(text);
+    expect(termsPolicy).toContain("Risk of loss and title");
+    expect(termsPolicy).not.toContain("hosted on Shopify");
+    expect(privacyPolicy).toContain("Cloudflare");
+    expect(privacyPolicy).toContain("Stripe");
+    expect(privacyPolicy).toContain("Printful");
+    expect(privacyPolicy).not.toContain("powered by Shopify");
+    for (const route of [
+      "policies/refund-policy",
+      "policies/privacy-policy",
+      "policies/terms-of-service",
+      "policies/contact-information",
+      "pages/contact",
+      "pages/data-sharing-opt-out",
+    ])
+      expect(policyPages.some((page) => page.route === route)).toBe(true);
+    for (const policy of policyPages)
+      expect(policy.content).not.toMatch(
+        /awaiting owner approval|terms are approved|cdn-cgi\/l\/email-protection/,
+      );
+  });
   test("original image cache follows the source URL and version, not gallery position", () => {
     const source = new URL("https://cdn.shopify.com/a.jpg?v=1");
     const old = originalImagePath("shirt", source);

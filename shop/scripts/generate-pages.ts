@@ -6,9 +6,12 @@ import {
   money,
   type ProductImage,
 } from "../src/lib/catalog.ts";
+import { policyPages } from "../src/lib/policies.ts";
 
 await mkdir("src/pages/products", { recursive: true });
 await mkdir("src/pages/assets", { recursive: true });
+await mkdir("src/pages/policies", { recursive: true });
+await mkdir("src/pages/pages", { recursive: true });
 for (const name of ["bascik-logo.svg", "favicon.svg"])
   await copyFile(
     `../docs/src/pages/assets/${name}`,
@@ -112,29 +115,13 @@ await writeFile(
     false,
   ),
 );
-for (const [route, title, content] of [
-  [
-    "shipping",
-    "Shipping & returns",
-    "Products are made to order by Printful. Delivery availability, prices, and estimates are calculated for your items and destination before payment. International orders may incur customs or import charges. Size guides, support contact, returns terms, and cancellation rules are awaiting owner approval. Ordering remains disabled until these details are published.",
-  ],
-  [
-    "privacy",
-    "Privacy",
-    "The shop requires delivery and contact details to process orders through Stripe and Printful. Private order pages are not publicly indexed. The final seller contact, retention policy, and privacy terms are awaiting owner approval; ordering remains disabled until they are published.",
-  ],
-  [
-    "terms",
-    "Terms",
-    "The seller's contact information, refund terms, applicable taxes, and international sales policies must be confirmed before launch. The shop is not accepting orders until these terms are approved.",
-  ],
-]) {
+for (const { route, title, content } of policyPages) {
   await writeFile(
     `src/pages/${route}.html`,
     shell(
       title,
       `/${route}`,
-      `<section class="narrow"><h1>${title}</h1><p>${e(content)}</p><a href="/">Back to the collection</a></section>`,
+      `<article class="narrow" data-testid="shop-policy"><h1>${e(title)}</h1>${content}<a href="/">Back to the collection</a></article>`,
       false,
     ),
   );

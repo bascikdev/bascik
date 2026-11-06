@@ -2,6 +2,8 @@
 .dev.vars*
 !.dev.vars.example
 src/pages/products/
+src/pages/policies/
+src/pages/pages/
 src/pages/*.html
 src/pages/assets/shop.js
 .local/
