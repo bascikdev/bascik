@@ -470,11 +470,15 @@ if (element("[data-order-status]")) {
           }
           container?.append(paragraph);
         }
-        if (
-          ["pending", "paid", "submitting"].includes(order.status) &&
-          ++attempts < 30
-        )
-          setTimeout(check, 3000);
+        if (["pending", "paid", "submitting"].includes(order.status)) {
+          if (++attempts < 60)
+            setTimeout(check, Math.min(30000, attempts * 3000));
+          else
+            status(
+              "[data-order-status]",
+              `${labels[order.status]} Processing is still underway. Refresh this page to check again.`,
+            );
+        }
       } catch (error) {
         status(
           "[data-order-status]",

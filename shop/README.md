@@ -163,6 +163,8 @@ These environments use real shipping quotes, real hosted Stripe sandbox Checkout
 
 New order references are 32-character hexadecimal UUIDs without separators, matching Printful's external ID limit. Older private order links remain readable.
 
+Order pages keep polling through payment and asynchronous draft-cost calculation with a capped backoff, so the five-minute recovery sweep can finish without requiring a refresh. If the bounded polling window expires, the page explicitly asks the buyer to refresh.
+
 **Production confirmation is blocked in test mode**, both in the order processor and the provider request helper. Only an explicitly live runtime may call Printful's confirmation endpoint. An unexpected production status on a test order raises an operator error. `SHOP_FULFILLMENT_ENABLED=true` on a test preview allows draft creation, never manufacturing. Test-mode notification sending is suppressed even if an email binding accidentally exists; no preview email binding is provisioned.
 
 Printful has no documented order sandbox, and its Webhook Simulator does not support v2 webhooks. Shipment/tracking scenarios therefore use authenticated signed v2 events and simulated provider responses in automated tests, not an unsigned public test endpoint or changes to an actual draft's production status. Production tracking logic remains covered separately by live-mode fixtures.

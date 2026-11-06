@@ -288,6 +288,38 @@ for (const state of [
   });
 }
 
+test("order polling follows payment and asynchronous draft readiness", async ({
+  page,
+}) => {
+  await page.clock.install();
+  const states = ["pending", "paid", "submitting", "test_draft"];
+  let calls = 0;
+  await page.route("**/api/order", (route) =>
+    route.fulfill({
+      json: {
+        orderId: "polling-fixture",
+        status: states[Math.min(calls++, states.length - 1)],
+        paymentConfirmed: calls > 1,
+        testMode: true,
+        items: [],
+        shipments: [],
+      },
+    }),
+  );
+  await page.goto("/order#token=polling-fixture");
+  await expect(page.getByRole("status")).toContainText("Waiting for payment");
+  await page.clock.fastForward(3000);
+  await expect(page.getByRole("status")).toContainText("Payment received");
+  await page.clock.fastForward(6000);
+  await expect(page.getByRole("status")).toContainText("submitted to Printful");
+  await page.clock.fastForward(9000);
+  await expect(page.getByRole("status")).toContainText(
+    "Nothing will be produced or shipped",
+  );
+  await page.clock.fastForward(30000);
+  expect(calls).toBe(4);
+});
+
 test.describe("high-density image selection", () => {
   test.use({ deviceScaleFactor: 2 });
   test("selects appropriately sized native candidates in a fresh context", async ({
