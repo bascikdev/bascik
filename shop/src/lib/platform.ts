@@ -86,12 +86,46 @@ export function configuration(env: Env) {
   if (env.SHOP_MODE === "test" && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY))
     throw new ShopError("A sandbox payment key is required.", 503);
 }
+export async function boundedText(
+  request: Request,
+  limit: number,
+): Promise<string> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new ShopError("Request too large.", 413);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+      bytes,
+    );
+  } catch {
+    throw new ShopError("Invalid UTF-8 request body.");
+  }
+}
 export async function body(request: Request): Promise<Record<string, unknown>> {
   if (!request.headers.get("content-type")?.startsWith("application/json"))
     throw new ShopError("Use JSON for this request.", 415);
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > 16_384)
-    throw new ShopError("Request too large.", 413);
+  const text = await boundedText(request, 16_384);
   let value: unknown;
   try {
     value = JSON.parse(text);

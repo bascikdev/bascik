@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { products } from "../src/lib/catalog.ts";
+import { templateFingerprint } from "./template-fingerprint.ts";
 import {
   shippingPlacements,
   type PrintfulShippingPlacement,
@@ -29,6 +30,9 @@ if (
     variants.length ||
   validation.draft?.store_id !== 19022802 ||
   validation.draft.status !== "draft" ||
+  validation.proposalFingerprint !== templateFingerprint(proposal.mappings) ||
+  validation.draft.external_id !==
+    `bascik-audit-${validation.proposalFingerprint.slice(0, 19)}` ||
   validation.draft.costs?.calculation_status !== "done" ||
   validation.items?.length !== variants.length
 )
@@ -55,6 +59,7 @@ const statements = proposal.mappings.map((mapping) => {
     throw new Error(`Validated variant mismatch for ${mapping.variant_id}`);
   const design = shippingPlacements(mapping.shipping_placements);
   if (
+    item.placements.length !== design.length ||
     !design.every((expected) =>
       item.placements.some(
         (actual: { placement: string; technique: string }) =>

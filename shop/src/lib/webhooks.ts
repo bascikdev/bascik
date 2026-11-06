@@ -8,6 +8,7 @@ import {
   ShopError,
   orderToken,
   body,
+  boundedText,
   sameOrigin,
   type Env,
 } from "./platform.ts";
@@ -62,8 +63,7 @@ export async function verifyPrintfulSignature(
 }
 export const stripeWebhook = handler(async (request, env) => {
   configuration(env);
-  const text = await request.text();
-  if (text.length > 262_144) throw new ShopError("Request too large.", 413);
+  const text = await boundedText(request, 262_144);
   await verifyStripeSignature(
     env.STRIPE_WEBHOOK_SECRET,
     text,
@@ -132,8 +132,7 @@ export const printfulWebhook = handler(async (request, env) => {
     )
   )
     throw new ShopError("Invalid webhook.", 403);
-  const text = await request.text();
-  if (text.length > 262_144) throw new ShopError("Request too large.", 413);
+  const text = await boundedText(request, 262_144);
   await verifyPrintfulSignature(
     env.PRINTFUL_WEBHOOK_SECRET,
     text,
@@ -152,7 +151,7 @@ export const printfulWebhook = handler(async (request, env) => {
     return json({ received: true });
   // Notifications only trigger an authenticated provider re-fetch, never a trusted status update.
   await env.DB.prepare(
-    "UPDATE orders SET retry_at=0 WHERE id=? AND status IN ('submitted','submitting')",
+    "UPDATE orders SET retry_at=0 WHERE id=? AND status IN ('submitted','submitting','shipped')",
   )
     .bind(id)
     .run();

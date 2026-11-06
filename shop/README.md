@@ -70,14 +70,14 @@ node scripts/setup-printful-mappings.ts --write
 
 This checks the saved draft evidence and the exact sandbox database ID before importing mappings. It does not enable checkout or fulfillment. Runtime v2 orders use the original account-level product templates directly in the API store; there is no need to recreate artwork or duplicate sync-product listings. The v1 store-product API has no template-to-product copy field, and rebuilding from its incomplete artwork data would not preserve the exact saved design.
 
-The owner-approved draft validation uses Printful's public documentation example address, not a customer destination:
+The owner-approved draft validation uses Printful's public documentation example address, not a customer destination. Each exact mapping proposal has a deterministic fingerprint and its own external order reference:
 
 ```sh
 cd shop
 PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/validate-printful-draft.ts
 ```
 
-This created draft **`185170769`**, external reference `bascik-v2-audit-19022802`, in store `19022802`. It contains all 24 variants, with one of each, labelled **VALIDATION ONLY**. Costs calculated successfully; item catalog IDs, quantities, placement/technique sets, and preserved inch positions were checked. Standard and carbon-offset standard shipping were available for the sample destination. Rerunning reconciles the same external reference rather than creating another draft; the script contains no confirmation call.
+The initial audit created draft **`185170769`**, external reference `bascik-v2-audit-19022802`, in store `19022802`. It contains all 24 variants, with one of each, labelled **VALIDATION ONLY**. Costs calculated successfully; item catalog IDs, quantities, placement/technique sets, and preserved inch positions were checked. Standard and carbon-offset standard shipping were available for the sample destination. New validations use `bascik-audit-<fingerprint-prefix>` and save the complete proposal fingerprint in the evidence. Rerunning an unchanged proposal reconciles the same draft; changing a template requires its own draft validation. Mapping setup rejects legacy evidence without the fingerprint, changed templates, and mismatched placement sets before writing SQL. Rerun validation to refresh older evidence. The script contains no confirmation call.
 
 Printful returns blank status fields, artwork URLs, and file IDs for these template-derived placements. These are not explicit artwork approvals or files that can safely be reconstructed into catalog designs. The script reports all 34 unspecified placement statuses; it validates template references, quantities, techniques, positions, and calculated costs rather than claiming a provider artwork-status approval. The owner-prepared templates are the source of truth, not a request to redesign or reapprove artwork. Detailed responses remain private in `.local/printful-validation-draft.json`.
 
@@ -118,6 +118,8 @@ yarn shop:import
 
 The import validates the allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
 
+Original-image cache filenames hash the complete source URL, including its version query. Reordering gallery entries cannot attach old cached bytes to new metadata; a replaced/versioned source gets its own cache file.
+
 Imported description HTML is parsed into plain text, excluding script/style/template content and preserving paragraph and line-break spacing. That text is still HTML-escaped when rendered; extraction is not a substitute for output escaping.
 
 Read-only provider checks use the ignored `shop/.env`:
@@ -145,6 +147,7 @@ Required before enabling checkout:
 - Configure `STRIPE_WEBHOOK_SECRET` for `/api/webhooks/stripe`, receiving `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired`. Stripe receipts need a receipt email; the code supplies one.
 - Set a random, private `ORDER_TOKEN_SECRET` of at least 32 characters. Keep it stable; rotating it invalidates existing order links. Links expire after 90 days and can be individually revoked in D1.
 - Set `TAX_CODE_SHIRT` and `TAX_CODE_HAT` to owner-reviewed Stripe tax codes. Configure Stripe Tax origin and applicable registrations; international service sales on the same Stripe account do not automatically settle physical-goods tax obligations. Product price, customer tax, Printful's charges to the business, and recipient customs duties are separate.
+- Sandbox product setup rejects existing products whose tax code differs from the selected code instead of silently reusing them. Review and correct the tagged product before retrying.
 - The separate Printful **Manual/API store** `19022802` is created and accessible. Preserve exact saved templates, artwork placements, print files, applicable options, and blank product variant IDs. Store IDs from the Shopify store cannot simply be reused in the new store.
 - Use the refreshed `PRINTFUL_TOKEN` and `PRINTFUL_STORE_ID=19022802`, verify funding, and validate all 24 variants using unconfirmed v2 drafts without submitting production.
 - All 24 store-scoped `printful_template_mappings` are installed from the validated owner-approved templates. Keep them tied to store `19022802`; production needs its own reviewed mapping import. Never seed guessed IDs or rebuild these saved designs from incomplete legacy file metadata.
@@ -206,6 +209,8 @@ artifact's mode, not checkout enablement, credentials, provisioning, or deployme
 - Orders are not fulfilled from the return page, and unpaid/delayed payments do not authorize production. Unrelated shared-account Stripe payments are ignored.
 - Shipments may be partial; each distinct shipment gets a notification. Stripe sends receipts; Cloudflare sends shop confirmations, tracking links, and failure alerts.
 - Email is not an exactly-once protocol. The app deduplicates normal notification work, but an ambiguous provider acceptance followed by a crash may require delivery reconciliation.
+- JSON request bodies are streamed with a 16 KiB byte limit; signed webhook payloads use a 256 KiB byte limit. Oversized streams are cancelled before full buffering; signature verification retains the original accepted payload text.
+- Shipped orders can receive later authenticated shipment updates without draft creation or confirmation. Signed callbacks schedule a provider re-fetch; recovery polling includes shipped orders for 90 days. New shipment IDs notify once, and already-shipped orders do not regress to submitted during reshipment.
 - Order access uses an unguessable HMAC link in a URL fragment, not a public checkout ID. The browser POSTs it for status so it does not appear in ordinary request URLs. Responses expose only order state, purchased variant quantities, and shipment tracking, with no-store headers.
 
 ### Operator recovery

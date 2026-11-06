@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
 import { printful, printfulList, ProviderError } from "../src/lib/providers.ts";
+import { templateFingerprint } from "./template-fingerprint.ts";
 import {
   shippingPlacements,
   type PrintfulShippingPlacement,
@@ -68,7 +69,8 @@ const recipient = {
   country_code: "US",
   zip: "91311",
 };
-const externalId = "bascik-v2-audit-19022802";
+const proposalFingerprint = templateFingerprint(proposal.mappings);
+const externalId = `bascik-audit-${proposalFingerprint.slice(0, 19)}`;
 interface Draft {
   id: number;
   store_id: number;
@@ -103,7 +105,7 @@ if (
 await mkdir(".local", { recursive: true, mode: 0o700 });
 await writeFile(
   ".local/printful-validation-draft.json",
-  JSON.stringify(draft, null, 2),
+  JSON.stringify({ draft, proposalFingerprint }, null, 2),
   { mode: 0o600 },
 );
 for (
@@ -223,6 +225,7 @@ await writeFile(
       rates,
       unspecifiedPlacementStatuses,
       designSource: "owner-prepared-product-templates",
+      proposalFingerprint,
     },
     null,
     2,

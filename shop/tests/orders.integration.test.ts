@@ -788,6 +788,127 @@ test("partial shipment updates retain tracking and deduplicate earlier shipments
       .results,
   ).toEqual([{ kind: "shipment:1" }, { kind: "shipment:2" }]);
 });
+test("late shipped callbacks and recovery refresh tracking without manufacturing again", async () => {
+  env.SHOP_MODE = "live";
+  env.STRIPE_SECRET_KEY = "sk_live_fixture";
+  payment.livemode = true;
+  await env.DB.prepare(
+    "UPDATE orders SET status='shipped',printful_id=100,retry_at=? WHERE id=?",
+  )
+    .bind(now() + 900, id)
+    .run();
+  const shipment = {
+    id: 3,
+    carrier: "Fixture",
+    tracking_number: "RESHIP",
+    tracking_url: "https://example.com/track/3",
+  };
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) => {
+      const url = String(input);
+      if (new URL(url).hostname === "api.stripe.com")
+        return Response.json(payment);
+      if (new URL(url).pathname.endsWith("/shipments"))
+        return Response.json({
+          data: [shipment],
+          paging: { total: 1, offset: 0, limit: 100 },
+        });
+      return Response.json({
+        data: {
+          id: 100,
+          external_id: id,
+          status: "fulfilled",
+          costs: { calculation_status: "done" },
+        },
+      });
+    });
+  const event = JSON.stringify({
+    store_id: 123,
+    data: { order: { external_id: id } },
+  });
+  const response = await printfulWebhook(
+    new Request(`${origin}/api/webhooks/printful`, {
+      method: "POST",
+      body: event,
+      headers: {
+        "x-pf-webhook-public-key": env.PRINTFUL_WEBHOOK_PUBLIC_KEY,
+        "x-pf-webhook-signature": createHmac(
+          "sha256",
+          Buffer.from(env.PRINTFUL_WEBHOOK_SECRET, "hex"),
+        )
+          .update(event)
+          .digest("hex"),
+      },
+    }),
+    { platform: { env } },
+  );
+  expect(response.status).toBe(200);
+  await Promise.all([processOrder(env, id), processOrder(env, id)]);
+  expect(
+    await env.DB.prepare("SELECT status,shipments FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "shipped", shipments: JSON.stringify([shipment]) });
+  await env.DB.prepare("UPDATE orders SET retry_at=0 WHERE id=?")
+    .bind(id)
+    .run();
+  await sweep(env);
+  expect(
+    await env.DB.prepare(
+      "SELECT kind FROM notifications WHERE kind='shipment:3'",
+    ).all(),
+  ).toMatchObject({ results: [{ kind: "shipment:3" }] });
+  expect(
+    fetcher.mock.calls.filter(([input]) =>
+      new URL(String(input)).pathname.endsWith("/shipments"),
+    ),
+  ).toHaveLength(2);
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+    false,
+  );
+});
+test("shipped orders cannot create or confirm drafts when provider state regresses", async () => {
+  env.SHOP_MODE = "live";
+  env.STRIPE_SECRET_KEY = "sk_live_fixture";
+  payment.livemode = true;
+  await env.DB.prepare("UPDATE orders SET status='shipped' WHERE id=?")
+    .bind(id)
+    .run();
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) =>
+      new URL(String(input)).hostname === "api.stripe.com"
+        ? Response.json(payment)
+        : Response.json({
+            data: { id: 100, external_id: id, status: "draft" },
+          }),
+    );
+  await processOrder(env, id);
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
+    false,
+  );
+  expect(
+    await env.DB.prepare("SELECT status FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "failed" });
+});
+test.each(["stripe", "printful"])(
+  "%s webhooks reject oversized multibyte payloads before signature processing",
+  async (provider) => {
+    const action = provider === "stripe" ? stripeWebhook : printfulWebhook;
+    const response = await action(
+      new Request(`${origin}/api/webhooks/${provider}`, {
+        method: "POST",
+        body: "é".repeat(131073),
+        headers: { "x-pf-webhook-public-key": env.PRINTFUL_WEBHOOK_PUBLIC_KEY },
+      }),
+      { platform: { env } },
+    );
+    expect(response.status).toBe(413);
+  },
+);
 test("hosted Checkout uses the fixed destination and does not recollect shipping", async () => {
   await env.DB.prepare("DELETE FROM orders").run();
   const requests: { url: string; body: URLSearchParams }[] = [];

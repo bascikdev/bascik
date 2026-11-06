@@ -82,6 +82,10 @@ if (write) {
         `bascik-shop-product:${product.slug}`,
       );
     }
+    if (remote.tax_code !== code)
+      throw new Error(
+        `Stripe product tax code mismatch for ${product.slug}. Review the existing product before rerunning setup.`,
+      );
     const prices = await call(
       `/prices?product=${encodeURIComponent(remote.id)}&limit=100`,
     );

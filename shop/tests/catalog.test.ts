@@ -4,12 +4,53 @@ import { gzipSync } from "node:zlib";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
 import { cartItems, recipient } from "../src/lib/checkout.ts";
 import { cents, ProviderError } from "../src/lib/providers.ts";
-import { equal, hmac, now } from "../src/lib/platform.ts";
+import { equal, hmac, now, boundedText, body } from "../src/lib/platform.ts";
 import { verifyStripeSignature } from "../src/lib/webhooks.ts";
 import { imageColor } from "../src/lib/image-colors.ts";
 import { productDescription } from "../scripts/product-description.ts";
+import { originalImagePath } from "../scripts/image-cache.ts";
+import {
+  templateFingerprint,
+  type TemplateMapping,
+} from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("original image cache follows the source URL and version, not gallery position", () => {
+    const source = new URL("https://cdn.shopify.com/a.jpg?v=1");
+    const old = originalImagePath("shirt", source);
+    expect(originalImagePath("shirt", new URL(source))).toBe(old);
+    expect(
+      originalImagePath("shirt", new URL("https://cdn.shopify.com/a.jpg?v=2")),
+    ).not.toBe(old);
+    expect(
+      originalImagePath("shirt", new URL("https://cdn.shopify.com/b.jpg?v=1")),
+    ).not.toBe(old);
+  });
+  test("template evidence fingerprint binds exact template and design references", () => {
+    const mapping: TemplateMapping = {
+      variant_id: "1",
+      store_id: 19022802,
+      catalog_variant_id: 456,
+      product_template_id: 123,
+      shipping_placements: [{ placement: "front", technique: "dtg" }],
+    };
+    const hash = templateFingerprint([mapping]);
+    expect(
+      templateFingerprint([{ ...mapping, product_template_id: 124 }]),
+    ).not.toBe(hash);
+    expect(
+      templateFingerprint([{ ...mapping, catalog_variant_id: 457 }]),
+    ).not.toBe(hash);
+    expect(
+      templateFingerprint([
+        {
+          ...mapping,
+          shipping_placements: [{ placement: "back", technique: "dtg" }],
+        },
+      ]),
+    ).not.toBe(hash);
+    expect(templateFingerprint([{ ...mapping, store_id: 1 }])).not.toBe(hash);
+  });
   test("contains exactly two shirts and two hats, with all 24 variants", () => {
     expect(products).toHaveLength(4);
     expect(products.flatMap((product) => product.variants)).toHaveLength(24);
@@ -24,6 +65,83 @@ describe("owned product catalog", () => {
       expect(product.slug).not.toContain("sticker");
       expect(product.price).toBe(product.slug.includes("hat") ? 2500 : 3000);
     }
+  });
+  describe("bounded request bodies", () => {
+    test("cancels oversized streams before consuming the remaining chunks", async () => {
+      let pulls = 0;
+      let cancelled = false;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulls++;
+            controller.enqueue(new Uint8Array(8192));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const init = { method: "POST", body: stream, duplex: "half" };
+      const request = new Request("https://example.com", init);
+      await expect(boundedText(request, 16384)).rejects.toMatchObject({
+        status: 413,
+      });
+      expect(pulls).toBe(3);
+      expect(cancelled).toBe(true);
+    });
+    test("measures UTF-8 bytes and preserves raw signed payload across chunk boundaries", async () => {
+      const payload = '{"message":"é😀"}\n';
+      const bytes = new TextEncoder().encode(payload);
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+          controller.close();
+        },
+      });
+      const init = { method: "POST", body: stream, duplex: "half" };
+      expect(
+        await boundedText(
+          new Request("https://example.com", init),
+          bytes.length,
+        ),
+      ).toBe(payload);
+      await expect(
+        boundedText(
+          new Request("https://example.com", { method: "POST", body: payload }),
+          bytes.length - 1,
+        ),
+      ).rejects.toMatchObject({ status: 413 });
+    });
+    test("JSON endpoints enforce the 16 KiB limit on actual bytes", async () => {
+      await expect(
+        body(
+          new Request("https://example.com", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ value: "é".repeat(8192) }),
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 413 });
+    });
+    test("raw signature text retains a BOM and rejects invalid UTF-8", async () => {
+      const payload = '\uFEFF{"id":"event"}';
+      expect(
+        await boundedText(
+          new Request("https://example.com", { method: "POST", body: payload }),
+          100,
+        ),
+      ).toBe(payload);
+      await expect(
+        boundedText(
+          new Request("https://example.com", {
+            method: "POST",
+            body: new Uint8Array([255]),
+          }),
+          100,
+        ),
+      ).rejects.toThrow("Invalid UTF-8");
+    });
   });
   test("all 52 captured image views have real local responsive files", () => {
     expect(products.flatMap((product) => product.images)).toHaveLength(52);

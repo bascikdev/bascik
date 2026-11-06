@@ -182,7 +182,10 @@ async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
     env,
     `/orders/${remote.id}/shipments`,
   );
-  const status = remote.status === "fulfilled" ? "shipped" : "submitted";
+  const status =
+    remote.status === "fulfilled" || order.status === "shipped"
+      ? "shipped"
+      : "submitted";
   await env.DB.prepare(
     "UPDATE orders SET status=?,shipments=?,updated_at=?,lease_until=0,retry_at=?,attempts=0,last_error=NULL WHERE id=?",
   )
@@ -195,7 +198,7 @@ async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
 export async function processOrder(env: Env, orderId: string) {
   if (env.SHOP_FULFILLMENT_ENABLED !== "true") return;
   const claim = await env.DB.prepare(
-    "UPDATE orders SET lease_until=?,attempts=attempts+1 WHERE id=? AND status IN ('paid','submitting','submitted') AND lease_until<? AND retry_at<=? RETURNING *",
+    "UPDATE orders SET lease_until=?,attempts=attempts+1 WHERE id=? AND status IN ('paid','submitting','submitted','shipped') AND lease_until<? AND retry_at<=? RETURNING *",
   )
     .bind(now() + 120, orderId, now(), now())
     .first<Order>();
@@ -209,6 +212,18 @@ export async function processOrder(env: Env, orderId: string) {
         "Order has no verified successful payment",
       );
     let remote = await lookup(env, claim);
+    if (claim.status === "shipped") {
+      if (!remote || remote.status === "draft")
+        throw new FulfillmentInvariantError(
+          "Shipped order has no matching production order",
+        );
+      if (env.SHOP_MODE !== "live")
+        throw new FulfillmentInvariantError(
+          "Test order unexpectedly entered Printful production",
+        );
+      await recordPrintful(env, claim, remote);
+      return;
+    }
     if (!remote && claim.status !== "paid") {
       await failOrder(
         env,
@@ -389,9 +404,9 @@ export async function sweep(env: Env) {
     .all<{ id: string }>();
   for (const order of unpaid.results) await reconcilePayment(env, order.id);
   const pending = await env.DB.prepare(
-    "SELECT id FROM orders WHERE status IN ('paid','submitting','submitted') AND retry_at<=? AND lease_until<? ORDER BY updated_at LIMIT 10",
+    "SELECT id FROM orders WHERE (status IN ('paid','submitting','submitted') OR (status='shipped' AND created_at>?)) AND retry_at<=? AND lease_until<? ORDER BY retry_at,updated_at LIMIT 10",
   )
-    .bind(now(), now())
+    .bind(now() - 90 * 86400, now(), now())
     .all<{ id: string }>();
   for (const order of pending.results) await processOrder(env, order.id);
   await sendNotifications(env);

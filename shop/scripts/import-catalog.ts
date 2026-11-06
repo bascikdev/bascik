@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { imageColor } from "../src/lib/image-colors.ts";
 import { productDescription } from "./product-description.ts";
+import { originalImagePath } from "./image-cache.ts";
 
 const handles = [
   "100-organic-cotton-bascik-logo-front-unisex",
@@ -78,7 +79,7 @@ for (const product of selected) {
     if (url.protocol !== "https:" || url.hostname !== "cdn.shopify.com")
       throw new Error("Unexpected image origin");
     const name = `${product.handle}-${index}`;
-    const file = `image-originals/${name}.original`;
+    const file = originalImagePath(product.handle, url);
     let bytes: Buffer;
     try {
       bytes = await readFile(file);
