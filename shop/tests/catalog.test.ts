@@ -7,6 +7,7 @@ import { cents, ProviderError } from "../src/lib/providers.ts";
 import { equal, hmac, now } from "../src/lib/platform.ts";
 import { verifyStripeSignature } from "../src/lib/webhooks.ts";
 import { imageColor } from "../src/lib/image-colors.ts";
+import { productDescription } from "../scripts/product-description.ts";
 
 describe("owned product catalog", () => {
   test("contains exactly two shirts and two hats, with all 24 variants", () => {
@@ -64,6 +65,20 @@ describe("owned product catalog", () => {
     expect(escapeHtml('<img onerror="$&">')).toBe(
       "&lt;img onerror=&quot;$&amp;&quot;&gt;",
     );
+  });
+  test("extracts description text with HTML parsing and escapes it at rendering", () => {
+    expect(
+      productDescription(
+        "<p>Books &amp; authors<br />A &lt; B</p><script>alert(1)</script><style>body{}</style><!--hidden-->",
+      ),
+    ).toBe("Books & authors\nA < B");
+    const text = productDescription(
+      '<p>&lt;script&gt;literal&lt;/script&gt; $&</p><img src=x onerror="alert(1)">',
+    );
+    expect(escapeHtml(text)).toBe(
+      "&lt;script&gt;literal&lt;/script&gt; $&amp;",
+    );
+    expect(productDescription("<p>Before</p><p>After")).toBe("Before\nAfter");
   });
   test("built browsing interaction JavaScript stays below 30 KiB gzip", () => {
     expect(

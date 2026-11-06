@@ -440,7 +440,8 @@ test("concurrent consumers create and confirm only one physical order", async ()
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     requests.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("api.stripe.com")) return Response.json(payment);
+    if (new URL(url).hostname === "api.stripe.com")
+      return Response.json(payment);
     if (url.includes("/orders/@"))
       return Response.json({ code: 404 }, { status: 404 });
     if (url.includes("/shipments"))
@@ -503,7 +504,7 @@ test("an ambiguous submission goes to operator review rather than creating anoth
   const fetcher = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input) =>
-      String(input).includes("api.stripe.com")
+      new URL(String(input)).hostname === "api.stripe.com"
         ? Response.json(payment)
         : Response.json({}, { status: 404 }),
     );
@@ -536,7 +537,8 @@ test("v2 draft calculation waits and reuses the external reference before confir
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("api.stripe.com")) return Response.json(payment);
+    if (new URL(url).hostname === "api.stripe.com")
+      return Response.json(payment);
     if (url.includes("/shipments"))
       return Response.json({
         data: [],
@@ -584,7 +586,8 @@ test("sandbox payment webhook creates one unconfirmed draft and never emails or 
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.includes("api.stripe.com")) return Response.json(payment);
+      if (new URL(url).hostname === "api.stripe.com")
+        return Response.json(payment);
       if (url.includes("/confirmation"))
         throw new Error("Test mode reached production");
       if (url.includes("/orders/@") && !created)
@@ -637,7 +640,7 @@ test.each(["failed", "calculating"])(
     const fetcher = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input) =>
-        String(input).includes("api.stripe.com")
+        new URL(String(input)).hostname === "api.stripe.com"
           ? Response.json(payment)
           : Response.json({
               data: {
@@ -749,7 +752,8 @@ test("partial shipment updates retain tracking and deduplicate earlier shipments
     tracking_url: "https://example.com/track/2",
   };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    if (String(input).includes("api.stripe.com")) return Response.json(payment);
+    if (new URL(String(input)).hostname === "api.stripe.com")
+      return Response.json(payment);
     if (String(input).includes("/shipments")) {
       const shipments = polls === 1 ? [first] : [first, second];
       return Response.json({

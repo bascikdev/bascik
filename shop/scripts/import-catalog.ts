@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { imageColor } from "../src/lib/image-colors.ts";
+import { productDescription } from "./product-description.ts";
 
 const handles = [
   "100-organic-cotton-bascik-logo-front-unisex",
@@ -146,12 +147,7 @@ for (const product of selected) {
     id: String(product.id),
     slug: product.handle,
     title: product.title,
-    description: product.body_html
-      .replace(/<br\s*\/?>|<\/p>/gi, "\n")
-      .replace(/<[^>]*>/g, "")
-      .replace(/&amp;/g, "&")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
+    description: productDescription(product.body_html),
     price: cents,
     variants: product.variants.map((variant) => ({
       id: String(variant.id),

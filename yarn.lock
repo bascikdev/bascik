@@ -5064,6 +5064,7 @@ __metadata:
     "@types/node": "npm:^24.19.1"
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
+    parse5: "npm:^8.0.1"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"

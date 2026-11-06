@@ -33,9 +33,9 @@ The authenticated Cloudflare account `8572c3fcc06b71dbf05fe590e8b3f74e` now has:
 | Dead-letter queue  | `bascik-shop-sandbox-dead`                                    |
 | GitHub environment | `shop-sandbox`, restricted to branch `main`                   |
 
-All three checked-in migrations have been applied to the sandbox database. All 24 owner-approved saved-template mappings have been installed for API store `19022802`. The authored configuration targets these isolated resources and the dedicated Printful API store, and explicitly disables checkout and fulfillment. Email Sending has no configured subdomains in this account; the sandbox deliberately has no email binding.
+All three checked-in migrations have been applied to the sandbox database. All 24 owner-approved saved-template mappings have been installed for API store `19022802`. The authored configuration targets these isolated resources and the dedicated Printful API store, and explicitly disables checkout and fulfillment. Cloudflare Email Sending is now enabled for `bascik.dev`; the owner confirmed inbox delivery of a one-time local CLI test from `no-reply@bascik.dev`. The sandbox and PR previews deliberately have no email binding; this test does not certify the production notification worker.
 
-No Worker has been deployed, production resource has been created, or DNS/MX record has been changed. Stripe sandbox inventory provisioning and the single unconfirmed Printful validation draft are recorded here. To remove the unused infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
+The separate PR Worker has been deployed as described below; no production shop resources or hostname cutover have been performed. The owner activated the email sender in Cloudflare. Stripe sandbox inventory provisioning and the unconfirmed Printful validation draft are recorded here. To remove the unused disabled-commerce sandbox infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
 
 ### Printful v2
 
@@ -117,6 +117,8 @@ yarn shop:import
 ```
 
 The import validates the allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+
+Imported description HTML is parsed into plain text, excluding script/style/template content and preserving paragraph and line-break spacing. That text is still HTML-escaped when rendered; extraction is not a substitute for output escaping.
 
 Read-only provider checks use the ignored `shop/.env`:
 
