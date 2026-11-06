@@ -258,6 +258,12 @@ for (const state of [
     lines: 0,
     label: "Payment received",
   },
+  {
+    status: "test_draft",
+    paymentConfirmed: true,
+    lines: 0,
+    label: "Nothing will be produced or shipped",
+  },
 ]) {
   test(`cart clearing requires confirmed payment, not just ${state.status} status`, async ({
     page,

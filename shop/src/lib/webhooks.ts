@@ -185,6 +185,7 @@ export const orderStatus = handler(async (request, env: Env) => {
     orderId: order.id,
     status: order.status,
     paymentConfirmed: payment !== null,
+    testMode: env.SHOP_MODE === "test",
     shipments: JSON.parse(order.shipments),
     items: quote.items.map((item) => ({
       variantId: item.variantId,

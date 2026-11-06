@@ -54,6 +54,8 @@ export function enabled(env: Env) {
   configuration(env);
 }
 export function configuration(env: Env) {
+  if (env.SHOP_MODE !== "live" && env.SHOP_MODE !== "test")
+    throw new ShopError("Payment mode is not configured.", 503);
   for (const key of [
     "SHOP_ORIGIN",
     "STRIPE_SECRET_KEY",
@@ -81,6 +83,8 @@ export function configuration(env: Env) {
     env.STRIPE_SECRET_KEY.startsWith("rk_live_");
   if ((env.SHOP_MODE === "live") !== live)
     throw new ShopError("Payment mode configuration does not match.", 503);
+  if (env.SHOP_MODE === "test" && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY))
+    throw new ShopError("A sandbox payment key is required.", 503);
 }
 export async function body(request: Request): Promise<Record<string, unknown>> {
   if (!request.headers.get("content-type")?.startsWith("application/json"))

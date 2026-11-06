@@ -33,6 +33,16 @@ test("a legacy response envelope fails explicitly", async () => {
     "Printful response",
   );
 });
+test.each(["test", undefined] as const)(
+  "Printful confirmation is forbidden in %s mode before any network call",
+  async (SHOP_MODE) => {
+    const fetcher = vi.spyOn(globalThis, "fetch");
+    await expect(
+      printful({ ...env, SHOP_MODE }, "/orders/123/confirmation", {}),
+    ).rejects.toThrow("forbidden");
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
 test("v2 shipment pagination follows the returned page size", async () => {
   const fetcher = vi
     .spyOn(globalThis, "fetch")

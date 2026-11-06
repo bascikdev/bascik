@@ -247,7 +247,15 @@ gh workflow run shop.yml --ref main -f deploy_sandbox=true
 
 This requires the changes on `main` and a dedicated `SHOP_CLOUDFLARE_API_TOKEN` environment secret with Workers Scripts edit, D1 edit, Queues edit, and Account Settings read. The existing docs token is not replaced or reused. Only a successful Shop validation run can deploy, and automatic pushes/PRs never trigger this manual sandbox lane. Checkout, fulfillment, and customer email remain disabled. Production and domain cutover are separate owner-approved work after commerce verification.
 
-The owner-supplied shop token is installed in the `shop-sandbox` GitHub environment. Active-token verification and read-only access checks for Workers Scripts, D1, and Queues succeeded. Deployment still requires the shop changes merged into `main`; no deployment has been performed by the agent.
+The owner-supplied shop token is installed in the `shop-sandbox` GitHub environment. Active-token verification and read-only access checks for Workers Scripts, D1, and Queues succeeded. This disabled-commerce sandbox lane requires the shop changes merged into `main`.
+
+### Shop PR feature environments
+
+The Shop workflow also deploys **draft-only commerce previews** after successful validation on same-repository branch pushes with an open PR. This does not require merging. Pull-request events and forks never deploy or receive preview credentials. The script verifies the PR head is the exact push commit before provisioning anything.
+
+Each PR gets `bascik-shop-pr-<number>` on Workers.dev, a separate `-db` D1 database, and `-jobs` / `-dead` queues. The `shop-preview` GitHub environment holds the dedicated Cloudflare token, Stripe sandbox key, Printful token, and order-token seed. CI imports the owner-prepared product template references, installs per-preview runtime secrets, creates its Stripe webhook, deploys, checks the URL, and comments it on the PR.
+
+Real Stripe sandbox payments exercise the signed callback and durable payment-to-draft handoff. Printful orders remain unconfirmed: test mode blocks the confirmation endpoint at the provider layer regardless of the fulfillment flag. No merchandise is produced and no customer email is sent. Shipment events are tested with signed v2 fixtures plus simulated provider responses; Printful's simulator does not support v2. See [shop/README.md](shop/README.md) for the exact safety behavior and manual resource cleanup.
 
 ## Pages and Workers Differ Here
 

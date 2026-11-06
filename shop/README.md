@@ -153,11 +153,25 @@ Required before enabling checkout:
 
 `SHOP_ENABLED=true` opens quote/payment creation. `SHOP_FULFILLMENT_ENABLED=true` separately permits Printful submissions. Do not enable either on generic previews. Use separate sandbox D1, queues, webhook secrets, and sender restrictions for every preview that tests checkout. Stripe test mode alone does not prevent real Printful production.
 
+### Draft-only PR commerce previews
+
+Same-repository branch pushes with an open PR now deploy a dedicated shop Worker after Shop validation succeeds. PR events and forks never receive deployment secrets. The deployment verifies the PR head matches the pushed commit, creates `bascik-shop-pr-<number>` on Workers.dev with separate D1 and processing/dead-letter queues, imports the exact four template mappings, and registers a Stripe sandbox webhook at that PR's origin. Pushes without an open PR fail the preview gate rather than deploying an unassociated environment.
+
+The `shop-preview` GitHub environment contains the dedicated Cloudflare token, sandbox Stripe key, Printful token, and an order-token seed. Runtime webhook secrets are generated separately per deployment; order-link signing keys are derived per PR. Secret files are temporary, never artifacts. Older Stripe webhook endpoints belonging to that same preview are retired only after successful replacement deployment; other businesses' endpoints are untouched.
+
+These environments use real shipping quotes, real hosted Stripe sandbox Checkout, signed payment callbacks, and real **unconfirmed** Printful template drafts. The fulfilled test state is `test_draft`, displayed as “Nothing will be produced or shipped.” The scheduled reconciler handles missing payment callbacks; duplicate deliveries and concurrent consumers cannot create another draft.
+
+**Production confirmation is blocked in test mode**, both in the order processor and the provider request helper. Only an explicitly live runtime may call Printful's confirmation endpoint. An unexpected production status on a test order raises an operator error. `SHOP_FULFILLMENT_ENABLED=true` on a test preview allows draft creation, never manufacturing. Test-mode notification sending is suppressed even if an email binding accidentally exists; no preview email binding is provisioned.
+
+Printful has no documented order sandbox, and its Webhook Simulator does not support v2 webhooks. Shipment/tracking scenarios therefore use authenticated signed v2 events and simulated provider responses in automated tests, not an unsigned public test endpoint or changes to an actual draft's production status. Production tracking logic remains covered separately by live-mode fixtures.
+
+CI comments the preview URL on the PR and records its D1/queue names and Stripe webhook ID in the run summary. The production hostname, live Stripe objects, and existing Shopify store are never changed. Preview resources persist across pushes to preserve test orders. After closing a PR, remove that PR's Worker, queues, D1 database, and tagged Stripe webhook endpoint; test drafts can be deleted while uncharged. Automatic teardown is not configured.
+
 The authored `wrangler.jsonc` deliberately contains no custom-domain route. Packaging copies static assets and migrations into `.output/` with relative deployment paths and preserves Bascik's selective static-asset routing and security headers. This entire directory's deployable files, not just `worker.js`, travel through CI. Production resource IDs and domain ownership remain owner-controlled.
 
 ### Sandbox deployment through CI
 
-The independent Shop workflow preserves shop-only CI filtering and always validates before deployment. It deploys only when a maintainer manually runs the workflow on `main` with `deploy_sandbox=true`. Pushes and pull requests do not deploy; there is no production deployment lane or hostname cutover.
+The independent Shop workflow preserves shop-only CI filtering and always validates before deployment. Its separate disabled-commerce sandbox lane deploys when a maintainer manually runs the workflow on `main` with `deploy_sandbox=true`. Branch pushes with an open same-repository PR instead use the draft-only preview lane described above. Pull-request events do not deploy. There is no production deployment lane or hostname cutover.
 
 Create a dedicated Cloudflare API token for this account with Workers Scripts edit, D1 edit, and Queues edit permissions (plus Account Settings read for discovery). Store it as environment secret `SHOP_CLOUDFLARE_API_TOKEN` in the GitHub `shop-sandbox` environment. The existing shared docs token is documented with Workers permissions only, so it is not reused or replaced. The agent's Wrangler OAuth session is not a CI credential and has not been copied into GitHub.
 

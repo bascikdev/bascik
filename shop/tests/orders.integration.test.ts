@@ -118,6 +118,9 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   vi.restoreAllMocks();
+  env.SHOP_MODE = "test";
+  env.STRIPE_SECRET_KEY = "sk_test_fixture";
+  payment.livemode = false;
   for (const table of [
     "notifications",
     "payment_events",
@@ -293,7 +296,7 @@ test("the scheduled sweep recovers a missing payment webhook even with the store
   expect(
     (await env.DB.prepare("SELECT * FROM payment_events").all()).results,
   ).toHaveLength(1);
-  expect(env.EMAIL!.send).toHaveBeenCalledTimes(1);
+  expect(env.EMAIL!.send).not.toHaveBeenCalled();
 });
 test("expired unpaid sessions do not clear the cart or create notifications", async () => {
   await env.DB.prepare("UPDATE orders SET created_at=? WHERE id=?")
@@ -427,6 +430,9 @@ test("forged Printful events cannot mutate order state", async () => {
   ).toBe("pending");
 });
 test("concurrent consumers create and confirm only one physical order", async () => {
+  env.SHOP_MODE = "live";
+  env.STRIPE_SECRET_KEY = "sk_live_fixture";
+  payment.livemode = true;
   await env.DB.prepare("UPDATE orders SET status='paid' WHERE id=?")
     .bind(id)
     .run();
@@ -563,7 +569,62 @@ test("v2 draft calculation waits and reuses the external reference before confir
   expect(
     calls.filter((url) => url === "POST https://api.printful.com/v2/orders"),
   ).toHaveLength(1);
-  expect(calls.filter((url) => url.includes("/confirmation"))).toHaveLength(1);
+  expect(calls.filter((url) => url.includes("/confirmation"))).toHaveLength(0);
+  expect(
+    (
+      await env.DB.prepare("SELECT status FROM orders WHERE id=?")
+        .bind(id)
+        .first()
+    )?.status,
+  ).toBe("test_draft");
+});
+test("sandbox payment webhook creates one unconfirmed draft and never emails or confirms production", async () => {
+  let created = false;
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("api.stripe.com")) return Response.json(payment);
+      if (url.includes("/confirmation"))
+        throw new Error("Test mode reached production");
+      if (url.includes("/orders/@") && !created)
+        return Response.json({}, { status: 404 });
+      if (init?.method === "POST" && url.endsWith("/orders")) created = true;
+      return Response.json({
+        data: {
+          id: 100,
+          external_id: id,
+          status: "draft",
+          costs: { calculation_status: "done" },
+        },
+      });
+    });
+  await stripeWebhook(await eventRequest("evt_sandbox_draft", payment), {
+    platform: { env },
+  });
+  await Promise.all([processOrder(env, id), processOrder(env, id)]);
+  await sweep(env);
+  await stripeWebhook(await eventRequest("evt_sandbox_duplicate", payment), {
+    platform: { env },
+  });
+  const order = await env.DB.prepare(
+    "SELECT status,printful_id FROM orders WHERE id=?",
+  )
+    .bind(id)
+    .first();
+  expect(order).toMatchObject({ status: "test_draft", printful_id: 100 });
+  expect(
+    fetcher.mock.calls.filter(
+      ([input, init]) =>
+        String(input).endsWith("/v2/orders") && init?.method === "POST",
+    ),
+  ).toHaveLength(1);
+  expect(
+    fetcher.mock.calls.some(([input]) =>
+      String(input).includes("/confirmation"),
+    ),
+  ).toBe(false);
+  expect(env.EMAIL!.send).not.toHaveBeenCalled();
 });
 test.each(["failed", "calculating"])(
   "v2 draft costs %s cannot confirm after exhausted attempts",
@@ -637,6 +698,7 @@ test("v2 callbacks use store_id and only schedule authenticated reconciliation",
   ).toMatchObject({ status: "submitted", retry_at: 0 });
 });
 test("customer notification retries survive failure and concurrent delivery", async () => {
+  env.SHOP_MODE = "live";
   await env.DB.prepare(
     "INSERT INTO notifications(id,order_id,kind,created_at) VALUES (?,?,?,?)",
   )
@@ -667,6 +729,9 @@ test("customer notification retries survive failure and concurrent delivery", as
   ).toBe("sent");
 });
 test("partial shipment updates retain tracking and deduplicate earlier shipments", async () => {
+  env.SHOP_MODE = "live";
+  env.STRIPE_SECRET_KEY = "sk_live_fixture";
+  payment.livemode = true;
   await env.DB.prepare("UPDATE orders SET status='submitted' WHERE id=?")
     .bind(id)
     .run();

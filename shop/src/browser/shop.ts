@@ -419,6 +419,8 @@ if (element("[data-order-status]")) {
           paid: "Payment received. Preparing your order.",
           submitting: "Your order is being submitted to Printful.",
           submitted: "Your order is with Printful.",
+          test_draft:
+            "Test payment received. Printful draft created. Nothing will be produced or shipped.",
           failed: "Your order needs attention. Our team has been notified.",
           shipped: "Your order has shipped.",
           cancelled: "Your order was cancelled.",
@@ -466,7 +468,10 @@ if (element("[data-order-status]")) {
           }
           container?.append(paragraph);
         }
-        if (order.status === "pending" && ++attempts < 10)
+        if (
+          ["pending", "paid", "submitting"].includes(order.status) &&
+          ++attempts < 30
+        )
           setTimeout(check, 3000);
       } catch (error) {
         status(

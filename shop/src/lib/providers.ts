@@ -23,13 +23,23 @@ export class ProviderError extends Error {
   }
 }
 async function printfulResponse<T>(
-  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">,
+  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID"> &
+    Partial<Pick<Env, "SHOP_MODE">>,
   path: string,
   data?: unknown,
 ): Promise<{
   data: T;
   paging?: { total: number; offset: number; limit: number };
 }> {
+  if (
+    data !== undefined &&
+    /\/confirmation(?:\?|$)/.test(path) &&
+    env.SHOP_MODE !== "live"
+  )
+    throw new ShopError(
+      "Printful production confirmation is forbidden outside live mode.",
+      403,
+    );
   const response = await fetch(`https://api.printful.com/v2${path}`, {
     method: data === undefined ? "GET" : "POST",
     headers: {
@@ -55,7 +65,8 @@ async function printfulResponse<T>(
   return payload;
 }
 export async function printful<T>(
-  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">,
+  env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID"> &
+    Partial<Pick<Env, "SHOP_MODE">>,
   path: string,
   data?: unknown,
 ): Promise<T> {

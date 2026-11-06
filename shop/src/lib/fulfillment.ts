@@ -241,6 +241,10 @@ export async function processOrder(env: Env, orderId: string) {
         .bind(remote.id, claim.id)
         .run();
     }
+    if (env.SHOP_MODE === "test" && remote.status !== "draft")
+      throw new FulfillmentInvariantError(
+        "Test order unexpectedly entered Printful production",
+      );
     if (remote.status === "draft") {
       if (remote.costs?.calculation_status === "calculating") {
         if (claim.attempts >= 8)
@@ -258,6 +262,14 @@ export async function processOrder(env: Env, orderId: string) {
         throw new FulfillmentInvariantError(
           "Printful v2 draft costs are not ready",
         );
+      if (env.SHOP_MODE === "test") {
+        await env.DB.prepare(
+          "UPDATE orders SET status='test_draft',printful_id=?,lease_until=0,retry_at=0,attempts=0,last_error=NULL,updated_at=? WHERE id=?",
+        )
+          .bind(remote.id, now(), claim.id)
+          .run();
+        return;
+      }
       remote = await printful<PrintfulOrder>(
         env,
         `/orders/${remote.id}/confirmation`,
@@ -304,6 +316,7 @@ export async function processOrder(env: Env, orderId: string) {
   }
 }
 export async function sendNotifications(env: Env) {
+  if (env.SHOP_MODE === "test") return;
   const pending = await env.DB.prepare(
     "SELECT id FROM notifications WHERE status='pending' AND retry_at<=? AND lease_until<? ORDER BY created_at LIMIT 10",
   )

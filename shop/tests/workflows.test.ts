@@ -53,3 +53,20 @@ test("sandbox deployment is manual, main-only, and includes the entire asset bun
   expect(workflow).toContain('c.vars.SHOP_ENABLED!=="false"');
   expect(workflow).toContain('c.vars.SHOP_FULFILLMENT_ENABLED!=="false"');
 });
+test("commerce previews deploy only trusted branch pushes after validation", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  const preview = workflow
+    .split("  deploy-preview:")[1]
+    .split("  deploy-sandbox:")[0];
+  expect(preview).toContain("needs: validate");
+  expect(preview).toContain("github.event_name == 'push'");
+  expect(preview).toContain("github.ref != 'refs/heads/main'");
+  expect(preview).toContain("github.repository == 'bascikdev/bascik'");
+  expect(preview).toContain("environment: shop-preview");
+  expect(preview).not.toContain("pull_request_target");
+  const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
+  expect(deploy).toContain("pulls[0].head.sha !== process.env.GITHUB_SHA");
+  expect(deploy).toContain('SHOP_MODE: "test"');
+  expect(deploy).toContain("config.send_email?.length");
+  expect(deploy).toContain("bascik-shop-pr-${pr}");
+});
