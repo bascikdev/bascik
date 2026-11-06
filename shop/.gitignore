@@ -1,5 +1,7 @@
 .output/
 .dev.vars*
+.env
+.env.*
 !.dev.vars.example
 src/pages/products/
 src/pages/policies/

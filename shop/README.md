@@ -35,7 +35,52 @@ The authenticated Cloudflare account `8572c3fcc06b71dbf05fe590e8b3f74e` now has:
 
 All three checked-in migrations have been applied to the sandbox database. All 24 owner-approved saved-template mappings have been installed for API store `19022802`. The authored configuration targets these isolated resources and the dedicated Printful API store, and explicitly disables checkout and fulfillment. Cloudflare Email Sending is now enabled for `bascik.dev`; the owner confirmed inbox delivery of a one-time local CLI test from `no-reply@bascik.dev`. The sandbox and PR previews deliberately have no email binding; this test does not certify the production notification worker.
 
-The separate PR Worker has been deployed as described below; no production shop resources or hostname cutover have been performed. The owner activated the email sender in Cloudflare. Stripe sandbox inventory provisioning and the unconfirmed Printful validation draft are recorded here. To remove the unused disabled-commerce sandbox infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
+The separate PR Worker has been deployed as described below. Production resources are now provisioned separately as documented below; no production Worker or hostname cutover has been performed. The owner activated the email sender in Cloudflare. Stripe sandbox inventory provisioning and the unconfirmed Printful validation draft are recorded here. To remove the unused disabled-commerce sandbox infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
+
+### Provisioned production prelaunch
+
+Production is prepared independently from all sandbox/PR infrastructure:
+
+| Resource                  | Name / ID                                                           |
+| ------------------------- | ------------------------------------------------------------------- |
+| Worker (not deployed yet) | `bascik-shop-production`                                            |
+| D1                        | `bascik-shop-production-db`, `6789dbf6-f32f-400b-ad4a-d5b590b7438d` |
+| Processing queue          | `bascik-shop-production-jobs`, `21e16a4e63194d4692b8cb7a232eeb45`   |
+| Dead-letter queue         | `bascik-shop-production-dead`, `d8b7818212714394ade8795aa8226e6c`   |
+| GitHub environment        | `shop-production`, only branch `main`                               |
+| Pre-cutover origin        | `https://bascik-shop-production.collin-inbox.workers.dev`           |
+
+All three migrations and all 24 fingerprint-validated template mappings are installed in production D1: ten variants per shirt and two per hat. The production order table is empty. Validation draft `185223395`, reference `bascik-audit-326d2c36db57936aadd`, contains the exact four owner-prepared templates, passed cost/shipping checks, and remains **unconfirmed**. Printful returned blank placement statuses, not explicit artwork approval; owner-approved saved templates remain the design source.
+
+The live restricted Stripe key was verified against the expected Bascik account. Charges and payouts are enabled. All four copied, active live products have apparel tax code `txcd_30011000`, with exact $30/$25 USD exclusive-tax prices. Stripe Tax is active but has **zero active live registrations**. Tax activation is not registration, and no registrations have been created or assumed. The owner must determine any required registrations before launch. Read-only checks plus sandbox checkout do not certify a live charge; no live Customer, Checkout Session, Payment Intent, charge, or merchandise confirmation was created during preparation. The owner confirmed Printful has a valid billing method or funded wallet; this is an owner confirmation, not an API balance verification.
+
+The live Stripe webhook is app-tagged `bascik-shop-production`, points to the Workers.dev origin, and is **disabled** until a receiver is deployed and launch is approved. Its ID and signing secret are held in the production environment. Printful v2 order/shipment callbacks are staged at that origin with their real one-time signing secret and public key. Printful permits one v2 configuration **per token/app**, not one per store header. Setup verified the token's configuration was empty before creating it and refuses to overwrite any unrelated configuration. Original Shopify v1 webhooks were not changed. Before Worker deployment, Printful delivery to this staged URL cannot succeed; scheduled authenticated reconciliation is also required after deployment. PR previews still use their own sandbox Stripe callbacks and do not trust the production Printful signature.
+
+`shop/.env.prd` and all `.env.*` files are ignored. Private signing evidence lives in `.local/production-webhooks.json`; never commit, publish, or upload that directory. Secrets are installed in `shop-production`, not repository-wide or preview environments. The order-token secret is random and stable across reruns.
+
+The dedicated Stripe restricted key needs Customers, Checkout Sessions, Payment Intents, Products, and Prices Write; Account, Balance, Tax Settings, Tax Registrations and Tax Codes Read; and Webhook Endpoints / Event Destinations Write for setup. Webhook access was tested successfully after the owner updated it. Other businesses' products, webhooks, payouts and transfers are untouched.
+
+Local rechecks and safe mapping preparation:
+
+```sh
+cd shop
+node --env-file=.env.prd scripts/check-live-providers.ts
+node --env-file=.env.prd scripts/setup-production-webhooks.ts
+node scripts/package-production.ts
+PRINTFUL_STORE_ID=19022802 node --env-file=.env.prd scripts/validate-printful-draft.ts
+```
+
+The webhook setup command requires the `shop-production` environment to exist and authenticated `gh`; it never confirms orders or creates payments. Rerunning it verifies saved webhook identity, keeps the Stripe endpoint disabled, and reinstalls stable secrets. It refuses to disable an already enabled saved endpoint, so it cannot silently disrupt an active shop. Missing signing evidence requires operator review, not silent rotation.
+
+To repeat the production mapping import, set `CLOUDFLARE_API_TOKEN` from the dedicated shop token in the process environment and run `node scripts/setup-printful-mappings.ts --write --production`. Without `--production`, writes remain restricted to the original sandbox database. Both the packager and production import enforce the exact account, database, queues, API store, Workers.dev origin, restricted email sender, and closed commerce flags.
+
+After #129 is merged, request the separately guarded deployment:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_production_prelaunch=true
+```
+
+This runs validation, verifies live providers read-only, installs production secrets, and deploys only from manual main CI. It checks the homepage, the exact closed-checkout 503 response, and correctly signed no-order probes on both webhook routes. These probes verify Worker configuration and signatures, not provider-originated delivery. `wrangler.production.json` keeps `SHOP_MODE=live`, both commerce flags **false**, no custom-domain routes, and an email binding restricted to `no-reply@bascik.dev`. The portable prelaunch build retains noindex headers. Dry-run binding validation passed, but the production Worker, signed callback delivery, and actual production email binding still need this CI deployment to verify them remotely. The Shopify hostname remains unchanged. Enabling checkout/fulfillment, enabling the Stripe webhook, changing `SHOP_ORIGIN`, updating callback URLs, removing noindex/prelaunch wording, and attaching `shop.bascik.dev` require a separate approved launch change.
 
 ### Printful v2
 
@@ -150,8 +195,8 @@ Required before enabling checkout:
 - Sandbox product setup rejects existing products whose tax code differs from the selected code instead of silently reusing them. Review and correct the tagged product before retrying.
 - The separate Printful **Manual/API store** `19022802` is created and accessible. Preserve exact saved templates, artwork placements, print files, applicable options, and blank product variant IDs. Store IDs from the Shopify store cannot simply be reused in the new store.
 - Use the refreshed `PRINTFUL_TOKEN` and `PRINTFUL_STORE_ID=19022802`, verify funding, and validate all 24 variants using unconfirmed v2 drafts without submitting production.
-- All 24 store-scoped `printful_template_mappings` are installed from the validated owner-approved templates. Keep them tied to store `19022802`; production needs its own reviewed mapping import. Never seed guessed IDs or rebuild these saved designs from incomplete legacy file metadata.
-- Sandbox D1 and queues are provisioned above. Production needs its own D1 and processing/dead-letter queues, an explicitly reviewed production configuration, and all three migrations applied to the intended database.
+- All 24 store-scoped `printful_template_mappings` are installed independently in sandbox and production from the validated owner-approved templates. Keep them tied to store `19022802`. Never seed guessed IDs or rebuild these saved designs from incomplete legacy file metadata.
+- Production D1 and processing/dead-letter queues are provisioned independently, with all three migrations and 24 validated template mappings installed. The production configuration remains commerce-disabled until the separate launch approval.
 - Enable Cloudflare Email Sending on Workers Paid, verify sender-domain access and external delivery, and configure `EMAIL_FROM`, monitored `SUPPORT_EMAIL`, and `ALERT_EMAIL`. Preserve Gmail's existing MX. Review bounce-domain, SPF, DKIM, and DMARC additions rather than replacing incoming routing.
 - Configure `/api/webhooks/printful` through `/v2/webhooks` on the **new** store only, saving its one-time signature secret securely. Subscribe to order and shipment lifecycle events, including hold removal. Do not overwrite the Shopify store's webhook configuration. A callback is only a hint; its content never directly changes fulfillment state without an authenticated Printful re-fetch.
 - The owner-published refund, terms, and contact policies have been carried over from the existing Shopify shop, with privacy/platform disclosures updated for this implementation. Support remains `collin@bascik.dev`. No separate shipping policy existed at `/policies/shipping-policy`; `/shipping` combines the existing terms' delivery rules, real checkout quote behavior, and the published refund policy without adding delivery promises. The old `/policies/*`, `/pages/contact`, and `/pages/data-sharing-opt-out` URLs remain available. Source-of-truth policy text lives in `src/lib/policies.ts`, not generated pages. The privacy policy describes actual browser storage, provider sharing, no customer accounts/advertising, and order-link expiration without promising automatic record deletion. Remove the checkout prelaunch notice only after the remaining production gates pass.

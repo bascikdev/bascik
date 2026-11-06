@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { products } from "../src/lib/catalog.ts";
 import { templateFingerprint } from "./template-fingerprint.ts";
+import { assertProductionPrelaunch } from "./production-config.ts";
 import {
   shippingPlacements,
   type PrintfulShippingPlacement,
@@ -77,16 +78,25 @@ await writeFile(
   { mode: 0o600 },
 );
 if (process.argv.includes("--write")) {
-  const config = JSON.parse(await readFile(".output/wrangler.json", "utf8"));
+  const production = process.argv.includes("--production");
+  const configPath = production
+    ? ".output/wrangler.production.json"
+    : ".output/wrangler.json";
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+  if (production) assertProductionPrelaunch(config);
   if (
-    config.name !== "bascik-shop-sandbox" ||
+    config.name !==
+      (production ? "bascik-shop-production" : "bascik-shop-sandbox") ||
     config.d1_databases?.find(
       (database: { binding: string; database_id: string }) =>
         database.binding === "DB",
-    )?.database_id !== "17c831f5-82a4-4094-ad10-5489830c6ae2"
+    )?.database_id !==
+      (production
+        ? "6789dbf6-f32f-400b-ad4a-d5b590b7438d"
+        : "17c831f5-82a4-4094-ad10-5489830c6ae2")
   )
     throw new Error(
-      "Mapping setup is restricted to the provisioned sandbox database.",
+      "Mapping setup is restricted to the explicitly selected provisioned database; production must remain disabled.",
     );
   const result = spawnSync(
     "yarn",
@@ -98,7 +108,7 @@ if (process.argv.includes("--write")) {
       "DB",
       "--remote",
       "--config",
-      ".output/wrangler.json",
+      configPath,
       "--file",
       ".local/printful-template-mappings.sql",
     ],
@@ -108,7 +118,7 @@ if (process.argv.includes("--write")) {
   if (result.status !== 0)
     throw new Error("Remote template mapping setup failed.");
   console.log(
-    `Installed ${statements.length} owner-approved template mappings in sandbox D1. Checkout and fulfillment remain disabled.`,
+    `Installed ${statements.length} owner-approved template mappings in ${production ? "production" : "sandbox"} D1. Checkout and fulfillment remain disabled.`,
   );
 } else {
   console.log(

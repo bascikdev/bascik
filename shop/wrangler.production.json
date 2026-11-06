@@ -1,0 +1,44 @@
+{
+  "name": "bascik-shop-production",
+  "account_id": "8572c3fcc06b71dbf05fe590e8b3f74e",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "SHOP_ENABLED": "false",
+    "SHOP_FULFILLMENT_ENABLED": "false",
+    "SHOP_MODE": "live",
+    "PRINTFUL_STORE_ID": "19022802",
+    "SHOP_ORIGIN": "https://bascik-shop-production.collin-inbox.workers.dev",
+    "TAX_CODE_SHIRT": "txcd_30011000",
+    "TAX_CODE_HAT": "txcd_30011000",
+    "EMAIL_FROM": "no-reply@bascik.dev",
+    "SUPPORT_EMAIL": "collin@bascik.dev",
+    "ALERT_EMAIL": "collin@bascik.dev"
+  },
+  "send_email": [
+    { "name": "EMAIL", "allowed_sender_addresses": ["no-reply@bascik.dev"] }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bascik-shop-production-db",
+      "database_id": "6789dbf6-f32f-400b-ad4a-d5b590b7438d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "JOBS", "queue": "bascik-shop-production-jobs" }
+    ],
+    "consumers": [
+      {
+        "queue": "bascik-shop-production-jobs",
+        "max_batch_size": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "bascik-shop-production-dead"
+      }
+    ]
+  }
+}

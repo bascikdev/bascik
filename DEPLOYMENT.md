@@ -8,7 +8,8 @@ The user-facing version of the Cloudflare material is [docs/content/deployment/c
 
 The independent [shop application](shop/README.md) is being prepared for
 `shop.bascik.dev`. Its [Shop workflow](.github/workflows/shop.yml) validates
-the application but does not deploy it. Checkout and Printful submissions
+the application and deploys draft-only PR feature environments. A separate,
+manual main-only lane deploys disabled production prelaunch. Checkout and Printful submissions
 default to disabled, and no custom-domain route is configured. Keep Shopify
 serving the hostname until the provider, tax, email, policy, and cutover gates
 in the shop runbook are satisfied. Shop resources and secrets must stay
@@ -256,6 +257,44 @@ The Shop workflow also deploys **draft-only commerce previews** after successful
 Each PR gets `bascik-shop-pr-<number>` on Workers.dev, a separate `-db` D1 database, and `-jobs` / `-dead` queues. The `shop-preview` GitHub environment holds the dedicated Cloudflare token, Stripe sandbox key, Printful token, and order-token seed. CI imports the owner-prepared product template references, installs per-preview runtime secrets, creates its Stripe webhook, deploys, checks the URL, and comments it on the PR.
 
 Real Stripe sandbox payments exercise the signed callback and durable payment-to-draft handoff. Printful orders remain unconfirmed: test mode blocks the confirmation endpoint at the provider layer regardless of the fulfillment flag. No merchandise is produced and no customer email is sent. Shipment events are tested with signed v2 fixtures plus simulated provider responses; Printful's simulator does not support v2. See [shop/README.md](shop/README.md) for the exact safety behavior and manual resource cleanup.
+
+## Shop Production Prelaunch
+
+The production D1 database is `bascik-shop-production-db`
+(`6789dbf6-f32f-400b-ad4a-d5b590b7438d`), with separate queues
+`bascik-shop-production-jobs` and `bascik-shop-production-dead`. All three
+migrations and 24 validated mappings are installed; no sandbox customer
+orders were copied. GitHub environment `shop-production` accepts only `main`
+and holds dedicated live credentials and stable signing secrets.
+
+The checked-in [production configuration](shop/wrangler.production.json)
+targets `bascik-shop-production` at its Workers.dev origin, with both commerce
+flags false and no custom-domain routes. The email binding restricts the sender
+to `no-reply@bascik.dev`. This Worker is **not deployed yet**. After #129
+merges, the owner can request:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_production_prelaunch=true
+```
+
+The lane validates first, checks live provider identity/prices, packages
+isolated production bindings, installs runtime secrets, migrates D1, deploys,
+and checks the exact closed-checkout 503 response plus signed no-order probes on both webhook routes. Local deployment is prohibited;
+only a dry-run was performed. No route can replace `shop.bascik.dev`.
+
+Live Stripe payments are available and copied apparel products/prices are
+verified. Tax is active with **no live registrations**, so applicable
+registration obligations remain an owner/adviser determination. Printful
+billing was owner-confirmed. The live Stripe webhook is staged but disabled.
+Printful v2 callbacks are staged from the previously empty token/app
+configuration, with real signing credentials stored securely; its staged URL
+cannot receive callbacks before deployment. Original Shopify configuration
+was not overwritten. See [the shop runbook](shop/README.md) for safe
+rechecks, key permissions, one-config-per-token constraints, and launch gates.
+
+Production webhook delivery and the production email binding remain to be
+tested after this disabled deployment. Do not enable commerce, manufacturing,
+the Stripe webhook, or cut over the domain as part of this lane.
 
 ## Pages and Workers Differ Here
 
