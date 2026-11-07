@@ -7,6 +7,10 @@ import {
   type ProductImage,
 } from "../src/lib/catalog.ts";
 import { policyPages } from "../src/lib/policies.ts";
+import {
+  freeShippingOffer,
+  freeShippingDetails,
+} from "../src/lib/free-shipping.ts";
 
 await mkdir("src/pages/products", { recursive: true });
 await mkdir("src/pages/assets", { recursive: true });
@@ -27,6 +31,12 @@ await build({
 const img = (image: ProductImage, priority = false, gallery = false) =>
   `<img src="${image.src}" srcset="${image.srcset}" sizes="${gallery ? "(max-width: 640px) calc(100vw - 40px), (max-width: 1280px) 52vw, 640px" : "(max-width: 640px) calc((100vw - 54px)/2), (max-width: 1000px) 46vw, 280px"}" width="${image.width}" height="${image.height}" alt="${e(image.alt)}" ${priority ? 'fetchpriority="high"' : 'loading="lazy"'} ${gallery ? 'data-main-image data-testid="product-image"' : ""}>`;
 const shell = (title: string, route: string, content: string, index = true) => {
+  if (
+    ["/", "/cart", "/checkout"].includes(route) ||
+    route.startsWith("/products/")
+  ) {
+    content = `<aside class="shipping-promotion" aria-label="Free shipping offer" data-testid="free-shipping-banner"><p><strong>${e(freeShippingOffer)}</strong></p><p>${e(freeShippingDetails)}</p><p data-free-shipping-progress data-testid="free-shipping-progress" aria-live="polite">Eligibility is confirmed with your delivery address.</p></aside>${content}`;
+  }
   const product = products.find(
     (product) => route === `/products/${product.slug}`,
   );
@@ -78,7 +88,7 @@ await writeFile(
   shell(
     "Your cart",
     "/cart",
-    `<section class="narrow" data-testid="cart"><h1>Your cart.</h1><div data-cart-lines></div><p class="status" role="status" data-cart-status></p><div class="summary"><strong>Subtotal</strong><strong data-cart-total data-testid="cart-total">$0.00</strong></div><p class="muted">Shipping and applicable taxes calculated next.</p><div class="actions"><a href="/">Continue shopping</a><a href="/checkout" class="button primary" data-testid="cart-checkout">Choose shipping</a></div></section>`,
+    `<section class="narrow" data-testid="cart"><h1>Your cart.</h1><div data-cart-lines></div><p class="status" role="status" data-cart-status></p><div class="summary"><strong>Subtotal</strong><strong data-cart-total data-testid="cart-total">$0.00</strong></div><p class="muted">Shipping and applicable taxes calculated next.</p><div class="actions"><a href="/">Continue shopping</a><a href="/checkout" class="button primary" data-testid="cart-checkout">Checkout</a></div></section>`,
     false,
   ),
 );

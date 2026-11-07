@@ -2,6 +2,7 @@ import { products, findVariant, money } from "../lib/catalog.ts";
 import countries from "../../catalog/countries.json" with { type: "json" };
 import { shippingCountries } from "../lib/shipping-countries.ts";
 import type { OrderSummary } from "../lib/order-summary.ts";
+import { freeShippingProgress } from "../lib/free-shipping.ts";
 
 interface CartItem {
   variantId: string;
@@ -39,6 +40,25 @@ function save(items: CartItem[]) {
   for (const badge of document.querySelectorAll("[data-cart-count]"))
     badge.textContent = String(
       items.reduce((total, item) => total + item.quantity, 0),
+    );
+  renderFreeShipping();
+}
+function renderFreeShipping() {
+  const subtotal = cart().reduce(
+    (sum, item) =>
+      sum + (findVariant(item.variantId)?.product.price ?? 0) * item.quantity,
+    0,
+  );
+  const form = element("[data-shipping-form]");
+  const country =
+    element<HTMLSelectElement>("[name=country_code]")?.value ?? "";
+  const state = element<HTMLInputElement>("[name=state_code]")?.value ?? "";
+  for (const message of document.querySelectorAll(
+    "[data-free-shipping-progress]",
+  ))
+    message.textContent = freeShippingProgress(
+      subtotal,
+      form ? { country, state } : undefined,
     );
 }
 try {
@@ -451,6 +471,7 @@ function invalidateQuote() {
   const section = element("[data-rates-section]");
   if (section) section.hidden = true;
   checkoutTotals();
+  renderFreeShipping();
 }
 shippingForm?.addEventListener("input", invalidateQuote);
 shippingForm?.addEventListener("change", invalidateQuote);
@@ -498,7 +519,7 @@ shippingForm?.addEventListener("submit", async (event) => {
       const name = document.createElement("span");
       name.textContent = rate.name;
       const price = document.createElement("strong");
-      price.textContent = money(rate.amount);
+      price.textContent = rate.amount === 0 ? "Free" : money(rate.amount);
       label.append(radio, name, price);
       rates?.append(label);
     }

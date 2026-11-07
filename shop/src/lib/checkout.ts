@@ -12,6 +12,7 @@ import {
   type Env,
 } from "./platform.ts";
 import { cents, printful, stripe } from "./providers.ts";
+import { qualifiesForFreeShipping } from "./free-shipping.ts";
 import {
   placements,
   shippingPlacements,
@@ -305,10 +306,20 @@ export async function quoteRequest(request: Request, env: Env) {
       typeof rate.shipping_method_name !== "string"
     )
       throw new ShopError("Invalid shipping response.", 502);
+    const free =
+      rate.shipping === "STANDARD" &&
+      qualifiesForFreeShipping(
+        quote.subtotal,
+        address.country_code,
+        address.state_code,
+      );
+    const amount = cents(rate.rate);
     return {
       id: rate.shipping,
-      name: rate.shipping_method_name,
-      amount: cents(rate.rate),
+      name: free
+        ? `Free standard shipping - ${rate.shipping_method_name}`
+        : rate.shipping_method_name,
+      amount: free ? 0 : amount,
       currency: "usd",
     };
   });

@@ -2,6 +2,148 @@ import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 
+test("free shipping promotion and cart feedback update at the strict merchandise threshold", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("free-shipping-banner")).toContainText(
+    "over $50",
+  );
+  await expect(page.getByTestId("free-shipping-banner")).toContainText(
+    "lower 48 states",
+  );
+  await page.goto(`/products/${products[0].slug}`);
+  await expect(page.getByTestId("free-shipping-banner")).toBeVisible();
+  await page.getByTestId("add-to-cart").click();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "more than $20.00",
+  );
+  await page.getByTestId("product-quantity").fill("1");
+  await page.getByTestId("add-to-cart").click();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Your cart qualifies",
+  );
+  await page.getByTestId("product-view-cart").click();
+  await expect(page.getByTestId("cart-total")).toHaveText("$60.00");
+  await expect(page.getByTestId("cart-checkout")).toHaveText("Checkout");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "delivery address",
+  );
+  await page.getByTestId("cart-quantity").fill("1");
+  await page.getByTestId("cart-quantity").dispatchEvent("change");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "more than $20.00",
+  );
+  await page.reload();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "more than $20.00",
+  );
+  await page.getByTestId("cart-remove").click();
+  await expect(page.getByTestId("cart-checkout")).toBeHidden();
+  await expect(page.getByTestId("free-shipping-progress")).not.toContainText(
+    "Your cart qualifies",
+  );
+  const hat = products.find((product) => product.slug.includes("hat"))!;
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 2 }]),
+      ),
+    hat.variants[0].id,
+  );
+  await page.reload();
+  await expect(page.getByTestId("cart-total")).toHaveText("$50.00");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Add another item",
+  );
+  await page.goto("/");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Add another item",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("checkout confirms destination-specific free shipping and invalidates it after address changes", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 2 }]),
+      ),
+    products[0].variants[0].id,
+  );
+  await page.reload();
+  await expect(page.getByTestId("checkout-line")).toHaveCount(1);
+  await page.getByTestId("shipping-country").selectOption("US");
+  await page
+    .getByLabel("State / province", { exact: false })
+    .fill("California");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "qualifies",
+  );
+  await page.getByLabel("Full name").fill("Test Buyer");
+  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
+  await page.getByLabel("Street address").fill("Example Street");
+  await page.getByLabel("City", { exact: true }).fill("Los Angeles");
+  await page.getByLabel("Postal code").fill("90001");
+  await page.route("**/api/quote", async (route) => {
+    const input = route.request().postDataJSON();
+    const free = ["CA", "California"].includes(input.recipient.state_code);
+    await route.fulfill({
+      json: {
+        quoteId: "quote_free_fixture",
+        expiresAt: Math.floor(Date.now() / 1000) + 900,
+        subtotal: 6000,
+        rates: [
+          {
+            id: "STANDARD",
+            name: free ? "Free standard shipping - Standard" : "Standard",
+            amount: free ? 0 : 500,
+          },
+          { id: "STANDARD_CARBON_OFFSET", name: "Carbon offset", amount: 600 },
+        ],
+      },
+    });
+  });
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.locator("[data-rates]")).toContainText(
+    "Free standard shipping",
+  );
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$0.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$60.00");
+  await page.getByRole("radio", { name: /Carbon offset/ }).check();
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$66.00");
+  await page.getByLabel("State / province", { exact: false }).fill("HI");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Regular shipping rates apply",
+  );
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText(
+    "Calculated next",
+  );
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$5.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$65.00");
+  await page.getByTestId("shipping-country").selectOption("CA");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Regular shipping rates apply",
+  );
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 for (const product of products.filter((product) =>
   product.slug.includes("decal"),
 )) {

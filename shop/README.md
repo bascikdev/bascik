@@ -10,6 +10,14 @@ The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vin
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
+### Free standard shipping
+
+New shipping quotes offer free **standard** shipping when the merchandise subtotal is **strictly over $50**, before tax and shipping, to one of the contiguous 48 states. Exactly $50 does not qualify. Alaska, Hawaii, Washington DC (not one of the 48 states), territories, military addresses, and international destinations retain their quoted shipping charges. Carbon-offset and other optional shipping services are not discounted.
+
+The shared policy in `src/lib/free-shipping.ts` drives the homepage, product, cart, and checkout banners and cart progress messages. The server computes eligibility from its own catalog prices and validated delivery state, not browser totals. Printful must still return a valid `STANDARD` service; only its customer-facing price in a **new quote** becomes zero. We still pay Printful's normal fulfillment/shipping costs and submit the original service ID.
+
+The promotion does not rewrite existing quotes, pending Checkout sessions, paid orders, receipts, or fulfillment records. Checkout, payment verification, emails, and order summaries continue to use each order's immutable saved shipping snapshot. No D1 migration or live-order mutation is needed. Quote expiry and address changes still require a fresh shipping quote. The cart's action is labeled **Checkout**.
+
 Collection image and title links carry the selected color to the product page through a `color` URL parameter. The color selector and gallery keep that choice after reload; unrecognized colors retain the default selection. Product pages show a “View cart & checkout” link after adding an item, and when returning with a saved cart. The delivery page keeps the order summary alongside a grouped address form (stacked on mobile), with an edit-cart link and the selected shipping amount in its before-tax total. Empty carts hide the delivery form. Editing the address invalidates the quote and resets the displayed shipping amount.
 
 Hosted Checkout cannot dynamically call Printful when its address changes. The quoted delivery address is therefore fixed for each Session and shown before payment; customers return to the shop to change it and request a fresh quote. The browser rejects expired quotes and delivery or cart changes while requests are pending. Card details never pass through the shop, and no Stripe iframe or SDK is loaded on the storefront. The existing Stripe API version remains `2025-02-24.acacia`. No additional migration or publishable key is required.
