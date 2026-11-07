@@ -5065,6 +5065,7 @@ __metadata:
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
     parse5: "npm:^8.0.1"
+    prettier: "npm:3.9.10"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"

@@ -10,6 +10,8 @@ The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vin
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
+`scripts/generate-pages.ts` writes all generated HTML pages with default Prettier formatting on every build. These pages remain ignored generated artifacts; edit the generator or policy/catalog sources instead. Production output is still minified by Bascik.
+
 ### Free standard shipping
 
 New shipping quotes offer free **standard** shipping when the merchandise subtotal is **strictly over $50**, before tax and shipping, to one of the contiguous 48 states. Exactly $50 does not qualify. Alaska, Hawaii, Washington DC (not one of the 48 states), territories, military addresses, and international destinations retain their quoted shipping charges. Carbon-offset and other optional shipping services are not discounted.

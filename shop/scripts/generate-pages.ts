@@ -1,5 +1,6 @@
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
+import { format } from "prettier";
 import {
   products,
   escapeHtml as e,
@@ -49,7 +50,10 @@ const cards = products.map((product, index) => {
   const colors = [...new Set(product.variants.map((variant) => variant.color))];
   return `<product-card><div data-card-product="${e(product.id)}"><div class="card-photo"><a class="photo" href="/products/${product.slug}" aria-label="${e(product.title)}">${img(product.images[0], index === 0).replace("<img ", '<img data-card-image data-testid="card-image" ')}</a><div class="image-arrows" data-card-controls hidden><button type="button" data-card-previous aria-label="Previous image" data-testid="card-previous">&#8592;</button><button type="button" data-card-next aria-label="Next image" data-testid="card-next">&#8594;</button></div></div><div class="card-controls" data-card-controls hidden><div class="color-options" role="group" aria-label="Color">${colors.map((color, colorIndex) => `<button type="button" data-card-color="${e(color)}" aria-label="${e(color)}" aria-pressed="${colorIndex === 0}" data-testid="card-color">${e(color.replace(/^G\. Dyed /, ""))}</button>`).join("")}</div></div><h2 class="card-title"><a href="/products/${product.slug}">${e(product.title)}</a></h2><div class="meta"><span class="price">${money(product.price)}</span></div></div></product-card>`;
 });
-await writeFile(
+async function writePage(path: string, markup: string) {
+  await writeFile(path, await format(markup, { parser: "html" }));
+}
+await writePage(
   "src/pages/index.html",
   shell(
     "Official merch",
@@ -74,7 +78,7 @@ for (const product of products) {
       price: (product.price / 100).toFixed(2),
     },
   }).replace(/</g, "\\u003c");
-  await writeFile(
+  await writePage(
     `src/pages/products/${product.slug}.html`,
     shell(
       product.title,
@@ -83,7 +87,7 @@ for (const product of products) {
     ),
   );
 }
-await writeFile(
+await writePage(
   "src/pages/cart.html",
   shell(
     "Your cart",
@@ -92,7 +96,7 @@ await writeFile(
     false,
   ),
 );
-await writeFile(
+await writePage(
   "src/pages/checkout.html",
   shell(
     "Delivery and checkout",
@@ -116,7 +120,7 @@ await writeFile(
     false,
   ),
 );
-await writeFile(
+await writePage(
   "src/pages/order.html",
   shell(
     "Order status",
@@ -126,7 +130,7 @@ await writeFile(
   ),
 );
 for (const { route, title, content } of policyPages) {
-  await writeFile(
+  await writePage(
     `src/pages/${route}.html`,
     shell(
       title,
@@ -136,7 +140,7 @@ for (const { route, title, content } of policyPages) {
     ),
   );
 }
-await writeFile(
+await writePage(
   "src/pages/404.html",
   shell(
     "Not found",

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { statSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import sharp from "sharp";
+import { format } from "prettier";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
 import { shippingCountries } from "../src/lib/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
@@ -25,6 +26,22 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("generated storefront pages use default Prettier HTML formatting", async () => {
+    const routes = [
+      "index",
+      "cart",
+      "checkout",
+      "order",
+      "404",
+      ...products.map((product) => `products/${product.slug}`),
+      ...policyPages.map((policy) => policy.route),
+    ];
+    for (const route of routes) {
+      const markup = readFileSync(`src/pages/${route}.html`, "utf8");
+      expect(markup).toBe(await format(markup, { parser: "html" }));
+      expect(markup.split("\n").length).toBeGreaterThan(1);
+    }
+  });
   test("owner-supplied decal PNGs produce correctly sized WebP assets without losing transparency", async () => {
     const manifest = JSON.parse(
       readFileSync("image-originals/manifest.json", "utf8"),

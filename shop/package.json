@@ -25,6 +25,7 @@
     "esbuild": "^0.28.2",
     "miniflare": "4.20260730.0",
     "parse5": "^8.0.1",
+    "prettier": "3.9.10",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
