@@ -1,5 +1,6 @@
 import { products, findVariant, money } from "../lib/catalog.ts";
 import countries from "../../catalog/countries.json" with { type: "json" };
+import { shippingCountries } from "../lib/shipping-countries.ts";
 
 interface CartItem {
   variantId: string;
@@ -222,7 +223,24 @@ function renderCart() {
     line.className = "cart-line";
     line.dataset.testid = "cart-line";
     const img = document.createElement("img");
-    img.src = match.product.images[0].src;
+    const image =
+      match.product.images.find(
+        (image) =>
+          image.sourceId === match.variant.imageId &&
+          image.color === match.variant.color,
+      ) ??
+      match.product.images.find((image) => image.color === match.variant.color);
+    if (image) {
+      img.src = image.src;
+      img.srcset = image.srcset;
+      img.sizes = "80px";
+    } else {
+      console.error("Cart variant image is missing", {
+        variantId: match.variant.id,
+        color: match.variant.color,
+      });
+    }
+    img.dataset.testid = "cart-image";
     img.alt = "";
     img.width = img.height = 80;
     const description = document.createElement("div");
@@ -298,8 +316,11 @@ async function api(path: string, body?: unknown) {
 const shippingForm = element<HTMLFormElement>("[data-shipping-form]");
 const country = element<HTMLSelectElement>("[name=country_code]");
 if (country) {
-  for (const item of [...countries].sort((a, b) =>
-    a.name.localeCompare(b.name),
+  for (const item of shippingCountries(
+    cart().flatMap((item) => {
+      const match = findVariant(item.variantId);
+      return match ? [match.product.id] : [];
+    }),
   )) {
     const option = document.createElement("option");
     option.value = item.code;
@@ -320,17 +341,38 @@ if (country) {
       );
     }
     const zip = element<HTMLInputElement>("[name=zip]");
-    if (zip) zip.required = ["US", "CA", "AU"].includes(country.value);
+    if (zip) zip.required = ["US", "CA", "AU", "SG"].includes(country.value);
   });
 }
 let quoteId: string | undefined;
-shippingForm?.addEventListener("input", () => {
+let quoteKey = "";
+let quoteExpiresAt = 0;
+const deliveryKey = () =>
+  JSON.stringify({
+    items: cart(),
+    recipient: shippingForm && Object.fromEntries(new FormData(shippingForm)),
+  });
+function invalidateQuote() {
   quoteId = undefined;
+  quoteKey = "";
   const section = element("[data-rates-section]");
   if (section) section.hidden = true;
+}
+shippingForm?.addEventListener("input", invalidateQuote);
+shippingForm?.addEventListener("change", invalidateQuote);
+window.addEventListener("storage", (event) => {
+  if (event.key === key) invalidateQuote();
 });
 shippingForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  invalidateQuote();
+  if (!cart().length)
+    return status(
+      "[data-checkout-status]",
+      "Add at least one product to your cart.",
+      true,
+    );
+  const requestedKey = deliveryKey();
   const button = shippingForm.querySelector("button");
   if (button) button.disabled = true;
   status("[data-checkout-status]", "Checking availability and shipping...");
@@ -339,7 +381,13 @@ shippingForm?.addEventListener("submit", async (event) => {
       items: cart(),
       recipient: Object.fromEntries(new FormData(shippingForm)),
     });
+    if (deliveryKey() !== requestedKey)
+      throw new Error(
+        "Your delivery details or cart changed. Request a fresh shipping quote.",
+      );
     quoteId = result.quoteId;
+    quoteKey = requestedKey;
+    quoteExpiresAt = result.expiresAt;
     const rates = element("[data-rates]");
     rates?.replaceChildren();
     for (const [index, rate] of result.rates.entries()) {
@@ -375,7 +423,12 @@ element<HTMLButtonElement>("[data-pay]")?.addEventListener(
     const shippingId = document.querySelector<HTMLInputElement>(
       "[name=shippingId]:checked",
     )?.value;
-    if (!quoteId || !shippingId)
+    if (
+      !quoteId ||
+      !shippingId ||
+      quoteKey !== deliveryKey() ||
+      quoteExpiresAt <= Date.now() / 1000
+    )
       return status(
         "[data-checkout-status]",
         "Request a fresh shipping quote first.",
@@ -383,7 +436,12 @@ element<HTMLButtonElement>("[data-pay]")?.addEventListener(
       );
     target.disabled = true;
     try {
+      const requestedKey = quoteKey;
       const result = await api("/api/checkout", { quoteId, shippingId });
+      if (requestedKey !== deliveryKey())
+        throw new Error(
+          "Your delivery details or cart changed. Request a fresh shipping quote.",
+        );
       const url = new URL(result.url);
       if (url.protocol !== "https:" || url.hostname !== "checkout.stripe.com")
         throw new Error("Invalid payment destination.");

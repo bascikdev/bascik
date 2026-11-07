@@ -91,7 +91,7 @@ await writeFile(
       ["city", "City", "address-level2"],
       [
         "state_code",
-        "State / province code (required for US, CA, AU)",
+        "State / province (required for US, CA, AU)",
         "address-level1",
       ],
       ["zip", "Postal code", "postal-code"],

@@ -12,6 +12,7 @@ export const SHOWCASE_SITES = [
   { slug: "dgco", name: "DGCO", url: "https://dgcocpa.com" },
   { slug: "lateral", name: "Lateral EMDR", url: "https://lateralemdr.com" },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
+  { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ] as const;
 
 export async function renderShowcase(featured = false): Promise<string> {

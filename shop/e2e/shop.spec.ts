@@ -75,6 +75,34 @@ for (const product of products) {
     await expect(page.getByTestId("cart-line")).toHaveCount(
       product.variants.length,
     );
+    for (const variant of product.variants) {
+      const image = product.images.find(
+        (image) => image.sourceId === variant.imageId,
+      );
+      expect(image?.color).toBe(variant.color);
+      const line = page.getByTestId("cart-line").filter({
+        has: page.getByText(`${variant.title} ·`, { exact: false }),
+      });
+      await expect(line).toHaveCount(1);
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "src",
+        image!.src,
+      );
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "srcset",
+        image!.srcset,
+      );
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "sizes",
+        "80px",
+      );
+      await line.getByTestId("cart-quantity").fill("2");
+      await line.getByTestId("cart-quantity").dispatchEvent("change");
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "src",
+        image!.src,
+      );
+    }
   });
 }
 test("collection cards switch colors and browse only matching views independently", async ({
@@ -170,11 +198,20 @@ test("checkout remains safely disabled and reports a useful error", async ({
   request,
 }) => {
   await page.goto("/checkout");
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 1 }]),
+      ),
+    products[0].variants[0].id,
+  );
+  await page.reload();
   await page.getByLabel("Full name").fill("Test Buyer");
   await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
   await page.getByLabel("Street address").fill("Example street");
   await page.getByLabel("City", { exact: true }).fill("Example");
-  await page.getByLabel("State / province code", { exact: false }).fill("CA");
+  await page.getByLabel("State / province", { exact: false }).fill("CA");
   await page.getByLabel("Postal code").fill("90001");
   await page.getByTestId("shipping-country").selectOption("US");
   await page.getByTestId("shipping-quote").click();
@@ -187,6 +224,82 @@ test("checkout remains safely disabled and reports a useful error", async ({
   });
   expect(response.status()).toBe(503);
   expect(response.headers()["cache-control"]).toContain("no-store");
+});
+test("delivery uses US-first Printful destinations without embedded payment fields", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  const options = await page
+    .getByTestId("shipping-country")
+    .locator("option")
+    .evaluateAll((elements) =>
+      elements.map((element) => (element as HTMLOptionElement).value),
+    );
+  expect(options[1]).toBe("US");
+  expect(options).not.toContain("RU");
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.getByTestId("shipping-form")).toBeVisible();
+  await expect(page.getByTestId("checkout-pay")).toHaveText(
+    "Continue to Stripe",
+  );
+});
+test("hosted checkout rejects delivery changes during a pending quote and permits a fresh Stripe redirect", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 1 }]),
+      ),
+    products[0].variants[0].id,
+  );
+  await page.reload();
+  await page.getByLabel("Full name").fill("Test Buyer");
+  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
+  await page.getByLabel("Street address").fill("Example street");
+  await page.getByLabel("City", { exact: true }).fill("Phoenix");
+  await page.getByLabel("State / province", { exact: false }).fill("Arizona");
+  await page.getByLabel("Postal code").fill("85007");
+  await page.getByTestId("shipping-country").selectOption("US");
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/quote", async (route) => {
+    await pending;
+    await route.fulfill({
+      json: {
+        quoteId: "quote_fixture",
+        expiresAt: Math.floor(Date.now() / 1000) + 900,
+        subtotal: 3000,
+        rates: [{ id: "STANDARD", name: "Standard", amount: 500 }],
+      },
+    });
+  });
+  const requested = page.waitForRequest("**/api/quote");
+  await page.getByTestId("shipping-quote").click();
+  await requested;
+  await page.getByLabel("Street address").fill("Another street");
+  release();
+  await expect(page.getByRole("status")).toContainText("changed");
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.getByTestId("checkout-pay")).toBeVisible();
+  await page.route("**/api/checkout", (route) =>
+    route.fulfill({
+      json: { url: "https://checkout.stripe.com/c/pay/test_hosted" },
+    }),
+  );
+  await page.route("https://checkout.stripe.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Stripe hosted payment</h1>",
+    }),
+  );
+  await page.getByTestId("checkout-pay").click();
+  await expect(page).toHaveURL("https://checkout.stripe.com/c/pay/test_hosted");
 });
 test("private order status cannot be accessed with a public identifier", async ({
   request,

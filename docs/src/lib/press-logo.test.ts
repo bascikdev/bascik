@@ -100,7 +100,19 @@ describe("clearSpaceSvg", () => {
   it("uses the mark's cropped artwork, as the kit does", async () => {
     const svg = await clearSpaceSvg("mark", assets);
     const quarter = MARK_CROP.height / 4;
-    expect(MARK_CROP).toEqual({ x: 2, y: 2, width: 28, height: 28 });
+    const source = await readFile(join(assets, "favicon.svg"), "utf8");
+    const points = parseLogo(source)
+      .points.trim()
+      .split(/\s+/)
+      .map((point) => point.split(",").map(Number));
+    const xs = points.map(([x]) => x);
+    const ys = points.map(([, y]) => y);
+    expect(MARK_CROP).toEqual({
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      width: Math.max(...xs) - Math.min(...xs),
+      height: Math.max(...ys) - Math.min(...ys),
+    });
     expect(boundary(svg)).toEqual([
       MARK_CROP.x - quarter,
       MARK_CROP.y - quarter,

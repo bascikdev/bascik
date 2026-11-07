@@ -1,27 +1,5 @@
-import { ShopError, now, type Env } from "./platform.ts";
-
-export class ProviderError extends Error {
-  provider: string;
-  status: number;
-  retryAt: number;
-  constructor(
-    provider: string,
-    status: number,
-    retryAfter: string | null = null,
-  ) {
-    super(`${provider} request failed (${status})`);
-    this.provider = provider;
-    this.status = status;
-    const seconds =
-      retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
-    const deadline = Number.isSafeInteger(seconds)
-      ? now() + seconds
-      : Math.ceil(Date.parse(retryAfter ?? "") / 1000);
-    this.retryAt = Number.isSafeInteger(deadline)
-      ? Math.max(now(), deadline)
-      : 0;
-  }
-}
+import { ShopError, ProviderError, type Env } from "./platform.ts";
+export { ProviderError } from "./platform.ts";
 async function printfulResponse<T>(
   env: Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID"> &
     Partial<Pick<Env, "SHOP_MODE">>,
@@ -55,6 +33,7 @@ async function printfulResponse<T>(
       "Printful",
       response.status,
       response.headers.get("retry-after"),
+      path,
     );
   const payload = (await response.json()) as {
     data: T;
@@ -106,10 +85,11 @@ export async function stripe<T>(
   path: string,
   params?: URLSearchParams,
   idempotencyKey?: string,
+  apiVersion = "2025-02-24.acacia",
 ): Promise<T> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-    "Stripe-Version": "2025-02-24.acacia",
+    "Stripe-Version": apiVersion,
   };
   if (params) headers["Content-Type"] = "application/x-www-form-urlencoded";
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
@@ -124,6 +104,7 @@ export async function stripe<T>(
       "Stripe",
       response.status,
       response.headers.get("retry-after"),
+      path,
     );
   return (await response.json()) as T;
 }

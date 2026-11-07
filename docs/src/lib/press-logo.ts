@@ -34,8 +34,8 @@ export interface LogoArtwork {
   ink: string;
 }
 
-/** The favicon tile spans x=2..30 and y=2..30; the kit crops to that artwork. */
-export const MARK_CROP: Box = { x: 2, y: 2, width: 28, height: 28 };
+/** The favicon tile spans x=4..28 and y=3..29; the kit crops to that artwork. */
+export const MARK_CROP: Box = { x: 4, y: 3, width: 24, height: 26 };
 
 /** The source file of each logo, in src/pages/assets. */
 export const LOGO_SOURCES = {

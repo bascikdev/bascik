@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import sharp from "sharp";
 
 describe("docs-head component", () => {
   const componentPath = join(
@@ -28,9 +29,49 @@ describe("docs-head component", () => {
       "utf8",
     );
 
-    expect(favicon).toContain('points="9,2 30,2 23,30 2,30"');
+    expect(favicon).toContain('points="10,3 28,3 23,29 4,29"');
     expect(favicon).toContain('x="15" y="9" width="2" height="14"');
+    expect(favicon).not.toContain('<rect width="32" height="32"');
     expect(favicon).not.toContain("<animate");
+  });
+
+  it("keeps raster favicon variants transparent", async () => {
+    const png = await readFile(
+      join(process.cwd(), "src/pages/assets/favicon-32x32.png"),
+    );
+    const ico = await readFile(join(process.cwd(), "src/pages/favicon.ico"));
+    const imageCount = ico.readUInt16LE(4);
+    const images = [png];
+    const dimensions: number[] = [];
+
+    for (let index = 0; index < imageCount; index += 1) {
+      const entryOffset = 6 + index * 16;
+      const width = ico[entryOffset] || 256;
+      const length = ico.readUInt32LE(entryOffset + 8);
+      const offset = ico.readUInt32LE(entryOffset + 12);
+
+      dimensions.push(width);
+      images.push(ico.subarray(offset, offset + length));
+    }
+
+    expect(dimensions.sort((a, b) => a - b)).toEqual([16, 32, 48]);
+
+    for (const image of images) {
+      const { data, info } = await sharp(image)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const corners = [
+        [0, 0],
+        [info.width - 1, 0],
+        [0, info.height - 1],
+        [info.width - 1, info.height - 1],
+      ];
+
+      for (const [x, y] of corners) {
+        expect(data[(y * info.width + x) * info.channels + 3]).toBe(0);
+      }
+    }
   });
 
   it("applies the theme again when a prerendered page is shown", async () => {

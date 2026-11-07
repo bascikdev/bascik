@@ -14,9 +14,10 @@ const sites = [
     url: "https://lateralemdr.com",
   },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
+  { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ];
 
-test("showcase has five real screenshots, working site links, and a submission link", async ({
+test("showcase has real screenshots, working site links, and a submission link", async ({
   page,
   request,
 }) => {
@@ -26,7 +27,7 @@ test("showcase has five real screenshots, working site links, and a submission l
   ).toBeVisible();
   const cards = page.getByTestId("showcase-card");
   await expect(page.getByTestId("showcase-grid")).toBeVisible();
-  await expect(cards).toHaveCount(5);
+  await expect(cards).toHaveCount(sites.length);
   for (const site of sites) {
     const card = cards.filter({
       has: page.getByRole("heading", { name: site.name, exact: true }),
@@ -65,6 +66,12 @@ test("showcase has five real screenshots, working site links, and a submission l
     has: page.getByRole("heading", { name: "Lateral EMDR", exact: true }),
   });
   await expect(lateral).toContainText("stream scripts and server scripts");
+  const shop = cards.filter({
+    has: page.getByRole("heading", { name: "Bascik Shop", exact: true }),
+  });
+  await expect(shop).toContainText("Stripe Checkout");
+  await expect(shop).toContainText("Printful");
+  await expect(shop).toContainText("Cloudflare D1");
   await expect(
     page.getByRole("link", { name: "Submit your site on GitHub" }),
   ).toHaveAttribute(
@@ -109,7 +116,7 @@ for (const width of [1440, 390]) {
     await page.getByTestId("home-showcase-link").click();
     await expect(page).toHaveURL(/\/showcase$/);
     const cards = page.getByTestId("showcase-card");
-    await expect(cards).toHaveCount(5);
+    await expect(cards).toHaveCount(sites.length);
     const bounds = await cards.evaluateAll((elements) =>
       elements.map((element) => {
         const { x, width } = element.getBoundingClientRect();

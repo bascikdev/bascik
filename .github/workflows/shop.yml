@@ -9,6 +9,8 @@ on:
       - "package.json"
       - "yarn.lock"
       - ".github/workflows/shop.yml"
+      - ".github/scripts/changed-workspaces.mjs"
+      - ".github/scripts/changed-workspaces.d.mts"
   pull_request:
     paths:
       - "shop/**"
@@ -17,6 +19,8 @@ on:
       - "package.json"
       - "yarn.lock"
       - ".github/workflows/shop.yml"
+      - ".github/scripts/changed-workspaces.mjs"
+      - ".github/scripts/changed-workspaces.d.mts"
   workflow_dispatch:
     inputs:
       deploy_sandbox:
@@ -40,7 +44,37 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run-shop-unit: ${{ steps.diff.outputs.run-shop-unit }}
+      run-shop-integration: ${{ steps.diff.outputs.run-shop-integration }}
+      run-shop-e2e: ${{ steps.diff.outputs.run-shop-e2e }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Select affected shop suites
+        id: diff
+        run: |
+          changed_files="$RUNNER_TEMP/changed-files"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            node .github/scripts/changed-workspaces.mjs --all >> "$GITHUB_OUTPUT"
+          elif git fetch --no-tags origin main &&
+            base="$(git merge-base origin/main HEAD)" &&
+            git diff --name-only -z "$base" HEAD > "$changed_files" &&
+            [ -s "$changed_files" ]; then
+            node .github/scripts/changed-workspaces.mjs "$changed_files" >> "$GITHUB_OUTPUT"
+          else
+            node .github/scripts/changed-workspaces.mjs --all >> "$GITHUB_OUTPUT"
+          fi
   validate:
+    needs: changes
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -52,10 +86,27 @@ jobs:
       - run: yarn install --immutable
       - run: yarn pkg:build && yarn adapter:cf:build
       - run: yarn shop:build
-      - run: yarn shop:typecheck && yarn shop:unit
-      - run: yarn workspace bascik-shop integration
-      - run: yarn workspace bascik-shop exec playwright install --with-deps chromium
-      - run: yarn shop:e2e
+      - run: yarn shop:typecheck
+      - name: Run shop unit tests
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          needs.changes.outputs.run-shop-unit == 'true'
+        run: yarn shop:unit
+      - name: Run shop integration tests
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          needs.changes.outputs.run-shop-integration == 'true'
+        run: yarn shop:integration
+      - name: Install Playwright browsers
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          needs.changes.outputs.run-shop-e2e == 'true'
+        run: yarn workspace bascik-shop exec playwright install --with-deps chromium
+      - name: Run shop E2E tests
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          needs.changes.outputs.run-shop-e2e == 'true'
+        run: yarn shop:e2e
       - uses: actions/upload-artifact@v4
         with:
           name: shop-cloudflare-build

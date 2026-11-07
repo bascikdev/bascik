@@ -1075,6 +1075,7 @@ test("legacy sync mappings cannot enable a v2 quote", async () => {
   expect(fetcher).not.toHaveBeenCalled();
 });
 test("template quotes preserve shipping techniques and orders use saved template designs", async () => {
+  const logger = vi.spyOn(console, "info").mockImplementation(() => {});
   const design = [{ placement: "front_dtf_hat", technique: "dtfilm" }];
   await env.DB.prepare(
     "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
@@ -1091,6 +1092,7 @@ test("template quotes preserve shipping techniques and orders use saved template
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
       expect(String(input)).toBe("https://api.printful.com/v2/shipping-rates");
+      expect(JSON.parse(String(init?.body)).recipient.state_code).toBe("CA");
       expect(JSON.parse(String(init?.body)).order_items).toEqual([
         {
           source: "catalog",
@@ -1114,7 +1116,7 @@ test("template quotes preserve shipping techniques and orders use saved template
   const result = await quoteRequest(
     post("/api/quote", {
       items: [{ variantId, quantity: 1 }],
-      recipient: snapshot.recipient,
+      recipient: { ...snapshot.recipient, state_code: "California" },
     }),
     env,
   );
@@ -1122,6 +1124,28 @@ test("template quotes preserve shipping techniques and orders use saved template
   const saved = await env.DB.prepare("SELECT snapshot FROM quotes WHERE id=?")
     .bind(output.quoteId)
     .first<{ snapshot: string }>();
+  expect(JSON.parse(saved!.snapshot).recipient.state_code).toBe("CA");
+  expect(logger).toHaveBeenCalledWith("Shop shipping quote requested", {
+    requestId: null,
+    country: "US",
+    state: "CA",
+    items: [
+      {
+        productId: products[0].id,
+        variantId,
+        variant: products[0].variants[0].title,
+        quantity: 1,
+      },
+    ],
+  });
+  const logs = JSON.stringify(logger.mock.calls);
+  for (const privateValue of [
+    snapshot.recipient.name,
+    snapshot.recipient.email,
+    snapshot.recipient.address1,
+    snapshot.recipient.zip,
+  ])
+    expect(logs).not.toContain(privateValue);
   expect(printfulItems(JSON.parse(saved!.snapshot))).toEqual([
     {
       source: "product_template",

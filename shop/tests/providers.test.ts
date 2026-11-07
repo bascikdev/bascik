@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { placements, shippingPlacements } from "../src/lib/printful-design.ts";
 import { printful, printfulList } from "../src/lib/providers.ts";
 import type { Env } from "../src/lib/platform.ts";
+import { handler, ProviderError } from "../src/lib/platform.ts";
 import { createHmac } from "node:crypto";
 import { verifyPrintfulSignature } from "../src/lib/webhooks.ts";
 
@@ -10,6 +11,48 @@ const env = {
   PRINTFUL_STORE_ID: "123",
 } satisfies Pick<Env, "PRINTFUL_TOKEN" | "PRINTFUL_STORE_ID">;
 afterEach(() => vi.restoreAllMocks());
+test.each([400, 422, 429, 500])(
+  "shipping provider HTTP %s is logged safely and invalid addresses are actionable",
+  async (status) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json(
+        { error: "Private provider response should not be logged" },
+        { status },
+      ),
+    );
+    const logger = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await handler(async () => {
+      await printful(env, "/shipping-rates", {});
+      return new Response();
+    })(
+      new Request("https://shop.example.com/api/quote", {
+        headers: { "cf-ray": "fixture-ray" },
+      }),
+      { platform: { env: { DB: {} } } },
+    );
+    expect(response.status).toBe([400, 422].includes(status) ? 422 : 502);
+    expect(logger).toHaveBeenCalledWith("Shop request failed", {
+      path: "/api/quote",
+      requestId: "fixture-ray",
+      type: "ProviderError",
+      provider: "Printful",
+      providerStatus: status,
+      providerPath: "/shipping-rates",
+      retryAt: 0,
+    });
+    expect(JSON.stringify(logger.mock.calls)).not.toContain("Private provider");
+    const payload = await response.json();
+    if ([400, 422].includes(status))
+      expect(payload.error).toContain("Check your state/province");
+    else expect(payload.error).toContain("Please try again");
+  },
+);
+test("provider diagnostics exclude URL queries and do not expose credentials", () => {
+  expect(
+    new ProviderError("Printful", 400, null, "/shipping-rates?secret=test")
+      .path,
+  ).toBe("/shipping-rates");
+});
 test("v2 HTTP requests use the data envelope and store header", async () => {
   const fetcher = vi
     .spyOn(globalThis, "fetch")
