@@ -141,7 +141,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.SHOP_CLOUDFLARE_API_TOKEN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
           PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
           ORDER_TOKEN_SEED: ${{ secrets.ORDER_TOKEN_SEED }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -227,7 +226,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.SHOP_CLOUDFLARE_API_TOKEN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
           STRIPE_ACCOUNT: ${{ secrets.STRIPE_ACCOUNT }}
           PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}

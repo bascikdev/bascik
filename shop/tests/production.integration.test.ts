@@ -434,7 +434,6 @@ test.each([
             GITHUB_REPOSITORY: "bascikdev/bascik",
             CLOUDFLARE_API_TOKEN: "fixture",
             STRIPE_SECRET_KEY: "rk_live_fixture",
-            STRIPE_PUBLISHABLE_KEY: "pk_live_fixture",
             STRIPE_WEBHOOK_SECRET: "whsec_fixture",
             PRINTFUL_TOKEN: "fixture",
             PRINTFUL_WEBHOOK_SECRET: "ab".repeat(32),

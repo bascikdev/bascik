@@ -54,14 +54,12 @@ export interface Rate {
   name: string;
   amount: number;
   currency: string;
-  stripeRateId?: string;
 }
 export interface Quote {
   items: Item[];
   recipient: Recipient;
   rates: Rate[];
   subtotal: number;
-  checkoutForm?: boolean;
 }
 export interface Order {
   id: string;

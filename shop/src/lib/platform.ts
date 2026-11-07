@@ -6,7 +6,6 @@ export interface Env {
   SHOP_MODE: "test" | "live";
   SHOP_FULFILLMENT_ENABLED?: string;
   STRIPE_SECRET_KEY: string;
-  STRIPE_PUBLISHABLE_KEY?: string;
   STRIPE_WEBHOOK_SECRET: string;
   ORDER_TOKEN_SECRET: string;
   PRINTFUL_TOKEN: string;

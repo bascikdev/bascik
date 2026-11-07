@@ -1,10 +1,5 @@
 import { type Env, now, orderToken } from "./platform.ts";
-import {
-  type Order,
-  type Quote,
-  printfulItems,
-  recipient,
-} from "./checkout.ts";
+import { type Order, type Quote, printfulItems } from "./checkout.ts";
 import { printful, printfulList, ProviderError, stripe } from "./providers.ts";
 
 interface PrintfulOrder {
@@ -53,22 +48,6 @@ export interface CheckoutSession {
     amount_discount: number;
   };
   automatic_tax: { status: string };
-  shipping_cost?: { shipping_rate: string | { id: string } };
-  customer_details?: { email: string | null };
-  shipping_details?: {
-    name: string;
-    address: {
-      line1: string;
-      line2?: string | null;
-      city?: string | null;
-      state?: string | null;
-      country: string;
-      postal_code?: string | null;
-    };
-  } | null;
-  collected_information?: {
-    shipping_details?: CheckoutSession["shipping_details"];
-  };
 }
 export async function paidSession(
   env: Env,
@@ -106,38 +85,6 @@ export async function paidSession(
     session.automatic_tax?.status !== "complete"
   )
     throw new FulfillmentInvariantError("Payment/order snapshot mismatch");
-  if (quote.checkoutForm) {
-    const details =
-      session.collected_information?.shipping_details ??
-      session.shipping_details;
-    if (!details || !session.customer_details?.email)
-      throw new FulfillmentInvariantError("Payment shipping details missing");
-    const address = recipient({
-      name: details.name,
-      email: session.customer_details.email,
-      address1: details.address.line1,
-      address2: details.address.line2 ?? "",
-      city: details.address.city,
-      state_code: details.address.state ?? "",
-      country_code: details.address.country,
-      zip: details.address.postal_code ?? "",
-    });
-    const rateId =
-      typeof session.shipping_cost?.shipping_rate === "string"
-        ? session.shipping_cost.shipping_rate
-        : session.shipping_cost?.shipping_rate?.id;
-    if (
-      rateId !== shipping.stripeRateId ||
-      Object.keys(address).some(
-        (key) =>
-          address[key as keyof typeof address].toLocaleLowerCase("en") !==
-          quote.recipient[key as keyof typeof address].toLocaleLowerCase("en"),
-      )
-    )
-      throw new FulfillmentInvariantError(
-        "Payment shipping/address snapshot mismatch",
-      );
-  }
   return session.payment_status === "paid";
 }
 export async function recordPayment(

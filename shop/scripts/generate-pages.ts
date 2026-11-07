@@ -83,7 +83,26 @@ await writeFile(
   shell(
     "Delivery and checkout",
     "/checkout",
-    `<section class="narrow" data-testid="checkout"><p class="crumbs"><a href="/cart">Cart</a> / Secure checkout</p><h1>Secure checkout</h1><p>Enter your delivery address and pay once in Stripe. Printful shipping options update for your cart and destination before payment.</p><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><div class="status" role="status" data-checkout-status></div><div data-stripe-checkout data-testid="stripe-checkout"></div><p class="muted">USD pricing. Stripe shows your final total including applicable tax before payment. Delivery estimates are not guarantees. Import duties may be payable on delivery.</p></section>`,
+    `<section class="narrow" data-testid="checkout"><p class="crumbs"><a href="/cart">Cart</a> / Delivery / Secure payment</p><h1>Where to?</h1><p>Choose your delivery address and shipping service here. Then pay securely with Stripe.</p><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><form data-shipping-form data-testid="shipping-form">${[
+      ["name", "Full name", "name"],
+      ["email", "Email", "email"],
+      ["address1", "Street address", "address-line1"],
+      ["address2", "Apartment, suite (optional)", "address-line2"],
+      ["city", "City", "address-level2"],
+      [
+        "state_code",
+        "State / province (required for US, CA, AU)",
+        "address-level1",
+      ],
+      ["zip", "Postal code", "postal-code"],
+    ]
+      .map(
+        ([name, label, autocomplete]) =>
+          `<label for="${name}">${label}</label><input id="${name}" name="${name}" autocomplete="${autocomplete}" ${["address2", "state_code"].includes(name) ? "" : "required"} ${name === "email" ? 'type="email"' : ""}>`,
+      )
+      .join(
+        "",
+      )}<label for="country">Country / region</label><select id="country" name="country_code" autocomplete="country" required data-testid="shipping-country"><option value="">Choose your country</option></select><button class="primary" type="submit" data-testid="shipping-quote">Get shipping options</button></form><div class="status" role="status" data-checkout-status></div><section data-rates-section hidden><h2>Shipping options</h2><p>Availability and rates are specific to your cart and destination. Delivery estimates are not guarantees. Import duties may be payable on delivery.</p><div class="rates" data-rates></div><button class="primary" data-pay data-testid="checkout-pay">Continue to Stripe</button><p class="muted">USD pricing. Stripe will show your final total including applicable tax before payment. To change the delivery address, return here and request a new quote.</p></section></section>`,
     false,
   ),
 );

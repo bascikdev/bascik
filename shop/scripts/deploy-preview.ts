@@ -19,14 +19,9 @@ const required = (name: string) => {
 };
 const cfToken = required("CLOUDFLARE_API_TOKEN");
 const stripeKey = required("STRIPE_SECRET_KEY");
-const publishableKey = required("STRIPE_PUBLISHABLE_KEY");
 const printfulToken = required("PRINTFUL_TOKEN");
 const tokenSeed = required("ORDER_TOKEN_SEED");
-if (
-  !stripeKey.startsWith("sk_test_") ||
-  !publishableKey.startsWith("pk_test_") ||
-  tokenSeed.length < 32
-)
+if (!stripeKey.startsWith("sk_test_") || tokenSeed.length < 32)
   throw new Error(
     "Preview requires Stripe sandbox credentials and a strong order-token seed.",
   );
@@ -286,7 +281,6 @@ try {
     secretFile,
     JSON.stringify({
       STRIPE_SECRET_KEY: stripeKey,
-      STRIPE_PUBLISHABLE_KEY: publishableKey,
       STRIPE_WEBHOOK_SECRET: webhook.secret,
       PRINTFUL_TOKEN: printfulToken,
       ORDER_TOKEN_SECRET: createHmac("sha256", tokenSeed)

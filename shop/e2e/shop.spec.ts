@@ -207,30 +207,99 @@ test("checkout remains safely disabled and reports a useful error", async ({
     products[0].variants[0].id,
   );
   await page.reload();
-  await expect(page.getByTestId("stripe-checkout")).toBeAttached();
-  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.getByLabel("Full name").fill("Test Buyer");
+  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
+  await page.getByLabel("Street address").fill("Example street");
+  await page.getByLabel("City", { exact: true }).fill("Example");
+  await page.getByLabel("State / province", { exact: false }).fill("CA");
+  await page.getByLabel("Postal code").fill("90001");
+  await page.getByTestId("shipping-country").selectOption("US");
+  await page.getByTestId("shipping-quote").click();
   await expect(page.getByRole("status")).toContainText(
     "Checkout is not open yet",
   );
-  const response = await request.post("/api/checkout-form", {
+  const response = await request.post("/api/quote", {
     headers: { origin: "http://127.0.0.1:8790" },
     data: {},
   });
   expect(response.status()).toBe(503);
   expect(response.headers()["cache-control"]).toContain("no-store");
 });
-test("empty checkout does not load Stripe and keeps cart intact", async ({
+test("delivery uses US-first Printful destinations without embedded payment fields", async ({
   page,
 }) => {
-  const requests: string[] = [];
-  page.on("request", (request) => requests.push(request.url()));
   await page.goto("/checkout");
-  await expect(page.getByRole("status")).toContainText(
-    "Add at least one product",
+  const options = await page
+    .getByTestId("shipping-country")
+    .locator("option")
+    .evaluateAll((elements) =>
+      elements.map((element) => (element as HTMLOptionElement).value),
+    );
+  expect(options[1]).toBe("US");
+  expect(options).not.toContain("RU");
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.getByTestId("shipping-form")).toBeVisible();
+  await expect(page.getByTestId("checkout-pay")).toHaveText(
+    "Continue to Stripe",
   );
-  expect(requests.some((url) => url.startsWith("https://js.stripe.com"))).toBe(
-    false,
+});
+test("hosted checkout rejects delivery changes during a pending quote and permits a fresh Stripe redirect", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 1 }]),
+      ),
+    products[0].variants[0].id,
   );
+  await page.reload();
+  await page.getByLabel("Full name").fill("Test Buyer");
+  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
+  await page.getByLabel("Street address").fill("Example street");
+  await page.getByLabel("City", { exact: true }).fill("Phoenix");
+  await page.getByLabel("State / province", { exact: false }).fill("Arizona");
+  await page.getByLabel("Postal code").fill("85007");
+  await page.getByTestId("shipping-country").selectOption("US");
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/quote", async (route) => {
+    await pending;
+    await route.fulfill({
+      json: {
+        quoteId: "quote_fixture",
+        expiresAt: Math.floor(Date.now() / 1000) + 900,
+        subtotal: 3000,
+        rates: [{ id: "STANDARD", name: "Standard", amount: 500 }],
+      },
+    });
+  });
+  const requested = page.waitForRequest("**/api/quote");
+  await page.getByTestId("shipping-quote").click();
+  await requested;
+  await page.getByLabel("Street address").fill("Another street");
+  release();
+  await expect(page.getByRole("status")).toContainText("changed");
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.getByTestId("checkout-pay")).toBeVisible();
+  await page.route("**/api/checkout", (route) =>
+    route.fulfill({
+      json: { url: "https://checkout.stripe.com/c/pay/test_hosted" },
+    }),
+  );
+  await page.route("https://checkout.stripe.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Stripe hosted payment</h1>",
+    }),
+  );
+  await page.getByTestId("checkout-pay").click();
+  await expect(page).toHaveURL("https://checkout.stripe.com/c/pay/test_hosted");
 });
 test("private order status cannot be accessed with a public identifier", async ({
   request,
