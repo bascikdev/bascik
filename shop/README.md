@@ -10,6 +10,8 @@ The owned catalog contains two $30 shirts and two $25 hats, with 24 variants and
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
+Product pages show a “View cart & checkout” link after adding an item, and when returning with a saved cart. The delivery page keeps the order summary alongside a grouped address form (stacked on mobile), with an edit-cart link and the selected shipping amount in its before-tax total. Empty carts hide the delivery form. Editing the address invalidates the quote and resets the displayed shipping amount.
+
 Hosted Checkout cannot dynamically call Printful when its address changes. The quoted delivery address is therefore fixed for each Session and shown before payment; customers return to the shop to change it and request a fresh quote. The browser rejects expired quotes and delivery or cart changes while requests are pending. Card details never pass through the shop, and no Stripe iframe or SDK is loaded on the storefront. The existing Stripe API version remains `2025-02-24.acacia`. No additional migration or publishable key is required.
 
 ### Provider audit performed

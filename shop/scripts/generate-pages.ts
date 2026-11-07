@@ -83,26 +83,22 @@ await writeFile(
   shell(
     "Delivery and checkout",
     "/checkout",
-    `<section class="narrow" data-testid="checkout"><p class="crumbs"><a href="/cart">Cart</a> / Delivery / Secure payment</p><h1>Where to?</h1><p>Choose your delivery address and shipping service here. Then pay securely with Stripe.</p><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><form data-shipping-form data-testid="shipping-form">${[
+    `<section class="checkout" data-testid="checkout"><nav class="crumbs" aria-label="Checkout progress"><a href="/cart">Your cart</a> / Delivery / Stripe payment</nav><header><h1>Delivery &amp; checkout</h1><p class="muted">Made to order by Printful. Pay securely on Stripe.</p></header><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><div class="checkout-layout"><section class="panel" aria-labelledby="delivery-heading" data-testid="delivery-panel"><h2 id="delivery-heading">Delivery details</h2><p class="muted">We use your address to get exact shipping rates.</p><form data-shipping-form data-testid="shipping-form"><div class="delivery-fields">${[
       ["name", "Full name", "name"],
       ["email", "Email", "email"],
       ["address1", "Street address", "address-line1"],
       ["address2", "Apartment, suite (optional)", "address-line2"],
       ["city", "City", "address-level2"],
-      [
-        "state_code",
-        "State / province (required for US, CA, AU)",
-        "address-level1",
-      ],
+      ["state_code", "State / province", "address-level1"],
       ["zip", "Postal code", "postal-code"],
     ]
       .map(
         ([name, label, autocomplete]) =>
-          `<label for="${name}">${label}</label><input id="${name}" name="${name}" autocomplete="${autocomplete}" ${["address2", "state_code"].includes(name) ? "" : "required"} ${name === "email" ? 'type="email"' : ""}>`,
+          `<div class="${["address1", "address2"].includes(name) ? "wide" : ""}"><label for="${name}">${label}</label><input id="${name}" name="${name}" autocomplete="${autocomplete}" ${["address2", "state_code"].includes(name) ? "" : "required"} ${name === "email" ? 'type="email"' : ""}></div>`,
       )
       .join(
         "",
-      )}<label for="country">Country / region</label><select id="country" name="country_code" autocomplete="country" required data-testid="shipping-country"><option value="">Choose your country</option></select><button class="primary" type="submit" data-testid="shipping-quote">Get shipping options</button></form><div class="status" role="status" data-checkout-status></div><section data-rates-section hidden><h2>Shipping options</h2><p>Availability and rates are specific to your cart and destination. Delivery estimates are not guarantees. Import duties may be payable on delivery.</p><div class="rates" data-rates></div><button class="primary" data-pay data-testid="checkout-pay">Continue to Stripe</button><p class="muted">USD pricing. Stripe will show your final total including applicable tax before payment. To change the delivery address, return here and request a new quote.</p></section></section>`,
+      )}<div class="wide"><label for="country">Country / region</label><select id="country" name="country_code" autocomplete="country" required data-testid="shipping-country"><option value="">Choose your country</option></select></div></div><button class="primary" type="submit" data-testid="shipping-quote">Get shipping options</button></form><div class="status" role="status" data-checkout-status></div><section class="shipping-options" data-rates-section hidden aria-labelledby="shipping-heading"><h2 id="shipping-heading">Choose shipping</h2><div class="rates" data-rates></div><button class="primary" data-pay data-testid="checkout-pay">Continue to Stripe</button><p class="muted">Stripe shows applicable tax and your final total before payment. Delivery estimates are not guaranteed; import duties may apply.</p></section></section><aside class="panel order-summary" aria-labelledby="summary-heading" data-testid="checkout-summary"><div class="summary-heading"><h2 id="summary-heading">Your order</h2><a href="/cart" data-testid="checkout-edit-cart">Edit cart</a></div><div data-checkout-lines></div><dl class="totals"><div><dt>Subtotal</dt><dd data-checkout-subtotal>$0.00</dd></div><div><dt>Shipping</dt><dd data-checkout-shipping>Calculated next</dd></div><div class="total"><dt>Total before tax</dt><dd data-checkout-total>$0.00</dd></div></dl><p class="muted">USD pricing. Payment details stay with Stripe. Your order is fulfilled by Printful.</p><a href="/shipping">Shipping &amp; returns</a></aside></div></section>`,
     false,
   ),
 );
