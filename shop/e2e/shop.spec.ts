@@ -185,6 +185,75 @@ test("product gallery filters views when color changes", async ({ page }) => {
     }
   }
 });
+test("collection image and title links preserve the selected color through reload and adding to cart", async ({
+  page,
+}) => {
+  for (const product of products) {
+    for (const color of [
+      ...new Set(product.variants.map((variant) => variant.color)),
+    ]) {
+      for (const linkName of ["image", "title"]) {
+        await page.goto("/");
+        const card = page.getByTestId("product-card").filter({
+          has: page.getByRole("heading", { name: product.title }),
+        });
+        await card.getByRole("button", { name: color, exact: true }).click();
+        await card.getByTestId("card-next").click();
+        const link =
+          linkName === "image"
+            ? card.getByRole("link").filter({
+                has: page.getByTestId("card-image"),
+              })
+            : card
+                .getByRole("heading", { name: product.title })
+                .getByRole("link");
+        await link.click();
+        expect(new URL(page.url()).searchParams.get("color")).toBe(color);
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        await page.reload();
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        const images = product.images.filter((image) => image.color === color);
+        await expect(page.getByTestId("product-image")).toHaveAttribute(
+          "src",
+          images[0].src,
+        );
+        await expect(
+          page.getByTestId("gallery-image").filter({ visible: true }),
+        ).toHaveCount(images.length);
+        await page.getByTestId("add-to-cart").click();
+        await expect(page.getByTestId("product-form")).toContainText(
+          "Added to your cart.",
+        );
+        const variant = product.variants.find(
+          (variant) => variant.color === color,
+        )!;
+        expect(
+          await page.evaluate(() =>
+            JSON.parse(localStorage.getItem("bascik-shop-cart")!),
+          ),
+        ).toContainEqual({
+          variantId: variant.id,
+          quantity: linkName === "image" ? 1 : 2,
+        });
+      }
+    }
+  }
+});
+test("invalid color links retain the default product color and gallery", async ({
+  page,
+}) => {
+  for (const product of products) {
+    await page.goto(
+      `/products/${product.slug}?color=${encodeURIComponent("<invalid color>")}`,
+    );
+    const color = product.variants[0].color;
+    await expect(page.getByTestId("product-color")).toHaveValue(color);
+    await expect(page.getByTestId("product-image")).toHaveAttribute(
+      "src",
+      product.images.find((image) => image.color === color)!.src,
+    );
+  }
+});
 test("docs-style navigation works at every viewport", async ({
   page,
 }, testInfo) => {

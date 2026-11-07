@@ -81,6 +81,13 @@ for (const card of document.querySelectorAll<HTMLElement>(
     image.src = selected.src;
     image.srcset = selected.srcset;
     image.alt = selected.alt;
+    for (const link of card.querySelectorAll<HTMLAnchorElement>(
+      `a[href^="/products/${item.slug}"]`,
+    )) {
+      const url = new URL(`/products/${item.slug}`, location.origin);
+      url.searchParams.set("color", color);
+      link.href = url.pathname + url.search;
+    }
     for (const button of card.querySelectorAll<HTMLButtonElement>(
       "[data-card-color]",
     ))
@@ -163,6 +170,16 @@ form?.addEventListener("change", (event) => {
   const color = data.get("color");
   if (typeof color === "string") showColor(color);
 });
+const requestedColor = new URLSearchParams(location.search).get("color");
+const colorSelect = form?.querySelector<HTMLSelectElement>(
+  "select[name='color']",
+);
+if (
+  requestedColor !== null &&
+  colorSelect &&
+  product?.variants.some((variant) => variant.color === requestedColor)
+)
+  colorSelect.value = requestedColor;
 const initialColor = form && new FormData(form).get("color");
 if (typeof initialColor === "string") showColor(initialColor);
 function showCartLink() {
