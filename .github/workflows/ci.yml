@@ -13,11 +13,9 @@ name: CI
 # was merged into main (.github/scripts/merged-pull-request.mjs). A commit pushed straight to main therefore never
 # deploys; the manual emergency deploy in DEPLOYMENT.md is the documented bypass.
 #
-# pull_request is here only so pull requests from forks get tested. A pull request from a branch of this repo is
-# already tested by that branch's push run, whose checks are on the same head commit and so show on the pull
-# request; the stage 1 jobs skip on such a pull_request event, and every later job needs them, so the rest of that
-# run skips too (a skipped `needs` skips the job instead of failing it). A fork's pull request runs stages 1 to 4
-# and never stage 5, which runs only on push.
+# Pull requests from forks run stages 1 to 4. A same-repo pull request normally relies on its branch push,
+# but runs those stages if its latest commit only changes shop files and its cumulative diff has other changes:
+# in that case the push may have been path-filtered. Pull requests never run stage 5.
 #
 # A push whose every change since the branch left main is under docs/content/ is a docs-only run. The `changes` job
 # detects it, and the run then skips Jelly, Semgrep, the typechecks, and every test job except formatting, spelling
@@ -26,8 +24,12 @@ name: CI
 on:
   push:
     branches: ["**"]
+    paths-ignore:
+      - "shop/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "shop/**"
 
 # A newer push to a branch cancels that branch's older run, Preview upload included. Runs on main never share a
 # group, so none is canceled or left pending. No job has its own concurrency group (a shared group holds only one
@@ -48,14 +50,14 @@ jobs:
   changes:
     name: Detect Docs-Only Changes
     runs-on: ubuntu-latest
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file).
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      github.event_name == 'pull_request'
     permissions:
       contents: read
     outputs:
       docs-only: ${{ steps.diff.outputs.docs-only }}
+      shop-only-head: ${{ steps.diff.outputs.shop-only-head }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -65,6 +67,8 @@ jobs:
       # later push a full run. An empty or unreadable comparison counts as a full run.
       - name: Check whether only docs/content/ changed
         id: diff
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           docs_only=false
           if git fetch --no-tags origin main && base="$(git merge-base origin/main HEAD)"; then
@@ -75,16 +79,21 @@ jobs:
           fi
           echo "docs-only=$docs_only" >> "$GITHUB_OUTPUT"
           echo "Docs-only run: $docs_only"
+          shop_only_head=false
+          if [ -n "$HEAD_SHA" ] && files="$(git diff --no-renames --name-only "$HEAD_SHA^" "$HEAD_SHA")" && [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qv '^shop/'; then
+            shop_only_head=true
+          fi
+          echo "shop-only-head=$shop_only_head" >> "$GITHUB_OUTPUT"
 
   jelly:
     name: Jelly Static Analysis
     runs-on: ubuntu-latest
     needs: [changes]
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
+    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
     if: >-
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
+      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
     permissions:
       contents: read
     steps:
@@ -115,11 +124,11 @@ jobs:
     name: Semgrep Static Analysis
     runs-on: ubuntu-latest
     needs: [changes]
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
+    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
     if: >-
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
+      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
     permissions:
       contents: read
     steps:
@@ -134,11 +143,11 @@ jobs:
     name: Workspace Typechecks
     runs-on: ubuntu-latest
     needs: [changes]
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file), and a docs-only run.
+    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
     if: >-
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
+      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
     permissions:
       contents: read
     steps:
@@ -166,11 +175,10 @@ jobs:
     name: Spelling & Web Standards
     runs-on: ubuntu-latest
     needs: [changes]
-    # Skips a same-repo pull request, which its branch's push run tests (see the top of the file). Runs on a docs-only
-    # run too: formatting, spelling and web standards are the cheap checks a docs page needs.
+    # Runs on a docs-only run too: formatting, spelling and web standards are the cheap checks a docs page needs.
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true'))
     permissions:
       contents: read
     steps:

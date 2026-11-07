@@ -1,0 +1,34 @@
+{
+  "name": "bascik-shop-sandbox",
+  "account_id": "8572c3fcc06b71dbf05fe590e8b3f74e",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": {
+    "SHOP_ENABLED": "false",
+    "SHOP_FULFILLMENT_ENABLED": "false",
+    "SHOP_MODE": "test",
+    "PRINTFUL_STORE_ID": "19022802",
+    "SHOP_ORIGIN": "http://127.0.0.1:8790",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bascik-shop-sandbox",
+      "database_id": "17c831f5-82a4-4094-ad10-5489830c6ae2",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "bascik-shop-sandbox-jobs" }],
+    "consumers": [
+      {
+        "queue": "bascik-shop-sandbox-jobs",
+        "max_batch_size": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "bascik-shop-sandbox-dead",
+      },
+    ],
+  },
+}

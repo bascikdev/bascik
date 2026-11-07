@@ -4,6 +4,23 @@ This repo deploys two sites to Cloudflare. Everything that can live in the repo 
 
 The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
 
+## Shop prelaunch
+
+The independent [shop application](shop/README.md) is being prepared for
+`shop.bascik.dev`. Its [Shop workflow](.github/workflows/shop.yml) validates
+the application and deploys draft-only PR feature environments. A separate,
+manual main-only lane deploys disabled production prelaunch. Checkout and Printful submissions
+default to disabled, and no custom-domain route is configured. Keep Shopify
+serving the hostname until the provider, tax, email, policy, and cutover gates
+in the shop runbook are satisfied. Shop resources and secrets must stay
+separate from docs and adapter demos.
+
+Pushes and pull requests that change only `shop/**` run Shop validation, not
+the main CI or CodeQL workflows. Mixed changes still run the main workflows.
+For a mixed pull request whose latest commit only changes the shop, the
+pull-request CI run covers the main checks that the filtered push would skip.
+Scheduled CodeQL runs are unchanged.
+
 ## Netlify Adapter Acceptance Project
 
 - Site: [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev) (also available at [bascik-netlify-adapter.netlify.app](https://bascik-netlify-adapter.netlify.app)).
@@ -216,6 +233,68 @@ cd adapters/cloudflare/e2e/fixture/dist/.bascik/cloudflare && npx wrangler secre
 ```
 
 A build-time value goes in a GitHub Actions secret, passed to the build step's `env` only. Check runtime secrets with `cf workers secrets list --worker cloudflare-adapter` (or `--worker bascik`).
+
+## Shop Sandbox
+
+The shop remains separate from both existing Workers. Its setup and remaining commerce gates are documented in [shop/README.md](shop/README.md). The authored shop configuration has no domain route and cannot take over the Shopify hostname.
+
+Provisioning created only the `bascik-shop-sandbox` D1 database (`17c831f5-82a4-4094-ad10-5489830c6ae2`), `bascik-shop-sandbox-jobs` processing queue, and `bascik-shop-sandbox-dead` dead-letter queue in the existing Cloudflare account. All three shop migrations have been applied remotely. The GitHub environment `shop-sandbox` allows only `main`. No Worker, email service, or production database was deployed or created. The owner separately created Printful API store `19022802`; sandbox Stripe products/prices and read-only Printful template discovery are recorded in the shop runbook.
+
+The Shop workflow publishes a complete self-contained Worker/assets/migrations artifact. A maintainer can request a disabled-commerce sandbox deployment with:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_sandbox=true
+```
+
+This requires the changes on `main` and a dedicated `SHOP_CLOUDFLARE_API_TOKEN` environment secret with Workers Scripts edit, D1 edit, Queues edit, and Account Settings read. The existing docs token is not replaced or reused. Only a successful Shop validation run can deploy, and automatic pushes/PRs never trigger this manual sandbox lane. Checkout, fulfillment, and customer email remain disabled. Production and domain cutover are separate owner-approved work after commerce verification.
+
+The owner-supplied shop token is installed in the `shop-sandbox` GitHub environment. Active-token verification and read-only access checks for Workers Scripts, D1, and Queues succeeded. This disabled-commerce sandbox lane requires the shop changes merged into `main`.
+
+### Shop PR feature environments
+
+The Shop workflow also deploys **draft-only commerce previews** after successful validation on same-repository branch pushes with an open PR. This does not require merging. Pull-request events and forks never deploy or receive preview credentials. The script verifies the PR head is the exact push commit before provisioning anything.
+
+Each PR gets `bascik-shop-pr-<number>` on Workers.dev, a separate `-db` D1 database, and `-jobs` / `-dead` queues. The `shop-preview` GitHub environment holds the dedicated Cloudflare token, Stripe sandbox key, Printful token, and order-token seed. CI imports the owner-prepared product template references, installs per-preview runtime secrets, creates its Stripe webhook, deploys, checks the URL, and comments it on the PR.
+
+Real Stripe sandbox payments exercise the signed callback and durable payment-to-draft handoff. Printful orders remain unconfirmed: test mode blocks the confirmation endpoint at the provider layer regardless of the fulfillment flag. No merchandise is produced and no customer email is sent. Shipment events are tested with signed v2 fixtures plus simulated provider responses; Printful's simulator does not support v2. See [shop/README.md](shop/README.md) for the exact safety behavior and manual resource cleanup.
+
+## Shop Production Prelaunch
+
+The production D1 database is `bascik-shop-production-db`
+(`6789dbf6-f32f-400b-ad4a-d5b590b7438d`), with separate queues
+`bascik-shop-production-jobs` and `bascik-shop-production-dead`. All three
+migrations and 24 validated mappings are installed; no sandbox customer
+orders were copied. GitHub environment `shop-production` accepts only `main`
+and holds dedicated live credentials and stable signing secrets.
+
+The checked-in [production configuration](shop/wrangler.production.json)
+targets `bascik-shop-production` at its Workers.dev origin, with both commerce
+flags false and no custom-domain routes. The email binding restricts the sender
+to `no-reply@bascik.dev`. This Worker is **not deployed yet**. After #129
+merges, the owner can request:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_production_prelaunch=true
+```
+
+The lane validates first, checks live provider identity/prices, packages
+isolated production bindings, installs runtime secrets, migrates D1, deploys,
+and checks the exact closed-checkout 503 response plus signed no-order probes on both webhook routes. Local deployment is prohibited;
+only a dry-run was performed. No route can replace `shop.bascik.dev`.
+
+Live Stripe payments are available and copied apparel products/prices are
+verified. Tax is active with **no live registrations**, so applicable
+registration obligations remain an owner/adviser determination. Printful
+billing was owner-confirmed. The live Stripe webhook is staged but disabled.
+Printful v2 callbacks are staged from the previously empty token/app
+configuration, with real signing credentials stored securely; its staged URL
+cannot receive callbacks before deployment. Original Shopify configuration
+was not overwritten. See [the shop runbook](shop/README.md) for safe
+rechecks, key permissions, one-config-per-token constraints, and launch gates.
+
+Production webhook delivery and the production email binding remain to be
+tested after this disabled deployment. Do not enable commerce, manufacturing,
+the Stripe webhook, or cut over the domain as part of this lane.
 
 ## Pages and Workers Differ Here
 

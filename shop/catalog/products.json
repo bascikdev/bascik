@@ -1,0 +1,730 @@
+[
+  {
+    "id": "8813638713479",
+    "slug": "100-organic-cotton-bascik-logo-front-unisex",
+    "title": "100% Organic Cotton Bascik Logo on Front Only (Unisex)",
+    "description": "This vintage-style t-shirt has that soft, worn-in look people love from day one. The garment-dyed finish creates subtle color variations, making every piece feel unique and relaxed. It’s an easy everyday tee that works just as well styled up or worn casually.\n\n• 100% organic ring-spun cotton\n\n• Fabric weight: 5.6 oz./yd.² (190 g/m²)\n\n• Relaxed fit with a comfortable drape\n\n• Garment-dyed finish with a washed, vintage look\n\n• Side-seamed construction for a clean shape\n\n• Set-in sleeves\n\n• Ribbed collar for a classic finish",
+    "price": 3000,
+    "variants": [
+      {
+        "id": "45850396622983",
+        "title": "G. Dyed Black Rock / S",
+        "sku": "8713768_46041",
+        "color": "G. Dyed Black Rock",
+        "size": "S",
+        "available": true,
+        "imageId": "46734712635527"
+      },
+      {
+        "id": "45850396655751",
+        "title": "G. Dyed Black Rock / M",
+        "sku": "8713768_46048",
+        "color": "G. Dyed Black Rock",
+        "size": "M",
+        "available": true,
+        "imageId": "46734712635527"
+      },
+      {
+        "id": "45850396688519",
+        "title": "G. Dyed Black Rock / L",
+        "sku": "8713768_46055",
+        "color": "G. Dyed Black Rock",
+        "size": "L",
+        "available": true,
+        "imageId": "46734712635527"
+      },
+      {
+        "id": "45850396721287",
+        "title": "G. Dyed Black Rock / XL",
+        "sku": "8713768_46062",
+        "color": "G. Dyed Black Rock",
+        "size": "XL",
+        "available": true,
+        "imageId": "46734712635527"
+      },
+      {
+        "id": "45850396754055",
+        "title": "G. Dyed Black Rock / 2XL",
+        "sku": "8713768_46069",
+        "color": "G. Dyed Black Rock",
+        "size": "2XL",
+        "available": true,
+        "imageId": "46734712635527"
+      },
+      {
+        "id": "45850396786823",
+        "title": "G. Dyed Stone / S",
+        "sku": "8713768_46046",
+        "color": "G. Dyed Stone",
+        "size": "S",
+        "available": true,
+        "imageId": "46734712668295"
+      },
+      {
+        "id": "45850396819591",
+        "title": "G. Dyed Stone / M",
+        "sku": "8713768_46053",
+        "color": "G. Dyed Stone",
+        "size": "M",
+        "available": true,
+        "imageId": "46734712668295"
+      },
+      {
+        "id": "45850396852359",
+        "title": "G. Dyed Stone / L",
+        "sku": "8713768_46060",
+        "color": "G. Dyed Stone",
+        "size": "L",
+        "available": true,
+        "imageId": "46734712668295"
+      },
+      {
+        "id": "45850396885127",
+        "title": "G. Dyed Stone / XL",
+        "sku": "8713768_46067",
+        "color": "G. Dyed Stone",
+        "size": "XL",
+        "available": true,
+        "imageId": "46734712668295"
+      },
+      {
+        "id": "45850396917895",
+        "title": "G. Dyed Stone / 2XL",
+        "sku": "8713768_46074",
+        "color": "G. Dyed Stone",
+        "size": "2XL",
+        "available": true,
+        "imageId": "46734712668295"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/9dd33be86e031237-640.webp",
+        "srcset": "/assets/products/9dd33be86e031237-320.webp 320w, /assets/products/9dd33be86e031237-640.webp 640w, /assets/products/9dd33be86e031237-960.webp 960w, /assets/products/9dd33be86e031237-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 1",
+        "sourceId": "46734712635527",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/d124566361c8de38-640.webp",
+        "srcset": "/assets/products/d124566361c8de38-320.webp 320w, /assets/products/d124566361c8de38-640.webp 640w, /assets/products/d124566361c8de38-960.webp 960w, /assets/products/d124566361c8de38-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 2",
+        "sourceId": "46734712668295",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/e1feb8d60090bd63-640.webp",
+        "srcset": "/assets/products/e1feb8d60090bd63-320.webp 320w, /assets/products/e1feb8d60090bd63-640.webp 640w, /assets/products/e1feb8d60090bd63-960.webp 960w, /assets/products/e1feb8d60090bd63-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 3",
+        "sourceId": "46734712701063",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/91cd68d11e45e952-640.webp",
+        "srcset": "/assets/products/91cd68d11e45e952-320.webp 320w, /assets/products/91cd68d11e45e952-640.webp 640w, /assets/products/91cd68d11e45e952-960.webp 960w, /assets/products/91cd68d11e45e952-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 4",
+        "sourceId": "46734712733831",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/976793da8d7efe7a-640.webp",
+        "srcset": "/assets/products/976793da8d7efe7a-320.webp 320w, /assets/products/976793da8d7efe7a-640.webp 640w, /assets/products/976793da8d7efe7a-960.webp 960w, /assets/products/976793da8d7efe7a-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 5",
+        "sourceId": "46734712766599",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/294228d166f8cb32-640.webp",
+        "srcset": "/assets/products/294228d166f8cb32-320.webp 320w, /assets/products/294228d166f8cb32-640.webp 640w, /assets/products/294228d166f8cb32-960.webp 960w, /assets/products/294228d166f8cb32-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 6",
+        "sourceId": "46734712799367",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/ebb63652e3ec5cb4-640.webp",
+        "srcset": "/assets/products/ebb63652e3ec5cb4-320.webp 320w, /assets/products/ebb63652e3ec5cb4-640.webp 640w, /assets/products/ebb63652e3ec5cb4-960.webp 960w, /assets/products/ebb63652e3ec5cb4-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 7",
+        "sourceId": "46734712832135",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/03123f69f1c3e463-640.webp",
+        "srcset": "/assets/products/03123f69f1c3e463-320.webp 320w, /assets/products/03123f69f1c3e463-640.webp 640w, /assets/products/03123f69f1c3e463-960.webp 960w, /assets/products/03123f69f1c3e463-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 8",
+        "sourceId": "46734712864903",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/1b979cf479432401-640.webp",
+        "srcset": "/assets/products/1b979cf479432401-320.webp 320w, /assets/products/1b979cf479432401-640.webp 640w, /assets/products/1b979cf479432401-960.webp 960w, /assets/products/1b979cf479432401-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 9",
+        "sourceId": "46734712897671",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/308f48b0ce9cf172-640.webp",
+        "srcset": "/assets/products/308f48b0ce9cf172-320.webp 320w, /assets/products/308f48b0ce9cf172-640.webp 640w, /assets/products/308f48b0ce9cf172-960.webp 960w, /assets/products/308f48b0ce9cf172-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 10",
+        "sourceId": "46734712930439",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/4e4216b37f3a735f-640.webp",
+        "srcset": "/assets/products/4e4216b37f3a735f-320.webp 320w, /assets/products/4e4216b37f3a735f-640.webp 640w, /assets/products/4e4216b37f3a735f-960.webp 960w, /assets/products/4e4216b37f3a735f-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 11",
+        "sourceId": "46734712963207",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/24f8221e1ab2850f-640.webp",
+        "srcset": "/assets/products/24f8221e1ab2850f-320.webp 320w, /assets/products/24f8221e1ab2850f-640.webp 640w, /assets/products/24f8221e1ab2850f-960.webp 960w, /assets/products/24f8221e1ab2850f-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 12",
+        "sourceId": "46734712995975",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/7d60034da95d9593-640.webp",
+        "srcset": "/assets/products/7d60034da95d9593-320.webp 320w, /assets/products/7d60034da95d9593-640.webp 640w, /assets/products/7d60034da95d9593-960.webp 960w, /assets/products/7d60034da95d9593-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 13",
+        "sourceId": "46734713028743",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/364eafad656b07fe-640.webp",
+        "srcset": "/assets/products/364eafad656b07fe-320.webp 320w, /assets/products/364eafad656b07fe-640.webp 640w, /assets/products/364eafad656b07fe-960.webp 960w, /assets/products/364eafad656b07fe-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo on Front Only (Unisex), product view 14",
+        "sourceId": "46734713061511",
+        "color": "G. Dyed Stone"
+      }
+    ]
+  },
+  {
+    "id": "8746108878983",
+    "slug": "100-organic-cotton-bascik-insignia-shirt-unisex",
+    "title": "100% Organic Cotton Bascik Insignia Shirt (Unisex)",
+    "description": "This vintage-style t-shirt has that soft, worn-in look people love from day one. The garment-dyed finish creates subtle color variations, making every piece feel unique and relaxed. It’s an easy everyday tee that works just as well styled up or worn casually.\n\n• 100% organic ring-spun cotton\n\n• Fabric weight: 5.6 oz./yd.² (190 g/m²)\n\n• Relaxed fit with a comfortable drape\n\n• Garment-dyed finish with a washed, vintage look\n\n• Side-seamed construction for a clean shape\n\n• Set-in sleeves\n\n• Ribbed collar for a classic finish",
+    "price": 3000,
+    "variants": [
+      {
+        "id": "45560814895239",
+        "title": "G. Dyed Black Rock / S",
+        "sku": "4857915_46041",
+        "color": "G. Dyed Black Rock",
+        "size": "S",
+        "available": true,
+        "imageId": "46079726092423"
+      },
+      {
+        "id": "45560814928007",
+        "title": "G. Dyed Black Rock / M",
+        "sku": "4857915_46048",
+        "color": "G. Dyed Black Rock",
+        "size": "M",
+        "available": true,
+        "imageId": "46079726092423"
+      },
+      {
+        "id": "45560814960775",
+        "title": "G. Dyed Black Rock / L",
+        "sku": "4857915_46055",
+        "color": "G. Dyed Black Rock",
+        "size": "L",
+        "available": true,
+        "imageId": "46079726092423"
+      },
+      {
+        "id": "45560814993543",
+        "title": "G. Dyed Black Rock / XL",
+        "sku": "4857915_46062",
+        "color": "G. Dyed Black Rock",
+        "size": "XL",
+        "available": true,
+        "imageId": "46079726092423"
+      },
+      {
+        "id": "45560815026311",
+        "title": "G. Dyed Black Rock / 2XL",
+        "sku": "4857915_46069",
+        "color": "G. Dyed Black Rock",
+        "size": "2XL",
+        "available": true,
+        "imageId": "46079726092423"
+      },
+      {
+        "id": "45560815059079",
+        "title": "G. Dyed Stone / S",
+        "sku": "4857915_46046",
+        "color": "G. Dyed Stone",
+        "size": "S",
+        "available": true,
+        "imageId": "46079726125191"
+      },
+      {
+        "id": "45560815091847",
+        "title": "G. Dyed Stone / M",
+        "sku": "4857915_46053",
+        "color": "G. Dyed Stone",
+        "size": "M",
+        "available": true,
+        "imageId": "46079726125191"
+      },
+      {
+        "id": "45560815124615",
+        "title": "G. Dyed Stone / L",
+        "sku": "4857915_46060",
+        "color": "G. Dyed Stone",
+        "size": "L",
+        "available": true,
+        "imageId": "46079726125191"
+      },
+      {
+        "id": "45560815157383",
+        "title": "G. Dyed Stone / XL",
+        "sku": "4857915_46067",
+        "color": "G. Dyed Stone",
+        "size": "XL",
+        "available": true,
+        "imageId": "46079726125191"
+      },
+      {
+        "id": "45560815190151",
+        "title": "G. Dyed Stone / 2XL",
+        "sku": "4857915_46074",
+        "color": "G. Dyed Stone",
+        "size": "2XL",
+        "available": true,
+        "imageId": "46079726125191"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/8b68dacbec3d14c1-640.webp",
+        "srcset": "/assets/products/8b68dacbec3d14c1-320.webp 320w, /assets/products/8b68dacbec3d14c1-640.webp 640w, /assets/products/8b68dacbec3d14c1-960.webp 960w, /assets/products/8b68dacbec3d14c1-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 1",
+        "sourceId": "46079726092423",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/c52a786563f594ae-640.webp",
+        "srcset": "/assets/products/c52a786563f594ae-320.webp 320w, /assets/products/c52a786563f594ae-640.webp 640w, /assets/products/c52a786563f594ae-960.webp 960w, /assets/products/c52a786563f594ae-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 2",
+        "sourceId": "46079726125191",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/989b364088773540-640.webp",
+        "srcset": "/assets/products/989b364088773540-320.webp 320w, /assets/products/989b364088773540-640.webp 640w, /assets/products/989b364088773540-960.webp 960w, /assets/products/989b364088773540-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 3",
+        "sourceId": "46079726157959",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/abf2092e5aa837e4-640.webp",
+        "srcset": "/assets/products/abf2092e5aa837e4-320.webp 320w, /assets/products/abf2092e5aa837e4-640.webp 640w, /assets/products/abf2092e5aa837e4-960.webp 960w, /assets/products/abf2092e5aa837e4-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 4",
+        "sourceId": "46079726190727",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/ca685842413e4c97-640.webp",
+        "srcset": "/assets/products/ca685842413e4c97-320.webp 320w, /assets/products/ca685842413e4c97-640.webp 640w, /assets/products/ca685842413e4c97-960.webp 960w, /assets/products/ca685842413e4c97-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 5",
+        "sourceId": "46079726223495",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/f66a5295b7dad2e0-640.webp",
+        "srcset": "/assets/products/f66a5295b7dad2e0-320.webp 320w, /assets/products/f66a5295b7dad2e0-640.webp 640w, /assets/products/f66a5295b7dad2e0-960.webp 960w, /assets/products/f66a5295b7dad2e0-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 6",
+        "sourceId": "46079726256263",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/ba3a3b1bf2d121d2-640.webp",
+        "srcset": "/assets/products/ba3a3b1bf2d121d2-320.webp 320w, /assets/products/ba3a3b1bf2d121d2-640.webp 640w, /assets/products/ba3a3b1bf2d121d2-960.webp 960w, /assets/products/ba3a3b1bf2d121d2-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 7",
+        "sourceId": "46079726289031",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/92b9a0d19e063df6-640.webp",
+        "srcset": "/assets/products/92b9a0d19e063df6-320.webp 320w, /assets/products/92b9a0d19e063df6-640.webp 640w, /assets/products/92b9a0d19e063df6-960.webp 960w, /assets/products/92b9a0d19e063df6-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 8",
+        "sourceId": "46079726321799",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/efa922f6a654d6a3-640.webp",
+        "srcset": "/assets/products/efa922f6a654d6a3-320.webp 320w, /assets/products/efa922f6a654d6a3-640.webp 640w, /assets/products/efa922f6a654d6a3-960.webp 960w, /assets/products/efa922f6a654d6a3-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 9",
+        "sourceId": "46079726354567",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/17a86e530f4c5b2f-640.webp",
+        "srcset": "/assets/products/17a86e530f4c5b2f-320.webp 320w, /assets/products/17a86e530f4c5b2f-640.webp 640w, /assets/products/17a86e530f4c5b2f-960.webp 960w, /assets/products/17a86e530f4c5b2f-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 10",
+        "sourceId": "46079726387335",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/455c6a3fd1515931-640.webp",
+        "srcset": "/assets/products/455c6a3fd1515931-320.webp 320w, /assets/products/455c6a3fd1515931-640.webp 640w, /assets/products/455c6a3fd1515931-960.webp 960w, /assets/products/455c6a3fd1515931-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 11",
+        "sourceId": "46079726420103",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/66b61d40427f4d28-640.webp",
+        "srcset": "/assets/products/66b61d40427f4d28-320.webp 320w, /assets/products/66b61d40427f4d28-640.webp 640w, /assets/products/66b61d40427f4d28-960.webp 960w, /assets/products/66b61d40427f4d28-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 12",
+        "sourceId": "46079726452871",
+        "color": "G. Dyed Stone"
+      },
+      {
+        "src": "/assets/products/ae6ec3b0ce9a9c49-640.webp",
+        "srcset": "/assets/products/ae6ec3b0ce9a9c49-320.webp 320w, /assets/products/ae6ec3b0ce9a9c49-640.webp 640w, /assets/products/ae6ec3b0ce9a9c49-960.webp 960w, /assets/products/ae6ec3b0ce9a9c49-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 13",
+        "sourceId": "46079726485639",
+        "color": "G. Dyed Black Rock"
+      },
+      {
+        "src": "/assets/products/9473e5bffb5c38b1-640.webp",
+        "srcset": "/assets/products/9473e5bffb5c38b1-320.webp 320w, /assets/products/9473e5bffb5c38b1-640.webp 640w, /assets/products/9473e5bffb5c38b1-960.webp 960w, /assets/products/9473e5bffb5c38b1-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Shirt (Unisex), product view 14",
+        "sourceId": "46079726518407",
+        "color": "G. Dyed Stone"
+      }
+    ]
+  },
+  {
+    "id": "8746089087111",
+    "slug": "100-organic-cotton-bascik-logo-dad-hat-unisex",
+    "title": "100% Organic Cotton Bascik Logo Dad Hat (Unisex)",
+    "description": "• 100% organic cotton\n\n• Fabric weight: 8 oz/yd² (271 g/m²)\n\n• 3/1 twill\n\n• Unstructured\n\n• 6 panel\n\n• Matching sewn eyelets\n\n• Self-fabric adjustable closure with a brass slider and hidden tuck-in\n\n• The organic cotton content of this product is certified under OCS (Organic Content Standard)",
+    "price": 2500,
+    "variants": [
+      {
+        "id": "45560783732871",
+        "title": "Black",
+        "sku": "9376588_12689",
+        "color": "Black",
+        "size": null,
+        "available": true,
+        "imageId": "46734649819271"
+      },
+      {
+        "id": "45560783765639",
+        "title": "Oyster",
+        "sku": "9376588_12692",
+        "color": "Oyster",
+        "size": null,
+        "available": true,
+        "imageId": "46734650015879"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/374c5906c6df3e01-640.webp",
+        "srcset": "/assets/products/374c5906c6df3e01-320.webp 320w, /assets/products/374c5906c6df3e01-640.webp 640w, /assets/products/374c5906c6df3e01-960.webp 960w, /assets/products/374c5906c6df3e01-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 1",
+        "sourceId": "46734649819271",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/de4ed112d9a2453b-640.webp",
+        "srcset": "/assets/products/de4ed112d9a2453b-320.webp 320w, /assets/products/de4ed112d9a2453b-640.webp 640w, /assets/products/de4ed112d9a2453b-960.webp 960w, /assets/products/de4ed112d9a2453b-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 2",
+        "sourceId": "46734650015879",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/e8db8edeeb5ff7b9-640.webp",
+        "srcset": "/assets/products/e8db8edeeb5ff7b9-320.webp 320w, /assets/products/e8db8edeeb5ff7b9-640.webp 640w, /assets/products/e8db8edeeb5ff7b9-960.webp 960w, /assets/products/e8db8edeeb5ff7b9-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 3",
+        "sourceId": "46734649884807",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/6e3d89918e637978-640.webp",
+        "srcset": "/assets/products/6e3d89918e637978-320.webp 320w, /assets/products/6e3d89918e637978-640.webp 640w, /assets/products/6e3d89918e637978-960.webp 960w, /assets/products/6e3d89918e637978-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 4",
+        "sourceId": "46734650081415",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/e568967eeb23dc49-640.webp",
+        "srcset": "/assets/products/e568967eeb23dc49-320.webp 320w, /assets/products/e568967eeb23dc49-640.webp 640w, /assets/products/e568967eeb23dc49-960.webp 960w, /assets/products/e568967eeb23dc49-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 5",
+        "sourceId": "46734649950343",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/5b2db36002303a52-640.webp",
+        "srcset": "/assets/products/5b2db36002303a52-320.webp 320w, /assets/products/5b2db36002303a52-640.webp 640w, /assets/products/5b2db36002303a52-960.webp 960w, /assets/products/5b2db36002303a52-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 6",
+        "sourceId": "46734650146951",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/96984a904b900b62-640.webp",
+        "srcset": "/assets/products/96984a904b900b62-320.webp 320w, /assets/products/96984a904b900b62-640.webp 640w, /assets/products/96984a904b900b62-960.webp 960w, /assets/products/96984a904b900b62-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 7",
+        "sourceId": "46734649852039",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/2ac4990c680fd88e-640.webp",
+        "srcset": "/assets/products/2ac4990c680fd88e-320.webp 320w, /assets/products/2ac4990c680fd88e-640.webp 640w, /assets/products/2ac4990c680fd88e-960.webp 960w, /assets/products/2ac4990c680fd88e-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 8",
+        "sourceId": "46734650048647",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/3ec33400dd925c55-640.webp",
+        "srcset": "/assets/products/3ec33400dd925c55-320.webp 320w, /assets/products/3ec33400dd925c55-640.webp 640w, /assets/products/3ec33400dd925c55-960.webp 960w, /assets/products/3ec33400dd925c55-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 9",
+        "sourceId": "46734649917575",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/f47c974b280db784-640.webp",
+        "srcset": "/assets/products/f47c974b280db784-320.webp 320w, /assets/products/f47c974b280db784-640.webp 640w, /assets/products/f47c974b280db784-960.webp 960w, /assets/products/f47c974b280db784-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 10",
+        "sourceId": "46734650114183",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/07b4a5eec9c9af45-640.webp",
+        "srcset": "/assets/products/07b4a5eec9c9af45-320.webp 320w, /assets/products/07b4a5eec9c9af45-640.webp 640w, /assets/products/07b4a5eec9c9af45-960.webp 960w, /assets/products/07b4a5eec9c9af45-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 11",
+        "sourceId": "46734649786503",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/11bf613c5cec4a48-640.webp",
+        "srcset": "/assets/products/11bf613c5cec4a48-320.webp 320w, /assets/products/11bf613c5cec4a48-640.webp 640w, /assets/products/11bf613c5cec4a48-960.webp 960w, /assets/products/11bf613c5cec4a48-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Logo Dad Hat (Unisex), product view 12",
+        "sourceId": "46734649983111",
+        "color": "Oyster"
+      }
+    ]
+  },
+  {
+    "id": "8746092396679",
+    "slug": "100-organic-cotton-bascik-insignia-dad-hat-unisex",
+    "title": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex)",
+    "description": "• 100% organic cotton\n\n• Fabric weight: 8 oz/yd² (271 g/m²)\n\n• 3/1 twill\n\n• Unstructured\n\n• 6 panel\n\n• Matching sewn eyelets\n\n• Self-fabric adjustable closure with a brass slider and hidden tuck-in\n\n• The organic cotton content of this product is certified under OCS (Organic Content Standard)",
+    "price": 2500,
+    "variants": [
+      {
+        "id": "45560787009671",
+        "title": "Black",
+        "sku": "6146554_12689",
+        "color": "Black",
+        "size": null,
+        "available": true,
+        "imageId": "46734637924487"
+      },
+      {
+        "id": "45560787042439",
+        "title": "Oyster",
+        "sku": "6146554_12692",
+        "color": "Oyster",
+        "size": null,
+        "available": true,
+        "imageId": "46734638121095"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/9e0ecb0227168e4b-640.webp",
+        "srcset": "/assets/products/9e0ecb0227168e4b-320.webp 320w, /assets/products/9e0ecb0227168e4b-640.webp 640w, /assets/products/9e0ecb0227168e4b-960.webp 960w, /assets/products/9e0ecb0227168e4b-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 1",
+        "sourceId": "46734637924487",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/800a5c61d165817e-640.webp",
+        "srcset": "/assets/products/800a5c61d165817e-320.webp 320w, /assets/products/800a5c61d165817e-640.webp 640w, /assets/products/800a5c61d165817e-960.webp 960w, /assets/products/800a5c61d165817e-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 2",
+        "sourceId": "46734638121095",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/61930ddf22adedf6-640.webp",
+        "srcset": "/assets/products/61930ddf22adedf6-320.webp 320w, /assets/products/61930ddf22adedf6-640.webp 640w, /assets/products/61930ddf22adedf6-960.webp 960w, /assets/products/61930ddf22adedf6-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 3",
+        "sourceId": "46734637990023",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/5699d1705034ce89-640.webp",
+        "srcset": "/assets/products/5699d1705034ce89-320.webp 320w, /assets/products/5699d1705034ce89-640.webp 640w, /assets/products/5699d1705034ce89-960.webp 960w, /assets/products/5699d1705034ce89-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 4",
+        "sourceId": "46734638186631",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/53e8a84fb70242f0-640.webp",
+        "srcset": "/assets/products/53e8a84fb70242f0-320.webp 320w, /assets/products/53e8a84fb70242f0-640.webp 640w, /assets/products/53e8a84fb70242f0-960.webp 960w, /assets/products/53e8a84fb70242f0-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 5",
+        "sourceId": "46734638055559",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/22388bb58f673895-640.webp",
+        "srcset": "/assets/products/22388bb58f673895-320.webp 320w, /assets/products/22388bb58f673895-640.webp 640w, /assets/products/22388bb58f673895-960.webp 960w, /assets/products/22388bb58f673895-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 6",
+        "sourceId": "46734638252167",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/d32fe18497c3f7b8-640.webp",
+        "srcset": "/assets/products/d32fe18497c3f7b8-320.webp 320w, /assets/products/d32fe18497c3f7b8-640.webp 640w, /assets/products/d32fe18497c3f7b8-960.webp 960w, /assets/products/d32fe18497c3f7b8-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 7",
+        "sourceId": "46734637957255",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/821bf4a558707605-640.webp",
+        "srcset": "/assets/products/821bf4a558707605-320.webp 320w, /assets/products/821bf4a558707605-640.webp 640w, /assets/products/821bf4a558707605-960.webp 960w, /assets/products/821bf4a558707605-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 8",
+        "sourceId": "46734638153863",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/e834e293a49d8e0c-640.webp",
+        "srcset": "/assets/products/e834e293a49d8e0c-320.webp 320w, /assets/products/e834e293a49d8e0c-640.webp 640w, /assets/products/e834e293a49d8e0c-960.webp 960w, /assets/products/e834e293a49d8e0c-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 9",
+        "sourceId": "46734638022791",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/bd6de4d485452d9f-640.webp",
+        "srcset": "/assets/products/bd6de4d485452d9f-320.webp 320w, /assets/products/bd6de4d485452d9f-640.webp 640w, /assets/products/bd6de4d485452d9f-960.webp 960w, /assets/products/bd6de4d485452d9f-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 10",
+        "sourceId": "46734638219399",
+        "color": "Oyster"
+      },
+      {
+        "src": "/assets/products/07b4a5eec9c9af45-640.webp",
+        "srcset": "/assets/products/07b4a5eec9c9af45-320.webp 320w, /assets/products/07b4a5eec9c9af45-640.webp 640w, /assets/products/07b4a5eec9c9af45-960.webp 960w, /assets/products/07b4a5eec9c9af45-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 11",
+        "sourceId": "46734637891719",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/11bf613c5cec4a48-640.webp",
+        "srcset": "/assets/products/11bf613c5cec4a48-320.webp 320w, /assets/products/11bf613c5cec4a48-640.webp 640w, /assets/products/11bf613c5cec4a48-960.webp 960w, /assets/products/11bf613c5cec4a48-1600.webp 1600w",
+        "width": 2000,
+        "height": 2000,
+        "alt": "100% Organic Cotton Bascik Insignia Dad Hat (Unisex), product view 12",
+        "sourceId": "46734638088327",
+        "color": "Oyster"
+      }
+    ]
+  }
+]

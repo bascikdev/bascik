@@ -38,3 +38,14 @@ skills-tests/tests/fixtures/refactor-parity/misses2/
 # Production markup with no whitespace between elements, as React writes it; the text-key tests compare it with a
 # Prettier-formatted target, so Prettier must not add the whitespace back.
 skills-tests/tests/fixtures/refactor-parity/text-keys/prod/
+
+# Shop generated artifacts, private provider audits, and the supplied vendor API schema.
+shop/.output/
+shop/.local/
+shop/catalog/source.json
+shop/printful-openapi.json
+shop/src/pages/*.html
+shop/src/pages/products/
+shop/src/pages/policies/
+shop/src/pages/pages/
+shop/src/pages/assets/shop.js

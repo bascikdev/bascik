@@ -1,0 +1,34 @@
+{
+  "name": "bascik-shop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import": "node scripts/import-catalog.ts",
+    "build": "node scripts/generate-pages.ts && BASCIK_SITE_URL=https://shop.bascik.dev bascik --build --target cloudflare && node scripts/package-worker.ts",
+    "dev": "yarn build && wrangler dev --config .output/wrangler.json",
+    "typecheck": "tsc --noEmit",
+    "unit": "node scripts/generate-pages.ts && vitest run --project unit",
+    "integration": "vitest run --project integration",
+    "printful:audit": "node --env-file=.env scripts/audit-printful.ts",
+    "stripe:check": "node --env-file=.env scripts/setup-stripe.ts",
+    "stripe:setup": "node --env-file=.env scripts/setup-stripe.ts --write",
+    "e2e": "playwright test --reporter=line"
+  },
+  "dependencies": {
+    "@bascik/adapter-cloudflare": "workspace:*",
+    "@bascik/bascik": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "esbuild": "^0.28.2",
+    "miniflare": "4.20260730.0",
+    "parse5": "^8.0.1",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.152.0"
+  }
+}

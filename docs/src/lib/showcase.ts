@@ -9,6 +9,7 @@ export const SHOWCASE_SITES = [
     name: "Sunridge Counseling",
     url: "https://sunridgecounseling.com",
   },
+  { slug: "dgco", name: "DGCO", url: "https://dgcocpa.com" },
   { slug: "lateral", name: "Lateral EMDR", url: "https://lateralemdr.com" },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
 ] as const;
