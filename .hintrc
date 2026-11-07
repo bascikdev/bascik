@@ -17,7 +17,8 @@
       "default",
       {
         "ignore": [
-          "meta[name=theme-color]"
+          "meta[name=theme-color]",
+          "img[fetchpriority]"
         ]
       }
     ],
@@ -28,7 +29,8 @@
     "axe/text-alternatives": [
       "default",
       {
-        "document-title": "off"
+        "document-title": "off",
+        "image-alt": "off"
       }
     ]
   },

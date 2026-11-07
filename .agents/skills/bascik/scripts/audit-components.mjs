@@ -1,0 +1,1617 @@
+#!/usr/bin/env node
+// Audit how a Bascik project's pages are composed from components, whether they use semantic HTML, and whether
+// their code is TypeScript.
+// Dependency-free; Node.js 22.22+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { parseArgs } from "node:util";
+import {
+  componentRoots,
+  fail,
+  findProjectRoot,
+  isMain,
+  loadProjectConfig,
+  pagesDirectory,
+  walkFiles,
+} from "./lib/project.mjs";
+import {
+  PAGE_CONTEXT_VARS,
+  importSpecifiers,
+  pageContextOf,
+  resolveLocalImport,
+} from "./lib/build-scripts.mjs";
+import { listComponents, tagNameProblem } from "./lib/components.mjs";
+import { handWrittenEscapers, isTestFile } from "./lib/escapers.mjs";
+import {
+  checkAlt,
+  checkClickable,
+  checkComposedPage,
+  checkGenericRoot,
+  checkLabels,
+  controlsLabelledByUse,
+} from "./lib/semantic.mjs";
+import {
+  countNonBlankLines,
+  maskKeepingLines,
+  parseMarkup,
+  walkElements,
+} from "./lib/markup.mjs";
+
+const HELP = `Usage: node audit-components.mjs [--json] [--allow-js] [--root <dir>]
+                                  [--max-page-lines <n>] [--max-component-lines <n>]
+
+Checks that pages read like a list of component tags rather than big blocks of HTML, that components are split
+with balance, that the markup is semantic HTML, and that new code is TypeScript. Run it with bascik --check before
+calling a page done. Each finding names file:line and what to do. Exit code 1 when there is a warning, 2 on a usage
+error. Every finding is a warning to weigh: Bascik never changes the markup you write.
+
+Rules:
+  oversized-page       A page with more than 80 lines of markup (scripts and styles not counted)
+  oversized-component  A component with more than 120 lines of markup, or 300 lines in all
+  inline-section       A 12+ line section, header, footer, nav, form, or similar in a page that has a nameable job
+                       (a label, id, class, or heading): make it a component and leave its tag in the page
+  repeated-block       The same block of 4+ elements pasted twice or more: make it one component with props
+  repeated-pattern     The same heading group (an eyebrow, heading, and intro, say) written by hand in 3+ files,
+                       even with different modifier classes or inline links: make it one component with props
+  repeated-text        The same sentence or fact (20+ characters, such as an address) typed into 2+ files: keep it
+                       in one component or one data file so a change is one edit
+  constant-prop        A prop that every use (3+) passes with the same value: write the value into the component
+  tiny-component       A component of 3 elements or fewer, used once, with no script: inline it into its parent
+  prop-drilling        A component that only forwards a prop to a child (data-bascik-attr-data-bascik-prop-*):
+                       let the page fill the child through a slot, or give the value to the child directly
+  js-not-ts            A browser <script>, .js companion, or .js/.mjs helper where TypeScript is expected, and a
+                       classic page <script src="x.ts"> with defer or async, which the build refuses (Bascik
+                       compiles and inlines a page's .ts src, and an inline classic script ignores both)
+  build-once           A <script data-bascik-build> in a component that reads no page context (BASCIK_PAGE_PATH,
+                       BASCIK_PAGE_FILE, BASCIK_ROUTE, here or in a local module it imports): its output is the same
+                       on every page, so use <script data-bascik-build-once>
+  once-reads-page      A <script data-bascik-build-once> that reads page context, which is empty there: use
+                       <script data-bascik-build>, which runs per page
+  hand-written-escaper Code that replaces & and < with entities (named or numeric), or deletes them, in a .ts or
+                       .js file (helpers, companions, exec scripts) or an inline script: build markup with html
+                       from @bascik/bascik/html, which escapes for where each value lands and blocks javascript:
+                       URLs; a browser script sets textContent instead. Test files, decoders, and an XML escaper
+                       (named escapeXml or the like, or with a comment directly above saying it writes XML for a
+                       feed or sitemap) are skipped
+  single-use-module    A module in src/lib/ (data, helper, types) that one component or one page uses, followed
+                       through @/ and relative imports in inline scripts, src= files, .ts companions, and other
+                       src/lib modules (a page and the modules in its folder count as one user): move it into that
+                       component's folder (or beside that page, as a .ts file) and import it with ./. Content (a
+                       module that exports no function, even when its values are built with html) that one component
+                       renders and pages also read, for JSON-LD say, moves into the component's folder too, and the
+                       pages import it from there. A module that config, an exec script, an API route, a second
+                       component, or two other src/lib modules import stays, and so does a helper with functions
+                       that a component and a page share. Test files do not count as users
+
+Semantic HTML rules (https://html.spec.whatwg.org/multipage/; the lang attribute, one <h1>, and meta tags are
+checked by the bascik-seo audit):
+  clickable-element    A div, span, <a> with no href, or other non-interactive element with onclick, role="button"
+                       or role="link", or a click listener from its script (found by id): use <button type="button">,
+                       or <a href> to navigate. Skips popovers, delegation that reads the event target, handlers
+                       that only hide or close the element, and containers holding links or buttons
+  generic-root         A component whose root is a <div> or <span> when its name says it has a job with its own
+                       element (*-nav: <nav>, *-header: <header>, *-footer: <footer>, *-form: <form>, *-post,
+                       *-review, *-testimonial: <article>, *-section with a heading: <section>, *-sidebar:
+                       <aside>), or a wrapper around one. A *-card is not flagged: it is an <article> only when it
+                       stands on its own
+  skipped-heading      A heading level skipped in a page's output (an <h3> after an <h1>), following headings
+                       through components and slots, reported at the page line that brings the heading in. After a
+                       script that prints markup, whose headings it cannot see, it starts over at the next heading
+  missing-alt          An <img> with no alt attribute (alt="" marks decoration; data-bascik-attr-alt counts)
+  unlabeled-control    An input, select, or textarea with no <label for>, wrapping <label>, aria-label, or
+                       aria-labelledby (a placeholder is not a label). A component's control counts as labeled
+                       when every page that uses it wraps the usage tag in a <label>
+  missing-main         A page whose output, components included, has no <main> element (skipped when a build,
+                       server, or stream script could print it)
+
+Options:
+  --allow-js                 Skip js-not-ts for JavaScript (only when the person asked for it)
+  --max-page-lines <n>       Markup lines a page may have (default 80)
+  --max-component-lines <n>  Markup lines a component may have (default 120)
+  --json                     Print JSON: { root, findings, stats }
+  --root <dir>               Project root (default: nearest Bascik project above the current directory)
+  --help                     Show this message`;
+
+export const DEFAULT_LIMITS = {
+  maxPageLines: 80,
+  maxComponentLines: 120,
+  maxComponentFileLines: 300,
+  minSectionLines: 12,
+  minRepeatElements: 4,
+  tinyMaxElements: 3,
+  tinyMaxLines: 5,
+};
+
+const NODE_DIRECTIVES = [
+  "data-bascik-build",
+  "data-bascik-build-once",
+  "data-bascik-routes",
+  "data-bascik-server",
+  "data-bascik-stream",
+];
+const BROWSER_SCRIPT_TYPES = new Set([
+  "",
+  "text/javascript",
+  "application/javascript",
+  "module",
+]);
+const SECTION_TAGS = new Set([
+  "section",
+  "header",
+  "footer",
+  "nav",
+  "aside",
+  "article",
+  "form",
+  "figure",
+  "details",
+  "fieldset",
+  "table",
+  "dl",
+  "ul",
+  "ol",
+  "div",
+]);
+const NOT_A_BLOCK = new Set([
+  "html",
+  "head",
+  "body",
+  "main",
+  "template",
+  "tr",
+  "thead",
+  "tbody",
+  "tfoot",
+  "option",
+  "script",
+  "style",
+]);
+const SUFFIX = {
+  section: "section",
+  article: "card",
+  li: "item",
+  header: "header",
+  footer: "footer",
+  nav: "nav",
+  aside: "aside",
+  form: "form",
+  figure: "figure",
+  ul: "list",
+  ol: "list",
+  dl: "list",
+  table: "table",
+  details: "details",
+  fieldset: "fields",
+};
+const GENERIC_NAMES = new Set([
+  "container",
+  "wrapper",
+  "wrap",
+  "inner",
+  "outer",
+  "row",
+  "col",
+  "column",
+  "grid",
+  "flex",
+  "box",
+  "content",
+  "section",
+  "block",
+  "stack",
+  "cluster",
+  "main",
+]);
+const STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "the",
+  "of",
+  "to",
+  "for",
+  "our",
+  "your",
+  "with",
+  "in",
+  "on",
+  "at",
+  "is",
+  "are",
+  "today",
+  "now",
+]);
+const INLINE_TAGS = new Set([
+  "a",
+  "abbr",
+  "b",
+  "br",
+  "code",
+  "em",
+  "i",
+  "kbd",
+  "mark",
+  "s",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "time",
+  "u",
+  "wbr",
+]);
+const MIN_REPEATED_TEXT = 20;
+const MIN_PATTERN_FILES = 3;
+const MIN_CONSTANT_PROP_USES = 3;
+const SKIPPED_DIRS = ["node_modules", "coverage", "test-results"];
+const JS_FILE = /\.(?:js|mjs|cjs|jsx)$/i;
+
+/** True when `file` is inside `dir` (not `dir` itself). */
+const insideDir = (file, dir) => {
+  const rel = relative(dir, file);
+  return Boolean(rel) && !rel.startsWith("..") && !rel.startsWith("/");
+};
+
+/** A component tag name for a block, from a hint such as a class, id, label, or heading. Exported for tests. */
+export function suggestTagName(tag, hint = "", fallback = "page") {
+  const lower = String(hint).trim().toLowerCase();
+  if (lower.includes("-") && !tagNameProblem(lower)) return lower;
+  const words = lower
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word && !STOP_WORDS.has(word) && !/^\d/.test(word))
+    .slice(0, 2);
+  if (words.length === 0) words.push(fallback);
+  const suffix = SUFFIX[tag] ?? "block";
+  if (words[words.length - 1] !== suffix) words.push(suffix);
+  return words.join("-");
+}
+
+const textOf = (node, source) =>
+  source
+    .slice(node.openEnd ?? node.start, node.end)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** The most specific name a block carries: aria-label, id, a non-generic class, then its first heading's text. */
+function nameHint(node, source, { headings = true } = {}) {
+  if (node.attrs["aria-label"]) return node.attrs["aria-label"];
+  if (node.attrs.id && !GENERIC_NAMES.has(node.attrs.id)) return node.attrs.id;
+  const cls = (node.attrs.class ?? "")
+    .split(/\s+/)
+    .find((name) => name && !GENERIC_NAMES.has(name.toLowerCase()));
+  if (cls) return cls;
+  if (!headings) return "";
+  let heading = "";
+  walkElements(node, (child) => {
+    if (heading) return false;
+    if (/^h[1-6]$/.test(child.tag)) heading = textOf(child, source);
+  });
+  return heading;
+}
+
+const describeOpenTag = (node) =>
+  `<${node.tag}${node.attrs.class ? ` class="${node.attrs.class}"` : node.attrs.id ? ` id="${node.attrs.id}"` : ""}>`;
+
+const insideHead = (node) => {
+  for (let p = node.parent; p; p = p.parent) if (p.tag === "head") return true;
+  return false;
+};
+
+const isNodeScript = (node) =>
+  NODE_DIRECTIVES.some((name) => name in node.attrs);
+
+/** Read and parse one HTML file of the project. */
+function readHtml(root, file, kind) {
+  const source = readFileSync(file, "utf8");
+  const masked = maskKeepingLines(source);
+  return {
+    kind,
+    path: file,
+    file: relative(root, file).replace(/\\/g, "/"),
+    source,
+    tree: parseMarkup(source),
+    markupLines: countNonBlankLines(masked),
+    lines: countNonBlankLines(source),
+    masked,
+  };
+}
+
+function signatureOf(node, isComponent, memo) {
+  if (memo.has(node)) return memo.get(node);
+  let signature;
+  let size;
+  if (isComponent(node.tag)) {
+    signature = `<${node.tag}/>`;
+    size = 0;
+  } else {
+    const children = node.children
+      .filter((child) => child.tag !== "script" && child.tag !== "style")
+      .map((child) => signatureOf(child, isComponent, memo));
+    const cls = (node.attrs.class ?? "").split(/\s+/).filter(Boolean).sort();
+    signature = `${node.tag}${cls.length ? `.${cls.join(".")}` : ""}(${children.map((c) => c.signature).join(",")})`;
+    size = 1 + children.reduce((sum, c) => sum + c.size, 0);
+  }
+  const result = { signature, size };
+  memo.set(node, result);
+  return result;
+}
+
+function checkScripts(doc, options, findings, stats) {
+  const componentName =
+    doc.kind === "component" ? basename(doc.path, ".html") : undefined;
+  walkElements(doc.tree, (node) => {
+    if (node.tag !== "script") return;
+    if (isNodeScript(node)) return false;
+    const type = (node.attrs.type ?? "").trim().toLowerCase();
+    if (type === "text/typescript") {
+      stats.tsScripts++;
+      return false;
+    }
+    if (!BROWSER_SCRIPT_TYPES.has(type)) return false;
+    const src = node.attrs.src;
+    const module = type === "module";
+    if (src !== undefined) {
+      if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src) || src.startsWith("/"))
+        return false; // A third-party URL or a bundle written to dist/: not authored here.
+      if (/\.m?ts(?:[?#].*)?$/i.test(src)) {
+        stats.tsScripts++;
+        // Bascik compiles a page's own .ts src and inlines it. An inline classic script ignores defer and async,
+        // so the build refuses a classic tag with either rather than quietly running it at a different time.
+        const timing = module
+          ? undefined
+          : ["defer", "async"].find((name) => name in node.attrs);
+        if (doc.kind === "page" && timing)
+          findings.push({
+            rule: "js-not-ts",
+            level: "warn",
+            file: doc.file,
+            line: node.line,
+            message: `<script src="${src}" ${timing}> fails the build: Bascik inlines a page's .ts script, and an inline classic script ignores ${timing}.`,
+            suggestion: `Drop ${timing}, or mark the tag <script type="module" src="${src}">, which keeps deferred timing inline.`,
+          });
+        return false;
+      }
+      stats.jsScripts++;
+      if (options.allowJs) return false;
+      const tsName = src.replace(/\.(?:m?js|cjs|jsx)(?=$|[?#])/i, ".ts");
+      findings.push({
+        rule: "js-not-ts",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `<script src="${src}"> loads JavaScript; new browser code is TypeScript.`,
+        suggestion:
+          doc.kind === "component"
+            ? `Rename ${src} to ${tsName} and point the src at it; Bascik strips the types when it inlines the file (erasable syntax, no setup).`
+            : `Rename ${src} to ${tsName} and point the src at it; Bascik compiles a page's own .ts script and inlines it (erasable syntax, no setup). Or move the behavior into a component with a ${tsName} companion.`,
+      });
+      return false;
+    }
+    if (!node.body) return false;
+    stats.jsScripts++;
+    if (options.allowJs) return false;
+    let suggestion;
+    if (doc.kind === "component")
+      suggestion = module
+        ? `Move it to ${componentName}.ts and load it with <script type="module" src="${componentName}.ts"> (inline type="text/typescript" blocks are classic scripts, so they cannot hold import or export).`
+        : `Mark it <script type="text/typescript"> and add types (erasable syntax works with no setup), or move it to ${componentName}.ts beside the template and load it with <script src="${componentName}.ts">.`;
+    else
+      suggestion = module
+        ? `Move it to a .ts file beside the page and load it with <script type="module" src="name.ts">, which Bascik compiles and inlines without bundling, so a relative, @/ or .ts import fails the build (bundle it with esbuild or import a published /js/*.js URL; inline type="text/typescript" blocks are classic scripts, so they cannot hold import or export), or move the behavior into a component with a .ts companion.`
+        : `Mark it <script type="text/typescript"> and add types, or move the behavior into a component with a .ts companion.`;
+    findings.push({
+      rule: "js-not-ts",
+      level: "warn",
+      file: doc.file,
+      line: node.line,
+      message: `Inline ${module ? "module " : ""}<script> is JavaScript; new browser code is TypeScript.`,
+      suggestion,
+    });
+    return false;
+  });
+}
+
+/**
+ * build-once: a component's data-bascik-build script whose output cannot depend on the page. once-reads-page: a
+ * data-bascik-build-once script that reads page context, which is empty there. A script whose `src=` file or local
+ * import cannot be read is left alone: the build reports a missing file.
+ */
+function checkBuildScripts(doc, root, importRoot, findings) {
+  const where = doc.kind === "component" ? `<${doc.tag}>` : "this page";
+  walkElements(doc.tree, (node) => {
+    if (node.tag !== "script") return;
+    const once = "data-bascik-build-once" in node.attrs;
+    const build = "data-bascik-build" in node.attrs;
+    if (!once && !(build && doc.kind === "component")) return false;
+    const fromDir = dirname(doc.path);
+    let code = node.body ?? "";
+    let codeDir = fromDir;
+    const src = node.attrs.src;
+    if (src !== undefined) {
+      const target = resolveLocalImport(src, fromDir, importRoot);
+      if (!target?.found) return false;
+      try {
+        code = readFileSync(target.file, "utf8");
+      } catch {
+        return false;
+      }
+      codeDir = dirname(target.file);
+    }
+    const context = pageContextOf(code, { fromDir: codeDir, importRoot });
+    if (once && context.reads === true) {
+      const from = context.via
+        ? ` (in ${relative(root, context.via).replace(/\\/g, "/")})`
+        : "";
+      findings.push({
+        rule: "once-reads-page",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `<script data-bascik-build-once> in ${where} reads ${context.vars.join(", ")}${from}, which is empty there: one run serves every page.`,
+        suggestion:
+          "Use <script data-bascik-build>, which runs once per page with that page's context, or stop reading the page if the output is the same everywhere.",
+      });
+    } else if (!once && context.reads === false) {
+      findings.push({
+        rule: "build-once",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `<script data-bascik-build> in ${where} reads no page context (${PAGE_CONTEXT_VARS.join(", ")}), so it prints the same markup on every page that uses it.`,
+        suggestion:
+          "Use <script data-bascik-build-once>: it runs once when the component is registered, every page shares the output, and the markup is scoped like the template. Keep data-bascik-build only when the output depends on the page.",
+      });
+    }
+    return false;
+  });
+}
+
+function checkJsFiles(root, layout, options, findings) {
+  const skipped = [
+    layout.outDir,
+    ...layout.localRoots,
+    ...SKIPPED_DIRS.map((dir) => join(root, dir)),
+  ];
+  for (const path of walkFiles(root, [".js", ".mjs", ".cjs", ".jsx"])) {
+    if (!JS_FILE.test(path) || /\.min\.js$/i.test(path)) continue;
+    if (skipped.some((dir) => insideDir(path, dir))) continue;
+    const file = relative(root, path).replace(/\\/g, "/");
+    const name = basename(path);
+    const tsName = name.replace(/\.(?:js|mjs|cjs|jsx)$/i, ".ts");
+    if (name === "bascik.config.js") {
+      findings.push({
+        rule: "js-not-ts",
+        level: "warn",
+        file,
+        line: 1,
+        message: "bascik.config.js is JavaScript.",
+        suggestion:
+          "Rename it to bascik.config.ts and import defineConfig from @bascik/bascik/config for typed options. Delete the .js file: Bascik loads the first of bascik.config.js, .mjs, and .ts it finds, so a leftover .js wins.",
+      });
+      continue;
+    }
+    if (insideDir(path, layout.pagesDir)) {
+      findings.push({
+        rule: "js-not-ts",
+        level: "info",
+        file,
+        line: 1,
+        message: `${name} is a public JavaScript file copied to dist as is.`,
+        suggestion: `If you wrote it, move the behavior into a component with a ${tsName} companion. Vendored or generated files are fine.`,
+      });
+      continue;
+    }
+    const isToolConfig = /\.config\.[cm]?js$/i.test(name);
+    findings.push({
+      rule: "js-not-ts",
+      level: isToolConfig ? "info" : "warn",
+      file,
+      line: 1,
+      message: `${name} is JavaScript; new code is TypeScript.`,
+      suggestion: isToolConfig
+        ? `Use ${tsName} if the tool reads TypeScript config.`
+        : `Rename it to ${tsName}, add types, and update its imports (with the .ts extension). Node runs it directly; keep to erasable syntax (no enum or namespace).`,
+    });
+  }
+}
+
+const SCRIPT_FILE_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+
+const NODE_ESCAPER_FIX =
+  'Build the markup with html: import { html } from "@bascik/bascik/html" and return html`<p>${value}</p>`, passing each value as it is. It escapes for where the value lands, turns javascript: URLs into about:invalid, and throws where escaping cannot help (an event handler, a <script> body). Use raw() only for markup the project wrote or sanitized, json() for JSON-LD, and esc() or safeUrl() for a string built without html. Delete the escaper and keep its tests, now checking String(output). If it writes XML (a feed, a sitemap, SVG), keep it and name it for XML (escapeXml) or say so in a comment directly above it.';
+const BROWSER_ESCAPER_FIX =
+  "Build the elements with document.createElement and set textContent (or clone a <template> and fill its text), so no value is parsed as HTML. A client script cannot import @bascik/bascik/html, because Bascik does not bundle client scripts; if the markup does not change in the browser, render it at build time with html in a build script instead.";
+
+function escaperFinding(file, { line, name, kind }, browser) {
+  const where = browser ? " in a browser script" : "";
+  const message =
+    kind === "strip"
+      ? `${name ? `${name}() strips` : "This code strips"} HTML characters by hand${where}: it deletes < > & and quotes from the value instead of escaping them, so the text changes ("Fish & Chips" becomes "Fish  Chips") and URLs and script contexts stay unchecked.`
+      : `${name ? `${name}() is` : "This is"} a hand-written HTML escaper${where}. It escapes text but not URLs or script contexts, and every site that copies it carries its own.`;
+  return {
+    rule: "hand-written-escaper",
+    level: "warn",
+    file,
+    line,
+    message,
+    suggestion: browser ? BROWSER_ESCAPER_FIX : NODE_ESCAPER_FIX,
+  };
+}
+
+/**
+ * hand-written-escaper: in every script file of the project (helpers, component companions, API routes, exec
+ * scripts) and every inline script of a page or component. A file a plain <script src> loads is browser code.
+ */
+function checkEscapers(root, docs, layout, importRoot, findings) {
+  const browserFiles = new Set();
+  for (const doc of docs) {
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const type = (node.attrs.type ?? "").trim().toLowerCase();
+      const browser =
+        !isNodeScript(node) &&
+        (BROWSER_SCRIPT_TYPES.has(type) || type === "text/typescript");
+      if (node.attrs.src !== undefined) {
+        if (!browser) return false;
+        // A client src is a URL relative to the file: "name.ts" means "./name.ts".
+        const src = node.attrs.src.trim();
+        if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src) || src.startsWith("/"))
+          return false;
+        const target = resolveLocalImport(
+          /^(?:\.{1,2}\/|@\/)/.test(src) ? src : `./${src}`,
+          dirname(doc.path),
+          importRoot,
+        );
+        if (target?.found) browserFiles.add(resolve(target.file));
+        return false;
+      }
+      if (!browser && !isNodeScript(node)) return false;
+      const raw = doc.source.slice(node.openEnd, node.end);
+      const firstLine = doc.source.slice(0, node.openEnd).split("\n").length;
+      for (const escaper of handWrittenEscapers(raw))
+        findings.push(
+          escaperFinding(
+            doc.file,
+            { ...escaper, line: firstLine + escaper.line - 1 },
+            browser,
+          ),
+        );
+      return false;
+    });
+  }
+  const skipped = [
+    layout.outDir,
+    ...SKIPPED_DIRS.map((dir) => join(root, dir)),
+  ];
+  for (const path of walkFiles(root, SCRIPT_FILE_EXTENSIONS)) {
+    if (/\.d\.[cm]?ts$|\.min\.js$/i.test(path) || isTestFile(path)) continue;
+    if (skipped.some((dir) => insideDir(path, dir))) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const file = relative(root, path).replace(/\\/g, "/");
+    const browser = browserFiles.has(resolve(path));
+    for (const escaper of handWrittenEscapers(code))
+      findings.push(escaperFinding(file, escaper, browser));
+  }
+}
+
+const MODULE_FILE_EXTENSIONS = [...SCRIPT_FILE_EXTENSIONS, ".json"];
+// The pages folder publishes every file but markup, scripts, and Markdown: a .json or .js data file there is public.
+const UNPUBLISHED_IN_PAGES = /\.(?:ts|mts|cts|mjs|cjs)$/i;
+const SHARED = Symbol("shared");
+
+/** The specifier a script tag's src= stands for: a bare "name.ts" is "./name.ts", as in a browser. */
+const srcSpecifier = (src) =>
+  /^(?:\.{1,2}\/|@\/)/.test(src) ? src : `./${src}`;
+
+/**
+ * single-use-module: a src/lib module (data, helper, types) that exactly one component or one page uses belongs in
+ * that component's folder, or beside that page, imported with ./. A data-only module that one component renders and
+ * pages also read belongs in the component's folder, and the pages import it from there. A page and the modules in
+ * the pages folder that only it reaches are one user. Users are found through @/ and relative imports
+ * in every page and component script (inline or src=), every script file of the project, and src/lib modules that
+ * import each other (a module one lib module imports serves that module's users; one that two or more lib modules
+ * import is shared). Config, exec scripts, API routes,
+ * and other code outside the pages and component folders make a module shared. Test files are not users.
+ */
+function checkSingleUseModules(root, docs, layout, importRoot, findings) {
+  const libDirs = [
+    ...new Set([join(root, "src", "lib"), join(importRoot, "lib")]),
+  ].filter((dir) => insideDir(dir, root) && existsSync(dir));
+  if (libDirs.length === 0) return;
+  const inLib = (file) => libDirs.some((dir) => insideDir(file, dir));
+  const skipped = [
+    layout.outDir,
+    ...SKIPPED_DIRS.map((dir) => join(root, dir)),
+  ];
+  const isSkipped = (file) =>
+    skipped.some((dir) => insideDir(file, dir)) ||
+    isTestFile(file) ||
+    /\.d\.[cm]?ts$/i.test(file);
+
+  const componentDocs = docs.filter((doc) => doc.kind === "component");
+  // A component in a folder of its own owns every file in that folder; a component written straight into a root
+  // owns only its companions (name.ts, name.css).
+  const folders = componentDocs
+    .filter(
+      (doc) =>
+        doc.local &&
+        !layout.componentRoots.some((r) => resolve(r) === dirname(doc.path)),
+    )
+    .map((doc) => ({ dir: dirname(doc.path), doc }))
+    .sort((a, b) => b.dir.length - a.dir.length);
+  const flat = componentDocs.filter(
+    (doc) =>
+      doc.local &&
+      layout.componentRoots.some((r) => resolve(r) === dirname(doc.path)),
+  );
+  // A module in the pages folder that one page reaches (through its src= or imports, and the modules those import)
+  // is part of that page, so the page and its own modules count as one user.
+  const pageModuleEdges = new Map(); // pages-folder file -> pages-folder files it imports
+  const isPageModule = (file) =>
+    insideDir(file, layout.pagesDir) && !inLib(file) && !isSkipped(file);
+  for (const path of walkFiles(layout.pagesDir, SCRIPT_FILE_EXTENSIONS)) {
+    if (isSkipped(path)) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const edges = new Set();
+    for (const specifier of importSpecifiers(code)) {
+      const target = resolveLocalImport(specifier, dirname(path), importRoot);
+      if (target?.found && isPageModule(target.file))
+        edges.add(resolve(target.file));
+    }
+    pageModuleEdges.set(resolve(path), edges);
+  }
+  const pageOwners = new Map(); // pages-folder file -> Set of page docs that reach it
+  for (const doc of docs) {
+    if (doc.kind !== "page") continue;
+    const queue = [];
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const dir = dirname(doc.path);
+      const specifiers = importSpecifiers(node.body ?? "");
+      const src = node.attrs.src?.trim();
+      if (src && !/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src))
+        specifiers.push(srcSpecifier(src));
+      for (const specifier of specifiers) {
+        const target = resolveLocalImport(specifier, dir, importRoot);
+        if (target?.found && isPageModule(target.file))
+          queue.push(resolve(target.file));
+      }
+      return false;
+    });
+    const seen = new Set();
+    while (queue.length) {
+      const file = queue.pop();
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const owners = pageOwners.get(file) ?? new Set();
+      owners.add(doc);
+      pageOwners.set(file, owners);
+      queue.push(...(pageModuleEdges.get(file) ?? []));
+    }
+  }
+
+  const ownerOfFile = (file) => {
+    if (inLib(file)) return undefined;
+    const pages = pageOwners.get(resolve(file));
+    if (pages?.size === 1) return [...pages][0];
+    const folder = folders.find(({ dir }) => insideDir(file, dir));
+    if (folder) return folder.doc;
+    const companion = flat.find(
+      (doc) =>
+        dirname(doc.path) === dirname(file) &&
+        basename(file).startsWith(`${doc.tag}.`),
+    );
+    if (companion) return companion;
+    if (insideDir(file, layout.pagesDir)) return { kind: "module", path: file };
+    return SHARED;
+  };
+
+  const direct = new Map(); // lib file -> Set of users (a doc, a module, or SHARED)
+  const libEdges = new Map(); // lib file -> Set of lib files it imports
+  const keyOf = new Map(); // user identity -> one object per user
+  const userKey = (user) => {
+    if (user === SHARED) return SHARED;
+    const key =
+      user.kind === "component" ? `component:${user.tag}` : `file:${user.path}`;
+    if (!keyOf.has(key)) keyOf.set(key, user);
+    return key;
+  };
+  const addUse = (target, from, user) => {
+    if (!target?.found || !inLib(target.file)) return;
+    const file = resolve(target.file);
+    if (from && inLib(from)) {
+      if (resolve(from) === file) return;
+      const edges = libEdges.get(file) ?? new Set();
+      edges.add(resolve(from));
+      libEdges.set(file, edges);
+      return;
+    }
+    const users = direct.get(file) ?? new Set();
+    users.add(userKey(user));
+    direct.set(file, users);
+  };
+
+  for (const doc of docs) {
+    const user = doc.kind === "component" && !doc.local ? SHARED : doc;
+    walkElements(doc.tree, (node) => {
+      if (node.tag !== "script") return;
+      const dir = dirname(doc.path);
+      if (node.attrs.src !== undefined) {
+        const src = node.attrs.src.trim();
+        if (src && !/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src))
+          addUse(
+            resolveLocalImport(srcSpecifier(src), dir, importRoot),
+            undefined,
+            user,
+          );
+      }
+      for (const specifier of importSpecifiers(node.body ?? ""))
+        addUse(resolveLocalImport(specifier, dir, importRoot), undefined, user);
+      return false;
+    });
+  }
+  for (const path of walkFiles(root, SCRIPT_FILE_EXTENSIONS)) {
+    if (isSkipped(path)) continue;
+    let code;
+    try {
+      code = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    const owner = ownerOfFile(path);
+    for (const specifier of importSpecifiers(code))
+      addUse(
+        resolveLocalImport(specifier, dirname(path), importRoot),
+        path,
+        owner,
+      );
+  }
+
+  // A lib module that two or more other lib modules import (site.ts read by seo.ts and schema.ts) is a shared
+  // building block of src/lib, whoever reaches those modules. One lib importer passes its users on, through any
+  // number of steps, so a module and the one lib module it serves move together.
+  const usersOf = new Map();
+  const collect = (file, seen = new Set()) => {
+    if (usersOf.has(file)) return usersOf.get(file);
+    const importers = libEdges.get(file) ?? new Set();
+    if (importers.size >= 2) return new Set([SHARED]);
+    const users = new Set(direct.get(file) ?? []);
+    seen.add(file);
+    for (const from of importers)
+      if (!seen.has(from)) for (const u of collect(from, seen)) users.add(u);
+    return users;
+  };
+  for (const dir of libDirs)
+    for (const path of walkFiles(dir, MODULE_FILE_EXTENSIONS)) {
+      if (isSkipped(path)) continue;
+      const file = resolve(path);
+      usersOf.set(file, collect(file));
+    }
+
+  for (const [file, users] of usersOf) {
+    if (users.size === 0 || users.has(SHARED)) continue;
+    const all = [...users].map((key) => keyOf.get(key));
+    const components = all.filter((u) => u.kind === "component");
+    let user;
+    let pages = [];
+    if (all.length === 1) user = all[0];
+    else if (components.length === 1 && exportsDataOnly(file)) {
+      // Content lives with the component that renders it; a page that also reads it (for JSON-LD, say) imports it
+      // from the component's folder. A helper with functions that a page also calls is left alone.
+      user = components[0];
+      pages = all.filter((u) => u !== user);
+    } else continue;
+    const rel = (path) => relative(root, path).replace(/\\/g, "/");
+    const name = basename(file);
+    const flatComponent =
+      user.kind === "component" &&
+      layout.componentRoots.some((r) => resolve(r) === dirname(user.path));
+    const destination = flatComponent
+      ? join(dirname(user.path), user.tag)
+      : dirname(user.path);
+    const intoPages = insideDir(destination, layout.pagesDir);
+    const tsName = name.replace(/\.[^.]+$/, ".ts");
+    const target =
+      intoPages && !UNPUBLISHED_IN_PAGES.test(name) ? tsName : name;
+    const stem = name.replace(/\.[^.]+$/, "");
+    const tests = readdirSafe(dirname(file)).filter(
+      (entry) => entry.startsWith(`${stem}.`) && isTestFile(entry),
+    );
+    const owner =
+      user.kind === "component"
+        ? `<${user.tag}> (${rel(user.path)})`
+        : rel(user.path);
+    const who = pages.length
+      ? `${owner}, which renders it, and ${pages.map((p) => rel(p.path)).join(", ")}`
+      : owner;
+    const where = flatComponent
+      ? `give <${user.tag}> a folder of its own first (${rel(destination)}/, with ${user.tag}.html and its companions), then move it into ${rel(destination)}/`
+      : user.kind === "component"
+        ? `into ${rel(destination)}/`
+        : `beside ${rel(user.path)}, into ${rel(destination)}/`;
+    const moved = join(destination, target);
+    const fromPages = insideDir(moved, importRoot)
+      ? `@/${relative(importRoot, moved).replace(/\\/g, "/")}`
+      : rel(moved);
+    const pageNote = pages.length
+      ? `${pages.map((p) => rel(p.path)).join(", ")} then import${pages.length === 1 ? "s" : ""} it as "${fromPages}". `
+      : user.kind === "component"
+        ? "A page that also needs it (for JSON-LD, say) imports it from the component's folder. "
+        : "";
+    const withTests = tests.length ? ` with ${tests.join(", ")}` : "";
+    const asTs =
+      target !== name
+        ? ` as a .ts module (export the data from ${tsName}): a ${name.slice(name.lastIndexOf("."))} file in the pages folder is copied to the site as a public file`
+        : "";
+    findings.push({
+      rule: "single-use-module",
+      level: "warn",
+      file: rel(file),
+      line: 1,
+      message: `${rel(file)} is used only by ${who}, so it belongs with that ${user.kind === "module" ? "file" : user.kind}, not in ${rel(dirname(file))}/.`,
+      suggestion: `${flatComponent ? `G${where.slice(1)}` : `Move it ${where}`}${withTests}${asTs}, and import it as "./${target}". ${pageNote}Keep src/lib/ for modules several components or pages share.`,
+    });
+  }
+}
+
+/**
+ * `code` with every comment, string and template literal (holes included) blanked to spaces, so words such as
+ * "function" or "=>" inside FAQ text or an html`...` template are not read as code. Line breaks are kept.
+ */
+function maskLiterals(code) {
+  let out = "";
+  let i = 0;
+  const blank = (text) => text.replace(/[^\n]/g, " ");
+  while (i < code.length) {
+    const c = code[i];
+    const next = code[i + 1];
+    let end = -1;
+    if (c === "/" && next === "/") {
+      end = code.indexOf("\n", i);
+      if (end === -1) end = code.length;
+    } else if (c === "/" && next === "*") {
+      end = code.indexOf("*/", i + 2);
+      end = end === -1 ? code.length : end + 2;
+    } else if (c === '"' || c === "'" || c === "`") end = literalEnd(code, i);
+    if (end === -1) {
+      out += c;
+      i++;
+    } else {
+      out += blank(code.slice(i, end));
+      i = end;
+    }
+  }
+  return out;
+}
+
+/** The index just past the string or template literal that opens at `start`. */
+function literalEnd(code, start) {
+  const quote = code[start];
+  let i = start + 1;
+  while (i < code.length) {
+    const c = code[i];
+    if (c === "\\") i += 2;
+    else if (c === quote) return i + 1;
+    else if (quote !== "`" && c === "\n") return i;
+    else if (quote === "`" && c === "$" && code[i + 1] === "{") {
+      // A hole: skip to its closing brace, past nested literals.
+      let depth = 1;
+      i += 2;
+      while (i < code.length && depth > 0) {
+        const d = code[i];
+        if (d === '"' || d === "'" || d === "`") i = literalEnd(code, i);
+        else {
+          if (d === "{") depth++;
+          else if (d === "}") depth--;
+          i++;
+        }
+      }
+    } else i++;
+  }
+  return code.length;
+}
+
+/** `name = (async) (args) =>`, `= function`, `= x =>`, or a type annotation that is a function type. */
+const FUNCTION_VALUE =
+  /^\s*(?::[^=]*=>[^=]*)?=\s*(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)|^\s*:[^=]*=>/;
+
+/** A member value that is a function: `(async) (args) =>`, `x =>` or `function`. */
+const FUNCTION_MEMBER =
+  /^(?:async\b\s*)?(?:function\b|[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)/;
+/** A method shorthand: `name(...) {`, `async name(`, `get name(`, `*name(`. */
+const METHOD_MEMBER =
+  /^(?:(?:async|get|set)\s+)?\*?\s*[A-Za-z_$][\w$]*\s*\([^()]*\)\s*(?::[^{]+)?\{/;
+/** The key of a member, `key:`, `[computed]:`, or a quoted key (blank once masked). */
+const MEMBER_KEY = /^(?:[\w$]*|\[[^\]]*\])\s*:\s*/;
+
+/**
+ * Whether the object literal whose `{` is at `open` in masked code holds a function as one of its own members: a
+ * member whose value is an arrow or a `function` expression, or a method `name(...) {`. A callback inside a member's
+ * value (`items: list.map((d) => d.name)`) or inside a nested object does not count: that member is computed content.
+ * A member that names one of `localFunctions` (`{ render }` or `{ draw: render }`) counts as a function.
+ */
+function holdsFunctions(bare, open, localFunctions = new Set()) {
+  const members = [];
+  let depth = 0;
+  let from = open + 1;
+  for (let i = open; i < bare.length; i++) {
+    const c = bare[i];
+    if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") {
+      if (--depth === 0) {
+        members.push(bare.slice(from, i));
+        break;
+      }
+    } else if (c === "," && depth === 1) {
+      members.push(bare.slice(from, i));
+      from = i + 1;
+    }
+  }
+  return members.some((member) => {
+    const text = member.trim();
+    if (METHOD_MEMBER.test(text) || localFunctions.has(text)) return true;
+    const key = MEMBER_KEY.exec(text);
+    if (key === null) return false;
+    const value = text.slice(key[0].length);
+    return FUNCTION_MEMBER.test(value) || localFunctions.has(value);
+  });
+}
+
+/**
+ * Whether a module holds content rather than helpers: a .json file, or a script file that exports no function, no
+ * class and no object with function members. What a value is built from does not matter, so an html`...` template with .map((f) => ...) inside it is
+ * still content, and so is FAQ text that says "function". Comments, strings and templates are masked first. A
+ * re-export from another module, or a module that cannot be read, is not counted as content.
+ */
+function exportsDataOnly(file) {
+  if (/\.json$/i.test(file)) return true;
+  let code;
+  try {
+    code = readFileSync(file, "utf8");
+  } catch {
+    return false;
+  }
+  const bare = maskLiterals(code);
+  if (/\bexport\s*(?:\*|\{[^}]*\}\s*from\b)/.test(bare)) return false;
+  if (/\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class)\b/.test(bare))
+    return false;
+  if (
+    /\bexport\s+default\s+(?:async\s+)?(?:[A-Za-z_$][\w$]*\s*=>|\((?:[^()]|\([^()]*\))*\)\s*(?::[^=]+)?=>)/.test(
+      bare,
+    )
+  )
+    return false;
+  // Local names declared as functions or classes, read first so an object that holds one by name is a helper too.
+  const functions = new Set();
+  for (const m of bare.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g))
+    functions.add(m[1]);
+  const declarations = [
+    ...bare.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g),
+  ];
+  for (const m of declarations)
+    if (FUNCTION_VALUE.test(bare.slice(m.index + m[0].length).slice(0, 400)))
+      functions.add(m[1]);
+  // An exported object literal whose members are functions holds helpers: export default { render: (x) => x }, or
+  // { render } with render a local function. Arrows in html`...` holes were masked with the template, so content
+  // built with html stays content.
+  const objectStart =
+    /\bexport\s+default\s*\{|\bexport\s+(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=\s*\{/g;
+  for (const m of bare.matchAll(objectStart))
+    if (holdsFunctions(bare, m.index + m[0].length - 1, functions))
+      return false;
+  for (const m of declarations) {
+    const object = /^\s*(?::[^=]+)?=\s*\{/.exec(
+      bare.slice(m.index + m[0].length),
+    );
+    if (
+      object &&
+      holdsFunctions(
+        bare,
+        m.index + m[0].length + object[0].length - 1,
+        functions,
+      )
+    )
+      functions.add(m[1]);
+  }
+  // Exported names: export const x, and export { a, b as c }.
+  const exported = [];
+  for (const m of bare.matchAll(
+    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g,
+  ))
+    exported.push(m[1]);
+  for (const m of bare.matchAll(/\bexport\s*\{([^}]*)\}/g))
+    for (const entry of m[1].split(",")) {
+      const local = entry
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)[0];
+      if (local && !/^type\s/.test(entry.trim())) exported.push(local);
+    }
+  const defaultName = /\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*$/m.exec(
+    bare,
+  );
+  if (defaultName) exported.push(defaultName[1]);
+  return !exported.some((name) => functions.has(name));
+}
+
+/** The names in `dir`, or none when it cannot be read. */
+function readdirSafe(dir) {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+/** Audit the project at `root`. Returns `{ findings, stats }`. Exported for tests. */
+export async function auditProject(root, options = {}) {
+  const limits = { ...DEFAULT_LIMITS };
+  for (const key of Object.keys(DEFAULT_LIMITS))
+    if (options[key] !== undefined) limits[key] = options[key];
+
+  const config = await loadProjectConfig(root);
+  if (config?.error && !options.quiet)
+    process.stderr.write(
+      `audit-components: could not load ${config.path} (${config.error.message}); using the default folders.\n`,
+    );
+  const configModule = config?.module;
+  const pagesDir = pagesDirectory(root, configModule);
+  if (!existsSync(pagesDir)) {
+    const error = new Error(
+      `no pages directory at ${relative(root, pagesDir).replace(/\\/g, "/") || "."} (looked in ${root}). Run it from the project root or pass --root.`,
+    );
+    error.usage = true;
+    throw error;
+  }
+  const roots = componentRoots(root, configModule);
+  const isLocal = (path) => !relative(root, path).startsWith("..");
+  const localRoots = roots.filter(isLocal);
+  const outDir = join(root, configModule?.default?.directory?.out ?? "dist");
+
+  const inventory = listComponents(roots, root);
+  const tags = new Set(inventory.map((c) => c.tag));
+  const isComponent = (tag) => tags.has(tag);
+
+  const pages = walkFiles(pagesDir, [".html"]).map((file) =>
+    readHtml(root, file, "page"),
+  );
+  const components = inventory.map((c) => ({
+    ...readHtml(root, join(root, c.file), "component"),
+    tag: c.tag,
+    info: c,
+    local: isLocal(join(root, c.file)),
+  }));
+  const docs = [...pages, ...components];
+
+  const findings = [];
+  const stats = {
+    pages: pages.length,
+    components: components.length,
+    largestFile: { file: "", lines: 0 },
+    medianPageLines: 0,
+    tsScripts: 0,
+    jsScripts: 0,
+  };
+  for (const doc of docs)
+    if (doc.lines > stats.largestFile.lines)
+      stats.largestFile = { file: doc.file, lines: doc.lines };
+  const pageLines = pages.map((p) => p.lines).sort((a, b) => a - b);
+  if (pageLines.length)
+    stats.medianPageLines =
+      pageLines.length % 2
+        ? pageLines[(pageLines.length - 1) / 2]
+        : (pageLines[pageLines.length / 2 - 1] +
+            pageLines[pageLines.length / 2]) /
+          2;
+
+  // oversized-page and oversized-component
+  for (const doc of pages) {
+    if (doc.markupLines <= limits.maxPageLines) continue;
+    findings.push({
+      rule: "oversized-page",
+      level: "warn",
+      file: doc.file,
+      line: 1,
+      message: `${doc.file} has ${doc.markupLines} lines of markup (limit ${limits.maxPageLines}), too long to read at a glance.`,
+      suggestion: `Give each part with its own job a component and leave its tag here, so the page reads as a list of tags (<site-header />, <pricing-section />, <site-footer />). If it is long prose, move the text to content/${basename(doc.file, ".html")}.md and render it with a build script.`,
+    });
+  }
+  for (const doc of components) {
+    if (!doc.local) continue;
+    const tooMuchMarkup = doc.markupLines > limits.maxComponentLines;
+    if (!tooMuchMarkup && doc.lines <= limits.maxComponentFileLines) continue;
+    findings.push({
+      rule: "oversized-component",
+      level: "warn",
+      file: doc.file,
+      line: 1,
+      message: tooMuchMarkup
+        ? `<${doc.tag}> has ${doc.markupLines} lines of markup (limit ${limits.maxComponentLines}).`
+        : `<${doc.tag}> is ${doc.lines} lines (limit ${limits.maxComponentFileLines}), most of it style or script.`,
+      suggestion: tooMuchMarkup
+        ? `Split out the parts that have their own job as child components placed here by tag, or let pages pass content in through slots. Keep a part inline when it only makes sense inside <${doc.tag}>.`
+        : `Move the <style> to ${doc.tag}.css and the script to ${doc.tag}.ts beside the template (<script src="${doc.tag}.ts">).`,
+    });
+  }
+
+  // inline-section: pages only. Component usages are never flagged, but their slot content is read.
+  for (const doc of pages) {
+    walkElements(doc.tree, (node) => {
+      if (node.tag === "head" || node.tag === "script" || node.tag === "style")
+        return false;
+      if (isComponent(node.tag) || !SECTION_TAGS.has(node.tag)) return;
+      const lines = countNonBlankLines(doc.masked, node.start, node.end);
+      if (lines < limits.minSectionLines) return false;
+      const hint = nameHint(node, doc.source);
+      if (!hint) return; // An unnamed wrapper: look inside it.
+      const name = suggestTagName(node.tag, hint, "page");
+      findings.push({
+        rule: "inline-section",
+        level: "warn",
+        file: doc.file,
+        line: node.line,
+        message: `${describeOpenTag(node)} is ${lines} lines of markup inline in the page (lines ${node.line}-${node.endLine}).`,
+        suggestion: `Move it to ${relative(root, join(localRoots[0] ?? roots[0], name, `${name}.html`)).replace(/\\/g, "/")} and write <${name} /> here. Turn text that differs per use into props and rich content into slots; keep it inline only if it is short or only makes sense in this page.`,
+      });
+      return false;
+    });
+  }
+
+  // repeated-block: the same structure (tags and classes; text ignored) in two or more places.
+  const memo = new Map();
+  const groups = new Map();
+  for (const doc of docs) {
+    walkElements(doc.tree, (node) => {
+      if (node.tag === "head" || node.tag === "script" || node.tag === "style")
+        return false;
+      if (NOT_A_BLOCK.has(node.tag) || isComponent(node.tag)) return;
+      const { signature, size } = signatureOf(node, isComponent, memo);
+      if (size < limits.minRepeatElements) return;
+      if (!groups.has(signature)) groups.set(signature, { size, places: [] });
+      groups.get(signature).places.push({ doc, node });
+    });
+  }
+  const reported = new Set();
+  const covered = (node) => {
+    for (let p = node; p; p = p.parent) if (reported.has(p)) return true;
+    return false;
+  };
+  const repeated = [...groups.values()]
+    .filter((group) => group.places.length > 1)
+    .sort((a, b) => b.size - a.size);
+  for (const group of repeated) {
+    const places = group.places
+      .filter((place) => !covered(place.node))
+      .sort(
+        (a, b) =>
+          a.doc.file.localeCompare(b.doc.file) || a.node.line - b.node.line,
+      );
+    if (places.length < 2) continue;
+    for (const place of places) reported.add(place.node);
+    const first = places[0];
+    const files = new Set(places.map((p) => p.doc.file));
+    const name = suggestTagName(
+      first.node.tag,
+      nameHint(first.node, first.doc.source, { headings: false }),
+      "item",
+    );
+    findings.push({
+      rule: "repeated-block",
+      level: "warn",
+      file: first.doc.file,
+      line: first.node.line,
+      message: `The same ${describeOpenTag(first.node)} block (${group.size} elements) appears ${places.length} times in ${files.size} file${files.size === 1 ? "" : "s"}: ${places.map((p) => `${p.doc.file}:${p.node.line}`).join(", ")}.`,
+      suggestion: `Make it one component, for example <${name}>: copy one block into ${relative(root, join(localRoots[0] ?? roots[0], name, `${name}.html`)).replace(/\\/g, "/")}, turn the text that changes into props (<h3 data-bascik-prop-title></h3>) or slots, and replace each copy with <${name} data-bascik-prop-title="..." />. If the copies come from data, print the tag from one build script loop instead.`,
+    });
+  }
+
+  // repeated-pattern: the same heading group (its block children with their classes; the outer element's classes
+  // and inline children ignored) written by hand in several files, which the exact check above misses.
+  const isBlockChild = (child) =>
+    !INLINE_TAGS.has(child.tag) &&
+    child.tag !== "script" &&
+    child.tag !== "style" &&
+    !isComponent(child.tag);
+  const describeChild = (child) =>
+    `<${child.tag}${child.attrs.class ? ` class="${child.attrs.class}"` : ""}>`;
+  const patterns = new Map();
+  for (const doc of docs) {
+    walkElements(doc.tree, (node) => {
+      if (node.tag === "head" || node.tag === "script" || node.tag === "style")
+        return false;
+      if (NOT_A_BLOCK.has(node.tag) || isComponent(node.tag)) return;
+      if (covered(node)) return false;
+      const kids = node.children.filter(isBlockChild);
+      if (kids.length < 3 || !kids.some((kid) => /^h[1-6]$/.test(kid.tag)))
+        return;
+      const shape = `${node.tag}(${kids
+        .map(
+          (kid) =>
+            `${kid.tag}${(kid.attrs.class ?? "")
+              .split(/\s+/)
+              .filter(Boolean)
+              .sort()
+              .map((cls) => `.${cls}`)
+              .join("")}`,
+        )
+        .join(",")})`;
+      if (!patterns.has(shape)) patterns.set(shape, []);
+      patterns.get(shape).push({ doc, node, kids });
+    });
+  }
+  for (const places of patterns.values()) {
+    const files = new Set(places.map((p) => p.doc.file));
+    if (files.size < MIN_PATTERN_FILES) continue;
+    places.sort(
+      (a, b) =>
+        a.doc.file.localeCompare(b.doc.file) || a.node.line - b.node.line,
+    );
+    for (const place of places) reported.add(place.node);
+    const first = places[0];
+    const hinted = places
+      .map((p) => nameHint(p.node, p.doc.source, { headings: false }))
+      .find((hint) => hint.includes("-") && !tagNameProblem(hint));
+    const name = hinted ?? "section-head";
+    findings.push({
+      rule: "repeated-pattern",
+      level: "warn",
+      file: first.doc.file,
+      line: first.node.line,
+      message: `The same heading group (<${first.node.tag}> with ${first.kids.map(describeChild).join(", ")}) is written by hand ${places.length} times in ${files.size} files: ${places.map((p) => `${p.doc.file}:${p.node.line}`).join(", ")}.`,
+      suggestion: `Make it one component, <${name}>, with a prop for each part (<p data-bascik-prop-label></p>, <h2 data-bascik-prop-title></h2>, <p data-bascik-prop-text></p>) and a slot for extras such as a link, then write <${name} data-bascik-prop-title="..." /> in each place. A modifier such as "centered" becomes a class on a wrapper or a prop that lands in data-bascik-attr-class.`,
+    });
+  }
+
+  // repeated-text: the same sentence or fact typed into more than one file. Prop placeholders are not counted.
+  const textPlaces = new Map();
+  for (const doc of docs) {
+    walkElements(doc.tree, (node) => {
+      if (
+        node.tag === "head" ||
+        node.tag === "script" ||
+        node.tag === "style" ||
+        node.tag === "template"
+      )
+        return false;
+      if (isComponent(node.tag) || INLINE_TAGS.has(node.tag)) return;
+      if (covered(node)) return false;
+      if (!node.children.every((child) => INLINE_TAGS.has(child.tag))) return;
+      if (
+        Object.keys(node.attrs).some((name) =>
+          name.startsWith("data-bascik-prop-"),
+        )
+      )
+        return false;
+      const text = textOf(node, doc.masked);
+      if (text.length < MIN_REPEATED_TEXT || !/[a-z]/i.test(text)) return false;
+      if (!textPlaces.has(text)) textPlaces.set(text, []);
+      textPlaces.get(text).push({ doc, node });
+      return false;
+    });
+  }
+  for (const [text, places] of textPlaces) {
+    const files = new Set(places.map((p) => p.doc.file));
+    if (files.size < 2) continue;
+    places.sort(
+      (a, b) =>
+        a.doc.file.localeCompare(b.doc.file) || a.node.line - b.node.line,
+    );
+    const first = places[0];
+    const hint = nameHint(first.node, first.doc.source, { headings: false });
+    const name =
+      hint.includes("-") && !tagNameProblem(hint)
+        ? hint
+        : first.node.tag === "address"
+          ? "site-address"
+          : suggestTagName(first.node.tag, hint || text, "shared");
+    const shown = text.length > 80 ? `${text.slice(0, 77)}...` : text;
+    findings.push({
+      rule: "repeated-text",
+      level: "warn",
+      file: first.doc.file,
+      line: first.node.line,
+      message: `"${shown}" is typed into ${files.size} files: ${places.map((p) => `${p.doc.file}:${p.node.line}`).join(", ")}.`,
+      suggestion: `Keep it in one place so a change is one edit: a small component such as <${name} /> used in each spot, or a value in one data file (src/lib/site.ts) that build scripts read. Facts like an address, hours, prices, or a phone number drift apart when they are copied.`,
+    });
+  }
+
+  // tiny-component: tiny, used once, no behavior of its own, in this project's own folders.
+  const usageFiles = walkFiles(root, [
+    ".html",
+    ".ts",
+    ".mts",
+    ".js",
+    ".mjs",
+    ".md",
+  ]).filter(
+    (file) =>
+      !insideDir(file, outDir) &&
+      !SKIPPED_DIRS.some((dir) => insideDir(file, join(root, dir))),
+  );
+  const texts = usageFiles.map((file) => ({
+    file: relative(root, file).replace(/\\/g, "/"),
+    source: readFileSync(file, "utf8"),
+  }));
+  const parsedByFile = new Map(docs.map((doc) => [doc.file, doc]));
+  for (const doc of components) {
+    if (!doc.local) continue;
+    const info = doc.info;
+    if (
+      info.hasClientScript ||
+      info.directives?.length ||
+      info.companions?.some((c) => /\.(?:m?ts|m?js)$/.test(c))
+    )
+      continue;
+    let elements = 0;
+    let composes = false;
+    walkElements(doc.tree, (node) => {
+      if (node.tag === "script" || node.tag === "style") return false;
+      if (isComponent(node.tag)) composes = true;
+      else elements++;
+    });
+    if (composes) continue; // Arranging other components is a job of its own.
+    const markupWithoutStyle = countNonBlankLines(
+      doc.masked.replace(/<style\b[\s\S]*?<\/style\s*>/gi, (m) =>
+        m.replace(/[^\n]/g, " "),
+      ),
+    );
+    if (
+      elements > limits.tinyMaxElements ||
+      markupWithoutStyle > limits.tinyMaxLines
+    )
+      continue;
+    const pattern = new RegExp(`<${doc.tag}(?=[\\s/>])`, "gi");
+    const uses = [];
+    for (const { file, source } of texts) {
+      if (file === doc.file) continue;
+      for (const m of source.matchAll(pattern))
+        uses.push({
+          file,
+          line: source.slice(0, m.index).split("\n").length,
+          index: m.index,
+        });
+    }
+    if (uses.length !== 1) continue;
+    const [use] = uses;
+    const parsed = parsedByFile.get(use.file);
+    let inHead = false;
+    if (parsed)
+      walkElements(parsed.tree, (node) => {
+        if (node.start === use.index && insideHead(node)) inHead = true;
+      });
+    if (inHead) continue;
+    findings.push({
+      rule: "tiny-component",
+      level: "warn",
+      file: doc.file,
+      line: 1,
+      message: `<${doc.tag}> is ${elements} element${elements === 1 ? "" : "s"} with no script and is used once (${use.file}:${use.line}).`,
+      suggestion: `Inline its markup at ${use.file}:${use.line} and delete the component (move any CSS to the parent). A component earns its file with reuse, behavior, or a job worth a name; keep it if a second use is coming.`,
+    });
+  }
+
+  // constant-prop: a prop every use passes with the same value is not a prop. Uses printed from code are unknown,
+  // so a component that also appears in a script or helper is skipped.
+  const htmlFiles = new Set(docs.map((doc) => doc.file));
+  for (const doc of components) {
+    if (!doc.local) continue;
+    const uses = [];
+    for (const other of docs)
+      walkElements(other.tree, (node) => {
+        if (node.tag === doc.tag) uses.push({ doc: other, node });
+      });
+    if (uses.length < MIN_CONSTANT_PROP_USES) continue;
+    if (new Set(uses.map((u) => u.doc.file)).size < 2) continue;
+    const pattern = new RegExp(`<${doc.tag}(?=[\\s/>])`, "i");
+    if (
+      texts.some(
+        ({ file, source }) => !htmlFiles.has(file) && pattern.test(source),
+      )
+    )
+      continue;
+    const [firstUse] = uses;
+    for (const [attr, value] of Object.entries(firstUse.node.attrs)) {
+      const prop = /^data-bascik-prop-(.+)$/.exec(attr)?.[1];
+      if (!prop || value === "") continue;
+      if (!uses.every((u) => u.node.attrs[attr] === value)) continue;
+      let line = 1;
+      walkElements(doc.tree, (node) => {
+        if (line === 1 && node.attrs[attr] === "") line = node.line;
+      });
+      findings.push({
+        rule: "constant-prop",
+        level: "warn",
+        file: doc.file,
+        line,
+        message: `<${doc.tag}> gets ${prop}="${value}" from all ${uses.length} uses (${uses.map((u) => `${u.doc.file}:${u.node.line}`).join(", ")}).`,
+        suggestion: `Write "${value}" into <${doc.tag}> itself (as the text at line ${line}) and drop ${attr} from each use; a prop is for what changes between uses. If several components share the value, keep it in one data file (src/lib/site.ts).`,
+      });
+    }
+  }
+
+  // prop-drilling: data-bascik-attr-data-bascik-prop-<child>="<own prop>" with no use of the prop in the component.
+  const forwards = new Map(); // `${tag}:${prop}` -> { child, childProp, line, file }
+  for (const doc of components) {
+    const uses = new Set();
+    const edges = [];
+    walkElements(doc.tree, (node) => {
+      if (node.tag === "script" || node.tag === "style") return false;
+      for (const [name, value] of Object.entries(node.attrs)) {
+        const forward = /^data-bascik-attr-data-bascik-prop-(.+)$/.exec(name);
+        if (forward && isComponent(node.tag)) {
+          edges.push({
+            prop: value.toLowerCase(),
+            child: node.tag,
+            childProp: forward[1],
+            line: node.line,
+          });
+          continue;
+        }
+        const own = /^data-bascik-prop-(.+)$/.exec(name);
+        if (own && value === "") uses.add(own[1]);
+        if (/^data-bascik-attr-/.test(name)) uses.add(value.toLowerCase());
+      }
+    });
+    for (const edge of edges)
+      if (!uses.has(edge.prop))
+        forwards.set(`${doc.tag}:${edge.prop}`, { ...edge, file: doc.file });
+  }
+  for (const [key, edge] of forwards) {
+    const tag = key.slice(0, key.indexOf(":"));
+    const chain = [`<${tag}>`, `<${edge.child}>`];
+    const seen = new Set([key]);
+    let next = `${edge.child}:${edge.childProp}`;
+    let lastProp = edge.childProp;
+    while (forwards.has(next) && !seen.has(next)) {
+      seen.add(next);
+      const step = forwards.get(next);
+      chain.push(`<${step.child}>`);
+      lastProp = step.childProp;
+      next = `${step.child}:${step.childProp}`;
+    }
+    const receiver = chain[chain.length - 1];
+    findings.push({
+      rule: "prop-drilling",
+      level: "warn",
+      file: edge.file,
+      line: edge.line,
+      message: `<${tag}> takes the ${edge.prop} prop only to pass it down: ${chain.join(" -> ")}, where ${lastProp} is rendered.`,
+      suggestion: `Let the page place ${receiver} itself, inside a slot of <${tag}> (<div data-bascik-slot></div> in the template, or a named slot), and give it the value there. If the layers are not separate jobs, merge them into one component.`,
+    });
+  }
+
+  // Semantic HTML: per-file checks on pages and this project's components, then each page's composed output.
+  const componentDocs = new Map(components.map((doc) => [doc.tag, doc]));
+  const labelledByUse = controlsLabelledByUse(pages, componentDocs);
+  for (const doc of docs) {
+    if (doc.kind === "component" && !doc.local) continue;
+    checkClickable(doc, findings);
+    checkAlt(doc, findings);
+    checkLabels(doc, findings, labelledByUse);
+    if (doc.kind === "component") checkGenericRoot(doc, findings);
+  }
+  for (const doc of pages) checkComposedPage(doc, componentDocs, findings);
+
+  // build-once and once-reads-page
+  const importRoot = resolve(
+    root,
+    configModule?.default?.scripts?.importRoot ?? "src",
+  );
+  for (const doc of docs) checkBuildScripts(doc, root, importRoot, findings);
+
+  // hand-written-escaper
+  checkEscapers(root, docs, { outDir }, importRoot, findings);
+
+  // single-use-module
+  checkSingleUseModules(
+    root,
+    docs,
+    { outDir, pagesDir, componentRoots: roots },
+    importRoot,
+    findings,
+  );
+
+  // js-not-ts
+  for (const doc of docs) checkScripts(doc, options, findings, stats);
+  if (!options.allowJs)
+    checkJsFiles(root, { outDir, localRoots, pagesDir }, options, findings);
+
+  findings.sort(
+    (a, b) =>
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.rule.localeCompare(b.rule),
+  );
+  return { findings, stats };
+}
+
+function positiveInteger(value, flag) {
+  if (value === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(value)) {
+    const error = new Error(
+      `${flag} must be a positive whole number, got "${value}".`,
+    );
+    error.usage = true;
+    throw error;
+  }
+  return Number(value);
+}
+
+async function main() {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      options: {
+        json: { type: "boolean", default: false },
+        "allow-js": { type: "boolean", default: false },
+        "max-page-lines": { type: "string" },
+        "max-component-lines": { type: "string" },
+        root: { type: "string" },
+        help: { type: "boolean", short: "h", default: false },
+      },
+    });
+  } catch (error) {
+    fail(`audit-components: ${error.message}. Run with --help.`, 2);
+  }
+  const { values } = parsed;
+  if (values.help) return console.log(HELP);
+  let maxPageLines;
+  let maxComponentLines;
+  try {
+    maxPageLines = positiveInteger(
+      values["max-page-lines"],
+      "--max-page-lines",
+    );
+    maxComponentLines = positiveInteger(
+      values["max-component-lines"],
+      "--max-component-lines",
+    );
+  } catch (error) {
+    fail(`audit-components: ${error.message}`, 2);
+  }
+
+  const root = values.root ? findProjectRoot(values.root) : findProjectRoot();
+  let result;
+  try {
+    result = await auditProject(root, {
+      allowJs: values["allow-js"],
+      maxPageLines,
+      maxComponentLines,
+    });
+  } catch (error) {
+    fail(`audit-components: ${error.message}`, error.usage ? 2 : 1);
+  }
+  const { findings, stats } = result;
+  if (values.json) {
+    console.log(JSON.stringify({ root, findings, stats }, null, 2));
+  } else {
+    console.log(
+      `${stats.pages} page${stats.pages === 1 ? "" : "s"}, ${stats.components} component${stats.components === 1 ? "" : "s"}; browser scripts: ${stats.tsScripts} TypeScript, ${stats.jsScripts} JavaScript.`,
+    );
+    for (const f of findings) {
+      console.log(
+        `  ${f.level.padEnd(4)}  ${f.rule}  ${f.file}:${f.line}  ${f.message}`,
+      );
+      console.log(`    -> ${f.suggestion}`);
+    }
+    if (findings.length === 0)
+      console.log("No component structure or semantic HTML problems found.");
+  }
+  process.exitCode = findings.some((f) => f.level === "warn") ? 1 : 0;
+}
+
+if (isMain(import.meta.url)) await main();
