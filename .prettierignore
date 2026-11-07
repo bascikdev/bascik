@@ -44,8 +44,4 @@ shop/.output/
 shop/.local/
 shop/catalog/source.json
 shop/printful-openapi.json
-shop/src/pages/*.html
-shop/src/pages/products/
-shop/src/pages/policies/
-shop/src/pages/pages/
 shop/src/pages/assets/shop.js
