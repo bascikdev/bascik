@@ -583,6 +583,8 @@ Choose concise lowercase names that describe a component's job, without repeatin
 
 Bascik components are expanded before the browser sees them, not registered as browser custom elements. A non-native single word such as `navigation` works, although the CLI and editor still recommend a hyphenated name for future compatibility. Never shorten a name to a native element: `nav`, `head`, and `footer` would replace those elements throughout the site. Use `navigation`, `page-head`, and `site-footer` instead. Browser custom elements that remain in the built output must follow the WHATWG hyphen requirement.
 
+Native names include SVG and MathML elements (`path`, `circle`, `mi`, `mrow`) and obsolete HTML elements (`blink`, `isindex`, `keygen`). The public skill's component-creation helper rejects these names too; reserve them for native markup.
+
 Component names match complete tag names only. A component named `card` claims `<card>`, but it never claims a longer tag such as `<card-header>`.
 
 ## Void / Self-Closing Component Tags

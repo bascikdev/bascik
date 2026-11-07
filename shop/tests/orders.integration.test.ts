@@ -1507,7 +1507,7 @@ test.each([500, 0])(
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input, init) => {
         const url = String(input);
-        if (url.startsWith("https://api.stripe.com"))
+        if (new URL(url).origin === "https://api.stripe.com")
           return Response.json(paid);
         if (url.includes("/orders/@"))
           return Response.json({}, { status: 404 });

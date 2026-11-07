@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
+import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 
 test("all rendered storefront buttons have explicit types, including cloned controls", async ({
   page,
@@ -697,6 +698,102 @@ test("delivery uses US-first Printful destinations without embedded payment fiel
   await expect(page.getByTestId("checkout-pay")).toHaveText(
     "Continue to Stripe",
   );
+});
+test("checkout refreshes destinations after cross-tab cart edits and resets unsupported selections", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/checkout");
+  const country = page.getByTestId("shipping-country");
+  const state = page.getByTestId("checkout-state");
+  const zip = page.getByTestId("checkout-zip");
+  const optionCodes = () =>
+    country
+      .locator("option")
+      .evaluateAll((options) =>
+        options.map((option) => (option as HTMLOptionElement).value),
+      );
+  await expect(country.locator("option")).toHaveCount(
+    shippingCountries([]).length + 1,
+  );
+  expect(await optionCodes()).not.toContain("IN");
+  await expect(page.getByTestId("shipping-form")).toBeHidden();
+  const otherTab = await context.newPage();
+  try {
+    await otherTab.goto("/");
+    const shirt = products[0];
+    const decal = products.find((product) => product.slug.includes("decal"))!;
+    const setCart = (items: { variantId: string; quantity: number }[]) =>
+      otherTab.evaluate(
+        (items) =>
+          localStorage.setItem("bascik-shop-cart", JSON.stringify(items)),
+        items,
+      );
+    await setCart([{ variantId: shirt.variants[0].id, quantity: 1 }]);
+    await expect(country.locator("option")).toHaveCount(
+      shippingCountries([shirt.id]).length + 1,
+    );
+    expect(await optionCodes()).toEqual([
+      "",
+      ...shippingCountries([shirt.id]).map((country) => country.code),
+    ]);
+    await expect(page.getByTestId("shipping-form")).toBeVisible();
+    await country.selectOption("US");
+    await expect(state).toHaveAttribute("required", "");
+    await expect(zip).toHaveAttribute("required", "");
+    await expect(state).toHaveAttribute("placeholder", /AL/);
+    await page.getByTestId("checkout-name").fill("Test Buyer");
+    await page.getByTestId("checkout-email").fill("buyer@example.com");
+    await page.getByTestId("checkout-address1").fill("Example Street");
+    await page.getByTestId("checkout-city").fill("Los Angeles");
+    await state.fill("CA");
+    await zip.fill("90001");
+    await page.route("**/api/quote", (route) =>
+      route.fulfill({
+        json: {
+          quoteId: "quote_cart_country_fixture",
+          expiresAt: Math.floor(Date.now() / 1000) + 900,
+          subtotal: 3000,
+          rates: [{ id: "STANDARD", name: "Standard", amount: 500 }],
+        },
+      }),
+    );
+    await page.getByTestId("shipping-quote").click();
+    await expect(page.getByTestId("checkout-pay")).toBeVisible();
+    await setCart([{ variantId: shirt.variants[0].id, quantity: 2 }]);
+    await expect(page.locator("[data-checkout-subtotal]")).toHaveText("$60.00");
+    await expect(country).toHaveValue("US");
+    await expect(page.getByTestId("checkout-pay")).toBeHidden();
+    await expect(page.locator("[data-checkout-shipping]")).toHaveText(
+      "Calculated next",
+    );
+    await country.selectOption("IN");
+    await expect(state).not.toHaveAttribute("required");
+    await expect(zip).not.toHaveAttribute("required");
+    await setCart([
+      { variantId: shirt.variants[0].id, quantity: 2 },
+      { variantId: decal.variants[0].id, quantity: 1 },
+    ]);
+    await expect(country.locator("option")).toHaveCount(
+      shippingCountries([shirt.id, decal.id]).length + 1,
+    );
+    expect(await optionCodes()).not.toContain("IN");
+    await expect(country).toHaveValue("");
+    await expect(state).toHaveAttribute("placeholder", "");
+    await expect(state).not.toHaveAttribute("required");
+    await expect(zip).not.toHaveAttribute("required");
+    await expect(page.locator("[data-checkout-status]")).toContainText(
+      "Choose a supported delivery country",
+    );
+    await country.selectOption("SG");
+    await expect(zip).toHaveAttribute("required", "");
+    await setCart([]);
+    await expect(page.getByTestId("shipping-form")).toBeHidden();
+    await expect(country).toHaveValue("SG");
+    await expect(zip).toHaveAttribute("required", "");
+  } finally {
+    await otherTab.close();
+  }
 });
 test("hosted checkout rejects delivery changes during a pending quote and permits a fresh Stripe redirect", async ({
   page,

@@ -14,7 +14,27 @@ export function initCheckoutForm(root: HTMLElement) {
   const shippingForm = element<HTMLFormElement>("[data-shipping-form]");
   if (shippingForm) shippingForm.hidden = !cart().length;
   const country = element<HTMLSelectElement>("[name=country_code]");
-  if (country) {
+  function refreshAddressRequirements() {
+    const region = countries.find((entry) => entry.code === country?.value);
+    const state = element<HTMLInputElement>("[name=state_code]");
+    if (state) {
+      state.required = ["US", "CA", "AU"].includes(country?.value ?? "");
+      state.setAttribute(
+        "placeholder",
+        region?.states
+          ?.map((entry) => entry.code)
+          .slice(0, 6)
+          .join(", ") ?? "",
+      );
+    }
+    const zip = element<HTMLInputElement>("[name=zip]");
+    if (zip)
+      zip.required = ["US", "CA", "AU", "SG"].includes(country?.value ?? "");
+  }
+  function refreshCountries() {
+    if (!country) return;
+    const selected = country.value;
+    const options = [];
     for (const item of shippingCountries(
       cart().flatMap((item) => {
         const match = findVariant(item.variantId);
@@ -24,25 +44,22 @@ export function initCheckoutForm(root: HTMLElement) {
       const option = document.createElement("option");
       option.value = item.code;
       option.textContent = item.name;
-      country.append(option);
+      options.push(option);
     }
-    country.addEventListener("change", () => {
-      const region = countries.find((entry) => entry.code === country.value);
-      const state = element<HTMLInputElement>("[name=state_code]");
-      if (state) {
-        state.required = ["US", "CA", "AU"].includes(country.value);
-        state.setAttribute(
-          "placeholder",
-          region?.states
-            ?.map((entry) => entry.code)
-            .slice(0, 6)
-            .join(", ") ?? "",
-        );
-      }
-      const zip = element<HTMLInputElement>("[name=zip]");
-      if (zip) zip.required = ["US", "CA", "AU", "SG"].includes(country.value);
-    });
+    country.replaceChildren(country.options[0], ...options);
+    country.value = options.some((option) => option.value === selected)
+      ? selected
+      : "";
+    refreshAddressRequirements();
+    if (selected && !country.value)
+      status(
+        "[data-checkout-status]",
+        "Your cart changed. Choose a supported delivery country and request a new shipping quote.",
+        true,
+      );
   }
+  refreshCountries();
+  country?.addEventListener("change", refreshAddressRequirements);
   let quoteId: string | undefined;
   let quoteKey = "";
   let quoteExpiresAt = 0;
@@ -69,6 +86,7 @@ export function initCheckoutForm(root: HTMLElement) {
   shippingForm?.addEventListener("input", invalidateQuote);
   shippingForm?.addEventListener("change", invalidateQuote);
   document.addEventListener("shop:cart-changed", () => {
+    refreshCountries();
     invalidateQuote();
     if (shippingForm) shippingForm.hidden = !cart().length;
   });
