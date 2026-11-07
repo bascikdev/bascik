@@ -14,7 +14,7 @@
     "TAX_CODE_SHIRT": "txcd_30011000",
     "TAX_CODE_HAT": "txcd_30011000",
     "EMAIL_FROM": "no-reply@bascik.dev",
-    "SUPPORT_EMAIL": "collin@bascik.dev",
+    "SUPPORT_EMAIL": "shop@bascik.dev",
     "ALERT_EMAIL": "collin@bascik.dev"
   },
   "send_email": [

@@ -40,7 +40,7 @@ await writeFile(
   ".output/entry.js",
   `
 import bascik from "../dist/.bascik/cloudflare/worker.js";
-import { sweep, processOrder } from "../src/lib/fulfillment.ts";
+import { sweep, processOrderMessage } from "../src/lib/fulfillment.ts";
 export default {
   fetch(request, env, ctx) { return bascik.fetch(request, env, ctx); },
   async scheduled(event, env, ctx) { await sweep(env); },
@@ -51,7 +51,7 @@ export default {
         message.ack();
         continue;
       }
-      await processOrder(env, message.body.orderId);
+      await processOrderMessage(env, message.body.orderId);
       message.ack();
     }
   }

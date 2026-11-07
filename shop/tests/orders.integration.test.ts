@@ -19,6 +19,7 @@ import {
   processOrder,
   sendNotifications,
   sweep,
+  processOrderMessage,
 } from "../src/lib/fulfillment.ts";
 
 let runtime: Miniflare;
@@ -87,7 +88,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0002_printful_v2.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0003_printful_templates.sql", "utf8"));
+    (await readFile("migrations/0003_printful_templates.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0004_order_confirmation.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -487,6 +490,59 @@ test("private order tokens work, public payment IDs and forged tokens do not", a
     "buyer@example.com",
   );
 });
+test("printable confirmation exposes only verified purchase totals and a stable reference", async () => {
+  const token = await orderToken(env, id);
+  const context = { platform: { env } };
+  const pending = await orderStatus(post("/api/order", { token }), context);
+  expect(await pending.json()).toMatchObject({
+    paymentConfirmed: false,
+    summary: null,
+    confirmationEmail: "disabled",
+  });
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(payment));
+  await stripeWebhook(await eventRequest("evt_confirmation"), context);
+  const paid = await orderStatus(post("/api/order", { token }), context);
+  const result = await paid.json();
+  expect(result).toMatchObject({
+    paymentConfirmed: true,
+    summary: {
+      reference: `BASCIK-${id.toUpperCase()}`,
+      items: [{ title: "Test shirt", price: 3000, quantity: 1, variantId }],
+      subtotal: 3000,
+      shipping: 500,
+      tax: 250,
+      total: 3750,
+    },
+  });
+  const text = JSON.stringify(result);
+  for (const privateValue of [
+    snapshot.recipient.email,
+    snapshot.recipient.name,
+    snapshot.recipient.address1,
+    payment.id,
+    "https://example.com/art.png",
+  ])
+    expect(text).not.toContain(privateValue);
+  await stripeWebhook(await eventRequest("evt_confirmation"), context);
+  const repeated = await orderStatus(post("/api/order", { token }), context);
+  expect((await repeated.json()).summary).toEqual(result.summary);
+});
+test("legacy paid order confirmation does not invent unrecorded tax or a final total", async () => {
+  await env.DB.prepare(
+    "INSERT INTO payment_events(id,order_id,created_at) VALUES (?,?,?)",
+  )
+    .bind("evt_legacy", id, now())
+    .run();
+  const result = await orderStatus(
+    post("/api/order", { token: await orderToken(env, id) }),
+    { platform: { env } },
+  );
+  expect((await result.json()).summary).toMatchObject({
+    reference: `BASCIK-${id.toUpperCase()}`,
+    tax: null,
+    total: null,
+  });
+});
 test("forged Printful events cannot mutate order state", async () => {
   const response = await printfulWebhook(
     post("/api/webhooks/printful?key=wrong", {
@@ -799,12 +855,79 @@ test("customer notification retries survive failure and concurrent delivery", as
   await Promise.all([sendNotifications(env), sendNotifications(env)]);
   expect(env.EMAIL!.send).toHaveBeenCalledTimes(2);
   expect(
-    (
-      await env.DB.prepare(
-        "SELECT status FROM notifications WHERE id='message'",
-      ).first<{ status: string }>()
-    )?.status,
-  ).toBe("sent");
+    await env.DB.prepare(
+      "SELECT status,message_id,sent_at FROM notifications WHERE id='message'",
+    ).first(),
+  ).toMatchObject({
+    status: "sent",
+    message_id: "fixture-message",
+    sent_at: expect.any(Number),
+  });
+  expect(env.EMAIL!.send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      subject: `Order confirmation: BASCIK-${id.toUpperCase()}`,
+      text: expect.stringContaining(`Order number: BASCIK-${id.toUpperCase()}`),
+    }),
+  );
+});
+test("confirmation email contains verified totals and never promises a separate receipt email", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(payment));
+  await stripeWebhook(await eventRequest("evt_email"), { platform: { env } });
+  env.SHOP_MODE = "live";
+  await sendNotifications(env);
+  expect(env.EMAIL!.send).toHaveBeenCalledTimes(1);
+  const message = vi.mocked(env.EMAIL!.send).mock.calls[0][0];
+  expect(message.from).toEqual({ name: "Bascik Shop", email: env.EMAIL_FROM });
+  expect(message.replyTo).toBe(env.SUPPORT_EMAIL);
+  expect(message.html).toContain("background-color:#18191b");
+  expect(message.html).toContain("background-color:#d3ff8d");
+  expect(message.html).toContain("$37.50");
+  expect(message.text).toContain("Subtotal: $30.00");
+  expect(message.text).toContain("Shipping (Standard): $5.00");
+  expect(message.text).toContain("Tax: $2.50");
+  expect(message.text).toContain("Total paid: $37.50");
+  expect(message.text).toContain("printable confirmation");
+  expect(message.text).not.toContain("Stripe sends");
+});
+test("queue processing sends confirmation without waiting for the scheduled sweep or manufacturing", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(payment));
+  await stripeWebhook(await eventRequest("evt_queue_email"), {
+    platform: { env },
+  });
+  env.SHOP_MODE = "live";
+  const fetcher = vi.spyOn(globalThis, "fetch");
+  fetcher.mockClear();
+  await processOrderMessage({ ...env, SHOP_FULFILLMENT_ENABLED: "false" }, id);
+  expect(env.EMAIL!.send).toHaveBeenCalledTimes(1);
+  expect(fetcher).not.toHaveBeenCalled();
+  await processOrderMessage({ ...env, SHOP_FULFILLMENT_ENABLED: "false" }, id);
+  expect(env.EMAIL!.send).toHaveBeenCalledTimes(1);
+  const result = await orderStatus(
+    post("/api/order", { token: await orderToken(env, id) }),
+    { platform: { env } },
+  );
+  expect(await result.json()).toMatchObject({
+    confirmationEmail: "sent",
+    summary: { total: 3750 },
+  });
+});
+test("operator alerts do not depend on valid customer receipt shipping details", async () => {
+  env.SHOP_MODE = "live";
+  await env.DB.prepare("UPDATE orders SET snapshot=? WHERE id=?")
+    .bind(JSON.stringify({ ...snapshot, rates: [] }), id)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO notifications(id,order_id,kind,created_at) VALUES (?,?,?,?)",
+  )
+    .bind("alert-message", id, "alert", now())
+    .run();
+  await sendNotifications(env);
+  expect(env.EMAIL!.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: env.ALERT_EMAIL,
+      subject: expect.stringContaining("needs attention"),
+    }),
+  );
 });
 test("partial shipment updates retain tracking and deduplicate earlier shipments", async () => {
   env.SHOP_MODE = "live";

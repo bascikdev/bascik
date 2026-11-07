@@ -41,6 +41,7 @@ export function assertProductionPrelaunch(config: ProductionConfig) {
     config.queues.consumers[0].dead_letter_queue !==
       "bascik-shop-production-dead" ||
     config.vars.EMAIL_FROM !== "no-reply@bascik.dev" ||
+    config.vars.SUPPORT_EMAIL !== "shop@bascik.dev" ||
     config.send_email?.length !== 1 ||
     config.send_email[0].name !== "EMAIL" ||
     config.send_email[0].allowed_sender_addresses?.length !== 1 ||
