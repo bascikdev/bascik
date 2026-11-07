@@ -27,6 +27,10 @@ on:
         description: "Deploy isolated production with commerce disabled and no domain cutover"
         type: boolean
         default: false
+      deploy_production:
+        description: "Deploy live shop.bascik.dev with checkout and fulfillment enabled"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -119,7 +123,7 @@ jobs:
           yarn exec wrangler deploy --config .output/wrangler.json
   deploy-production-prelaunch:
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production_prelaunch && github.ref == 'refs/heads/main' && github.repository == 'bascikdev/bascik'
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production_prelaunch && !inputs.deploy_production && github.ref == 'refs/heads/main' && github.repository == 'bascikdev/bascik'
     runs-on: ubuntu-latest
     environment: shop-production
     steps:
@@ -149,3 +153,35 @@ jobs:
         run: |
           node scripts/check-live-providers.ts
           node scripts/deploy-production-prelaunch.ts
+  deploy-production:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.repository == 'bascikdev/bascik' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_production))
+    runs-on: ubuntu-latest
+    environment: shop-production
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: actions/download-artifact@v4
+        with:
+          name: shop-cloudflare-build
+          path: shop/.output
+      - name: Deploy live production shop
+        working-directory: shop
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.SHOP_CLOUDFLARE_API_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_ACCOUNT: ${{ secrets.STRIPE_ACCOUNT }}
+          PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PRINTFUL_WEBHOOK_SECRET: ${{ secrets.PRINTFUL_WEBHOOK_SECRET }}
+          PRINTFUL_WEBHOOK_PUBLIC_KEY: ${{ secrets.PRINTFUL_WEBHOOK_PUBLIC_KEY }}
+          ORDER_TOKEN_SECRET: ${{ secrets.ORDER_TOKEN_SECRET }}
+          STRIPE_WEBHOOK_ENDPOINT_ID: ${{ secrets.STRIPE_WEBHOOK_ENDPOINT_ID }}
+        run: |
+          node scripts/check-live-providers.ts --launch
+          node scripts/deploy-production-prelaunch.ts --launch

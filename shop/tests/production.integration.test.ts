@@ -16,6 +16,7 @@ test.each([
   "inactive",
   "store",
   "tax",
+  "no-registration",
 ])("live readiness checks %s without writing providers", async (state) => {
   const root = await mkdtemp(join(tmpdir(), "bascik-live-readiness-"));
   try {
@@ -66,7 +67,12 @@ test.each([
     );
     const result = spawnSync(
       process.execPath,
-      ["--import", fixture, resolve("scripts/check-live-providers.ts")],
+      [
+        "--import",
+        fixture,
+        resolve("scripts/check-live-providers.ts"),
+        ...(state === "no-registration" ? ["--launch"] : []),
+      ],
       {
         cwd: root,
         encoding: "utf8",
@@ -94,56 +100,81 @@ test.each([
       });
     } else {
       expect(result.status, result.stdout).not.toBe(0);
-      expect(result.stderr).toMatch(/mismatch|match|ready|Wrong production/);
+      expect(result.stderr).toMatch(
+        /mismatch|match|ready|Wrong production|active tax registration/,
+      );
     }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("production artifact overrides sandbox bindings but preserves the portable worker and assets", async () => {
-  const root = await mkdtemp(join(tmpdir(), "bascik-production-bundle-"));
-  try {
-    await mkdir(join(root, ".output"));
-    await writeFile(
-      join(root, "wrangler.production.json"),
-      await readFile("wrangler.production.json"),
-    );
-    await writeFile(
-      join(root, ".output/wrangler.json"),
-      JSON.stringify({
+test.each([false, true])(
+  "production artifact launch=%s overrides sandbox bindings but preserves the portable worker and assets",
+  async (launch) => {
+    const root = await mkdtemp(join(tmpdir(), "bascik-production-bundle-"));
+    try {
+      await mkdir(join(root, ".output"));
+      await mkdir(join(root, ".output/public"));
+      await writeFile(
+        join(root, ".output/public/_headers"),
+        "/*\n  X-Content-Type-Options: nosniff\n\n/cart*\n  Cache-Control: no-store\n/*\n  X-Robots-Tag: noindex, nofollow\n",
+      );
+      await writeFile(
+        join(root, "wrangler.production.json"),
+        await readFile("wrangler.production.json"),
+      );
+      await writeFile(
+        join(root, ".output/wrangler.json"),
+        JSON.stringify({
+          main: "./worker.js",
+          assets: { directory: "./public", binding: "ASSETS" },
+          vars: { SHOP_MODE: "test" },
+          routes: [{ pattern: "should-not-survive.example.com" }],
+        }),
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          resolve("scripts/package-production.ts"),
+          ...(launch ? ["--launch"] : []),
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const config = JSON.parse(
+        await readFile(join(root, ".output/wrangler.production.json"), "utf8"),
+      );
+      expect(config).toMatchObject({
+        name: "bascik-shop-production",
         main: "./worker.js",
         assets: { directory: "./public", binding: "ASSETS" },
-        vars: { SHOP_MODE: "test" },
-        routes: [{ pattern: "should-not-survive.example.com" }],
-      }),
-    );
-    const result = spawnSync(
-      process.execPath,
-      [resolve("scripts/package-production.ts")],
-      { cwd: root, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const config = JSON.parse(
-      await readFile(join(root, ".output/wrangler.production.json"), "utf8"),
-    );
-    expect(config).toMatchObject({
-      name: "bascik-shop-production",
-      main: "./worker.js",
-      assets: { directory: "./public", binding: "ASSETS" },
-      triggers: { crons: ["*/5 * * * *"] },
-      vars: {
-        SHOP_MODE: "live",
-        SHOP_ENABLED: "false",
-        SHOP_FULFILLMENT_ENABLED: "false",
-      },
-    });
-    expect(config.routes).toBeUndefined();
-    expect(config.d1_databases[0].migrations_dir).toBe("./migrations");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+        triggers: { crons: ["*/5 * * * *"] },
+        vars: {
+          SHOP_MODE: "live",
+          SHOP_ENABLED: String(launch),
+          SHOP_FULFILLMENT_ENABLED: String(launch),
+        },
+      });
+      if (launch) {
+        expect(config.routes).toEqual([
+          { pattern: "shop.bascik.dev", custom_domain: true },
+        ]);
+        expect(config.vars.SHOP_ORIGIN).toBe("https://shop.bascik.dev");
+      } else expect(config.routes).toBeUndefined();
+      const headers = await readFile(
+        join(root, ".output/public/_headers"),
+        "utf8",
+      );
+      expect(headers).toContain("X-Content-Type-Options: nosniff");
+      expect(headers).toContain("Cache-Control: no-store");
+      expect(headers.includes("X-Robots-Tag: noindex")).toBe(!launch);
+      expect(config.d1_databases[0].migrations_dir).toBe("./migrations");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("production deploy refuses local invocation before reading any secrets or touching providers", () => {
   const result = spawnSync(
@@ -294,12 +325,24 @@ test.each(["empty", "saved", "other-app", "active"])(
   },
 );
 
-test.each(["closed", "unrelated-503"])(
+test.each([
+  "closed",
+  "unrelated-503",
+  "launch",
+  "wrong-webhook",
+  "launch-closed",
+])(
   "production CI smoke verifies %s and cryptographically signed no-order probes",
   async (state) => {
     const root = await mkdtemp(join(tmpdir(), "bascik-production-ci-"));
+    const launch = !["closed", "unrelated-503"].includes(state);
     try {
       await mkdir(join(root, ".output"));
+      await mkdir(join(root, ".output/public"));
+      await writeFile(
+        join(root, ".output/public/_headers"),
+        "/*\n  X-Robots-Tag: noindex, nofollow\n",
+      );
       await writeFile(
         join(root, "wrangler.production.json"),
         await readFile("wrangler.production.json"),
@@ -319,6 +362,7 @@ test.each(["closed", "unrelated-503"])(
         import {createHmac} from "node:crypto";
         import {writeFileSync} from "node:fs";
         const calls=[];
+        globalThis.setTimeout=(callback)=>{callback();return 0};
         cp.spawnSync=(command,args)=>{
           if(command!=="yarn"||args[0]!=="exec"||args[1]!=="wrangler"||args.at(-1)!==".output/wrangler.production.json")
             throw Error("Wrong production operation");
@@ -328,10 +372,20 @@ test.each(["closed", "unrelated-503"])(
         syncBuiltinESMExports();
         globalThis.fetch=async(input,init)=>{
           const url=new URL(input);
-          if(url.origin!=="https://bascik-shop-production.collin-inbox.workers.dev")throw Error("Wrong production smoke origin");
+          if(url.hostname==="api.stripe.com"){
+            if(url.pathname!=="/v1/webhook_endpoints/we_fixture")throw Error("Wrong webhook ID");
+            const post=init?.method==="POST";
+            if(post && init.body.get("disabled")!=="false")throw Error("Webhook not enabled");
+            calls.push(post?"webhook:enable":"webhook:verify");writeFileSync("calls.json",JSON.stringify(calls));
+            return Response.json({id:"we_fixture",livemode:true,status:post?"enabled":"disabled",
+              url:${JSON.stringify(state === "wrong-webhook" ? "https://other.example/webhook" : "https://bascik-shop-production.collin-inbox.workers.dev/api/webhooks/stripe")},
+              metadata:{app:"bascik-shop-production"},
+              enabled_events:["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.async_payment_failed","checkout.session.expired"]});
+          }
+          if(url.origin!==${JSON.stringify(launch ? "https://shop.bascik.dev" : "https://bascik-shop-production.collin-inbox.workers.dev")})throw Error("Wrong production smoke origin");
           calls.push(url.pathname);writeFileSync("calls.json",JSON.stringify(calls));
           if(url.pathname==="/")return new Response("Prelaunch");
-          if(url.pathname==="/api/quote")return Response.json({error:${JSON.stringify(state === "closed" ? "Checkout is not open yet. Please check back soon." : "Missing runtime credentials")}}, {status:503});
+          if(url.pathname==="/api/quote")return Response.json({error:${JSON.stringify(state === "launch" ? "Enter your delivery details." : state === "closed" || state === "launch-closed" ? "Checkout is not open yet. Please check back soon." : "Missing runtime credentials")}}, {status:${state === "launch" ? 400 : 503}});
           if(url.pathname==="/api/webhooks/stripe"){
             const header=init.headers["stripe-signature"];
             const timestamp=header.match(/t=(\\d+)/)[1];
@@ -352,6 +406,7 @@ test.each(["closed", "unrelated-503"])(
           "--import",
           fixture,
           resolve("scripts/deploy-production-prelaunch.ts"),
+          ...(launch ? ["--launch"] : []),
         ],
         {
           cwd: root,
@@ -359,7 +414,7 @@ test.each(["closed", "unrelated-503"])(
           env: {
             ...process.env,
             GITHUB_ACTIONS: "true",
-            GITHUB_EVENT_NAME: "workflow_dispatch",
+            GITHUB_EVENT_NAME: launch ? "push" : "workflow_dispatch",
             GITHUB_REF: "refs/heads/main",
             GITHUB_REPOSITORY: "bascikdev/bascik",
             CLOUDFLARE_API_TOKEN: "fixture",
@@ -369,20 +424,35 @@ test.each(["closed", "unrelated-503"])(
             PRINTFUL_WEBHOOK_SECRET: "ab".repeat(32),
             PRINTFUL_WEBHOOK_PUBLIC_KEY: "public_fixture",
             ORDER_TOKEN_SECRET: "cd".repeat(32),
+            STRIPE_WEBHOOK_ENDPOINT_ID: "we_fixture",
           },
         },
       );
       const calls = JSON.parse(
         await readFile(join(root, "calls.json"), "utf8"),
       );
-      expect(calls.slice(0, 3)).toEqual(["d1", "secret", "deploy"]);
-      if (state === "closed") {
+      if (state === "wrong-webhook") {
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("webhook identity mismatch");
+        expect(calls).toEqual(["webhook:verify"]);
+      } else {
+        expect(calls.slice(launch ? 2 : 0, launch ? 5 : 3)).toEqual([
+          "d1",
+          "secret",
+          "deploy",
+        ]);
+      }
+      if (state === "closed" || state === "launch") {
         expect(result.status, result.stderr).toBe(0);
         expect(calls).toContain("/api/webhooks/stripe");
         expect(calls).toContain("/api/webhooks/printful");
-      } else {
+      } else if (state !== "wrong-webhook") {
         expect(result.status).not.toBe(0);
-        expect(result.stderr).toContain("checkout gate is not closed");
+        expect(result.stderr).toContain(
+          state === "launch-closed"
+            ? "checkout is not ready"
+            : "checkout gate is not closed",
+        );
         expect(calls).not.toContain("/api/webhooks/stripe");
       }
       await expect(
