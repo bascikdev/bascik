@@ -5,7 +5,7 @@ export const freeShippingThreshold = 5000;
 export const freeShippingOffer =
   "Free standard shipping on merchandise orders over $50 to the lower 48 states.";
 export const freeShippingDetails =
-  "Before tax and shipping. Excludes Alaska, Hawaii, territories, and military addresses. Other shipping services cost extra.";
+  "Before tax and shipping. The lowest-cost available shipping option is free; other services retain their full price. Excludes Alaska, Hawaii, territories, and military addresses.";
 
 const lower48 = new Set(
   "AL AZ AR CA CO CT DE FL GA ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(

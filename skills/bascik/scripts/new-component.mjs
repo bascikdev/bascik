@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Create a Bascik component that follows the conventions: hyphenated lowercase name, folder layout,
+// Create a Bascik component that follows the conventions: lowercase non-native name, folder layout,
 // <style> above the markup, <script> below it, id-based element lookup, a data-testid on the root, TypeScript
 // scripts unless JavaScript is asked for, an @bascik metadata comment, and a semantic root element picked from the
 // name (site-nav renders a <nav>, customer-review an <article>), which audit-components.mjs checks too.

@@ -16,16 +16,23 @@ export const RESERVED_HYPHENATED = new Set([
   "missing-glyph",
 ]);
 
-/** Lowercase, starts with a letter, at least one hyphen, no trailing or doubled hyphens. */
-export const TAG_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
+/** Native names must never be claimed by a build-time component. Includes obsolete HTML tags. */
+const NATIVE_TAGS = new Set(
+  "a abbr acronym address applet area article aside audio b base basefont bdi bdo bgsound big blockquote body br button canvas caption center cite code col colgroup content data datalist dd del details dfn dialog dir div dl dt em embed fieldset figcaption figure font footer form frame frameset h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe image img input ins kbd label legend li link listing main map mark marquee menu menuitem meta meter multicol nav nextid nobr noembed noframes noscript object ol optgroup option output p param picture plaintext portal pre progress q rb rp rt rtc ruby s samp script search section select shadow slot small source spacer span strike strong style sub summary sup table tbody td template textarea tfoot th thead time title tr track tt u ul var video wbr xmp math svg".split(
+    " ",
+  ),
+);
+
+/** Lowercase, starts with a letter, no trailing or doubled hyphens. */
+export const TAG_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 /** Explain why `name` is not a good component tag name, or return undefined when it is fine. */
 export function tagNameProblem(name) {
   if (!name) return "a tag name is required";
   if (name !== name.toLowerCase())
     return `use lowercase: "${name.toLowerCase()}"`;
-  if (!name.includes("-"))
-    return `custom element names need a hyphen, for example "my-${name}" or "site-${name}"`;
+  if (NATIVE_TAGS.has(name))
+    return `"${name}" is a native element; choose a name such as "navigation" or "site-${name}"`;
   if (!TAG_NAME_PATTERN.test(name))
     return "use letters and digits separated by single hyphens, starting with a letter";
   if (RESERVED_HYPHENATED.has(name))

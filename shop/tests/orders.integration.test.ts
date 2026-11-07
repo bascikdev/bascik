@@ -1273,7 +1273,7 @@ test.each([
       1000,
     ]);
     expect(quoted.rates[0].name).toBe(
-      free ? "Free standard shipping - Standard" : "Standard",
+      free ? "Free shipping - Standard" : "Standard",
     );
     const created = await checkoutRequest(
       post("/api/checkout", {
@@ -1297,6 +1297,61 @@ test.each([
     expect(JSON.parse(order!.snapshot).rates).toEqual(
       quoted.rates.map((rate) => ({ ...rate, currency: "usd" })),
     );
+  },
+);
+
+test.each([
+  [
+    ["EXPRESS", "STANDARD", "ECONOMY"],
+    ["10.00", "5.00", "4.00"],
+    [1000, 500, 0],
+  ],
+  [
+    ["EXPRESS", "ECONOMY", "STANDARD"],
+    ["10.00", "5.00", "5.00"],
+    [1000, 500, 0],
+  ],
+  [
+    ["ECONOMY", "EXPRESS"],
+    ["4.00", "10.00"],
+    [0, 1000],
+  ],
+  [
+    ["ECONOMY", "OTHER"],
+    ["4.00", "4.00"],
+    [0, 400],
+  ],
+])(
+  "only the cheapest available service is free: %j",
+  async (ids, prices, amounts) => {
+    await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+      .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
+      .run();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        data: ids.map((shipping, index) => ({
+          shipping,
+          shipping_method_name: shipping,
+          rate: prices[index],
+          currency: "USD",
+        })),
+      }),
+    );
+    const response = await quoteRequest(
+      post("/api/quote", {
+        items: [{ variantId, quantity: 2 }],
+        recipient: snapshot.recipient,
+      }),
+      env,
+    );
+    const quoted = (await response.json()) as {
+      rates: { id: string; amount: number; name: string }[];
+    };
+    expect(quoted.rates.map((rate) => rate.id)).toEqual(ids);
+    expect(quoted.rates.map((rate) => rate.amount)).toEqual(amounts);
+    expect(
+      quoted.rates.filter((rate) => rate.name.startsWith("Free shipping -")),
+    ).toHaveLength(1);
   },
 );
 
@@ -1358,7 +1413,7 @@ test.each(["missing-standard", "invalid-rate", "provider-failure"])(
     if (mode === "missing-standard") {
       expect(await (await quoteRequest(request, env)).json()).toMatchObject({
         subtotal: 6000,
-        rates: [{ id: "EXPRESS", amount: 1000 }],
+        rates: [{ id: "EXPRESS", amount: 0, name: "Free shipping - Shipping" }],
       });
     } else {
       await expect(quoteRequest(request, env)).rejects.toThrow();

@@ -3,7 +3,7 @@ import { cart } from "../../browser/cart.ts";
 import { api, componentElements } from "../../browser/dom.ts";
 import countries from "../../../catalog/countries.json" with { type: "json" };
 import { shippingCountries } from "./shipping-countries.ts";
-export function initShopCheckout(root: HTMLElement) {
+export function initCheckoutForm(root: HTMLElement) {
   const { element, status } = componentElements(root);
 
   function checkoutTotals(shipping?: number) {

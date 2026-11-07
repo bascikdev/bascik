@@ -181,12 +181,12 @@ export const policyPages = [
     content: paragraph(`Email: ${contact}`),
   },
   {
-    route: "pages/contact",
+    route: "contact",
     title: "Contact",
     content: paragraph(`Email: ${contact}`),
   },
   {
-    route: "pages/data-sharing-opt-out",
+    route: "data-sharing-opt-out",
     title: "Privacy choices",
     content: section(
       "Your privacy choices",

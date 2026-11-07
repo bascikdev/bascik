@@ -19,6 +19,7 @@ if (mode !== "test" && mode !== "live")
   throw new Error("SHOP_BUILD_MODE must be test or live");
 generated.vars = { ...generated.vars, SHOP_MODE: mode };
 const publicDirectory = resolve("dist/.bascik/cloudflare/public");
+await cp("src/pages/_redirects", `${publicDirectory}/_redirects`);
 await sharp("src/pages/assets/bascik-logo.svg", { density: 288 })
   .resize(456, 112)
   .png()

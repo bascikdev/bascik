@@ -2,6 +2,68 @@ import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 
+test("all rendered storefront buttons have explicit types, including cloned controls", async ({
+  page,
+}) => {
+  for (const path of [
+    "/",
+    ...products.map((product) => `/products/${product.slug}`),
+    "/cart",
+    "/checkout",
+    "/order",
+    "/contact",
+    "/missing-product",
+  ]) {
+    await page.goto(path);
+    if (path.startsWith("/products/"))
+      await page.getByTestId("add-to-cart").click();
+    const missing = await page
+      .locator("button")
+      .evaluateAll((buttons) =>
+        buttons
+          .filter(
+            (button) =>
+              !["button", "submit", "reset"].includes(
+                button.getAttribute("type") ?? "",
+              ),
+          )
+          .map((button) => button.outerHTML),
+      );
+    expect(missing, path).toEqual([]);
+  }
+});
+
+test("legacy Shopify page URLs permanently redirect to root pages", async ({
+  page,
+  request,
+}) => {
+  for (const [oldPath, currentPath] of [
+    ["/pages/contact", "/contact"],
+    ["/pages/data-sharing-opt-out", "/data-sharing-opt-out"],
+  ]) {
+    for (const suffix of ["", "/"]) {
+      const response = await request.get(`${oldPath}${suffix}`, {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(301);
+      expect(
+        new URL(response.headers().location, response.url()).pathname,
+      ).toBe(currentPath);
+    }
+    await page.goto(oldPath);
+    await expect(page).toHaveURL(new RegExp(`${currentPath}$`));
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      `https://shop.bascik.dev${currentPath}`,
+    );
+  }
+  await expect(
+    page
+      .getByTestId("shop-footer")
+      .getByRole("link", { name: "Contact", exact: true }),
+  ).toHaveAttribute("href", "/contact");
+});
+
 test("free shipping promotion and cart feedback update at the strict merchandise threshold", async ({
   page,
 }) => {
@@ -875,6 +937,8 @@ test("published customer policies preserve previous shop routes and decisions", 
     ["/policies/contact-information", "Contact information"],
     ["/pages/contact", "Contact"],
     ["/pages/data-sharing-opt-out", "Privacy choices"],
+    ["/contact", "Contact"],
+    ["/data-sharing-opt-out", "Privacy choices"],
     ["/shipping", "Shipping & returns"],
     ["/privacy", "Privacy policy"],
     ["/terms", "Terms of service"],

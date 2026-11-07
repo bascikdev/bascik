@@ -1,6 +1,6 @@
 import { cart } from "../../browser/cart.ts";
 import { componentElements } from "../../browser/dom.ts";
-export function initShopNav(root: HTMLElement) {
+export function initNavigation(root: HTMLElement) {
   const { element } = componentElements(root);
   const render = () => {
     const badge = element("[data-cart-count]");

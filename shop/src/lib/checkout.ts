@@ -299,30 +299,37 @@ export async function quoteRequest(request: Request, env: Env) {
   });
   if (!Array.isArray(rates) || !rates.length)
     throw new ShopError("Printful cannot ship this cart to that address.");
-  quote.rates = rates.map((rate) => {
+  const shippingRates = rates.map((rate) => {
     if (
       rate.currency !== "USD" ||
       typeof rate.shipping !== "string" ||
       typeof rate.shipping_method_name !== "string"
     )
       throw new ShopError("Invalid shipping response.", 502);
-    const free =
-      rate.shipping === "STANDARD" &&
-      qualifiesForFreeShipping(
-        quote.subtotal,
-        address.country_code,
-        address.state_code,
-      );
     const amount = cents(rate.rate);
     return {
       id: rate.shipping,
-      name: free
-        ? `Free standard shipping - ${rate.shipping_method_name}`
-        : rate.shipping_method_name,
-      amount: free ? 0 : amount,
+      name: rate.shipping_method_name,
+      amount,
       currency: "usd",
     };
   });
+  const cheapest = shippingRates.reduce((cheapest, rate) =>
+    rate.amount < cheapest.amount ||
+    (rate.amount === cheapest.amount && rate.id === "STANDARD")
+      ? rate
+      : cheapest,
+  );
+  const eligible = qualifiesForFreeShipping(
+    quote.subtotal,
+    address.country_code,
+    address.state_code,
+  );
+  quote.rates = shippingRates.map((rate) =>
+    eligible && rate === cheapest
+      ? { ...rate, amount: 0, name: `Free shipping - ${rate.name}` }
+      : rate,
+  );
   const id = crypto.randomUUID();
   const expiresAt = now() + 900;
   await env.DB.prepare(

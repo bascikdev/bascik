@@ -53,6 +53,22 @@ test("sandbox deployment is manual, main-only, and includes the entire asset bun
   expect(workflow).toContain('c.vars.SHOP_ENABLED!=="false"');
   expect(workflow).toContain('c.vars.SHOP_FULFILLMENT_ENABLED!=="false"');
 });
+test("deployment scripts importing the shop catalog have the package HTML helpers built", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  for (const job of [
+    "deploy-preview",
+    "deploy-production-prelaunch",
+    "deploy-production",
+  ]) {
+    const block = workflow.split(`  ${job}:`)[1].split(/^  [a-z-]+:/m)[0];
+    expect(block).toContain("- run: yarn pkg:build");
+    expect(block.indexOf("- run: yarn pkg:build")).toBeLessThan(
+      block.indexOf("run: node scripts/") === -1
+        ? block.indexOf("run: |")
+        : block.indexOf("run: node scripts/"),
+    );
+  }
+});
 test("commerce previews deploy only trusted branch pushes after validation", () => {
   const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
   const preview = workflow

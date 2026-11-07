@@ -14,6 +14,12 @@ The shop collects delivery details to calculate exact Printful shipping, then re
 
 The checked-in `src/pages/` files are small page shells composed of Bascik tags. `products/[slug].html` expands the owned catalog with a routes script, so builds never generate HTML into `src/`. Prettier formats authored pages and components normally; Bascik still minifies production output.
 
+Component names describe their jobs without a redundant `shop-` prefix: `navigation`, `not-found`, `checkout-form`, and `policy-content`. `page-head` and `site-footer` avoid native HTML names. Existing `data-testid` hooks remain stable. The CLI/editor still recommend a hyphenated name for `navigation`; it is a build-time component, not a browser custom element.
+
+Contact and privacy choices live at `src/pages/contact.html` and `src/pages/data-sharing-opt-out.html`. Their old Shopify `/pages/*` URLs redirect permanently through the authored `_redirects` file. Policy URLs under `/policies/` remain unchanged.
+
+Every button has an explicit type: Add to cart and the shipping-quote form use `submit`; gallery, navigation, removal, payment, and print actions use `button`. VS Code uses Prettier on save for whole TypeScript and TSX files, including `src/api/`, rather than formatting only modified lines.
+
 Each component owns its semantic HTML, companion CSS, and TypeScript. `product-card` contains the card, image controls, and a cloneable color-button template; `product-detail` owns the gallery and purchase form. Cart rows and shipping options are cloned from authored templates, preserving Bascik's scoped styles on browser-created content. Page-aware catalog helpers live beside `product-detail`; `product-grid` prints card tags with props, not copies of card markup. Build helpers use `html` and `json` from `@bascik/bascik/html`.
 
 Component entry scripts obtain their own compiler-scoped root with `getElementById`. They import typed initializers from `/assets/shop.js`, bundled once by `scripts/build-assets.ts` through `pipeline.exec`. The initializers live in each component's `behavior.ts`, query only the supplied root, and use stable data hooks because the external bundle is not rewritten by the scoping engine. `src/browser/` holds only the shared cart store, root-bound DOM/API helpers, and bundle exports. Cart, delivery eligibility, and checkout-summary updates use custom events instead of querying another component's DOM.
@@ -24,9 +30,9 @@ The delivery component deliberately keeps its address fields and shipping-choice
 
 ### Free standard shipping
 
-New shipping quotes offer free **standard** shipping when the merchandise subtotal is **strictly over $50**, before tax and shipping, to one of the contiguous 48 states. Exactly $50 does not qualify. Alaska, Hawaii, Washington DC (not one of the 48 states), territories, military addresses, and international destinations retain their quoted shipping charges. Carbon-offset and other optional shipping services are not discounted.
+New shipping quotes offer free **standard** shipping when the merchandise subtotal is **strictly over $50**, before tax and shipping, to one of the contiguous 48 states. Exactly $50 does not qualify. Alaska, Hawaii, Washington DC (not one of the 48 states), territories, military addresses, and international destinations retain their quoted shipping charges. The lowest-cost available service is free; all other services retain their full quoted price. If services tie for the lowest price, `STANDARD` is preferred, otherwise the first tied service is used.
 
-The shared policy in `src/lib/free-shipping.ts` drives the homepage, product, cart, and checkout banners and cart progress messages. The server computes eligibility from its own catalog prices and validated delivery state, not browser totals. Printful must still return a valid `STANDARD` service; only its customer-facing price in a **new quote** becomes zero. We still pay Printful's normal fulfillment/shipping costs and submit the original service ID.
+The shared policy in `src/lib/free-shipping.ts` drives the homepage, product, cart, and checkout banners and cart progress messages. The server computes eligibility from its own catalog prices and validated delivery state, not browser totals. Printful must return valid shipping rates; only the cheapest service's customer-facing price in a **new quote** becomes zero. We still pay Printful's normal fulfillment/shipping costs and submit the original service ID.
 
 The promotion does not rewrite existing quotes, pending Checkout sessions, paid orders, receipts, or fulfillment records. Checkout, payment verification, emails, and order summaries continue to use each order's immutable saved shipping snapshot. No D1 migration or live-order mutation is needed. Quote expiry and address changes still require a fresh shipping quote. The cart's action is labeled **Checkout**.
 

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { statSync, readFileSync } from "node:fs";
+import { statSync, readFileSync, readdirSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import sharp from "sharp";
-import { format } from "prettier";
+import { format, getFileInfo } from "prettier";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
-import { shippingCountries } from "../src/components/shop-checkout/shipping-countries.ts";
+import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
 import { cartItems, recipient } from "../src/lib/checkout.ts";
 import { cents, ProviderError } from "../src/lib/providers.ts";
@@ -26,6 +26,34 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("Prettier formats every source TypeScript file, including API routes", async () => {
+    const files = readdirSync("src", { recursive: true })
+      .filter(
+        (file): file is string =>
+          typeof file === "string" && file.endsWith(".ts"),
+      )
+      .map((file) => `src/${file}`);
+    expect(files).toContain("src/api/webhooks/printful.ts");
+    for (const file of files) {
+      const info = await getFileInfo(file, {
+        ignorePath: "../.prettierignore",
+      });
+      expect(info.ignored, file).toBe(false);
+      expect(info.inferredParser, file).toBe("typescript");
+      const code = readFileSync(file, "utf8");
+      expect(code, file).toBe(await format(code, { parser: "typescript" }));
+    }
+    const settings = JSON.parse(
+      readFileSync("../.vscode/settings.json", "utf8"),
+    );
+    for (const language of ["typescript", "typescriptreact"]) {
+      expect(settings[`[${language}]`]).toMatchObject({
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
+      });
+    }
+  });
   test("authored storefront page shells use default Prettier HTML formatting", async () => {
     const routes = [
       "index",
@@ -125,8 +153,8 @@ describe("owned product catalog", () => {
       "policies/privacy-policy",
       "policies/terms-of-service",
       "policies/contact-information",
-      "pages/contact",
-      "pages/data-sharing-opt-out",
+      "contact",
+      "data-sharing-opt-out",
     ])
       expect(policyPages.some((page) => page.route === route)).toBe(true);
     for (const policy of policyPages)

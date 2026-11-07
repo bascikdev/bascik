@@ -134,7 +134,7 @@ New components are picked up by the running dev server automatically; no restart
 
 ## Rules (must follow)
 
-1. **Hyphenated, lowercase file names.** `feature-card.html` becomes `<feature-card>`. Never name a component after a native element (`header.html`, `dialog.html`): it replaces every such element on the page. Names must be unique across every component root.
+1. **Concise, lowercase component names.** Name the job, not the app: `not-found`, not `shop-not-found`; `navigation`, not `shop-nav`. Use hyphens between words, never underscores. A non-native single word works because Bascik expands it before the browser sees it, although the CLI/editor recommend hyphens for future compatibility. Never use a native element name (`nav`, `header`, `footer`, `dialog`); use `navigation`, `site-header`, or `site-footer` instead. Names must be unique across every component root. See `/components#component-naming-and-hyphens`.
 2. **Per-instance targeting uses `id`.** Use `getElementById` (or `getElementsByName`) for elements a script controls. `querySelector('.cls')` returns the first instance on the page, so the other instances look broken.
 3. **Order:** `<style>` above the markup, `<script>` below it.
 4. **Props carry text only.** `data-bascik-prop-*` values are HTML-escaped strings. Pass markup or nested components through slots (`data-bascik-slot`).
