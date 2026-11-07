@@ -47,6 +47,9 @@ test("branded confirmation includes matching HTML and plain-text purchase detail
   );
   expect(message.html).toContain('alt="Bascik" width="228" height="56"');
   expect(message.html).not.toMatch(/<script|<iframe|<link/i);
+  expect(message.html).toContain("Your payment is confirmed.");
+  expect(message.html).not.toMatch(/Printful|being prepared/i);
+  expect(message.text).not.toMatch(/Printful|being prepared/i);
 });
 test("email HTML escapes dynamic text and URLs", () => {
   const message = orderEmail(
@@ -83,4 +86,6 @@ test("shipment updates share branding and legacy totals remain explicitly unknow
   expect(message.html).toContain("See your Stripe receipt");
   expect(message.html).not.toContain("Total paid");
   expect(message.text).not.toContain("Total paid");
+  expect(message.html).not.toContain("Printful");
+  expect(message.text).not.toContain("Printful");
 });
