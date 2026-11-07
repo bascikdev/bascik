@@ -429,9 +429,10 @@ export async function checkoutRequest(request: Request, env: Env) {
     );
     params.set(
       `line_items[${index}][price_data][product_data][tax_code]`,
-      findVariant(item.variantId)?.product.slug.includes("hat")
-        ? env.TAX_CODE_HAT
-        : env.TAX_CODE_SHIRT,
+      findVariant(item.variantId)?.product.taxCode ??
+        (findVariant(item.variantId)?.product.slug.includes("hat")
+          ? env.TAX_CODE_HAT
+          : env.TAX_CODE_SHIRT),
     );
     params.set(`line_items[${index}][quantity]`, String(item.quantity));
   });

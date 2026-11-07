@@ -61,7 +61,10 @@ for (const product of products) {
       entry.metadata.handle === product.slug &&
       entry.active,
   );
-  if (matches.length !== 1 || matches[0].tax_code !== "txcd_30011000")
+  if (
+    matches.length !== 1 ||
+    matches[0].tax_code !== (product.taxCode ?? "txcd_30011000")
+  )
     throw new Error(`Live product classification mismatch: ${product.slug}`);
   if (
     !prices.some(

@@ -29,7 +29,7 @@ test.each([
           products.map((product) => ({
             id: `prod_${product.id}`,
             active: true,
-            tax_code: "txcd_30011000",
+            tax_code: product.taxCode ?? "txcd_30011000",
             metadata: { app: "bascik-shop", handle: product.slug },
           })),
         )};
@@ -94,7 +94,7 @@ test.each([
       );
       expect(report).toMatchObject({
         liveAccountMatched: true,
-        verifiedProducts: 4,
+        verifiedProducts: 6,
         registrationCount: 0,
         printfulStoreVerified: true,
       });

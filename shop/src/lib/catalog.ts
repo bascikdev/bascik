@@ -24,6 +24,7 @@ export interface Product {
   title: string;
   description: string;
   price: number;
+  taxCode?: string;
   variants: Variant[];
   images: ProductImage[];
 }

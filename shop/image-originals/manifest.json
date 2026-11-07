@@ -1506,5 +1506,81 @@
         "bytes": 151348
       }
     ]
+  },
+  {
+    "source": "owner-supplied:logo-front",
+    "file": "image-originals/decals/logo-front.png",
+    "hash": "2b7230dd11a9862d",
+    "width": 768,
+    "height": 768,
+    "outputs": [
+      {
+        "url": "/assets/products/2b7230dd11a9862d-320.webp",
+        "width": 320,
+        "bytes": 2652
+      },
+      {
+        "url": "/assets/products/2b7230dd11a9862d-640.webp",
+        "width": 640,
+        "bytes": 5670
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:logo-laptop",
+    "file": "image-originals/decals/logo-laptop.png",
+    "hash": "3f661c32869522d0",
+    "width": 768,
+    "height": 768,
+    "outputs": [
+      {
+        "url": "/assets/products/3f661c32869522d0-320.webp",
+        "width": 320,
+        "bytes": 6002
+      },
+      {
+        "url": "/assets/products/3f661c32869522d0-640.webp",
+        "width": 640,
+        "bytes": 14682
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:insignia-front",
+    "file": "image-originals/decals/insignia-front.png",
+    "hash": "93f34637e4915a87",
+    "width": 768,
+    "height": 768,
+    "outputs": [
+      {
+        "url": "/assets/products/93f34637e4915a87-320.webp",
+        "width": 320,
+        "bytes": 3192
+      },
+      {
+        "url": "/assets/products/93f34637e4915a87-640.webp",
+        "width": 640,
+        "bytes": 6516
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:insignia-laptop",
+    "file": "image-originals/decals/insignia-laptop.png",
+    "hash": "41fc5a6f62d3572e",
+    "width": 768,
+    "height": 768,
+    "outputs": [
+      {
+        "url": "/assets/products/41fc5a6f62d3572e-320.webp",
+        "width": 320,
+        "bytes": 5710
+      },
+      {
+        "url": "/assets/products/41fc5a6f62d3572e-640.webp",
+        "width": 640,
+        "bytes": 14276
+      }
+    ]
   }
 ]

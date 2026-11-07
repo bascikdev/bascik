@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import catalog from "../catalog/products.json" with { type: "json" };
+import { productTemplates } from "./product-templates.ts";
 
 const token = process.env.PRINTFUL_TOKEN ?? process.env.PRINTFUL_TOEKN;
 if (!token) throw new Error("Set PRINTFUL_TOKEN in your local environment.");
@@ -27,6 +28,7 @@ if (matches.length !== 1)
 const store = matches[0];
 const products = [];
 for (const product of catalog) {
+  if (productTemplates[product.slug]?.catalogVariantId) continue;
   const result = await get(`/sync/products/@${product.id}`, store.id);
   for (const variant of product.variants) {
     const mapped = result.sync_variants.find(

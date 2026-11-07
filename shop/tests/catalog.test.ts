@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { statSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
+import sharp from "sharp";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
 import { shippingCountries } from "../src/lib/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
@@ -24,6 +25,44 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("owner-supplied decal PNGs produce correctly sized WebP assets without losing transparency", async () => {
+    const manifest = JSON.parse(
+      readFileSync("image-originals/manifest.json", "utf8"),
+    ) as {
+      source: string;
+      file: string;
+      width: number;
+      outputs: { url: string; width: number; bytes: number }[];
+    }[];
+    const decals = manifest.filter((image) =>
+      image.source.startsWith("owner-supplied:"),
+    );
+    expect(decals).toHaveLength(4);
+    for (const image of decals) {
+      const source = await sharp(image.file).metadata();
+      const { isOpaque } = await sharp(image.file).stats();
+      expect(source.width).toBe(768);
+      expect(image.outputs.map((output) => output.width)).toEqual([320, 640]);
+      for (const output of image.outputs) {
+        const file = `src/pages${output.url}`;
+        const actual = await sharp(file).metadata();
+        expect(actual.format).toBe("webp");
+        expect(actual.width).toBe(output.width);
+        expect(actual.height).toBe(output.width);
+        expect((await sharp(file).stats()).isOpaque).toBe(isOpaque);
+        if (!isOpaque) expect(actual.hasAlpha).toBe(true);
+        expect(statSync(file).size).toBe(output.bytes);
+      }
+    }
+    for (const product of products.filter((product) =>
+      product.slug.includes("decal"),
+    )) {
+      expect(product.price).toBe(500);
+      expect(product.taxCode).toBe("txcd_99999999");
+      expect(product.variants).toHaveLength(1);
+      expect(product.variants[0].size).toBeNull();
+    }
+  });
   test("shipping countries are cart-specific, US-first, and otherwise alphabetical", () => {
     const supported: Record<string, string[]> = destinations;
     for (const ids of [
@@ -114,19 +153,25 @@ describe("owned product catalog", () => {
     ).not.toBe(hash);
     expect(templateFingerprint([{ ...mapping, store_id: 1 }])).not.toBe(hash);
   });
-  test("contains exactly two shirts and two hats, with all 24 variants", () => {
-    expect(products).toHaveLength(4);
-    expect(products.flatMap((product) => product.variants)).toHaveLength(24);
+  test("contains two shirts, two hats, and two $5 decals with all 26 variants", () => {
+    expect(products).toHaveLength(6);
+    expect(products.flatMap((product) => product.variants)).toHaveLength(26);
     expect(
       new Set(
         products.flatMap((product) =>
           product.variants.map((variant) => variant.id),
         ),
       ).size,
-    ).toBe(24);
+    ).toBe(26);
     for (const product of products) {
       expect(product.slug).not.toContain("sticker");
-      expect(product.price).toBe(product.slug.includes("hat") ? 2500 : 3000);
+      expect(product.price).toBe(
+        product.slug.includes("decal")
+          ? 500
+          : product.slug.includes("hat")
+            ? 2500
+            : 3000,
+      );
     }
   });
   describe("bounded request bodies", () => {
@@ -206,13 +251,14 @@ describe("owned product catalog", () => {
       ).rejects.toThrow("Invalid UTF-8");
     });
   });
-  test("all 52 captured image views have real local responsive files", () => {
-    expect(products.flatMap((product) => product.images)).toHaveLength(52);
+  test("all 56 captured image views have real local responsive WebP files", () => {
+    expect(products.flatMap((product) => product.images)).toHaveLength(56);
     for (const image of products.flatMap((product) => product.images)) {
       expect(image.width).toBeGreaterThan(0);
       expect(image.src.startsWith("/assets/products/")).toBe(true);
       for (const candidate of image.srcset.split(", ")) {
         const [url, width] = candidate.split(" ");
+        expect(url).toMatch(/\.webp$/);
         expect(statSync(`src/pages${url}`).size).toBeGreaterThan(0);
         expect(Number(width.slice(0, -1))).toBeLessThanOrEqual(image.width);
       }

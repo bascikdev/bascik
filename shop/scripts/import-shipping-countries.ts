@@ -1,14 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
+import { productTemplates } from "./product-templates.ts";
 
 const token = process.env.PRINTFUL_TOKEN ?? process.env.PRINTFUL_TOEKN;
 if (!token) throw new Error("Printful token is required.");
-const templates = new Map([
-  ["100-organic-cotton-bascik-logo-front-unisex", 109921208],
-  ["100-organic-cotton-bascik-insignia-shirt-unisex", 109921207],
-  ["100-organic-cotton-bascik-logo-dad-hat-unisex", 109921204],
-  ["100-organic-cotton-bascik-insignia-dad-hat-unisex", 109921206],
-]);
 async function get(path: string) {
   const response = await fetch(`https://api.printful.com${path}`, {
     headers: {
@@ -23,11 +18,12 @@ async function get(path: string) {
 }
 const destinations: Record<string, string[]> = {};
 for (const product of products) {
-  const templateId = templates.get(product.slug);
+  const approved = productTemplates[product.slug];
+  const templateId = approved?.id;
   if (!templateId) throw new Error(`Unknown product ${product.slug}`);
   const { result: template } = await get(`/product-templates/${templateId}`);
   if (
-    template.title !== product.title ||
+    template.title !== (approved.title ?? product.title) ||
     !Number.isSafeInteger(template.product_id)
   )
     throw new Error(`Unexpected Printful template ${templateId}`);
@@ -56,5 +52,5 @@ await writeFile(
   JSON.stringify(destinations, null, 2) + "\n",
 );
 console.log(
-  "Refreshed Printful shipping destinations for all four approved products.",
+  `Refreshed Printful shipping destinations for all ${products.length} approved products.`,
 );

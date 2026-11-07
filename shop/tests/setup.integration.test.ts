@@ -100,9 +100,9 @@ test.each([
       await writeFile(
         fixture,
         `
-      const products=${JSON.stringify(products.map((product) => ({ id: `prod_${product.id}`, tax_code: state === "matching" ? "txcd_30011000" : "txcd_99999999", metadata: { app: "bascik-shop", handle: product.slug } })))};
+      const products=${JSON.stringify(products.map((product) => ({ id: `prod_${product.id}`, unit_amount: product.price, expected_tax_code: product.taxCode ?? "txcd_30011000", tax_code: state === "matching" ? (product.taxCode ?? "txcd_30011000") : "txcd_99999999", metadata: { app: "bascik-shop", handle: product.slug } })))};
       const state=${JSON.stringify(state)};
-      if(state!=="mismatched")for(const product of products)product.tax_code="txcd_30011000";
+      if(state!=="mismatched")for(const product of products)product.tax_code=product.expected_tax_code;
       globalThis.fetch=async (input,init)=>{
         if(init?.method==="POST") throw Error("Unexpected provider write");
         const url=new URL(input);
@@ -119,7 +119,7 @@ test.each([
         else if(url.pathname.endsWith("/prices")){
           if(!url.searchParams.has("starting_after")&&state==="later-prices")result={data:Array.from({length:100},(_,i)=>({id:"price_old_"+i,active:false})),has_more:true};
           else if(state==="incomplete-prices")result={data:[],has_more:true};
-          else result={data:[{id:"price_fixture",unit_amount:products.find(p=>p.id===url.searchParams.get("product")).metadata.handle.includes("hat")?2500:3000,currency:"usd",active:true,tax_behavior:"exclusive"}],has_more:false};
+          else result={data:[{id:"price_fixture",unit_amount:products.find(p=>p.id===url.searchParams.get("product")).unit_amount,currency:"usd",active:true,tax_behavior:"exclusive"}],has_more:false};
         }
         else throw Error("Unexpected provider route");
         return Response.json(result);
@@ -146,7 +146,7 @@ test.each([
       );
       if (["matching", "later-products", "later-prices"].includes(state)) {
         expect(result.status, result.stderr).toBe(0);
-        expect(report.products).toHaveLength(4);
+        expect(report.products).toHaveLength(6);
       } else {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(

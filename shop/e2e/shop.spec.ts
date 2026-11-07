@@ -2,6 +2,39 @@ import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 
+for (const product of products.filter((product) =>
+  product.slug.includes("decal"),
+)) {
+  test(`${product.slug} has responsive images, a $5 price, and a working cart`, async ({
+    page,
+  }) => {
+    await page.goto(`/products/${product.slug}`);
+    await expect(
+      page.getByRole("heading", { name: product.title, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("product-detail").getByText("$5.00", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      `https://shop.bascik.dev${product.images[0].src}`,
+    );
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      "content",
+      product.description,
+    );
+    await expect(page.getByTestId("product-image")).toHaveAttribute(
+      "src",
+      /\.webp$/,
+    );
+    await page.getByTestId("add-to-cart").click();
+    await page.getByTestId("product-view-cart").click();
+    await expect(page.getByTestId("cart-line")).toHaveCount(1);
+    await expect(page.getByTestId("cart-line")).toContainText(product.title);
+    await expect(page.getByTestId("cart-total")).toHaveText("$5.00");
+  });
+}
+
 test("email logo is a published PNG rasterized from the shared Bascik SVG", async ({
   request,
 }) => {
@@ -58,7 +91,7 @@ test("catalog is complete and independent of Shopify at runtime", async ({
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByTestId("product-card")).toHaveCount(4);
+  await expect(page.getByTestId("product-card")).toHaveCount(6);
   await expect(page.getByRole("heading", { name: "Bascik merch" })).toHaveCount(
     1,
   );
@@ -498,7 +531,7 @@ test("responsive images reserve space and stay within the mobile transfer budget
       };
     }),
   );
-  expect(initialImages.length).toBe(4);
+  expect(initialImages.length).toBe(6);
   for (const image of initialImages) {
     expect(image.width).toBeGreaterThan(0);
     expect(image.height).toBeGreaterThan(0);

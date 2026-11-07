@@ -6,7 +6,7 @@ Independent Bascik storefront for `shop.bascik.dev`. The docs application is not
 
 **Production:** the owner approved the cutover to `shop.bascik.dev`. Validated main pushes deploy the live shop with checkout and fulfillment enabled. Sandbox and PR environments remain separate and draft-only. Keep the Shopify account until its outstanding orders and rollback needs are resolved.
 
-The owned catalog contains two $30 shirts and two $25 hats, with 24 variants and 52 captured image views. Original image bytes are preserved outside the published directory. Optimized images, descriptions, variants, and existing product URLs are independent of Shopify.
+The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vinyl decals, with 26 variants and 56 captured image views. Original image bytes are preserved outside the published directory. Every product image is a local, responsive WebP. Descriptions, variants, and existing product URLs are independent of Shopify.
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
@@ -104,7 +104,7 @@ Runtime orders support `source: "product_template"` with saved Printful designs,
 
 #### Why are no products published in the Printful store?
 
-This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the four listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
+This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the six listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
 
 Printful [supports orders from saved templates without adding products to a store](https://developers.printful.com/docs/). An empty Published tab therefore does not indicate disconnected fulfillment. The API store was checked and had zero published products while all four approved templates remained accessible.
 
@@ -121,6 +121,19 @@ The read-only template audit found all four original templates accessible to sto
 | Logo dad hat     | `109921204` | DTF, `front_dtf_hat`         |
 | Insignia dad hat | `109921206` | DTF, `front_dtf_hat`         |
 
+The additional owner-supplied decals both sell for **$5**:
+
+| Product              | Cut artwork dimensions | Template    | Catalog variant / backing sheet |
+| -------------------- | ---------------------- | ----------- | ------------------------------- |
+| Logo vinyl decal     | 4.5" x 1"              | `109978527` | `24972`, Satin, 4" x 6"         |
+| Insignia vinyl decal | 2" x 2"                | `109978655` | `24971`, Satin, 3" x 4"         |
+
+The storefront dimensions describe the cut artwork, not Printful's larger backing sheet. Both variants use catalog product `974` and the exact saved template, with no customer size selector. `scripts/product-templates.ts` is the shared approved template/variant configuration for auditing, shipping imports, and draft-only previews.
+
+Both template metadata and the v2 catalog use `front` / `digital` for shipping; Printful's generated template draft instead labels the print technique `sticker`. Draft validation accepts that observed provider response only for these two approved templates, retaining file-layer, finite-position, positive-dimension, quantity, and exact catalog-variant checks. Negative artwork offsets are valid saved positions and are preserved. An uncharged fingerprinted draft containing all 26 variants was validated before adding the two verified mappings in migration `0005_vinyl_decals.sql`. Never confirm an audit draft.
+
+Decals use Stripe's **General - Tangible Goods** tax code, `txcd_99999999`, through the catalog's per-product `taxCode`. Apparel retains its existing tax codes. Server-owned inline Checkout prices and app-tagged administrative Stripe inventory both use $5 exclusive-tax USD prices for the decals; shipping and tax are additional. Sandbox inventory is managed by the sandbox-only setup script; live decal inventory is created through the authenticated Bascik Dashboard because the live runtime key intentionally cannot create products. No payments or manufacturing orders are needed for this setup.
+
 The hats are printed, not embroidered; unused embroidery options in the legacy sync response must not override the template's actual DTF technique. Saved templates retain the provider's design positioning. The legacy sync export lacks that positioning, so reconstructing catalog designs from its image dimensions would be unreliable.
 
 Run the read-only audit with the refreshed local token:
@@ -130,7 +143,7 @@ cd shop
 PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/audit-templates.ts
 ```
 
-It checks each template's title, variant membership, original sync variant IDs, size/color, and shipping techniques, and saves all 24 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs; all 24 validated references have now been installed in sandbox D1 with `verified=1`, scoped to store `19022802`.
+It checks each template's title, variant membership, original apparel sync variant IDs or explicitly approved decal catalog IDs, size/color, and shipping techniques, and saves all 26 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs. Validate the complete proposal before installing mappings with `verified=1`, scoped to store `19022802`.
 
 ```sh
 cd shop
@@ -185,7 +198,16 @@ Refresh the original four listings only while Shopify remains available:
 yarn shop:import
 ```
 
-The import validates the allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+The legacy import validates the original apparel allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift and preserves the independently added decals and their owner-supplied image records. Do not run it against the replacement storefront, which is not a Shopify export. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+
+Refresh the owner-supplied decal images deterministically without network access:
+
+```sh
+cd shop
+node scripts/import-decals.ts
+```
+
+The four PNG inputs live in `image-originals/decals/`. Like the original apparel importer, this generates fingerprinted WebP files at quality 80 and widths 320, 640, 960, and 1600 only when the source is large enough; it never enlarges an image. The supplied 768-pixel images yield 320- and 640-pixel outputs, including the transparent front views and laptop previews. The manifest records dimensions, hashes, and output byte sizes. Rebuild the shop after importing images or catalog changes.
 
 Original-image cache filenames hash the complete source URL, including its version query. Reordering gallery entries cannot attach old cached bytes to new metadata; a replaced/versioned source gets its own cache file.
 

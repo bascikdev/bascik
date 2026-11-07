@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { products } from "../src/lib/catalog.ts";
 import { templateFingerprint } from "./template-fingerprint.ts";
+import { productTemplates } from "./product-templates.ts";
 import { assertProductionPrelaunch } from "./production-config.ts";
 import {
   shippingPlacements,
@@ -42,6 +43,9 @@ if (
   );
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const statements = proposal.mappings.map((mapping) => {
+  const approved = Object.values(productTemplates).find(
+    (template) => template.id === mapping.product_template_id,
+  );
   const item = validation.items.find(
     (entry: { external_id: string }) =>
       entry.external_id === mapping.variant_id,
@@ -65,7 +69,7 @@ const statements = proposal.mappings.map((mapping) => {
       item.placements.some(
         (actual: { placement: string; technique: string }) =>
           actual.placement === expected.placement &&
-          actual.technique === expected.technique,
+          actual.technique === (approved?.draftTechnique ?? expected.technique),
       ),
     )
   )

@@ -90,7 +90,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0003_printful_templates.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0004_order_confirmation.sql", "utf8"));
+    (await readFile("migrations/0004_order_confirmation.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0005_vinyl_decals.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -1197,6 +1199,142 @@ test("legacy sync mappings cannot enable a v2 quote", async () => {
   ).rejects.toThrow("not ready for ordering");
   expect(fetcher).not.toHaveBeenCalled();
 });
+test.each([
+  [["bascik-logo-vinyl-decal"], 500],
+  [["bascik-logo-vinyl-decal", "bascik-insignia-vinyl-decal"], 1000],
+  [["bascik-logo-vinyl-decal", "bascik-insignia-vinyl-decal", variantId], 4000],
+])(
+  "decal cart %j preserves verified designs, $5 prices, and tangible-goods tax",
+  async (variants, subtotal) => {
+    const decalEnv = { ...env, PRINTFUL_STORE_ID: "19022802" };
+    const migration = await readFile(
+      "migrations/0005_vinyl_decals.sql",
+      "utf8",
+    );
+    await env.DB.batch(
+      migration
+        .split(";")
+        .filter((sql) => sql.trim())
+        .map((sql) => env.DB.prepare(sql)),
+    );
+    await env.DB.prepare(
+      "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
+    )
+      .bind(
+        variantId,
+        19022802,
+        456,
+        789,
+        JSON.stringify([{ placement: "front", technique: "dtg" }]),
+      )
+      .run();
+    await env.DB.prepare("DELETE FROM orders").run();
+    let session: URLSearchParams | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+      const url = String(input);
+      if (url.endsWith("/shipping-rates")) {
+        const payload = JSON.parse(String(options?.body));
+        expect(payload.order_items).toEqual(
+          variants.map((variant) => ({
+            source: "catalog",
+            catalog_variant_id:
+              variant === variantId
+                ? 456
+                : variant === "bascik-logo-vinyl-decal"
+                  ? 24972
+                  : 24971,
+            quantity: 1,
+            retail_price: variant === variantId ? "30.00" : "5.00",
+            placements: [
+              {
+                placement: "front",
+                technique: variant === variantId ? "dtg" : "digital",
+              },
+            ],
+          })),
+        );
+        return Response.json({
+          data: [
+            {
+              shipping: "STANDARD",
+              shipping_method_name: "Standard",
+              rate: "5.00",
+              currency: "USD",
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/customers"))
+        return Response.json({ id: "cus_decal_fixture" });
+      expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
+      session = options?.body as URLSearchParams;
+      return Response.json({
+        id: "cs_test_decal_fixture",
+        url: "https://checkout.stripe.com/test",
+      });
+    });
+    const quoted = await quoteRequest(
+      post("/api/quote", {
+        items: variants.map((variantId) => ({
+          variantId,
+          quantity: 1,
+          price: 1,
+        })),
+        recipient: snapshot.recipient,
+      }),
+      decalEnv,
+    );
+    expect(quoted.status).toBe(200);
+    const result = (await quoted.json()) as {
+      quoteId: string;
+      subtotal: number;
+    };
+    expect(result.subtotal).toBe(subtotal);
+    const stored = await env.DB.prepare(
+      "SELECT snapshot FROM quotes WHERE id=?",
+    )
+      .bind(result.quoteId)
+      .first<{ snapshot: string }>();
+    const quote = JSON.parse(stored!.snapshot) as Quote;
+    expect(printfulItems(quote)).toEqual(
+      variants.map((variant) => ({
+        source: "product_template",
+        product_template_id:
+          variant === variantId
+            ? 789
+            : variant === "bascik-logo-vinyl-decal"
+              ? 109978527
+              : 109978655,
+        catalog_variant_id:
+          variant === variantId
+            ? 456
+            : variant === "bascik-logo-vinyl-decal"
+              ? 24972
+              : 24971,
+        quantity: 1,
+        retail_price: variant === variantId ? "30.00" : "5.00",
+      })),
+    );
+    const checkout = await checkoutRequest(
+      post("/api/checkout", {
+        quoteId: result.quoteId,
+        shippingId: "STANDARD",
+      }),
+      decalEnv,
+    );
+    expect(checkout.status).toBe(200);
+    for (const [index, variant] of variants.entries()) {
+      expect(
+        session?.get(`line_items[${index}][price_data][unit_amount]`),
+      ).toBe(variant === variantId ? "3000" : "500");
+      expect(
+        session?.get(
+          `line_items[${index}][price_data][product_data][tax_code]`,
+        ),
+      ).toBe(variant === variantId ? "txcd_30011000" : "txcd_99999999");
+    }
+  },
+);
 test("template quotes preserve shipping techniques and orders use saved template designs", async () => {
   const logger = vi.spyOn(console, "info").mockImplementation(() => {});
   const design = [{ placement: "front_dtf_hat", technique: "dtfilm" }];

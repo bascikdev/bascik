@@ -27,9 +27,13 @@ await build({
 const img = (image: ProductImage, priority = false, gallery = false) =>
   `<img src="${image.src}" srcset="${image.srcset}" sizes="${gallery ? "(max-width: 640px) calc(100vw - 40px), (max-width: 1280px) 52vw, 640px" : "(max-width: 640px) calc((100vw - 54px)/2), (max-width: 1000px) 46vw, 280px"}" width="${image.width}" height="${image.height}" alt="${e(image.alt)}" ${priority ? 'fetchpriority="high"' : 'loading="lazy"'} ${gallery ? 'data-main-image data-testid="product-image"' : ""}>`;
 const shell = (title: string, route: string, content: string, index = true) => {
+  const product = products.find(
+    (product) => route === `/products/${product.slug}`,
+  );
   const description =
-    "Organic cotton Bascik shirts and hats. Two designs, made to order by Printful. Shop the official Bascik collection.";
-  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${e(title)} | Bascik Shop</title><meta name="description" content="${description}"><meta name="referrer" content="no-referrer"><meta name="robots" content="${index ? "index,follow" : "noindex,nofollow"}"><link rel="canonical" href="https://shop.bascik.dev${route}"><meta property="og:title" content="${e(title)}"><meta property="og:type" content="website"><meta property="og:url" content="https://shop.bascik.dev${route}"><meta property="og:description" content="${description}"><meta property="og:image" content="https://shop.bascik.dev${products[0].images[0].src}"><link rel="icon" href="/assets/favicon.svg"><script src="/assets/shop.js" defer></script></head><body><shop-nav /><main id="main" data-testid="main">${content}</main><shop-footer /></body></html>`;
+    product?.description ??
+    "Made-to-order Bascik shirts, hats, and vinyl decals. Shop the official Bascik collection.";
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${e(title)} | Bascik Shop</title><meta name="description" content="${e(description)}"><meta name="referrer" content="no-referrer"><meta name="robots" content="${index ? "index,follow" : "noindex,nofollow"}"><link rel="canonical" href="https://shop.bascik.dev${route}"><meta property="og:title" content="${e(title)}"><meta property="og:type" content="website"><meta property="og:url" content="https://shop.bascik.dev${route}"><meta property="og:description" content="${e(description)}"><meta property="og:image" content="https://shop.bascik.dev${(product ?? products[0]).images[0].src}"><link rel="icon" href="/assets/favicon.svg"><script src="/assets/shop.js" defer></script></head><body><shop-nav /><main id="main" data-testid="main">${content}</main><shop-footer /></body></html>`;
 };
 const cards = products.map((product, index) => {
   const colors = [...new Set(product.variants.map((variant) => variant.color))];
@@ -74,7 +78,7 @@ await writeFile(
   shell(
     "Your cart",
     "/cart",
-    `<section class="narrow" data-testid="cart"><h1>Your cart.</h1><div data-cart-lines></div><p class="status" role="status" data-cart-status></p><div class="summary"><strong>Subtotal</strong><strong data-cart-total>$0.00</strong></div><p class="muted">Shipping and applicable taxes calculated next.</p><div class="actions"><a href="/">Continue shopping</a><a href="/checkout" class="button primary" data-testid="cart-checkout">Choose shipping</a></div></section>`,
+    `<section class="narrow" data-testid="cart"><h1>Your cart.</h1><div data-cart-lines></div><p class="status" role="status" data-cart-status></p><div class="summary"><strong>Subtotal</strong><strong data-cart-total data-testid="cart-total">$0.00</strong></div><p class="muted">Shipping and applicable taxes calculated next.</p><div class="actions"><a href="/">Continue shopping</a><a href="/checkout" class="button primary" data-testid="cart-checkout">Choose shipping</a></div></section>`,
     false,
   ),
 );
