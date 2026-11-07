@@ -48,7 +48,7 @@ describe("owned product catalog", () => {
     );
   });
   test("carries owner-approved policy decisions and legacy URLs into the new shop", () => {
-    expect(supportEmail).toBe("collin@bascik.dev");
+    expect(supportEmail).toBe("shop@bascik.dev");
     for (const text of [
       "All sales are final",
       "within 7 days",

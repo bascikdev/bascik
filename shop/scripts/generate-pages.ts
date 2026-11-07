@@ -107,7 +107,7 @@ await writeFile(
   shell(
     "Order status",
     "/order",
-    `<section class="narrow" data-testid="order"><h1>Your order.</h1><p class="status" role="status" data-order-status>Checking your order...</p><div data-shipments></div><p>Keep this private link to check fulfillment and tracking. Payment confirmation can take a moment.</p><a href="/">Back to the collection</a></section>`,
+    `<section class="narrow order-confirmation" data-testid="order"><h1>Your order.</h1><p class="status" role="status" data-order-status>Checking your order...</p><section class="panel" data-order-summary data-testid="order-summary" hidden aria-label="Order confirmation"><p class="eyebrow">ORDER NUMBER</p><h2 data-order-reference data-testid="order-reference"></h2><p data-order-date></p><div data-order-lines></div><dl class="totals"><div><dt>Subtotal</dt><dd data-order-subtotal></dd></div><div><dt>Shipping</dt><dd data-order-shipping></dd></div><div><dt>Tax</dt><dd data-order-tax></dd></div><div class="total"><dt data-order-total-label>Total paid</dt><dd data-order-total></dd></div></dl><p class="muted">All amounts in USD.</p></section><p data-order-email data-testid="order-email"></p><div data-shipments></div><p class="order-help">Keep this private link to check fulfillment and tracking. Payment confirmation can take a moment. <a href="/pages/contact">Contact us about your order</a>.</p><div class="actions order-actions"><a href="/">Back to the collection</a><button type="button" data-order-print data-testid="order-print" hidden>Print confirmation</button></div></section>`,
     false,
   ),
 );

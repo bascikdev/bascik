@@ -1,5 +1,26 @@
 import { test, expect } from "@playwright/test";
+import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
+
+test("email logo is a published PNG rasterized from the shared Bascik SVG", async ({
+  request,
+}) => {
+  const response = await request.get("/assets/bascik-email-logo.png");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  const image = await response.body();
+  expect(image.subarray(0, 8)).toEqual(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+  expect(image.readUInt32BE(16)).toBe(456);
+  expect(image.readUInt32BE(20)).toBe(112);
+  expect(image).toEqual(
+    await sharp("src/pages/assets/bascik-logo.svg", { density: 288 })
+      .resize(456, 112)
+      .png()
+      .toBuffer(),
+  );
+});
 
 test("adding a product offers a prominent cart link that survives reload", async ({
   page,
@@ -573,6 +594,94 @@ test("order polling follows payment and asynchronous draft readiness", async ({
   await page.clock.fastForward(30000);
   expect(calls).toBe(4);
 });
+test("paid orders show a printable confirmation without leaking the private token into print headers", async ({
+  page,
+}) => {
+  await page.clock.install();
+  let emailStatus = "pending";
+  await page.route("**/api/order", (route) =>
+    route.fulfill({
+      json: {
+        orderId: "confirmation-fixture",
+        status: "submitted",
+        paymentConfirmed: true,
+        confirmationEmail: emailStatus,
+        summary: {
+          reference: "BASCIK-32CE1859BFE24C8FA5C68863B425379F",
+          placedAt: "2026-11-07T19:45:07.000Z",
+          items: [
+            {
+              variantId: products[0].variants[0].id,
+              title: "Logo shirt / Black / M",
+              quantity: 1,
+              price: 3000,
+            },
+          ],
+          subtotal: 3000,
+          shipping: 495,
+          shippingService: "Standard",
+          tax: 276,
+          total: 3771,
+        },
+        items: [],
+        shipments: [],
+      },
+    }),
+  );
+  await page.goto("/order#token=private-confirmation-fixture");
+  await expect(page.getByTestId("order-reference")).toHaveText(
+    "BASCIK-32CE1859BFE24C8FA5C68863B425379F",
+  );
+  await expect(page.getByTestId("order-summary")).toContainText(
+    "Logo shirt / Black / M",
+  );
+  await expect(page.getByTestId("order-summary")).toContainText("$37.71");
+  await expect(page.getByTestId("order-summary")).toContainText("$2.76");
+  await expect(page.getByTestId("order-email")).toContainText("queued");
+  emailStatus = "sent";
+  await page.clock.fastForward(3000);
+  await expect(page.getByTestId("order-email")).toContainText("has been sent");
+  await expect(page.getByTestId("order-print")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.evaluate(() => {
+    window.print = () => {
+      window.dispatchEvent(new Event("beforeprint"));
+    };
+  });
+  await page.getByTestId("order-print").click();
+  expect(new URL(page.url()).hash).toBe("");
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByTestId("shop-nav")).toBeHidden();
+  await expect(page.getByTestId("shop-footer")).toBeHidden();
+  await expect(page.getByTestId("order-print")).toBeHidden();
+  await expect(page.getByTestId("order-summary")).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  expect(new URL(page.url()).hash).toBe("#token=private-confirmation-fixture");
+});
+test("unpaid orders cannot display or print a paid confirmation", async ({
+  page,
+}) => {
+  await page.route("**/api/order", (route) =>
+    route.fulfill({
+      json: {
+        orderId: "unpaid-fixture",
+        status: "pending",
+        paymentConfirmed: false,
+        summary: null,
+        items: [],
+        shipments: [],
+      },
+    }),
+  );
+  await page.goto("/order#token=unpaid-fixture");
+  await expect(page.getByRole("status")).toContainText("Waiting for payment");
+  await expect(page.getByTestId("order-summary")).toBeHidden();
+  await expect(page.getByTestId("order-print")).toBeHidden();
+});
 
 test("published customer policies preserve previous shop routes and decisions", async ({
   page,
@@ -596,9 +705,9 @@ test("published customer policies preserve previous shop routes and decisions", 
     await expect(
       page
         .getByTestId("shop-policy")
-        .getByRole("link", { name: "collin@bascik.dev" })
+        .getByRole("link", { name: "shop@bascik.dev" })
         .first(),
-    ).toHaveAttribute("href", "mailto:collin@bascik.dev");
+    ).toHaveAttribute("href", "mailto:shop@bascik.dev");
   }
   await page.goto("/policies/refund-policy");
   await expect(page.getByTestId("shop-policy")).toContainText("within 14 days");

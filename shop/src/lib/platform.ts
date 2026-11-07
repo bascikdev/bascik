@@ -19,10 +19,11 @@ export interface Env {
   TAX_CODE_HAT: string;
   EMAIL?: {
     send(message: {
-      from: string;
+      from: string | { name: string; email: string };
       to: string;
       subject: string;
       text: string;
+      html?: string;
       replyTo?: string;
     }): Promise<{ messageId: string }>;
   };

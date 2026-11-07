@@ -76,6 +76,8 @@ export interface Order {
   lease_until: number;
   attempts: number;
   retry_at: number;
+  payment_tax: number | null;
+  payment_total: number | null;
 }
 export function recipient(value: unknown): Recipient {
   if (!value || typeof value !== "object" || Array.isArray(value))

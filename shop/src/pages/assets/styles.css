@@ -387,6 +387,18 @@ select {
 .narrow h1 {
   font-size: 40px;
 }
+.order-confirmation h2 {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 14px;
+}
+.order-confirmation .order-line {
+  justify-content: space-between;
+}
+.order-confirmation .order-line strong {
+  white-space: nowrap;
+}
 .cart-line {
   display: grid;
   grid-template-columns: 80px 1fr 100px;
@@ -508,5 +520,37 @@ select {
   }
   .narrow h1 {
     font-size: 32px;
+  }
+}
+@media print {
+  :root,
+  :root[data-theme="light"] {
+    --bg: white;
+    --surface: white;
+    --text: black;
+    --muted: #333;
+    --line: #ccc;
+  }
+  [data-testid="shop-nav"],
+  [data-testid="shop-footer"],
+  .order-actions,
+  .order-help,
+  [data-order-email] {
+    display: none;
+  }
+  main {
+    padding: 0;
+  }
+  .order-confirmation {
+    max-width: none;
+    margin: 0;
+  }
+  .order-confirmation .panel {
+    border: none;
+    padding: 0;
+  }
+  .order-confirmation .order-line,
+  .order-confirmation .totals {
+    break-inside: avoid;
   }
 }

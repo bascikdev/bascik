@@ -1,6 +1,6 @@
 import { escapeHtml } from "./catalog.ts";
 
-export const supportEmail = "collin@bascik.dev";
+export const supportEmail = "shop@bascik.dev";
 const contact = `<a href="mailto:${supportEmail}">${supportEmail}</a>`;
 const paragraph = (text: string) => `<p>${text}</p>`;
 const section = (title: string, ...text: string[]) =>

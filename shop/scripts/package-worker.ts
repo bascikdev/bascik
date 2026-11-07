@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
+import sharp from "sharp";
 
 await mkdir(".output", { recursive: true });
 const generated = JSON.parse(
@@ -18,6 +19,10 @@ if (mode !== "test" && mode !== "live")
   throw new Error("SHOP_BUILD_MODE must be test or live");
 generated.vars = { ...generated.vars, SHOP_MODE: mode };
 const publicDirectory = resolve("dist/.bascik/cloudflare/public");
+await sharp("src/pages/assets/bascik-logo.svg", { density: 288 })
+  .resize(456, 112)
+  .png()
+  .toFile(`${publicDirectory}/assets/bascik-email-logo.png`);
 const cacheHeaders = [
   "/assets/products/*",
   "  Cache-Control: public, max-age=31536000, immutable",
@@ -40,7 +45,7 @@ await writeFile(
   ".output/entry.js",
   `
 import bascik from "../dist/.bascik/cloudflare/worker.js";
-import { sweep, processOrder } from "../src/lib/fulfillment.ts";
+import { sweep, processOrderMessage } from "../src/lib/fulfillment.ts";
 export default {
   fetch(request, env, ctx) { return bascik.fetch(request, env, ctx); },
   async scheduled(event, env, ctx) { await sweep(env); },
@@ -51,7 +56,7 @@ export default {
         message.ack();
         continue;
       }
-      await processOrder(env, message.body.orderId);
+      await processOrderMessage(env, message.body.orderId);
       message.ack();
     }
   }

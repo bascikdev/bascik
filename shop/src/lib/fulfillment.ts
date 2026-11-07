@@ -1,6 +1,8 @@
 import { type Env, now, orderToken } from "./platform.ts";
 import { type Order, type Quote, printfulItems } from "./checkout.ts";
 import { printful, printfulList, ProviderError, stripe } from "./providers.ts";
+import { orderReference, orderSummary } from "./order-summary.ts";
+import { orderEmail } from "./order-email.ts";
 
 interface PrintfulOrder {
   id: number;
@@ -85,7 +87,12 @@ export async function paidSession(
     session.automatic_tax?.status !== "complete"
   )
     throw new FulfillmentInvariantError("Payment/order snapshot mismatch");
-  return session.payment_status === "paid";
+  await env.DB.prepare(
+    "UPDATE orders SET payment_tax=?,payment_total=? WHERE id=? AND payment_total IS NULL",
+  )
+    .bind(session.total_details.amount_tax, session.amount_total, order.id)
+    .run();
+  return true;
 }
 export async function recordPayment(
   env: Env,
@@ -357,27 +364,34 @@ export async function sendNotifications(env: Env) {
       const quote: Quote = JSON.parse(order.snapshot);
       if (!env.EMAIL) throw new Error("Email binding missing");
       const alert = message.kind === "alert";
+      const reference = orderReference(order.id);
       const link = `${env.SHOP_ORIGIN}/order#token=${encodeURIComponent(await orderToken(env, order.id))}`;
-      const subject = alert
-        ? "Bascik shop: fulfillment needs attention"
-        : message.kind.startsWith("shipment:")
-          ? "Your Bascik shipment update"
-          : "Your Bascik order";
-      const text = alert
-        ? `Order ${order.id} needs attention. Inspect the shop logs, Stripe payment, and Printful external reference. Do not resubmit before reconciling.`
-        : `Thank you for your order.\n\n${quote.items.map((item) => `${item.quantity} x ${item.title}`).join("\n")}\n\nOrder status and tracking: ${link}\n\nThis private link is for your order only. Stripe sends your payment receipt separately.\n\nQuestions? ${env.SUPPORT_EMAIL}`;
-      await env.EMAIL.send({
-        from: env.EMAIL_FROM,
+      const content = alert
+        ? {
+            subject: `Bascik shop: ${reference} needs attention`,
+            text: `Order ${order.id} needs attention. Inspect the shop logs, Stripe payment, and Printful external reference. Do not resubmit before reconciling.`,
+          }
+        : orderEmail(
+            orderSummary(order, quote),
+            link,
+            env.SUPPORT_EMAIL,
+            message.kind.startsWith("shipment:"),
+          );
+      const result = await env.EMAIL.send({
+        from: { name: "Bascik Shop", email: env.EMAIL_FROM },
         to: alert ? env.ALERT_EMAIL : quote.recipient.email,
         replyTo: env.SUPPORT_EMAIL,
-        subject,
-        text,
+        ...content,
       });
       await env.DB.prepare(
-        "UPDATE notifications SET status='sent',lease_until=0 WHERE id=?",
+        "UPDATE notifications SET status='sent',lease_until=0,message_id=?,sent_at=? WHERE id=?",
       )
-        .bind(message.id)
+        .bind(result.messageId, now(), message.id)
         .run();
+      console.info("Shop notification accepted by email provider", {
+        notificationId: message.id,
+        messageId: result.messageId,
+      });
     } catch (error) {
       console.error("Shop notification failed", {
         notificationId: message.id,
@@ -394,6 +408,10 @@ export async function sendNotifications(env: Env) {
         .run();
     }
   }
+}
+export async function processOrderMessage(env: Env, orderId: string) {
+  await sendNotifications(env);
+  await processOrder(env, orderId);
 }
 export async function sweep(env: Env) {
   if (env.SHOP_FULFILLMENT_ENABLED !== "true" && !env.EMAIL) return;

@@ -14,6 +14,7 @@ import {
 } from "./platform.ts";
 import { type Order, type Quote } from "./checkout.ts";
 import { paidSession, recordPayment } from "./fulfillment.ts";
+import { orderSummary } from "./order-summary.ts";
 
 export async function verifyStripeSignature(
   secret: string,
@@ -180,11 +181,21 @@ export const orderStatus = handler(async (request, env: Env) => {
   )
     .bind(order.id)
     .first();
+  const confirmation = await env.DB.prepare(
+    "SELECT status FROM notifications WHERE order_id=? AND kind='confirmation'",
+  )
+    .bind(order.id)
+    .first<{ status: string }>();
   return json({
     orderId: order.id,
     status: order.status,
     paymentConfirmed: payment !== null,
     testMode: env.SHOP_MODE === "test",
+    confirmationEmail:
+      env.SHOP_MODE === "test"
+        ? "disabled"
+        : (confirmation?.status ?? "pending"),
+    summary: payment !== null ? orderSummary(order, quote) : null,
     shipments: JSON.parse(order.shipments),
     items: quote.items.map((item) => ({
       variantId: item.variantId,
