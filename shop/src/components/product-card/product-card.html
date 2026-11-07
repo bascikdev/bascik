@@ -1,3 +1,75 @@
-<article data-testid="product-card">
-  <div data-bascik-slot></div>
+<!-- @bascik
+A catalog card with responsive photography and per-instance color/gallery controls.
+@prop product - Catalog product ID
+@prop title - Product title
+@prop href - Product page URL
+@prop price - Formatted catalog price
+@prop src - Initial image URL
+@prop srcset - Responsive image candidates
+@prop alt - Initial image description
+@prop width - Image width
+@prop height - Image height
+@prop loading - Image loading priority
+@prop priority - Fetch priority
+-->
+<article
+  id="card"
+  data-testid="product-card"
+  data-bascik-attr-data-card-product="product"
+>
+  <div class="image">
+    <a
+      class="photo"
+      data-bascik-attr-href="href"
+      data-bascik-attr-aria-label="title"
+    >
+      <img
+        data-card-image
+        data-testid="card-image"
+        data-bascik-attr-src="src"
+        data-bascik-attr-srcset="srcset"
+        data-bascik-attr-alt="alt"
+        data-bascik-attr-width="width"
+        data-bascik-attr-height="height"
+        data-bascik-attr-loading="loading"
+        data-bascik-attr-fetchpriority="priority"
+        sizes="(max-width: 640px) calc((100vw - 54px)/2), (max-width: 1000px) 46vw, 280px"
+      />
+    </a>
+    <div class="arrows" data-card-controls hidden>
+      <button
+        type="button"
+        data-card-previous
+        aria-label="Previous image"
+        data-testid="card-previous"
+      >
+        &#8592;
+      </button>
+      <button
+        type="button"
+        data-card-next
+        aria-label="Next image"
+        data-testid="card-next"
+      >
+        &#8594;
+      </button>
+    </div>
+  </div>
+  <div class="controls" data-card-controls hidden>
+    <div class="colors" role="group" aria-label="Color" data-card-colors></div>
+  </div>
+  <template data-card-color-template>
+    <button
+      class="color"
+      type="button"
+      data-card-color
+      aria-pressed="false"
+      data-testid="card-color"
+    ></button>
+  </template>
+  <h2>
+    <a data-bascik-attr-href="href" data-bascik-prop-title></a>
+  </h2>
+  <div class="meta"><span class="price" data-bascik-prop-price></span></div>
 </article>
+<script type="module" src="./product-card.ts"></script>

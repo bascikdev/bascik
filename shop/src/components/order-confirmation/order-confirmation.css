@@ -1,0 +1,30 @@
+.confirmation h2 {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 14px;
+}
+.confirmation [data-testid="order-item"] {
+  justify-content: space-between;
+}
+.confirmation [data-testid="order-item"] > :last-child {
+  white-space: nowrap;
+}
+@media print {
+  .print-actions,
+  .help {
+    display: none;
+  }
+  .confirmation {
+    max-width: none;
+    margin: 0;
+  }
+  .confirmation [data-order-summary] {
+    border: none;
+    padding: 0;
+  }
+  .confirmation [data-testid="order-item"],
+  .confirmation dl {
+    break-inside: avoid;
+  }
+}

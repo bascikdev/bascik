@@ -1,5 +1,5 @@
-import countries from "../../catalog/countries.json" with { type: "json" };
-import destinations from "../../catalog/shipping-countries.json" with { type: "json" };
+import countries from "../../../catalog/countries.json" with { type: "json" };
+import destinations from "../../../catalog/shipping-countries.json" with { type: "json" };
 
 const supported: Record<string, string[]> = destinations;
 export function shippingCountries(productIds: string[]) {

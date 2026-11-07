@@ -1,4 +1,5 @@
-import { escapeHtml as e, money } from "./catalog.ts";
+import { esc as e } from "@bascik/bascik/html";
+import { money } from "./catalog.ts";
 import type { OrderSummary } from "./order-summary.ts";
 
 export function orderEmail(

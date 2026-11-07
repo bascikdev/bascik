@@ -138,13 +138,13 @@ function markShopSuites(path, shop) {
   else if (path.startsWith("shop/scripts/")) {
     shop.integration = true;
     if (
-      /(?:production-config|product-description|image-cache|template-fingerprint|deploy-preview)\.ts$/.test(
+      /(?:build-assets|checkout-notice|production-config|product-description|image-cache|template-fingerprint|deploy-preview)\.ts$/.test(
         path,
       )
     )
       shop.unit = true;
     if (
-      /^(?:shop\/scripts\/(?:generate-pages|package-worker|serve-tests)\.ts)$/.test(
+      /^(?:shop\/scripts\/(?:build-assets|package-worker|serve-tests)\.ts)$/.test(
         path,
       )
     )

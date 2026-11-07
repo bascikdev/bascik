@@ -1,0 +1,21 @@
+.summary-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.summary-heading a {
+  font-size: 14px;
+}
+.note {
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .order-summary {
+    padding: 20px;
+  }
+}

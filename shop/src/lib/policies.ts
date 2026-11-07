@@ -1,4 +1,4 @@
-import { escapeHtml } from "./catalog.ts";
+import { esc as escapeHtml } from "@bascik/bascik/html";
 import { freeShippingOffer, freeShippingDetails } from "./free-shipping.ts";
 
 export const supportEmail = "shop@bascik.dev";

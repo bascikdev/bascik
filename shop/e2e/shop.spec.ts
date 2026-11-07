@@ -201,7 +201,7 @@ test("adding a product offers a prominent cart link that survives reload", async
   page,
 }) => {
   await page.goto(`/products/${products[0].slug}`);
-  await expect(page.getByTestId("product-view-cart")).toHaveCount(0);
+  await expect(page.getByTestId("product-view-cart")).toBeHidden();
   await page.getByTestId("add-to-cart").click();
   await expect(page.getByTestId("product-view-cart")).toBeVisible();
   await page.reload();
@@ -834,6 +834,13 @@ test("paid orders show a printable confirmation without leaking the private toke
   await expect(page.getByTestId("shop-footer")).toBeHidden();
   await expect(page.getByTestId("order-print")).toBeHidden();
   await expect(page.getByTestId("order-summary")).toBeVisible();
+  await expect(page.getByTestId("order-help")).toBeHidden();
+  await expect(page.getByTestId("order")).toHaveCSS("margin-top", "0px");
+  await expect(page.getByTestId("order-summary")).toHaveCSS("padding", "0px");
+  await expect(page.getByTestId("order-item")).toHaveCSS(
+    "break-inside",
+    "avoid",
+  );
   await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
   expect(new URL(page.url()).hash).toBe("#token=private-confirmation-fixture");
 });

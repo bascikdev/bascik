@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 import sharp from "sharp";
 import { format } from "prettier";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
-import { shippingCountries } from "../src/lib/shipping-countries.ts";
+import { shippingCountries } from "../src/components/shop-checkout/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
 import { cartItems, recipient } from "../src/lib/checkout.ts";
 import { cents, ProviderError } from "../src/lib/providers.ts";
@@ -26,14 +26,14 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
-  test("generated storefront pages use default Prettier HTML formatting", async () => {
+  test("authored storefront page shells use default Prettier HTML formatting", async () => {
     const routes = [
       "index",
       "cart",
       "checkout",
       "order",
       "404",
-      ...products.map((product) => `products/${product.slug}`),
+      "products/[slug]",
       ...policyPages.map((policy) => policy.route),
     ];
     for (const route of routes) {
@@ -326,7 +326,7 @@ describe("owned product catalog", () => {
   });
   test("built browsing interaction JavaScript stays below 30 KiB gzip", () => {
     expect(
-      gzipSync(readFileSync("src/pages/assets/shop.js")).length,
+      gzipSync(readFileSync("dist/assets/shop.js")).length,
     ).toBeLessThanOrEqual(30 * 1024);
   });
 });

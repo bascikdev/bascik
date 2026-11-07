@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <shop-head />
+  </head>
+  <body>
+    <shop-nav />
+    <main id="main" data-testid="main">
+      <shipping-promotion />
+      <script data-bascik-routes type="text/typescript">
+        import {products} from "@/lib/catalog.ts";
+        export default () => products.map(product=>({params:{slug:product.slug}}));
+      </script>
+      <script
+        data-bascik-build
+        src="../../components/product-detail/page.ts"
+      ></script>
+    </main>
+    <shop-footer />
+  </body>
+</html>

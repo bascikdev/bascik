@@ -1,0 +1,53 @@
+.delivery > button {
+  margin-top: 24px;
+}
+.checkout {
+  max-width: 1080px;
+  margin: 30px auto;
+}
+.checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+  margin-top: 32px;
+}
+.delivery-panel > h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.delivery-panel p {
+  font-size: 14px;
+}
+.delivery-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+.delivery-fields .wide {
+  grid-column: 1 / -1;
+}
+.delivery > button,
+.shipping-options > button {
+  width: 100%;
+}
+.shipping-options {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 8px;
+}
+.shipping-options > button {
+  margin-top: 24px;
+}
+@media (max-width: 640px) {
+  .checkout-layout,
+  .delivery-fields {
+    grid-template-columns: 1fr;
+  }
+  .delivery-panel {
+    padding: 20px;
+  }
+  .checkout-layout {
+    gap: 20px;
+  }
+}

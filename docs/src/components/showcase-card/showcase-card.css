@@ -67,6 +67,9 @@ article .description > * {
   font-size: 0.95rem;
   line-height: 1.65;
 }
+article .description > * + * {
+  margin-top: 10px;
+}
 
 .new-tab {
   position: absolute;

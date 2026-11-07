@@ -1,5 +1,3 @@
-/* Docs Nav: all styles live here so bascik scopes them alongside the HTML */
-
 nav {
   background: var(--nav-bg);
   -webkit-backdrop-filter: blur(12px);
@@ -23,46 +21,6 @@ nav {
 }
 .moon {
   display: none;
-}
-
-.banner {
-  max-width: var(--site-max-width);
-  margin: 0 auto;
-  background: var(--accent-dim);
-  border-bottom: 1px solid var(--accent-border);
-  border-left: 1px solid var(--accent-border);
-  border-right: 1px solid var(--accent-border);
-  border-bottom-left-radius: var(--r-sm);
-  border-bottom-right-radius: var(--r-sm);
-  text-align: center;
-}
-
-.banner-inner {
-  max-width: var(--site-max-width);
-  margin: 0 auto;
-  padding: 6px 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text);
-  line-height: 1.4;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: var(--accent);
-  color: #18191b;
-  flex-shrink: 0;
 }
 
 /* The inner container sets the maximum width and centers the navigation. */
@@ -401,7 +359,6 @@ nav {
     backdrop-filter: none;
   }
 
-  .banner,
   .controls {
     display: none !important;
   }

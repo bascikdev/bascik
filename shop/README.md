@@ -10,7 +10,17 @@ The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vin
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
-`scripts/generate-pages.ts` writes all generated HTML pages with default Prettier formatting on every build. These pages remain ignored generated artifacts; edit the generator or policy/catalog sources instead. Production output is still minified by Bascik.
+### Component architecture
+
+The checked-in `src/pages/` files are small page shells composed of Bascik tags. `products/[slug].html` expands the owned catalog with a routes script, so builds never generate HTML into `src/`. Prettier formats authored pages and components normally; Bascik still minifies production output.
+
+Each component owns its semantic HTML, companion CSS, and TypeScript. `product-card` contains the card, image controls, and a cloneable color-button template; `product-detail` owns the gallery and purchase form. Cart rows and shipping options are cloned from authored templates, preserving Bascik's scoped styles on browser-created content. Page-aware catalog helpers live beside `product-detail`; `product-grid` prints card tags with props, not copies of card markup. Build helpers use `html` and `json` from `@bascik/bascik/html`.
+
+Component entry scripts obtain their own compiler-scoped root with `getElementById`. They import typed initializers from `/assets/shop.js`, bundled once by `scripts/build-assets.ts` through `pipeline.exec`. The initializers live in each component's `behavior.ts`, query only the supplied root, and use stable data hooks because the external bundle is not rewritten by the scoping engine. `src/browser/` holds only the shared cart store, root-bound DOM/API helpers, and bundle exports. Cart, delivery eligibility, and checkout-summary updates use custom events instead of querying another component's DOM.
+
+The global stylesheet contains design tokens, document defaults, and deliberately shared primitives such as buttons, panels, responsive photos, totals, and order lines. Card, product, cart-row, promotion, and checkout layout styles live alongside their owning components.
+
+The delivery component deliberately keeps its address fields and shipping-choice lifecycle together. Formatting puts its markup just above the component-audit size guideline; splitting individual fields into single-use components would obscure the form rather than improve reuse.
 
 ### Free standard shipping
 

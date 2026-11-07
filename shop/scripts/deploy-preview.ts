@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { products } from "../src/lib/catalog.ts";
 import { productTemplates } from "./product-templates.ts";
+import { updateCheckoutNotice } from "./checkout-notice.ts";
 
 if (
   process.env.GITHUB_ACTIONS !== "true" ||
@@ -222,14 +223,10 @@ config.queues = {
 await writeFile(".output/wrangler.json", JSON.stringify(config, null, 2));
 const checkoutPath = ".output/public/checkout.html";
 const checkout = await readFile(checkoutPath, "utf8");
-const notice =
-  "The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.";
-if (!checkout.includes(notice))
-  throw new Error("Preview checkout notice was not found.");
 await writeFile(
   checkoutPath,
-  checkout.replace(
-    notice,
+  updateCheckoutNotice(
+    checkout,
     "Sandbox preview: use Stripe test payment details only. Orders create unconfirmed Printful drafts. Nothing will be charged, produced, shipped, or emailed.",
   ),
 );

@@ -1,0 +1,31 @@
+<aside
+  id="root"
+  class="shipping-promotion"
+  aria-label="Free shipping offer"
+  data-testid="free-shipping-banner"
+>
+  <p>
+    <strong
+      ><script data-bascik-build-once type="text/typescript">
+        import {html} from "@bascik/bascik/html";
+        import {freeShippingOffer} from "@/lib/free-shipping.ts";
+        export default () => html`${freeShippingOffer}`;
+      </script></strong
+    >
+  </p>
+  <p>
+    <script data-bascik-build-once type="text/typescript">
+      import {html} from "@bascik/bascik/html";
+      import {freeShippingDetails} from "@/lib/free-shipping.ts";
+      export default () => html`${freeShippingDetails}`;
+    </script>
+  </p>
+  <p
+    data-free-shipping-progress
+    data-testid="free-shipping-progress"
+    aria-live="polite"
+  >
+    Eligibility is confirmed with your delivery address.
+  </p>
+</aside>
+<script type="module" src="./shipping-promotion.ts"></script>

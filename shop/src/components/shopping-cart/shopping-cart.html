@@ -1,0 +1,37 @@
+<section id="root" class="narrow" data-testid="cart">
+  <h1>Your cart.</h1>
+  <div data-cart-lines></div>
+  <template data-cart-line-template>
+    <article class="line" data-testid="cart-line">
+      <img
+        data-testid="cart-image"
+        alt=""
+        width="80"
+        height="80"
+        sizes="80px"
+      />
+      <div>
+        <h2><a></a></h2>
+        <p></p>
+        <button type="button" data-testid="cart-remove">Remove</button>
+      </div>
+      <label
+        >Quantity
+        <input type="number" min="1" max="10" data-testid="cart-quantity" />
+      </label>
+    </article>
+  </template>
+  <p class="status" role="status" data-cart-status></p>
+  <div class="summary">
+    <strong>Subtotal</strong
+    ><strong data-cart-total data-testid="cart-total">$0.00</strong>
+  </div>
+  <p class="muted">Shipping and applicable taxes calculated next.</p>
+  <div class="actions">
+    <a href="/">Continue shopping</a
+    ><a href="/checkout" class="button primary" data-testid="cart-checkout"
+      >Checkout</a
+    >
+  </div>
+</section>
+<script type="module" src="./shopping-cart.ts"></script>
