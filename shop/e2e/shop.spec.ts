@@ -1,5 +1,26 @@
 import { test, expect } from "@playwright/test";
+import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
+
+test("email logo is a published PNG rasterized from the shared Bascik SVG", async ({
+  request,
+}) => {
+  const response = await request.get("/assets/bascik-email-logo.png");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/png");
+  const image = await response.body();
+  expect(image.subarray(0, 8)).toEqual(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+  expect(image.readUInt32BE(16)).toBe(456);
+  expect(image.readUInt32BE(20)).toBe(112);
+  expect(image).toEqual(
+    await sharp("src/pages/assets/bascik-logo.svg", { density: 288 })
+      .resize(456, 112)
+      .png()
+      .toBuffer(),
+  );
+});
 
 test("adding a product offers a prominent cart link that survives reload", async ({
   page,

@@ -42,7 +42,11 @@ test("branded confirmation includes matching HTML and plain-text purchase detail
   expect(message.html).toContain("#d3ff8d");
   expect(message.html).toContain("#18191b");
   expect(message.html).toContain("View order &amp; print confirmation");
-  expect(message.html).not.toMatch(/<script|<iframe|<img|<link/i);
+  expect(message.html).toContain(
+    'src="https://shop.example.com/assets/bascik-email-logo.png"',
+  );
+  expect(message.html).toContain('alt="Bascik" width="228" height="56"');
+  expect(message.html).not.toMatch(/<script|<iframe|<link/i);
 });
 test("email HTML escapes dynamic text and URLs", () => {
   const message = orderEmail(
@@ -65,7 +69,7 @@ test("email HTML escapes dynamic text and URLs", () => {
   );
   expect(message.html).toContain("&lt;script&gt;attack()&lt;/script&gt;");
   expect(message.html).toContain("&amp;next=&quot;value&quot;");
-  expect(message.html).not.toMatch(/<script|<img/);
+  expect(message.html).not.toMatch(/<script|<img src=x/);
 });
 test("shipment updates share branding and legacy totals remain explicitly unknown", () => {
   const message = orderEmail(
