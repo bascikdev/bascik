@@ -273,6 +273,9 @@ select {
   width: 100%;
   margin-top: 24px;
 }
+[data-shipping-form] > button {
+  margin-top: 24px;
+}
 .description {
   white-space: pre-line;
   font-size: 15px;

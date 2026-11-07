@@ -193,6 +193,23 @@ test("cart edits and removals update the owned subtotal", async ({ page }) => {
   await page.getByTestId("cart-remove").click();
   await expect(page.getByTestId("cart-checkout")).toBeHidden();
 });
+test("shipping button has clear space below the country field in both themes", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    const country = page.getByTestId("shipping-country");
+    await country.focus();
+    const field = await country.boundingBox();
+    const button = await page.getByTestId("shipping-quote").boundingBox();
+    expect(field).not.toBeNull();
+    expect(button).not.toBeNull();
+    expect(button!.y - (field!.y + field!.height)).toBeGreaterThanOrEqual(24);
+  }
+});
 test("checkout remains safely disabled and reports a useful error", async ({
   page,
   request,
