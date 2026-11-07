@@ -121,6 +121,31 @@ test("production deployment is manual, main-only, owner-repository-only and gate
   expect(job).toContain("node scripts/deploy-production-prelaunch.ts");
 });
 
+test("shop CI runs only the affected shop suites but always builds and typechecks deploy artifacts", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  const validation = workflow.split("  deploy-preview:")[0];
+  expect(validation).toContain("needs: changes");
+  expect(validation).toContain("github.event_name != 'pull_request'");
+  expect(validation).toContain(
+    "github.event.pull_request.head.repo.full_name != github.repository",
+  );
+  expect(validation).toContain("run: yarn shop:build");
+  expect(validation).toContain("run: yarn shop:typecheck");
+  expect(validation).toContain("needs.changes.outputs.run-shop-unit == 'true'");
+  expect(validation).toContain(
+    "needs.changes.outputs.run-shop-integration == 'true'",
+  );
+  expect(validation).toContain("needs.changes.outputs.run-shop-e2e == 'true'");
+  expect(validation).toContain("github.event_name == 'workflow_dispatch'");
+});
+
+test("shop CI runs when its shared suite selector changes", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  const triggers = workflow.split("jobs:")[0];
+  expect(triggers).toContain(".github/scripts/changed-workspaces.mjs");
+  expect(triggers).toContain(".github/scripts/changed-workspaces.d.mts");
+});
+
 test("live launch changes only the approved domain and commerce flags", () => {
   const config = productionLaunch(authored);
   expect(() => assertProductionLaunch(config)).not.toThrow();

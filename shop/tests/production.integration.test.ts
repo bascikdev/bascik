@@ -116,6 +116,9 @@ test.each([false, true])(
     try {
       await mkdir(join(root, ".output"));
       await mkdir(join(root, ".output/public"));
+      const checkout =
+        '<main><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><form data-testid="shipping-form"></form></main>';
+      await writeFile(join(root, ".output/public/checkout.html"), checkout);
       await writeFile(
         join(root, ".output/public/_headers"),
         "/*\n  X-Content-Type-Options: nosniff\n\n/cart*\n  Cache-Control: no-store\n/*\n  X-Robots-Tag: noindex, nofollow\n",
@@ -169,6 +172,14 @@ test.each([false, true])(
       expect(headers).toContain("X-Content-Type-Options: nosniff");
       expect(headers).toContain("Cache-Control: no-store");
       expect(headers.includes("X-Robots-Tag: noindex")).toBe(!launch);
+      const publishedCheckout = await readFile(
+        join(root, ".output/public/checkout.html"),
+        "utf8",
+      );
+      expect(publishedCheckout.includes("Checkout stays disabled")).toBe(
+        !launch,
+      );
+      expect(publishedCheckout).toContain('data-testid="shipping-form"');
       expect(config.d1_databases[0].migrations_dir).toBe("./migrations");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -340,6 +351,10 @@ test.each([
       await mkdir(join(root, ".output"));
       await mkdir(join(root, ".output/public"));
       await writeFile(
+        join(root, ".output/public/checkout.html"),
+        '<p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p>',
+      );
+      await writeFile(
         join(root, ".output/public/_headers"),
         "/*\n  X-Robots-Tag: noindex, nofollow\n",
       );
@@ -419,6 +434,7 @@ test.each([
             GITHUB_REPOSITORY: "bascikdev/bascik",
             CLOUDFLARE_API_TOKEN: "fixture",
             STRIPE_SECRET_KEY: "rk_live_fixture",
+            STRIPE_PUBLISHABLE_KEY: "pk_live_fixture",
             STRIPE_WEBHOOK_SECRET: "whsec_fixture",
             PRINTFUL_TOKEN: "fixture",
             PRINTFUL_WEBHOOK_SECRET: "ab".repeat(32),

@@ -28,6 +28,13 @@ delete config.routes;
 const final = launch ? productionLaunch(config) : config;
 if (launch) {
   assertProductionLaunch(final);
+  const checkoutPath = ".output/public/checkout.html";
+  const checkout = await readFile(checkoutPath, "utf8");
+  const notice =
+    /<p\b[^>]*>The new shop is being prepared\. Checkout stays disabled until tax, fulfillment, and email setup have been verified\.<\/p>/;
+  if (!notice.test(checkout))
+    throw new Error("Production checkout prelaunch notice was not found.");
+  await writeFile(checkoutPath, checkout.replace(notice, ""));
   const headersPath = ".output/public/_headers";
   const headers = await readFile(headersPath, "utf8");
   await writeFile(

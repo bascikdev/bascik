@@ -33,6 +33,7 @@ import {
   tipOf,
 } from "../../../.github/scripts/newest-commit.mjs";
 import { mergedPullRequest } from "../../../.github/scripts/merged-pull-request.mjs";
+import { changedWorkspaces } from "../../../.github/scripts/changed-workspaces.mjs";
 import {
   BOT_LOGIN,
   MARKER,
@@ -893,8 +894,24 @@ function runContext(
     newest = "true",
     docsOnly = false,
     shopOnlyHead = false,
+    suiteFlags = {} as Record<string, boolean>,
   } = {},
 ): Record<string, Value> {
+  const suites = Object.fromEntries(
+    [
+      "pkg",
+      "create",
+      "lsp",
+      "docs",
+      "skills",
+      "extension",
+      "adapter-cloudflare",
+      "adapter-netlify",
+    ].map((suite) => [
+      suite,
+      suiteFlags[suite] ?? (docsOnly ? suite === "docs" : true),
+    ]),
+  );
   return {
     "github.event_name": event,
     "github.ref": ref,
@@ -906,6 +923,21 @@ function runContext(
     // What the `changes` job outputs when it runs; `simulate` blanks it when that job is skipped.
     "needs.changes.outputs.docs-only": String(docsOnly),
     "needs.changes.outputs.shop-only-head": String(shopOnlyHead),
+    ...Object.fromEntries(
+      Object.entries(suites).map(([suite, changed]) => [
+        `needs.changes.outputs.run-${suite}`,
+        String(changed),
+      ]),
+    ),
+    "needs.changes.outputs.run-node-floor": String(
+      suiteFlags["node-floor"] ?? !docsOnly,
+    ),
+    "needs.changes.outputs.run-linear-time": String(
+      suiteFlags["linear-time"] ?? !docsOnly,
+    ),
+    "needs.changes.outputs.run-any": String(
+      (suiteFlags.any ?? !docsOnly) || suites.docs,
+    ),
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
     "needs.deploy-netlify.outputs.preview-url": "",
@@ -940,7 +972,11 @@ function simulate(
       continue;
     scope["needs.*.result"] = needResults;
     if (!isTruthy(evaluate(job.if ?? "success()", scope))) {
-      if (id === "changes") scope["needs.changes.outputs.docs-only"] = "";
+      if (id === "changes") {
+        scope["needs.changes.outputs.docs-only"] = "";
+        for (const key of Object.keys(scope))
+          if (key.startsWith("needs.changes.outputs.run-")) scope[key] = "";
+      }
       continue;
     }
     ran.add(id);
@@ -1057,6 +1093,156 @@ describe("CI stages and the deploy stage", () => {
   const stage = (n: number) =>
     [...jobs].filter(([, job]) => job.stage === n).map(([id]) => id);
 
+  it("runs only shop suites touched by a shop-only PR and leaves root suites to root changes", () => {
+    const changed = changedWorkspaces([
+      "shop/scripts/check-live-providers.ts",
+      "shop/scripts/deploy-production-prelaunch.ts",
+      "shop/scripts/package-production.ts",
+      "shop/scripts/production-config.ts",
+      "shop/tests/production.integration.test.ts",
+      "shop/tests/production.test.ts",
+      "shop/README.md",
+      ".github/workflows/shop.yml",
+    ]);
+    expect(changed).toMatchObject({
+      "run-shop-unit": "true",
+      "run-shop-integration": "true",
+      "run-shop-e2e": "false",
+      "run-any": "false",
+      "docs-only": "false",
+    });
+    for (const suite of [
+      "pkg",
+      "create",
+      "lsp",
+      "docs",
+      "skills",
+      "extension",
+      "adapter-cloudflare",
+      "adapter-netlify",
+    ] as const)
+      expect(changed[`run-${suite}`], suite).toBe("false");
+  });
+
+  it("runs isolated workspace suites when package-only static analysis is skipped", () => {
+    const docs = simulate(
+      jobs,
+      runContext("push", "refs/heads/docs-source-change", {
+        suiteFlags: {
+          pkg: false,
+          create: false,
+          lsp: false,
+          docs: true,
+          skills: false,
+          extension: false,
+          "adapter-cloudflare": false,
+          "adapter-netlify": false,
+          any: true,
+          "node-floor": false,
+          "linear-time": false,
+        },
+      }),
+    );
+    expect(docs.ran.has("jelly")).toBe(false);
+    expect(docs.ran.has("unit-docs")).toBe(true);
+    expect(docs.ran.has("integration-docs")).toBe(true);
+    expect(docs.ran.has("e2e-docs")).toBe(true);
+    expect(docs.ran.has("test-gate")).toBe(true);
+
+    const create = simulate(
+      jobs,
+      runContext("push", "refs/heads/create-change", {
+        suiteFlags: {
+          pkg: false,
+          create: true,
+          lsp: false,
+          docs: false,
+          skills: false,
+          extension: false,
+          "adapter-cloudflare": false,
+          "adapter-netlify": false,
+          any: true,
+        },
+      }),
+    );
+    expect(create.ran.has("jelly")).toBe(false);
+    expect(create.ran.has("unit-create")).toBe(true);
+    expect(create.ran.has("e2e-create")).toBe(true);
+    expect(create.ran.has("test-gate")).toBe(true);
+  });
+
+  it("maps shared package changes to all dependent suites and scoped changes to their own suites", () => {
+    const shared = changedWorkspaces(["pkg/src/lib/compiler.ts"]);
+    for (const suite of [
+      "pkg",
+      "create",
+      "lsp",
+      "docs",
+      "skills",
+      "extension",
+      "adapter-cloudflare",
+      "adapter-netlify",
+    ] as const)
+      expect(shared[`run-${suite}`], suite).toBe("true");
+    expect(shared["run-shop-e2e"]).toBe("true");
+
+    expect(changedWorkspaces(["create/src/scaffold.ts"])).toMatchObject({
+      "run-create": "true",
+      "run-pkg": "false",
+      "run-docs": "false",
+    });
+    expect(changedWorkspaces(["docs/src/pages/index.html"])).toMatchObject({
+      "run-docs": "true",
+      "run-pkg": "false",
+      "run-create": "false",
+    });
+    expect(changedWorkspaces(["adapters/netlify/src/index.ts"])).toMatchObject({
+      "run-adapter-netlify": "true",
+      "run-adapter-cloudflare": "false",
+      "run-pkg": "false",
+    });
+  });
+
+  it("keeps docs-content-only runs scoped and fails open for unknown or empty diffs", () => {
+    expect(changedWorkspaces(["docs/content/components.md"])).toMatchObject({
+      "docs-only": "true",
+      "run-docs": "true",
+      "run-pkg": "false",
+    });
+    for (const paths of [["unmapped-root-config.json"], []]) {
+      const changed = changedWorkspaces(paths);
+      expect(changed["run-any"]).toBe("true");
+      for (const suite of [
+        "pkg",
+        "create",
+        "lsp",
+        "docs",
+        "skills",
+        "extension",
+        "adapter-cloudflare",
+        "adapter-netlify",
+      ] as const)
+        expect(changed[`run-${suite}`], suite).toBe("true");
+    }
+  });
+
+  it.each([
+    "shop/migrations/0004_checkout_form.sql",
+    "shop/wrangler.production.json",
+    "shop/wrangler.jsonc",
+    "shop/tsconfig.json",
+  ])(
+    "runs all shop suites for schema or unmapped runtime changes: %s",
+    (path) => {
+      expect(changedWorkspaces([path])).toMatchObject({
+        "run-shop-unit": "true",
+        "run-shop-integration": "true",
+        "run-shop-e2e": "true",
+        "run-any": "false",
+      });
+    },
+  );
+
   it("enables Corepack before setup-node in every job, or turns off setup-node's package manager cache", () => {
     // setup-node v5 caches the package manager named in package.json by default. Without Corepack that runs the
     // runner's global Yarn 1, which refuses this repo's "packageManager": "yarn@4…" and fails the job.
@@ -1138,7 +1324,7 @@ describe("CI stages and the deploy stage", () => {
     expect(job!.stage).toBe(4);
     // Same gate as the other stage 4 jobs: every stage 3 job.
     expect(job!.needs).toEqual(jobs.get("e2e-create")!.needs);
-    expect(job!.if).toBeUndefined();
+    expect(job!.if).toContain("needs.test-gate.result == 'success'");
     const body = job!.body.join("\n");
     expect(body).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
     // VS Code is an Electron app: on Linux it needs a display, so xvfb-run gives it a virtual one.
@@ -1227,16 +1413,16 @@ describe("CI stages and the deploy stage", () => {
     expect(on).not.toMatch(/tags/);
   });
 
-  it("uses the branch push for a normal same-repo pull request and tests a mixed PR after a shop-only commit", () => {
+  it("uses the branch-push run for same-repo pull requests, including shop-only commits", () => {
     const sameRun =
-      "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true'))";
+      "(github.event_name == 'push' && github.ref != 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)";
     for (const id of stage(1))
       expect(jobs.get(id)!.if, id).toBe(
         id === "changes"
           ? "(github.event_name == 'push' && github.ref != 'refs/heads/main') || github.event_name == 'pull_request'"
           : id === "standards"
             ? sameRun
-            : `needs.changes.outputs.docs-only != 'true' && (${sameRun})`,
+            : `${id === "jelly" ? "needs.changes.outputs.run-pkg == 'true'" : "needs.changes.outputs.run-any == 'true'"} && needs.changes.outputs.docs-only != 'true' && (${sameRun})`,
       );
     // Every later job needs stage 1 (directly or not), so the whole run skips.
     const sameRepo = simulate(
@@ -1244,16 +1430,14 @@ describe("CI stages and the deploy stage", () => {
       runContext("pull_request", "refs/pull/113/merge", { prRepo: REPO }),
     );
     expect([...sameRepo.ran]).toEqual(["changes"]);
-    const mixed = simulate(
+    const shopCommit = simulate(
       jobs,
       runContext("pull_request", "refs/pull/113/merge", {
         prRepo: REPO,
         shopOnlyHead: true,
       }),
     );
-    for (const n of [1, 2, 3, 4])
-      for (const id of stage(n)) expect(mixed.ran.has(id), id).toBe(true);
-    for (const id of stage(5)) expect(mixed.ran.has(id), id).toBe(false);
+    expect([...shopCommit.ran]).toEqual(["changes"]);
   });
 
   it("tests a fork's pull request in stages 1 to 4 and never deploys it", () => {
@@ -1303,7 +1487,9 @@ describe("CI stages and the deploy stage", () => {
         "standards",
         "unit-docs",
         "integration-docs",
+        "test-gate",
         "e2e-docs",
+        "e2e-gate",
         "deploy-docs",
       ]);
       expect(wranglerSteps(steps.get("deploy-docs"))).toEqual([
@@ -1342,10 +1528,13 @@ describe("CI stages and the deploy stage", () => {
         .get("changes")!
         .steps.find((candidate) => /id: diff/.test(candidate.text))!;
       expect(step.text).toContain("git merge-base origin/main HEAD");
-      expect(step.text).toContain("grep -qv '^docs/content/'");
-      // An empty diff or a failed fetch is a full run, never a docs-only one.
-      expect(step.text).toContain("docs_only=false");
-      expect(step.text).toContain('[ -n "$files" ]');
+      expect(step.text).toContain("git diff --name-only -z");
+      expect(step.text).toContain(
+        "node .github/scripts/changed-workspaces.mjs",
+      );
+      // An empty diff or failed fetch selects the complete matrix.
+      expect(step.text).toContain("changed-workspaces.mjs --all");
+      expect(step.text).toContain('[ -s "$changed_files" ]');
       expect(jobs.get("changes")!.body.join("\n")).toContain("fetch-depth: 0");
     });
   });

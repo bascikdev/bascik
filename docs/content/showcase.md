@@ -4,7 +4,7 @@ Made with Bascik: real websites built with HTML components, scoped styles, and z
 
 ## New tool. Familiar output.
 
-Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, and a SaaS product with a server-rendered dashboard. The sites below, including this one, show it at work.
+Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, and an online shop. The sites below, including this one, show it at work.
 
 You do not have to take the compiler's output on faith. Bascik ships HTML, JavaScript, and CSS to the browser. [Turn off minification](/configuration#minify-byominifier) to inspect the generated files yourself, then use the browser's developer tools to see what is actually running.
 
@@ -31,6 +31,10 @@ A SaaS website and dashboard built with Bascik and the Netlify adapter. The dash
 ### Bascik
 
 This site is built with Bascik, too. The documentation, live examples, and homepage all use the same tool you install.
+
+### Bascik Shop
+
+An independent merchandise shop built with Bascik and the Cloudflare adapter. It uses Stripe Checkout for payments and Printful for shipping and fulfillment, with orders stored in Cloudflare D1.
 
 ## Submit your site
 

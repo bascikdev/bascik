@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { statSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
+import { shippingCountries } from "../src/lib/shipping-countries.ts";
+import destinations from "../catalog/shipping-countries.json" with { type: "json" };
 import { cartItems, recipient } from "../src/lib/checkout.ts";
 import { cents, ProviderError } from "../src/lib/providers.ts";
 import { equal, hmac, now, boundedText, body } from "../src/lib/platform.ts";
@@ -22,6 +24,29 @@ import {
 } from "../scripts/template-fingerprint.ts";
 
 describe("owned product catalog", () => {
+  test("shipping countries are cart-specific, US-first, and otherwise alphabetical", () => {
+    const supported: Record<string, string[]> = destinations;
+    for (const ids of [
+      [],
+      ...products.map((product) => [product.id]),
+      products.map((product) => product.id),
+    ]) {
+      const list = shippingCountries(ids);
+      expect(list[0].code).toBe("US");
+      const remaining = list.slice(1).map((country) => country.name);
+      expect(remaining).toEqual(
+        [...remaining].sort((a, b) => a.localeCompare(b, "en")),
+      );
+      for (const productId of ids.length ? ids : Object.keys(supported))
+        expect(
+          list.every((country) => supported[productId].includes(country.code)),
+        ).toBe(true);
+      expect(list.some((country) => country.code === "RU")).toBe(false);
+    }
+    expect(() => shippingCountries(["unknown"])).toThrow(
+      "Shipping countries missing",
+    );
+  });
   test("carries owner-approved policy decisions and legacy URLs into the new shop", () => {
     expect(supportEmail).toBe("collin@bascik.dev");
     for (const text of [
@@ -273,6 +298,58 @@ describe("checkout inputs", () => {
     expect(() => recipient(input)).toThrow("State/province");
     expect(recipient({ ...input, country_code: "IE" }).zip).toBe("");
   });
+  test("Singapore's omitted Stripe city is normalized without accepting incomplete addresses", () => {
+    const input = {
+      name: "Test Buyer",
+      email: "buyer@example.com",
+      address1: "1 Parliament Pl",
+      city: "",
+      country_code: "SG",
+      zip: "178880",
+    };
+    expect(recipient(input).city).toBe("Singapore");
+    expect(() => recipient({ ...input, zip: "" })).toThrow(
+      "Postal code is required",
+    );
+    expect(() => recipient({ ...input, country_code: "US" })).toThrow(
+      "required delivery fields",
+    );
+  });
+  test.each([
+    ["US", "Arizona", "AZ"],
+    ["US", " az ", "AZ"],
+    ["US", "ARIZONA", "AZ"],
+    ["CA", "Ontario", "ON"],
+    ["AU", "Queensland", "QLD"],
+  ])("normalizes %s state %s to %s", (country, state, code) => {
+    expect(
+      recipient({
+        name: "Test Buyer",
+        email: "buyer@example.com",
+        address1: "Example street",
+        city: "Example",
+        country_code: country,
+        state_code: state,
+        zip: "12345",
+      }).state_code,
+    ).toBe(code);
+  });
+  test.each(["United States", "ZZ", "Not a state"])(
+    "rejects invalid US state %s with an actionable error",
+    (state) => {
+      expect(() =>
+        recipient({
+          name: "Test Buyer",
+          email: "buyer@example.com",
+          address1: "Example street",
+          city: "Example",
+          country_code: "US",
+          state_code: state,
+          zip: "85007",
+        }),
+      ).toThrow("valid state/province name or code for United States");
+    },
+  );
   test.each(["-1.00", "1e2", "NaN", "1.001", "0x10", ""])(
     "rejects unsafe shipping amounts: %s",
     (value) => {

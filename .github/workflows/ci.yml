@@ -4,32 +4,31 @@ name: CI
 # adapter demo. A push to main (a
 # merged pull request, already tested on its branch) skips stages 1 to 4 and only deploys both Workers to
 # production: the stage 1 jobs skip on main, every test job after them skips with them, and the deploy jobs run
-# anyway because their `if` starts with !cancelled(). On any other branch the deploy jobs still need every stage 4
-# job to have succeeded. Tags never run CI (release.yml handles them): a push filter with only `branches` skips
-# tag pushes.
+# anyway because their `if` starts with !cancelled(). On other branches, previews follow successful selected suites.
+# Tags never run CI (release.yml handles them): a push filter with only `branches` skips tag pushes.
 #
 # Production deploys come only from pull requests merged into main. Because a push to main runs no tests, each deploy
 # job on main first asks GitHub for the pull requests of github.sha and fails, deploying nothing, unless one of them
 # was merged into main (.github/scripts/merged-pull-request.mjs). A commit pushed straight to main therefore never
 # deploys; the manual emergency deploy in DEPLOYMENT.md is the documented bypass.
 #
-# Pull requests from forks run stages 1 to 4. A same-repo pull request normally relies on its branch push,
-# but runs those stages if its latest commit only changes shop files and its cumulative diff has other changes:
-# in that case the push may have been path-filtered. Pull requests never run stage 5.
+# Pull requests from forks run stages 1 to 4. Same-repo pull requests use their branch-push run; shop-only changes are
+# validated by the shop workflow. Pull requests never run stage 5.
 #
-# A push whose every change since the branch left main is under docs/content/ is a docs-only run. The `changes` job
-# detects it, and the run then skips Jelly, Semgrep, the typechecks, and every test job except formatting, spelling
-# and web standards and the three docs suites (unit, integration, E2E), and uploads only the docs Preview. Any other
-# changed file makes the run a full one.
+# The `changes` job maps changed paths to affected workspaces and suites. Shared compiler/build changes run the full
+# matrix; isolated workspace changes run only that workspace's suites and consumers. Docs/content-only pushes retain
+# the docs Preview path.
 on:
   push:
     branches: ["**"]
     paths-ignore:
       - "shop/**"
+      - ".github/workflows/shop.yml"
   pull_request:
     branches: [main]
     paths-ignore:
       - "shop/**"
+      - ".github/workflows/shop.yml"
 
 # A newer push to a branch cancels that branch's older run, Preview upload included. Runs on main never share a
 # group, so none is canceled or left pending. No job has its own concurrency group (a shared group holds only one
@@ -42,13 +41,9 @@ concurrency:
 jobs:
   # ── Stage 1: Static analysis, typechecks, formatting, and spelling ──────────────
 
-  # A run whose changes all sit under docs/content/ (compared with where the branch left main) is a docs-only run: it
-  # skips Jelly, Semgrep, the typechecks and every test job except formatting, spelling and web standards and the three
-  # docs suites, which run one after another, then uploads the docs Preview only. The two adapter demos are not touched
-  # by a docs page, so their Previews and the Preview comment wait for the next full run. Any file outside
-  # docs/content/ makes the run a full one, so the check never has to know what a change could break.
+  # Unknown root paths and shared build/compiler changes conservatively select the full test matrix.
   changes:
-    name: Detect Docs-Only Changes
+    name: Detect Changed Workspaces
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
@@ -57,43 +52,50 @@ jobs:
       contents: read
     outputs:
       docs-only: ${{ steps.diff.outputs.docs-only }}
-      shop-only-head: ${{ steps.diff.outputs.shop-only-head }}
+      run-pkg: ${{ steps.diff.outputs.run-pkg }}
+      run-create: ${{ steps.diff.outputs.run-create }}
+      run-lsp: ${{ steps.diff.outputs.run-lsp }}
+      run-docs: ${{ steps.diff.outputs.run-docs }}
+      run-skills: ${{ steps.diff.outputs.run-skills }}
+      run-extension: ${{ steps.diff.outputs.run-extension }}
+      run-adapter-cloudflare: ${{ steps.diff.outputs.run-adapter-cloudflare }}
+      run-adapter-netlify: ${{ steps.diff.outputs.run-adapter-netlify }}
+      run-shop-unit: ${{ steps.diff.outputs.run-shop-unit }}
+      run-shop-integration: ${{ steps.diff.outputs.run-shop-integration }}
+      run-shop-e2e: ${{ steps.diff.outputs.run-shop-e2e }}
+      run-node-floor: ${{ steps.diff.outputs.run-node-floor }}
+      run-linear-time: ${{ steps.diff.outputs.run-linear-time }}
+      run-any: ${{ steps.diff.outputs.run-any }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      # Compares the commit with the merge base of main, so one non-docs commit anywhere on the branch keeps every
-      # later push a full run. An empty or unreadable comparison counts as a full run.
+      # Compare the cumulative branch diff with main, not only the latest commit. If the diff is unavailable or empty,
+      # select every suite rather than silently skipping validation.
       - name: Check whether only docs/content/ changed
         id: diff
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          docs_only=false
-          if git fetch --no-tags origin main && base="$(git merge-base origin/main HEAD)"; then
-            files="$(git diff --name-only "$base" HEAD)"
-            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qv '^docs/content/'; then
-              docs_only=true
-            fi
+          changed_files="$RUNNER_TEMP/changed-files"
+          if git fetch --no-tags origin main &&
+            base="$(git merge-base origin/main HEAD)" &&
+            git diff --name-only -z "$base" HEAD > "$changed_files" &&
+            [ -s "$changed_files" ]; then
+            node .github/scripts/changed-workspaces.mjs "$changed_files" >> "$GITHUB_OUTPUT"
+          else
+            node .github/scripts/changed-workspaces.mjs --all >> "$GITHUB_OUTPUT"
           fi
-          echo "docs-only=$docs_only" >> "$GITHUB_OUTPUT"
-          echo "Docs-only run: $docs_only"
-          shop_only_head=false
-          if [ -n "$HEAD_SHA" ] && files="$(git diff --no-renames --name-only "$HEAD_SHA^" "$HEAD_SHA")" && [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qv '^shop/'; then
-            shop_only_head=true
-          fi
-          echo "shop-only-head=$shop_only_head" >> "$GITHUB_OUTPUT"
 
   jelly:
     name: Jelly Static Analysis
     runs-on: ubuntu-latest
     needs: [changes]
-    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
+    # Jelly analyzes the framework entrypoint, so unrelated workspace changes do not need it.
     if: >-
+      needs.changes.outputs.run-pkg == 'true' &&
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -124,11 +126,12 @@ jobs:
     name: Semgrep Static Analysis
     runs-on: ubuntu-latest
     needs: [changes]
-    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
+    # Docs-only and metadata-only changes do not alter executable code for Semgrep to analyze.
     if: >-
+      needs.changes.outputs.run-any == 'true' &&
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -143,11 +146,12 @@ jobs:
     name: Workspace Typechecks
     runs-on: ubuntu-latest
     needs: [changes]
-    # Same-repo pull requests usually use the push run; docs-only runs skip this job.
+    # Typecheck only when a product workspace changed; docs-only runs use the docs checks below.
     if: >-
+      needs.changes.outputs.run-any == 'true' &&
       needs.changes.outputs.docs-only != 'true' &&
       ((github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true')))
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))
     permissions:
       contents: read
     steps:
@@ -178,7 +182,7 @@ jobs:
     # Runs on a docs-only run too: formatting, spelling and web standards are the cheap checks a docs page needs.
     if: >-
       (github.event_name == 'push' && github.ref != 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || needs.changes.outputs.shop-only-head == 'true'))
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     permissions:
       contents: read
     steps:
@@ -208,11 +212,18 @@ jobs:
       - name: Check web standards
         run: yarn check:standards
 
-  # ── Stage 2: Unit tests (after every stage 1 job passes) ────────────────────────
+  # ── Stage 2: Selected unit suites (after stage 1 checks pass) ───────────────────
 
   unit-pkg:
     name: Framework Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-pkg == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      needs.jelly.result == 'success'
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -240,6 +251,13 @@ jobs:
   unit-create:
     name: Create-Bascik Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-create == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -268,6 +286,13 @@ jobs:
   unit-lsp:
     name: Language Server Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-lsp == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -296,6 +321,17 @@ jobs:
   unit-windows:
     name: Windows Unit Tests
     runs-on: windows-latest
+    if: >-
+      !cancelled() &&
+      (
+      needs.changes.outputs.run-pkg == 'true' ||
+      needs.changes.outputs.run-create == 'true' ||
+      needs.changes.outputs.run-lsp == 'true'
+      ) &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -328,28 +364,38 @@ jobs:
         run: yarn install --immutable
 
       - name: Build package
+        if: >-
+          needs.changes.outputs.run-pkg == 'true' ||
+          needs.changes.outputs.run-create == 'true'
         run: yarn pkg:build
 
       - name: Framework unit tests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.run-pkg == 'true' }}
         run: yarn pkg:unit
 
       - name: Language server unit tests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.run-lsp == 'true' }}
         run: yarn lsp:unit
 
       # scaffold.integration.test.ts builds the Cloudflare and Netlify templates with them.
       - name: Build hosting adapters
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.run-create == 'true' }}
         run: yarn adapter:cf:build && yarn adapter:nf:build
 
       - name: Create-Bascik unit tests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.run-create == 'true' }}
         run: yarn create:unit
 
   unit-adapter-cloudflare:
     name: Cloudflare Adapter Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-adapter-cloudflare == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -377,6 +423,13 @@ jobs:
   unit-adapter-netlify:
     name: Netlify Adapter Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-adapter-netlify == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -403,12 +456,14 @@ jobs:
   unit-docs:
     name: Docs Unit Tests
     runs-on: ubuntu-latest
-    # A docs-only run (see `changes`) needs only standards; any other run needs every job it waits on.
     if: >-
-      !cancelled() && (
-      (needs.changes.outputs.docs-only == 'true' && needs.standards.result == 'success') ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      needs.changes.outputs.run-docs == 'true' &&
+      !cancelled() &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.docs-only == 'true' ||
+      (needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')))
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -433,6 +488,13 @@ jobs:
   unit-skills:
     name: Agent Skills Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-skills == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -457,6 +519,13 @@ jobs:
   unit-extension:
     name: Extension Unit Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-extension == 'true' &&
+      needs.semgrep.result == 'success' &&
+      needs.typecheck.result == 'success' &&
+      needs.standards.result == 'success' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.jelly.result == 'success')
     permissions:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
@@ -478,15 +547,22 @@ jobs:
       - name: Run extension unit tests
         run: yarn ext:unit
 
-  # ── Stage 3: Integration tests, linear-time checks, and the Node 22.22 floor (after every unit job)
+  # ── Stage 3: Selected integration, linear-time, and Node 22.22 suites
 
   integration-pkg:
     name: Framework Integration Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-pkg == 'true' &&
+      needs.unit-pkg.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: read
     needs:
       [
+        changes,
         unit-pkg,
         unit-create,
         unit-lsp,
@@ -539,12 +615,12 @@ jobs:
   integration-docs:
     name: Docs Integration Tests
     runs-on: ubuntu-latest
-    # A docs-only run (see `changes`) needs only unit-docs; any other run needs every job it waits on.
     if: >-
-      !cancelled() && (
-      (needs.changes.outputs.docs-only == 'true' && needs.unit-docs.result == 'success') ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      !cancelled() &&
+      needs.changes.outputs.run-docs == 'true' &&
+      needs.unit-docs.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: read
     needs:
@@ -581,10 +657,17 @@ jobs:
   integration-skills:
     name: Agent Skills Integration Tests
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-skills == 'true' &&
+      needs.unit-skills.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: read
     needs:
       [
+        changes,
         unit-pkg,
         unit-create,
         unit-lsp,
@@ -626,10 +709,23 @@ jobs:
   node-floor:
     name: Node 22.22 Floor
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-node-floor == 'true' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.unit-pkg.result == 'success') &&
+      (needs.changes.outputs.run-create != 'true' || needs.unit-create.result == 'success') &&
+      (needs.changes.outputs.run-lsp != 'true' || needs.unit-lsp.result == 'success') &&
+      (needs.changes.outputs.run-skills != 'true' || needs.unit-skills.result == 'success') &&
+      (needs.changes.outputs.run-extension != 'true' || needs.unit-extension.result == 'success') &&
+      (needs.changes.outputs.run-adapter-cloudflare != 'true' || needs.unit-adapter-cloudflare.result == 'success') &&
+      (needs.changes.outputs.run-adapter-netlify != 'true' || needs.unit-adapter-netlify.result == 'success') &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: read
     needs:
       [
+        changes,
         unit-pkg,
         unit-create,
         unit-lsp,
@@ -673,12 +769,14 @@ jobs:
         run: yarn typecheck:all
 
       - name: Framework unit tests
+        if: needs.changes.outputs.run-pkg == 'true'
         run: yarn pkg:unit
 
       - name: Install Playwright browsers
         run: npx playwright install chromium
 
       - name: Framework integration tests
+        if: needs.changes.outputs.run-pkg == 'true'
         id: framework-integration
         env:
           TMPDIR: ${{ runner.temp }}
@@ -694,21 +792,27 @@ jobs:
           retention-days: 7
 
       - name: Create-Bascik unit tests
+        if: needs.changes.outputs.run-create == 'true'
         run: yarn create:unit
 
       - name: Language server unit tests
+        if: needs.changes.outputs.run-lsp == 'true'
         run: yarn lsp:unit
 
       - name: Extension unit tests
+        if: needs.changes.outputs.run-extension == 'true'
         run: yarn ext:unit
 
       - name: Cloudflare adapter unit tests
+        if: needs.changes.outputs.run-adapter-cloudflare == 'true'
         run: yarn adapter:cf:unit
 
       - name: Docs unit tests
+        if: needs.changes.outputs.run-docs == 'true'
         run: yarn docs:unit
 
       - name: Agent skills unit tests
+        if: needs.changes.outputs.run-skills == 'true'
         run: yarn skills:unit
 
   # Linear-time scaling checks (pkg, the language server, and the agent skills' scripts): CPU-growth measurements on hostile input. They are
@@ -717,10 +821,19 @@ jobs:
   linear-time:
     name: Linear-Time Checks
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.changes.outputs.run-linear-time == 'true' &&
+      (needs.changes.outputs.run-pkg != 'true' || needs.unit-pkg.result == 'success') &&
+      (needs.changes.outputs.run-lsp != 'true' || needs.unit-lsp.result == 'success') &&
+      (needs.changes.outputs.run-skills != 'true' || needs.unit-skills.result == 'success') &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: read
     needs:
       [
+        changes,
         unit-pkg,
         unit-create,
         unit-lsp,
@@ -746,18 +859,71 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run linear-time checks
-        run: yarn linear-time:all
+      - name: Framework linear-time checks
+        if: needs.changes.outputs.run-pkg == 'true'
+        run: yarn pkg:linear-time
 
-  # ── Stage 4: End-to-end tests (after every stage 3 job passes) ──────────────────
+      - name: Language server linear-time checks
+        if: needs.changes.outputs.run-lsp == 'true'
+        run: yarn lsp:linear-time
+
+      - name: Agent skills linear-time checks
+        if: needs.changes.outputs.run-skills == 'true'
+        run: yarn skills:linear-time
+
+  test-gate:
+    name: Verify Selected Unit and Integration Suites
+    runs-on: ubuntu-latest
+    if: >-
+      always() && needs.changes.result == 'success' && !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      (needs.changes.outputs.run-pkg != 'true' || (needs.unit-pkg.result == 'success' && needs.integration-pkg.result == 'success')) &&
+      (needs.changes.outputs.run-create != 'true' || needs.unit-create.result == 'success') &&
+      (needs.changes.outputs.run-lsp != 'true' || needs.unit-lsp.result == 'success') &&
+      (needs.changes.outputs.run-docs != 'true' || (needs.unit-docs.result == 'success' && needs.integration-docs.result == 'success')) &&
+      (needs.changes.outputs.run-skills != 'true' || (needs.unit-skills.result == 'success' && needs.integration-skills.result == 'success')) &&
+      (needs.changes.outputs.run-extension != 'true' || needs.unit-extension.result == 'success') &&
+      (needs.changes.outputs.run-adapter-cloudflare != 'true' || needs.unit-adapter-cloudflare.result == 'success') &&
+      (needs.changes.outputs.run-adapter-netlify != 'true' || needs.unit-adapter-netlify.result == 'success') &&
+      (needs.changes.outputs.run-node-floor != 'true' || needs.node-floor.result == 'success') &&
+      (needs.changes.outputs.run-linear-time != 'true' || needs.linear-time.result == 'success')
+    needs:
+      [
+        changes,
+        unit-pkg,
+        unit-create,
+        unit-lsp,
+        unit-windows,
+        unit-adapter-cloudflare,
+        unit-adapter-netlify,
+        unit-docs,
+        unit-skills,
+        unit-extension,
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        node-floor,
+        linear-time,
+      ]
+    steps:
+      - run: echo "All selected unit, integration, and compatibility suites passed."
+
+  # ── Stage 4: Selected end-to-end suites (after the stage 3 test gate passes) ────
 
   e2e-pkg-static:
     name: Framework E2E (Static)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-pkg == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -791,10 +957,16 @@ jobs:
   e2e-pkg-dev:
     name: Framework E2E (Dev Server)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-pkg == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -837,10 +1009,16 @@ jobs:
   e2e-pkg-prod-http1:
     name: Framework E2E (Prod Server HTTP/1.1)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-pkg == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -874,10 +1052,16 @@ jobs:
   e2e-pkg-prod-http2:
     name: Framework E2E (Prod Server HTTP/2)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-pkg == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -911,10 +1095,16 @@ jobs:
   e2e-adapter-cloudflare:
     name: Cloudflare Adapter E2E (local workerd)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-adapter-cloudflare == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -953,10 +1143,16 @@ jobs:
   e2e-adapter-netlify:
     name: Netlify Adapter E2E (local Netlify runtime)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-adapter-netlify == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -997,17 +1193,16 @@ jobs:
   e2e-docs:
     name: Docs E2E
     runs-on: ubuntu-latest
-    # A docs-only run (see `changes`) needs only integration-docs; any other run needs every job it waits on.
     if: >-
-      !cancelled() && (
-      (needs.changes.outputs.docs-only == 'true' && needs.integration-docs.result == 'success') ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-docs == 'true'
     permissions:
       contents: read
     needs:
       [
         changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -1041,10 +1236,16 @@ jobs:
   e2e-create:
     name: Create-Bascik Scaffold E2E
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-create == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -1075,10 +1276,16 @@ jobs:
   e2e-extension:
     name: VS Code Extension E2E (real editor)
     runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-extension == 'true'
     permissions:
       contents: read
     needs:
       [
+        changes,
+        test-gate,
         integration-pkg,
         integration-docs,
         integration-skills,
@@ -1126,7 +1333,36 @@ jobs:
       - name: Run the extension tests in VS Code
         run: xvfb-run -a yarn ext:e2e
 
-  # ── Stage 5: Deploy to Cloudflare and Netlify (after every stage 4 job passes) ──────────────
+  e2e-gate:
+    name: Verify Selected End-to-End Suites
+    runs-on: ubuntu-latest
+    if: >-
+      always() && needs.changes.result == 'success' && !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      (needs.changes.outputs.run-pkg != 'true' || (needs.e2e-pkg-static.result == 'success' && needs.e2e-pkg-dev.result == 'success' && needs.e2e-pkg-prod-http1.result == 'success' && needs.e2e-pkg-prod-http2.result == 'success')) &&
+      (needs.changes.outputs.run-create != 'true' || needs.e2e-create.result == 'success') &&
+      (needs.changes.outputs.run-docs != 'true' || needs.e2e-docs.result == 'success') &&
+      (needs.changes.outputs.run-extension != 'true' || needs.e2e-extension.result == 'success') &&
+      (needs.changes.outputs.run-adapter-cloudflare != 'true' || needs.e2e-adapter-cloudflare.result == 'success') &&
+      (needs.changes.outputs.run-adapter-netlify != 'true' || needs.e2e-adapter-netlify.result == 'success')
+    needs:
+      [
+        changes,
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-adapter-netlify,
+        e2e-docs,
+        e2e-create,
+        e2e-extension,
+      ]
+    steps:
+      - run: echo "All selected end-to-end suites passed."
+
+  # ── Stage 5: Deploy to Cloudflare and Netlify (after selected stage 4 suites pass) ────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
   # deploys both Workers and the Netlify demo to production. A push to any other branch uploads
   # a Preview of both Workers and the Netlify demo under one alias (pr-<number> when the branch has an open pull
@@ -1136,20 +1372,20 @@ jobs:
   deploy-docs:
     name: Deploy Docs (bascik.dev)
     runs-on: ubuntu-latest
-    # A docs-only run (see `changes`) uploads the docs Preview after the docs suites alone; every other branch run
-    # needs every stage 4 job. The adapter demos below keep requiring all of them, so a docs-only run skips them.
+    # Docs-only runs upload only the docs Preview. Other branch runs deploy after the selected test suites pass.
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
       github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (!contains(needs.*.result, 'skipped') ||
-      (needs.changes.outputs.docs-only == 'true' && needs.e2e-docs.result == 'success'))))
+      (needs.e2e-gate.result == 'success' && needs.changes.outputs.run-any == 'true' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.changes.outputs.docs-only != 'true' || needs.e2e-docs.result == 'success')))
     permissions:
       contents: read
       pull-requests: read
     needs:
       [
         changes,
+        e2e-gate,
         e2e-pkg-static,
         e2e-pkg-dev,
         e2e-pkg-prod-http1,
@@ -1283,13 +1519,16 @@ jobs:
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
       github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      (needs.e2e-gate.result == 'success' && needs.changes.outputs.run-any == 'true' &&
+      needs.changes.outputs.docs-only != 'true' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')))
     permissions:
       contents: read
       pull-requests: read
     needs:
       [
+        changes,
+        e2e-gate,
         e2e-pkg-static,
         e2e-pkg-dev,
         e2e-pkg-prod-http1,
@@ -1422,13 +1661,16 @@ jobs:
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
       github.repository == 'bascikdev/bascik' && (github.ref == 'refs/heads/main' ||
-      (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      !contains(needs.*.result, 'skipped')))
+      (needs.e2e-gate.result == 'success' && needs.changes.outputs.run-any == 'true' &&
+      needs.changes.outputs.docs-only != 'true' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')))
     permissions:
       contents: read
       pull-requests: read
     needs:
       [
+        changes,
+        e2e-gate,
         e2e-pkg-static,
         e2e-pkg-dev,
         e2e-pkg-prod-http1,

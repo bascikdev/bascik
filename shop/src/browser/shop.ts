@@ -1,5 +1,5 @@
 import { products, findVariant, money } from "../lib/catalog.ts";
-import countries from "../../catalog/countries.json" with { type: "json" };
+import { mountCheckoutForm } from "./checkout-form.ts";
 
 interface CartItem {
   variantId: string;
@@ -222,7 +222,24 @@ function renderCart() {
     line.className = "cart-line";
     line.dataset.testid = "cart-line";
     const img = document.createElement("img");
-    img.src = match.product.images[0].src;
+    const image =
+      match.product.images.find(
+        (image) =>
+          image.sourceId === match.variant.imageId &&
+          image.color === match.variant.color,
+      ) ??
+      match.product.images.find((image) => image.color === match.variant.color);
+    if (image) {
+      img.src = image.src;
+      img.srcset = image.srcset;
+      img.sizes = "80px";
+    } else {
+      console.error("Cart variant image is missing", {
+        variantId: match.variant.id,
+        color: match.variant.color,
+      });
+    }
+    img.dataset.testid = "cart-image";
     img.alt = "";
     img.width = img.height = 80;
     const description = document.createElement("div");
@@ -295,109 +312,20 @@ async function api(path: string, body?: unknown) {
     throw new Error(json.error ?? "The request failed. Please try again.");
   return json;
 }
-const shippingForm = element<HTMLFormElement>("[data-shipping-form]");
-const country = element<HTMLSelectElement>("[name=country_code]");
-if (country) {
-  for (const item of [...countries].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  )) {
-    const option = document.createElement("option");
-    option.value = item.code;
-    option.textContent = item.name;
-    country.append(option);
-  }
-  country.addEventListener("change", () => {
-    const region = countries.find((entry) => entry.code === country.value);
-    const state = element<HTMLInputElement>("[name=state_code]");
-    if (state) {
-      state.required = ["US", "CA", "AU"].includes(country.value);
-      state.setAttribute(
-        "placeholder",
-        region?.states
-          ?.map((entry) => entry.code)
-          .slice(0, 6)
-          .join(", ") ?? "",
-      );
-    }
-    const zip = element<HTMLInputElement>("[name=zip]");
-    if (zip) zip.required = ["US", "CA", "AU"].includes(country.value);
-  });
-}
-let quoteId: string | undefined;
-shippingForm?.addEventListener("input", () => {
-  quoteId = undefined;
-  const section = element("[data-rates-section]");
-  if (section) section.hidden = true;
-});
-shippingForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const button = shippingForm.querySelector("button");
-  if (button) button.disabled = true;
-  status("[data-checkout-status]", "Checking availability and shipping...");
-  try {
-    const result = await api("/api/quote", {
-      items: cart(),
-      recipient: Object.fromEntries(new FormData(shippingForm)),
-    });
-    quoteId = result.quoteId;
-    const rates = element("[data-rates]");
-    rates?.replaceChildren();
-    for (const [index, rate] of result.rates.entries()) {
-      const label = document.createElement("label");
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = "shippingId";
-      radio.value = rate.id;
-      radio.checked = index === 0;
-      label.append(radio, `${rate.name} · ${money(rate.amount)}`);
-      rates?.append(label);
-    }
-    const section = element("[data-rates-section]");
-    if (section) section.hidden = false;
+const checkoutForm = element("[data-stripe-checkout]");
+if (checkoutForm)
+  void mountCheckoutForm(
+    checkoutForm,
+    cart(),
+    (message, error) => status("[data-checkout-status]", message, error),
+    cart,
+  ).catch((error: unknown) =>
     status(
       "[data-checkout-status]",
-      `Items ${money(result.subtotal)}. Choose shipping below.`,
-    );
-  } catch (error) {
-    status(
-      "[data-checkout-status]",
-      error instanceof Error ? error.message : "Shipping lookup failed.",
+      error instanceof Error ? error.message : "Secure checkout failed.",
       true,
-    );
-  } finally {
-    if (button) button.disabled = false;
-  }
-});
-element<HTMLButtonElement>("[data-pay]")?.addEventListener(
-  "click",
-  async (event) => {
-    const target = event.currentTarget as HTMLButtonElement;
-    const shippingId = document.querySelector<HTMLInputElement>(
-      "[name=shippingId]:checked",
-    )?.value;
-    if (!quoteId || !shippingId)
-      return status(
-        "[data-checkout-status]",
-        "Request a fresh shipping quote first.",
-        true,
-      );
-    target.disabled = true;
-    try {
-      const result = await api("/api/checkout", { quoteId, shippingId });
-      const url = new URL(result.url);
-      if (url.protocol !== "https:" || url.hostname !== "checkout.stripe.com")
-        throw new Error("Invalid payment destination.");
-      location.assign(url.href);
-    } catch (error) {
-      status(
-        "[data-checkout-status]",
-        error instanceof Error ? error.message : "Checkout failed.",
-        true,
-      );
-      target.disabled = false;
-    }
-  },
-);
+    ),
+  );
 if (element("[data-order-status]")) {
   const params = new URLSearchParams(location.hash.slice(1));
   const token = params.get("token");

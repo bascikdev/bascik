@@ -26,6 +26,12 @@ const config = JSON.parse(
 if (launch) assertProductionLaunch(config);
 else assertProductionPrelaunch(config);
 const secrets: Record<string, string> = {};
+if (launch) {
+  const publishable = process.env.STRIPE_PUBLISHABLE_KEY;
+  if (!publishable || !/^pk_live_/.test(publishable))
+    throw new Error("Missing production Stripe publishable key.");
+  secrets.STRIPE_PUBLISHABLE_KEY = publishable;
+}
 for (const name of [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",

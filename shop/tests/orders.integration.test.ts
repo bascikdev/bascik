@@ -8,7 +8,9 @@ import {
   quoteRequest,
   checkoutRequest,
   printfulItems,
+  recipient,
   type Quote,
+  type Order,
 } from "../src/lib/checkout.ts";
 import {
   stripeWebhook,
@@ -20,6 +22,13 @@ import {
   sendNotifications,
   sweep,
 } from "../src/lib/fulfillment.ts";
+import {
+  createFormRequest,
+  updateFormShipping,
+  confirmFormRequest,
+  resetFormRequest,
+} from "../src/lib/checkout-form.ts";
+import { paidSession } from "../src/lib/fulfillment.ts";
 
 let runtime: Miniflare;
 let env: Env;
@@ -87,7 +96,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0002_printful_v2.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0003_printful_templates.sql", "utf8"));
+    (await readFile("migrations/0003_printful_templates.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0004_checkout_form.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -102,6 +113,7 @@ beforeAll(async () => {
     SHOP_MODE: "test",
     SHOP_FULFILLMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_fixture",
+    STRIPE_PUBLISHABLE_KEY: "pk_test_fixture",
     STRIPE_WEBHOOK_SECRET: "whsec_fixture",
     ORDER_TOKEN_SECRET: "fixture-order-token-secret-long-enough",
     PRINTFUL_TOKEN: "fixture",
@@ -124,6 +136,7 @@ beforeEach(async () => {
   for (const table of [
     "notifications",
     "payment_events",
+    "checkout_forms",
     "orders",
     "quotes",
     "variant_mappings",
@@ -1058,6 +1071,406 @@ test("quotes require verified private mappings and server prices", async () => {
   );
   expect((await result.json()).subtotal).toBe(6000);
 });
+const formValue = {
+  customerDetails: { email: "buyer@example.com" },
+  shippingAddress: {
+    name: "Test Buyer",
+    address: {
+      line1: "Example street",
+      line2: "",
+      city: "Example",
+      state: "California",
+      postal_code: "90001",
+      country: "US",
+    },
+  },
+};
+async function formFixture() {
+  const formQuote: Quote = {
+    ...snapshot,
+    checkoutForm: true,
+    rates: snapshot.rates.map((rate) => ({
+      ...rate,
+      stripeRateId: "shr_fixture",
+    })),
+  };
+  await env.DB.prepare("UPDATE orders SET snapshot=?,shipping_id='' WHERE id=?")
+    .bind(JSON.stringify(formQuote), id)
+    .run();
+  await env.DB.prepare("INSERT INTO checkout_forms(order_id) VALUES (?)")
+    .bind(id)
+    .run();
+  await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+    .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
+    .run();
+  const session = {
+    ...payment,
+    status: "open",
+    payment_status: "unpaid",
+    client_secret: "cs_test_fixture_secret_fixture",
+    shipping_options: [{ shipping_rate: "shr_fixture" }],
+  };
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) =>
+      Response.json(
+        String(input).includes("api.printful.com")
+          ? {
+              data: [
+                {
+                  shipping: "STANDARD",
+                  shipping_method_name: "Standard",
+                  rate: "5.00",
+                  currency: "USD",
+                },
+              ],
+            }
+          : session,
+      ),
+    );
+  return { token: await orderToken(env, id), session, fetcher };
+}
+test("embedded form sessions use server prices and cart-specific shipping countries", async () => {
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (_input, init) => {
+      const params = new URLSearchParams(String(init?.body));
+      expect(params.get("ui_mode")).toBe("form");
+      expect(params.get("line_items[0][price_data][unit_amount]")).toBe("3000");
+      expect(
+        params.get("shipping_address_collection[allowed_countries][0]"),
+      ).toBe("US");
+      expect(params.toString()).not.toContain(
+        "shipping_address_collection%5Ballowed_countries%5D%5B0%5D=RU",
+      );
+      const allowed = [...params]
+        .filter(([key]) => key.startsWith("shipping_address_collection"))
+        .map(([, code]) => code);
+      for (const code of ["CX", "CC", "HM", "NF"])
+        expect(allowed).not.toContain(code);
+      expect(init?.headers).toMatchObject({
+        "Stripe-Version": "2026-10-28.endive",
+      });
+      return Response.json({
+        id: "cs_test_new",
+        client_secret: "cs_test_new_secret_fixture",
+      });
+    });
+  const result = await createFormRequest(
+    post("/api/checkout-form", {
+      items: [{ variantId, quantity: 1, price: 1 }],
+    }),
+    env,
+  );
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({
+    publishableKey: "pk_test_fixture",
+    clientSecret: "cs_test_new_secret_fixture",
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+test("failed form creation expires its provisional order instead of leaving unrecoverable pending work", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({ error: {} }, { status: 400 }),
+  );
+  await expect(
+    createFormRequest(
+      post("/api/checkout-form", { items: [{ variantId, quantity: 1 }] }),
+      env,
+    ),
+  ).rejects.toThrow("Stripe request failed");
+  const rows = await env.DB.prepare(
+    "SELECT status FROM orders WHERE stripe_session IS NULL",
+  ).all<{ status: string }>();
+  expect(rows.results).toEqual([{ status: "expired" }]);
+});
+test("embedded confirmation requires a fresh shipping quote", async () => {
+  const { token } = await formFixture();
+  await updateFormShipping(
+    post("/api/checkout-shipping", { token, revision: 1, value: formValue }),
+    env,
+  );
+  await env.DB.prepare(
+    "UPDATE quotes SET expires_at=? WHERE id=(SELECT quote_id FROM orders WHERE id=?)",
+  )
+    .bind(now() - 1, id)
+    .run();
+  await expect(
+    confirmFormRequest(
+      post("/api/checkout-confirm", {
+        token,
+        revision: 1,
+        value: formValue,
+        shippingRateId: "shr_fixture",
+      }),
+      env,
+    ),
+  ).rejects.toThrow("fresh shipping quote");
+});
+test("embedded address requotes preserve prices and titles already frozen into the Stripe Session", async () => {
+  const { token, session } = await formFixture();
+  session.amount_subtotal = 2500;
+  const order = await env.DB.prepare("SELECT snapshot FROM orders WHERE id=?")
+    .bind(id)
+    .first<{ snapshot: string }>();
+  const frozen: Quote = JSON.parse(order!.snapshot);
+  frozen.subtotal = 2500;
+  frozen.items[0].price = 2500;
+  frozen.items[0].title = "Original order title";
+  await env.DB.prepare("UPDATE orders SET snapshot=? WHERE id=?")
+    .bind(JSON.stringify(frozen), id)
+    .run();
+  await updateFormShipping(
+    post("/api/checkout-shipping", { token, revision: 1, value: formValue }),
+    env,
+  );
+  const saved = await env.DB.prepare(
+    "SELECT snapshot,quote_id FROM orders WHERE id=?",
+  )
+    .bind(id)
+    .first<{ snapshot: string; quote_id: string }>();
+  const quoted: Quote = JSON.parse(saved!.snapshot);
+  expect(quoted.subtotal).toBe(2500);
+  expect(quoted.items[0]).toMatchObject({
+    price: 2500,
+    title: "Original order title",
+  });
+  expect(saved!.quote_id).not.toBe(quoteId);
+  const linked = await env.DB.prepare(
+    "SELECT snapshot,expires_at FROM quotes WHERE id=?",
+  )
+    .bind(saved!.quote_id)
+    .first<{ snapshot: string; expires_at: number }>();
+  expect(JSON.parse(linked!.snapshot)).toEqual(quoted);
+  expect(linked!.expires_at).toBeGreaterThan(now());
+  await confirmFormRequest(
+    post("/api/checkout-confirm", {
+      token,
+      revision: 1,
+      value: formValue,
+      shippingRateId: "shr_fixture",
+    }),
+    env,
+  );
+  const prepared = await env.DB.prepare("SELECT * FROM orders WHERE id=?")
+    .bind(id)
+    .first<Order>();
+  await expect(
+    paidSession(env, session.id, prepared!, {
+      ...session,
+      payment_status: "paid",
+      amount_total: 3250,
+      customer_details: { email: formValue.customerDetails.email },
+      shipping_cost: { shipping_rate: "shr_fixture" },
+      shipping_details: {
+        name: formValue.shippingAddress.name,
+        address: { ...formValue.shippingAddress.address, state: "CA" },
+      },
+    }),
+  ).resolves.toBe(true);
+});
+test.each(["processing", "requires_action", "succeeded", "requires_capture"])(
+  "a %s PaymentIntent cannot reset the checkout payment freeze",
+  async (status) => {
+    const { token, session, fetcher } = await formFixture();
+    await env.DB.prepare("UPDATE orders SET shipping_id='STANDARD' WHERE id=?")
+      .bind(id)
+      .run();
+    fetcher.mockImplementation(async (input) =>
+      Response.json(
+        String(input).includes("/payment_intents/")
+          ? { status }
+          : { ...session, payment_intent: "pi_fixture" },
+      ),
+    );
+    await expect(
+      resetFormRequest(post("/api/checkout-reset", { token }), env),
+    ).rejects.toThrow("already processing");
+    expect(
+      await env.DB.prepare("SELECT shipping_id FROM orders WHERE id=?")
+        .bind(id)
+        .first(),
+    ).toEqual({ shipping_id: "STANDARD" });
+  },
+);
+test("embedded shipping normalizes states, refuses stale and foreign updates, freezes for payment and recovers declines", async () => {
+  const { token, fetcher } = await formFixture();
+  await expect(
+    updateFormShipping(
+      post("/api/checkout-shipping", {
+        token: "invalid",
+        revision: 1,
+        value: formValue,
+      }),
+      env,
+    ),
+  ).rejects.toThrow("not found");
+  expect(fetcher).not.toHaveBeenCalled();
+  const update = (revision: number, value = formValue) =>
+    post("/api/checkout-shipping", { token, revision, value });
+  expect((await updateFormShipping(update(1), env)).status).toBe(200);
+  const stored = await env.DB.prepare("SELECT * FROM orders WHERE id=?")
+    .bind(id)
+    .first<Order>();
+  expect(JSON.parse(stored!.snapshot).recipient.state_code).toBe("CA");
+  await expect(updateFormShipping(update(1), env)).rejects.toThrow("stale");
+  await expect(
+    confirmFormRequest(
+      post("/api/checkout-confirm", {
+        token,
+        revision: 1,
+        value: formValue,
+        shippingRateId: "shr_forged",
+      }),
+      env,
+    ),
+  ).rejects.toThrow("current shipping");
+  const changed = {
+    ...formValue,
+    shippingAddress: {
+      ...formValue.shippingAddress,
+      address: { ...formValue.shippingAddress.address, state: "Arizona" },
+    },
+  };
+  await expect(
+    confirmFormRequest(
+      post("/api/checkout-confirm", {
+        token,
+        revision: 1,
+        value: changed,
+        shippingRateId: "shr_fixture",
+      }),
+      env,
+    ),
+  ).rejects.toThrow("address changed");
+  expect(
+    (
+      await confirmFormRequest(
+        post("/api/checkout-confirm", {
+          token,
+          revision: 1,
+          value: formValue,
+          shippingRateId: "shr_fixture",
+        }),
+        env,
+      )
+    ).status,
+  ).toBe(200);
+  await expect(updateFormShipping(update(2), env)).rejects.toThrow(
+    "confirming",
+  );
+  expect(
+    (await resetFormRequest(post("/api/checkout-reset", { token }), env))
+      .status,
+  ).toBe(200);
+  expect((await updateFormShipping(update(2, changed), env)).status).toBe(200);
+});
+test("embedded shipping updates release leases on provider errors and reject expired sessions", async () => {
+  const { token, session, fetcher } = await formFixture();
+  fetcher.mockImplementation(async (input) =>
+    String(input).includes("api.printful.com")
+      ? Response.json({ error: "private" }, { status: 422 })
+      : Response.json(session),
+  );
+  await expect(
+    updateFormShipping(
+      post("/api/checkout-shipping", { token, revision: 1, value: formValue }),
+      env,
+    ),
+  ).rejects.toThrow("Printful request failed");
+  expect(
+    await env.DB.prepare(
+      "SELECT lease_until FROM checkout_forms WHERE order_id=?",
+    )
+      .bind(id)
+      .first(),
+  ).toEqual({ lease_until: 0 });
+  session.status = "complete";
+  await expect(
+    updateFormShipping(
+      post("/api/checkout-shipping", { token, revision: 1, value: formValue }),
+      env,
+    ),
+  ).rejects.toThrow("expired or completed");
+});
+test("embedded paid reconciliation rejects stale shipping addresses and unquoted payment", async () => {
+  await formFixture();
+  const order = await env.DB.prepare("SELECT * FROM orders WHERE id=?")
+    .bind(id)
+    .first<Order>();
+  const paid = {
+    ...payment,
+    status: "complete",
+    customer_details: { email: snapshot.recipient.email },
+    shipping_cost: { shipping_rate: "shr_fixture" },
+    shipping_details: {
+      name: formValue.shippingAddress.name,
+      address: { ...formValue.shippingAddress.address, state: "CA" },
+    },
+  };
+  await expect(paidSession(env, paid.id, order!, paid)).rejects.toThrow(
+    "snapshot mismatch",
+  );
+  order!.shipping_id = "STANDARD";
+  await expect(paidSession(env, paid.id, order!, paid)).resolves.toBe(true);
+  await expect(
+    paidSession(env, paid.id, order!, {
+      ...paid,
+      shipping_details: {
+        ...paid.shipping_details,
+        address: { ...paid.shipping_details.address, state: "AZ" },
+      },
+    }),
+  ).rejects.toThrow("address snapshot mismatch");
+});
+test("embedded paid reconciliation normalizes Singapore when Stripe omits its city", async () => {
+  await formFixture();
+  const singapore = recipient({
+    ...snapshot.recipient,
+    address1: "1 Parliament Pl",
+    city: "",
+    state_code: "",
+    country_code: "SG",
+    zip: "178880",
+  });
+  const quote: Quote = {
+    ...snapshot,
+    checkoutForm: true,
+    recipient: singapore,
+    rates: snapshot.rates.map((rate) => ({
+      ...rate,
+      stripeRateId: "shr_fixture",
+    })),
+  };
+  await env.DB.prepare(
+    "UPDATE orders SET snapshot=?,shipping_id='STANDARD' WHERE id=?",
+  )
+    .bind(JSON.stringify(quote), id)
+    .run();
+  const order = await env.DB.prepare("SELECT * FROM orders WHERE id=?")
+    .bind(id)
+    .first<Order>();
+  await expect(
+    paidSession(env, payment.id, order!, {
+      ...payment,
+      status: "complete",
+      customer_details: { email: singapore.email },
+      shipping_cost: { shipping_rate: { id: "shr_fixture" } },
+      collected_information: {
+        shipping_details: {
+          name: singapore.name,
+          address: {
+            line1: singapore.address1,
+            city: null,
+            state: null,
+            country: "SG",
+            postal_code: singapore.zip,
+          },
+        },
+      },
+    }),
+  ).resolves.toBe(true);
+});
 test("legacy sync mappings cannot enable a v2 quote", async () => {
   await env.DB.prepare("INSERT INTO variant_mappings VALUES (?,?,?,1)")
     .bind(variantId, 123, 456)
@@ -1075,6 +1488,7 @@ test("legacy sync mappings cannot enable a v2 quote", async () => {
   expect(fetcher).not.toHaveBeenCalled();
 });
 test("template quotes preserve shipping techniques and orders use saved template designs", async () => {
+  const logger = vi.spyOn(console, "info").mockImplementation(() => {});
   const design = [{ placement: "front_dtf_hat", technique: "dtfilm" }];
   await env.DB.prepare(
     "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
@@ -1091,6 +1505,7 @@ test("template quotes preserve shipping techniques and orders use saved template
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
       expect(String(input)).toBe("https://api.printful.com/v2/shipping-rates");
+      expect(JSON.parse(String(init?.body)).recipient.state_code).toBe("CA");
       expect(JSON.parse(String(init?.body)).order_items).toEqual([
         {
           source: "catalog",
@@ -1114,7 +1529,7 @@ test("template quotes preserve shipping techniques and orders use saved template
   const result = await quoteRequest(
     post("/api/quote", {
       items: [{ variantId, quantity: 1 }],
-      recipient: snapshot.recipient,
+      recipient: { ...snapshot.recipient, state_code: "California" },
     }),
     env,
   );
@@ -1122,6 +1537,28 @@ test("template quotes preserve shipping techniques and orders use saved template
   const saved = await env.DB.prepare("SELECT snapshot FROM quotes WHERE id=?")
     .bind(output.quoteId)
     .first<{ snapshot: string }>();
+  expect(JSON.parse(saved!.snapshot).recipient.state_code).toBe("CA");
+  expect(logger).toHaveBeenCalledWith("Shop shipping quote requested", {
+    requestId: null,
+    country: "US",
+    state: "CA",
+    items: [
+      {
+        productId: products[0].id,
+        variantId,
+        variant: products[0].variants[0].title,
+        quantity: 1,
+      },
+    ],
+  });
+  const logs = JSON.stringify(logger.mock.calls);
+  for (const privateValue of [
+    snapshot.recipient.name,
+    snapshot.recipient.email,
+    snapshot.recipient.address1,
+    snapshot.recipient.zip,
+  ])
+    expect(logs).not.toContain(privateValue);
   expect(printfulItems(JSON.parse(saved!.snapshot))).toEqual([
     {
       source: "product_template",

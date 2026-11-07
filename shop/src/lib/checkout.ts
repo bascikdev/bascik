@@ -1,4 +1,5 @@
 import { findVariant, type Product, type Variant } from "./catalog.ts";
+import countries from "../../catalog/countries.json" with { type: "json" };
 import {
   ShopError,
   body,
@@ -53,12 +54,14 @@ export interface Rate {
   name: string;
   amount: number;
   currency: string;
+  stripeRateId?: string;
 }
 export interface Quote {
   items: Item[];
   recipient: Recipient;
   rates: Rate[];
   subtotal: number;
+  checkoutForm?: boolean;
 }
 export interface Order {
   id: string;
@@ -100,10 +103,12 @@ export function recipient(value: unknown): Recipient {
       throw new ShopError("Invalid delivery details.");
     result[key] = text.trim();
   }
+  result.country_code = result.country_code.toUpperCase();
+  // Stripe omits the city input for Singapore, a city-state.
+  if (result.country_code === "SG" && !result.city) result.city = "Singapore";
   for (const key of ["name", "email", "address1", "city", "country_code"])
     if (!result[key])
       throw new ShopError("Complete all required delivery fields.");
-  result.country_code = result.country_code.toUpperCase();
   if (
     !/^[A-Z]{2}$/.test(result.country_code) ||
     !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(result.email)
@@ -116,6 +121,24 @@ export function recipient(value: unknown): Recipient {
     throw new ShopError(
       "State/province and postal code are required for this country.",
     );
+  if (result.country_code === "SG" && !result.zip)
+    throw new ShopError("Postal code is required for Singapore.");
+  const region = countries.find(
+    (country) => country.code === result.country_code,
+  );
+  if (result.state_code && region?.states?.length) {
+    const input = result.state_code.toLocaleLowerCase("en");
+    const state = region.states.find(
+      (state) =>
+        state.code.toLocaleLowerCase("en") === input ||
+        state.name.toLocaleLowerCase("en") === input,
+    );
+    if (!state)
+      throw new ShopError(
+        `Enter a valid state/province name or code for ${region.name}.`,
+      );
+    result.state_code = state.code;
+  }
   return {
     name: result.name,
     email: result.email,
@@ -192,6 +215,17 @@ export async function quoteRequest(request: Request, env: Env) {
   const data = await body(request);
   const address = recipient(data.recipient);
   const cart = cartItems(data.items);
+  console.info("Shop shipping quote requested", {
+    requestId: request.headers.get("cf-ray"),
+    country: address.country_code,
+    state: address.state_code,
+    items: cart.map((item) => ({
+      productId: item.product.id,
+      variantId: item.variant.id,
+      variant: item.variant.title,
+      quantity: item.quantity,
+    })),
+  });
   const items: Item[] = [];
   for (const entry of cart) {
     const template = await env.DB.prepare(

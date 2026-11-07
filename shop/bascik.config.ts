@@ -10,10 +10,11 @@ export default defineConfig({
   contentSecurityPolicy: {
     directives: {
       "default-src": ["'self'"],
-      "script-src": ["'self'"],
+      "script-src": ["'self'", "https://js.stripe.com"],
       "style-src": ["'self'"],
       "img-src": ["'self'", "data:"],
-      "connect-src": ["'self'"],
+      "connect-src": ["'self'", "https://api.stripe.com"],
+      "frame-src": ["https://js.stripe.com", "https://hooks.stripe.com"],
       "base-uri": ["'none'"],
       "form-action": ["'self'"],
       "frame-ancestors": ["'none'"],

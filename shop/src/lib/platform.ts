@@ -6,6 +6,7 @@ export interface Env {
   SHOP_MODE: "test" | "live";
   SHOP_FULFILLMENT_ENABLED?: string;
   STRIPE_SECRET_KEY: string;
+  STRIPE_PUBLISHABLE_KEY?: string;
   STRIPE_WEBHOOK_SECRET: string;
   ORDER_TOKEN_SECRET: string;
   PRINTFUL_TOKEN: string;
@@ -36,6 +37,32 @@ export class ShopError extends Error {
   constructor(message: string, status = 400) {
     super(message);
     this.status = status;
+  }
+}
+export class ProviderError extends Error {
+  provider: string;
+  status: number;
+  retryAt: number;
+  path: string;
+  constructor(
+    provider: string,
+    status: number,
+    retryAfter: string | null = null,
+    path = "",
+  ) {
+    super(`${provider} request failed (${status})`);
+    this.name = "ProviderError";
+    this.provider = provider;
+    this.status = status;
+    this.path = path.split("?")[0];
+    const seconds =
+      retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+    const deadline = Number.isSafeInteger(seconds)
+      ? now() + seconds
+      : Math.ceil(Date.parse(retryAfter ?? "") / 1000);
+    this.retryAt = Number.isSafeInteger(deadline)
+      ? Math.max(now(), deadline)
+      : 0;
   }
 }
 export function environment(context: Context): Env {
@@ -166,8 +193,33 @@ export function handler(
       }
       console.error("Shop request failed", {
         path: new URL(request.url).pathname,
+        requestId: request.headers.get("cf-ray"),
         type: error instanceof Error ? error.name : "unknown",
+        ...(error instanceof ProviderError
+          ? {
+              provider: error.provider,
+              providerStatus: error.status,
+              providerPath: error.path,
+              retryAt: error.retryAt,
+            }
+          : {}),
       });
+      if (
+        error instanceof ProviderError &&
+        error.provider === "Printful" &&
+        error.path === "/shipping-rates" &&
+        ["/api/quote", "/api/checkout-shipping"].includes(
+          new URL(request.url).pathname,
+        ) &&
+        [400, 422].includes(error.status)
+      )
+        return json(
+          {
+            error:
+              "Printful could not quote shipping for this cart and address. Check your state/province, postal code, and delivery address.",
+          },
+          422,
+        );
       return json(
         {
           error: "The shop could not complete this request. Please try again.",

@@ -75,6 +75,34 @@ for (const product of products) {
     await expect(page.getByTestId("cart-line")).toHaveCount(
       product.variants.length,
     );
+    for (const variant of product.variants) {
+      const image = product.images.find(
+        (image) => image.sourceId === variant.imageId,
+      );
+      expect(image?.color).toBe(variant.color);
+      const line = page.getByTestId("cart-line").filter({
+        has: page.getByText(`${variant.title} ·`, { exact: false }),
+      });
+      await expect(line).toHaveCount(1);
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "src",
+        image!.src,
+      );
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "srcset",
+        image!.srcset,
+      );
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "sizes",
+        "80px",
+      );
+      await line.getByTestId("cart-quantity").fill("2");
+      await line.getByTestId("cart-quantity").dispatchEvent("change");
+      await expect(line.getByTestId("cart-image")).toHaveAttribute(
+        "src",
+        image!.src,
+      );
+    }
   });
 }
 test("collection cards switch colors and browse only matching views independently", async ({
@@ -170,23 +198,39 @@ test("checkout remains safely disabled and reports a useful error", async ({
   request,
 }) => {
   await page.goto("/checkout");
-  await page.getByLabel("Full name").fill("Test Buyer");
-  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
-  await page.getByLabel("Street address").fill("Example street");
-  await page.getByLabel("City", { exact: true }).fill("Example");
-  await page.getByLabel("State / province code", { exact: false }).fill("CA");
-  await page.getByLabel("Postal code").fill("90001");
-  await page.getByTestId("shipping-country").selectOption("US");
-  await page.getByTestId("shipping-quote").click();
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 1 }]),
+      ),
+    products[0].variants[0].id,
+  );
+  await page.reload();
+  await expect(page.getByTestId("stripe-checkout")).toBeAttached();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(
     "Checkout is not open yet",
   );
-  const response = await request.post("/api/quote", {
+  const response = await request.post("/api/checkout-form", {
     headers: { origin: "http://127.0.0.1:8790" },
     data: {},
   });
   expect(response.status()).toBe(503);
   expect(response.headers()["cache-control"]).toContain("no-store");
+});
+test("empty checkout does not load Stripe and keeps cart intact", async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  await page.goto("/checkout");
+  await expect(page.getByRole("status")).toContainText(
+    "Add at least one product",
+  );
+  expect(requests.some((url) => url.startsWith("https://js.stripe.com"))).toBe(
+    false,
+  );
 });
 test("private order status cannot be accessed with a public identifier", async ({
   request,

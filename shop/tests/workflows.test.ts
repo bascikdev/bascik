@@ -63,10 +63,16 @@ test("commerce previews deploy only trusted branch pushes after validation", () 
   expect(preview).toContain("github.ref != 'refs/heads/main'");
   expect(preview).toContain("github.repository == 'bascikdev/bascik'");
   expect(preview).toContain("environment: shop-preview");
+  expect(preview).toContain(
+    "STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}",
+  );
   expect(preview).not.toContain("pull_request_target");
   const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
   expect(deploy).toContain("pulls[0].head.sha !== process.env.GITHUB_SHA");
   expect(deploy).toContain('SHOP_MODE: "test"');
+  expect(deploy).toContain('required("STRIPE_PUBLISHABLE_KEY")');
+  expect(deploy).toContain('publishableKey.startsWith("pk_test_")');
+  expect(deploy).toContain("STRIPE_PUBLISHABLE_KEY: publishableKey");
   expect(deploy).toContain("config.send_email?.length");
   expect(deploy).toContain("bascik-shop-pr-${pr}");
 });

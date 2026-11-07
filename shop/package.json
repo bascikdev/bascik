@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@bascik/adapter-cloudflare": "workspace:*",
-    "@bascik/bascik": "workspace:*"
+    "@bascik/bascik": "workspace:*",
+    "@stripe/stripe-js": "^10.2.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261030.1",
