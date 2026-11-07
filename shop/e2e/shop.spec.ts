@@ -78,12 +78,12 @@ test("free shipping promotion and cart feedback update at the strict merchandise
   await expect(page.getByTestId("free-shipping-banner")).toBeVisible();
   await page.getByTestId("add-to-cart").click();
   await expect(page.getByTestId("free-shipping-progress")).toContainText(
-    "more than $20.00",
+    "over $50",
   );
   await page.getByTestId("product-quantity").fill("1");
   await page.getByTestId("add-to-cart").click();
   await expect(page.getByTestId("free-shipping-progress")).toContainText(
-    "Your cart qualifies",
+    "over $50",
   );
   await page.getByTestId("product-view-cart").click();
   await expect(page.getByTestId("cart-total")).toHaveText("$60.00");
@@ -121,13 +121,98 @@ test("free shipping promotion and cart feedback update at the strict merchandise
   );
   await page.goto("/");
   await expect(page.getByTestId("free-shipping-progress")).toContainText(
-    "Add another item",
+    "over $50",
   );
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("shipping notes stay compact and contextual, with full terms one link away", async ({
+  page,
+}) => {
+  for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+    await page.goto(path);
+    const note = page.getByTestId("free-shipping-banner");
+    await expect(note).toBeVisible();
+    await expect(note.getByTestId("free-shipping-terms")).toHaveAttribute(
+      "href",
+      "/shipping",
+    );
+    await expect(note).not.toContainText("other services retain");
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute("data-theme", theme),
+        theme,
+      );
+      const style = await note.evaluate((element) => {
+        const css = getComputedStyle(element);
+        return {
+          height: element.getBoundingClientRect().height,
+          background: css.backgroundColor,
+          border: css.borderTopWidth,
+          padding: css.paddingTop,
+          fontSize: parseFloat(css.fontSize),
+        };
+      });
+      expect(style.height).toBeLessThan(100);
+      expect(style.background).toBe("rgba(0, 0, 0, 0)");
+      expect(style.border).toBe("0px");
+      expect(style.padding).toBe("0px");
+      expect(style.fontSize).toBeLessThanOrEqual(14);
+    }
+    if (path.startsWith("/products/"))
+      await expect(
+        page.getByTestId("product-detail").getByTestId("free-shipping-banner"),
+      ).toBeVisible();
+    if (path === "/cart") {
+      await expect(
+        page.getByTestId("cart").getByTestId("free-shipping-banner"),
+      ).toBeVisible();
+      const subtotal = await page.getByTestId("cart-total").boundingBox();
+      const shipping = await note.boundingBox();
+      expect(shipping!.y).toBeGreaterThan(subtotal!.y);
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page.getByTestId("free-shipping-terms").click();
+  await expect(page.getByTestId("shop-policy")).toContainText(
+    "The lowest-cost available shipping option is free; other services retain their full price.",
+  );
+  await expect(page.getByTestId("shop-policy")).toContainText(
+    "Before tax and shipping",
+  );
+});
+
+test("shipping offer and terms remain available without JavaScript", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    baseURL,
+  });
+  try {
+    const page = await context.newPage();
+    for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+      await page.goto(path);
+      await expect(page.getByTestId("free-shipping-banner")).toContainText(
+        "merchandise over $50 to the lower 48 states",
+      );
+      await page.getByTestId("free-shipping-terms").click();
+      await expect(page.getByTestId("shop-policy")).toContainText(
+        "The lowest-cost available shipping option is free",
+      );
+    }
+  } finally {
+    await context.close();
+  }
 });
 
 test("checkout confirms destination-specific free shipping and invalidates it after address changes", async ({

@@ -1,17 +1,11 @@
-.shipping-promotion {
-  margin-bottom: 32px;
-  padding: 18px 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-}
-.shipping-promotion p {
-  margin: 0;
-}
-.shipping-promotion strong {
-  color: var(--accent-fg);
-}
-.shipping-promotion p + p {
-  margin-top: 6px;
+.note {
+  margin: 12px 0 20px;
+  color: var(--muted);
   font-size: 0.875rem;
+  line-height: 1.6;
+}
+a {
+  margin-left: 0.35em;
+  color: inherit;
+  text-underline-offset: 0.2em;
 }

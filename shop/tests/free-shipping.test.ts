@@ -53,7 +53,7 @@ test("progress distinguishes the exact threshold, address-dependent qualificatio
   expect(freeShippingProgress(3000)).toContain("more than $20.00");
   expect(freeShippingProgress(5000)).toContain("Add another item");
   expect(freeShippingProgress(5001)).toContain(
-    "Eligibility is confirmed with your delivery address",
+    "subject to your delivery address",
   );
   expect(
     freeShippingProgress(6000, { country: "US", state: "California" }),

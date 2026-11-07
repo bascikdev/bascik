@@ -3,6 +3,7 @@ import { cart } from "../../browser/cart.ts";
 import { findVariant } from "../../lib/catalog.ts";
 import { freeShippingProgress } from "../../lib/free-shipping.ts";
 export function initShippingPromotion(root: HTMLElement) {
+  if (root.dataset.mode !== "progress") return;
   const { element } = componentElements(root);
   let destination: { country: string; state: string } | undefined;
   const render = () => {

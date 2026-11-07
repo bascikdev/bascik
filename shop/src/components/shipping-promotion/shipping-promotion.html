@@ -1,31 +1,24 @@
-<aside
+<!-- @bascik
+A compact shipping note linking to the full policy.
+@prop mode - Use progress for live cart and delivery eligibility; otherwise show the offer.
+-->
+<p
   id="root"
-  class="shipping-promotion"
-  aria-label="Free shipping offer"
+  class="note"
+  data-bascik-attr-data-mode="mode"
   data-testid="free-shipping-banner"
 >
-  <p>
-    <strong
-      ><script data-bascik-build-once type="text/typescript">
-        import {html} from "@bascik/bascik/html";
-        import {freeShippingOffer} from "@/lib/free-shipping.ts";
-        export default () => html`${freeShippingOffer}`;
-      </script></strong
-    >
-  </p>
-  <p>
-    <script data-bascik-build-once type="text/typescript">
-      import {html} from "@bascik/bascik/html";
-      import {freeShippingDetails} from "@/lib/free-shipping.ts";
-      export default () => html`${freeShippingDetails}`;
-    </script>
-  </p>
-  <p
+  <span
     data-free-shipping-progress
     data-testid="free-shipping-progress"
     aria-live="polite"
   >
-    Eligibility is confirmed with your delivery address.
-  </p>
-</aside>
+    <script data-bascik-build-once type="text/typescript">
+      import {html} from "@bascik/bascik/html";
+      import {freeShippingOffer} from "@/lib/free-shipping.ts";
+      export default () => html`${freeShippingOffer}`;
+    </script>
+  </span>
+  <a href="/shipping" data-testid="free-shipping-terms">Details</a>
+</p>
 <script type="module" src="./shipping-promotion.ts"></script>

@@ -6,7 +6,6 @@
   <body>
     <navigation />
     <main id="main" data-testid="main">
-      <shipping-promotion />
       <script data-bascik-routes type="text/typescript">
         import {products} from "@/lib/catalog.ts";
         export default () => products.map(product=>({params:{slug:product.slug}}));
