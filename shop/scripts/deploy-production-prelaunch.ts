@@ -1,11 +1,18 @@
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { assertProductionPrelaunch } from "./production-config.ts";
+import {
+  assertProductionPrelaunch,
+  assertProductionLaunch,
+} from "./production-config.ts";
 import { createHmac } from "node:crypto";
 
+const launch = process.argv.includes("--launch");
 if (
   process.env.GITHUB_ACTIONS !== "true" ||
-  process.env.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
+  !(
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" ||
+    (launch && process.env.GITHUB_EVENT_NAME === "push")
+  ) ||
   process.env.GITHUB_REF !== "refs/heads/main" ||
   process.env.GITHUB_REPOSITORY !== "bascikdev/bascik"
 )
@@ -16,7 +23,8 @@ await import("./package-production.ts");
 const config = JSON.parse(
   await readFile(".output/wrangler.production.json", "utf8"),
 );
-assertProductionPrelaunch(config);
+if (launch) assertProductionLaunch(config);
+else assertProductionPrelaunch(config);
 const secrets: Record<string, string> = {};
 for (const name of [
   "STRIPE_SECRET_KEY",
@@ -38,6 +46,51 @@ if (
   !process.env.CLOUDFLARE_API_TOKEN
 )
   throw new Error("Invalid production credentials.");
+async function stripeEndpoint(disabled?: boolean) {
+  const id = process.env.STRIPE_WEBHOOK_ENDPOINT_ID;
+  if (!id || !/^we_[A-Za-z0-9]+$/.test(id))
+    throw new Error("Missing production Stripe webhook identity.");
+  const response = await fetch(
+    `https://api.stripe.com/v1/webhook_endpoints/${id}`,
+    {
+      method: disabled === undefined ? "GET" : "POST",
+      headers: {
+        Authorization: `Bearer ${secrets.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Stripe-Version": "2025-02-24.acacia",
+      },
+      body:
+        disabled === undefined
+          ? undefined
+          : new URLSearchParams({ disabled: String(disabled) }),
+      signal: AbortSignal.timeout(30000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Production webhook verification: HTTP ${response.status}`);
+  const endpoint = await response.json();
+  if (
+    endpoint.id !== id ||
+    endpoint.livemode !== true ||
+    endpoint.url !==
+      "https://bascik-shop-production.collin-inbox.workers.dev/api/webhooks/stripe" ||
+    endpoint.metadata?.app !== "bascik-shop-production" ||
+    ![
+      "checkout.session.completed",
+      "checkout.session.async_payment_succeeded",
+      "checkout.session.async_payment_failed",
+      "checkout.session.expired",
+    ].every((event) => endpoint.enabled_events?.includes(event))
+  )
+    throw new Error("Production webhook identity mismatch.");
+  return endpoint;
+}
+if (launch) {
+  await stripeEndpoint();
+  const endpoint = await stripeEndpoint(false);
+  if (endpoint.status !== "enabled")
+    throw new Error("Production webhook is not enabled.");
+}
 function wrangler(...args: string[]) {
   const result = spawnSync(
     "yarn",
@@ -69,26 +122,40 @@ for (let attempt = 0; attempt < 6; ++attempt) {
     signal: AbortSignal.timeout(30000),
   });
   status = response.status;
-  if (status === 200) break;
+  if (status === 200) {
+    if (launch && response.headers.get("x-robots-tag")?.includes("noindex"))
+      status = 503;
+    else break;
+  }
   await new Promise((resolve) => setTimeout(resolve, 5000));
 }
 if (status !== 200)
   throw new Error(`Production prelaunch smoke failed: HTTP ${status}`);
-const quote = await fetch(`${config.vars.SHOP_ORIGIN}/api/quote`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Origin: config.vars.SHOP_ORIGIN,
-  },
-  body: "{}",
-  signal: AbortSignal.timeout(30000),
-});
-if (
-  quote.status !== 503 ||
-  (await quote.json()).error !==
-    "Checkout is not open yet. Please check back soon."
-)
-  throw new Error("Production prelaunch checkout gate is not closed.");
+let quoteVerified = false;
+for (let attempt = 0; attempt < 6; ++attempt) {
+  const quote = await fetch(`${config.vars.SHOP_ORIGIN}/api/quote`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: config.vars.SHOP_ORIGIN,
+    },
+    body: "{}",
+    signal: AbortSignal.timeout(30000),
+  });
+  const error = (await quote.json()).error;
+  quoteVerified = launch
+    ? quote.status === 400 && error === "Enter your delivery details."
+    : quote.status === 503 &&
+      error === "Checkout is not open yet. Please check back soon.";
+  if (quoteVerified) break;
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+}
+if (!quoteVerified)
+  throw new Error(
+    launch
+      ? "Production checkout is not ready."
+      : "Production prelaunch checkout gate is not closed.",
+  );
 const timestamp = Math.floor(Date.now() / 1000);
 const probes: {
   path: string;
@@ -139,5 +206,7 @@ for (const probe of probes) {
     );
 }
 console.log(
-  "Production prelaunch deployed with commerce disabled and signed no-order callback probes verified. No domain route configured.",
+  launch
+    ? "Live shop.bascik.dev deployed with commerce enabled, Stripe webhook enabled, and signed no-order callback probes verified."
+    : "Production prelaunch deployed with commerce disabled and signed no-order callback probes verified. No domain route configured.",
 );

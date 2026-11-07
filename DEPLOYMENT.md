@@ -4,16 +4,25 @@ This repo deploys two sites to Cloudflare. Everything that can live in the repo 
 
 The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
 
-## Shop prelaunch
+## Independent Shop
 
-The independent [shop application](shop/README.md) is being prepared for
-`shop.bascik.dev`. Its [Shop workflow](.github/workflows/shop.yml) validates
-the application and deploys draft-only PR feature environments. A separate,
-manual main-only lane deploys disabled production prelaunch. Checkout and Printful submissions
-default to disabled, and no custom-domain route is configured. Keep Shopify
-serving the hostname until the provider, tax, email, policy, and cutover gates
-in the shop runbook are satisfied. Shop resources and secrets must stay
-separate from docs and adapter demos.
+The independent [shop application](shop/README.md) serves `shop.bascik.dev`.
+Its [Shop workflow](.github/workflows/shop.yml) validates the application,
+deploys draft-only PR feature environments, and deploys live production after
+validated main pushes. The owner approved launch and attached the custom domain.
+The baseline production config stays disabled; `package-production.ts --launch`
+derives the strictly checked live config with the exact shop domain, enabled
+checkout/fulfillment, and indexable public assets. Production resources and secrets
+remain separate from docs and adapter demos. Stripe and Printful callbacks stay
+at the stable production Workers.dev origin with their existing signing keys.
+
+Production verification covered actual signed provider callbacks, a deployed
+email received by the owner, and an Arizona apparel tax calculation, without
+charging or manufacturing anything. Explicit redeploys use
+`gh workflow run shop.yml --ref main -f deploy_production=true`.
+The historical disabled-prelaunch lane must not be used on the active store.
+Keep Shopify until legacy orders and rollback needs are resolved; see the
+shop runbook for containment that preserves accepted payments and recovery.
 
 Pushes and pull requests that change only `shop/**` run Shop validation, not
 the main CI or CodeQL workflows. Mixed changes still run the main workflows.

@@ -107,3 +107,5 @@ await writeFile(
 console.log(JSON.stringify(report));
 if (!report.chargesEnabled || !report.taxActive)
   throw new Error("Live Stripe capabilities or Tax are not ready.");
+if (process.argv.includes("--launch") && report.registrationCount === 0)
+  throw new Error("Live launch requires an active tax registration.");

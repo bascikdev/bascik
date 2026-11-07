@@ -1,6 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { assertProductionPrelaunch } from "./production-config.ts";
+import {
+  assertProductionPrelaunch,
+  assertProductionLaunch,
+  productionLaunch,
+} from "./production-config.ts";
 
+const launch = process.argv.includes("--launch");
 const production = JSON.parse(
   await readFile("wrangler.production.json", "utf8"),
 );
@@ -20,11 +25,25 @@ const config = {
   ),
 };
 delete config.routes;
-assertProductionPrelaunch(config);
+const final = launch ? productionLaunch(config) : config;
+if (launch) {
+  assertProductionLaunch(final);
+  const headersPath = ".output/public/_headers";
+  const headers = await readFile(headersPath, "utf8");
+  await writeFile(
+    headersPath,
+    headers.replace(
+      /^\/\*\r?\n[ \t]+X-Robots-Tag: noindex, nofollow\r?\n/gm,
+      "",
+    ),
+  );
+} else assertProductionPrelaunch(final);
 await writeFile(
   ".output/wrangler.production.json",
-  JSON.stringify(config, null, 2),
+  JSON.stringify(final, null, 2),
 );
 console.log(
-  "Packaged isolated production prelaunch. Commerce and hostname cutover remain disabled.",
+  launch
+    ? "Packaged live shop.bascik.dev with commerce enabled and indexable assets."
+    : "Packaged isolated production prelaunch. Commerce and hostname cutover remain disabled.",
 );

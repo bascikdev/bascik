@@ -4,7 +4,7 @@ Independent Bascik storefront for `shop.bascik.dev`. The docs application is not
 
 ## Status
 
-**Prelaunch. Payments and fulfillment are disabled by default.** Do not cancel Shopify or attach its hostname yet.
+**Production:** the owner approved the cutover to `shop.bascik.dev`. Validated main pushes deploy the live shop with checkout and fulfillment enabled. Sandbox and PR environments remain separate and draft-only. Keep the Shopify account until its outstanding orders and rollback needs are resolved.
 
 The owned catalog contains two $30 shirts and two $25 hats, with 24 variants and 52 captured image views. Original image bytes are preserved outside the published directory. Optimized images, descriptions, variants, and existing product URLs are independent of Shopify.
 
@@ -20,7 +20,7 @@ Stripe-hosted Checkout follows a shop-owned delivery step. Printful quotes the a
 - Printful access now includes the original Shopify store `18630655` and the owner-created Manual/API store `19022802` (Shop Bascik). The refreshed token was verified against both through v2. All four original products and 24 print-ready variant references were exported privately to `.local/printful-shopify.json`. **No Shopify product, webhook, or order was changed.**
 - The current local Printful key is named `PRINTFUL_TOEKN`. The audit accepts that spelling with a warning; the application requires the correctly named `PRINTFUL_TOKEN`.
 
-The remaining provider, deployment, and policy gates below still block launch. Local provider audits are ignored by Git and contain no customer orders.
+The initial preparation audit below is historical. Production verification and launch controls are described separately. Local provider audits are ignored by Git and are never published.
 
 ### Provisioned sandbox infrastructure
 
@@ -35,26 +35,26 @@ The authenticated Cloudflare account `8572c3fcc06b71dbf05fe590e8b3f74e` now has:
 
 All three checked-in migrations have been applied to the sandbox database. All 24 owner-approved saved-template mappings have been installed for API store `19022802`. The authored configuration targets these isolated resources and the dedicated Printful API store, and explicitly disables checkout and fulfillment. Cloudflare Email Sending is now enabled for `bascik.dev`; the owner confirmed inbox delivery of a one-time local CLI test from `no-reply@bascik.dev`. The sandbox and PR previews deliberately have no email binding; this test does not certify the production notification worker.
 
-The separate PR Worker has been deployed as described below. Production resources are now provisioned separately as documented below; no production Worker or hostname cutover has been performed. The owner activated the email sender in Cloudflare. Stripe sandbox inventory provisioning and the unconfirmed Printful validation draft are recorded here. To remove the unused disabled-commerce sandbox infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
+The separate PR Worker has been deployed as described below. Production resources are provisioned separately. The owner activated the email sender in Cloudflare and attached `shop.bascik.dev` to the production Worker. Stripe sandbox inventory provisioning and the unconfirmed Printful validation draft are recorded here. To remove the unused disabled-commerce sandbox infrastructure, delete these three named Cloudflare resources and the `shop-sandbox` GitHub environment. Never delete an active order database.
 
 ### Provisioned production prelaunch
 
 Production is prepared independently from all sandbox/PR infrastructure:
 
-| Resource                  | Name / ID                                                           |
-| ------------------------- | ------------------------------------------------------------------- |
-| Worker (not deployed yet) | `bascik-shop-production`                                            |
-| D1                        | `bascik-shop-production-db`, `6789dbf6-f32f-400b-ad4a-d5b590b7438d` |
-| Processing queue          | `bascik-shop-production-jobs`, `21e16a4e63194d4692b8cb7a232eeb45`   |
-| Dead-letter queue         | `bascik-shop-production-dead`, `d8b7818212714394ade8795aa8226e6c`   |
-| GitHub environment        | `shop-production`, only branch `main`                               |
-| Pre-cutover origin        | `https://bascik-shop-production.collin-inbox.workers.dev`           |
+| Resource           | Name / ID                                                           |
+| ------------------ | ------------------------------------------------------------------- |
+| Worker             | `bascik-shop-production`                                            |
+| D1                 | `bascik-shop-production-db`, `6789dbf6-f32f-400b-ad4a-d5b590b7438d` |
+| Processing queue   | `bascik-shop-production-jobs`, `21e16a4e63194d4692b8cb7a232eeb45`   |
+| Dead-letter queue  | `bascik-shop-production-dead`, `d8b7818212714394ade8795aa8226e6c`   |
+| GitHub environment | `shop-production`, only branch `main`                               |
+| Pre-cutover origin | `https://bascik-shop-production.collin-inbox.workers.dev`           |
 
-All three migrations and all 24 fingerprint-validated template mappings are installed in production D1: ten variants per shirt and two per hat. The production order table is empty. Validation draft `185223395`, reference `bascik-audit-326d2c36db57936aadd`, contains the exact four owner-prepared templates, passed cost/shipping checks, and remains **unconfirmed**. Printful returned blank placement statuses, not explicit artwork approval; owner-approved saved templates remain the design source.
+All three migrations and all 24 fingerprint-validated template mappings are installed in production D1: ten variants per shirt and two per hat. Production verification left one explicitly labeled, expired, unpaid audit order and one sent email notification, with its private link revoked. It has no payment events or Printful order. Validation draft `185223395`, reference `bascik-audit-326d2c36db57936aadd`, contains the exact four owner-prepared templates, passed cost/shipping checks, and remains **unconfirmed**. Printful returned blank placement statuses, not explicit artwork approval; owner-approved saved templates remain the design source.
 
-The live restricted Stripe key was verified against the expected Bascik account. Charges and payouts are enabled. All four copied, active live products have apparel tax code `txcd_30011000`, with exact $30/$25 USD exclusive-tax prices. Stripe Tax is active but has **zero active live registrations**. Tax activation is not registration, and no registrations have been created or assumed. The owner must determine any required registrations before launch. Read-only checks plus sandbox checkout do not certify a live charge; no live Customer, Checkout Session, Payment Intent, charge, or merchandise confirmation was created during preparation. The owner confirmed Printful has a valid billing method or funded wallet; this is an owner confirmation, not an API balance verification.
+The live restricted Stripe key was verified against the expected Bascik account. Charges and payouts are enabled. All four copied, active live products have apparel tax code `txcd_30011000`, with exact $30/$25 USD exclusive-tax prices. The owner configured an active Arizona tax registration. A live calculation for $55 of apparel at the public Arizona State Capitol address returned $5.06 exclusive tax (9.2%), with `standard_rated` taxability. No registration or account-wide tax setting was changed by the agent. A live unpaid Checkout Session was created and expired solely to verify provider-originated callbacks; no charge or merchandise confirmation occurred. The owner confirmed Printful has a valid billing method or funded wallet; this is an owner confirmation, not an API balance verification.
 
-The live Stripe webhook is app-tagged `bascik-shop-production`, points to the Workers.dev origin, and is **disabled** until a receiver is deployed and launch is approved. Its ID and signing secret are held in the production environment. Printful v2 order/shipment callbacks are staged at that origin with their real one-time signing secret and public key. Printful permits one v2 configuration **per token/app**, not one per store header. Setup verified the token's configuration was empty before creating it and refuses to overwrite any unrelated configuration. Original Shopify v1 webhooks were not changed. Before Worker deployment, Printful delivery to this staged URL cannot succeed; scheduled authenticated reconciliation is also required after deployment. PR previews still use their own sandbox Stripe callbacks and do not trust the production Printful signature.
+The live Stripe webhook is app-tagged `bascik-shop-production` and points to the stable Workers.dev origin. The live deployment verifies its identity and enabled event list, then enables it before opening commerce. Its ID and signing secret are held in the production environment. Printful v2 order/shipment callbacks remain at that same stable origin with their real one-time signing secret and public key: **do not rotate or move callbacks merely because the public shop domain changes**. Checkout metadata and private order links use `https://shop.bascik.dev`; callbacks remain independent of public DNS. Real Stripe expiration and Printful draft-update callbacks returned HTTP 200, with signature verification and no errors. The deployed production cron sent one labeled email in one attempt; the owner confirmed inbox receipt. Printful permits one v2 configuration **per token/app**, not one per store header. Setup verified the token's configuration was empty before creating it and refuses to overwrite any unrelated configuration. Original Shopify v1 webhooks were not changed. Scheduled authenticated reconciliation remains required. PR previews still use their own sandbox Stripe callbacks and do not trust the production Printful signature.
 
 `shop/.env.prd` and all `.env.*` files are ignored. Private signing evidence lives in `.local/production-webhooks.json`; never commit, publish, or upload that directory. Secrets are installed in `shop-production`, not repository-wide or preview environments. The order-token secret is random and stable across reruns.
 
@@ -74,13 +74,23 @@ The webhook setup command requires the `shop-production` environment to exist an
 
 To repeat the production mapping import, set `CLOUDFLARE_API_TOKEN` from the dedicated shop token in the process environment and run `node scripts/setup-printful-mappings.ts --write --production`. Without `--production`, writes remain restricted to the original sandbox database. Both the packager and production import enforce the exact account, database, queues, API store, Workers.dev origin, restricted email sender, and closed commerce flags.
 
-After #129 is merged, request the separately guarded deployment:
+The disabled prelaunch deployment was completed after #129 merged:
 
 ```sh
 gh workflow run shop.yml --ref main -f deploy_production_prelaunch=true
 ```
 
-This runs validation, verifies live providers read-only, installs production secrets, and deploys only from manual main CI. It checks the homepage, the exact closed-checkout 503 response, and correctly signed no-order probes on both webhook routes. These probes verify Worker configuration and signatures, not provider-originated delivery. `wrangler.production.json` keeps `SHOP_MODE=live`, both commerce flags **false**, no custom-domain routes, and an email binding restricted to `no-reply@bascik.dev`. The portable prelaunch build retains noindex headers. Dry-run binding validation passed, but the production Worker, signed callback delivery, and actual production email binding still need this CI deployment to verify them remotely. The Shopify hostname remains unchanged. Enabling checkout/fulfillment, enabling the Stripe webhook, changing `SHOP_ORIGIN`, updating callback URLs, removing noindex/prelaunch wording, and attaching `shop.bascik.dev` require a separate approved launch change.
+The authored `wrangler.production.json` remains a disabled baseline for isolated prelaunch verification and mapping imports. The launch packager (`node scripts/package-production.ts --launch`) derives the exact live configuration from that baseline: only `shop.bascik.dev` is attached, `SHOP_ORIGIN` becomes `https://shop.bascik.dev`, both commerce flags become **true**, and the global noindex header is removed without removing private-page robots metadata, cache rules, or security headers. Both shapes have strict isolation guards. Production D1, queues, signing keys, email sender, and Printful store stay unchanged.
+
+Main pushes run Shop validation and then `deploy-production` automatically. For an explicit redeploy of the current main:
+
+```sh
+gh workflow run shop.yml --ref main -f deploy_production=true
+```
+
+Live deployment requires an active tax registration, verifies the exact owned Stripe callback, enables it, installs stable secrets, and deploys through CI only. Smoke checks verify the custom domain is indexable, malformed quote input reaches normal validation rather than the closed gate, and both correctly signed no-order callbacks are accepted. No smoke check charges a card or confirms an audit draft. Do not request the historical disabled-prelaunch lane on an active store.
+
+For emergency containment, close **new checkout** with `SHOP_ENABLED=false` while leaving the same database, signing keys, webhook receiver, scheduled recovery, and fulfillment available for accepted payments. Pause fulfillment separately only when necessary. Do not disable Stripe callbacks or destroy D1 to roll back the public storefront. Returning the public hostname to Shopify requires owner-managed removal of the Worker custom domain and restoration of the prior Shopify DNS record; the owner performed the original DNS cutover. Keep the Shopify account and its legacy fulfillment pipeline until its outstanding orders are complete. Never confirm the 24-item audit draft as a launch test.
 
 ### Printful v2
 
@@ -264,11 +274,11 @@ For a failed order, compare the D1 order ID, Stripe payment/session, and Printfu
 
 Use Stripe for refunds and Printful for production cancellation; one does not automatically undo the other. Check production status before promising cancellation. There is intentionally no public admin/replay endpoint.
 
-Private checkout quotes without orders are removed after expiry plus one day. Order snapshots and notification records currently remain until an owner-approved retention procedure is implemented. Do not open the shop before the policy and cleanup process are agreed.
+Private checkout quotes without orders are removed after expiry plus one day. Order snapshots and notification records currently remain until an owner-approved retention procedure is implemented. Handle deletion requests through the published privacy policy and support process; do not delete records needed to reconcile accepted payments or outstanding fulfillment.
 
 ## Validation and deployment
 
-The Shop workflow runs typechecks, unit tests, real-D1 integration tests, the production build, and desktop/mobile Playwright tests against local workerd. After validation, trusted branch pushes deploy draft-only previews; explicitly requested main runs deploy disabled sandbox or production prelaunch. Shop-only pushes and pull requests skip the monorepo CI and CodeQL workflows; mixed changes still run them. The Shop workflow also runs for shared compiler, adapter, dependency, and workflow changes. Scheduled CodeQL remains unaffected. Root validation aggregators also include the shop.
+The Shop workflow runs typechecks, unit tests, real-D1 integration tests, the production build, and desktop/mobile Playwright tests against local workerd. After validation, trusted branch pushes deploy draft-only previews; main pushes deploy live production. Explicit main runs can redeploy production or the isolated disabled sandbox. The historical disabled-prelaunch option remains for prelaunch verification only. Shop-only pushes and pull requests skip the monorepo CI and CodeQL workflows; mixed changes still run them. The Shop workflow also runs for shared compiler, adapter, dependency, and workflow changes. Scheduled CodeQL remains unaffected. Root validation aggregators also include the shop.
 
 Before launch, additionally test actual hosted sandbox Checkout, Stripe Tax destination behavior, failed/delayed payments, real external email delivery, and new-store Printful estimates/drafts. Local provider fixtures do not certify live integrations.
 
@@ -280,9 +290,9 @@ PR #129 was tested against its actual Cloudflare Worker and hosted Stripe sandbo
 - Returning through hosted Checkout's Back link preserved the browser cart. Explicit sandbox Session expiration delivered the real expiration callback; D1 marked the abandoned order expired, with no payment event, Printful order, or sent email.
 - For one controlled test-card payment, the exact PR sandbox Stripe endpoint was temporarily disabled. Stripe reported paid while the shop still reported pending/unpaid. Cloudflare's scheduled sweep recovered it without the payment webhook, recorded one payment, and created unconfirmed Printful draft `185309465`. Its final state is `test_draft`, provider costs are done, and zero shop emails were sent. The PR endpoint was restored in cleanup and re-fetched as enabled. Production endpoints and commerce flags were not changed.
 
-These checks used real sandbox provider responses, not mocked checkout pages. They demonstrate missed-webhook recovery after a card payment, not a real delayed-settlement bank payment. Unpaid completion followed by asynchronous success, asynchronous failure, and expiration are also covered by real-D1 integration tests with simulated provider responses. Production delivery and manufacturing remain separate launch checks.
+These checks used real sandbox provider responses, not mocked checkout pages. They demonstrate missed-webhook recovery after a card payment, not a real delayed-settlement bank payment. Unpaid completion followed by asynchronous success, asynchronous failure, and expiration are also covered by real-D1 integration tests with simulated provider responses. The separate no-charge production verification above covers real callbacks, email, and tax calculation. Actual paid manufacturing still requires an owner-approved real order, never the audit draft.
 
-Only the owner or approved CI should deploy, upload previews, provision resources, or switch DNS. Build and dry-run validation do not transfer the hostname. A future deployment workflow must use an approved production environment and tested merged-PR gates, not silently add the shop to the docs deploy.
+Only the owner or approved CI should deploy, upload previews, provision resources, or switch DNS. Build and dry-run validation do not transfer the hostname. The approved production environment is main-only, and the shop deploy remains separate from docs.
 
 Keep Shopify active until all assets/artwork are independent, provider and policy gates pass, old orders have a handling plan, and a rollback route is documented. Rollback must not discard D1 orders or stop reconciliation of already accepted payments.
 
