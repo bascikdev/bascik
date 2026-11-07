@@ -1,6 +1,28 @@
 import { test, expect } from "@playwright/test";
 import { products } from "../src/lib/catalog.ts";
 
+test("adding a product offers a prominent cart link that survives reload", async ({
+  page,
+}) => {
+  await page.goto(`/products/${products[0].slug}`);
+  await expect(page.getByTestId("product-view-cart")).toHaveCount(0);
+  await page.getByTestId("add-to-cart").click();
+  await expect(page.getByTestId("product-view-cart")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("product-view-cart")).toBeVisible();
+  await page.getByTestId("product-view-cart").click();
+  await expect(page.getByTestId("cart-line")).toHaveCount(1);
+});
+test("empty delivery page offers cart recovery instead of an unusable form", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  await expect(page.getByTestId("shipping-form")).toBeHidden();
+  await expect(page.getByTestId("checkout-summary")).toContainText(
+    "Your cart is empty",
+  );
+  await expect(page.getByTestId("checkout-edit-cart")).toBeVisible();
+});
 test("catalog is complete and independent of Shopify at runtime", async ({
   page,
 }) => {
@@ -163,6 +185,75 @@ test("product gallery filters views when color changes", async ({ page }) => {
     }
   }
 });
+test("collection image and title links preserve the selected color through reload and adding to cart", async ({
+  page,
+}) => {
+  for (const product of products) {
+    for (const color of [
+      ...new Set(product.variants.map((variant) => variant.color)),
+    ]) {
+      for (const linkName of ["image", "title"]) {
+        await page.goto("/");
+        const card = page.getByTestId("product-card").filter({
+          has: page.getByRole("heading", { name: product.title }),
+        });
+        await card.getByRole("button", { name: color, exact: true }).click();
+        await card.getByTestId("card-next").click();
+        const link =
+          linkName === "image"
+            ? card.getByRole("link").filter({
+                has: page.getByTestId("card-image"),
+              })
+            : card
+                .getByRole("heading", { name: product.title })
+                .getByRole("link");
+        await link.click();
+        expect(new URL(page.url()).searchParams.get("color")).toBe(color);
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        await page.reload();
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        const images = product.images.filter((image) => image.color === color);
+        await expect(page.getByTestId("product-image")).toHaveAttribute(
+          "src",
+          images[0].src,
+        );
+        await expect(
+          page.getByTestId("gallery-image").filter({ visible: true }),
+        ).toHaveCount(images.length);
+        await page.getByTestId("add-to-cart").click();
+        await expect(page.getByTestId("product-form")).toContainText(
+          "Added to your cart.",
+        );
+        const variant = product.variants.find(
+          (variant) => variant.color === color,
+        )!;
+        expect(
+          await page.evaluate(() =>
+            JSON.parse(localStorage.getItem("bascik-shop-cart")!),
+          ),
+        ).toContainEqual({
+          variantId: variant.id,
+          quantity: linkName === "image" ? 1 : 2,
+        });
+      }
+    }
+  }
+});
+test("invalid color links retain the default product color and gallery", async ({
+  page,
+}) => {
+  for (const product of products) {
+    await page.goto(
+      `/products/${product.slug}?color=${encodeURIComponent("<invalid color>")}`,
+    );
+    const color = product.variants[0].color;
+    await expect(page.getByTestId("product-color")).toHaveValue(color);
+    await expect(page.getByTestId("product-image")).toHaveAttribute(
+      "src",
+      product.images.find((image) => image.color === color)!.src,
+    );
+  }
+});
 test("docs-style navigation works at every viewport", async ({
   page,
 }, testInfo) => {
@@ -192,6 +283,25 @@ test("cart edits and removals update the owned subtotal", async ({ page }) => {
   await expect(page.getByTestId("cart")).toContainText("$60.00");
   await page.getByTestId("cart-remove").click();
   await expect(page.getByTestId("cart-checkout")).toBeHidden();
+});
+test("shipping button has clear space below the country field in both themes", async ({
+  page,
+}) => {
+  await page.goto(`/products/${products[0].slug}`);
+  await page.getByTestId("add-to-cart").click();
+  await page.goto("/checkout");
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    const country = page.getByTestId("shipping-country");
+    await country.focus();
+    const field = await country.boundingBox();
+    const button = await page.getByTestId("shipping-quote").boundingBox();
+    expect(field).not.toBeNull();
+    expect(button).not.toBeNull();
+    expect(button!.y - (field!.y + field!.height)).toBeGreaterThanOrEqual(24);
+  }
 });
 test("checkout remains safely disabled and reports a useful error", async ({
   page,
@@ -228,6 +338,8 @@ test("checkout remains safely disabled and reports a useful error", async ({
 test("delivery uses US-first Printful destinations without embedded payment fields", async ({
   page,
 }) => {
+  await page.goto(`/products/${products[0].slug}`);
+  await page.getByTestId("add-to-cart").click();
   await page.goto("/checkout");
   const options = await page
     .getByTestId("shipping-country")
@@ -256,6 +368,13 @@ test("hosted checkout rejects delivery changes during a pending quote and permit
     products[0].variants[0].id,
   );
   await page.reload();
+  await expect(page.getByTestId("checkout-line")).toHaveCount(1);
+  await expect(page.getByTestId("checkout-summary")).toContainText("$30.00");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page.getByLabel("Full name").fill("Test Buyer");
   await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
   await page.getByLabel("Street address").fill("Example street");
@@ -274,7 +393,10 @@ test("hosted checkout rejects delivery changes during a pending quote and permit
         quoteId: "quote_fixture",
         expiresAt: Math.floor(Date.now() / 1000) + 900,
         subtotal: 3000,
-        rates: [{ id: "STANDARD", name: "Standard", amount: 500 }],
+        rates: [
+          { id: "STANDARD", name: "Standard", amount: 500 },
+          { id: "OFFSET", name: "Carbon offset", amount: 600 },
+        ],
       },
     });
   });
@@ -284,6 +406,25 @@ test("hosted checkout rejects delivery changes during a pending quote and permit
   await page.getByLabel("Street address").fill("Another street");
   release();
   await expect(page.getByRole("status")).toContainText("changed");
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.getByTestId("checkout-pay")).toBeVisible();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$5.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$35.00");
+  await page.getByRole("radio", { name: /Carbon offset/ }).check();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$6.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$36.00");
+  const rates = page.locator("[data-rates]");
+  const ratesBox = await rates.boundingBox();
+  const payBox = await page.getByTestId("checkout-pay").boundingBox();
+  expect(payBox!.y - (ratesBox!.y + ratesBox!.height)).toBeGreaterThanOrEqual(
+    24,
+  );
+  await page.getByLabel("Street address").fill("Updated street");
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText(
+    "Calculated next",
+  );
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$30.00");
   await expect(page.getByTestId("checkout-pay")).toBeHidden();
   await page.getByTestId("shipping-quote").click();
   await expect(page.getByTestId("checkout-pay")).toBeVisible();

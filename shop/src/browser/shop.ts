@@ -81,6 +81,13 @@ for (const card of document.querySelectorAll<HTMLElement>(
     image.src = selected.src;
     image.srcset = selected.srcset;
     image.alt = selected.alt;
+    for (const link of card.querySelectorAll<HTMLAnchorElement>(
+      `a[href^="/products/${item.slug}"]`,
+    )) {
+      const url = new URL(`/products/${item.slug}`, location.origin);
+      url.searchParams.set("color", color);
+      link.href = url.pathname + url.search;
+    }
     for (const button of card.querySelectorAll<HTMLButtonElement>(
       "[data-card-color]",
     ))
@@ -163,8 +170,28 @@ form?.addEventListener("change", (event) => {
   const color = data.get("color");
   if (typeof color === "string") showColor(color);
 });
+const requestedColor = new URLSearchParams(location.search).get("color");
+const colorSelect = form?.querySelector<HTMLSelectElement>(
+  "select[name='color']",
+);
+if (
+  requestedColor !== null &&
+  colorSelect &&
+  product?.variants.some((variant) => variant.color === requestedColor)
+)
+  colorSelect.value = requestedColor;
 const initialColor = form && new FormData(form).get("color");
 if (typeof initialColor === "string") showColor(initialColor);
+function showCartLink() {
+  if (!form || form.querySelector("[data-testid=product-view-cart]")) return;
+  const link = document.createElement("a");
+  link.href = "/cart";
+  link.className = "button";
+  link.dataset.testid = "product-view-cart";
+  link.textContent = "View cart & checkout";
+  form.append(link);
+}
+if (cart().length) showCartLink();
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(form);
@@ -197,6 +224,7 @@ form?.addEventListener("submit", (event) => {
   try {
     save(items);
     status("[data-product-status]", "Added to your cart.");
+    showCartLink();
   } catch (error) {
     console.error(error);
     status(
@@ -206,6 +234,16 @@ form?.addEventListener("submit", (event) => {
     );
   }
 });
+function variantImage(match: NonNullable<ReturnType<typeof findVariant>>) {
+  return (
+    match.product.images.find(
+      (image) =>
+        image.sourceId === match.variant.imageId &&
+        image.color === match.variant.color,
+    ) ??
+    match.product.images.find((image) => image.color === match.variant.color)
+  );
+}
 function renderCart() {
   const container = element("[data-cart-lines]");
   if (!container) return;
@@ -223,13 +261,7 @@ function renderCart() {
     line.className = "cart-line";
     line.dataset.testid = "cart-line";
     const img = document.createElement("img");
-    const image =
-      match.product.images.find(
-        (image) =>
-          image.sourceId === match.variant.imageId &&
-          image.color === match.variant.color,
-      ) ??
-      match.product.images.find((image) => image.color === match.variant.color);
+    const image = variantImage(match);
     if (image) {
       img.src = image.src;
       img.srcset = image.srcset;
@@ -297,6 +329,66 @@ function renderCart() {
   if (checkout) checkout.hidden = !items.length;
 }
 renderCart();
+function checkoutTotals(shipping?: number) {
+  const subtotal = cart().reduce(
+    (sum, item) =>
+      sum + (findVariant(item.variantId)?.product.price ?? 0) * item.quantity,
+    0,
+  );
+  const entries = [
+    ["[data-checkout-subtotal]", money(subtotal)],
+    [
+      "[data-checkout-shipping]",
+      shipping === undefined ? "Calculated next" : money(shipping),
+    ],
+    ["[data-checkout-total]", money(subtotal + (shipping ?? 0))],
+  ];
+  for (const [selector, text] of entries) {
+    const target = element(selector);
+    if (target) target.textContent = text;
+  }
+}
+function renderCheckoutSummary() {
+  const container = element("[data-checkout-lines]");
+  if (!container) return;
+  container.replaceChildren();
+  const items = cart();
+  const shippingForm = element("[data-shipping-form]");
+  if (shippingForm) shippingForm.hidden = !items.length;
+  for (const item of items) {
+    const match = findVariant(item.variantId);
+    if (!match) continue;
+    const line = document.createElement("article");
+    line.className = "order-line";
+    line.dataset.testid = "checkout-line";
+    const image = variantImage(match);
+    if (image) {
+      const img = document.createElement("img");
+      img.src = image.src;
+      img.srcset = image.srcset;
+      img.sizes = "64px";
+      img.alt = "";
+      img.width = img.height = 64;
+      line.append(img);
+    }
+    const description = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = match.product.title;
+    const details = document.createElement("p");
+    details.textContent = `${match.variant.title} · Qty ${item.quantity}`;
+    const price = document.createElement("p");
+    price.textContent = money(match.product.price * item.quantity);
+    description.append(title, details, price);
+    line.append(description);
+    container.append(line);
+  }
+  if (!items.length) {
+    container.textContent =
+      "Your cart is empty. Add an item before choosing shipping.";
+  }
+  checkoutTotals();
+}
+renderCheckoutSummary();
 async function api(path: string, body?: unknown) {
   const response = await fetch(
     path,
@@ -357,11 +449,15 @@ function invalidateQuote() {
   quoteKey = "";
   const section = element("[data-rates-section]");
   if (section) section.hidden = true;
+  checkoutTotals();
 }
 shippingForm?.addEventListener("input", invalidateQuote);
 shippingForm?.addEventListener("change", invalidateQuote);
 window.addEventListener("storage", (event) => {
-  if (event.key === key) invalidateQuote();
+  if (event.key === key) {
+    invalidateQuote();
+    renderCheckoutSummary();
+  }
 });
 shippingForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -397,9 +493,15 @@ shippingForm?.addEventListener("submit", async (event) => {
       radio.name = "shippingId";
       radio.value = rate.id;
       radio.checked = index === 0;
-      label.append(radio, `${rate.name} · ${money(rate.amount)}`);
+      radio.addEventListener("change", () => checkoutTotals(rate.amount));
+      const name = document.createElement("span");
+      name.textContent = rate.name;
+      const price = document.createElement("strong");
+      price.textContent = money(rate.amount);
+      label.append(radio, name, price);
       rates?.append(label);
     }
+    checkoutTotals(result.rates[0]?.amount);
     const section = element("[data-rates-section]");
     if (section) section.hidden = false;
     status(
