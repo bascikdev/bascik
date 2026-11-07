@@ -113,6 +113,27 @@ test("explicit artwork positioning and embroidery thread options are preserved",
   ];
   expect(placements(design)).toEqual(design);
 });
+test.each([
+  { technique: ["dtg"] },
+  { technique: null },
+  { technique: 123 },
+  { technique: {} },
+  { technique: true },
+])("Printful placements reject non-string technique %j", ({ technique }) => {
+  const placement = {
+    placement: "front",
+    technique,
+    layers: [
+      {
+        type: "file",
+        url: "https://example.com/art.png",
+        position: { width: 2, height: 1, left: 1, top: 1 },
+      },
+    ],
+  };
+  expect(() => placements([placement])).toThrow("artwork placement");
+  expect(() => shippingPlacements([placement])).toThrow("shipping placement");
+});
 test("v2 signatures decode the hexadecimal secret and cover raw JSON bytes", async () => {
   const secret = "ab".repeat(32);
   const payload = '{"type": "shipment_sent"}';

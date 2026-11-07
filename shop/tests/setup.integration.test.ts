@@ -84,7 +84,14 @@ test("mapping import rejects a different template despite matching catalog and p
   }
 });
 
-test.each(["matching", "mismatched"])(
+test.each([
+  "matching",
+  "mismatched",
+  "later-products",
+  "later-prices",
+  "incomplete-products",
+  "incomplete-prices",
+])(
   "Stripe setup %s existing tax code is validated before price reuse",
   async (state) => {
     const root = await mkdtemp(join(tmpdir(), "bascik-stripe-test-"));
@@ -94,6 +101,8 @@ test.each(["matching", "mismatched"])(
         fixture,
         `
       const products=${JSON.stringify(products.map((product) => ({ id: `prod_${product.id}`, tax_code: state === "matching" ? "txcd_30011000" : "txcd_99999999", metadata: { app: "bascik-shop", handle: product.slug } })))};
+      const state=${JSON.stringify(state)};
+      if(state!=="mismatched")for(const product of products)product.tax_code="txcd_30011000";
       globalThis.fetch=async (input,init)=>{
         if(init?.method==="POST") throw Error("Unexpected provider write");
         const url=new URL(input);
@@ -102,8 +111,16 @@ test.each(["matching", "mismatched"])(
         else if(url.pathname.endsWith("/account")) result={id:"acct_fixture"};
         else if(url.pathname.endsWith("/tax/settings")) result={status:"active"};
         else if(url.pathname.includes("/tax_codes/")) result={id:"txcd_30011000"};
-        else if(url.pathname.endsWith("/products")) result={data:products};
-        else if(url.pathname.endsWith("/prices")) result={data:[{id:"price_fixture",unit_amount:products.find(p=>p.id===url.searchParams.get("product")).metadata.handle.includes("hat")?2500:3000,currency:"usd",active:true,tax_behavior:"exclusive"}]};
+        else if(url.pathname.endsWith("/products")){
+          if(!url.searchParams.has("starting_after")&&state==="later-products")result={data:Array.from({length:100},(_,i)=>({id:"prod_other_"+i,metadata:{app:"other"}})),has_more:true};
+          else if(state==="incomplete-products")result={data:[],has_more:true};
+          else result={data:products,has_more:false};
+        }
+        else if(url.pathname.endsWith("/prices")){
+          if(!url.searchParams.has("starting_after")&&state==="later-prices")result={data:Array.from({length:100},(_,i)=>({id:"price_old_"+i,active:false})),has_more:true};
+          else if(state==="incomplete-prices")result={data:[],has_more:true};
+          else result={data:[{id:"price_fixture",unit_amount:products.find(p=>p.id===url.searchParams.get("product")).metadata.handle.includes("hat")?2500:3000,currency:"usd",active:true,tax_behavior:"exclusive"}],has_more:false};
+        }
         else throw Error("Unexpected provider route");
         return Response.json(result);
       };
@@ -127,12 +144,14 @@ test.each(["matching", "mismatched"])(
       const report = JSON.parse(
         await readFile(join(root, ".local/stripe-readiness.json"), "utf8"),
       );
-      if (state === "matching") {
+      if (["matching", "later-products", "later-prices"].includes(state)) {
         expect(result.status, result.stderr).toBe(0);
         expect(report.products).toHaveLength(4);
       } else {
         expect(result.status).not.toBe(0);
-        expect(result.stderr).toContain("tax code mismatch");
+        expect(result.stderr).toContain(
+          state === "mismatched" ? "tax code mismatch" : "pagination",
+        );
         expect(report.products).toHaveLength(0);
       }
     } finally {

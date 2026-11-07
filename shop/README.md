@@ -180,7 +180,7 @@ After confirming that `STRIPE_ACCOUNT` names the authenticated Bascik **sandbox*
 yarn workspace bascik-shop stripe:setup
 ```
 
-This command refuses live keys and mismatched account IDs. It creates or reuses only app-tagged sandbox products and exclusive-tax USD prices, recording their IDs in `.local/stripe-readiness.json`. The checkout implementation currently creates equivalent inline price data from the owned catalog; the setup inventory is for dashboard administration, not a second source of prices. It does not alter the other business's Stripe objects or create tax registrations or webhook endpoints.
+This command refuses live keys and mismatched account IDs. It paginates all products and each product's prices before creating missing app-tagged sandbox products or exclusive-tax USD prices, recording their IDs in `.local/stripe-readiness.json`. Incomplete pagination fails explicitly rather than treating missing results as permission to create duplicates. The checkout implementation currently creates equivalent inline price data from the owned catalog; the setup inventory is for dashboard administration, not a second source of prices. It does not alter the other business's Stripe objects or create tax registrations or webhook endpoints.
 
 ## Configuration and owner-controlled provisioning
 
@@ -225,7 +225,7 @@ The authored `wrangler.jsonc` deliberately contains no custom-domain route. Pack
 
 ### Sandbox deployment through CI
 
-The independent Shop workflow preserves shop-only CI filtering and always validates before deployment. Its separate disabled-commerce sandbox lane deploys when a maintainer manually runs the workflow on `main` with `deploy_sandbox=true`. Branch pushes with an open same-repository PR instead use the draft-only preview lane described above. Pull-request events do not deploy. There is no production deployment lane or hostname cutover.
+The independent Shop workflow preserves shop-only CI filtering and always validates before deployment. Its separate disabled-commerce sandbox lane deploys when a maintainer manually runs the workflow on `main` with `deploy_sandbox=true`. Branch pushes with an open same-repository PR instead use the draft-only preview lane described above. Pull-request events do not deploy. The separate production prelaunch lane is documented above; no lane performs hostname cutover. Later branch pushes cancel older preview runs, but main runs cannot cancel an in-progress manual deployment between migration, secret installation, deployment, and safety probes.
 
 Create a dedicated Cloudflare API token for this account with Workers Scripts edit, D1 edit, and Queues edit permissions (plus Account Settings read for discovery). Store it as environment secret `SHOP_CLOUDFLARE_API_TOKEN` in the GitHub `shop-sandbox` environment. The existing shared docs token is documented with Workers permissions only, so it is not reused or replaced. The agent's Wrangler OAuth session is not a CI credential and has not been copied into GitHub.
 
@@ -268,9 +268,19 @@ Private checkout quotes without orders are removed after expiry plus one day. Or
 
 ## Validation and deployment
 
-The Shop workflow runs typechecks, unit tests, real-D1 integration tests, the production build, and desktop/mobile Playwright tests against local workerd. It deploys nothing. Shop-only pushes and pull requests skip the monorepo CI and CodeQL workflows; mixed changes still run them. The Shop workflow also runs for shared compiler, adapter, dependency, and workflow changes. Scheduled CodeQL remains unaffected. Root validation aggregators also include the shop.
+The Shop workflow runs typechecks, unit tests, real-D1 integration tests, the production build, and desktop/mobile Playwright tests against local workerd. After validation, trusted branch pushes deploy draft-only previews; explicitly requested main runs deploy disabled sandbox or production prelaunch. Shop-only pushes and pull requests skip the monorepo CI and CodeQL workflows; mixed changes still run them. The Shop workflow also runs for shared compiler, adapter, dependency, and workflow changes. Scheduled CodeQL remains unaffected. Root validation aggregators also include the shop.
 
 Before launch, additionally test actual hosted sandbox Checkout, Stripe Tax destination behavior, failed/delayed payments, real external email delivery, and new-store Printful estimates/drafts. Local provider fixtures do not certify live integrations.
+
+### Cloud sandbox failure and recovery verification
+
+PR #129 was tested against its actual Cloudflare Worker and hosted Stripe sandbox Checkout:
+
+- Decline card `4000 0000 0000 0002` displayed Stripe's declined-payment feedback. The order remained pending and unpaid.
+- Returning through hosted Checkout's Back link preserved the browser cart. Explicit sandbox Session expiration delivered the real expiration callback; D1 marked the abandoned order expired, with no payment event, Printful order, or sent email.
+- For one controlled test-card payment, the exact PR sandbox Stripe endpoint was temporarily disabled. Stripe reported paid while the shop still reported pending/unpaid. Cloudflare's scheduled sweep recovered it without the payment webhook, recorded one payment, and created unconfirmed Printful draft `185309465`. Its final state is `test_draft`, provider costs are done, and zero shop emails were sent. The PR endpoint was restored in cleanup and re-fetched as enabled. Production endpoints and commerce flags were not changed.
+
+These checks used real sandbox provider responses, not mocked checkout pages. They demonstrate missed-webhook recovery after a card payment, not a real delayed-settlement bank payment. Unpaid completion followed by asynchronous success, asynchronous failure, and expiration are also covered by real-D1 integration tests with simulated provider responses. Production delivery and manufacturing remain separate launch checks.
 
 Only the owner or approved CI should deploy, upload previews, provision resources, or switch DNS. Build and dry-run validation do not transfer the hostname. A future deployment workflow must use an approved production environment and tested merged-PR gates, not silently add the shop to the docs deploy.
 

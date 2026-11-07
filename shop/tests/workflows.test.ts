@@ -70,3 +70,9 @@ test("commerce previews deploy only trusted branch pushes after validation", () 
   expect(deploy).toContain("config.send_email?.length");
   expect(deploy).toContain("bascik-shop-pr-${pr}");
 });
+test("main deployments cannot be cancelled by a later main push", () => {
+  const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
+  expect(workflow).toContain(
+    "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+  );
+});

@@ -27,6 +27,26 @@ async function call(
     throw new Error(`Stripe sandbox setup ${path}: HTTP ${response.status}`);
   return response.json();
 }
+async function list<T extends { id: string }>(
+  path: string,
+  params = new URLSearchParams(),
+): Promise<T[]> {
+  const entries: T[] = [];
+  params.set("limit", "100");
+  let cursor = "";
+  for (;;) {
+    if (cursor) params.set("starting_after", cursor);
+    const page: { data: T[]; has_more: boolean } = await call(
+      `${path}?${params}`,
+    );
+    entries.push(...page.data);
+    if (!page.has_more) return entries;
+    const next = page.data.at(-1)?.id;
+    if (!next || next === cursor)
+      throw new Error("Incomplete Stripe sandbox setup pagination.");
+    cursor = next;
+  }
+}
 const balance = await call("/balance");
 if (balance.livemode !== false)
   throw new Error("Sandbox mode could not be verified.");
@@ -61,16 +81,21 @@ if (write) {
     );
   for (const code of new Set([shirtCode, hatCode]))
     await call(`/tax_codes/${encodeURIComponent(code)}`);
-  const existing = await call("/products?limit=100");
+  const existing = await list<{
+    id: string;
+    tax_code: string;
+    metadata: Record<string, string>;
+  }>("/products");
   for (const product of catalog) {
     const code = product.slug.includes("hat") ? hatCode : shirtCode;
-    let remote = existing.data.find(
+    const existingProduct = existing.find(
       (entry: { metadata: Record<string, string> }) =>
         entry.metadata?.app === "bascik-shop" &&
         entry.metadata.handle === product.slug,
     );
-    if (!remote) {
-      remote = await call(
+    const remote: { id: string; tax_code: string } =
+      existingProduct ??
+      (await call(
         "/products",
         new URLSearchParams({
           name: product.title,
@@ -80,17 +105,20 @@ if (write) {
           "metadata[handle]": product.slug,
         }),
         `bascik-shop-product:${product.slug}`,
-      );
-    }
+      ));
     if (remote.tax_code !== code)
       throw new Error(
         `Stripe product tax code mismatch for ${product.slug}. Review the existing product before rerunning setup.`,
       );
-    const prices = await call(
-      `/prices?product=${encodeURIComponent(remote.id)}&limit=100`,
-    );
+    const prices = await list<{
+      id: string;
+      unit_amount: number;
+      currency: string;
+      active: boolean;
+      tax_behavior: string;
+    }>("/prices", new URLSearchParams({ product: remote.id }));
     const price =
-      prices.data.find(
+      prices.find(
         (entry: {
           unit_amount: number;
           currency: string;

@@ -240,6 +240,81 @@ test("does not accept an unpaid or mismatched payment", async () => {
   ).toBe("pending");
 });
 
+test("delayed sandbox payment remains pending until the asynchronous success callback", async () => {
+  let paymentStatus = "unpaid";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+    Response.json({ ...payment, payment_status: paymentStatus }),
+  );
+  const context = { platform: { env } };
+  expect(
+    (await stripeWebhook(await eventRequest("evt_delayed_completed"), context))
+      .status,
+  ).toBe(200);
+  expect(
+    await env.DB.prepare("SELECT status FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "pending" });
+  expect(
+    (await env.DB.prepare("SELECT * FROM payment_events").all()).results,
+  ).toHaveLength(0);
+  expect(
+    (await env.DB.prepare("SELECT * FROM notifications").all()).results,
+  ).toHaveLength(0);
+  paymentStatus = "paid";
+  const success = await eventRequest(
+    "evt_delayed_success",
+    payment,
+    "checkout.session.async_payment_succeeded",
+  );
+  expect((await stripeWebhook(success, context)).status).toBe(200);
+  expect(
+    await env.DB.prepare("SELECT status FROM orders WHERE id=?")
+      .bind(id)
+      .first(),
+  ).toMatchObject({ status: "paid" });
+  expect(
+    (await env.DB.prepare("SELECT * FROM payment_events").all()).results,
+  ).toHaveLength(1);
+  expect(
+    (await env.DB.prepare("SELECT * FROM notifications").all()).results,
+  ).toHaveLength(1);
+  expect(env.EMAIL!.send).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["checkout.session.async_payment_failed", "cancelled"],
+  ["checkout.session.expired", "expired"],
+])(
+  "unpaid %s closes the order without authorizing fulfillment",
+  async (type, status) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ ...payment, payment_status: "unpaid" }),
+    );
+    expect(
+      (
+        await stripeWebhook(
+          await eventRequest("evt_unpaid_terminal", payment, type),
+          { platform: { env } },
+        )
+      ).status,
+    ).toBe(200);
+    await processOrder(env, id);
+    expect(
+      await env.DB.prepare("SELECT status,printful_id FROM orders WHERE id=?")
+        .bind(id)
+        .first(),
+    ).toMatchObject({ status, printful_id: null });
+    expect(
+      (await env.DB.prepare("SELECT * FROM payment_events").all()).results,
+    ).toHaveLength(0);
+    expect(
+      (await env.DB.prepare("SELECT * FROM notifications").all()).results,
+    ).toHaveLength(0);
+    expect(env.EMAIL!.send).not.toHaveBeenCalled();
+  },
+);
+
 test("payment callbacks continue after the storefront is closed", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
     Response.json(payment),

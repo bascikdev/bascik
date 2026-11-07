@@ -65,6 +65,7 @@ function validPlacement(value: unknown): value is PrintfulPlacement {
     record(value) &&
     typeof value.placement === "string" &&
     Boolean(value.placement) &&
+    typeof value.technique === "string" &&
     [
       "dtg",
       "digital",
@@ -73,7 +74,7 @@ function validPlacement(value: unknown): value is PrintfulPlacement {
       "embroidery",
       "sublimation",
       "dtfilm",
-    ].includes(String(value.technique)) &&
+    ].includes(value.technique) &&
     options(value.placement_options) &&
     Array.isArray(value.layers) &&
     value.layers.length > 0 &&
@@ -92,6 +93,7 @@ export function shippingPlacements(
         record(entry) &&
         typeof entry.placement === "string" &&
         Boolean(entry.placement) &&
+        typeof entry.technique === "string" &&
         [
           "dtg",
           "digital",
@@ -100,7 +102,7 @@ export function shippingPlacements(
           "embroidery",
           "sublimation",
           "dtfilm",
-        ].includes(String(entry.technique)) &&
+        ].includes(entry.technique) &&
         options(entry.placement_options),
     )
   )
