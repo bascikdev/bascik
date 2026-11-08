@@ -269,7 +269,17 @@ test("cancellation then refund waits briefly, resolves alerts and never resubmit
   });
   await sendNotifications(env);
   await processOrder(env, id);
-  expect(env.EMAIL?.send).not.toHaveBeenCalled();
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
+  expect(env.EMAIL?.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: snapshot.recipient.email,
+      subject: expect.stringContaining("Order canceled and refunded:"),
+      text: expect.stringContaining("full refund of $37.50"),
+    }),
+  );
+  await reconcileOrderRefund(env, id);
+  await sendNotifications(env);
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
   expect(fetcher.mock.calls.every(([, init]) => init?.method === "GET")).toBe(
     true,
   );
@@ -328,8 +338,12 @@ test("duplicate and old refund events use current provider state, not event amou
     refund_amount: 3750,
   });
   expect(
-    (await env.DB.prepare("SELECT * FROM notifications").all()).results,
-  ).toHaveLength(0);
+    (
+      await env.DB.prepare(
+        "SELECT * FROM notifications WHERE kind='cancellation-refund'",
+      ).all()
+    ).results,
+  ).toHaveLength(1);
 });
 test("legacy failed cancellation records reconcile without touching the immutable purchase", async () => {
   await refundFixture();
@@ -432,7 +446,13 @@ test("scheduled sweep repairs missed legacy cancellation and refund callbacks", 
     refund_state: "refunded",
     last_error: null,
   });
-  expect(env.EMAIL?.send).not.toHaveBeenCalled();
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
+  expect(env.EMAIL?.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: snapshot.recipient.email,
+      subject: expect.stringContaining("canceled and refunded"),
+    }),
+  );
 });
 test("refunds for non-Checkout payments are acknowledged without changing shop orders", async () => {
   const { fetcher } = await refundFixture();
@@ -460,6 +480,33 @@ test("refunds for non-Checkout payments are acknowledged without changing shop o
     status: "submitted",
     refund_state: "none",
   });
+});
+test("cancellation email retries provider failures without duplicating a successful notification", async () => {
+  await refundFixture();
+  await reconcileOrderRefund(env, id);
+  const send = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Email unavailable"))
+    .mockResolvedValue({ messageId: "canceled-email" });
+  env.EMAIL = { send };
+  await sendNotifications(env);
+  expect(
+    await env.DB.prepare(
+      "SELECT status,attempts FROM notifications WHERE kind='cancellation-refund'",
+    ).first(),
+  ).toMatchObject({ status: "pending", attempts: 1 });
+  await env.DB.prepare(
+    "UPDATE notifications SET retry_at=0 WHERE kind='cancellation-refund'",
+  ).run();
+  await sendNotifications(env);
+  await reconcileOrderRefund(env, id);
+  await sendNotifications(env);
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(
+    await env.DB.prepare(
+      "SELECT status,message_id FROM notifications WHERE kind='cancellation-refund'",
+    ).first(),
+  ).toMatchObject({ status: "sent", message_id: "canceled-email" });
 });
 test("full refund detected before fulfillment prevents a provider submission", async () => {
   const { fetcher } = await refundFixture(3750, "succeeded", "inprocess");

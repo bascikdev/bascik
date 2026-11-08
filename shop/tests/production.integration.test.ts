@@ -100,6 +100,10 @@ test.each([
       );
       if (state === "apply")
         expect(calls[1]).toContain("AND reconciliation_lease<");
+      expect(calls.filter((sql) => sql.startsWith("INSERT"))).toHaveLength(
+        state === "apply" ? 1 : 0,
+      );
+      if (state === "apply") expect(calls[3]).toContain("cancellation-refund");
     } else {
       expect(result.status).not.toBe(0);
       expect(calls.filter((sql) => sql.startsWith("UPDATE"))).toHaveLength(

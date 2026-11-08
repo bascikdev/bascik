@@ -19,6 +19,30 @@ const summary: OrderSummary = {
   tax: 276,
   total: 3771,
 };
+test("cancellation email confirms the full refund without promising bank receipt or fulfillment", () => {
+  const message = orderEmail(
+    summary,
+    "https://shop.example.com/order#token=fixture",
+    "shop@example.com",
+    false,
+    3771,
+  );
+  expect(message.subject).toBe(
+    `Order canceled and refunded: ${summary.reference}`,
+  );
+  for (const part of [message.text, message.html]) {
+    expect(part).toContain("full refund of $37.71");
+    expect(part).toContain("original payment method");
+    expect(part).toContain("bank processing may take several days");
+    expect(part).toContain("original purchase totals");
+    expect(part).toContain("Refund issued");
+    expect(part).toContain(summary.reference);
+    expect(part).toContain("shop@example.com");
+    expect(part).not.toContain("Your payment is confirmed");
+    expect(part).not.toMatch(/being prepared|will be shipped/i);
+  }
+  expect(message.html).toContain("bascik-email-logo.png");
+});
 test("branded confirmation includes matching HTML and plain-text purchase details", () => {
   const message = orderEmail(
     summary,

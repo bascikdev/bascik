@@ -103,6 +103,9 @@ if (apply) {
   execute(
     `UPDATE notifications SET status='resolved',lease_until=0 WHERE order_id='${id}' AND kind='alert' AND EXISTS (SELECT 1 FROM orders WHERE id='${id}' AND status='cancelled' AND refund_state='refunded' AND last_error IS NULL)`,
   );
+  execute(
+    `INSERT OR IGNORE INTO notifications(id,order_id,kind,created_at) SELECT '${id}:cancellation-refund','${id}','cancellation-refund',${now()} WHERE EXISTS (SELECT 1 FROM orders WHERE id='${id}' AND status='cancelled' AND refund_state='refunded' AND last_error IS NULL)`,
+  );
 }
 console.log(
   JSON.stringify({

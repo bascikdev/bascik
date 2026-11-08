@@ -259,11 +259,19 @@ export async function reconcileOrderRefund(env: Env, orderId: string) {
       .first();
     if (!finalized) return;
     if (resolved) {
-      await env.DB.prepare(
-        "UPDATE notifications SET status='resolved',lease_until=0 WHERE order_id=? AND kind='alert'",
-      )
-        .bind(order.id)
-        .run();
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE notifications SET status='resolved',lease_until=0 WHERE order_id=? AND kind='alert'",
+        ).bind(order.id),
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO notifications(id,order_id,kind,created_at) VALUES (?,?,?,?)",
+        ).bind(
+          `${order.id}:cancellation-refund`,
+          order.id,
+          "cancellation-refund",
+          now(),
+        ),
+      ]);
     } else if (attention) await alert(env, order.id, attention);
   } catch (error) {
     const reason =

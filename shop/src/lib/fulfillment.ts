@@ -419,6 +419,13 @@ export async function sendNotifications(env: Env) {
         .first<Order>();
       if (!order) throw new Error("Notification order missing");
       if (
+        message.kind === "cancellation-refund" &&
+        (order.status !== "cancelled" ||
+          order.refund_state !== "refunded" ||
+          order.last_error !== null)
+      )
+        throw new Error("Cancellation/refund notification is not verified");
+      if (
         message.kind === "alert" &&
         order.status === "cancelled" &&
         order.refund_state === "refunded"
@@ -445,6 +452,9 @@ export async function sendNotifications(env: Env) {
             link,
             env.SUPPORT_EMAIL,
             message.kind.startsWith("shipment:"),
+            message.kind === "cancellation-refund"
+              ? order.refund_amount
+              : undefined,
           );
       const result = await env.EMAIL.send({
         from: { name: "Bascik Shop", email: env.EMAIL_FROM },
