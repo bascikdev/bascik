@@ -150,7 +150,14 @@ export async function refundPayment(
       throw new Error("Incomplete refund pagination");
     cursor = result.data[result.data.length - 1].id;
   }
-  const full = charge.amount_refunded === charge.amount;
+  const full =
+    charge.amount_refunded === charge.amount &&
+    refunds.some((refund) => refund.status === "succeeded") &&
+    !refunds.some(
+      (refund) =>
+        refund.status === "pending" || refund.status === "requires_action",
+    ) &&
+    refunds[0]?.status === "succeeded";
   const state = full
     ? "refunded"
     : refunds.some(
@@ -214,7 +221,7 @@ export async function reconcileOrderRefund(env: Env, orderId: string) {
     let remote: { id: number; external_id: string; status: string } | null =
       null;
     if (
-      full ||
+      charge.amount_refunded === charge.amount ||
       order.status === "cancelled" ||
       order.last_error === "Printful status: canceled" ||
       order.last_error === "Printful status: cancelled"

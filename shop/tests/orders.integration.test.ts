@@ -212,7 +212,7 @@ async function refundFixture(
         if (url.pathname === "/v1/refunds")
           return Response.json({
             data:
-              amount || refundStatus !== "succeeded"
+              charge.amount_refunded || refundStatus !== "succeeded"
                 ? [
                     {
                       id: "re_fixture",
@@ -481,6 +481,25 @@ test("refunds for non-Checkout payments are acknowledged without changing shop o
     refund_state: "none",
   });
 });
+test.each(["pending", "requires_action", "failed"])(
+  "full-amount %s refunds do not send a cancellation completion email",
+  async (state) => {
+    await refundFixture(3750, state);
+    await processOrder(env, id);
+    expect(await refundOrder()).toMatchObject({
+      status: "cancelled",
+      refund_state: state === "requires_action" ? "pending" : state,
+    });
+    await sendNotifications(env);
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT * FROM notifications WHERE kind='cancellation-refund'",
+        ).all()
+      ).results,
+    ).toHaveLength(0);
+  },
+);
 test("cancellation email retries provider failures without duplicating a successful notification", async () => {
   await refundFixture();
   await reconcileOrderRefund(env, id);
