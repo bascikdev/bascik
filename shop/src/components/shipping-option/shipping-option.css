@@ -1,0 +1,25 @@
+.rate {
+  border: 1px solid var(--line);
+  padding: 14px;
+  border-radius: 6px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  background: var(--bg);
+}
+.rate:has(.radio:checked) {
+  border-color: var(--accent-fg);
+}
+.radio {
+  width: auto;
+  flex-shrink: 0;
+  accent-color: var(--accent-fg);
+}
+.name {
+  min-width: 0;
+}
+.amount {
+  margin-left: auto;
+  white-space: nowrap;
+}

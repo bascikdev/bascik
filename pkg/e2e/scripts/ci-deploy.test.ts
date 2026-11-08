@@ -1093,6 +1093,15 @@ describe("CI stages and the deploy stage", () => {
   const stage = (n: number) =>
     [...jobs].filter(([, job]) => job.stage === n).map(([id]) => id);
 
+  it("validates shop asset-builder changes across all shop suites", () => {
+    expect(changedWorkspaces(["shop/scripts/build-assets.ts"])).toMatchObject({
+      "run-shop-unit": "true",
+      "run-shop-integration": "true",
+      "run-shop-e2e": "true",
+      "run-any": "false",
+    });
+  });
+
   it("runs only shop suites touched by a shop-only PR and leaves root suites to root changes", () => {
     const changed = changedWorkspaces([
       "shop/scripts/check-live-providers.ts",

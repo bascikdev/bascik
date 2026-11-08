@@ -24,6 +24,7 @@ export interface Product {
   title: string;
   description: string;
   price: number;
+  taxCode?: string;
   variants: Variant[];
   images: ProductImage[];
 }
@@ -39,14 +40,4 @@ export const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
   );
-export const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (char) => {
-    const entities: Record<string, string> = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
-    return entities[char];
-  });
+export { esc as escapeHtml } from "@bascik/bascik/html";

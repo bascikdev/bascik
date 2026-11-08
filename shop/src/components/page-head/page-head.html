@@ -1,0 +1,13 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<link rel="icon" href="/assets/favicon.svg" />
+<script data-bascik-build src="./metadata.ts"></script>
+<script type="text/typescript">
+  try {
+    const theme = localStorage.getItem("bascik-theme");
+    if (theme === "light") document.documentElement.dataset.theme = theme;
+  } catch(error) {
+    console.error("Browser storage unavailable",error);
+  }
+</script>

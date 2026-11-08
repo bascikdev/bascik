@@ -1,4 +1,5 @@
-import { escapeHtml } from "./catalog.ts";
+import { esc as escapeHtml } from "@bascik/bascik/html";
+import { freeShippingOffer, freeShippingDetails } from "./free-shipping.ts";
 
 export const supportEmail = "shop@bascik.dev";
 const contact = `<a href="mailto:${supportEmail}">${supportEmail}</a>`;
@@ -44,6 +45,7 @@ export const termsPolicy =
   ) +
   section(
     "4. Shipping and Delivery",
+    `${freeShippingOffer} ${freeShippingDetails}`,
     "All delivery estimates are non-binding. Risk of loss and title for items pass to you upon delivery of the items to the shipping carrier. We are not liable for shipping delays outside our reasonable control.",
   ) +
   section(
@@ -179,12 +181,12 @@ export const policyPages = [
     content: paragraph(`Email: ${contact}`),
   },
   {
-    route: "pages/contact",
+    route: "contact",
     title: "Contact",
     content: paragraph(`Email: ${contact}`),
   },
   {
-    route: "pages/data-sharing-opt-out",
+    route: "data-sharing-opt-out",
     title: "Privacy choices",
     content: section(
       "Your privacy choices",
@@ -197,6 +199,7 @@ export const policyPages = [
     content:
       section(
         "Shipping and Delivery",
+        `${freeShippingOffer} ${freeShippingDetails}`,
         "Products are made to order by Printful. Delivery availability, prices, and estimates are calculated for your items and destination before payment. International orders may incur customs or import charges.",
         "All delivery estimates are non-binding. Risk of loss and title for items pass to you upon delivery of the items to the shipping carrier. We are not liable for shipping delays outside our reasonable control.",
       ) + refundPolicy,

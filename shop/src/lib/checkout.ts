@@ -12,6 +12,7 @@ import {
   type Env,
 } from "./platform.ts";
 import { cents, printful, stripe } from "./providers.ts";
+import { qualifiesForFreeShipping } from "./free-shipping.ts";
 import {
   placements,
   shippingPlacements,
@@ -298,20 +299,37 @@ export async function quoteRequest(request: Request, env: Env) {
   });
   if (!Array.isArray(rates) || !rates.length)
     throw new ShopError("Printful cannot ship this cart to that address.");
-  quote.rates = rates.map((rate) => {
+  const shippingRates = rates.map((rate) => {
     if (
       rate.currency !== "USD" ||
       typeof rate.shipping !== "string" ||
       typeof rate.shipping_method_name !== "string"
     )
       throw new ShopError("Invalid shipping response.", 502);
+    const amount = cents(rate.rate);
     return {
       id: rate.shipping,
       name: rate.shipping_method_name,
-      amount: cents(rate.rate),
+      amount,
       currency: "usd",
     };
   });
+  const cheapest = shippingRates.reduce((cheapest, rate) =>
+    rate.amount < cheapest.amount ||
+    (rate.amount === cheapest.amount && rate.id === "STANDARD")
+      ? rate
+      : cheapest,
+  );
+  const eligible = qualifiesForFreeShipping(
+    quote.subtotal,
+    address.country_code,
+    address.state_code,
+  );
+  quote.rates = shippingRates.map((rate) =>
+    eligible && rate === cheapest
+      ? { ...rate, amount: 0, name: `Free shipping - ${rate.name}` }
+      : rate,
+  );
   const id = crypto.randomUUID();
   const expiresAt = now() + 900;
   await env.DB.prepare(
@@ -429,9 +447,10 @@ export async function checkoutRequest(request: Request, env: Env) {
     );
     params.set(
       `line_items[${index}][price_data][product_data][tax_code]`,
-      findVariant(item.variantId)?.product.slug.includes("hat")
-        ? env.TAX_CODE_HAT
-        : env.TAX_CODE_SHIRT,
+      findVariant(item.variantId)?.product.taxCode ??
+        (findVariant(item.variantId)?.product.slug.includes("hat")
+          ? env.TAX_CODE_HAT
+          : env.TAX_CODE_SHIRT),
     );
     params.set(`line_items[${index}][quantity]`, String(item.quantity));
   });

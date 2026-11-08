@@ -1,0 +1,7 @@
+h1 {
+  font-size: clamp(32px, 4vw, 44px);
+  margin-bottom: 12px;
+}
+.lead {
+  font-size: 14px;
+}

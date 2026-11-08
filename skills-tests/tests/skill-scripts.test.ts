@@ -21,7 +21,10 @@ import {
   selectFiles,
 } from "../../skills/bascik/scripts/add-example.mjs";
 import { auditConfig } from "../../skills/bascik-config/scripts/audit-config.mjs";
-import { analyzeTemplate } from "../../skills/bascik/scripts/lib/components.mjs";
+import {
+  analyzeTemplate,
+  tagNameProblem,
+} from "../../skills/bascik/scripts/lib/components.mjs";
 import {
   auditPages,
   inspectPage,
@@ -290,6 +293,44 @@ describe("add-example", () => {
 });
 
 describe("list-components", () => {
+  it("accepts concise build-time names but refuses native, reserved, and malformed names", () => {
+    for (const name of ["navigation", "not-found", "page-head", "site-footer"])
+      expect(tagNameProblem(name), name).toBeUndefined();
+    for (const name of [
+      "nav",
+      "head",
+      "footer",
+      "dialog",
+      "svg",
+      "selectedcontent",
+      "blink",
+      "isindex",
+      "keygen",
+      "path",
+      "circle",
+      "g",
+      "lineargradient",
+      "foreignobject",
+      "fecomponenttransfer",
+      "altglyph",
+      "glyph",
+      "math",
+      "mi",
+      "mrow",
+      "annotation",
+      "msubsup",
+      "semantics",
+      "mfenced",
+      "none",
+      "font-face",
+      "Navigation",
+      "not_found",
+      "-navigation",
+      "navigation-",
+      "not--found",
+    ])
+      expect(tagNameProblem(name), name).toBeDefined();
+  });
   it("names each script directive, telling data-bascik-build-once from data-bascik-build", () => {
     const directives = (html: string) => analyzeTemplate(html).directives;
     expect(directives("<script data-bascik-build-once>x</script>")).toEqual([

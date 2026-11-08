@@ -1,0 +1,19 @@
+<header data-testid="checkout-header">
+  <nav
+    class="crumbs"
+    aria-label="Checkout progress"
+    data-testid="checkout-progress"
+  >
+    <a href="/cart" data-testid="checkout-cart">Your cart</a> / Delivery /
+    Stripe payment
+  </nav>
+  <h1>Delivery &amp; checkout</h1>
+  <p class="muted lead">Made to order by Printful. Pay securely on Stripe.</p>
+  <p class="notice" data-testid="checkout-prelaunch">
+    <script data-bascik-build-once type="text/typescript">
+      import {html} from "@bascik/bascik/html";
+      import {prelaunchNotice} from "./notice.ts";
+      export default () => html`${prelaunchNotice}`;
+    </script>
+  </p>
+</header>

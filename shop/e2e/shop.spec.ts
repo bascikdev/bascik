@@ -1,6 +1,329 @@
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
+import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
+
+test("all rendered storefront buttons have explicit types, including cloned controls", async ({
+  page,
+}) => {
+  for (const path of [
+    "/",
+    ...products.map((product) => `/products/${product.slug}`),
+    "/cart",
+    "/checkout",
+    "/order",
+    "/contact",
+    "/missing-product",
+  ]) {
+    await page.goto(path);
+    if (path.startsWith("/products/"))
+      await page.getByTestId("add-to-cart").click();
+    const missing = await page
+      .locator("button")
+      .evaluateAll((buttons) =>
+        buttons
+          .filter(
+            (button) =>
+              !["button", "submit", "reset"].includes(
+                button.getAttribute("type") ?? "",
+              ),
+          )
+          .map((button) => button.outerHTML),
+      );
+    expect(missing, path).toEqual([]);
+  }
+});
+
+test("legacy Shopify page URLs permanently redirect to root pages", async ({
+  page,
+  request,
+}) => {
+  for (const [oldPath, currentPath] of [
+    ["/pages/contact", "/contact"],
+    ["/pages/data-sharing-opt-out", "/data-sharing-opt-out"],
+  ]) {
+    for (const suffix of ["", "/"]) {
+      const response = await request.get(`${oldPath}${suffix}`, {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(301);
+      expect(
+        new URL(response.headers().location, response.url()).pathname,
+      ).toBe(currentPath);
+    }
+    await page.goto(oldPath);
+    await expect(page).toHaveURL(new RegExp(`${currentPath}$`));
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      `https://shop.bascik.dev${currentPath}`,
+    );
+  }
+  await expect(
+    page
+      .getByTestId("shop-footer")
+      .getByRole("link", { name: "Contact", exact: true }),
+  ).toHaveAttribute("href", "/contact");
+});
+
+test("free shipping promotion and cart feedback update at the strict merchandise threshold", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("free-shipping-banner")).toContainText(
+    "over $50",
+  );
+  await expect(page.getByTestId("free-shipping-banner")).toContainText(
+    "lower 48 states",
+  );
+  await page.goto(`/products/${products[0].slug}`);
+  await expect(page.getByTestId("free-shipping-banner")).toBeVisible();
+  await page.getByTestId("add-to-cart").click();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "over $50",
+  );
+  await page.getByTestId("product-quantity").fill("1");
+  await page.getByTestId("add-to-cart").click();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "over $50",
+  );
+  await page.getByTestId("product-view-cart").click();
+  await expect(page.getByTestId("cart-total")).toHaveText("$60.00");
+  await expect(page.getByTestId("cart-checkout")).toHaveText("Checkout");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "delivery address",
+  );
+  await page.getByTestId("cart-quantity").fill("1");
+  await page.getByTestId("cart-quantity").dispatchEvent("change");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "more than $20.00",
+  );
+  await page.reload();
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "more than $20.00",
+  );
+  await page.getByTestId("cart-remove").click();
+  await expect(page.getByTestId("cart-checkout")).toBeHidden();
+  await expect(page.getByTestId("free-shipping-progress")).not.toContainText(
+    "Your cart qualifies",
+  );
+  const hat = products.find((product) => product.slug.includes("hat"))!;
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 2 }]),
+      ),
+    hat.variants[0].id,
+  );
+  await page.reload();
+  await expect(page.getByTestId("cart-total")).toHaveText("$50.00");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Add another item",
+  );
+  await page.goto("/");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "over $50",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("shipping notes stay compact and contextual, with full terms one link away", async ({
+  page,
+}) => {
+  for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+    await page.goto(path);
+    const note = page.getByTestId("free-shipping-banner");
+    await expect(note).toBeVisible();
+    await expect(note.getByTestId("free-shipping-terms")).toHaveAttribute(
+      "href",
+      "/shipping",
+    );
+    await expect(note).not.toContainText("other services retain");
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute("data-theme", theme),
+        theme,
+      );
+      const style = await note.evaluate((element) => {
+        const css = getComputedStyle(element);
+        return {
+          height: element.getBoundingClientRect().height,
+          background: css.backgroundColor,
+          border: css.borderTopWidth,
+          padding: css.paddingTop,
+          fontSize: parseFloat(css.fontSize),
+        };
+      });
+      expect(style.height).toBeLessThan(100);
+      expect(style.background).toBe("rgba(0, 0, 0, 0)");
+      expect(style.border).toBe("0px");
+      expect(style.padding).toBe("0px");
+      expect(style.fontSize).toBeLessThanOrEqual(14);
+    }
+    if (path.startsWith("/products/"))
+      await expect(
+        page.getByTestId("product-detail").getByTestId("free-shipping-banner"),
+      ).toBeVisible();
+    if (path === "/cart") {
+      await expect(
+        page.getByTestId("cart").getByTestId("free-shipping-banner"),
+      ).toBeVisible();
+      const subtotal = await page.getByTestId("cart-total").boundingBox();
+      const shipping = await note.boundingBox();
+      expect(shipping!.y).toBeGreaterThan(subtotal!.y);
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page.getByTestId("free-shipping-terms").click();
+  await expect(page.getByTestId("shop-policy")).toContainText(
+    "The lowest-cost available shipping option is free; other services retain their full price.",
+  );
+  await expect(page.getByTestId("shop-policy")).toContainText(
+    "Before tax and shipping",
+  );
+});
+
+test("shipping offer and terms remain available without JavaScript", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    baseURL,
+  });
+  try {
+    const page = await context.newPage();
+    for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+      await page.goto(path);
+      await expect(page.getByTestId("free-shipping-banner")).toContainText(
+        "merchandise over $50 to the lower 48 states",
+      );
+      await page.getByTestId("free-shipping-terms").click();
+      await expect(page.getByTestId("shop-policy")).toContainText(
+        "The lowest-cost available shipping option is free",
+      );
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test("checkout confirms destination-specific free shipping and invalidates it after address changes", async ({
+  page,
+}) => {
+  await page.goto("/checkout");
+  await page.evaluate(
+    (variantId) =>
+      localStorage.setItem(
+        "bascik-shop-cart",
+        JSON.stringify([{ variantId, quantity: 2 }]),
+      ),
+    products[0].variants[0].id,
+  );
+  await page.reload();
+  await expect(page.getByTestId("checkout-line")).toHaveCount(1);
+  await page.getByTestId("shipping-country").selectOption("US");
+  await page
+    .getByLabel("State / province", { exact: false })
+    .fill("California");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "qualifies",
+  );
+  await page.getByLabel("Full name").fill("Test Buyer");
+  await page.getByLabel("Email", { exact: true }).fill("buyer@example.com");
+  await page.getByLabel("Street address").fill("Example Street");
+  await page.getByLabel("City", { exact: true }).fill("Los Angeles");
+  await page.getByLabel("Postal code").fill("90001");
+  await page.route("**/api/quote", async (route) => {
+    const input = route.request().postDataJSON();
+    const free = ["CA", "California"].includes(input.recipient.state_code);
+    await route.fulfill({
+      json: {
+        quoteId: "quote_free_fixture",
+        expiresAt: Math.floor(Date.now() / 1000) + 900,
+        subtotal: 6000,
+        rates: [
+          {
+            id: "STANDARD",
+            name: free ? "Free standard shipping - Standard" : "Standard",
+            amount: free ? 0 : 500,
+          },
+          { id: "STANDARD_CARBON_OFFSET", name: "Carbon offset", amount: 600 },
+        ],
+      },
+    });
+  });
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.locator("[data-rates]")).toContainText(
+    "Free standard shipping",
+  );
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$0.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$60.00");
+  await page.getByRole("radio", { name: /Carbon offset/ }).check();
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$66.00");
+  await page.getByLabel("State / province", { exact: false }).fill("HI");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Regular shipping rates apply",
+  );
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText(
+    "Calculated next",
+  );
+  await page.getByTestId("shipping-quote").click();
+  await expect(page.locator("[data-checkout-shipping]")).toHaveText("$5.00");
+  await expect(page.locator("[data-checkout-total]")).toHaveText("$65.00");
+  await page.getByTestId("shipping-country").selectOption("CA");
+  await expect(page.getByTestId("free-shipping-progress")).toContainText(
+    "Regular shipping rates apply",
+  );
+  await expect(page.getByTestId("checkout-pay")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+for (const product of products.filter((product) =>
+  product.slug.includes("decal"),
+)) {
+  test(`${product.slug} has responsive images, a $5 price, and a working cart`, async ({
+    page,
+  }) => {
+    await page.goto(`/products/${product.slug}`);
+    await expect(
+      page.getByRole("heading", { name: product.title, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("product-detail").getByText("$5.00", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      `https://shop.bascik.dev${product.images[0].src}`,
+    );
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      "content",
+      product.description,
+    );
+    await expect(page.getByTestId("product-image")).toHaveAttribute(
+      "src",
+      /\.webp$/,
+    );
+    await page.getByTestId("add-to-cart").click();
+    await page.getByTestId("product-view-cart").click();
+    await expect(page.getByTestId("cart-line")).toHaveCount(1);
+    await expect(page.getByTestId("cart-line")).toContainText(product.title);
+    await expect(page.getByTestId("cart-total")).toHaveText("$5.00");
+  });
+}
 
 test("email logo is a published PNG rasterized from the shared Bascik SVG", async ({
   request,
@@ -26,7 +349,7 @@ test("adding a product offers a prominent cart link that survives reload", async
   page,
 }) => {
   await page.goto(`/products/${products[0].slug}`);
-  await expect(page.getByTestId("product-view-cart")).toHaveCount(0);
+  await expect(page.getByTestId("product-view-cart")).toBeHidden();
   await page.getByTestId("add-to-cart").click();
   await expect(page.getByTestId("product-view-cart")).toBeVisible();
   await page.reload();
@@ -58,7 +381,7 @@ test("catalog is complete and independent of Shopify at runtime", async ({
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByTestId("product-card")).toHaveCount(4);
+  await expect(page.getByTestId("product-card")).toHaveCount(6);
   await expect(page.getByRole("heading", { name: "Bascik merch" })).toHaveCount(
     1,
   );
@@ -376,6 +699,102 @@ test("delivery uses US-first Printful destinations without embedded payment fiel
     "Continue to Stripe",
   );
 });
+test("checkout refreshes destinations after cross-tab cart edits and resets unsupported selections", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/checkout");
+  const country = page.getByTestId("shipping-country");
+  const state = page.getByTestId("checkout-state");
+  const zip = page.getByTestId("checkout-zip");
+  const optionCodes = () =>
+    country
+      .locator("option")
+      .evaluateAll((options) =>
+        options.map((option) => (option as HTMLOptionElement).value),
+      );
+  await expect(country.locator("option")).toHaveCount(
+    shippingCountries([]).length + 1,
+  );
+  expect(await optionCodes()).not.toContain("IN");
+  await expect(page.getByTestId("shipping-form")).toBeHidden();
+  const otherTab = await context.newPage();
+  try {
+    await otherTab.goto("/");
+    const shirt = products[0];
+    const decal = products.find((product) => product.slug.includes("decal"))!;
+    const setCart = (items: { variantId: string; quantity: number }[]) =>
+      otherTab.evaluate(
+        (items) =>
+          localStorage.setItem("bascik-shop-cart", JSON.stringify(items)),
+        items,
+      );
+    await setCart([{ variantId: shirt.variants[0].id, quantity: 1 }]);
+    await expect(country.locator("option")).toHaveCount(
+      shippingCountries([shirt.id]).length + 1,
+    );
+    expect(await optionCodes()).toEqual([
+      "",
+      ...shippingCountries([shirt.id]).map((country) => country.code),
+    ]);
+    await expect(page.getByTestId("shipping-form")).toBeVisible();
+    await country.selectOption("US");
+    await expect(state).toHaveAttribute("required", "");
+    await expect(zip).toHaveAttribute("required", "");
+    await expect(state).toHaveAttribute("placeholder", /AL/);
+    await page.getByTestId("checkout-name").fill("Test Buyer");
+    await page.getByTestId("checkout-email").fill("buyer@example.com");
+    await page.getByTestId("checkout-address1").fill("Example Street");
+    await page.getByTestId("checkout-city").fill("Los Angeles");
+    await state.fill("CA");
+    await zip.fill("90001");
+    await page.route("**/api/quote", (route) =>
+      route.fulfill({
+        json: {
+          quoteId: "quote_cart_country_fixture",
+          expiresAt: Math.floor(Date.now() / 1000) + 900,
+          subtotal: 3000,
+          rates: [{ id: "STANDARD", name: "Standard", amount: 500 }],
+        },
+      }),
+    );
+    await page.getByTestId("shipping-quote").click();
+    await expect(page.getByTestId("checkout-pay")).toBeVisible();
+    await setCart([{ variantId: shirt.variants[0].id, quantity: 2 }]);
+    await expect(page.locator("[data-checkout-subtotal]")).toHaveText("$60.00");
+    await expect(country).toHaveValue("US");
+    await expect(page.getByTestId("checkout-pay")).toBeHidden();
+    await expect(page.locator("[data-checkout-shipping]")).toHaveText(
+      "Calculated next",
+    );
+    await country.selectOption("IN");
+    await expect(state).not.toHaveAttribute("required");
+    await expect(zip).not.toHaveAttribute("required");
+    await setCart([
+      { variantId: shirt.variants[0].id, quantity: 2 },
+      { variantId: decal.variants[0].id, quantity: 1 },
+    ]);
+    await expect(country.locator("option")).toHaveCount(
+      shippingCountries([shirt.id, decal.id]).length + 1,
+    );
+    expect(await optionCodes()).not.toContain("IN");
+    await expect(country).toHaveValue("");
+    await expect(state).toHaveAttribute("placeholder", "");
+    await expect(state).not.toHaveAttribute("required");
+    await expect(zip).not.toHaveAttribute("required");
+    await expect(page.locator("[data-checkout-status]")).toContainText(
+      "Choose a supported delivery country",
+    );
+    await country.selectOption("SG");
+    await expect(zip).toHaveAttribute("required", "");
+    await setCart([]);
+    await expect(page.getByTestId("shipping-form")).toBeHidden();
+    await expect(country).toHaveValue("SG");
+    await expect(zip).toHaveAttribute("required", "");
+  } finally {
+    await otherTab.close();
+  }
+});
 test("hosted checkout rejects delivery changes during a pending quote and permits a fresh Stripe redirect", async ({
   page,
 }) => {
@@ -498,7 +917,7 @@ test("responsive images reserve space and stay within the mobile transfer budget
       };
     }),
   );
-  expect(initialImages.length).toBe(4);
+  expect(initialImages.length).toBe(6);
   for (const image of initialImages) {
     expect(image.width).toBeGreaterThan(0);
     expect(image.height).toBeGreaterThan(0);
@@ -659,6 +1078,13 @@ test("paid orders show a printable confirmation without leaking the private toke
   await expect(page.getByTestId("shop-footer")).toBeHidden();
   await expect(page.getByTestId("order-print")).toBeHidden();
   await expect(page.getByTestId("order-summary")).toBeVisible();
+  await expect(page.getByTestId("order-help")).toBeHidden();
+  await expect(page.getByTestId("order")).toHaveCSS("margin-top", "0px");
+  await expect(page.getByTestId("order-summary")).toHaveCSS("padding", "0px");
+  await expect(page.getByTestId("order-item")).toHaveCSS(
+    "break-inside",
+    "avoid",
+  );
   await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
   expect(new URL(page.url()).hash).toBe("#token=private-confirmation-fixture");
 });
@@ -693,6 +1119,8 @@ test("published customer policies preserve previous shop routes and decisions", 
     ["/policies/contact-information", "Contact information"],
     ["/pages/contact", "Contact"],
     ["/pages/data-sharing-opt-out", "Privacy choices"],
+    ["/contact", "Contact"],
+    ["/data-sharing-opt-out", "Privacy choices"],
     ["/shipping", "Shipping & returns"],
     ["/privacy", "Privacy policy"],
     ["/terms", "Terms of service"],

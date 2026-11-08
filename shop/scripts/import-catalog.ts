@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { imageColor } from "../src/lib/image-colors.ts";
@@ -172,11 +173,33 @@ for (const product of selected) {
 }
 await writeFile(
   "catalog/products.json",
-  JSON.stringify(result, null, 2) + "\n",
+  JSON.stringify(
+    [
+      ...result,
+      ...(existsSync("catalog/products.json")
+        ? JSON.parse(await readFile("catalog/products.json", "utf8"))
+        : []
+      ).filter((product: { slug: string }) => !handles.includes(product.slug)),
+    ],
+    null,
+    2,
+  ) + "\n",
 );
 await writeFile(
   "image-originals/manifest.json",
-  JSON.stringify(manifest, null, 2) + "\n",
+  JSON.stringify(
+    [
+      ...manifest,
+      ...(existsSync("image-originals/manifest.json")
+        ? JSON.parse(await readFile("image-originals/manifest.json", "utf8"))
+        : []
+      ).filter((image: { source: string }) =>
+        image.source.startsWith("owner-supplied:"),
+      ),
+    ],
+    null,
+    2,
+  ) + "\n",
 );
 console.log(
   `Imported ${result.length} products, 24 variants, ${manifest.length} image views (${new Set(manifest.map((image) => image.hash)).size} unique originals).`,

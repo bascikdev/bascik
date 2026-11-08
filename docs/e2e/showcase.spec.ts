@@ -73,6 +73,22 @@ test("showcase has real screenshots, working site links, and a submission link",
   await expect(shop).toContainText("Printful");
   await expect(shop).toContainText("Cloudflare D1");
   await expect(
+    shop.getByRole("link", { name: "Browse the shop source on GitHub" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/bascikdev/bascik/tree/main/shop",
+  );
+  await expect(
+    cards
+      .filter({
+        has: page.getByRole("heading", { name: "Bascik", exact: true }),
+      })
+      .getByRole("link", { name: "Browse the docs source on GitHub" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/bascikdev/bascik/tree/main/docs",
+  );
+  await expect(
     page.getByRole("link", { name: "Submit your site on GitHub" }),
   ).toHaveAttribute(
     "href",

@@ -32,9 +32,13 @@ A SaaS website and dashboard built with Bascik and the Netlify adapter. The dash
 
 This site is built with Bascik, too. The documentation, live examples, and homepage all use the same tool you install.
 
+[Browse the docs source on GitHub](https://github.com/bascikdev/bascik/tree/main/docs).
+
 ### Bascik Shop
 
 An independent merchandise shop built with Bascik and the Cloudflare adapter. It uses Stripe Checkout for payments and Printful for shipping and fulfillment, with orders stored in Cloudflare D1.
+
+[Browse the shop source on GitHub](https://github.com/bascikdev/bascik/tree/main/shop).
 
 ## Submit your site
 

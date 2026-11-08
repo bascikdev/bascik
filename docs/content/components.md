@@ -579,7 +579,11 @@ Naming your components with hyphens ensures they never collide with native HTML 
 - Use hyphens, not underscores, between words. An underscore is legal, but `#btn {}` in `site-nav_x.html` and `#x_btn {}` in `site-nav.html` both compile to the class `b_id_site-nav_x_btn`, so each rule would style the other component's element. The build stops on that with an error naming both rules and their lines (rename the id or the component), and the editor and `bascik --check` warn on any component name with an underscore (`component-name-underscore`).
 - If a component file is empty (such as one just created in the editor), the CLI warns `Component "stub-card" (src/components/stub-card.html) is empty, so every <stub-card> renders nothing until the file has markup.` Each `<stub-card>` usage, and whatever it wraps, is removed from the output, and every other component on the page still expands.
 
-Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
+Choose concise lowercase names that describe a component's job, without repeating the application's name: `not-found` rather than `shop-not-found`. Use hyphens between words, never underscores.
+
+Bascik components are expanded before the browser sees them, not registered as browser custom elements. A non-native single word such as `navigation` works, although the CLI and editor still recommend a hyphenated name for future compatibility. Never shorten a name to a native element: `nav`, `head`, and `footer` would replace those elements throughout the site. Use `navigation`, `page-head`, and `site-footer` instead. Browser custom elements that remain in the built output must follow the WHATWG hyphen requirement.
+
+Native names include SVG and MathML elements (`path`, `circle`, `mi`, `mrow`) and obsolete HTML elements (`blink`, `isindex`, `keygen`). The public skill's component-creation helper rejects these names too; reserve them for native markup.
 
 Component names match complete tag names only. A component named `card` claims `<card>`, but it never claims a longer tag such as `<card-header>`.
 

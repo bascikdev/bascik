@@ -3,6 +3,22 @@ import { resolve } from "node:path";
 import { Miniflare } from "miniflare";
 
 const config = JSON.parse(await readFile(".output/wrangler.json", "utf8"));
+const staticRules: Record<
+  string,
+  { to: string; status: number; lineNumber: number }
+> = {};
+const redirects = await readFile(".output/public/_redirects", "utf8");
+for (const [index, line] of redirects.split("\n").entries()) {
+  if (!line.trim() || line.trim().startsWith("#")) continue;
+  const match = /^(\/[^\s*:]*)\s+(\/\S*)\s+(301|302|303|307|308)$/.exec(line);
+  if (!match)
+    throw new Error(`Unsupported test asset redirect on line ${index + 1}.`);
+  staticRules[match[1]] = {
+    to: match[2],
+    status: Number(match[3]),
+    lineNumber: index + 1,
+  };
+}
 const runtime = new Miniflare({
   modules: true,
   modulesRoot: resolve(".output"),
@@ -24,6 +40,7 @@ const runtime = new Miniflare({
     assetConfig: {
       not_found_handling: "404-page",
       html_handling: "auto-trailing-slash",
+      redirects: { version: 1, staticRules, rules: {} },
     },
     routerConfig: {
       has_user_worker: true,

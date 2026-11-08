@@ -132,6 +132,7 @@ jobs:
           node-version: 24
           cache: yarn
       - run: yarn install --immutable
+      - run: yarn pkg:build
       - uses: actions/download-artifact@v4
         with:
           name: shop-cloudflare-build
@@ -185,6 +186,7 @@ jobs:
           node-version: 24
           cache: yarn
       - run: yarn install --immutable
+      - run: yarn pkg:build
       - uses: actions/download-artifact@v4
         with:
           name: shop-cloudflare-build
@@ -217,6 +219,7 @@ jobs:
           node-version: 24
           cache: yarn
       - run: yarn install --immutable
+      - run: yarn pkg:build
       - uses: actions/download-artifact@v4
         with:
           name: shop-cloudflare-build

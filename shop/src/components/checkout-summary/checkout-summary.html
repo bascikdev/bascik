@@ -1,0 +1,32 @@
+<aside
+  id="root"
+  class="panel order-summary"
+  aria-labelledby="summary-heading"
+  data-testid="checkout-summary"
+>
+  <div class="summary-heading">
+    <h2 id="summary-heading">Your order</h2>
+    <a href="/cart" data-testid="checkout-edit-cart">Edit cart</a>
+  </div>
+  <div data-checkout-lines></div>
+  <dl class="totals">
+    <div>
+      <dt>Subtotal</dt>
+      <dd data-checkout-subtotal>$0.00</dd>
+    </div>
+    <div>
+      <dt>Shipping</dt>
+      <dd data-checkout-shipping>Calculated next</dd>
+    </div>
+    <div class="total">
+      <dt>Total before tax</dt>
+      <dd data-checkout-total>$0.00</dd>
+    </div>
+  </dl>
+  <p class="muted note">
+    USD pricing. Payment details stay with Stripe. Your order is fulfilled by
+    Printful.
+  </p>
+  <a href="/shipping">Shipping &amp; returns</a>
+</aside>
+<script type="module" src="./checkout-summary.ts"></script>

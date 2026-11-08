@@ -1,6 +1,60 @@
 {
   "version": 1,
   "skills": {
+    "bascik": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik/SKILL.md",
+      "computedHash": "7cb5b22694ae42178fafcf17d9687d6081f4c824836fe121e2f83bcde77f0e37"
+    },
+    "bascik-compatibility": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-compatibility/SKILL.md",
+      "computedHash": "594e65525de15df511fe2ddb98e5b400469325b57ef441c61f89a6b854fe9ce9"
+    },
+    "bascik-components": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-components/SKILL.md",
+      "computedHash": "0153544cd33d539aec88bb24e5dda3028f5f0cae1ff5306bd2104680d9290126"
+    },
+    "bascik-config": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-config/SKILL.md",
+      "computedHash": "e19b0a834eb002f3f87ca9723d143af81a129967942dfff5e8b3f29a48a00406"
+    },
+    "bascik-migrate": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-migrate/SKILL.md",
+      "computedHash": "cc164365384dce2f3e65a4f7964a2ef5d2078648af77c4af99f8c0bfc28b9a62"
+    },
+    "bascik-refactor": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-refactor/SKILL.md",
+      "computedHash": "457f893a4bd2ffe014277a11cab6a59039dd2200760f1f669ca41bf0223d0fad"
+    },
+    "bascik-scripts": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-scripts/SKILL.md",
+      "computedHash": "a035f1b1ef65ed44148f8b161491b09f97347371e8a0ccad3ac0872f81fff735"
+    },
+    "bascik-seo": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-seo/SKILL.md",
+      "computedHash": "e3e2216e2d98c273270991e6861819e6f80ead16b50ea56d1ab1174c80434c87"
+    },
+    "bascik-testing": {
+      "source": "bascikdev/bascik",
+      "sourceType": "github",
+      "skillPath": "skills/bascik-testing/SKILL.md",
+      "computedHash": "08ba62ff47b9be77a725e9fe45b4da9729190eea0b0eb05037a2f26b46671a25"
+    },
     "connect-recommend": {
       "source": "docs.stripe.com",
       "sourceUrl": "https://docs.stripe.com",

@@ -29,7 +29,7 @@ test.each([
           products.map((product) => ({
             id: `prod_${product.id}`,
             active: true,
-            tax_code: "txcd_30011000",
+            tax_code: product.taxCode ?? "txcd_30011000",
             metadata: { app: "bascik-shop", handle: product.slug },
           })),
         )};
@@ -94,7 +94,7 @@ test.each([
       );
       expect(report).toMatchObject({
         liveAccountMatched: true,
-        verifiedProducts: 4,
+        verifiedProducts: 6,
         registrationCount: 0,
         printfulStoreVerified: true,
       });
@@ -117,7 +117,7 @@ test.each([false, true])(
       await mkdir(join(root, ".output"));
       await mkdir(join(root, ".output/public"));
       const checkout =
-        '<main><p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p><form data-testid="shipping-form"></form></main>';
+        '<main><p class="scoped-notice" data-testid="checkout-prelaunch">\nThe new shop is being prepared. Checkout stays disabled until tax,\nfulfillment, and email setup have been verified.\n</p><form data-testid="shipping-form"></form></main>';
       await writeFile(join(root, ".output/public/checkout.html"), checkout);
       await writeFile(
         join(root, ".output/public/_headers"),
@@ -352,7 +352,7 @@ test.each([
       await mkdir(join(root, ".output/public"));
       await writeFile(
         join(root, ".output/public/checkout.html"),
-        '<p class="notice">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p>',
+        '<p class="scoped-notice" data-testid="checkout-prelaunch">The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.</p>',
       );
       await writeFile(
         join(root, ".output/public/_headers"),

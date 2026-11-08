@@ -1,0 +1,128 @@
+<section id="root" class="checkout" data-testid="checkout">
+  <checkout-header />
+  <div class="checkout-layout">
+    <section
+      class="panel delivery-panel"
+      aria-labelledby="delivery-heading"
+      data-testid="delivery-panel"
+    >
+      <h2 id="delivery-heading">Delivery details</h2>
+      <p class="muted">We use your address to get exact shipping rates.</p>
+      <form class="delivery" data-shipping-form data-testid="shipping-form">
+        <div class="delivery-fields">
+          <div>
+            <label for="name">Full name</label
+            ><input
+              id="name"
+              name="name"
+              autocomplete="name"
+              required
+              data-testid="checkout-name"
+            />
+          </div>
+          <div>
+            <label for="email">Email</label
+            ><input
+              id="email"
+              name="email"
+              autocomplete="email"
+              required
+              type="email"
+              data-testid="checkout-email"
+            />
+          </div>
+          <div class="wide">
+            <label for="address1">Street address</label
+            ><input
+              id="address1"
+              name="address1"
+              autocomplete="address-line1"
+              required
+              data-testid="checkout-address1"
+            />
+          </div>
+          <div class="wide">
+            <label for="address2">Apartment, suite (optional)</label
+            ><input
+              id="address2"
+              name="address2"
+              autocomplete="address-line2"
+              data-testid="checkout-address2"
+            />
+          </div>
+          <div>
+            <label for="city">City</label
+            ><input
+              id="city"
+              name="city"
+              autocomplete="address-level2"
+              required
+              data-testid="checkout-city"
+            />
+          </div>
+          <div>
+            <label for="state_code">State / province</label
+            ><input
+              id="state_code"
+              name="state_code"
+              autocomplete="address-level1"
+              data-testid="checkout-state"
+            />
+          </div>
+          <div>
+            <label for="zip">Postal code</label
+            ><input
+              id="zip"
+              name="zip"
+              autocomplete="postal-code"
+              required
+              data-testid="checkout-zip"
+            />
+          </div>
+          <div class="wide">
+            <label for="country">Country / region</label
+            ><select
+              id="country"
+              name="country_code"
+              autocomplete="country"
+              required
+              data-testid="shipping-country"
+            >
+              <option value="">Choose your country</option>
+            </select>
+          </div>
+        </div>
+        <button class="primary" type="submit" data-testid="shipping-quote">
+          Get shipping options
+        </button>
+      </form>
+      <div class="status" role="status" data-checkout-status></div>
+      <section
+        class="shipping-options"
+        data-rates-section
+        hidden
+        aria-labelledby="shipping-heading"
+      >
+        <h2 id="shipping-heading">Choose shipping</h2>
+        <div class="rates" data-rates></div>
+        <template data-rate-template>
+          <shipping-option />
+        </template>
+        <button
+          class="primary"
+          type="button"
+          data-pay
+          data-testid="checkout-pay"
+        >
+          Continue to Stripe
+        </button>
+        <p class="muted">
+          Stripe shows applicable tax and your final total before payment.
+          Delivery estimates are not guaranteed; import duties may apply.
+        </p>
+      </section>
+    </section>
+    <checkout-summary />
+  </div>
+</section>
+<script type="module" src="./checkout-form.ts"></script>

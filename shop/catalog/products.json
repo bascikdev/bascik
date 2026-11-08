@@ -726,5 +726,83 @@
         "color": "Oyster"
       }
     ]
+  },
+  {
+    "id": "bascik-logo-vinyl-decal",
+    "slug": "bascik-logo-vinyl-decal",
+    "title": "Bascik Logo Kiss-Cut Vinyl Decal (4.5\" x 1\")",
+    "description": "Kiss-cut vinyl decal featuring the Bascik logo. Decal dimensions: 4.5\" x 1\". Vinyl with a satin finish and removable adhesive. Bubble-free application. Water, scratch, and UV resistant. Dishwasher-safe. Suitable for indoor and outdoor use on laptops, bottles, and notebooks.",
+    "price": 500,
+    "taxCode": "txcd_99999999",
+    "variants": [
+      {
+        "id": "bascik-logo-vinyl-decal",
+        "title": "4.5\" x 1\"",
+        "sku": "bascik-decal-109978527",
+        "color": "Satin",
+        "size": null,
+        "available": true,
+        "imageId": "logo-front"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/2b7230dd11a9862d-640.webp",
+        "srcset": "/assets/products/2b7230dd11a9862d-320.webp 320w, /assets/products/2b7230dd11a9862d-640.webp 640w",
+        "width": 768,
+        "height": 768,
+        "alt": "Bascik Logo Kiss-Cut Vinyl Decal (4.5\" x 1\"), front view",
+        "sourceId": "logo-front",
+        "color": "Satin"
+      },
+      {
+        "src": "/assets/products/3f661c32869522d0-640.webp",
+        "srcset": "/assets/products/3f661c32869522d0-320.webp 320w, /assets/products/3f661c32869522d0-640.webp 640w",
+        "width": 768,
+        "height": 768,
+        "alt": "Bascik Logo Kiss-Cut Vinyl Decal (4.5\" x 1\"), on a laptop",
+        "sourceId": "logo-laptop",
+        "color": "Satin"
+      }
+    ]
+  },
+  {
+    "id": "bascik-insignia-vinyl-decal",
+    "slug": "bascik-insignia-vinyl-decal",
+    "title": "Bascik Insignia Kiss-Cut Vinyl Decal (2\" x 2\")",
+    "description": "Kiss-cut vinyl decal featuring the Bascik insignia. Decal dimensions: 2\" x 2\". Vinyl with a satin finish and removable adhesive. Bubble-free application. Water, scratch, and UV resistant. Dishwasher-safe. Suitable for indoor and outdoor use on laptops, bottles, and notebooks.",
+    "price": 500,
+    "taxCode": "txcd_99999999",
+    "variants": [
+      {
+        "id": "bascik-insignia-vinyl-decal",
+        "title": "2\" x 2\"",
+        "sku": "bascik-decal-109978655",
+        "color": "Satin",
+        "size": null,
+        "available": true,
+        "imageId": "insignia-front"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/93f34637e4915a87-640.webp",
+        "srcset": "/assets/products/93f34637e4915a87-320.webp 320w, /assets/products/93f34637e4915a87-640.webp 640w",
+        "width": 768,
+        "height": 768,
+        "alt": "Bascik Insignia Kiss-Cut Vinyl Decal (2\" x 2\"), front view",
+        "sourceId": "insignia-front",
+        "color": "Satin"
+      },
+      {
+        "src": "/assets/products/41fc5a6f62d3572e-640.webp",
+        "srcset": "/assets/products/41fc5a6f62d3572e-320.webp 320w, /assets/products/41fc5a6f62d3572e-640.webp 640w",
+        "width": 768,
+        "height": 768,
+        "alt": "Bascik Insignia Kiss-Cut Vinyl Decal (2\" x 2\"), on a laptop",
+        "sourceId": "insignia-laptop",
+        "color": "Satin"
+      }
+    ]
   }
 ]

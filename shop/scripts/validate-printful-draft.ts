@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
 import { printful, printfulList, ProviderError } from "../src/lib/providers.ts";
 import { templateFingerprint } from "./template-fingerprint.ts";
+import { productTemplates } from "./product-templates.ts";
 import {
   shippingPlacements,
   type PrintfulShippingPlacement,
@@ -151,6 +152,9 @@ const items = await printfulList<DraftItem>(
 if (items.length !== proposal.mappings.length)
   throw new Error("Validation draft has unexpected item count.");
 for (const mapping of proposal.mappings) {
+  const approved = Object.values(productTemplates).find(
+    (template) => template.id === mapping.product_template_id,
+  );
   const matches = items.filter(
     (item) => item.external_id === mapping.variant_id,
   );
@@ -164,7 +168,8 @@ for (const mapping of proposal.mappings) {
       matches[0].placements.some(
         (placement) =>
           placement.placement === expected.placement &&
-          placement.technique === expected.technique &&
+          placement.technique ===
+            (approved?.draftTechnique ?? expected.technique) &&
           (placement.status === "ok" ||
             (placement.status === "" && placement.status_explanation === "")) &&
           Array.isArray(placement.layers) &&

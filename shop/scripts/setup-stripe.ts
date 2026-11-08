@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import catalog from "../catalog/products.json" with { type: "json" };
+import { products as catalog } from "../src/lib/catalog.ts";
 
 const key = process.env.STRIPE_SECRET_KEY;
 if (!key?.startsWith("sk_test_"))
@@ -79,7 +79,11 @@ if (write) {
     throw new Error(
       "Choose TAX_CODE_SHIRT and TAX_CODE_HAT before creating products.",
     );
-  for (const code of new Set([shirtCode, hatCode]))
+  for (const code of new Set([
+    shirtCode,
+    hatCode,
+    ...catalog.flatMap((product) => (product.taxCode ? [product.taxCode] : [])),
+  ]))
     await call(`/tax_codes/${encodeURIComponent(code)}`);
   const existing = await list<{
     id: string;
@@ -87,7 +91,8 @@ if (write) {
     metadata: Record<string, string>;
   }>("/products");
   for (const product of catalog) {
-    const code = product.slug.includes("hat") ? hatCode : shirtCode;
+    const code =
+      product.taxCode ?? (product.slug.includes("hat") ? hatCode : shirtCode);
     const existingProduct = existing.find(
       (entry: { metadata: Record<string, string> }) =>
         entry.metadata?.app === "bascik-shop" &&

@@ -90,7 +90,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0003_printful_templates.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0004_order_confirmation.sql", "utf8"));
+    (await readFile("migrations/0004_order_confirmation.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0005_vinyl_decals.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -1197,6 +1199,507 @@ test("legacy sync mappings cannot enable a v2 quote", async () => {
   ).rejects.toThrow("not ready for ordering");
   expect(fetcher).not.toHaveBeenCalled();
 });
+test.each([
+  [1, "US", "CA", false],
+  [2, "US", "California", true],
+  [2, "US", "AK", false],
+  [2, "US", "HI", false],
+  [2, "US", "DC", false],
+  [2, "CA", "ON", false],
+])(
+  "new %i-shirt quote to %s/%s has free standard shipping: %s",
+  async (quantity, country, state, free) => {
+    await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+      .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
+      .run();
+    await env.DB.prepare("DELETE FROM orders").run();
+    let session: URLSearchParams | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/shipping-rates"))
+        return Response.json({
+          data: [
+            {
+              shipping: "STANDARD",
+              shipping_method_name: "Standard",
+              rate: "5.00",
+              currency: "USD",
+            },
+            {
+              shipping: "STANDARD_CARBON_OFFSET",
+              shipping_method_name: "Carbon offset",
+              rate: "6.00",
+              currency: "USD",
+            },
+            {
+              shipping: "EXPRESS",
+              shipping_method_name: "Express",
+              rate: "10.00",
+              currency: "USD",
+            },
+          ],
+        });
+      if (url.endsWith("/customers"))
+        return Response.json({ id: "cus_shipping_fixture" });
+      session = init?.body as URLSearchParams;
+      return Response.json({
+        id: "cs_test_shipping_fixture",
+        url: "https://checkout.stripe.com/test",
+      });
+    });
+    const response = await quoteRequest(
+      post("/api/quote", {
+        items: [{ variantId, quantity, price: 1 }],
+        subtotal: 999999,
+        freeShipping: true,
+        recipient: {
+          ...snapshot.recipient,
+          country_code: country,
+          state_code: state,
+        },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const quoted = (await response.json()) as {
+      quoteId: string;
+      subtotal: number;
+      rates: { id: string; amount: number; name: string }[];
+    };
+    expect(quoted.subtotal).toBe(quantity * 3000);
+    expect(quoted.rates.map((rate) => rate.amount)).toEqual([
+      free ? 0 : 500,
+      600,
+      1000,
+    ]);
+    expect(quoted.rates[0].name).toBe(
+      free ? "Free shipping - Standard" : "Standard",
+    );
+    const created = await checkoutRequest(
+      post("/api/checkout", {
+        quoteId: quoted.quoteId,
+        shippingId: "STANDARD",
+      }),
+      env,
+    );
+    expect(created.status).toBe(200);
+    expect(
+      session?.get(
+        "shipping_options[0][shipping_rate_data][fixed_amount][amount]",
+      ),
+    ).toBe(free ? "0" : "500");
+    const order = await env.DB.prepare(
+      "SELECT snapshot,shipping_id FROM orders WHERE quote_id=?",
+    )
+      .bind(quoted.quoteId)
+      .first<{ snapshot: string; shipping_id: string }>();
+    expect(order?.shipping_id).toBe("STANDARD");
+    expect(JSON.parse(order!.snapshot).rates).toEqual(
+      quoted.rates.map((rate) => ({ ...rate, currency: "usd" })),
+    );
+  },
+);
+
+test.each([
+  [
+    ["EXPRESS", "STANDARD", "ECONOMY"],
+    ["10.00", "5.00", "4.00"],
+    [1000, 500, 0],
+  ],
+  [
+    ["EXPRESS", "ECONOMY", "STANDARD"],
+    ["10.00", "5.00", "5.00"],
+    [1000, 500, 0],
+  ],
+  [
+    ["ECONOMY", "EXPRESS"],
+    ["4.00", "10.00"],
+    [0, 1000],
+  ],
+  [
+    ["ECONOMY", "OTHER"],
+    ["4.00", "4.00"],
+    [0, 400],
+  ],
+])(
+  "only the cheapest available service is free: %j",
+  async (ids, prices, amounts) => {
+    await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+      .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
+      .run();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        data: ids.map((shipping, index) => ({
+          shipping,
+          shipping_method_name: shipping,
+          rate: prices[index],
+          currency: "USD",
+        })),
+      }),
+    );
+    const response = await quoteRequest(
+      post("/api/quote", {
+        items: [{ variantId, quantity: 2 }],
+        recipient: snapshot.recipient,
+      }),
+      env,
+    );
+    const quoted = (await response.json()) as {
+      rates: { id: string; amount: number; name: string }[];
+    };
+    expect(quoted.rates.map((rate) => rate.id)).toEqual(ids);
+    expect(quoted.rates.map((rate) => rate.amount)).toEqual(amounts);
+    expect(
+      quoted.rates.filter((rate) => rate.name.startsWith("Free shipping -")),
+    ).toHaveLength(1);
+  },
+);
+
+test("exactly $50 merchandise does not qualify even when shipping brings the total above $50", async () => {
+  const hat = products.find((product) => product.slug.includes("hat"))!
+    .variants[0].id;
+  await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+    .bind(hat, 456, JSON.stringify(snapshot.items[0].placements))
+    .run();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({
+      data: [
+        {
+          shipping: "STANDARD",
+          shipping_method_name: "Standard",
+          rate: "5.00",
+          currency: "USD",
+        },
+      ],
+    }),
+  );
+  const response = await quoteRequest(
+    post("/api/quote", {
+      items: [{ variantId: hat, quantity: 2 }],
+      recipient: snapshot.recipient,
+    }),
+    env,
+  );
+  expect(await response.json()).toMatchObject({
+    subtotal: 5000,
+    rates: [{ id: "STANDARD", amount: 500 }],
+  });
+});
+
+test.each(["missing-standard", "invalid-rate", "provider-failure"])(
+  "free shipping never invents availability on %s",
+  async (mode) => {
+    await env.DB.prepare("INSERT INTO printful_v2_mappings VALUES (?,?,?,1)")
+      .bind(variantId, 456, JSON.stringify(snapshot.items[0].placements))
+      .run();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mode === "provider-failure"
+        ? Response.json({ error: "unavailable" }, { status: 503 })
+        : Response.json({
+            data: [
+              {
+                shipping: mode === "missing-standard" ? "EXPRESS" : "STANDARD",
+                shipping_method_name: "Shipping",
+                rate: mode === "invalid-rate" ? "invalid" : "10.00",
+                currency: "USD",
+              },
+            ],
+          }),
+    );
+    const request = post("/api/quote", {
+      items: [{ variantId, quantity: 2 }],
+      recipient: snapshot.recipient,
+    });
+    if (mode === "missing-standard") {
+      expect(await (await quoteRequest(request, env)).json()).toMatchObject({
+        subtotal: 6000,
+        rates: [{ id: "EXPRESS", amount: 0, name: "Free shipping - Shipping" }],
+      });
+    } else {
+      await expect(quoteRequest(request, env)).rejects.toThrow();
+      expect(
+        (
+          await env.DB.prepare("SELECT id FROM quotes WHERE id!=?")
+            .bind(quoteId)
+            .all()
+        ).results,
+      ).toHaveLength(0);
+    }
+  },
+);
+
+test("old over-$50 pending quotes keep their original shipping amount when creating Checkout", async () => {
+  const legacy = {
+    ...snapshot,
+    items: snapshot.items.map((item) => ({ ...item, quantity: 2 })),
+    subtotal: 6000,
+  };
+  const saved = JSON.stringify(legacy);
+  await env.DB.prepare("UPDATE quotes SET snapshot=? WHERE id=?")
+    .bind(saved, quoteId)
+    .run();
+  await env.DB.prepare(
+    "UPDATE orders SET snapshot=?,stripe_session=NULL WHERE id=?",
+  )
+    .bind(saved, id)
+    .run();
+  let session: URLSearchParams | undefined;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/customers"))
+      return Response.json({ id: "cus_legacy" });
+    session = init?.body as URLSearchParams;
+    return Response.json({
+      id: "cs_test_legacy",
+      url: "https://checkout.stripe.com/test",
+    });
+  });
+  expect(
+    (
+      await checkoutRequest(
+        post("/api/checkout", { quoteId, shippingId: "STANDARD" }),
+        env,
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    session?.get(
+      "shipping_options[0][shipping_rate_data][fixed_amount][amount]",
+    ),
+  ).toBe("500");
+  expect(
+    (
+      await env.DB.prepare("SELECT snapshot FROM orders WHERE id=?")
+        .bind(id)
+        .first<{ snapshot: string }>()
+    )?.snapshot,
+  ).toBe(saved);
+});
+
+test.each([500, 0])(
+  "paid orders over 50 dollars retain their saved %i-cent shipping through verification and fulfillment",
+  async (shipping) => {
+    env.SHOP_MODE = "live";
+    env.STRIPE_SECRET_KEY = "sk_live_fixture";
+    const saved = JSON.stringify({
+      ...snapshot,
+      items: snapshot.items.map((item) => ({ ...item, quantity: 2 })),
+      subtotal: 6000,
+      rates: [{ ...snapshot.rates[0], amount: shipping }],
+    });
+    await env.DB.prepare(
+      "UPDATE orders SET snapshot=?,status='paid' WHERE id=?",
+    )
+      .bind(saved, id)
+      .run();
+    const paid = {
+      ...payment,
+      livemode: true,
+      amount_subtotal: 6000,
+      amount_total: 6000 + shipping + 250,
+      total_details: { ...payment.total_details, amount_shipping: shipping },
+    };
+    await env.DB.prepare(
+      "INSERT INTO payment_events(id,order_id,created_at) VALUES (?,?,?)",
+    )
+      .bind("evt_saved_shipping", id, now())
+      .run();
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (new URL(url).origin === "https://api.stripe.com")
+          return Response.json(paid);
+        if (url.includes("/orders/@"))
+          return Response.json({}, { status: 404 });
+        if (url.endsWith("/confirmation"))
+          return Response.json({
+            data: {
+              id: 100,
+              external_id: id,
+              status: "pending",
+              costs: { calculation_status: "done" },
+            },
+          });
+        if (url.includes("/shipments"))
+          return Response.json({
+            data: [],
+            paging: { total: 0, offset: 0, limit: 100 },
+          });
+        expect(url).toBe("https://api.printful.com/v2/orders");
+        const submitted = JSON.parse(String(init?.body));
+        expect(submitted.shipping).toBe("STANDARD");
+        expect(submitted.order_items[0].quantity).toBe(2);
+        return Response.json({
+          data: {
+            id: 100,
+            external_id: id,
+            status: "draft",
+            costs: { calculation_status: "done" },
+          },
+        });
+      });
+    await processOrder(env, id);
+    const order = await env.DB.prepare(
+      "SELECT snapshot,status,payment_tax,payment_total FROM orders WHERE id=?",
+    )
+      .bind(id)
+      .first();
+    expect(order).toMatchObject({
+      snapshot: saved,
+      status: "submitted",
+      payment_tax: 250,
+      payment_total: 6000 + shipping + 250,
+    });
+    const response = await orderStatus(
+      post("/api/order", { token: await orderToken(env, id) }),
+      { platform: { env } },
+    );
+    expect(await response.json()).toMatchObject({
+      summary: { subtotal: 6000, shipping, total: 6000 + shipping + 250 },
+    });
+    expect(
+      fetcher.mock.calls.filter(([input]) =>
+        String(input).includes("/confirmation"),
+      ),
+    ).toHaveLength(1);
+  },
+);
+test.each([
+  [["bascik-logo-vinyl-decal"], 500],
+  [["bascik-logo-vinyl-decal", "bascik-insignia-vinyl-decal"], 1000],
+  [["bascik-logo-vinyl-decal", "bascik-insignia-vinyl-decal", variantId], 4000],
+])(
+  "decal cart %j preserves verified designs, $5 prices, and tangible-goods tax",
+  async (variants, subtotal) => {
+    const decalEnv = { ...env, PRINTFUL_STORE_ID: "19022802" };
+    const migration = await readFile(
+      "migrations/0005_vinyl_decals.sql",
+      "utf8",
+    );
+    await env.DB.batch(
+      migration
+        .split(";")
+        .filter((sql) => sql.trim())
+        .map((sql) => env.DB.prepare(sql)),
+    );
+    await env.DB.prepare(
+      "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
+    )
+      .bind(
+        variantId,
+        19022802,
+        456,
+        789,
+        JSON.stringify([{ placement: "front", technique: "dtg" }]),
+      )
+      .run();
+    await env.DB.prepare("DELETE FROM orders").run();
+    let session: URLSearchParams | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+      const url = String(input);
+      if (url.endsWith("/shipping-rates")) {
+        const payload = JSON.parse(String(options?.body));
+        expect(payload.order_items).toEqual(
+          variants.map((variant) => ({
+            source: "catalog",
+            catalog_variant_id:
+              variant === variantId
+                ? 456
+                : variant === "bascik-logo-vinyl-decal"
+                  ? 24972
+                  : 24971,
+            quantity: 1,
+            retail_price: variant === variantId ? "30.00" : "5.00",
+            placements: [
+              {
+                placement: "front",
+                technique: variant === variantId ? "dtg" : "digital",
+              },
+            ],
+          })),
+        );
+        return Response.json({
+          data: [
+            {
+              shipping: "STANDARD",
+              shipping_method_name: "Standard",
+              rate: "5.00",
+              currency: "USD",
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/customers"))
+        return Response.json({ id: "cus_decal_fixture" });
+      expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
+      session = options?.body as URLSearchParams;
+      return Response.json({
+        id: "cs_test_decal_fixture",
+        url: "https://checkout.stripe.com/test",
+      });
+    });
+    const quoted = await quoteRequest(
+      post("/api/quote", {
+        items: variants.map((variantId) => ({
+          variantId,
+          quantity: 1,
+          price: 1,
+        })),
+        recipient: snapshot.recipient,
+      }),
+      decalEnv,
+    );
+    expect(quoted.status).toBe(200);
+    const result = (await quoted.json()) as {
+      quoteId: string;
+      subtotal: number;
+    };
+    expect(result.subtotal).toBe(subtotal);
+    const stored = await env.DB.prepare(
+      "SELECT snapshot FROM quotes WHERE id=?",
+    )
+      .bind(result.quoteId)
+      .first<{ snapshot: string }>();
+    const quote = JSON.parse(stored!.snapshot) as Quote;
+    expect(printfulItems(quote)).toEqual(
+      variants.map((variant) => ({
+        source: "product_template",
+        product_template_id:
+          variant === variantId
+            ? 789
+            : variant === "bascik-logo-vinyl-decal"
+              ? 109978527
+              : 109978655,
+        catalog_variant_id:
+          variant === variantId
+            ? 456
+            : variant === "bascik-logo-vinyl-decal"
+              ? 24972
+              : 24971,
+        quantity: 1,
+        retail_price: variant === variantId ? "30.00" : "5.00",
+      })),
+    );
+    const checkout = await checkoutRequest(
+      post("/api/checkout", {
+        quoteId: result.quoteId,
+        shippingId: "STANDARD",
+      }),
+      decalEnv,
+    );
+    expect(checkout.status).toBe(200);
+    for (const [index, variant] of variants.entries()) {
+      expect(
+        session?.get(`line_items[${index}][price_data][unit_amount]`),
+      ).toBe(variant === variantId ? "3000" : "500");
+      expect(
+        session?.get(
+          `line_items[${index}][price_data][product_data][tax_code]`,
+        ),
+      ).toBe(variant === variantId ? "txcd_30011000" : "txcd_99999999");
+    }
+  },
+);
 test("template quotes preserve shipping techniques and orders use saved template designs", async () => {
   const logger = vi.spyOn(console, "info").mockImplementation(() => {});
   const design = [{ placement: "front_dtf_hat", technique: "dtfilm" }];

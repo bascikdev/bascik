@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
 import { shippingPlacements } from "../src/lib/printful-design.ts";
+import { productTemplates } from "./product-templates.ts";
 
 const token = process.env.PRINTFUL_TOKEN ?? process.env.PRINTFUL_TOEKN;
 const storeId = Number(process.env.PRINTFUL_STORE_ID);
@@ -60,13 +61,20 @@ const source: {
 } = JSON.parse(await readFile(".local/printful-shopify.json", "utf8"));
 const mappings = [];
 for (const product of products) {
+  const approved = productTemplates[product.slug];
+  if (!approved) throw new Error(`Unknown template for ${product.slug}`);
   const matches = templates.filter(
-    (template) => template.title === product.title,
+    (template) =>
+      template.id === approved.id &&
+      template.title === (approved.title ?? product.title),
   );
   const originals = source.products.filter(
     (entry) => entry.sync_product.name === product.title,
   );
-  if (matches.length !== 1 || originals.length !== 1)
+  if (
+    matches.length !== 1 ||
+    (!approved.catalogVariantId && originals.length !== 1)
+  )
     throw new Error(`Ambiguous or missing template for ${product.slug}`);
   const template = matches[0];
   if (!Number.isSafeInteger(template.id) || template.id <= 0)
@@ -88,6 +96,19 @@ for (const product of products) {
     }),
   );
   for (const variant of product.variants) {
+    if (approved.catalogVariantId) {
+      if (!template.available_variant_ids.includes(approved.catalogVariantId))
+        throw new Error(`Template variant mismatch for ${variant.id}`);
+      mappings.push({
+        variant_id: variant.id,
+        store_id: storeId,
+        catalog_variant_id: approved.catalogVariantId,
+        product_template_id: template.id,
+        shipping_placements: design,
+        verified: false,
+      });
+      continue;
+    }
     const original = originals[0].sync_variants.filter(
       (entry) => entry.external_id === variant.id,
     );

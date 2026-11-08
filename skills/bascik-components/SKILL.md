@@ -207,7 +207,7 @@ p {}   ->  .b_el_<component>_p                          class added to template 
 data-testid ->  as written                               never scoped or hashed
 ```
 
-Name components with hyphens, never underscores (`site-nav-x.html`, not `site-nav_x.html`): `#btn` in `site-nav_x` and `#x_btn` in `site-nav` both become `b_id_site-nav_x_btn`, which fails the build. The linter warns on any underscore in a component name (`component-name-underscore`).
+Name components by their job without a redundant app prefix (`not-found`, not `shop-not-found`; `navigation`, not `shop-nav`). Never use a native HTML, SVG, or MathML element name, including obsolete names (`nav`, `path`, `mi`, or `keygen`); use `navigation`, `page-head`, or `site-footer`. Non-native single words compile, with the existing CLI/editor recommendation to use hyphens for future compatibility. Use hyphens between words, never underscores (`site-nav-x.html`, not `site-nav_x.html`): `#btn` in `site-nav_x` and `#x_btn` in `site-nav` both become `b_id_site-nav_x_btn`, which fails the build. See `/components#component-naming-and-hyphens`.
 
 Production builds shorten these to hashes. Never hard-code a scoped name. Tests use `data-testid` instead: the root gets `data-testid="<component>"`, and each interactive part, form, and landmark inside gets `data-testid="<component>-<part>"` (`plan-card-buy`, `signup-form-email`). Every instance shares them; a page that needs to tell instances apart puts `data-testid` on the usage tag, which replaces the root's. Rule 16 of the `bascik` skill has the full list.
 

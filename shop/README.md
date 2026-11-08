@@ -6,11 +6,39 @@ Independent Bascik storefront for `shop.bascik.dev`. The docs application is not
 
 **Production:** the owner approved the cutover to `shop.bascik.dev`. Validated main pushes deploy the live shop with checkout and fulfillment enabled. Sandbox and PR environments remain separate and draft-only. Keep the Shopify account until its outstanding orders and rollback needs are resolved.
 
-The owned catalog contains two $30 shirts and two $25 hats, with 24 variants and 52 captured image views. Original image bytes are preserved outside the published directory. Optimized images, descriptions, variants, and existing product URLs are independent of Shopify.
+The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vinyl decals, with 26 variants and 56 captured image views. Original image bytes are preserved outside the published directory. Every product image is a local, responsive WebP. Descriptions, variants, and existing product URLs are independent of Shopify.
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
+### Component architecture
+
+The checked-in `src/pages/` files are small page shells composed of Bascik tags. `products/[slug].html` expands the owned catalog with a routes script, so builds never generate HTML into `src/`. Prettier formats authored pages and components normally; Bascik still minifies production output.
+
+Component names describe their jobs without a redundant `shop-` prefix: `navigation`, `not-found`, `checkout-form`, and `policy-content`. `page-head` and `site-footer` avoid native HTML names. Existing `data-testid` hooks remain stable. The CLI/editor still recommend a hyphenated name for `navigation`; it is a build-time component, not a browser custom element.
+
+Contact and privacy choices live at `src/pages/contact.html` and `src/pages/data-sharing-opt-out.html`. Their old Shopify `/pages/*` URLs redirect permanently through the authored `_redirects` file. Policy URLs under `/policies/` remain unchanged.
+
+Every button has an explicit type: Add to cart and the shipping-quote form use `submit`; gallery, navigation, removal, payment, and print actions use `button`. VS Code uses Prettier on save for whole TypeScript and TSX files, including `src/api/`, rather than formatting only modified lines.
+
+Each component owns its semantic HTML, companion CSS, and TypeScript. `product-card` contains the card, image controls, and a cloneable color-button template; `product-detail` owns the gallery and purchase form. Cart rows and shipping options are cloned from authored templates, preserving Bascik's scoped styles on browser-created content. Page-aware catalog helpers live beside `product-detail`; `product-grid` prints card tags with props, not copies of card markup. Build helpers use `html` and `json` from `@bascik/bascik/html`.
+
+Component entry scripts obtain their own compiler-scoped root with `getElementById`. They import typed initializers from `/assets/shop.js`, bundled once by `scripts/build-assets.ts` through `pipeline.exec`. The initializers live in each component's `behavior.ts`, query only the supplied root, and use stable data hooks because the external bundle is not rewritten by the scoping engine. `src/browser/` holds only the shared cart store, root-bound DOM/API helpers, and bundle exports. Cart, delivery eligibility, and checkout-summary updates use custom events instead of querying another component's DOM.
+
+The global stylesheet contains design tokens, document defaults, and deliberately shared primitives such as buttons, panels, responsive photos, totals, and order lines. Card, product, cart-row, promotion, and checkout layout styles live alongside their owning components.
+
+The delivery component deliberately keeps its address fields and shipping-choice lifecycle together. Formatting puts its markup just above the component-audit size guideline; splitting individual fields into single-use components would obscure the form rather than improve reuse.
+
+### Free standard shipping
+
+New shipping quotes offer free **standard** shipping when the merchandise subtotal is **strictly over $50**, before tax and shipping, to one of the contiguous 48 states. Exactly $50 does not qualify. Alaska, Hawaii, Washington DC (not one of the 48 states), territories, military addresses, and international destinations retain their quoted shipping charges. The lowest-cost available service is free; all other services retain their full quoted price. If services tie for the lowest price, `STANDARD` is preferred, otherwise the first tied service is used.
+
+The shared policy in `src/lib/free-shipping.ts` drives compact, unboxed shipping notes: a quiet line above the homepage collection, an inline product note beside purchase details, and live progress below the cart subtotal. Checkout also shows delivery-aware progress. Each note links to `/shipping` for the full terms rather than repeating them on shopping pages. The server computes eligibility from its own catalog prices and validated delivery state, not browser totals. Printful must return valid shipping rates; only the cheapest service's customer-facing price in a **new quote** becomes zero. We still pay Printful's normal fulfillment/shipping costs and submit the original service ID.
+
+The promotion does not rewrite existing quotes, pending Checkout sessions, paid orders, receipts, or fulfillment records. Checkout, payment verification, emails, and order summaries continue to use each order's immutable saved shipping snapshot. No D1 migration or live-order mutation is needed. Quote expiry and address changes still require a fresh shipping quote. The cart's action is labeled **Checkout**.
+
 Collection image and title links carry the selected color to the product page through a `color` URL parameter. The color selector and gallery keep that choice after reload; unrecognized colors retain the default selection. Product pages show a “View cart & checkout” link after adding an item, and when returning with a saved cart. The delivery page keeps the order summary alongside a grouped address form (stacked on mobile), with an edit-cart link and the selected shipping amount in its before-tax total. Empty carts hide the delivery form. Editing the address invalidates the quote and resets the displayed shipping amount.
+
+Cart changes, including edits in another tab, refresh checkout's supported countries. A selected country stays selected only while every cart product supports it; otherwise checkout asks for a new country and refreshes state/postal-code requirements. Existing shipping quotes are invalidated in either case.
 
 Hosted Checkout cannot dynamically call Printful when its address changes. The quoted delivery address is therefore fixed for each Session and shown before payment; customers return to the shop to change it and request a fresh quote. The browser rejects expired quotes and delivery or cart changes while requests are pending. Card details never pass through the shop, and no Stripe iframe or SDK is loaded on the storefront. The existing Stripe API version remains `2025-02-24.acacia`. No additional migration or publishable key is required.
 
@@ -104,7 +132,7 @@ Runtime orders support `source: "product_template"` with saved Printful designs,
 
 #### Why are no products published in the Printful store?
 
-This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the four listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
+This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the six listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
 
 Printful [supports orders from saved templates without adding products to a store](https://developers.printful.com/docs/). An empty Published tab therefore does not indicate disconnected fulfillment. The API store was checked and had zero published products while all four approved templates remained accessible.
 
@@ -121,6 +149,19 @@ The read-only template audit found all four original templates accessible to sto
 | Logo dad hat     | `109921204` | DTF, `front_dtf_hat`         |
 | Insignia dad hat | `109921206` | DTF, `front_dtf_hat`         |
 
+The additional owner-supplied decals both sell for **$5**:
+
+| Product              | Cut artwork dimensions | Template    | Catalog variant / backing sheet |
+| -------------------- | ---------------------- | ----------- | ------------------------------- |
+| Logo vinyl decal     | 4.5" x 1"              | `109978527` | `24972`, Satin, 4" x 6"         |
+| Insignia vinyl decal | 2" x 2"                | `109978655` | `24971`, Satin, 3" x 4"         |
+
+The storefront dimensions describe the cut artwork, not Printful's larger backing sheet. Both variants use catalog product `974` and the exact saved template, with no customer size selector. `scripts/product-templates.ts` is the shared approved template/variant configuration for auditing, shipping imports, and draft-only previews.
+
+Both template metadata and the v2 catalog use `front` / `digital` for shipping; Printful's generated template draft instead labels the print technique `sticker`. Draft validation accepts that observed provider response only for these two approved templates, retaining file-layer, finite-position, positive-dimension, quantity, and exact catalog-variant checks. Negative artwork offsets are valid saved positions and are preserved. An uncharged fingerprinted draft containing all 26 variants was validated before adding the two verified mappings in migration `0005_vinyl_decals.sql`. Never confirm an audit draft.
+
+Decals use Stripe's **General - Tangible Goods** tax code, `txcd_99999999`, through the catalog's per-product `taxCode`. Apparel retains its existing tax codes. Server-owned inline Checkout prices and app-tagged administrative Stripe inventory both use $5 exclusive-tax USD prices for the decals; shipping and tax are additional. Sandbox inventory is managed by the sandbox-only setup script; live decal inventory is created through the authenticated Bascik Dashboard because the live runtime key intentionally cannot create products. No payments or manufacturing orders are needed for this setup.
+
 The hats are printed, not embroidered; unused embroidery options in the legacy sync response must not override the template's actual DTF technique. Saved templates retain the provider's design positioning. The legacy sync export lacks that positioning, so reconstructing catalog designs from its image dimensions would be unreliable.
 
 Run the read-only audit with the refreshed local token:
@@ -130,7 +171,7 @@ cd shop
 PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/audit-templates.ts
 ```
 
-It checks each template's title, variant membership, original sync variant IDs, size/color, and shipping techniques, and saves all 24 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs; all 24 validated references have now been installed in sandbox D1 with `verified=1`, scoped to store `19022802`.
+It checks each template's title, variant membership, original apparel sync variant IDs or explicitly approved decal catalog IDs, size/color, and shipping techniques, and saves all 26 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs. Validate the complete proposal before installing mappings with `verified=1`, scoped to store `19022802`.
 
 ```sh
 cd shop
@@ -185,7 +226,16 @@ Refresh the original four listings only while Shopify remains available:
 yarn shop:import
 ```
 
-The import validates the allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+The legacy import validates the original apparel allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift and preserves the independently added decals and their owner-supplied image records. Do not run it against the replacement storefront, which is not a Shopify export. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+
+Refresh the owner-supplied decal images deterministically without network access:
+
+```sh
+cd shop
+node scripts/import-decals.ts
+```
+
+The four PNG inputs live in `image-originals/decals/`. Like the original apparel importer, this generates fingerprinted WebP files at quality 80 and widths 320, 640, 960, and 1600 only when the source is large enough; it never enlarges an image. The supplied 768-pixel images yield 320- and 640-pixel outputs, including the transparent front views and laptop previews. The manifest records dimensions, hashes, and output byte sizes. Rebuild the shop after importing images or catalog changes.
 
 Original-image cache filenames hash the complete source URL, including its version query. Reordering gallery entries cannot attach old cached bytes to new metadata; a replaced/versioned source gets its own cache file.
 

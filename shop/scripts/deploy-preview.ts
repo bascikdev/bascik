@@ -2,6 +2,8 @@ import { appendFile, readFile, writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { products } from "../src/lib/catalog.ts";
+import { productTemplates } from "./product-templates.ts";
+import { updateCheckoutNotice } from "./checkout-notice.ts";
 
 if (
   process.env.GITHUB_ACTIONS !== "true" ||
@@ -100,12 +102,6 @@ const tax = await request<{ livemode: boolean; status: string }>(
 );
 if (tax.livemode !== false || tax.status !== "active")
   throw new Error("Stripe sandbox Tax is not ready.");
-const templateIds = new Map([
-  ["100-organic-cotton-bascik-logo-front-unisex", 109921208],
-  ["100-organic-cotton-bascik-insignia-shirt-unisex", 109921207],
-  ["100-organic-cotton-bascik-logo-dad-hat-unisex", 109921204],
-  ["100-organic-cotton-bascik-insignia-dad-hat-unisex", 109921206],
-]);
 async function pf<T>(path: string): Promise<T> {
   const response = await fetch(`https://api.printful.com${path}`, {
     headers: {
@@ -128,7 +124,8 @@ if (store.data.id !== 19022802 || store.data.type !== "native")
 const escape = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const mappings: string[] = [];
 for (const product of products) {
-  const templateId = templateIds.get(product.slug);
+  const approved = productTemplates[product.slug];
+  const templateId = approved?.id;
   if (!templateId) throw new Error("Unknown preview product.");
   const { result: template } = await pf<{
     result: {
@@ -144,7 +141,7 @@ for (const product of products) {
     };
   }>(`/product-templates/${templateId}`);
   if (
-    template.title !== product.title ||
+    template.title !== (approved.title ?? product.title) ||
     !template.placements.length ||
     template.placements.some((entry) => entry.options.length) ||
     template.placement_option_data.some((entry) => entry.options.length)
@@ -170,7 +167,9 @@ for (const product of products) {
     const matches = variants.filter(
       (entry) =>
         entry.color === variant.color &&
-        entry.size === (variant.size ?? "One size") &&
+        (approved.catalogVariantId
+          ? entry.id === approved.catalogVariantId
+          : entry.size === (variant.size ?? "One size")) &&
         template.available_variant_ids.includes(entry.id),
     );
     if (matches.length !== 1)
@@ -224,14 +223,10 @@ config.queues = {
 await writeFile(".output/wrangler.json", JSON.stringify(config, null, 2));
 const checkoutPath = ".output/public/checkout.html";
 const checkout = await readFile(checkoutPath, "utf8");
-const notice =
-  "The new shop is being prepared. Checkout stays disabled until tax, fulfillment, and email setup have been verified.";
-if (!checkout.includes(notice))
-  throw new Error("Preview checkout notice was not found.");
 await writeFile(
   checkoutPath,
-  checkout.replace(
-    notice,
+  updateCheckoutNotice(
+    checkout,
     "Sandbox preview: use Stripe test payment details only. Orders create unconfirmed Printful drafts. Nothing will be charged, produced, shipped, or emailed.",
   ),
 );
