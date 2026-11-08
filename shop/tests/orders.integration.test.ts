@@ -92,7 +92,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0004_order_confirmation.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0005_vinyl_decals.sql", "utf8"));
+    (await readFile("migrations/0005_vinyl_decals.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0007_organic_sweatshirts.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -1697,6 +1699,183 @@ test.each([
           `line_items[${index}][price_data][product_data][tax_code]`,
         ),
       ).toBe(variant === variantId ? "txcd_30011000" : "txcd_99999999");
+    }
+  },
+);
+test.each([
+  ...products
+    .filter((product) => product.slug.includes("sweatshirt"))
+    .flatMap((product) =>
+      product.variants.map((variant) => [[variant.id], 4500, 500] as const),
+    ),
+  [
+    [
+      "organic-cotton-bascik-logo-sweatshirt-unisex-20776",
+      "bascik-logo-vinyl-decal",
+    ],
+    5000,
+    500,
+  ] as const,
+  [
+    [
+      "organic-cotton-bascik-logo-sweatshirt-unisex-20776",
+      "bascik-logo-vinyl-decal",
+      "bascik-insignia-vinyl-decal",
+    ],
+    5500,
+    0,
+  ] as const,
+  [
+    ["organic-cotton-bascik-insignia-sweatshirt-unisex-20775", variantId],
+    7500,
+    0,
+  ] as const,
+])(
+  "sweatshirt cart %j uses exact saved designs, $45 prices and strict free shipping",
+  async (ids, subtotal, shipping) => {
+    const shopEnv = { ...env, PRINTFUL_STORE_ID: "19022802" };
+    for (const path of [
+      "migrations/0005_vinyl_decals.sql",
+      "migrations/0007_organic_sweatshirts.sql",
+    ]) {
+      const sql = await readFile(path, "utf8");
+      await env.DB.batch(
+        sql
+          .split(";")
+          .filter((entry) => entry.trim())
+          .map((entry) => env.DB.prepare(entry)),
+      );
+    }
+    await env.DB.prepare(
+      "INSERT INTO printful_template_mappings VALUES (?,?,?,?,?,1)",
+    )
+      .bind(
+        variantId,
+        19022802,
+        456,
+        789,
+        JSON.stringify([{ placement: "front", technique: "dtg" }]),
+      )
+      .run();
+    let session: URLSearchParams | undefined;
+    const items = ids.map((id) => {
+      const product = products.find((product) =>
+        product.variants.some((variant) => variant.id === id),
+      )!;
+      return {
+        product,
+        variant: product.variants.find((variant) => variant.id === id)!,
+      };
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+      const url = String(input);
+      if (url.endsWith("/shipping-rates")) {
+        const payload = JSON.parse(String(options?.body));
+        expect(
+          payload.order_items.map(
+            (item: { retail_price: string }) => item.retail_price,
+          ),
+        ).toEqual(items.map(({ product }) => (product.price / 100).toFixed(2)));
+        expect(
+          payload.order_items.filter(
+            (item: { catalog_variant_id: number }) =>
+              item.catalog_variant_id >= 20771 &&
+              item.catalog_variant_id <= 20780,
+          ),
+        ).toHaveLength(
+          items.filter(({ product }) => product.slug.includes("sweatshirt"))
+            .length,
+        );
+        return Response.json({
+          data: [
+            {
+              shipping: "STANDARD",
+              shipping_method_name: "Standard",
+              rate: "5.00",
+              currency: "USD",
+            },
+            {
+              shipping: "EXPRESS",
+              shipping_method_name: "Express",
+              rate: "12.00",
+              currency: "USD",
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/customers"))
+        return Response.json({ id: "cus_sweatshirt_fixture" });
+      expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
+      session = options?.body as URLSearchParams;
+      return Response.json({
+        id: "cs_test_sweatshirt_fixture",
+        url: "https://checkout.stripe.com/test",
+      });
+    });
+    const response = await quoteRequest(
+      post("/api/quote", {
+        items: ids.map((variantId) => ({ variantId, quantity: 1, price: 1 })),
+        recipient: snapshot.recipient,
+      }),
+      shopEnv,
+    );
+    expect(response.status).toBe(200);
+    const quoted = (await response.json()) as {
+      quoteId: string;
+      subtotal: number;
+    };
+    expect(quoted.subtotal).toBe(subtotal);
+    const stored = await env.DB.prepare(
+      "SELECT snapshot FROM quotes WHERE id=?",
+    )
+      .bind(quoted.quoteId)
+      .first<{ snapshot: string }>();
+    const quote = JSON.parse(stored!.snapshot) as Quote;
+    expect(quote.rates.find((entry) => entry.id === "STANDARD")?.amount).toBe(
+      shipping,
+    );
+    expect(quote.rates.find((entry) => entry.id === "EXPRESS")?.amount).toBe(
+      1200,
+    );
+    for (const [index, { product, variant }] of items.entries()) {
+      const mapped = await env.DB.prepare(
+        "SELECT catalog_variant_id,product_template_id FROM printful_template_mappings WHERE variant_id=?",
+      )
+        .bind(variant.id)
+        .first<{ catalog_variant_id: number; product_template_id: number }>();
+      expect(printfulItems(quote)[index]).toMatchObject({
+        source: "product_template",
+        catalog_variant_id: mapped!.catalog_variant_id,
+        product_template_id: mapped!.product_template_id,
+        quantity: 1,
+        retail_price: (product.price / 100).toFixed(2),
+      });
+      if (product.slug.includes("sweatshirt")) {
+        expect(mapped!.catalog_variant_id).toBe(
+          Number(variant.id.split("-").at(-1)),
+        );
+        expect(mapped!.product_template_id).toBe(
+          product.slug.includes("logo") ? 109989489 : 109989447,
+        );
+      }
+    }
+    const checkout = await checkoutRequest(
+      post("/api/checkout", {
+        quoteId: quoted.quoteId,
+        shippingId: "STANDARD",
+      }),
+      shopEnv,
+    );
+    expect(checkout.status).toBe(200);
+    for (const [index, { product }] of items.entries()) {
+      expect(
+        session?.get(`line_items[${index}][price_data][unit_amount]`),
+      ).toBe(String(product.price));
+      expect(
+        session?.get(
+          `line_items[${index}][price_data][product_data][tax_code]`,
+        ),
+      ).toBe(product.taxCode ?? "txcd_30011000");
     }
   },
 );

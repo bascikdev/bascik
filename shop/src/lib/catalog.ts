@@ -15,6 +15,7 @@ export interface Variant {
   sku: string;
   color: string;
   size: string | null;
+  colorCode?: string;
   available: boolean;
   imageId: string | null;
 }

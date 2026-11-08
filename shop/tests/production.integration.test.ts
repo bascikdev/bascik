@@ -94,7 +94,7 @@ test.each([
       );
       expect(report).toMatchObject({
         liveAccountMatched: true,
-        verifiedProducts: 6,
+        verifiedProducts: products.length,
         registrationCount: 0,
         printfulStoreVerified: true,
       });

@@ -1582,5 +1582,677 @@
         "bytes": 14276
       }
     ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c.png",
+    "hash": "82f30b82223eb6dc",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/82f30b82223eb6dc-320.webp",
+        "width": 320,
+        "bytes": 8238
+      },
+      {
+        "url": "/assets/products/82f30b82223eb6dc-640.webp",
+        "width": 640,
+        "bytes": 18428
+      },
+      {
+        "url": "/assets/products/82f30b82223eb6dc-960.webp",
+        "width": 960,
+        "bytes": 28944
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845df109.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845df109.png",
+    "hash": "96cd2f77e4a90000",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/96cd2f77e4a90000-320.webp",
+        "width": 320,
+        "bytes": 8020
+      },
+      {
+        "url": "/assets/products/96cd2f77e4a90000-640.webp",
+        "width": 640,
+        "bytes": 17126
+      },
+      {
+        "url": "/assets/products/96cd2f77e4a90000-960.webp",
+        "width": 960,
+        "bytes": 27258
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845dfbf2.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845dfbf2.png",
+    "hash": "2415e24566e56515",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/2415e24566e56515-320.webp",
+        "width": 320,
+        "bytes": 10302
+      },
+      {
+        "url": "/assets/products/2415e24566e56515-640.webp",
+        "width": 640,
+        "bytes": 28504
+      },
+      {
+        "url": "/assets/products/2415e24566e56515-960.webp",
+        "width": 960,
+        "bytes": 52660
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845e03ba.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845e03ba.png",
+    "hash": "b0b1637df8c81155",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/b0b1637df8c81155-320.webp",
+        "width": 320,
+        "bytes": 9104
+      },
+      {
+        "url": "/assets/products/b0b1637df8c81155-640.webp",
+        "width": 640,
+        "bytes": 21416
+      },
+      {
+        "url": "/assets/products/b0b1637df8c81155-960.webp",
+        "width": 960,
+        "bytes": 36708
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd845def87.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd845def87.png",
+    "hash": "4cdbb1db31b81891",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/4cdbb1db31b81891-320.webp",
+        "width": 320,
+        "bytes": 5880
+      },
+      {
+        "url": "/assets/products/4cdbb1db31b81891-640.webp",
+        "width": 640,
+        "bytes": 12352
+      },
+      {
+        "url": "/assets/products/4cdbb1db31b81891-960.webp",
+        "width": 960,
+        "bytes": 19014
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd845e0097.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd845e0097.png",
+    "hash": "dd11b40145bfb703",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/dd11b40145bfb703-320.webp",
+        "width": 320,
+        "bytes": 11278
+      },
+      {
+        "url": "/assets/products/dd11b40145bfb703-640.webp",
+        "width": 640,
+        "bytes": 31564
+      },
+      {
+        "url": "/assets/products/dd11b40145bfb703-960.webp",
+        "width": 960,
+        "bytes": 57716
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd845dedde.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd845dedde.png",
+    "hash": "99755f11e2a39e95",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/99755f11e2a39e95-320.webp",
+        "width": 320,
+        "bytes": 5826
+      },
+      {
+        "url": "/assets/products/99755f11e2a39e95-640.webp",
+        "width": 640,
+        "bytes": 12260
+      },
+      {
+        "url": "/assets/products/99755f11e2a39e95-960.webp",
+        "width": 960,
+        "bytes": 19164
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678.png",
+    "hash": "ce80e2a4f41ab7aa",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/ce80e2a4f41ab7aa-320.webp",
+        "width": 320,
+        "bytes": 5354
+      },
+      {
+        "url": "/assets/products/ce80e2a4f41ab7aa-640.webp",
+        "width": 640,
+        "bytes": 11638
+      },
+      {
+        "url": "/assets/products/ce80e2a4f41ab7aa-960.webp",
+        "width": 960,
+        "bytes": 18670
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de2ca.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de2ca.png",
+    "hash": "4c763a686ed1bc73",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/4c763a686ed1bc73-320.webp",
+        "width": 320,
+        "bytes": 5036
+      },
+      {
+        "url": "/assets/products/4c763a686ed1bc73-640.webp",
+        "width": 640,
+        "bytes": 10712
+      },
+      {
+        "url": "/assets/products/4c763a686ed1bc73-960.webp",
+        "width": 960,
+        "bytes": 17610
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de7a6.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de7a6.png",
+    "hash": "3beba95d7993e053",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/3beba95d7993e053-320.webp",
+        "width": 320,
+        "bytes": 8970
+      },
+      {
+        "url": "/assets/products/3beba95d7993e053-640.webp",
+        "width": 640,
+        "bytes": 25542
+      },
+      {
+        "url": "/assets/products/3beba95d7993e053-960.webp",
+        "width": 960,
+        "bytes": 47814
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845deb47.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845deb47.png",
+    "hash": "7766e1ee5a8c44f1",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/7766e1ee5a8c44f1-320.webp",
+        "width": 320,
+        "bytes": 6916
+      },
+      {
+        "url": "/assets/products/7766e1ee5a8c44f1-640.webp",
+        "width": 640,
+        "bytes": 16618
+      },
+      {
+        "url": "/assets/products/7766e1ee5a8c44f1-960.webp",
+        "width": 960,
+        "bytes": 29086
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd845de218.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd845de218.png",
+    "hash": "ad75f35962ada301",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/ad75f35962ada301-320.webp",
+        "width": 320,
+        "bytes": 3914
+      },
+      {
+        "url": "/assets/products/ad75f35962ada301-640.webp",
+        "width": 640,
+        "bytes": 8192
+      },
+      {
+        "url": "/assets/products/ad75f35962ada301-960.webp",
+        "width": 960,
+        "bytes": 13028
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd845de9be.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd845de9be.png",
+    "hash": "18829a2c90d4f5ac",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/18829a2c90d4f5ac-320.webp",
+        "width": 320,
+        "bytes": 9748
+      },
+      {
+        "url": "/assets/products/18829a2c90d4f5ac-640.webp",
+        "width": 640,
+        "bytes": 27972
+      },
+      {
+        "url": "/assets/products/18829a2c90d4f5ac-960.webp",
+        "width": 960,
+        "bytes": 52222
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989489:unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd845de13b.png",
+    "file": "image-originals/sweatshirts/109989489/unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd845de13b.png",
+    "hash": "3357008cf2b6f3a5",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/3357008cf2b6f3a5-320.webp",
+        "width": 320,
+        "bytes": 3842
+      },
+      {
+        "url": "/assets/products/3357008cf2b6f3a5-640.webp",
+        "width": 640,
+        "bytes": 8098
+      },
+      {
+        "url": "/assets/products/3357008cf2b6f3a5-960.webp",
+        "width": 960,
+        "bytes": 13222
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78.png",
+    "hash": "ac2e4bf0f1455209",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/ac2e4bf0f1455209-320.webp",
+        "width": 320,
+        "bytes": 8158
+      },
+      {
+        "url": "/assets/products/ac2e4bf0f1455209-640.webp",
+        "width": 640,
+        "bytes": 18102
+      },
+      {
+        "url": "/assets/products/ac2e4bf0f1455209-960.webp",
+        "width": 960,
+        "bytes": 28294
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a81bb.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a81bb.png",
+    "hash": "96cd2f77e4a90000",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/96cd2f77e4a90000-320.webp",
+        "width": 320,
+        "bytes": 8020
+      },
+      {
+        "url": "/assets/products/96cd2f77e4a90000-640.webp",
+        "width": 640,
+        "bytes": 17126
+      },
+      {
+        "url": "/assets/products/96cd2f77e4a90000-960.webp",
+        "width": 960,
+        "bytes": 27258
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a8cf3.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a8cf3.png",
+    "hash": "2415e24566e56515",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/2415e24566e56515-320.webp",
+        "width": 320,
+        "bytes": 10302
+      },
+      {
+        "url": "/assets/products/2415e24566e56515-640.webp",
+        "width": 640,
+        "bytes": 28504
+      },
+      {
+        "url": "/assets/products/2415e24566e56515-960.webp",
+        "width": 960,
+        "bytes": 52660
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a9528.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a9528.png",
+    "hash": "9b9d37e87787f8ff",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/9b9d37e87787f8ff-320.webp",
+        "width": 320,
+        "bytes": 8698
+      },
+      {
+        "url": "/assets/products/9b9d37e87787f8ff-640.webp",
+        "width": 640,
+        "bytes": 20672
+      },
+      {
+        "url": "/assets/products/9b9d37e87787f8ff-960.webp",
+        "width": 960,
+        "bytes": 35424
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd857a8016.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd857a8016.png",
+    "hash": "456defd72c3b68fa",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/456defd72c3b68fa-320.webp",
+        "width": 320,
+        "bytes": 5878
+      },
+      {
+        "url": "/assets/products/456defd72c3b68fa-640.webp",
+        "width": 640,
+        "bytes": 12452
+      },
+      {
+        "url": "/assets/products/456defd72c3b68fa-960.webp",
+        "width": 960,
+        "bytes": 19094
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd857a91c0.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd857a91c0.png",
+    "hash": "86caa346782bfc01",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/86caa346782bfc01-320.webp",
+        "width": 320,
+        "bytes": 11234
+      },
+      {
+        "url": "/assets/products/86caa346782bfc01-640.webp",
+        "width": 640,
+        "bytes": 31372
+      },
+      {
+        "url": "/assets/products/86caa346782bfc01-960.webp",
+        "width": 960,
+        "bytes": 57328
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd857a7e5b.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd857a7e5b.png",
+    "hash": "14ee4c979f0a80bc",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/14ee4c979f0a80bc-320.webp",
+        "width": 320,
+        "bytes": 5826
+      },
+      {
+        "url": "/assets/products/14ee4c979f0a80bc-640.webp",
+        "width": 640,
+        "bytes": 12204
+      },
+      {
+        "url": "/assets/products/14ee4c979f0a80bc-960.webp",
+        "width": 960,
+        "bytes": 19098
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5.png",
+    "hash": "a6c605fc394a7ce5",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/a6c605fc394a7ce5-320.webp",
+        "width": 320,
+        "bytes": 5280
+      },
+      {
+        "url": "/assets/products/a6c605fc394a7ce5-640.webp",
+        "width": 640,
+        "bytes": 11268
+      },
+      {
+        "url": "/assets/products/a6c605fc394a7ce5-960.webp",
+        "width": 960,
+        "bytes": 18074
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a730a.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a730a.png",
+    "hash": "4c763a686ed1bc73",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/4c763a686ed1bc73-320.webp",
+        "width": 320,
+        "bytes": 5036
+      },
+      {
+        "url": "/assets/products/4c763a686ed1bc73-640.webp",
+        "width": 640,
+        "bytes": 10712
+      },
+      {
+        "url": "/assets/products/4c763a686ed1bc73-960.webp",
+        "width": 960,
+        "bytes": 17610
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a77f7.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a77f7.png",
+    "hash": "3beba95d7993e053",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/3beba95d7993e053-320.webp",
+        "width": 320,
+        "bytes": 8970
+      },
+      {
+        "url": "/assets/products/3beba95d7993e053-640.webp",
+        "width": 640,
+        "bytes": 25542
+      },
+      {
+        "url": "/assets/products/3beba95d7993e053-960.webp",
+        "width": 960,
+        "bytes": 47814
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a7ba8.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a7ba8.png",
+    "hash": "961c374aa04bb14d",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/961c374aa04bb14d-320.webp",
+        "width": 320,
+        "bytes": 6678
+      },
+      {
+        "url": "/assets/products/961c374aa04bb14d-640.webp",
+        "width": 640,
+        "bytes": 15934
+      },
+      {
+        "url": "/assets/products/961c374aa04bb14d-960.webp",
+        "width": 960,
+        "bytes": 28000
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd857a7256.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd857a7256.png",
+    "hash": "c358f425e28056e5",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/c358f425e28056e5-320.webp",
+        "width": 320,
+        "bytes": 3850
+      },
+      {
+        "url": "/assets/products/c358f425e28056e5-640.webp",
+        "width": 640,
+        "bytes": 8212
+      },
+      {
+        "url": "/assets/products/c358f425e28056e5-960.webp",
+        "width": 960,
+        "bytes": 13076
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd857a7a2c.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd857a7a2c.png",
+    "hash": "a378a566a12457d1",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/a378a566a12457d1-320.webp",
+        "width": 320,
+        "bytes": 9670
+      },
+      {
+        "url": "/assets/products/a378a566a12457d1-640.webp",
+        "width": 640,
+        "bytes": 27818
+      },
+      {
+        "url": "/assets/products/a378a566a12457d1-960.webp",
+        "width": 960,
+        "bytes": 51988
+      }
+    ]
+  },
+  {
+    "source": "owner-supplied:printful-template-109989447:unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd857a718a.png",
+    "file": "image-originals/sweatshirts/109989447/unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd857a718a.png",
+    "hash": "a66920bf84ce0cbb",
+    "width": 1000,
+    "height": 1000,
+    "outputs": [
+      {
+        "url": "/assets/products/a66920bf84ce0cbb-320.webp",
+        "width": 320,
+        "bytes": 3738
+      },
+      {
+        "url": "/assets/products/a66920bf84ce0cbb-640.webp",
+        "width": 640,
+        "bytes": 7830
+      },
+      {
+        "url": "/assets/products/a66920bf84ce0cbb-960.webp",
+        "width": 960,
+        "bytes": 12888
+      }
+    ]
   }
 ]

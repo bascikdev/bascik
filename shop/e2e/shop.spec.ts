@@ -381,7 +381,7 @@ test("catalog is complete and independent of Shopify at runtime", async ({
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByTestId("product-card")).toHaveCount(6);
+  await expect(page.getByTestId("product-card")).toHaveCount(products.length);
   await expect(page.getByRole("heading", { name: "Bascik merch" })).toHaveCount(
     1,
   );
@@ -526,6 +526,56 @@ test("product gallery filters views when color changes", async ({ page }) => {
       await expect(
         page.getByTestId("gallery-image").filter({ visible: true }),
       ).toHaveCount(visible.length);
+    }
+  }
+});
+test("sweatshirts appear before hats, default to Black and all colors and sizes add the correct $45 variant", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const headings = await page
+    .getByTestId("product-card")
+    .getByRole("heading")
+    .allTextContents();
+  expect(headings).toEqual(products.map((product) => product.title));
+  for (const product of products.filter((product) =>
+    product.slug.includes("sweatshirt"),
+  )) {
+    for (const variant of product.variants) {
+      await page.goto(`/products/${product.slug}`);
+      await expect(page.getByTestId("product-color")).toHaveValue("Black");
+      await expect(page.getByTestId("product-image")).toHaveAttribute(
+        "src",
+        product.images[0].src,
+      );
+      await page.evaluate(() => localStorage.clear());
+      await page.getByTestId("product-color").selectOption(variant.color);
+      await page.getByTestId("product-size").selectOption(variant.size!);
+      const photo = page.getByTestId("product-image");
+      await expect(photo).toHaveAttribute(
+        "src",
+        product.images.find((image) => image.color === variant.color)!.src,
+      );
+      await expect
+        .poll(() =>
+          photo.evaluate(
+            (image: HTMLImageElement) =>
+              image.complete && image.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      await page.getByTestId("add-to-cart").click();
+      await page.goto("/cart");
+      await expect(page.getByTestId("cart-line")).toHaveCount(1);
+      await expect(page.getByTestId("cart-line")).toContainText(product.title);
+      await expect(page.getByTestId("cart-line")).toContainText(variant.title);
+      await expect(page.getByTestId("cart-total")).toHaveText("$45.00");
+      await expect(
+        page.getByTestId("cart-line").getByTestId("cart-image"),
+      ).toHaveAttribute(
+        "src",
+        product.images.find((image) => image.color === variant.color)!.src,
+      );
     }
   }
 });
@@ -910,14 +960,14 @@ test("responsive images reserve space and stay within the mobile transfer budget
     images.map((image) => {
       const img = image as HTMLImageElement;
       return {
-        src: img.currentSrc,
+        src: img.src,
         width: img.width,
         natural: img.naturalWidth,
         height: img.height,
       };
     }),
   );
-  expect(initialImages.length).toBe(6);
+  expect(initialImages.length).toBe(products.length);
   for (const image of initialImages) {
     expect(image.width).toBeGreaterThan(0);
     expect(image.height).toBeGreaterThan(0);
@@ -936,6 +986,19 @@ test("responsive images reserve space and stay within the mobile transfer budget
     );
     expect(bytes).toBeLessThan(500 * 1024);
     expect(bytes).toBeGreaterThan(0);
+  }
+  for (const image of await page.locator("main img").all()) {
+    await image.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (img: HTMLImageElement) => img.complete && img.naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+    expect(
+      await image.evaluate((img: HTMLImageElement) => img.currentSrc),
+    ).toContain(".webp");
   }
 });
 

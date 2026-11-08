@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
-import sharp from "sharp";
 import type { Product } from "../src/lib/catalog.ts";
 import { productTemplates } from "./product-templates.ts";
+import { importProductImage } from "./import-product-images.ts";
 
 const entries = [
   {
@@ -28,46 +27,19 @@ for (const entry of entries) {
   const images = [];
   for (const [index, name] of entry.images.entries()) {
     const file = `image-originals/decals/${name}.png`;
-    const bytes = await readFile(file);
-    const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
-    const metadata = await sharp(bytes).metadata();
-    if (!metadata.width || !metadata.height)
-      throw new Error(`Missing dimensions: ${file}`);
-    const outputs = [];
-    for (const width of [320, 640, 960, 1600].filter(
-      (width) => width <= metadata.width!,
-    )) {
-      const encoded = await sharp(bytes)
-        .rotate()
-        .resize({ width, withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toBuffer();
-      const url = `/assets/products/${hash}-${width}.webp`;
-      await writeFile(`src/pages${url}`, encoded);
-      outputs.push({ url, width, bytes: encoded.length });
-    }
-    if (!outputs.length) throw new Error(`Image too small: ${file}`);
-    images.push({
-      src: (outputs.find((output) => output.width === 640) ?? outputs[0]).url,
-      srcset: outputs
-        .map((output) => `${output.url} ${output.width}w`)
-        .join(", "),
-      width: metadata.width,
-      height: metadata.height,
-      alt: `${entry.title}, ${index === 0 ? "front view" : "on a laptop"}`,
-      sourceId: name,
-      color: "Satin",
-    });
+    const imported = await importProductImage(
+      file,
+      name,
+      "Satin",
+      `${entry.title}, ${index === 0 ? "front view" : "on a laptop"}`,
+    );
+    images.push(imported.image);
     const existing = manifest.findIndex(
       (image: { file: string }) => image.file === file,
     );
     const record = {
       source: `owner-supplied:${name}`,
-      file,
-      hash,
-      width: metadata.width,
-      height: metadata.height,
-      outputs,
+      ...imported.record,
     };
     if (existing >= 0) manifest[existing] = record;
     else manifest.push(record);
