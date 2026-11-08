@@ -12,7 +12,7 @@ Run this from the root of your project:
 npx skills add bascikdev/bascik
 ```
 
-The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Choose skills interactively, or use a command from the table below to install one. To install all nine without prompts, run `npx skills add bascikdev/bascik --skill '*' -y`.
+The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Choose skills interactively, or use a command from the table below to install one. To install all skills without prompts, run `npx skills add bascikdev/bascik --skill '*' -y`.
 
 To install a skill from the docs site instead, use `npx skills add https://bascik.dev --skill <skill-name>`. For example, install the opt-in `bascik-refactor` skill with `npx skills add https://bascik.dev --skill bascik-refactor`.
 
@@ -21,7 +21,8 @@ To install a skill from the docs site instead, use `npx skills add https://basci
 | Skill                  | Use it for                                                                                                               | Install command                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
 | `bascik`               | **Start here.** Project layout, components, slots, props, the CLI, checking output, and copying examples                 | `npx skills add bascikdev/bascik --skill bascik`               |
-| `bascik-components`    | Component CSS and JavaScript, interactivity, theming, scoped names, and local responsive image optimization              | `npx skills add bascikdev/bascik --skill bascik-components`    |
+| `bascik-components`    | Component CSS and TypeScript, interactivity, theming, and scoped names                                                   | `npx skills add bascikdev/bascik --skill bascik-components`    |
+| `bascik-images`        | Responsive WebP, native image markup, stable galleries, and selected variants before first paint                         | `npx skills add bascikdev/bascik --skill bascik-images`        |
 | `bascik-compatibility` | Checking HTML, CSS, and JavaScript support in browsers and Bascik's scoping engine                                       | `npx skills add bascikdev/bascik --skill bascik-compatibility` |
 | `bascik-scripts`       | Build, routes, server, and stream scripts, API routes, Markdown, and blogs                                               | `npx skills add bascikdev/bascik --skill bascik-scripts`       |
 | `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, and `llms.txt`                                              | `npx skills add bascikdev/bascik --skill bascik-seo`           |
@@ -30,13 +31,13 @@ To install a skill from the docs site instead, use `npx skills add https://basci
 | `bascik-migrate`       | Moving from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                             | `npx skills add bascikdev/bascik --skill bascik-migrate`       |
 | `bascik-refactor`      | **Opt-in.** Refactoring a live site with production parity at every breakpoint and 100 in all five Lighthouse categories | `npx skills add bascikdev/bascik --skill bascik-refactor`      |
 
-New projects created with `npm create bascik@rc` or `bascik init` offer to install the eight general-purpose skills automatically. Add `bascik-refactor` separately when you need the workflow in [Migrating with Coding Agents](/how-to/agent-migration).
+New projects created with `npm create bascik@rc` or `bascik init` offer to install the general-purpose skills automatically. Add `bascik-refactor` separately when you need the workflow in [Migrating with Coding Agents](/how-to/agent-migration).
 
 The skills hold only what an assistant must not get wrong: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`. For everything else they point to the page on this site that explains it, and `read-doc.mjs` prints that page, so the skills and the docs never disagree.
 
 ## Scripts the Assistant Runs
 
-The skills include Node.js scripts (Node 22.22 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. Most need no extra dependencies. The `bascik-components` WebP helper loads Sharp from your project; [Optimizing Images](/how-to/optimizing-images) shows how agents generate files locally and wire up native HTML and CSS. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
+The skills include Node.js scripts (Node 22.22 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. Most need no extra dependencies. The `bascik-images` WebP helper loads Sharp from your project; [Optimizing Images](/how-to/optimizing-images) shows how agents generate files locally, wire up native HTML and CSS, and prevent first-paint flashes. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
 
 | Script                                               | What it does                                                                                                                                                                                                                                                                    |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -62,7 +63,7 @@ The skills include Node.js scripts (Node 22.22 or newer). The assistant runs the
 | `bascik-refactor/scripts/compare-route.mjs`          | Compares a route with production in pixels, geometry and interactions, and writes a JSON report with screenshots                                                                                                                                                                |
 | `bascik-refactor/scripts/lighthouse-gate.mjs`        | Fails unless every Lighthouse report scores 100 in all five categories for the requested form factor                                                                                                                                                                            |
 | `bascik-refactor/scripts/llms-txt.mjs`               | Writes `dist/llms.txt` from the built pages as a post exec script                                                                                                                                                                                                               |
-| `bascik-components/scripts/responsive-webp.mjs`      | Writes WebP variants up to each image's width and a manifest for native `srcset`; the agent edits the HTML                                                                                                                                                                      |
+| `bascik-images/scripts/responsive-webp.mjs`          | Writes WebP variants up to each image's width and a manifest for native `srcset`; the agent edits the HTML                                                                                                                                                                      |
 | `bascik-refactor/scripts/worker-response-policy.mjs` | Wraps the Cloudflare Worker to send a hash-based CSP, robots and cache headers                                                                                                                                                                                                  |
 | `bascik-refactor/scripts/interaction-crawl.mjs`      | Activates every interactive element on a production route, replays it on Bascik, and reports missing or different effects such as a scroll that no longer happens                                                                                                               |
 | `bascik-refactor/scripts/state-capture.mjs`          | Opens every dropdown and disclosure on both sides and compares the open state's styles, icons and a pixel crop                                                                                                                                                                  |
@@ -84,7 +85,7 @@ For example, after writing a component the assistant can confirm that two instan
 node .agents/skills/bascik/scripts/preview.mjs '<like-button data-bascik-prop-label="Like" />' --count 2 --body
 ```
 
-`new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project. The component skill's `responsive-webp.mjs` writes images into `--out` and its manifest into `--manifest` (by default, `--out/manifest.json`). The `bascik-refactor` scripts that produce files also write: `breakpoint-matrix.mjs --out`, `geometry-diff.mjs --out`, `compare-route.mjs`, `run-checks.mjs` and the parity checks it runs (reports and screenshots under `artifacts/`), `review-page.mjs` (pages under `artifacts/review/`, and a sign-off in `docs/migration/review/` with `--sign`), `production-defects.mjs` (rows appended to `docs/migration/decisions.md`), `capture-baselines.mjs` (baselines under `artifacts/baselines/`), `interaction-crawl.mjs --discover` (a draft at `docs/migration/interactions.draft.json`), and `llms-txt.mjs` (`dist/llms.txt` only). The other scripts only read. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
+`new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project. The image skill's `responsive-webp.mjs` writes images into `--out` and its manifest into `--manifest` (by default, `--out/manifest.json`). The `bascik-refactor` scripts that produce files also write: `breakpoint-matrix.mjs --out`, `geometry-diff.mjs --out`, `compare-route.mjs`, `run-checks.mjs` and the parity checks it runs (reports and screenshots under `artifacts/`), `review-page.mjs` (pages under `artifacts/review/`, and a sign-off in `docs/migration/review/` with `--sign`), `production-defects.mjs` (rows appended to `docs/migration/decisions.md`), `capture-baselines.mjs` (baselines under `artifacts/baselines/`), `interaction-crawl.mjs --discover` (a draft at `docs/migration/interactions.draft.json`), and `llms-txt.mjs` (`dist/llms.txt` only). The other scripts only read. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
 
 ## Example Components
 
@@ -106,7 +107,7 @@ npx skills update
 `npx skills update` keeps the version a skill was installed from. Skills that a new project installed at a release tag stay at that tag, so after upgrading `@bascik/bascik` run the install again with the new version, as the project's `AGENTS.md` shows:
 
 ```sh
-npx skills add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
+npx skills add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
 With curl, run the same install command again; it overwrites the files in place.
@@ -167,7 +168,7 @@ Press Enter, or pass `-y`, and they run the skills CLI for you. They install eve
 Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
 
 ```sh
-npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-migrate bascik-scripts bascik-seo bascik-testing
+npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
 If that tag is not found, run the same command without `#v1.0.0-rc.10` to install from the default branch.

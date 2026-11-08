@@ -430,7 +430,7 @@ reviewed }`, verdict pass or issues), from the form or with `review-page.mjs --s
 ## Score techniques
 
 - LCP: no hero animation that starts at `opacity: 0` (Chromium records no LCP candidate while transparent);
-  responsive WebP with `srcset` (`node <skills-dir>/bascik-components/scripts/responsive-webp.mjs`, from the default
+  responsive WebP with `srcset` (`node <skills-dir>/bascik-images/scripts/responsive-webp.mjs`, from the default
   component skill; read `/how-to/optimizing-images`; its manifest's `url` fields build the srcset, and
   `--manifest src/lib/images.json` keeps it out of the published site); a route-aware preload of the hero from a
   `data-bascik-build` script reading `BASCIK_PAGE_PATH` (a `data-bascik-build-once` script has no page context);

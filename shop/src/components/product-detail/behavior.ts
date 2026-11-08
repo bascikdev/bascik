@@ -45,16 +45,6 @@ export function initProductDetail(root: HTMLElement) {
     const color = data.get("color");
     if (typeof color === "string") showColor(color);
   });
-  const requestedColor = new URLSearchParams(location.search).get("color");
-  const colorSelect = form?.querySelector<HTMLSelectElement>(
-    "select[name='color']",
-  );
-  if (
-    requestedColor !== null &&
-    colorSelect &&
-    product?.variants.some((variant) => variant.color === requestedColor)
-  )
-    colorSelect.value = requestedColor;
   const initialColor = form && new FormData(form).get("color");
   if (typeof initialColor === "string") showColor(initialColor);
   function showCartLink() {

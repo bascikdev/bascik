@@ -28,7 +28,7 @@ const SCRIPTS = [
   "bascik-compatibility/scripts/baseline.mjs",
   "bascik-compatibility/scripts/lookup.mjs",
   "bascik-components/scripts/check-tokens.mjs",
-  "bascik-components/scripts/responsive-webp.mjs",
+  "bascik-images/scripts/responsive-webp.mjs",
   "bascik-config/scripts/audit-config.mjs",
   "bascik-config/scripts/check-workspace.mjs",
   "bascik-scripts/scripts/new-post.mjs",

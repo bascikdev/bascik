@@ -6,21 +6,11 @@ export function initProductCard(root: HTMLElement) {
   const card = root;
   const item = products.find((entry) => entry.id === card.dataset.cardProduct);
   const image = element<HTMLImageElement>("[data-card-image]");
-  const controls = elements<HTMLElement>("[data-card-controls]");
-  if (!item || !image || !controls.length)
+  if (!item || !image)
     throw new Error("Product card catalog data or image controls are missing.");
   const colors = element("[data-card-colors]");
-  const template = element<HTMLTemplateElement>("[data-card-color-template]");
-  if (!colors || !template)
+  if (!colors || !elements("[data-card-color]").length)
     throw new Error("Product card controls are missing.");
-  for (const color of new Set(item.variants.map((variant) => variant.color))) {
-    const fragment = template.content.cloneNode(true) as DocumentFragment;
-    const button = fragment.querySelector<HTMLButtonElement>("button")!;
-    button.dataset.cardColor = color;
-    button.setAttribute("aria-label", color);
-    button.textContent = color.replace(/^G\. Dyed /, "");
-    colors.append(fragment);
-  }
   let color = item.images[0].color;
   let position = 0;
   const show = () => {
@@ -60,6 +50,5 @@ export function initProductCard(root: HTMLElement) {
       position = (position + direction + count) % count;
       show();
     });
-  for (const control of controls) control.hidden = false;
   show();
 }

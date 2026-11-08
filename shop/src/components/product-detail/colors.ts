@@ -1,4 +1,12 @@
 import { html } from "@bascik/bascik/html";
-import { pageProduct } from "./product.ts";
-export default () =>
-  html`${[...new Set(pageProduct().variants.map((variant) => variant.color))].map((color) => html`<option>${color}</option>`)}`;
+import { requestProduct } from "./product.ts";
+export default (request: Request) => {
+  const { product, color: selected } = requestProduct(request);
+  return html`${[
+    ...new Set(product.variants.map((variant) => variant.color)),
+  ].map((color) =>
+    color === selected
+      ? html`<option selected>${color}</option>`
+      : html`<option>${color}</option>`,
+  )}`;
+};

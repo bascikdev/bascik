@@ -36,7 +36,7 @@ A catalog card with responsive photography and per-instance color/gallery contro
         sizes="(max-width: 640px) calc((100vw - 54px)/2), (max-width: 1000px) 46vw, 280px"
       />
     </a>
-    <div class="arrows" data-card-controls hidden>
+    <div class="arrows">
       <button
         type="button"
         data-card-previous
@@ -55,18 +55,11 @@ A catalog card with responsive photography and per-instance color/gallery contro
       </button>
     </div>
   </div>
-  <div class="controls" data-card-controls hidden>
-    <div class="colors" role="group" aria-label="Color" data-card-colors></div>
+  <div class="controls">
+    <div class="colors" role="group" aria-label="Color" data-card-colors>
+      <div data-bascik-slot></div>
+    </div>
   </div>
-  <template data-card-color-template>
-    <button
-      class="color"
-      type="button"
-      data-card-color
-      aria-pressed="false"
-      data-testid="card-color"
-    ></button>
-  </template>
   <h2>
     <a data-bascik-attr-href="href" data-bascik-prop-title></a>
   </h2>

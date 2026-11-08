@@ -1,24 +1,35 @@
 import { html } from "@bascik/bascik/html";
-import { pageProduct } from "./product.ts";
+import { requestProduct } from "./product.ts";
 
-export default () =>
-  html`${pageProduct().images.map(
-    (image, index) => html`
-      <button
-        type="button"
-        class="thumbnail"
-        data-gallery="${index}"
-        aria-label="Show product view ${index + 1}"
-        aria-pressed="${index === 0}"
-        data-testid="gallery-image"
-      >
-        <img
-          src="${image.srcset.split(", ")[0].split(" ")[0]}"
-          width="320"
-          height="320"
-          alt=""
-          loading="lazy"
-        />
-      </button>
-    `,
-  )}`;
+export default (request: Request) => {
+  const { product, color, imageIndex } = requestProduct(request);
+  return html`${product.images.map((image, index) => {
+    const preview = html`<img
+      src="${image.srcset.split(", ")[0].split(" ")[0]}"
+      width="320"
+      height="320"
+      alt=""
+      loading="lazy"
+    />`;
+    return image.color === color
+      ? html`<button
+          type="button"
+          data-gallery="${index}"
+          aria-label="Show product view ${index + 1}"
+          aria-pressed="${index === imageIndex}"
+          data-testid="gallery-image"
+        >
+          ${preview}
+        </button>`
+      : html`<button
+          type="button"
+          data-gallery="${index}"
+          aria-label="Show product view ${index + 1}"
+          aria-pressed="false"
+          data-testid="gallery-image"
+          hidden
+        >
+          ${preview}
+        </button>`;
+  })}`;
+};

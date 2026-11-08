@@ -287,16 +287,17 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 
 ## Companion skills
 
-| Skill                  | Load it when                                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bascik-components`    | Deciding what becomes a component, writing component CSS or TypeScript, interactivity, theming, scoped names, optimizing images with local tools and native srcset |
-| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature works in browsers and inside a component                                                                      |
-| `bascik-scripts`       | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, API routes, Markdown, or a blog                                                                        |
-| `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt`                                                                                   |
-| `bascik-config`        | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server`                                                                         |
-| `bascik-testing`       | Writing tests, debugging, validating output, or tuning Lighthouse scores                                                                                           |
-| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                                                                |
-| `bascik-refactor`      | Opt-in: having coding agents refactor a live site to production parity and 100 in all five Lighthouse categories                                                   |
+| Skill                  | Load it when                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `bascik-components`    | Deciding what becomes a component, writing component CSS or TypeScript, interactivity, theming, scoped names        |
+| `bascik-images`        | Responsive WebP, native srcset and sizes, stable gallery geometry, and correct selected variants before first paint |
+| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature works in browsers and inside a component                       |
+| `bascik-scripts`       | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, API routes, Markdown, or a blog                         |
+| `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt`                                    |
+| `bascik-config`        | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server`                          |
+| `bascik-testing`       | Writing tests, debugging, validating output, or tuning Lighthouse scores                                            |
+| `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                 |
+| `bascik-refactor`      | Opt-in: having coding agents refactor a live site to production parity and 100 in all five Lighthouse categories    |
 
 New projects do not include `bascik-refactor`. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 

@@ -6,20 +6,10 @@
 >
   <div>
     <div class="photo">
-      <img
-        data-main-image
-        data-testid="product-image"
-        data-bascik-attr-src="src"
-        data-bascik-attr-srcset="srcset"
-        data-bascik-attr-alt="alt"
-        data-bascik-attr-width="width"
-        data-bascik-attr-height="height"
-        sizes="(max-width: 640px) calc(100vw - 40px), (max-width: 1280px) 52vw, 640px"
-        fetchpriority="high"
-      />
+      <script data-bascik-server src="./image.ts"></script>
     </div>
     <div class="thumbnails" role="group" aria-label="Product images">
-      <script data-bascik-build src="./gallery.ts"></script>
+      <script data-bascik-server src="./gallery.ts"></script>
     </div>
   </div>
   <div>
@@ -31,7 +21,7 @@
     <form data-product-form data-testid="product-form">
       <label for="color">Color</label>
       <select id="color" name="color" data-testid="product-color">
-        <script data-bascik-build src="./colors.ts"></script>
+        <script data-bascik-server src="./colors.ts"></script>
       </select>
       <script data-bascik-build src="./sizes.ts"></script>
       <label for="quantity">Quantity</label>
