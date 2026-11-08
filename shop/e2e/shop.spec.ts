@@ -1161,6 +1161,62 @@ test("order polling follows payment and asynchronous draft readiness", async ({
   await page.clock.fastForward(30000);
   expect(calls).toBe(4);
 });
+for (const [state, amount, text] of [
+  ["refunded", 3750, "Your full refund of $37.50 has been issued."],
+  ["partial", 1000, "A partial refund of $10.00 has been issued."],
+  ["pending", 0, "A refund is processing."],
+  [
+    "failed",
+    1000,
+    "A refund needs attention. $10.00 has already been refunded.",
+  ],
+  ["none", 0, "A full refund has not yet been confirmed."],
+] as const) {
+  test(`private order shows ${state} refund without rewriting the receipt`, async ({
+    page,
+  }) => {
+    await page.route("**/api/order", (route) =>
+      route.fulfill({
+        json: {
+          orderId: "refund-fixture",
+          status:
+            state === "refunded" || state === "none"
+              ? "cancelled"
+              : "submitted",
+          paymentConfirmed: true,
+          confirmationEmail: "sent",
+          refund: { state, amount, checkedAt: 1 },
+          summary: {
+            reference: "BASCIK-REFUND",
+            placedAt: "2026-11-07T19:45:07.000Z",
+            items: [
+              {
+                variantId: products[0].variants[0].id,
+                title: "Logo shirt / Black / M",
+                quantity: 1,
+                price: 3000,
+              },
+            ],
+            subtotal: 3000,
+            shipping: 500,
+            shippingService: "Standard",
+            tax: 250,
+            total: 3750,
+          },
+          items: [],
+          shipments: [],
+        },
+      }),
+    );
+    await page.goto("/order#token=private-refund-fixture");
+    await expect(page.getByTestId("order-refund")).toBeVisible();
+    await expect(page.getByTestId("order-refund")).toContainText(text);
+    await expect(page.getByTestId("order-summary")).toContainText("$37.50");
+    await expect(page.getByTestId("order-summary")).toContainText("Total paid");
+    await expect(page.getByTestId("order-print")).toBeVisible();
+  });
+}
+
 test("paid orders show a printable confirmation without leaking the private token into print headers", async ({
   page,
 }) => {

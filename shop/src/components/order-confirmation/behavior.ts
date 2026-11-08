@@ -94,6 +94,23 @@ export function initOrderConfirmation(root: HTMLElement) {
             "[data-order-status]",
             labels[order.status] ?? "Checking fulfillment status.",
           );
+          const refund = element("[data-order-refund]");
+          if (refund) {
+            const amount = money(order.refund?.amount ?? 0);
+            const refundLabels: Record<string, string> = {
+              refunded: `Your full refund of ${amount} has been issued. Bank processing may take several days.`,
+              partial: `A partial refund of ${amount} has been issued. Your original purchase totals are shown below.`,
+              pending: `A refund is processing.${order.refund?.amount ? ` ${amount} has already been refunded.` : ""}`,
+              failed: `A refund needs attention.${order.refund?.amount ? ` ${amount} has already been refunded.` : ""} Please contact us.`,
+              none:
+                order.status === "cancelled"
+                  ? "Your order was canceled. A full refund has not yet been confirmed."
+                  : "",
+            };
+            refund.textContent =
+              refundLabels[order.refund?.state ?? "none"] ?? "";
+            refund.hidden = !refund.textContent;
+          }
           if (order.paymentConfirmed === true) {
             if (order.summary) renderConfirmation(order.summary);
             const emailLabels: Record<string, string> = {

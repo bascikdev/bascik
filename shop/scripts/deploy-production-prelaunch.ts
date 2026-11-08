@@ -5,6 +5,7 @@ import {
   assertProductionLaunch,
 } from "./production-config.ts";
 import { createHmac } from "node:crypto";
+import { verifyRefundReadAccess } from "../src/lib/refunds.ts";
 
 const launch = process.argv.includes("--launch");
 if (
@@ -62,7 +63,17 @@ async function stripeEndpoint(disabled?: boolean) {
       body:
         disabled === undefined
           ? undefined
-          : new URLSearchParams({ disabled: String(disabled) }),
+          : new URLSearchParams({
+              disabled: String(disabled),
+              "enabled_events[0]": "checkout.session.completed",
+              "enabled_events[1]": "checkout.session.async_payment_succeeded",
+              "enabled_events[2]": "checkout.session.async_payment_failed",
+              "enabled_events[3]": "checkout.session.expired",
+              "enabled_events[4]": "charge.refunded",
+              "enabled_events[5]": "refund.created",
+              "enabled_events[6]": "refund.updated",
+              "enabled_events[7]": "refund.failed",
+            }),
       signal: AbortSignal.timeout(30000),
     },
   );
@@ -83,9 +94,22 @@ async function stripeEndpoint(disabled?: boolean) {
     ].every((event) => endpoint.enabled_events?.includes(event))
   )
     throw new Error("Production webhook identity mismatch.");
+  if (
+    disabled !== undefined &&
+    ![
+      "charge.refunded",
+      "refund.created",
+      "refund.updated",
+      "refund.failed",
+    ].every((event) => endpoint.enabled_events?.includes(event))
+  )
+    throw new Error("Production refund webhooks are not enabled.");
   return endpoint;
 }
 if (launch) {
+  await verifyRefundReadAccess({
+    STRIPE_SECRET_KEY: secrets.STRIPE_SECRET_KEY,
+  });
   await stripeEndpoint();
   const endpoint = await stripeEndpoint(false);
   if (endpoint.status !== "enabled")

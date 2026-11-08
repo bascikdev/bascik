@@ -6,6 +6,116 @@ import { spawnSync } from "node:child_process";
 import { products } from "../src/lib/catalog.ts";
 
 test.each([
+  "dry-run",
+  "apply",
+  "partial",
+  "wrong-order",
+  "wrong-account",
+  "unauthorized",
+  "concurrent",
+  "wrong-confirm",
+])("guarded canceled-order reconciliation: %s", async (state) => {
+  const root = await mkdtemp(join(tmpdir(), "bascik-refund-tool-"));
+  try {
+    await writeFile(join(root, "calls.json"), "[]");
+    const fixture = join(root, "provider.mjs");
+    const id = "12345678901234567890123456789012";
+    await writeFile(
+      fixture,
+      `
+        import {writeFileSync} from "node:fs";
+        import {syncBuiltinESMExports} from "node:module";
+        import child from "node:child_process";
+        const state=${JSON.stringify(state)},id=${JSON.stringify(id)},calls=[];
+        const order={id,shipping_id:"STANDARD",stripe_session:"cs_live_fixture",stripe_payment_intent:null,
+          printful_id:123,snapshot:JSON.stringify({subtotal:3000,rates:[{id:"STANDARD",amount:500}]}),
+          status:"failed",updated_at:1,payment_total:3750,refund_amount:0,reconciliation_attempts:0};
+        child.spawnSync=(_command,args)=>{
+          if(args[2]!=="d1"||!args.includes("--remote")||args[args.indexOf("--config")+1]!==".output/wrangler.production.json")throw Error("Wrong D1 target");
+          const sql=args[args.indexOf("--command")+1];
+          calls.push(sql);writeFileSync("calls.json",JSON.stringify(calls));
+          if(!sql.includes(id))throw Error("Missing explicit order guard");
+          if(sql.startsWith("UPDATE") && state!=="apply" && state!=="concurrent")throw Error("Unapproved D1 write");
+          return {status:0,stdout:JSON.stringify([{success:true,results:sql.startsWith("SELECT")?[order]:[],meta:{changes:state==="concurrent"?0:1}}])};
+        };syncBuiltinESMExports();
+        globalThis.fetch=async(input,init)=>{
+          if(init?.method && init.method!=="GET")throw Error("Provider mutation forbidden");
+          const url=new URL(input);
+          let data;
+          if(url.origin==="https://api.stripe.com"){
+            if(url.pathname==="/v1/account")data={id:state==="wrong-account"?"acct_other":"acct_fixture"};
+            else if(url.pathname==="/v1/checkout/sessions/cs_live_fixture")data={
+              id:"cs_live_fixture",livemode:true,payment_status:"paid",currency:"usd",amount_subtotal:3000,amount_total:3750,
+              total_details:{amount_shipping:500,amount_tax:250,amount_discount:0},
+              metadata:{app:"bascik-shop",order_id:id,shop_origin:"https://shop.bascik.dev"},
+              payment_intent:{id:"pi_fixture",latest_charge:{id:"ch_fixture",payment_intent:"pi_fixture",amount:3750,
+                amount_refunded:state==="partial"?1000:3750,currency:"usd",livemode:true}}};
+            else if(url.pathname==="/v1/refunds")data={data:[{id:"re_fixture",charge:"ch_fixture",status:"succeeded"}],has_more:false};
+            else throw Error("Wrong Stripe route");
+          }else if(url.origin==="https://api.printful.com" && url.pathname==="/v2/orders/@"+id){
+            if(state==="unauthorized")return new Response("",{status:401});
+            data={data:{id:123,external_id:state==="wrong-order"?"other":id,status:"canceled"}};
+          }else throw Error("Wrong provider route");
+          return Response.json(data);
+        };
+      `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        fixture,
+        resolve("scripts/reconcile-canceled-order.ts"),
+        "--order",
+        id,
+        ...(state === "apply" || state === "concurrent"
+          ? ["--apply", "--confirm", id]
+          : state === "wrong-confirm"
+            ? ["--apply", "--confirm", "other"]
+            : []),
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          STRIPE_SECRET_KEY: "rk_live_fixture",
+          STRIPE_ACCOUNT: "acct_fixture",
+          PRINTFUL_TOKEN: "fixture",
+        },
+      },
+    );
+    const calls: string[] = JSON.parse(
+      await readFile(join(root, "calls.json"), "utf8"),
+    );
+    if (state === "apply" || state === "dry-run") {
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        orderId: id,
+        fullyRefunded: true,
+        applied: state === "apply",
+      });
+      expect(calls.filter((sql) => sql.startsWith("UPDATE"))).toHaveLength(
+        state === "apply" ? 2 : 0,
+      );
+      if (state === "apply")
+        expect(calls[1]).toContain("AND reconciliation_lease<");
+      expect(calls.filter((sql) => sql.startsWith("INSERT"))).toHaveLength(
+        state === "apply" ? 1 : 0,
+      );
+      if (state === "apply") expect(calls[3]).toContain("cancellation-refund");
+    } else {
+      expect(result.status).not.toBe(0);
+      expect(calls.filter((sql) => sql.startsWith("UPDATE"))).toHaveLength(
+        state === "concurrent" ? 1 : 0,
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
   "ready",
   "account",
   "sandbox",
@@ -17,6 +127,7 @@ test.each([
   "store",
   "tax",
   "no-registration",
+  "refund-permission",
 ])("live readiness checks %s without writing providers", async (state) => {
   const root = await mkdtemp(join(tmpdir(), "bascik-live-readiness-"));
   try {
@@ -56,6 +167,10 @@ test.each([
           else if(url.hostname!=="api.stripe.com")throw Error("Unexpected provider host");
           else if(url.pathname==="/v1/account")data={id:state==="account"?"acct_wrong":"acct_fixture",charges_enabled:true,payouts_enabled:true};
           else if(url.pathname==="/v1/balance")data={livemode:state!=="sandbox"};
+          else if(url.pathname==="/v1/refunds"){
+            if(state==="refund-permission")return Response.json({error:{message:"Missing charge_read"}},{status:403});
+            data={data:[],has_more:false};
+          }
           else if(url.pathname==="/v1/tax/settings")data={livemode:true,status:state==="tax"?"pending":"active"};
           else if(url.pathname==="/v1/tax/registrations")data={data:[],has_more:false};
           else if(url.pathname==="/v1/products")data={data:products,has_more:false};
@@ -94,6 +209,7 @@ test.each([
       );
       expect(report).toMatchObject({
         liveAccountMatched: true,
+        refundReadVerified: true,
         verifiedProducts: products.length,
         registrationCount: 0,
         printfulStoreVerified: true,
@@ -101,7 +217,7 @@ test.each([
     } else {
       expect(result.status, result.stdout).not.toBe(0);
       expect(result.stderr).toMatch(
-        /mismatch|match|ready|Wrong production|active tax registration/,
+        /mismatch|match|ready|Wrong production|active tax registration|Stripe request failed \(403\)/,
       );
     }
   } finally {
@@ -342,6 +458,7 @@ test.each([
   "launch",
   "wrong-webhook",
   "launch-closed",
+  "refund-permission",
 ])(
   "production CI smoke verifies %s and cryptographically signed no-order probes",
   async (state) => {
@@ -388,14 +505,21 @@ test.each([
         globalThis.fetch=async(input,init)=>{
           const url=new URL(input);
           if(url.hostname==="api.stripe.com"){
+            if(url.pathname==="/v1/refunds"){
+              if(init?.method && init.method!=="GET")throw Error("Refund permission probe must be read-only");
+              calls.push("refund:verify");writeFileSync("calls.json",JSON.stringify(calls));
+              if(${JSON.stringify(state)}==="refund-permission")return Response.json({error:{message:"Missing charge_read"}},{status:403});
+              return Response.json({data:[],has_more:false});
+            }
             if(url.pathname!=="/v1/webhook_endpoints/we_fixture")throw Error("Wrong webhook ID");
             const post=init?.method==="POST";
             if(post && init.body.get("disabled")!=="false")throw Error("Webhook not enabled");
+            if(post && !["charge.refunded","refund.created","refund.updated","refund.failed"].every((event,index)=>init.body.get("enabled_events["+(index+4)+"]")===event))throw Error("Missing refund subscriptions");
             calls.push(post?"webhook:enable":"webhook:verify");writeFileSync("calls.json",JSON.stringify(calls));
             return Response.json({id:"we_fixture",livemode:true,status:post?"enabled":"disabled",
               url:${JSON.stringify(state === "wrong-webhook" ? "https://other.example/webhook" : "https://bascik-shop-production.collin-inbox.workers.dev/api/webhooks/stripe")},
               metadata:{app:"bascik-shop-production"},
-              enabled_events:["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.async_payment_failed","checkout.session.expired"]});
+              enabled_events:["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.async_payment_failed","checkout.session.expired",...(post?["charge.refunded","refund.created","refund.updated","refund.failed"]:[])]});
           }
           if(url.origin!==${JSON.stringify(launch ? "https://shop.bascik.dev" : "https://bascik-shop-production.collin-inbox.workers.dev")})throw Error("Wrong production smoke origin");
           calls.push(url.pathname);writeFileSync("calls.json",JSON.stringify(calls));
@@ -446,12 +570,16 @@ test.each([
       const calls = JSON.parse(
         await readFile(join(root, "calls.json"), "utf8"),
       );
-      if (state === "wrong-webhook") {
+      if (state === "refund-permission") {
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("Stripe request failed (403)");
+        expect(calls).toEqual(["refund:verify"]);
+      } else if (state === "wrong-webhook") {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain("webhook identity mismatch");
-        expect(calls).toEqual(["webhook:verify"]);
+        expect(calls).toEqual(["refund:verify", "webhook:verify"]);
       } else {
-        expect(calls.slice(launch ? 2 : 0, launch ? 5 : 3)).toEqual([
+        expect(calls.slice(launch ? 3 : 0, launch ? 6 : 3)).toEqual([
           "d1",
           "secret",
           "deploy",
@@ -461,7 +589,7 @@ test.each([
         expect(result.status, result.stderr).toBe(0);
         expect(calls).toContain("/api/webhooks/stripe");
         expect(calls).toContain("/api/webhooks/printful");
-      } else if (state !== "wrong-webhook") {
+      } else if (!["wrong-webhook", "refund-permission"].includes(state)) {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(
           state === "launch-closed"

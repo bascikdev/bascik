@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
+import { verifyRefundReadAccess } from "../src/lib/refunds.ts";
 
 const key = process.env.STRIPE_SECRET_KEY;
 const account = process.env.STRIPE_ACCOUNT;
@@ -50,6 +51,7 @@ const identity = await stripe("/account");
 const balance = await stripe("/balance");
 if (identity.id !== account || balance.livemode !== true)
   throw new Error("Live Stripe account identity does not match.");
+await verifyRefundReadAccess({ STRIPE_SECRET_KEY: key });
 const tax = await stripe("/tax/settings");
 const registrations = await list("/tax/registrations");
 const inventory = await list("/products");
@@ -91,6 +93,7 @@ if (store.id !== 19022802 || store.type !== "native")
   throw new Error("Wrong production Printful store.");
 const report = {
   liveAccountMatched: true,
+  refundReadVerified: true,
   chargesEnabled: identity.charges_enabled === true,
   payoutsEnabled: identity.payouts_enabled === true,
   taxActive: tax.livemode === true && tax.status === "active",
