@@ -1,0 +1,11 @@
+ALTER TABLE orders ADD COLUMN printful_status TEXT;
+ALTER TABLE orders ADD COLUMN stripe_payment_intent TEXT;
+ALTER TABLE orders ADD COLUMN refund_amount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN refund_state TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE orders ADD COLUMN refund_checked_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN reconciliation_lease INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN reconciliation_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN reconciliation_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN cancellation_at INTEGER;
+CREATE INDEX orders_refunds ON orders(reconciliation_at, reconciliation_lease);
+CREATE UNIQUE INDEX orders_payment_intent ON orders(stripe_payment_intent);

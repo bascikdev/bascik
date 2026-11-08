@@ -65,6 +65,10 @@ if (!saved.stripe) {
       "enabled_events[1]": "checkout.session.async_payment_succeeded",
       "enabled_events[2]": "checkout.session.async_payment_failed",
       "enabled_events[3]": "checkout.session.expired",
+      "enabled_events[4]": "charge.refunded",
+      "enabled_events[5]": "refund.created",
+      "enabled_events[6]": "refund.updated",
+      "enabled_events[7]": "refund.failed",
     }),
   );
   await persist();

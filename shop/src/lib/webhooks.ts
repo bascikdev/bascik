@@ -15,6 +15,12 @@ import {
 import { type Order, type Quote } from "./checkout.ts";
 import { paidSession, recordPayment } from "./fulfillment.ts";
 import { orderSummary } from "./order-summary.ts";
+import {
+  refundEvents,
+  reconcileRefundEvent,
+  reconcileOrderRefund,
+} from "./refunds.ts";
+import { stripe } from "./providers.ts";
 
 export async function verifyStripeSignature(
   secret: string,
@@ -74,10 +80,39 @@ export const stripeWebhook = handler(async (request, env) => {
     id: string;
     type: string;
     livemode: boolean;
-    data: { object: { id: string; metadata?: Record<string, string> } };
+    data: {
+      object: {
+        id: string;
+        payment_intent?: string;
+        charge?: string;
+        metadata?: Record<string, string>;
+      };
+    };
   };
   if (typeof event.id !== "string" || !event.data?.object)
     throw new ShopError("Invalid payment event.");
+  if (refundEvents.some((type) => type === event.type)) {
+    if (event.livemode !== (env.SHOP_MODE === "live"))
+      throw new ShopError("Wrong payment environment.");
+    let intent = event.data.object.payment_intent;
+    if (!intent && event.data.object.charge) {
+      const charge = await stripe<{
+        payment_intent: string;
+        livemode: boolean;
+      }>(env, `/charges/${encodeURIComponent(event.data.object.charge)}`);
+      if (charge.livemode !== event.livemode)
+        throw new ShopError("Wrong charge environment.");
+      intent = charge.payment_intent;
+    }
+    if (!intent) {
+      console.info("Ignoring Stripe refund without a Checkout payment intent", {
+        eventId: event.id,
+      });
+      return json({ received: true });
+    }
+    await reconcileRefundEvent(env, intent);
+    return json({ received: true });
+  }
   if (
     ![
       "checkout.session.completed",
@@ -157,6 +192,13 @@ export const printfulWebhook = handler(async (request, env) => {
     .bind(id)
     .run();
   if (env.JOBS) await env.JOBS.send({ orderId: id });
+  const order = await env.DB.prepare(
+    "SELECT refund_state,status FROM orders WHERE id=?",
+  )
+    .bind(id)
+    .first<{ refund_state: string; status: string }>();
+  if (order?.refund_state === "refunded" || order?.status === "cancelled")
+    await reconcileOrderRefund(env, id);
   return json({ received: true });
 });
 export const orderStatus = handler(async (request, env: Env) => {
@@ -189,6 +231,11 @@ export const orderStatus = handler(async (request, env: Env) => {
   return json({
     orderId: order.id,
     status: order.status,
+    refund: {
+      state: order.refund_state,
+      amount: order.refund_amount,
+      checkedAt: order.refund_checked_at || null,
+    },
     paymentConfirmed: payment !== null,
     testMode: env.SHOP_MODE === "test",
     confirmationEmail:
