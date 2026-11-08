@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { products } from "../src/lib/catalog.ts";
+import imageManifest from "../image-originals/manifest.json" with { type: "json" };
 import {
   templateFingerprint,
   type TemplateMapping,
@@ -56,6 +57,41 @@ test("sweatshirt import is idempotent and preserves existing product and variant
     expect(again.stdout).toContain("Black first");
     expect(await readFile(productPath, "utf8")).toBe(catalog);
     expect(await readFile(manifestPath, "utf8")).toBe(manifest);
+    const legacyProducts = products
+      .filter((product) => product.slug.startsWith("100-organic-cotton-"))
+      .map((product) => ({
+        id: Number(product.id),
+        handle: product.slug,
+        title: product.title,
+        body_html: product.description,
+        variants: product.variants.map((variant) => ({
+          id: Number(variant.id),
+          title: variant.title,
+          sku: variant.sku,
+          price: (product.price / 100).toFixed(2),
+          available: variant.available,
+          option1: variant.color,
+          option2: variant.size,
+        })),
+        images: product.images.map((image) => {
+          const original = imageManifest.find((entry) =>
+            entry.outputs.some((output) => output.url === image.src),
+          );
+          if (!original)
+            throw new Error(`Missing legacy image fixture: ${image.src}`);
+          return {
+            id: Number(image.sourceId),
+            src: original.source,
+            variant_ids: product.variants
+              .filter((variant) => variant.imageId === image.sourceId)
+              .map((variant) => Number(variant.id)),
+          };
+        }),
+      }));
+    expect(legacyProducts).toHaveLength(4);
+    expect(
+      legacyProducts.reduce((sum, product) => sum + product.variants.length, 0),
+    ).toBe(24);
     const fixture = join(root, "legacy-provider.ts");
     await writeFile(
       fixture,
@@ -64,7 +100,7 @@ test("sweatshirt import is idempotent and preserves existing product and variant
       globalThis.fetch=async(input)=>{
         const url=String(input);
         if(url==="https://shop.bascik.dev/products.json?limit=250")
-          return Response.json(JSON.parse(await readFile(${JSON.stringify(resolve("catalog/source.json"))},"utf8")));
+          return Response.json({products:${JSON.stringify(legacyProducts)}});
         if(url==="https://api.printful.com/countries")
           return Response.json({result:JSON.parse(await readFile(${JSON.stringify(resolve("catalog/countries.json"))},"utf8"))});
         const image=JSON.parse(await readFile("image-originals/manifest.json","utf8")).find(entry=>entry.source===url);
