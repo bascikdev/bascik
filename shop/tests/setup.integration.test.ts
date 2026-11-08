@@ -1,13 +1,143 @@
 import { test, expect } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+  cp,
+  unlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import { products } from "../src/lib/catalog.ts";
+import imageManifest from "../image-originals/manifest.json" with { type: "json" };
 import {
   templateFingerprint,
   type TemplateMapping,
 } from "../scripts/template-fingerprint.ts";
+
+test("sweatshirt import is idempotent and preserves existing product and variant identities", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bascik-sweatshirts-"));
+  try {
+    await mkdir(join(root, "catalog"));
+    await mkdir(join(root, "src/pages/assets/products"), { recursive: true });
+    await cp(resolve("image-originals"), join(root, "image-originals"), {
+      recursive: true,
+    });
+    const original = await readFile("catalog/products.json", "utf8");
+    await writeFile(join(root, "catalog/products.json"), original);
+    const script = resolve("scripts/import-sweatshirts.ts");
+    const run = () =>
+      promisify(execFile)(
+        process.execPath,
+        [script, "image-originals/sweatshirts"],
+        {
+          cwd: root,
+          encoding: "utf8",
+        },
+      );
+    const first = await run();
+    expect(first.stdout).toContain("Black first");
+    const productPath = join(root, "catalog/products.json");
+    const manifestPath = join(root, "image-originals/manifest.json");
+    const catalog = await readFile(productPath, "utf8");
+    const manifest = await readFile(manifestPath, "utf8");
+    expect(
+      JSON.parse(catalog).filter(
+        (product: { slug: string }) => !product.slug.includes("sweatshirt"),
+      ),
+    ).toEqual(
+      products.filter((product) => !product.slug.includes("sweatshirt")),
+    );
+    expect(catalog).toBe(original);
+    const again = await run();
+    expect(again.stdout).toContain("Black first");
+    expect(await readFile(productPath, "utf8")).toBe(catalog);
+    expect(await readFile(manifestPath, "utf8")).toBe(manifest);
+    const legacyProducts = products
+      .filter((product) => product.slug.startsWith("100-organic-cotton-"))
+      .map((product) => ({
+        id: Number(product.id),
+        handle: product.slug,
+        title: product.title,
+        body_html: product.description,
+        variants: product.variants.map((variant) => ({
+          id: Number(variant.id),
+          title: variant.title,
+          sku: variant.sku,
+          price: (product.price / 100).toFixed(2),
+          available: variant.available,
+          option1: variant.color,
+          option2: variant.size,
+        })),
+        images: product.images.map((image) => {
+          const original = imageManifest.find((entry) =>
+            entry.outputs.some((output) => output.url === image.src),
+          );
+          if (!original)
+            throw new Error(`Missing legacy image fixture: ${image.src}`);
+          return {
+            id: Number(image.sourceId),
+            src: original.source,
+            variant_ids: product.variants
+              .filter((variant) => variant.imageId === image.sourceId)
+              .map((variant) => Number(variant.id)),
+          };
+        }),
+      }));
+    expect(legacyProducts).toHaveLength(4);
+    expect(
+      legacyProducts.reduce((sum, product) => sum + product.variants.length, 0),
+    ).toBe(24);
+    const fixture = join(root, "legacy-provider.ts");
+    await writeFile(
+      fixture,
+      `
+      import {readFile} from "node:fs/promises";
+      globalThis.fetch=async(input)=>{
+        const url=String(input);
+        if(url==="https://shop.bascik.dev/products.json?limit=250")
+          return Response.json({products:${JSON.stringify(legacyProducts)}});
+        if(url==="https://api.printful.com/countries")
+          return Response.json({result:JSON.parse(await readFile(${JSON.stringify(resolve("catalog/countries.json"))},"utf8"))});
+        const image=JSON.parse(await readFile("image-originals/manifest.json","utf8")).find(entry=>entry.source===url);
+        if(image)return new Response(await readFile(image.file));
+        throw new Error("Unexpected legacy importer network request: "+url);
+      };
+    `,
+    );
+    await promisify(execFile)(
+      process.execPath,
+      ["--import", fixture, resolve("scripts/import-catalog.ts")],
+      { cwd: root },
+    );
+    const refreshed = JSON.parse(await readFile(productPath, "utf8"));
+    expect(refreshed.map((product: { id: string }) => product.id)).toEqual(
+      products.map((product) => product.id),
+    );
+    expect(
+      refreshed.filter((product: { slug: string }) =>
+        product.slug.includes("sweatshirt"),
+      ),
+    ).toEqual(
+      products.filter((product) => product.slug.includes("sweatshirt")),
+    );
+    const beforeFailure = await readFile(productPath, "utf8");
+    const hero = products.find((product) =>
+      product.slug.includes("logo-sweatshirt"),
+    )!.images[0].sourceId;
+    await unlink(
+      join(root, `image-originals/sweatshirts/109989489/${hero}.png`),
+    );
+    await expect(run()).rejects.toThrow("Expected all 14 mockups");
+    expect(await readFile(productPath, "utf8")).toBe(beforeFailure);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 90_000);
 
 test("mapping import rejects a different template despite matching catalog and placements", async () => {
   const root = await mkdtemp(join(tmpdir(), "bascik-mapping-test-"));
@@ -146,7 +276,7 @@ test.each([
       );
       if (["matching", "later-products", "later-prices"].includes(state)) {
         expect(result.status, result.stderr).toBe(0);
-        expect(report.products).toHaveLength(6);
+        expect(report.products).toHaveLength(products.length);
       } else {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(

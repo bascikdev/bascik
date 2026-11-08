@@ -2,6 +2,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { products } from "../src/lib/catalog.ts";
 import { shippingPlacements } from "../src/lib/printful-design.ts";
 import { productTemplates } from "./product-templates.ts";
+import { printfulList } from "../src/lib/providers.ts";
 
 const token = process.env.PRINTFUL_TOKEN ?? process.env.PRINTFUL_TOEKN;
 const storeId = Number(process.env.PRINTFUL_STORE_ID);
@@ -26,6 +27,7 @@ if (store.id !== storeId || store.type !== "native")
   throw new Error("Template auditing requires the dedicated Manual/API store.");
 interface Template {
   id: number;
+  product_id: number;
   title: string;
   available_variant_ids: number[];
   placements: {
@@ -73,7 +75,9 @@ for (const product of products) {
   );
   if (
     matches.length !== 1 ||
-    (!approved.catalogVariantId && originals.length !== 1)
+    (!approved.catalogVariantId &&
+      !approved.catalogVariantIds &&
+      originals.length !== 1)
   )
     throw new Error(`Ambiguous or missing template for ${product.slug}`);
   const template = matches[0];
@@ -95,14 +99,39 @@ for (const product of products) {
       };
     }),
   );
+  const catalogVariants = approved.catalogVariantIds
+    ? await printfulList<{
+        id: number;
+        color: string;
+        size: string;
+        color_code: string;
+      }>(
+        { PRINTFUL_TOKEN: token, PRINTFUL_STORE_ID: String(storeId) },
+        `/catalog-products/${template.product_id}/catalog-variants`,
+      )
+    : [];
   for (const variant of product.variants) {
-    if (approved.catalogVariantId) {
-      if (!template.available_variant_ids.includes(approved.catalogVariantId))
+    const catalogId =
+      approved.catalogVariantId ?? approved.catalogVariantIds?.[variant.title];
+    if (approved.catalogVariantIds && !catalogId)
+      throw new Error(`Approved catalog variant missing for ${variant.id}`);
+    if (catalogId) {
+      if (
+        !template.available_variant_ids.includes(catalogId) ||
+        (approved.catalogVariantIds &&
+          !catalogVariants.some(
+            (entry) =>
+              entry.id === catalogId &&
+              entry.color === variant.color &&
+              entry.size === variant.size &&
+              entry.color_code === variant.colorCode,
+          ))
+      )
         throw new Error(`Template variant mismatch for ${variant.id}`);
       mappings.push({
         variant_id: variant.id,
         store_id: storeId,
-        catalog_variant_id: approved.catalogVariantId,
+        catalog_variant_id: catalogId,
         product_template_id: template.id,
         shipping_placements: design,
         verified: false,

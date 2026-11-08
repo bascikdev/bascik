@@ -23,7 +23,7 @@ export default () => {
   if (!title) throw new Error(`No metadata for ${route}`);
   const description =
     product?.description ??
-    "Made-to-order Bascik shirts, hats, and vinyl decals. Shop the official Bascik collection.";
+    "Bascik organic shirts, sweatshirts, hats, and vinyl decals. Shop the official Bascik collection.";
   const url = `https://shop.bascik.dev${route}`;
   const image = `https://shop.bascik.dev${(product ?? products[0]).images[0].src}`;
   return html` <title>${title} | Bascik Shop</title>

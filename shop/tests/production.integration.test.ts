@@ -127,6 +127,7 @@ test.each([
   "store",
   "tax",
   "no-registration",
+  "refund-permission",
 ])("live readiness checks %s without writing providers", async (state) => {
   const root = await mkdtemp(join(tmpdir(), "bascik-live-readiness-"));
   try {
@@ -166,6 +167,10 @@ test.each([
           else if(url.hostname!=="api.stripe.com")throw Error("Unexpected provider host");
           else if(url.pathname==="/v1/account")data={id:state==="account"?"acct_wrong":"acct_fixture",charges_enabled:true,payouts_enabled:true};
           else if(url.pathname==="/v1/balance")data={livemode:state!=="sandbox"};
+          else if(url.pathname==="/v1/refunds"){
+            if(state==="refund-permission")return Response.json({error:{message:"Missing charge_read"}},{status:403});
+            data={data:[],has_more:false};
+          }
           else if(url.pathname==="/v1/tax/settings")data={livemode:true,status:state==="tax"?"pending":"active"};
           else if(url.pathname==="/v1/tax/registrations")data={data:[],has_more:false};
           else if(url.pathname==="/v1/products")data={data:products,has_more:false};
@@ -204,14 +209,15 @@ test.each([
       );
       expect(report).toMatchObject({
         liveAccountMatched: true,
-        verifiedProducts: 6,
+        refundReadVerified: true,
+        verifiedProducts: products.length,
         registrationCount: 0,
         printfulStoreVerified: true,
       });
     } else {
       expect(result.status, result.stdout).not.toBe(0);
       expect(result.stderr).toMatch(
-        /mismatch|match|ready|Wrong production|active tax registration/,
+        /mismatch|match|ready|Wrong production|active tax registration|Stripe request failed \(403\)/,
       );
     }
   } finally {
@@ -452,6 +458,7 @@ test.each([
   "launch",
   "wrong-webhook",
   "launch-closed",
+  "refund-permission",
 ])(
   "production CI smoke verifies %s and cryptographically signed no-order probes",
   async (state) => {
@@ -498,6 +505,12 @@ test.each([
         globalThis.fetch=async(input,init)=>{
           const url=new URL(input);
           if(url.hostname==="api.stripe.com"){
+            if(url.pathname==="/v1/refunds"){
+              if(init?.method && init.method!=="GET")throw Error("Refund permission probe must be read-only");
+              calls.push("refund:verify");writeFileSync("calls.json",JSON.stringify(calls));
+              if(${JSON.stringify(state)}==="refund-permission")return Response.json({error:{message:"Missing charge_read"}},{status:403});
+              return Response.json({data:[],has_more:false});
+            }
             if(url.pathname!=="/v1/webhook_endpoints/we_fixture")throw Error("Wrong webhook ID");
             const post=init?.method==="POST";
             if(post && init.body.get("disabled")!=="false")throw Error("Webhook not enabled");
@@ -557,12 +570,16 @@ test.each([
       const calls = JSON.parse(
         await readFile(join(root, "calls.json"), "utf8"),
       );
-      if (state === "wrong-webhook") {
+      if (state === "refund-permission") {
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("Stripe request failed (403)");
+        expect(calls).toEqual(["refund:verify"]);
+      } else if (state === "wrong-webhook") {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain("webhook identity mismatch");
-        expect(calls).toEqual(["webhook:verify"]);
+        expect(calls).toEqual(["refund:verify", "webhook:verify"]);
       } else {
-        expect(calls.slice(launch ? 2 : 0, launch ? 5 : 3)).toEqual([
+        expect(calls.slice(launch ? 3 : 0, launch ? 6 : 3)).toEqual([
           "d1",
           "secret",
           "deploy",
@@ -572,7 +589,7 @@ test.each([
         expect(result.status, result.stderr).toBe(0);
         expect(calls).toContain("/api/webhooks/stripe");
         expect(calls).toContain("/api/webhooks/printful");
-      } else if (state !== "wrong-webhook") {
+      } else if (!["wrong-webhook", "refund-permission"].includes(state)) {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(
           state === "launch-closed"

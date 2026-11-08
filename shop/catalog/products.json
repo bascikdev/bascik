@@ -454,6 +454,480 @@
     ]
   },
   {
+    "id": "organic-cotton-bascik-logo-sweatshirt-unisex",
+    "slug": "organic-cotton-bascik-logo-sweatshirt-unisex",
+    "title": "Organic Cotton Bascik Logo Sweatshirt (Unisex)",
+    "price": 4500,
+    "description": "A cozy, mid-weight sweatshirt with the Bascik logo on the front. The relaxed fit makes it an easy layer for those not-too-hot, not-too-cold days, with a subtle half-moon detail on the back.\n\n• US fulfillment: 80% organic combed ring-spun cotton, 20% recycled polyester\n\n• European fulfillment: 85% organic combed ring-spun cotton, 15% recycled polyester\n\n• Fabric weight: 8.3 oz./yd.² (280 g/m²)\n\n• Relaxed fit with set-in sleeves\n\n• Ribbed collar, cuffs, and hem\n\n• Twin-needle top stitching and herringbone back neck tape\n\n• Certified organic cotton and recycled content (GOTS, OCS, and GRS)\n\n• Blank product sourced from Bangladesh\n\nSizing: US sizes are shown. European customers should order one size down. Made on demand.",
+    "variants": [
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20771",
+        "title": "Black / S",
+        "sku": "bascik-109989489-20771",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "S",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20772",
+        "title": "Black / M",
+        "sku": "bascik-109989489-20772",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "M",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20773",
+        "title": "Black / L",
+        "sku": "bascik-109989489-20773",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "L",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20774",
+        "title": "Black / XL",
+        "sku": "bascik-109989489-20774",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20775",
+        "title": "Black / 2XL",
+        "sku": "bascik-109989489-20775",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "2XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20776",
+        "title": "Desert Dust / S",
+        "sku": "bascik-109989489-20776",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "S",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20777",
+        "title": "Desert Dust / M",
+        "sku": "bascik-109989489-20777",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "M",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20778",
+        "title": "Desert Dust / L",
+        "sku": "bascik-109989489-20778",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "L",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20779",
+        "title": "Desert Dust / XL",
+        "sku": "bascik-109989489-20779",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c"
+      },
+      {
+        "id": "organic-cotton-bascik-logo-sweatshirt-unisex-20780",
+        "title": "Desert Dust / 2XL",
+        "sku": "bascik-109989489-20780",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "2XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/ce80e2a4f41ab7aa-640.webp",
+        "srcset": "/assets/products/ce80e2a4f41ab7aa-320.webp 320w, /assets/products/ce80e2a4f41ab7aa-640.webp 640w, /assets/products/ce80e2a4f41ab7aa-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845dd678",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/4c763a686ed1bc73-640.webp",
+        "srcset": "/assets/products/4c763a686ed1bc73-320.webp 320w, /assets/products/4c763a686ed1bc73-640.webp 640w, /assets/products/4c763a686ed1bc73-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de2ca",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/3beba95d7993e053-640.webp",
+        "srcset": "/assets/products/3beba95d7993e053-320.webp 320w, /assets/products/3beba95d7993e053-640.webp 640w, /assets/products/3beba95d7993e053-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd845de7a6",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/7766e1ee5a8c44f1-640.webp",
+        "srcset": "/assets/products/7766e1ee5a8c44f1-320.webp 320w, /assets/products/7766e1ee5a8c44f1-640.webp 640w, /assets/products/7766e1ee5a8c44f1-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd845deb47",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/ad75f35962ada301-640.webp",
+        "srcset": "/assets/products/ad75f35962ada301-320.webp 320w, /assets/products/ad75f35962ada301-640.webp 640w, /assets/products/ad75f35962ada301-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, left view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd845de218",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/18829a2c90d4f5ac-640.webp",
+        "srcset": "/assets/products/18829a2c90d4f5ac-320.webp 320w, /assets/products/18829a2c90d4f5ac-640.webp 640w, /assets/products/18829a2c90d4f5ac-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, left front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd845de9be",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/3357008cf2b6f3a5-640.webp",
+        "srcset": "/assets/products/3357008cf2b6f3a5-320.webp 320w, /assets/products/3357008cf2b6f3a5-640.webp 640w, /assets/products/3357008cf2b6f3a5-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Black, right view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd845de13b",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/82f30b82223eb6dc-640.webp",
+        "srcset": "/assets/products/82f30b82223eb6dc-320.webp 320w, /assets/products/82f30b82223eb6dc-640.webp 640w, /assets/products/82f30b82223eb6dc-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845dec0c",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/96cd2f77e4a90000-640.webp",
+        "srcset": "/assets/products/96cd2f77e4a90000-320.webp 320w, /assets/products/96cd2f77e4a90000-640.webp 640w, /assets/products/96cd2f77e4a90000-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845df109",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/2415e24566e56515-640.webp",
+        "srcset": "/assets/products/2415e24566e56515-320.webp 320w, /assets/products/2415e24566e56515-640.webp 640w, /assets/products/2415e24566e56515-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd845dfbf2",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/b0b1637df8c81155-640.webp",
+        "srcset": "/assets/products/b0b1637df8c81155-320.webp 320w, /assets/products/b0b1637df8c81155-640.webp 640w, /assets/products/b0b1637df8c81155-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd845e03ba",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/4cdbb1db31b81891-640.webp",
+        "srcset": "/assets/products/4cdbb1db31b81891-320.webp 320w, /assets/products/4cdbb1db31b81891-640.webp 640w, /assets/products/4cdbb1db31b81891-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, left view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd845def87",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/dd11b40145bfb703-640.webp",
+        "srcset": "/assets/products/dd11b40145bfb703-320.webp 320w, /assets/products/dd11b40145bfb703-640.webp 640w, /assets/products/dd11b40145bfb703-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, left front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd845e0097",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/99755f11e2a39e95-640.webp",
+        "srcset": "/assets/products/99755f11e2a39e95-320.webp 320w, /assets/products/99755f11e2a39e95-640.webp 640w, /assets/products/99755f11e2a39e95-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Logo sweatshirt in Desert Dust, right view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd845dedde",
+        "color": "Desert Dust"
+      }
+    ]
+  },
+  {
+    "id": "organic-cotton-bascik-insignia-sweatshirt-unisex",
+    "slug": "organic-cotton-bascik-insignia-sweatshirt-unisex",
+    "title": "Organic Cotton Bascik Insignia Sweatshirt (Unisex)",
+    "price": 4500,
+    "description": "A cozy, mid-weight sweatshirt with the Bascik insignia on the front. The relaxed fit makes it an easy layer for those not-too-hot, not-too-cold days, with a subtle half-moon detail on the back.\n\n• US fulfillment: 80% organic combed ring-spun cotton, 20% recycled polyester\n\n• European fulfillment: 85% organic combed ring-spun cotton, 15% recycled polyester\n\n• Fabric weight: 8.3 oz./yd.² (280 g/m²)\n\n• Relaxed fit with set-in sleeves\n\n• Ribbed collar, cuffs, and hem\n\n• Twin-needle top stitching and herringbone back neck tape\n\n• Certified organic cotton and recycled content (GOTS, OCS, and GRS)\n\n• Blank product sourced from Bangladesh\n\nSizing: US sizes are shown. European customers should order one size down. Made on demand.",
+    "variants": [
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20771",
+        "title": "Black / S",
+        "sku": "bascik-109989447-20771",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "S",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20772",
+        "title": "Black / M",
+        "sku": "bascik-109989447-20772",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "M",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20773",
+        "title": "Black / L",
+        "sku": "bascik-109989447-20773",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "L",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20774",
+        "title": "Black / XL",
+        "sku": "bascik-109989447-20774",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20775",
+        "title": "Black / 2XL",
+        "sku": "bascik-109989447-20775",
+        "color": "Black",
+        "colorCode": "#0b0b0b",
+        "size": "2XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20776",
+        "title": "Desert Dust / S",
+        "sku": "bascik-109989447-20776",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "S",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20777",
+        "title": "Desert Dust / M",
+        "sku": "bascik-109989447-20777",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "M",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20778",
+        "title": "Desert Dust / L",
+        "sku": "bascik-109989447-20778",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "L",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20779",
+        "title": "Desert Dust / XL",
+        "sku": "bascik-109989447-20779",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78"
+      },
+      {
+        "id": "organic-cotton-bascik-insignia-sweatshirt-unisex-20780",
+        "title": "Desert Dust / 2XL",
+        "sku": "bascik-109989447-20780",
+        "color": "Desert Dust",
+        "colorCode": "#dcccb4",
+        "size": "2XL",
+        "available": true,
+        "imageId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78"
+      }
+    ],
+    "images": [
+      {
+        "src": "/assets/products/a6c605fc394a7ce5-640.webp",
+        "srcset": "/assets/products/a6c605fc394a7ce5-320.webp 320w, /assets/products/a6c605fc394a7ce5-640.webp 640w, /assets/products/a6c605fc394a7ce5-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a6bd5",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/4c763a686ed1bc73-640.webp",
+        "srcset": "/assets/products/4c763a686ed1bc73-320.webp 320w, /assets/products/4c763a686ed1bc73-640.webp 640w, /assets/products/4c763a686ed1bc73-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a730a",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/3beba95d7993e053-640.webp",
+        "srcset": "/assets/products/3beba95d7993e053-320.webp 320w, /assets/products/3beba95d7993e053-640.webp 640w, /assets/products/3beba95d7993e053-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-back-6aefd857a77f7",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/961c374aa04bb14d-640.webp",
+        "srcset": "/assets/products/961c374aa04bb14d-320.webp 320w, /assets/products/961c374aa04bb14d-640.webp 640w, /assets/products/961c374aa04bb14d-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-front-6aefd857a7ba8",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/c358f425e28056e5-640.webp",
+        "srcset": "/assets/products/c358f425e28056e5-320.webp 320w, /assets/products/c358f425e28056e5-640.webp 640w, /assets/products/c358f425e28056e5-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, left view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-left-6aefd857a7256",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/a378a566a12457d1-640.webp",
+        "srcset": "/assets/products/a378a566a12457d1-320.webp 320w, /assets/products/a378a566a12457d1-640.webp 640w, /assets/products/a378a566a12457d1-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, left front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-left-front-6aefd857a7a2c",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/a66920bf84ce0cbb-640.webp",
+        "srcset": "/assets/products/a66920bf84ce0cbb-320.webp 320w, /assets/products/a66920bf84ce0cbb-640.webp 640w, /assets/products/a66920bf84ce0cbb-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Black, right view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-black-right-6aefd857a718a",
+        "color": "Black"
+      },
+      {
+        "src": "/assets/products/ac2e4bf0f1455209-640.webp",
+        "srcset": "/assets/products/ac2e4bf0f1455209-320.webp 320w, /assets/products/ac2e4bf0f1455209-640.webp 640w, /assets/products/ac2e4bf0f1455209-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a7c78",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/96cd2f77e4a90000-640.webp",
+        "srcset": "/assets/products/96cd2f77e4a90000-320.webp 320w, /assets/products/96cd2f77e4a90000-640.webp 640w, /assets/products/96cd2f77e4a90000-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a81bb",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/2415e24566e56515-640.webp",
+        "srcset": "/assets/products/2415e24566e56515-320.webp 320w, /assets/products/2415e24566e56515-640.webp 640w, /assets/products/2415e24566e56515-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, back view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-back-6aefd857a8cf3",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/9b9d37e87787f8ff-640.webp",
+        "srcset": "/assets/products/9b9d37e87787f8ff-320.webp 320w, /assets/products/9b9d37e87787f8ff-640.webp 640w, /assets/products/9b9d37e87787f8ff-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-front-6aefd857a9528",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/456defd72c3b68fa-640.webp",
+        "srcset": "/assets/products/456defd72c3b68fa-320.webp 320w, /assets/products/456defd72c3b68fa-640.webp 640w, /assets/products/456defd72c3b68fa-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, left view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-6aefd857a8016",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/86caa346782bfc01-640.webp",
+        "srcset": "/assets/products/86caa346782bfc01-320.webp 320w, /assets/products/86caa346782bfc01-640.webp 640w, /assets/products/86caa346782bfc01-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, left front view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-left-front-6aefd857a91c0",
+        "color": "Desert Dust"
+      },
+      {
+        "src": "/assets/products/14ee4c979f0a80bc-640.webp",
+        "srcset": "/assets/products/14ee4c979f0a80bc-320.webp 320w, /assets/products/14ee4c979f0a80bc-640.webp 640w, /assets/products/14ee4c979f0a80bc-960.webp 960w",
+        "width": 1000,
+        "height": 1000,
+        "alt": "Bascik Insignia sweatshirt in Desert Dust, right view",
+        "sourceId": "unisex-organic-mid-weight-roller-sweatshirt-desert-dust-right-6aefd857a7e5b",
+        "color": "Desert Dust"
+      }
+    ]
+  },
+  {
     "id": "8746089087111",
     "slug": "100-organic-cotton-bascik-logo-dad-hat-unisex",
     "title": "100% Organic Cotton Bascik Logo Dad Hat (Unisex)",

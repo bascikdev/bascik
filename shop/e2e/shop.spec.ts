@@ -3,6 +3,91 @@ import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 
+for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+  test(`navigation reserves cart count space before initialization on ${path}`, async ({
+    page,
+    context,
+  }) => {
+    const items = products
+      .flatMap((product) => product.variants)
+      .map((variant) => ({ variantId: variant.id, quantity: 10 }));
+    await page.addInitScript(
+      (items) =>
+        localStorage.setItem("bascik-shop-cart", JSON.stringify(items)),
+      items,
+    );
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/assets/shop.js", async (route) => {
+      await pending;
+      await route.continue();
+    });
+    await page.goto(path, { waitUntil: "commit" });
+    const link = page.getByTestId("shop-nav-cart");
+    const count = page.getByTestId("shop-nav-count");
+    try {
+      await expect(link).toBeVisible();
+      await expect(link.locator("svg")).toBeVisible();
+      await expect(count).toBeEmpty();
+      await expect(count).toBeHidden();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await link.boundingBox();
+      const themeBefore = await page
+        .getByTestId("shop-nav-theme")
+        .boundingBox();
+      const countBefore = await count.boundingBox();
+      expect(countBefore!.width).toBeGreaterThan(0);
+      release();
+      await expect(count).toHaveText(String(items.length * 10));
+      await expect(count).toBeVisible();
+      expect(await link.boundingBox()).toEqual(before);
+      expect(await count.boundingBox()).toEqual(countBefore);
+      expect(await page.getByTestId("shop-nav-theme").boundingBox()).toEqual(
+        themeBefore,
+      );
+
+      const otherTab = await context.newPage();
+      await otherTab.goto("/");
+      for (const saved of [[{ ...items[0], quantity: 1 }], []]) {
+        await otherTab.evaluate(
+          (saved) =>
+            localStorage.setItem("bascik-shop-cart", JSON.stringify(saved)),
+          saved,
+        );
+        await expect(count).toHaveText(saved.length ? "1" : "0");
+        expect(await link.boundingBox()).toEqual(before);
+      }
+      await otherTab.close();
+    } finally {
+      release();
+    }
+  });
+}
+
+test("cart link and icon remain usable without JavaScript", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    baseURL,
+    javaScriptEnabled: false,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    const link = page.getByTestId("shop-nav-cart");
+    await expect(link).toBeVisible();
+    await expect(link.locator("svg")).toBeVisible();
+    await expect(page.getByTestId("shop-nav-count")).toBeHidden();
+    await link.click();
+    await expect(page).toHaveURL(/\/cart$/);
+  } finally {
+    await context.close();
+  }
+});
+
 test("all rendered storefront buttons have explicit types, including cloned controls", async ({
   page,
 }) => {
@@ -381,7 +466,7 @@ test("catalog is complete and independent of Shopify at runtime", async ({
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByTestId("product-card")).toHaveCount(6);
+  await expect(page.getByTestId("product-card")).toHaveCount(products.length);
   await expect(page.getByRole("heading", { name: "Bascik merch" })).toHaveCount(
     1,
   );
@@ -526,6 +611,56 @@ test("product gallery filters views when color changes", async ({ page }) => {
       await expect(
         page.getByTestId("gallery-image").filter({ visible: true }),
       ).toHaveCount(visible.length);
+    }
+  }
+});
+test("sweatshirts appear before hats, default to Black and all colors and sizes add the correct $45 variant", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const headings = await page
+    .getByTestId("product-card")
+    .getByRole("heading")
+    .allTextContents();
+  expect(headings).toEqual(products.map((product) => product.title));
+  for (const product of products.filter((product) =>
+    product.slug.includes("sweatshirt"),
+  )) {
+    for (const variant of product.variants) {
+      await page.goto(`/products/${product.slug}`);
+      await expect(page.getByTestId("product-color")).toHaveValue("Black");
+      await expect(page.getByTestId("product-image")).toHaveAttribute(
+        "src",
+        product.images[0].src,
+      );
+      await page.evaluate(() => localStorage.clear());
+      await page.getByTestId("product-color").selectOption(variant.color);
+      await page.getByTestId("product-size").selectOption(variant.size!);
+      const photo = page.getByTestId("product-image");
+      await expect(photo).toHaveAttribute(
+        "src",
+        product.images.find((image) => image.color === variant.color)!.src,
+      );
+      await expect
+        .poll(() =>
+          photo.evaluate(
+            (image: HTMLImageElement) =>
+              image.complete && image.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      await page.getByTestId("add-to-cart").click();
+      await page.goto("/cart");
+      await expect(page.getByTestId("cart-line")).toHaveCount(1);
+      await expect(page.getByTestId("cart-line")).toContainText(product.title);
+      await expect(page.getByTestId("cart-line")).toContainText(variant.title);
+      await expect(page.getByTestId("cart-total")).toHaveText("$45.00");
+      await expect(
+        page.getByTestId("cart-line").getByTestId("cart-image"),
+      ).toHaveAttribute(
+        "src",
+        product.images.find((image) => image.color === variant.color)!.src,
+      );
     }
   }
 });
@@ -910,14 +1045,14 @@ test("responsive images reserve space and stay within the mobile transfer budget
     images.map((image) => {
       const img = image as HTMLImageElement;
       return {
-        src: img.currentSrc,
+        src: img.src,
         width: img.width,
         natural: img.naturalWidth,
         height: img.height,
       };
     }),
   );
-  expect(initialImages.length).toBe(6);
+  expect(initialImages.length).toBe(products.length);
   for (const image of initialImages) {
     expect(image.width).toBeGreaterThan(0);
     expect(image.height).toBeGreaterThan(0);
@@ -936,6 +1071,19 @@ test("responsive images reserve space and stay within the mobile transfer budget
     );
     expect(bytes).toBeLessThan(500 * 1024);
     expect(bytes).toBeGreaterThan(0);
+  }
+  for (const image of await page.locator("main img").all()) {
+    await image.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (img: HTMLImageElement) => img.complete && img.naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+    expect(
+      await image.evaluate((img: HTMLImageElement) => img.currentSrc),
+    ).toContain(".webp");
   }
 });
 

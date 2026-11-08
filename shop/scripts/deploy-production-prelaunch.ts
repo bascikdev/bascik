@@ -5,6 +5,7 @@ import {
   assertProductionLaunch,
 } from "./production-config.ts";
 import { createHmac } from "node:crypto";
+import { verifyRefundReadAccess } from "../src/lib/refunds.ts";
 
 const launch = process.argv.includes("--launch");
 if (
@@ -106,6 +107,9 @@ async function stripeEndpoint(disabled?: boolean) {
   return endpoint;
 }
 if (launch) {
+  await verifyRefundReadAccess({
+    STRIPE_SECRET_KEY: secrets.STRIPE_SECRET_KEY,
+  });
   await stripeEndpoint();
   const endpoint = await stripeEndpoint(false);
   if (endpoint.status !== "enabled")

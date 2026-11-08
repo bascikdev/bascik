@@ -4,6 +4,7 @@ import { gzipSync } from "node:zlib";
 import sharp from "sharp";
 import { format, getFileInfo } from "prettier";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
+import imageManifest from "../image-originals/manifest.json" with { type: "json" };
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
 import { cartItems, recipient } from "../src/lib/checkout.ts";
@@ -20,6 +21,7 @@ import {
   supportEmail,
 } from "../src/lib/policies.ts";
 import { originalImagePath } from "../scripts/image-cache.ts";
+import { productTemplates } from "../scripts/product-templates.ts";
 import {
   templateFingerprint,
   type TemplateMapping,
@@ -80,7 +82,7 @@ describe("owned product catalog", () => {
       outputs: { url: string; width: number; bytes: number }[];
     }[];
     const decals = manifest.filter((image) =>
-      image.source.startsWith("owner-supplied:"),
+      image.file.startsWith("image-originals/decals/"),
     );
     expect(decals).toHaveLength(4);
     for (const image of decals) {
@@ -131,6 +133,86 @@ describe("owned product catalog", () => {
       "Shipping countries missing",
     );
   });
+  test("sweatshirts keep the approved prices, colors, sizes, templates and listing order", () => {
+    const sweatshirts = products.filter((product) =>
+      product.slug.includes("sweatshirt"),
+    );
+    expect(products.slice(2, 4)).toEqual(sweatshirts);
+    expect(
+      products.slice(4, 6).every((product) => product.slug.includes("hat")),
+    ).toBe(true);
+    expect(
+      products.slice(6).every((product) => product.slug.includes("decal")),
+    ).toBe(true);
+    expect(
+      sweatshirts.map((product) => productTemplates[product.slug].id),
+    ).toEqual([109989489, 109989447]);
+    for (const product of sweatshirts) {
+      expect(product.price).toBe(4500);
+      expect(product.variants).toHaveLength(10);
+      expect([
+        ...new Set(product.variants.map((variant) => variant.color)),
+      ]).toEqual(["Black", "Desert Dust"]);
+      expect(product.images[0].color).toBe("Black");
+      expect(product.variants[0].color).toBe("Black");
+      expect(product.images).toHaveLength(14);
+      expect(product.description).toContain(
+        "European customers should order one size down",
+      );
+      expect(product.description).toContain("20% recycled polyester");
+      expect(product.description).toContain("15% recycled polyester");
+      for (const [color, code] of [
+        ["Desert Dust", "#dcccb4"],
+        ["Black", "#0b0b0b"],
+      ]) {
+        const variants = product.variants.filter(
+          (variant) => variant.color === color,
+        );
+        expect(variants.map((variant) => variant.size)).toEqual([
+          "S",
+          "M",
+          "L",
+          "XL",
+          "2XL",
+        ]);
+        const images = product.images.filter((image) => image.color === color);
+        expect(images).toHaveLength(7);
+        expect(images[0].sourceId).toMatch(
+          /-(?:black|desert-dust)-front-[a-f0-9]+$/,
+        );
+        for (const variant of variants) {
+          expect(variant.colorCode).toBe(code);
+          expect(variant.imageId).toBe(images[0].sourceId);
+          expect(variant.id).toBe(
+            `${product.slug}-${productTemplates[product.slug].catalogVariantIds![variant.title]}`,
+          );
+        }
+      }
+    }
+  });
+  test.each(
+    imageManifest.filter((image) => image.file.includes("/sweatshirts/")),
+  )(
+    "owner-supplied sweatshirt image retains transparent pixels and never upscales: $file",
+    async (image) => {
+      const source = await sharp(image.file).metadata();
+      const { isOpaque } = await sharp(image.file).stats();
+      expect(source.width).toBe(1000);
+      expect(image.outputs.map((output) => output.width)).toEqual([
+        320, 640, 960,
+      ]);
+      for (const output of image.outputs) {
+        const path = `src/pages${output.url}`;
+        const actual = await sharp(path).metadata();
+        expect(actual.width).toBe(output.width);
+        expect(actual.height).toBe(output.width);
+        expect(actual.format).toBe("webp");
+        expect((await sharp(path).stats()).isOpaque).toBe(isOpaque);
+        expect(statSync(path).size).toBe(output.bytes);
+        expect(output.bytes).toBeLessThan(100_000);
+      }
+    },
+  );
   test("carries owner-approved policy decisions and legacy URLs into the new shop", () => {
     expect(supportEmail).toBe("shop@bascik.dev");
     for (const text of [
@@ -198,16 +280,16 @@ describe("owned product catalog", () => {
     ).not.toBe(hash);
     expect(templateFingerprint([{ ...mapping, store_id: 1 }])).not.toBe(hash);
   });
-  test("contains two shirts, two hats, and two $5 decals with all 26 variants", () => {
-    expect(products).toHaveLength(6);
-    expect(products.flatMap((product) => product.variants)).toHaveLength(26);
+  test("contains two shirts, two hats, two $45 sweatshirts and two $5 decals with all 46 variants", () => {
+    expect(products).toHaveLength(8);
+    expect(products.flatMap((product) => product.variants)).toHaveLength(46);
     expect(
       new Set(
         products.flatMap((product) =>
           product.variants.map((variant) => variant.id),
         ),
       ).size,
-    ).toBe(26);
+    ).toBe(46);
     for (const product of products) {
       expect(product.slug).not.toContain("sticker");
       expect(product.price).toBe(
@@ -215,7 +297,9 @@ describe("owned product catalog", () => {
           ? 500
           : product.slug.includes("hat")
             ? 2500
-            : 3000,
+            : product.slug.includes("sweatshirt")
+              ? 4500
+              : 3000,
       );
     }
   });
@@ -296,8 +380,8 @@ describe("owned product catalog", () => {
       ).rejects.toThrow("Invalid UTF-8");
     });
   });
-  test("all 56 captured image views have real local responsive WebP files", () => {
-    expect(products.flatMap((product) => product.images)).toHaveLength(56);
+  test("all 84 captured image views have real local responsive WebP files", () => {
+    expect(products.flatMap((product) => product.images)).toHaveLength(84);
     for (const image of products.flatMap((product) => product.images)) {
       expect(image.width).toBeGreaterThan(0);
       expect(image.src.startsWith("/assets/products/")).toBe(true);

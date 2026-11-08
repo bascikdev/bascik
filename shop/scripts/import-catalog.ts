@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { imageColor } from "../src/lib/image-colors.ts";
 import { productDescription } from "./product-description.ts";
 import { originalImagePath } from "./image-cache.ts";
+import type { Product } from "../src/lib/catalog.ts";
 
 const handles = [
   "100-organic-cotton-bascik-logo-front-unisex",
@@ -72,7 +73,7 @@ const manifest: {
   height: number;
   outputs: { url: string; width: number; bytes: number }[];
 }[] = [];
-const result = [];
+const result: Product[] = [];
 for (const product of selected) {
   const images = [];
   for (const [index, image] of product.images.entries()) {
@@ -171,15 +172,21 @@ for (const product of selected) {
     images,
   });
 }
+const current: Product[] = existsSync("catalog/products.json")
+  ? JSON.parse(await readFile("catalog/products.json", "utf8"))
+  : [];
 await writeFile(
   "catalog/products.json",
   JSON.stringify(
     [
-      ...result,
-      ...(existsSync("catalog/products.json")
-        ? JSON.parse(await readFile("catalog/products.json", "utf8"))
-        : []
-      ).filter((product: { slug: string }) => !handles.includes(product.slug)),
+      ...current.map(
+        (product) =>
+          result.find((imported) => imported.slug === product.slug) ?? product,
+      ),
+      ...result.filter(
+        (imported) =>
+          !current.some((product) => product.slug === imported.slug),
+      ),
     ],
     null,
     2,

@@ -6,7 +6,7 @@ Independent Bascik storefront for `shop.bascik.dev`. The docs application is not
 
 **Production:** the owner approved the cutover to `shop.bascik.dev`. Validated main pushes deploy the live shop with checkout and fulfillment enabled. Sandbox and PR environments remain separate and draft-only. Keep the Shopify account until its outstanding orders and rollback needs are resolved.
 
-The owned catalog contains two $30 shirts, two $25 hats, and two $5 kiss-cut vinyl decals, with 26 variants and 56 captured image views. Original image bytes are preserved outside the published directory. Every product image is a local, responsive WebP. Descriptions, variants, and existing product URLs are independent of Shopify.
+The owned catalog contains two $30 shirts, two $45 organic sweatshirts, two $25 hats, and two $5 kiss-cut vinyl decals, in that order, with 46 variants and 84 captured image views. Sweatshirts list Black first and default to its front photo, followed by Desert Dust. Original image bytes are preserved outside the published directory. Every product image is a local, responsive WebP. Descriptions, variants, and existing product URLs are independent of Shopify.
 
 The shop collects delivery details to calculate exact Printful shipping, then redirects to Stripe-hosted Checkout for billing and payment. Stripe calculates applicable tax and manages eligible payment methods. Browser cart prices and shipping amounts are never authoritative. Cart thumbnails use the selected variant's image and color, including after reloads and quantity changes.
 
@@ -23,6 +23,8 @@ Every button has an explicit type: Add to cart and the shipping-quote form use `
 Each component owns its semantic HTML, companion CSS, and TypeScript. `product-card` contains the card, image controls, and a cloneable color-button template; `product-detail` owns the gallery and purchase form. Cart rows and shipping options are cloned from authored templates, preserving Bascik's scoped styles on browser-created content. Page-aware catalog helpers live beside `product-detail`; `product-grid` prints card tags with props, not copies of card markup. Build helpers use `html` and `json` from `@bascik/bascik/html`.
 
 Component entry scripts obtain their own compiler-scoped root with `getElementById`. They import typed initializers from `/assets/shop.js`, bundled once by `scripts/build-assets.ts` through `pipeline.exec`. The initializers live in each component's `behavior.ts`, query only the supplied root, and use stable data hooks because the external bundle is not rewritten by the scoping engine. `src/browser/` holds only the shared cart store, root-bound DOM/API helpers, and bundle exports. Cart, delivery eligibility, and checkout-summary updates use custom events instead of querying another component's DOM.
+
+The navigation cart icon and link remain available before JavaScript loads. Its count reserves three digits of space and stays invisible until the saved cart is read, avoiding a temporary zero and shifting controls. The reserved width also covers the maximum supported cart (46 variants at 10 items each).
 
 The global stylesheet contains design tokens, document defaults, and deliberately shared primitives such as buttons, panels, responsive photos, totals, and order lines. Card, product, cart-row, promotion, and checkout layout styles live alongside their owning components.
 
@@ -132,7 +134,7 @@ Runtime orders support `source: "product_template"` with saved Printful designs,
 
 #### Why are no products published in the Printful store?
 
-This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the six listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
+This is intentional. The [Published tab for Shop Bascik](https://www.printful.com/dashboard/product-templates/published/19022802) lists templates published as store products, not every saved template available for fulfillment. Our storefront owns the eight listings, images, prices, and cart; Printful receives orders referencing the saved templates and selected catalog variants directly. Saved templates preserve the approved artwork, placement, techniques, colors, and sizes. They are not unfinished placeholder designs.
 
 Printful [supports orders from saved templates without adding products to a store](https://developers.printful.com/docs/). An empty Published tab therefore does not indicate disconnected fulfillment. The API store was checked and had zero published products while all four approved templates remained accessible.
 
@@ -171,7 +173,7 @@ cd shop
 PRINTFUL_STORE_ID=19022802 node --env-file=.env scripts/audit-templates.ts
 ```
 
-It checks each template's title, variant membership, original apparel sync variant IDs or explicitly approved decal catalog IDs, size/color, and shipping techniques, and saves all 26 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs. Validate the complete proposal before installing mappings with `verified=1`, scoped to store `19022802`.
+It checks each template's title, variant membership, original apparel sync variant IDs or explicitly approved catalog IDs, size/color, and shipping techniques, and saves all 46 proposed mappings privately to `.local/printful-template-mappings.json`. The audit itself never marks mappings verified. The owner confirmed the prepared templates are the exact approved designs. Validate the complete proposal before installing mappings with `verified=1`, scoped to store `19022802`.
 
 ```sh
 cd shop
@@ -226,7 +228,7 @@ Refresh the original four listings only while Shopify remains available:
 yarn shop:import
 ```
 
-The legacy import validates the original apparel allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift and preserves the independently added decals and their owner-supplied image records. Do not run it against the replacement storefront, which is not a Shopify export. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
+The legacy import validates the original apparel allowlist, prices, variant count, image downloads/dimensions, and Printful country metadata. It fails on upstream catalog drift and preserves the existing collection order, independently added sweatshirts and decals, and their owner-supplied image records. Do not run it against the replacement storefront, which is not a Shopify export. Review the diff, exact image associations, and browser layout before accepting a refresh. Original inputs stay under `image-originals/`; only optimized assets are published.
 
 Refresh the owner-supplied decal images deterministically without network access:
 
@@ -236,6 +238,37 @@ node scripts/import-decals.ts
 ```
 
 The four PNG inputs live in `image-originals/decals/`. Like the original apparel importer, this generates fingerprinted WebP files at quality 80 and widths 320, 640, 960, and 1600 only when the source is large enough; it never enlarges an image. The supplied 768-pixel images yield 320- and 640-pixel outputs, including the transparent front views and laptop previews. The manifest records dimensions, hashes, and output byte sizes. Rebuild the shop after importing images or catalog changes.
+
+### Organic sweatshirts
+
+Both sweatshirts are **$45**, with Black (`#0b0b0b`) followed by Desert Dust (`#dcccb4`), in sizes S, M, L, XL, and 2XL. The listings precede the hats and reuse the existing product/card/gallery/cart components. The description includes the regional organic cotton/recycled polyester blend, relaxed fit, fabric weight, and the provider's European sizing disclaimer.
+
+| Design   | Owner-prepared template | Printful product | Black S–2XL     | Desert Dust S–2XL |
+| -------- | ----------------------- | ---------------- | --------------- | ----------------- |
+| Logo     | `109989489`             | `820`            | `20771`–`20775` | `20776`–`20780`   |
+| Insignia | `109989447`             | `820`            | `20771`–`20775` | `20776`–`20780`   |
+
+Template metadata, color hex values, all 20 color/size mappings, shipping destinations, and `front` / `dtg` placement were verified directly against Printful. Unconfirmed audit draft **185496939**, external reference `bascik-audit-6ec1b32a4fac03675d4`, successfully calculated costs and shipping with all 46 shop variants. Printful returned blank artwork-status fields, not explicit artwork approval; the owner's saved templates remain the design source. This draft is not a customer order and can be deleted after verification. Never confirm it.
+
+Migration `0007_organic_sweatshirts.sql` adds only the 20 new verified mappings. It leaves existing mappings, quotes, payments, and orders untouched; `0006` is reserved for the separate refund/cancellation work. No production D1 write is performed locally. Main CI applies the migration and deploys after merge.
+
+Sweatshirts use the existing owner-approved Clothing & Footwear tax code (`txcd_30011000`) and exclusive-tax USD pricing. A sweatshirt plus one $5 decal is exactly $50 and does not qualify for free shipping; two decals bring that merchandise subtotal to $55 and qualify in the lower 48. Existing paid-order prices and shipping snapshots are unchanged.
+
+Matching $45 one-time product/price records were provisioned in both the isolated Bascik sandbox and the authenticated live Bascik Dashboard. The live runtime key intentionally cannot create products. Live API verification confirms all eight app-tagged catalog products, USD prices, exclusive-tax settings, the existing active tax registration, and the approved Printful store. No account-wide tax settings, existing prices, payments, or customer orders were changed.
+
+| Design   | Live Stripe product   | Live $45 price                   |
+| -------- | --------------------- | -------------------------------- |
+| Logo     | `prod_VaWwGXQrTk2P6b` | `price_1UZLsUHv3b2E4ucMB9JAOJaX` |
+| Insignia | `prod_VaWzYwiJgBK2C4` | `price_1UZLvtHv3b2E4ucMHmik9CWx` |
+
+Regenerate the owner-supplied photos and listings offline:
+
+```sh
+cd shop
+node scripts/import-sweatshirts.ts image-originals/sweatshirts
+```
+
+For a new download, pass the parent containing folders `109989489` and `109989447` instead. The importer preserves every supplied original PNG, uses the same shared image helper as the decals, and records hashes/dimensions/output bytes in the manifest. Each 1000×1000 source produces 320-, 640-, and 960-pixel WebP at quality 80 without upscaling, preserving transparency. All 28 gallery views are retained, with each color's flat front first. Repeated imports preserve existing product/variant IDs and yield identical catalog and manifest bytes.
 
 Original-image cache filenames hash the complete source URL, including its version query. Reordering gallery entries cannot attach old cached bytes to new metadata; a replaced/versioned source gets its own cache file.
 
@@ -369,6 +402,8 @@ Once both cancellation and the full refund are verified, the customer receives o
 Completing both steps within 15 minutes normally avoids the outstanding-refund alert. If the refund remains pending, fails, or is incomplete, investigate rather than suppressing the alert. Once both steps are verified, the order's operator alert is resolved; an email already sent cannot be recalled.
 
 The shop automatically synchronizes these actions into D1. Cancel in Printful, then refund in Stripe; no manual database edits are needed. Authenticated provider reads, not webhook payload amounts, determine the result. Cancellation and refunds are separate: partial refunds do not cancel fulfillment, pending refunds remain pending, and a failed refund or a full refund with active fulfillment still needs operator attention. Cancellation without a full refund allows 15 minutes before an alert. A verified cancellation plus full refund resolves pending alerts and prevents fulfillment retries. Original purchase totals and snapshots stay unchanged.
+
+The production restricted Stripe key needs **Charges and Refunds: Read** (`charge_read`) for `GET /v1/refunds`; refund write permission is not required. Verify this with `scripts/check-live-providers.ts --launch` after loading the production environment. Live deployment also checks read access before updating webhooks, migrating D1, or deploying. A 403 blocks reconciliation and can raise operator alerts even for normally submitted orders; correct the key permission rather than replaying orders or resetting D1. Successful reconciliation clears its own recovered error and resolves its operator alert without changing active fulfillment or sending a cancellation email. Unrelated fulfillment errors remain intact.
 
 Stripe refund subscriptions are enabled alongside the existing Checkout subscriptions by the production CI deployment helper. The scheduled sweep also reconciles paid orders within the existing 90-day private-link window, including legacy cancellation failures, in bounded batches with leases and provider-error backoff. Existing records are not changed by the migration itself. Reconciliation never issues refunds, cancels Printful orders, or replays production submissions.
 

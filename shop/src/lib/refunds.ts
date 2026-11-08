@@ -10,6 +10,12 @@ export const refundEvents = [
 ] as const;
 export const cancellationGraceSeconds = 900;
 
+export async function verifyRefundReadAccess(
+  env: Pick<Env, "STRIPE_SECRET_KEY">,
+) {
+  await stripe(env, "/refunds?limit=1");
+}
+
 interface Refund {
   id: string;
   status: string;
@@ -244,6 +250,11 @@ export async function reconcileOrderRefund(env: Env, orderId: string) {
               now() >= (cancellationAt ?? now()) + cancellationGraceSeconds
             ? "Printful canceled; a full Stripe refund is still outstanding."
             : null;
+    const clearAlert =
+      resolved ||
+      (!attention &&
+        order.last_error ===
+          "Cancellation/refund reconciliation requires operator review.");
     const finalized = await env.DB.prepare(
       "UPDATE orders SET stripe_payment_intent=?,refund_amount=?,refund_state=?,refund_checked_at=?,printful_status=COALESCE(?,printful_status),cancellation_at=?,status=CASE WHEN ? THEN 'cancelled' WHEN ? THEN 'failed' ELSE status END,last_error=CASE WHEN ? THEN NULL ELSE last_error END,reconciliation_lease=0,reconciliation_attempts=0,reconciliation_at=?,lease_until=CASE WHEN ? THEN 0 ELSE lease_until END,updated_at=? WHERE id=? AND reconciliation_lease=? RETURNING id",
     )
@@ -256,7 +267,7 @@ export async function reconcileOrderRefund(env: Env, orderId: string) {
         cancellationAt,
         Number(canceled),
         Number(full && !canceled),
-        Number(resolved),
+        Number(clearAlert),
         resolved ? now() + 86400 : now() + cancellationGraceSeconds,
         Number(full || canceled),
         now(),
@@ -265,11 +276,14 @@ export async function reconcileOrderRefund(env: Env, orderId: string) {
       )
       .first();
     if (!finalized) return;
+    if (clearAlert)
+      await env.DB.prepare(
+        "UPDATE notifications SET status='resolved',lease_until=0 WHERE order_id=? AND kind='alert'",
+      )
+        .bind(order.id)
+        .run();
     if (resolved) {
       await env.DB.batch([
-        env.DB.prepare(
-          "UPDATE notifications SET status='resolved',lease_until=0 WHERE order_id=? AND kind='alert'",
-        ).bind(order.id),
         env.DB.prepare(
           "INSERT OR IGNORE INTO notifications(id,order_id,kind,created_at) VALUES (?,?,?,?)",
         ).bind(

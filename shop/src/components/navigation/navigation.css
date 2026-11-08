@@ -15,6 +15,17 @@ nav {
   color: var(--text-muted);
   text-decoration: none;
   font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.count {
+  width: 3ch;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.count[data-ready="false"] {
+  visibility: hidden;
 }
 .theme-toggle {
   background: none;
