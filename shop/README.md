@@ -24,6 +24,8 @@ Each component owns its semantic HTML, companion CSS, and TypeScript. `product-c
 
 Component entry scripts obtain their own compiler-scoped root with `getElementById`. They import typed initializers from `/assets/shop.js`, bundled once by `scripts/build-assets.ts` through `pipeline.exec`. The initializers live in each component's `behavior.ts`, query only the supplied root, and use stable data hooks because the external bundle is not rewritten by the scoping engine. `src/browser/` holds only the shared cart store, root-bound DOM/API helpers, and bundle exports. Cart, delivery eligibility, and checkout-summary updates use custom events instead of querying another component's DOM.
 
+The navigation cart icon and link remain available before JavaScript loads. Its count reserves three digits of space and stays invisible until the saved cart is read, avoiding a temporary zero and shifting controls. The reserved width also covers the maximum supported cart (46 variants at 10 items each).
+
 The global stylesheet contains design tokens, document defaults, and deliberately shared primitives such as buttons, panels, responsive photos, totals, and order lines. Card, product, cart-row, promotion, and checkout layout styles live alongside their owning components.
 
 The delivery component deliberately keeps its address fields and shipping-choice lifecycle together. Formatting puts its markup just above the component-audit size guideline; splitting individual fields into single-use components would obscure the form rather than improve reuse.

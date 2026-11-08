@@ -3,6 +3,91 @@ import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 
+for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
+  test(`navigation reserves cart count space before initialization on ${path}`, async ({
+    page,
+    context,
+  }) => {
+    const items = products
+      .flatMap((product) => product.variants)
+      .map((variant) => ({ variantId: variant.id, quantity: 10 }));
+    await page.addInitScript(
+      (items) =>
+        localStorage.setItem("bascik-shop-cart", JSON.stringify(items)),
+      items,
+    );
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/assets/shop.js", async (route) => {
+      await pending;
+      await route.continue();
+    });
+    await page.goto(path, { waitUntil: "commit" });
+    const link = page.getByTestId("shop-nav-cart");
+    const count = page.getByTestId("shop-nav-count");
+    try {
+      await expect(link).toBeVisible();
+      await expect(link.locator("svg")).toBeVisible();
+      await expect(count).toBeEmpty();
+      await expect(count).toBeHidden();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await link.boundingBox();
+      const themeBefore = await page
+        .getByTestId("shop-nav-theme")
+        .boundingBox();
+      const countBefore = await count.boundingBox();
+      expect(countBefore!.width).toBeGreaterThan(0);
+      release();
+      await expect(count).toHaveText(String(items.length * 10));
+      await expect(count).toBeVisible();
+      expect(await link.boundingBox()).toEqual(before);
+      expect(await count.boundingBox()).toEqual(countBefore);
+      expect(await page.getByTestId("shop-nav-theme").boundingBox()).toEqual(
+        themeBefore,
+      );
+
+      const otherTab = await context.newPage();
+      await otherTab.goto("/");
+      for (const saved of [[{ ...items[0], quantity: 1 }], []]) {
+        await otherTab.evaluate(
+          (saved) =>
+            localStorage.setItem("bascik-shop-cart", JSON.stringify(saved)),
+          saved,
+        );
+        await expect(count).toHaveText(saved.length ? "1" : "0");
+        expect(await link.boundingBox()).toEqual(before);
+      }
+      await otherTab.close();
+    } finally {
+      release();
+    }
+  });
+}
+
+test("cart link and icon remain usable without JavaScript", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    baseURL,
+    javaScriptEnabled: false,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    const link = page.getByTestId("shop-nav-cart");
+    await expect(link).toBeVisible();
+    await expect(link.locator("svg")).toBeVisible();
+    await expect(page.getByTestId("shop-nav-count")).toBeHidden();
+    await link.click();
+    await expect(page).toHaveURL(/\/cart$/);
+  } finally {
+    await context.close();
+  }
+});
+
 test("all rendered storefront buttons have explicit types, including cloned controls", async ({
   page,
 }) => {

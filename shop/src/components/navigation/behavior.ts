@@ -4,10 +4,12 @@ export function initNavigation(root: HTMLElement) {
   const { element } = componentElements(root);
   const render = () => {
     const badge = element("[data-cart-count]");
-    if (badge)
+    if (badge) {
       badge.textContent = String(
         cart().reduce((sum, item) => sum + item.quantity, 0),
       );
+      badge.dataset.ready = "true";
+    }
   };
   document.addEventListener("shop:cart-changed", render);
   render();

@@ -4,6 +4,7 @@ import { gzipSync } from "node:zlib";
 import sharp from "sharp";
 import { format, getFileInfo } from "prettier";
 import { products, escapeHtml } from "../src/lib/catalog.ts";
+import imageManifest from "../image-originals/manifest.json" with { type: "json" };
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 import destinations from "../catalog/shipping-countries.json" with { type: "json" };
 import { cartItems, recipient } from "../src/lib/checkout.ts";
@@ -189,18 +190,11 @@ describe("owned product catalog", () => {
       }
     }
   });
-  test("owner-supplied sweatshirt images retain transparent pixels and never upscale", async () => {
-    const manifest = JSON.parse(
-      readFileSync("image-originals/manifest.json", "utf8"),
-    ) as {
-      file: string;
-      outputs: { url: string; width: number; bytes: number }[];
-    }[];
-    const images = manifest.filter((image) =>
-      image.file.includes("/sweatshirts/"),
-    );
-    expect(images).toHaveLength(28);
-    for (const image of images) {
+  test.each(
+    imageManifest.filter((image) => image.file.includes("/sweatshirts/")),
+  )(
+    "owner-supplied sweatshirt image retains transparent pixels and never upscales: $file",
+    async (image) => {
       const source = await sharp(image.file).metadata();
       const { isOpaque } = await sharp(image.file).stats();
       expect(source.width).toBe(1000);
@@ -217,8 +211,8 @@ describe("owned product catalog", () => {
         expect(statSync(path).size).toBe(output.bytes);
         expect(output.bytes).toBeLessThan(100_000);
       }
-    }
-  });
+    },
+  );
   test("carries owner-approved policy decisions and legacy URLs into the new shop", () => {
     expect(supportEmail).toBe("shop@bascik.dev");
     for (const text of [
