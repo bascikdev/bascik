@@ -26,7 +26,7 @@ Everything ships in the opt-in `bascik-refactor` agent skill:
   - [`compare-route.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/compare-route.mjs): pixel diff, geometry, evidence and interaction traces per route.
   - [`lighthouse-gate.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/lighthouse-gate.mjs): fails unless every report is 100 in all five categories.
   - [`llms-txt.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/llms-txt.mjs): writes `llms.txt` after the build.
-  - [`responsive-webp.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-components/scripts/responsive-webp.mjs): WebP variants and a manifest for `srcset`, from the default component skill. See [Optimizing Images](/how-to/optimizing-images) for the everyday workflow.
+  - [`responsive-webp.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-images/scripts/responsive-webp.mjs): WebP variants and a manifest for `srcset`, from the default image skill. See [Optimizing Images](/how-to/optimizing-images) for the everyday workflow.
   - [`worker-response-policy.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/worker-response-policy.mjs): a Cloudflare Worker wrapper for a strict CSP, robots and cache headers.
   - [`run-checks.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/run-checks.mjs): runs every parity check below per route and matrix case, and exits 1 on any finding.
   - [`production-defects.mjs`](https://github.com/bascikdev/bascik/tree/main/skills/bascik-refactor/scripts/production-defects.mjs): finds production's own layout bugs first, so the target fixes them instead of copying them.
@@ -636,7 +636,7 @@ The scripts do not read the ledger. When a row changes pixels, such as a footer 
 2. Serve responsive WebP with `srcset`. `responsive-webp.mjs` writes the variants, and a manifest with each file's URL:
 
    ```sh
-   node .agents/skills/bascik-components/scripts/responsive-webp.mjs \
+   node .agents/skills/bascik-images/scripts/responsive-webp.mjs \
      --src ../legacy/public/hero.png --out src/pages/img \
      --manifest src/lib/images.json --quality 80
    ```

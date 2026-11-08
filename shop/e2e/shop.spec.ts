@@ -3,6 +3,160 @@ import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 
+for (const path of [
+  "/",
+  ...products.map((product) => `/products/${product.slug}`),
+  ...products.flatMap((product) =>
+    [...new Set(product.variants.map((variant) => variant.color))].map(
+      (color) => `/products/${product.slug}?color=${encodeURIComponent(color)}`,
+    ),
+  ),
+]) {
+  test(`product controls keep their first-paint layout on ${path}`, async ({
+    page,
+  }) => {
+    let releaseScripts!: () => void;
+    let releaseImages!: () => void;
+    const scripts = new Promise<void>((resolve) => {
+      releaseScripts = resolve;
+    });
+    const images = new Promise<void>((resolve) => {
+      releaseImages = resolve;
+    });
+    await page.route("**/assets/shop.js", async (route) => {
+      await scripts;
+      await route.continue();
+    });
+    await page.route(/\.webp$/, async (route) => {
+      await images;
+      await route.continue();
+    });
+    try {
+      await page.goto(path, { waitUntil: "commit" });
+      const root = page.getByTestId(
+        path === "/" ? "product-card" : "product-detail",
+      );
+      await expect(root.first()).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      if (path === "/") {
+        for (const product of products) {
+          const card = root.filter({ hasText: product.title });
+          await expect(card.getByTestId("card-color")).toHaveCount(
+            new Set(product.variants.map((variant) => variant.color)).size,
+          );
+          for (const control of await card.getByTestId("card-color").all())
+            await expect(control).toBeVisible();
+          await expect(card.getByTestId("card-previous")).toBeVisible();
+          await expect(card.getByTestId("card-next")).toBeVisible();
+          await expect(
+            card.getByTestId("card-color").filter({
+              hasText: product.images[0].color.replace(/^G\. Dyed /, ""),
+            }),
+          ).toHaveAttribute("aria-pressed", "true");
+        }
+      } else {
+        const product = products.find(
+          (product) => path.split("?")[0] === `/products/${product.slug}`,
+        )!;
+        const color =
+          new URL(path, "https://shop.bascik.dev").searchParams.get("color") ??
+          product.variants[0].color;
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        await expect(page.getByTestId("product-image")).toHaveAttribute(
+          "src",
+          product.images.find((image) => image.color === color)!.src,
+        );
+        await expect(
+          page.getByTestId("gallery-image").filter({ visible: true }),
+        ).toHaveCount(
+          product.images.filter((image) => image.color === color).length,
+        );
+      }
+      const geometry = () =>
+        root.evaluateAll((roots) =>
+          roots.flatMap((root) =>
+            [...root.querySelectorAll<HTMLElement>("img, button, h2")]
+              .filter((element) => element.getClientRects().length)
+              .map((element) => {
+                const { x, y, width, height } = element.getBoundingClientRect();
+                return { x, y, width, height };
+              }),
+          ),
+        );
+      const before = await geometry();
+      expect(
+        before.filter((box) => box.width > 0 && box.height > 0),
+      ).toHaveLength(before.length);
+      releaseScripts();
+      await page.waitForLoadState("domcontentloaded");
+      await expect(page.getByTestId("shop-nav-count")).toHaveText("0");
+      expect(await geometry()).toEqual(before);
+      releaseImages();
+      await page.waitForLoadState("load");
+      await root.evaluateAll(async (roots) => {
+        await Promise.all(
+          roots.flatMap((root) =>
+            [...root.querySelectorAll<HTMLImageElement>("img")]
+              .filter(
+                (image) =>
+                  image.getClientRects().length &&
+                  image.getBoundingClientRect().top < innerHeight,
+              )
+              .map((image) => image.decode()),
+          ),
+        );
+      });
+      expect(await geometry()).toEqual(before);
+    } finally {
+      releaseScripts();
+      releaseImages();
+    }
+  });
+}
+
+test("requested product colors render without JavaScript and do not leak between requests", async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    baseURL,
+    javaScriptEnabled: false,
+  });
+  try {
+    const page = await context.newPage();
+    for (const product of products) {
+      for (const requested of [
+        ...new Set(product.variants.map((variant) => variant.color)),
+        "unknown",
+        '<script>alert("color")</script>',
+      ]) {
+        const color = product.variants.some(
+          (variant) => variant.color === requested,
+        )
+          ? requested
+          : product.variants[0].color;
+        const response = await page.goto(
+          `/products/${product.slug}?color=${encodeURIComponent(requested)}`,
+        );
+        expect(response?.status()).toBe(200);
+        await expect(page.getByTestId("product-color")).toHaveValue(color);
+        await expect(page.getByTestId("product-image")).toHaveAttribute(
+          "src",
+          product.images.find((image) => image.color === color)!.src,
+        );
+        await expect(
+          page.getByTestId("gallery-image").filter({ visible: true }),
+        ).toHaveCount(
+          product.images.filter((image) => image.color === color).length,
+        );
+        await expect(page.locator("h1")).toHaveText(product.title);
+      }
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 for (const path of ["/", `/products/${products[0].slug}`, "/cart"]) {
   test(`navigation reserves cart count space before initialization on ${path}`, async ({
     page,

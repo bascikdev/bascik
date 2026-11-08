@@ -1,34 +1,16 @@
 # Optimizing Images
 
-Have your coding agent prepare responsive images with local tools, then wire them into vanilla HTML and CSS. Bascik needs no special image component: local tools create optimized files, HTML tells the browser which file to load, and CSS controls layout and cropping. No image service or browser JavaScript is required.
+Use the `bascik-images` skill to prepare responsive images with local tools and render the correct image state from the first paint. Bascik needs no special image component: local tools create optimized files, vanilla HTML selects the image, and CSS controls layout and cropping.
 
-## Ask Your Coding Agent
+## Use the Image Skill
 
-Copy this prompt into your existing Bascik project:
+New Bascik projects offer to install `bascik-images` with the other general-purpose skills. For an existing project, install it from the project root:
 
-```text
-Optimize this site's images using local tools. Read the Bascik
-bascik-components skill and /how-to/optimizing-images first.
-
-Inspect the original images and the components' CSS at mobile, tablet,
-and desktop widths. Choose useful WebP widths for each rendered slot,
-including high-density screens, without upscaling. Keep originals
-outside the published pages directory and preserve them.
-
-Use the bundled responsive-webp helper or an available local image CLI.
-Update the owning components with native img srcset and accurate sizes,
-dimensions, descriptive alt text (empty for decorative images), and
-appropriate loading priorities. Use picture only where different crops
-or formats are needed. Keep layout and cropping in CSS.
-
-Build the site and verify every generated URL, fresh browser currentSrc
-selection at different viewport widths and pixel densities, visual
-quality, and transferred bytes. Report before/after measurements and
-anything you could not verify. Do not add a framework image component,
-an image service, or runtime JavaScript for image selection.
+```sh
+npx skills add bascikdev/bascik --skill bascik-images
 ```
 
-The agent runs tools on your machine and edits your component files. The helper only generates images and a manifest; it does not inspect CSS or automatically add `srcset`. Those are the agent's jobs.
+Tell your assistant to use `bascik-images` when optimizing images or fixing a gallery flash. The skill routes to this guide, runs local tools, and checks the built result. Its helper only generates images and a manifest; the assistant still inspects CSS and wires up `srcset`, initial state, and loading priorities. See [Agent Skills](/agent-skills) for installation options.
 
 ## Keep Originals Separate
 
@@ -44,7 +26,7 @@ Choose a small useful set rather than generating every possible resolution. A th
 
 ## Generate WebP Locally
 
-The existing `bascik-components` skill ships a [responsive WebP helper](https://github.com/bascikdev/bascik/blob/main/skills/bascik-components/scripts/responsive-webp.mjs). Run it from your project root. It loads Sharp from your project's dependencies, not from the skill folder.
+The `bascik-images` skill ships the [responsive WebP helper](https://github.com/bascikdev/bascik/blob/main/skills/bascik-images/scripts/responsive-webp.mjs), previously part of `bascik-components`. Run it from your project root. It loads Sharp from your project's dependencies, not from the skill folder.
 
 Install Sharp as a development dependency if it is not already available, using your project's package manager:
 
@@ -55,7 +37,7 @@ npm install -D sharp
 This illustrative command assumes the skills are installed in `.agents/skills/` and the source is a 1600 by 900 still image. Adapt the paths and widths to your project:
 
 ```sh
-node .agents/skills/bascik-components/scripts/responsive-webp.mjs \
+node .agents/skills/bascik-images/scripts/responsive-webp.mjs \
   --src image-originals/hero.jpg \
   --out src/pages/img \
   --widths 400,800,1200,1600 \
@@ -106,6 +88,76 @@ For below-the-fold photos, use `loading="lazy"` instead of `fetchpriority="high"
 
 Use `object-fit: cover`, `object-position`, and a stable CSS `aspect-ratio` when the layout needs cropping. If mobile needs a genuinely different composition, generate separate crops and use `<picture>` with media-specific `<source>` elements. For format alternatives, use `type` on `<source>` and keep a working `<img>` fallback. `<picture>` is not required just to serve WebP to modern browsers. See [Performance](/lighthouse/performance#responsive-images-with-srcset) for native syntax examples.
 
+## Prevent Flashes and Layout Shifts
+
+Image downloads and late DOM updates are different problems. Reserving a box fixes missing image space, but it cannot fix a color selector created after load or a Black photo briefly displayed when the URL selected Tan.
+
+### Reserve the image and thumbnail boxes
+
+Give each image accurate `width` and `height`, as above. For square gallery previews, reserve the button's box too, so decoding an image cannot change the grid:
+
+```css
+.thumbnails {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.thumbnails > * {
+  padding: 0;
+  min-width: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+.thumbnails > * > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+```
+
+This illustrative CSS belongs beside the gallery component. Adapt the columns and ratio to the actual layout. Keep informative images' `alt` text; a thumbnail inside a button with a descriptive accessible name can use `alt=""`. Resizing WebP files preserves transparent backgrounds, but verify the encoded result rather than flattening it against a placeholder color.
+
+### Render known controls at build time
+
+When the catalog already knows the colors and image views, render the color buttons, gallery arrows, and initial `aria-pressed` state in the HTML. Use a [build script](/scripts/build) and slots for repeated catalog content. Browser scripts attach interaction handlers; they should not create the controls or reveal an empty controls row during startup.
+
+Render only the initial color's thumbnails as visible. Keep other colors' thumbnail buttons `hidden` until the customer changes color. Showing all views first and hiding most in JavaScript produces an expanded gallery that suddenly shrinks, even when every image has dimensions.
+
+### Render URL-selected variants on the server
+
+A build script cannot know a request's query string. For a URL that selects a color, a [server script](/scripts/server) can validate the requested value against the owned catalog and return the matching main image, selected color option, and visible thumbnail set before the browser paints. Invalid colors retain the documented default. Use the same validation helper for all three pieces; do not let the image, select, and gallery disagree.
+
+For example, a helper beside a book-cover component could select a requested edition like this:
+
+```ts
+import { html } from "@bascik/bascik/html";
+import { editions } from "./editions.ts";
+
+export default (request: Request) => {
+  const requested = new URL(request.url).searchParams.get("edition");
+  const edition =
+    editions.find((edition) => edition.id === requested) ?? editions[0];
+  return html`<img
+    src="${edition.src}"
+    width="${edition.width}"
+    height="${edition.height}"
+    alt="${edition.alt}"
+    fetchpriority="high"
+  />`;
+};
+```
+
+The illustrative `editions.ts` is the component's owned, nonempty catalog. Add its actual `srcset` and `sizes` for responsive output, and use that same selected edition when rendering options and thumbnail visibility. Render a selected option with the literal `selected` attribute only on the matching option; `selected="false"` still selects an option. Likewise, `hidden="false"` still hides an element.
+
+Load the helper with `data-bascik-server` in the component. This requires request-time hosting, such as the [Cloudflare adapter](/deployment/cloudflare), not a static-only host. Verify that product routes reach the Worker and that a cache never reuses one query's variant for another query. The catalog listing and image assets can remain static. Do not hide the whole page until JavaScript runs or depend on a browser startup swap to correct the selected variant.
+
+### Style returned markup through its container
+
+Build-script output participates in Bascik's build-time scoping. Server-script output is inserted at request time, so its new elements do not receive the original template's scoped element classes. A raw local class in returned markup does not automatically become its compiler-scoped name.
+
+Keep the gallery container in the component template with its scoped `.thumbnails` class, and style returned buttons and images through child selectors, as above. Shared global image primitives are another option. See [Scoped Styles](/scoped-styles) and [Server Scripts](/scripts/server).
+
 ## Verify the Result
 
 1. Build with `npm run build` and confirm that every `src` and `srcset` URL resolves from the built site, including nested routes and any configured base path.
@@ -113,5 +165,7 @@ Use `object-fit: cover`, `object-position`, and a stable CSS `aspect-ratio` when
 3. Compare the chosen encoded width to the rendered width times device pixel density. The browser chooses candidates using its own heuristics, so verify useful selection rather than assuming one exact file is mandatory.
 4. Inspect visual quality and cropping at each size, including high density. Confirm that image space is reserved before loading, and that below-the-fold images load when scrolled into view.
 5. Compare before/after transferred bytes for the same viewport, density, and cache conditions. Check [Lighthouse Performance](/lighthouse/performance) for LCP and CLS, but do not use a score alone as proof of image quality or correct selection.
+6. Delay image responses and browser scripts independently. Before scripts run, assert that controls exist, the requested variant is selected, and exactly the intended thumbnails are visible. Compare image, thumbnail, and nearby heading geometry after scripts initialize and again after visible images decode.
+7. Repeat direct links and reloads for every variant, including invalid query values, with JavaScript disabled. Then verify that color changes and previous/next controls still work independently across multiple cards. A correct final screenshot alone misses a wrong first frame.
 
 The end result is ordinary static assets and vanilla markup you own. Change the encoder, widths, CSS, or hosting later without adopting a framework-specific image API.

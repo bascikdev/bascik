@@ -63,6 +63,7 @@ export const PROJECT_SKILLS = [
   "bascik-compatibility",
   "bascik-components",
   "bascik-config",
+  "bascik-images",
   "bascik-migrate",
   "bascik-scripts",
   "bascik-seo",

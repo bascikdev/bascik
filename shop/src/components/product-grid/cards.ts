@@ -16,5 +16,18 @@ export default () =>
       data-bascik-prop-height="${image.height}"
       data-bascik-prop-loading="${index === 0 ? "eager" : "lazy"}"
       data-bascik-prop-priority="${index === 0 ? "high" : "auto"}"
-    />`;
+    >
+      ${[...new Set(product.variants.map((variant) => variant.color))].map(
+        (color) =>
+          html`<button
+            type="button"
+            data-card-color="${color}"
+            aria-label="${color}"
+            aria-pressed="${color === image.color}"
+            data-testid="card-color"
+          >
+            ${color.replace(/^G\. Dyed /, "")}
+          </button>`,
+      )}
+    </product-card>`;
   })}`;

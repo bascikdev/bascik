@@ -1,6 +1,6 @@
 ---
 name: bascik-components
-description: Decide what becomes a Bascik component and write component CSS and TypeScript that keep working with several instances on a page. Use when a page is turning into a big block of HTML, when deciding whether to split a section, pass a prop, or use a slot; when writing or debugging a component's <style>, companion .css, or <script>; when a component works once but breaks with two instances; when compiled class or ID names look wrong; when adding tabs, dialogs, menus, toggles, forms, fetch calls, storage, or events between components without a framework; when setting up design tokens, dark mode, a theme toggle, or fonts; when optimizing images with local CLI tools, responsive WebP, srcset, sizes, or picture; or when configuring deduplicateCss, preserve, data-bascik-preserve, or Tailwind. Includes a CSS token checker and a local WebP generator.
+description: Decide what becomes a Bascik component and write component CSS and TypeScript that keep working with several instances on a page. Use when a page is turning into a big block of HTML, when deciding whether to split a section, pass a prop, or use a slot; when writing or debugging a component's <style>, companion .css, or <script>; when a component works once but breaks with two instances; when compiled class or ID names look wrong; when adding tabs, dialogs, menus, toggles, forms, fetch calls, storage, or events between components without a framework; when setting up design tokens, dark mode, a theme toggle, or fonts; or when configuring deduplicateCss, preserve, data-bascik-preserve, or Tailwind. Includes a CSS token checker.
 license: MIT
 metadata:
   author: bascik
@@ -251,12 +251,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 
 ## Responsive images
 
-Read `/how-to/optimizing-images` before preparing images. Use local tools and native `<img srcset sizes>` or `<picture>`, not a framework image component or a required image service.
-
-- Keep originals outside the published pages directory. Inspect the actual CSS layout and choose widths for its slots and pixel densities; never upscale.
-- Run [`scripts/responsive-webp.mjs`](scripts/responsive-webp.mjs) from the project root. It loads the project's Sharp, writes WebP variants and a manifest, and does **not** edit HTML. Use an available local CLI instead if it fits the project.
-- Wire the generated URLs into the owning component's HTML. Match `sizes` to CSS, reserve space with dimensions, lazy-load only below-the-fold images, and prioritize only the likely LCP image.
-- Verify built assets, browser `currentSrc` at fresh mobile and desktop loads including high density, transferred bytes, and visual quality. Do not claim optimization from file generation alone.
+Use the `bascik-images` skill for responsive assets, its WebP generator, image loading priorities, and stable gallery or variant first paint. Read [Optimizing Images](https://bascik.dev/how-to/optimizing-images) for the workflow.
 
 ## Examples to copy
 

@@ -1,4 +1,4 @@
-// Unit tests for skills/bascik-components/scripts/responsive-webp.mjs: planning widths (never upscaling), the srcset
+// Unit tests for skills/bascik-images/scripts/responsive-webp.mjs: planning widths (never upscaling), the srcset
 // string, the manifest with byte counts and sha256, and the CLI flags. sharp is the reader's project dependency, so
 // the script takes it injected; the tests use a fake, plus one round trip through the real sharp the docs package
 // already has. Temp dirs only; no network.
@@ -24,7 +24,7 @@ import {
   planWidths,
   srcsetFor,
   urlPrefixFor,
-} from "../../skills/bascik-components/scripts/responsive-webp.mjs";
+} from "../../skills/bascik-images/scripts/responsive-webp.mjs";
 
 const sha = (buf: Buffer) => createHash("sha256").update(buf).digest("hex");
 
@@ -330,7 +330,7 @@ describe("parseCliArgs", () => {
         const script = join(dir, "responsive-webp.mjs");
         copyFileSync(
           new URL(
-            "../../skills/bascik-components/scripts/responsive-webp.mjs",
+            "../../skills/bascik-images/scripts/responsive-webp.mjs",
             import.meta.url,
           ),
           script,

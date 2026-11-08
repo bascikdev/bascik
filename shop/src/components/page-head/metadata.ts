@@ -4,6 +4,8 @@ import { policyPages } from "../../lib/policies.ts";
 
 export default () => {
   const route = process.env.BASCIK_PAGE_PATH;
+  // The request-time component manifest probes templates without a page.
+  if (route === "") return html``;
   if (!route) throw new Error("Page metadata requires BASCIK_PAGE_PATH.");
   const product = products.find(
     (product) => route === `/products/${product.slug}`,

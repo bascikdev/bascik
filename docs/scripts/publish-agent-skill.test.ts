@@ -66,8 +66,9 @@ describe("publish-agent-skill", () => {
         true,
       );
     expect(files.has("bascik/scripts/verify.mjs")).toBe(true);
+    expect(files.has("bascik-images/scripts/responsive-webp.mjs")).toBe(true);
     expect(files.has("bascik-components/scripts/responsive-webp.mjs")).toBe(
-      true,
+      false,
     );
     expect(files.has("bascik-refactor/scripts/responsive-webp.mjs")).toBe(
       false,
@@ -97,7 +98,7 @@ describe("publish-agent-skill", () => {
         `sha256:${createHash("sha256").update(archive).digest("hex")}`,
       );
       const files = readTar(gunzipSync(archive));
-      if (entry.name === "bascik-components") {
+      if (entry.name === "bascik-images") {
         const helper = files
           .get("scripts/responsive-webp.mjs")
           ?.toString("utf8");
