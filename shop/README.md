@@ -355,6 +355,25 @@ For a failed order, compare the D1 order ID, Stripe payment/session, and Printfu
 
 Use Stripe for refunds and Printful for production cancellation; one does not automatically undo the other. Check production status before promising cancellation. There is intentionally no public admin/replay endpoint.
 
+#### Manual cancellation and full-refund checklist
+
+Use this for your own live test orders or an approved customer cancellation:
+
+1. Match the shop order reference to the Printful external reference and Stripe payment. Do not act on a different order or replay an existing submission.
+2. In Printful, open that order and cancel it. Confirm it actually shows canceled before proceeding. If cancellation is unavailable because production has progressed, stop and reconcile with Printful before promising a cancellation.
+3. In Stripe, open the matching payment and refund the **entire charged amount**, including shipping and tax, to the original payment method. Confirm the refund succeeded; a pending or failed refund does not complete this workflow.
+4. Keep the private shop order link to check the result. The shop verifies both providers and updates D1 automatically through webhooks and the scheduled sweep. Do not manually reset the database or resubmit the order.
+
+Once both cancellation and the full refund are verified, the customer receives one branded cancellation/refund email with the amount, order reference, private status link, and support contact. This also applies to your own live test purchases. The message explains that bank processing may take several days; it does not claim the funds have already arrived. Duplicate callbacks and scheduled checks do not queue another completion email. Failed email deliveries use the existing retry mechanism. Sandbox mode does not send customer emails.
+
+Completing both steps within 15 minutes normally avoids the outstanding-refund alert. If the refund remains pending, fails, or is incomplete, investigate rather than suppressing the alert. Once both steps are verified, the order's operator alert is resolved; an email already sent cannot be recalled.
+
+The shop automatically synchronizes these actions into D1. Cancel in Printful, then refund in Stripe; no manual database edits are needed. Authenticated provider reads, not webhook payload amounts, determine the result. Cancellation and refunds are separate: partial refunds do not cancel fulfillment, pending refunds remain pending, and a failed refund or a full refund with active fulfillment still needs operator attention. Cancellation without a full refund allows 15 minutes before an alert. A verified cancellation plus full refund resolves pending alerts and prevents fulfillment retries. Original purchase totals and snapshots stay unchanged.
+
+Stripe refund subscriptions are enabled alongside the existing Checkout subscriptions by the production CI deployment helper. The scheduled sweep also reconciles paid orders within the existing 90-day private-link window, including legacy cancellation failures, in bounded batches with leases and provider-error backoff. Existing records are not changed by the migration itself. Reconciliation never issues refunds, cancels Printful orders, or replays production submissions.
+
+For an explicitly approved legacy order, run `node --env-file=.env.prd scripts/reconcile-canceled-order.ts --order ID` from `shop/` to perform a read-only check. Only after both providers verify the exact order, full refund and cancellation, rerun with `--apply --confirm ID` to resolve that one D1 row and its alert. The tool refuses missing migration fields, wrong Stripe accounts, mismatched provider references, partial refunds and concurrent leases. It makes no provider writes. Do not run it for production orders without owner approval.
+
 Private checkout quotes without orders are removed after expiry plus one day. Order snapshots and notification records currently remain until an owner-approved retention procedure is implemented. Handle deletion requests through the published privacy policy and support process; do not delete records needed to reconcile accepted payments or outstanding fulfillment.
 
 ## Validation and deployment

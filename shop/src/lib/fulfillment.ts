@@ -3,6 +3,7 @@ import { type Order, type Quote, printfulItems } from "./checkout.ts";
 import { printful, printfulList, ProviderError, stripe } from "./providers.ts";
 import { orderReference, orderSummary } from "./order-summary.ts";
 import { orderEmail } from "./order-email.ts";
+import { recordCancellation, reconcileOrderRefund } from "./refunds.ts";
 
 interface PrintfulOrder {
   id: number;
@@ -25,14 +26,13 @@ export async function notification(env: Env, orderId: string, kind: string) {
     .run();
 }
 export async function failOrder(env: Env, orderId: string, reason: string) {
-  await env.DB.batch([
-    env.DB.prepare(
-      "UPDATE orders SET status='failed',last_error=?,updated_at=?,lease_until=0 WHERE id=?",
-    ).bind(reason, now(), orderId),
-    env.DB.prepare(
-      "INSERT OR IGNORE INTO notifications(id,order_id,kind,created_at) VALUES (?,?,?,?)",
-    ).bind(`${orderId}:alert`, orderId, "alert", now()),
-  ]);
+  const failed = await env.DB.prepare(
+    "UPDATE orders SET status='failed',last_error=?,updated_at=?,lease_until=0 WHERE id=? AND status!='cancelled' AND refund_state!='refunded' RETURNING id",
+  )
+    .bind(reason, now(), orderId)
+    .first();
+  if (!failed) return;
+  await notification(env, orderId, "alert");
   console.error("Shop fulfillment needs operator action", { orderId, reason });
 }
 export interface CheckoutSession {
@@ -50,6 +50,8 @@ export interface CheckoutSession {
     amount_discount: number;
   };
   automatic_tax: { status: string };
+  payment_intent?:
+    string | { id: string; latest_charge?: { amount_refunded: number } };
 }
 export async function paidSession(
   env: Env,
@@ -61,7 +63,7 @@ export async function paidSession(
     retrieved ??
     (await stripe<CheckoutSession>(
       env,
-      `/checkout/sessions/${encodeURIComponent(sessionId)}`,
+      `/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge`,
     ));
   if (
     session.id !== sessionId ||
@@ -92,6 +94,25 @@ export async function paidSession(
   )
     .bind(session.total_details.amount_tax, session.amount_total, order.id)
     .run();
+  if (session.payment_intent) {
+    await env.DB.prepare("UPDATE orders SET stripe_payment_intent=? WHERE id=?")
+      .bind(
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent.id,
+        order.id,
+      )
+      .run();
+  }
+  if (
+    session.payment_intent &&
+    typeof session.payment_intent === "object" &&
+    session.payment_intent.latest_charge?.amount_refunded ===
+      session.amount_total
+  ) {
+    await reconcileOrderRefund(env, order.id);
+    return false;
+  }
   return true;
 }
 export async function recordPayment(
@@ -176,12 +197,20 @@ async function lookup(env: Env, order: Order) {
   }
 }
 async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
-  if (remote.external_id !== order.id || !Number.isSafeInteger(remote.id))
+  if (
+    remote.external_id !== order.id ||
+    !Number.isSafeInteger(remote.id) ||
+    (order.printful_id !== null && order.printful_id !== remote.id)
+  )
     throw new FulfillmentInvariantError("Printful order reference mismatch");
   await env.DB.prepare("UPDATE orders SET printful_id=? WHERE id=?")
     .bind(remote.id, order.id)
     .run();
-  if (["failed", "canceled", "cancelled", "onhold"].includes(remote.status)) {
+  if (["canceled", "cancelled"].includes(remote.status)) {
+    await recordCancellation(env, order, remote);
+    return;
+  }
+  if (["failed", "onhold"].includes(remote.status)) {
     await failOrder(env, order.id, `Printful status: ${remote.status}`);
     return;
   }
@@ -193,11 +222,12 @@ async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
     remote.status === "fulfilled" || order.status === "shipped"
       ? "shipped"
       : "submitted";
-  await env.DB.prepare(
-    "UPDATE orders SET status=?,shipments=?,updated_at=?,lease_until=0,retry_at=?,attempts=0,last_error=NULL WHERE id=?",
+  const saved = await env.DB.prepare(
+    "UPDATE orders SET status=?,shipments=?,updated_at=?,lease_until=0,retry_at=?,attempts=0,last_error=NULL WHERE id=? AND refund_state!='refunded' AND status IN ('paid','submitting','submitted','shipped') RETURNING id",
   )
     .bind(status, JSON.stringify(shipments), now(), now() + 900, order.id)
-    .run();
+    .first();
+  if (!saved) return;
   for (const shipment of shipments)
     if (shipment.tracking_number)
       await notification(env, order.id, `shipment:${shipment.id}`);
@@ -205,19 +235,32 @@ async function recordPrintful(env: Env, order: Order, remote: PrintfulOrder) {
 export async function processOrder(env: Env, orderId: string) {
   if (env.SHOP_FULFILLMENT_ENABLED !== "true") return;
   const claim = await env.DB.prepare(
-    "UPDATE orders SET lease_until=?,attempts=attempts+1 WHERE id=? AND status IN ('paid','submitting','submitted','shipped') AND lease_until<? AND retry_at<=? RETURNING *",
+    "UPDATE orders SET lease_until=?,attempts=attempts+1 WHERE id=? AND refund_state!='refunded' AND status IN ('paid','submitting','submitted','shipped') AND lease_until<? AND retry_at<=? RETURNING *",
   )
     .bind(now() + 120, orderId, now(), now())
     .first<Order>();
   if (!claim) return;
   try {
-    if (
-      !claim.stripe_session ||
-      !(await paidSession(env, claim.stripe_session, claim))
-    )
+    if (!claim.stripe_session)
       throw new FulfillmentInvariantError(
         "Order has no verified successful payment",
       );
+    if (!(await paidSession(env, claim.stripe_session, claim))) {
+      const current = await env.DB.prepare(
+        "SELECT refund_state FROM orders WHERE id=?",
+      )
+        .bind(claim.id)
+        .first<{ refund_state: string }>();
+      if (current?.refund_state === "refunded") {
+        await env.DB.prepare("UPDATE orders SET lease_until=0 WHERE id=?")
+          .bind(claim.id)
+          .run();
+        return;
+      }
+      throw new FulfillmentInvariantError(
+        "Order has no verified successful payment",
+      );
+    }
     let remote = await lookup(env, claim);
     if (claim.status === "shipped") {
       if (!remote || remote.status === "draft")
@@ -241,11 +284,12 @@ export async function processOrder(env: Env, orderId: string) {
     }
     const quote: Quote = JSON.parse(claim.snapshot);
     if (!remote) {
-      await env.DB.prepare(
-        "UPDATE orders SET status='submitting',updated_at=? WHERE id=?",
+      const reservation = await env.DB.prepare(
+        "UPDATE orders SET status='submitting',updated_at=? WHERE id=? AND status='paid' AND refund_state!='refunded' RETURNING id",
       )
         .bind(now(), claim.id)
-        .run();
+        .first();
+      if (!reservation) return;
       remote = await printful<PrintfulOrder>(env, "/orders", {
         external_id: claim.id,
         shipping: claim.shipping_id,
@@ -292,6 +336,19 @@ export async function processOrder(env: Env, orderId: string) {
           .run();
         return;
       }
+      const current = await env.DB.prepare(
+        "SELECT status,refund_state FROM orders WHERE id=?",
+      )
+        .bind(claim.id)
+        .first<{ status: string; refund_state: string }>();
+      if (
+        !current ||
+        current.refund_state === "refunded" ||
+        current.status === "failed" ||
+        current.status === "cancelled"
+      )
+        return;
+      if (!(await paidSession(env, claim.stripe_session, claim))) return;
       remote = await printful<PrintfulOrder>(
         env,
         `/orders/${remote.id}/confirmation`,
@@ -361,6 +418,25 @@ export async function sendNotifications(env: Env) {
         .bind(message.order_id)
         .first<Order>();
       if (!order) throw new Error("Notification order missing");
+      if (
+        message.kind === "cancellation-refund" &&
+        (order.status !== "cancelled" ||
+          order.refund_state !== "refunded" ||
+          order.last_error !== null)
+      )
+        throw new Error("Cancellation/refund notification is not verified");
+      if (
+        message.kind === "alert" &&
+        order.status === "cancelled" &&
+        order.refund_state === "refunded"
+      ) {
+        await env.DB.prepare(
+          "UPDATE notifications SET status='resolved',lease_until=0 WHERE id=?",
+        )
+          .bind(message.id)
+          .run();
+        continue;
+      }
       const quote: Quote = JSON.parse(order.snapshot);
       if (!env.EMAIL) throw new Error("Email binding missing");
       const alert = message.kind === "alert";
@@ -376,6 +452,9 @@ export async function sendNotifications(env: Env) {
             link,
             env.SUPPORT_EMAIL,
             message.kind.startsWith("shipment:"),
+            message.kind === "cancellation-refund"
+              ? order.refund_amount
+              : undefined,
           );
       const result = await env.EMAIL.send({
         from: { name: "Bascik Shop", email: env.EMAIL_FROM },
@@ -415,6 +494,15 @@ export async function processOrderMessage(env: Env, orderId: string) {
 }
 export async function sweep(env: Env) {
   if (env.SHOP_FULFILLMENT_ENABLED !== "true" && !env.EMAIL) return;
+  if (env.SHOP_MODE === "live") {
+    const refunds = await env.DB.prepare(
+      "SELECT id FROM orders WHERE stripe_session IS NOT NULL AND created_at>? AND reconciliation_at<=? AND reconciliation_lease<? AND (refund_checked_at>0 OR reconciliation_attempts>0 OR EXISTS (SELECT 1 FROM payment_events WHERE order_id=orders.id) OR status IN ('cancelled','submitted','shipped') OR last_error IN ('Printful status: canceled','Printful status: cancelled')) ORDER BY reconciliation_at LIMIT 10",
+    )
+      .bind(now() - 90 * 86400, now(), now())
+      .all<{ id: string }>();
+    for (const order of refunds.results)
+      await reconcileOrderRefund(env, order.id);
+  }
   const unpaid = await env.DB.prepare(
     "SELECT id FROM orders WHERE status='pending' AND stripe_session IS NOT NULL AND retry_at<=? AND lease_until<? AND created_at<? ORDER BY updated_at LIMIT 10",
   )

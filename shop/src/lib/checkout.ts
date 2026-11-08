@@ -79,6 +79,16 @@ export interface Order {
   retry_at: number;
   payment_tax: number | null;
   payment_total: number | null;
+  last_error: string | null;
+  printful_status: string | null;
+  stripe_payment_intent: string | null;
+  refund_amount: number;
+  refund_state: string;
+  refund_checked_at: number;
+  reconciliation_attempts: number;
+  reconciliation_lease: number;
+  reconciliation_at: number;
+  cancellation_at: number | null;
 }
 export function recipient(value: unknown): Recipient {
   if (!value || typeof value !== "object" || Array.isArray(value))

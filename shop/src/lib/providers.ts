@@ -81,7 +81,7 @@ export async function printfulList<T>(
   throw new ProviderError("Printful pagination limit", 502);
 }
 export async function stripe<T>(
-  env: Env,
+  env: Pick<Env, "STRIPE_SECRET_KEY">,
   path: string,
   params?: URLSearchParams,
   idempotencyKey?: string,

@@ -21,6 +21,12 @@ import {
   sweep,
   processOrderMessage,
 } from "../src/lib/fulfillment.ts";
+import {
+  reconcileOrderRefund,
+  reconcileRefundEvent,
+  cancellationGraceSeconds,
+} from "../src/lib/refunds.ts";
+import type { Order } from "../src/lib/checkout.ts";
 
 let runtime: Miniflare;
 let env: Env;
@@ -92,7 +98,9 @@ beforeAll(async () => {
     "\n" +
     (await readFile("migrations/0004_order_confirmation.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0005_vinyl_decals.sql", "utf8"));
+    (await readFile("migrations/0005_vinyl_decals.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0006_order_refunds.sql", "utf8"));
   await DB.batch(
     sql
       .split(";")
@@ -159,6 +167,492 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   await runtime.dispose();
+});
+async function refundFixture(
+  amount = 3750,
+  refundStatus = "succeeded",
+  fulfillment = "canceled",
+) {
+  env.SHOP_MODE = "live";
+  env.STRIPE_SECRET_KEY = "sk_live_fixture";
+  await env.DB.prepare(
+    "UPDATE orders SET status='submitted',printful_id=123,payment_total=3750,payment_tax=250 WHERE id=?",
+  )
+    .bind(id)
+    .run();
+  const charge = {
+    id: "ch_fixture",
+    payment_intent: "pi_fixture",
+    amount: 3750,
+    amount_refunded: amount,
+    currency: "usd",
+    livemode: true,
+  };
+  const remote = {
+    id: 123,
+    external_id: id,
+    status: fulfillment,
+    costs: { calculation_status: "done" },
+  };
+  const session = {
+    ...payment,
+    livemode: true,
+    payment_intent: { id: "pi_fixture", latest_charge: charge },
+  };
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      expect(init?.method ?? "GET").toBe("GET");
+      const url = new URL(String(input));
+      if (url.origin === "https://api.stripe.com") {
+        if (url.pathname === `/v1/checkout/sessions/${payment.id}`)
+          return Response.json(session);
+        if (url.pathname === "/v1/checkout/sessions")
+          return Response.json({ data: [session], has_more: false });
+        if (url.pathname === "/v1/refunds")
+          return Response.json({
+            data:
+              charge.amount_refunded || refundStatus !== "succeeded"
+                ? [
+                    {
+                      id: "re_fixture",
+                      charge: charge.id,
+                      status: refundStatus,
+                    },
+                  ]
+                : [],
+            has_more: false,
+          });
+      }
+      if (
+        url.origin === "https://api.printful.com" &&
+        url.pathname === `/v2/orders/@${id}`
+      )
+        return Response.json({ data: remote });
+      throw Error(`Unexpected refund provider route ${url.pathname}`);
+    });
+  return { charge, remote, session, fetcher };
+}
+const refundOrder = () =>
+  env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Order>();
+
+test("cancellation then refund waits briefly, resolves alerts and never resubmits", async () => {
+  const { charge, fetcher } = await refundFixture(0);
+  await processOrder(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "none",
+    last_error: null,
+  });
+  expect(
+    (await env.DB.prepare("SELECT * FROM notifications").all()).results,
+  ).toHaveLength(0);
+  await env.DB.prepare("UPDATE orders SET cancellation_at=? WHERE id=?")
+    .bind(now() - cancellationGraceSeconds - 1, id)
+    .run();
+  await reconcileOrderRefund(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "none",
+    last_error: expect.stringContaining("outstanding"),
+  });
+  charge.amount_refunded = 3750;
+  await reconcileOrderRefund(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "refunded",
+    refund_amount: 3750,
+    last_error: null,
+    payment_total: 3750,
+    payment_tax: 250,
+    snapshot: JSON.stringify(snapshot),
+  });
+  await sendNotifications(env);
+  await processOrder(env, id);
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
+  expect(env.EMAIL?.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: snapshot.recipient.email,
+      subject: expect.stringContaining("Order canceled and refunded:"),
+      text: expect.stringContaining("full refund of $37.50"),
+    }),
+  );
+  await reconcileOrderRefund(env, id);
+  await sendNotifications(env);
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls.every(([, init]) => init?.method === "GET")).toBe(
+    true,
+  );
+});
+test("refund before cancellation remains actionable then resolves", async () => {
+  const { remote } = await refundFixture(3750, "succeeded", "inprocess");
+  await reconcileRefundEvent(env, "pi_fixture");
+  expect(await refundOrder()).toMatchObject({
+    status: "failed",
+    refund_state: "refunded",
+    last_error: expect.stringContaining("cancellation"),
+  });
+  remote.status = "canceled";
+  await reconcileRefundEvent(env, "pi_fixture");
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "refunded",
+    last_error: null,
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT status FROM notifications WHERE kind='alert'",
+    ).first(),
+  ).toMatchObject({ status: "resolved" });
+});
+test.each([
+  [1000, "succeeded", "partial", false],
+  [0, "pending", "pending", false],
+  [0, "requires_action", "pending", false],
+  [0, "failed", "failed", true],
+  [1000, "failed", "failed", true],
+])(
+  "records refund %i/%s without canceling active fulfillment",
+  async (amount, status, state, attention) => {
+    await refundFixture(amount, status, "inprocess");
+    await reconcileOrderRefund(env, id);
+    expect(await refundOrder()).toMatchObject({
+      status: "submitted",
+      refund_state: state,
+      refund_amount: amount,
+    });
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT * FROM notifications WHERE kind='alert'",
+        ).all()
+      ).results,
+    ).toHaveLength(attention ? 1 : 0);
+  },
+);
+test("duplicate and old refund events use current provider state, not event amounts", async () => {
+  await refundFixture();
+  for (let i = 0; i < 3; i++) await reconcileRefundEvent(env, "pi_fixture");
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_amount: 3750,
+  });
+  expect(
+    (
+      await env.DB.prepare(
+        "SELECT * FROM notifications WHERE kind='cancellation-refund'",
+      ).all()
+    ).results,
+  ).toHaveLength(1);
+});
+test("legacy failed cancellation records reconcile without touching the immutable purchase", async () => {
+  await refundFixture();
+  await env.DB.prepare(
+    "UPDATE orders SET status='failed',last_error='Printful status: canceled' WHERE id=?",
+  )
+    .bind(id)
+    .run();
+  await reconcileOrderRefund(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "refunded",
+    snapshot: JSON.stringify(snapshot),
+    payment_total: 3750,
+  });
+});
+test.each(["identity", "amount", "printful", "stale"])(
+  "rejects %s reconciliation evidence",
+  async (state) => {
+    const fixture = await refundFixture();
+    if (state === "identity")
+      fixture.session.metadata = {
+        ...fixture.session.metadata,
+        order_id: "other",
+      };
+    if (state === "amount") fixture.charge.amount = 1;
+    if (state === "printful") fixture.remote.external_id = "other";
+    if (state === "stale") {
+      await env.DB.prepare("UPDATE orders SET refund_amount=3750 WHERE id=?")
+        .bind(id)
+        .run();
+      fixture.charge.amount_refunded = 0;
+    }
+    await reconcileOrderRefund(env, id);
+    expect(await refundOrder()).toMatchObject({
+      status: "submitted",
+      refund_state: state === "printful" ? "refunded" : "none",
+      last_error: expect.stringContaining("operator"),
+    });
+  },
+);
+test("provider outages retain reconciliation work and do not resolve alerts", async () => {
+  const { fetcher } = await refundFixture();
+  fetcher.mockResolvedValue(new Response("Unavailable", { status: 503 }));
+  await reconcileOrderRefund(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "submitted",
+    refund_state: "none",
+    reconciliation_lease: 0,
+    reconciliation_at: expect.any(Number),
+  });
+  expect((await refundOrder())!.reconciliation_at).toBeGreaterThan(now());
+});
+test("signed refund callbacks locate old orders and wrong-mode callbacks are rejected", async () => {
+  await refundFixture();
+  const payload = JSON.stringify({
+    id: "evt_refund",
+    type: "refund.updated",
+    livemode: true,
+    data: {
+      object: { id: "re_fixture", payment_intent: "pi_fixture", amount: 1 },
+    },
+  });
+  const request = new Request(`${origin}/api/webhooks/stripe`, {
+    method: "POST",
+    body: payload,
+    headers: {
+      "stripe-signature": `t=${now()},v1=${await hmac(env.STRIPE_WEBHOOK_SECRET, `${now()}.${payload}`)}`,
+    },
+  });
+  expect((await stripeWebhook(request, { platform: { env } })).status).toBe(
+    200,
+  );
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_amount: 3750,
+  });
+  const wrongMode = payload.replace('"livemode":true', '"livemode":false');
+  const invalid = new Request(`${origin}/api/webhooks/stripe`, {
+    method: "POST",
+    body: wrongMode,
+    headers: {
+      "stripe-signature": `t=${now()},v1=${await hmac(env.STRIPE_WEBHOOK_SECRET, `${now()}.${wrongMode}`)}`,
+    },
+  });
+  expect((await stripeWebhook(invalid, { platform: { env } })).status).toBe(
+    400,
+  );
+});
+test("scheduled sweep repairs missed legacy cancellation and refund callbacks", async () => {
+  await refundFixture();
+  await env.DB.prepare(
+    "UPDATE orders SET status='failed',last_error='Printful status: canceled' WHERE id=?",
+  )
+    .bind(id)
+    .run();
+  await sweep(env);
+  expect(await refundOrder()).toMatchObject({
+    status: "cancelled",
+    refund_state: "refunded",
+    last_error: null,
+  });
+  expect(env.EMAIL?.send).toHaveBeenCalledTimes(1);
+  expect(env.EMAIL?.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: snapshot.recipient.email,
+      subject: expect.stringContaining("canceled and refunded"),
+    }),
+  );
+});
+test("refunds for non-Checkout payments are acknowledged without changing shop orders", async () => {
+  const { fetcher } = await refundFixture();
+  fetcher.mockResolvedValue(
+    Response.json({ payment_intent: null, livemode: true }),
+  );
+  const payload = JSON.stringify({
+    id: "evt_direct_refund",
+    type: "refund.updated",
+    livemode: true,
+    data: { object: { id: "re_fixture", charge: "ch_direct" } },
+  });
+  const timestamp = now();
+  const request = new Request(`${origin}/api/webhooks/stripe`, {
+    method: "POST",
+    body: payload,
+    headers: {
+      "stripe-signature": `t=${timestamp},v1=${await hmac(env.STRIPE_WEBHOOK_SECRET, `${timestamp}.${payload}`)}`,
+    },
+  });
+  expect((await stripeWebhook(request, { platform: { env } })).status).toBe(
+    200,
+  );
+  expect(await refundOrder()).toMatchObject({
+    status: "submitted",
+    refund_state: "none",
+  });
+});
+test.each(["pending", "requires_action", "failed"])(
+  "full-amount %s refunds do not send a cancellation completion email",
+  async (state) => {
+    await refundFixture(3750, state);
+    await processOrder(env, id);
+    expect(await refundOrder()).toMatchObject({
+      status: "cancelled",
+      refund_state: state === "requires_action" ? "pending" : state,
+    });
+    await sendNotifications(env);
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT * FROM notifications WHERE kind='cancellation-refund'",
+        ).all()
+      ).results,
+    ).toHaveLength(0);
+  },
+);
+test("cancellation email retries provider failures without duplicating a successful notification", async () => {
+  await refundFixture();
+  await reconcileOrderRefund(env, id);
+  const send = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Email unavailable"))
+    .mockResolvedValue({ messageId: "canceled-email" });
+  env.EMAIL = { send };
+  await sendNotifications(env);
+  expect(
+    await env.DB.prepare(
+      "SELECT status,attempts FROM notifications WHERE kind='cancellation-refund'",
+    ).first(),
+  ).toMatchObject({ status: "pending", attempts: 1 });
+  await env.DB.prepare(
+    "UPDATE notifications SET retry_at=0 WHERE kind='cancellation-refund'",
+  ).run();
+  await sendNotifications(env);
+  await reconcileOrderRefund(env, id);
+  await sendNotifications(env);
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(
+    await env.DB.prepare(
+      "SELECT status,message_id FROM notifications WHERE kind='cancellation-refund'",
+    ).first(),
+  ).toMatchObject({ status: "sent", message_id: "canceled-email" });
+});
+test("full refund detected before fulfillment prevents a provider submission", async () => {
+  const { fetcher } = await refundFixture(3750, "succeeded", "inprocess");
+  await env.DB.prepare(
+    "UPDATE orders SET status='paid',printful_id=NULL WHERE id=?",
+  )
+    .bind(id)
+    .run();
+  await processOrder(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "failed",
+    refund_state: "refunded",
+  });
+  expect(fetcher.mock.calls.every(([, init]) => init?.method === "GET")).toBe(
+    true,
+  );
+});
+test("a refund arriving during draft lookup prevents production confirmation", async () => {
+  const { fetcher, session } = await refundFixture(0, "succeeded", "draft");
+  await env.DB.prepare("UPDATE orders SET status='submitting' WHERE id=?")
+    .bind(id)
+    .run();
+  fetcher.mockImplementation(async (input, init) => {
+    expect(init?.method ?? "GET").toBe("GET");
+    if (new URL(String(input)).origin === "https://api.printful.com") {
+      await env.DB.prepare(
+        "UPDATE orders SET status='failed',refund_state='refunded',refund_amount=3750 WHERE id=?",
+      )
+        .bind(id)
+        .run();
+      return Response.json({
+        data: {
+          id: 123,
+          external_id: id,
+          status: "draft",
+          costs: { calculation_status: "done" },
+        },
+      });
+    }
+    return Response.json(session);
+  });
+  await processOrder(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "failed",
+    refund_state: "refunded",
+  });
+  expect(fetcher.mock.calls.every(([, init]) => init?.method === "GET")).toBe(
+    true,
+  );
+});
+test.each(["pending", "failed"])(
+  "cancellation with a %s refund is not falsely resolved",
+  async (state) => {
+    await refundFixture(0, state);
+    await processOrder(env, id);
+    expect(await refundOrder()).toMatchObject({
+      status: "cancelled",
+      refund_state: state,
+    });
+    await env.DB.prepare("UPDATE orders SET cancellation_at=? WHERE id=?")
+      .bind(now() - cancellationGraceSeconds - 1, id)
+      .run();
+    await reconcileOrderRefund(env, id);
+    expect(
+      await env.DB.prepare(
+        "SELECT status FROM notifications WHERE kind='alert'",
+      ).first(),
+    ).toMatchObject({ status: "pending" });
+  },
+);
+test("refund state remains verified when Printful is unavailable and retries stop", async () => {
+  const { fetcher, session } = await refundFixture();
+  await env.DB.prepare("UPDATE orders SET status='paid' WHERE id=?")
+    .bind(id)
+    .run();
+  fetcher.mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    if (url.origin === "https://api.printful.com")
+      return new Response("Unavailable", { status: 503 });
+    if (url.pathname === "/v1/refunds")
+      return Response.json({
+        data: [{ id: "re_fixture", charge: "ch_fixture", status: "succeeded" }],
+        has_more: false,
+      });
+    return Response.json(session);
+  });
+  await processOrder(env, id);
+  expect(await refundOrder()).toMatchObject({
+    status: "failed",
+    refund_state: "refunded",
+    refund_amount: 3750,
+    reconciliation_lease: 0,
+  });
+  const calls = fetcher.mock.calls.length;
+  await processOrder(env, id);
+  expect(fetcher).toHaveBeenCalledTimes(calls);
+});
+test("reconciliation uses pagination and does not treat an older failed attempt as a new failure", async () => {
+  const { fetcher, session } = await refundFixture(
+    1000,
+    "succeeded",
+    "inprocess",
+  );
+  fetcher.mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/refunds")
+      return Response.json(
+        url.searchParams.has("starting_after")
+          ? {
+              data: [{ id: "re_old", charge: "ch_fixture", status: "failed" }],
+              has_more: false,
+            }
+          : {
+              data: [
+                { id: "re_new", charge: "ch_fixture", status: "succeeded" },
+              ],
+              has_more: true,
+            },
+      );
+    return Response.json(session);
+  });
+  await reconcileOrderRefund(env, id);
+  expect(await refundOrder()).toMatchObject({
+    refund_state: "partial",
+    refund_amount: 1000,
+    last_error: null,
+  });
 });
 function post(path: string, data: unknown) {
   return new Request(`${origin}${path}`, {
