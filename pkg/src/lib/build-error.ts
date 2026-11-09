@@ -49,21 +49,33 @@ export class ServerScriptError extends Error {
 }
 
 /**
- * Component CSS the browser could not read safely, such as an unbalanced brace. All component
- * CSS is joined into one page stylesheet, so the mistake would break other components' rules;
- * the build stops instead and names the file and line.
+ * A component source the browser could not read safely: a `<style>` or `<script>` that is never
+ * closed, or a client script with a JavaScript syntax error. The page would build and then fail
+ * in the browser, so the build stops instead and names the file and line.
  */
-export class ComponentCssSyntaxError extends Error {
+export class ComponentSyntaxError extends Error {
   readonly sourceFile: string;
   readonly line: number;
   readonly column: number;
 
   constructor(message: string, location: BuildScriptLocation) {
     super(message);
-    this.name = "ComponentCssSyntaxError";
+    this.name = "ComponentSyntaxError";
     this.sourceFile = location.sourceFile;
     this.line = location.line;
     this.column = location.column;
+  }
+}
+
+/**
+ * Component CSS the browser could not read safely, such as an unbalanced brace. All component
+ * CSS is joined into one page stylesheet, so the mistake would break other components' rules;
+ * the build stops instead and names the file and line.
+ */
+export class ComponentCssSyntaxError extends ComponentSyntaxError {
+  constructor(message: string, location: BuildScriptLocation) {
+    super(message, location);
+    this.name = "ComponentCssSyntaxError";
   }
 }
 
@@ -75,7 +87,7 @@ export interface LocatedFailure {
 }
 
 /**
- * Finds the first {@link BuildScriptError} or {@link ComponentCssSyntaxError} inside `error` and returns its location.
+ * Finds the first {@link BuildScriptError} or {@link ComponentSyntaxError} inside `error` and returns its location.
  *
  * Failures are wrapped on their way up: a compile scope collects them into an
  * `AggregateError`, and page processing keeps the original as `cause`. Both are
@@ -91,7 +103,7 @@ export const locateBuildError = (
     seen.add(value);
     if (
       value instanceof BuildScriptError ||
-      value instanceof ComponentCssSyntaxError
+      value instanceof ComponentSyntaxError
     ) {
       return { file: value.sourceFile, line: value.line, column: value.column };
     }

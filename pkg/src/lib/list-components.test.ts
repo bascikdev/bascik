@@ -302,6 +302,21 @@ describe("listComponents – native HTML element name warning", () => {
     },
   );
 
+  it("gives a file name with a space one warning with a name a tag can spell (finding 144)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/my widget.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>x</div>"));
+
+    await listComponents();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = String(warnSpy.mock.calls[0][0]);
+    expect(message).toContain("my widget");
+    expect(message).toContain("my-widget.html");
+    expect(message).not.toContain("my-my widget");
+    warnSpy.mockRestore();
+  });
+
   it("does not warn for hyphenated component names", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-nav.html"]);
@@ -992,7 +1007,14 @@ describe("listComponents – component build script preservation", () => {
       "src/components/card.html",
       "src/components/card.js",
     ]);
-    mockReadFile.mockResolvedValue(Buffer.from("<div>Card</div>"));
+    // Companion scripts are parsed now (finding 41), so the .js file holds JS.
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      Buffer.from(
+        String(path).endsWith(".js")
+          ? "console.log('card');"
+          : "<div>Card</div>",
+      ),
+    );
 
     const result = await listComponents();
     expect(result["card"]).toBeDefined();

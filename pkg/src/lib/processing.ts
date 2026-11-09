@@ -147,6 +147,7 @@ import {
   reportPageErrors,
 } from "./page-diagnostics.ts";
 import { resolveInlineStylesHtml } from "./page-minification.ts";
+import { decodeSource } from "./source-text.ts";
 import {
   transpilePage,
   writeTranspiledPage,
@@ -341,7 +342,7 @@ export const expandPageToJobs = async (
   let rawHtml: string;
   try {
     rawHtml = stampDirectiveSources(
-      (await readFile(pagePath)).toString(),
+      decodeSource(await readFile(pagePath)),
       pagePath,
     );
   } catch (err) {

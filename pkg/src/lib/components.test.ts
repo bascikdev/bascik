@@ -33,6 +33,7 @@ import {
   findMatchingClose,
 } from "./component-tags.ts";
 import { maskRawTextContent } from "./component-masking.ts";
+import { ComponentSyntaxError } from "./build-error.ts";
 import { mayChangeMaskedRegions } from "./component-props.ts";
 import { createAttributeValueScanner } from "./component-attribute-scan.ts";
 
@@ -1491,6 +1492,192 @@ describe("listComponents – unbalanced braces in component CSS", () => {
     [
       "<style> text inside a <textarea>",
       '<p class="a">x</p>\n<textarea><style>.a {</style></textarea>\n',
+    ],
+  ])("accepts %s", async (_label, html) => {
+    expect(await listWith("good-card", html)).toBeUndefined();
+  });
+});
+
+describe("listComponents – JavaScript syntax errors in browser scripts", () => {
+  // Finding 41: a plain <script> with a missing } built with exit 0 and shipped an
+  // IIFE the browser rejects; the same mistake in TypeScript failed with a location.
+  const listWith = async (files: Record<string, string>): Promise<unknown> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-js-syntax-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (const [rel, content] of Object.entries(files)) {
+        await mkdir(join(cwd, rel, ".."), { recursive: true });
+        await writeFile(join(cwd, rel), content);
+      }
+      try {
+        await listComponents([join(cwd, "src/components")]);
+        // Listed twice: an unchanged broken file must fail again, not hit a cache.
+        await listComponents([join(cwd, "src/components")]);
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+  const messageOf = (error: unknown) =>
+    error instanceof Error ? error.message : String(error);
+
+  it("fails on a classic <script> that does not parse, at the component line", async () => {
+    const error = await listWith({
+      "src/components/my-counter/my-counter.html":
+        '<button id="inc">+</button>\n<script>\n  let count = 0;\n  const = 1;\n</script>\n',
+    });
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-counter\.html:4\b/);
+    expect(messageOf(error)).toMatch(/SyntaxError|Unexpected/);
+    expect(error).toMatchObject({ line: 4 });
+  });
+
+  it("fails on the audit repro: an arrow body never closed", async () => {
+    const error = await listWith({
+      "src/components/my-counter/my-counter.html":
+        '<button id="inc">+</button><output id="val">0</output>\n<script>let count = 0; const val = document.getElementById("val"); document.getElementById("inc").addEventListener("click", () => { val.textContent = String(++count) ;</script>\n',
+    });
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-counter\.html:2\b/);
+  });
+
+  it("fails on a module script that does not parse, using the module grammar", async () => {
+    const error = await listWith({
+      "src/components/my-chart/my-chart.html":
+        '<canvas id="c"></canvas>\n<script type="module">\n  import { draw } from "/draw.js";\n  export const x = 1;\n  draw(;\n</script>\n',
+    });
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-chart\.html:5\b/);
+  });
+
+  it("fails on a companion .js file that does not parse, naming that file", async () => {
+    const error = await listWith({
+      "src/components/my-tabs/my-tabs.html":
+        '<div id="t"></div>\n<script src="./my-tabs.js"></script>\n',
+      "src/components/my-tabs/my-tabs.js":
+        'const t = document.getElementById("t");\nt.addEventListener("click", () => {\n',
+    });
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-tabs\.js:\d+/);
+  });
+
+  it.each([
+    [
+      "module syntax with top-level await and import.meta",
+      '<p id="a">x</p>\n<script type="module">\nimport { a } from "/a.js";\nconst data = await fetch(import.meta.url);\nexport default a;\n</script>\n',
+    ],
+    [
+      "a classic script with a top-level return (it ships inside a function)",
+      '<p id="a">x</p>\n<script>\nif (!document.getElementById("a")) return;\nconsole.log(1);\n</script>\n',
+    ],
+    [
+      "an untyped script with static imports (Bascik ships it as a module)",
+      '<p id="a">x</p>\n<script>\nimport { a } from "/a.js";\na();\n</script>\n',
+    ],
+    [
+      "JSON and template data blocks",
+      '<p id="a">x</p>\n<script type="application/json">{ not: js, }</script>\n<script type="text/template"><p>{{ x }</p></script>\n',
+    ],
+    [
+      "a build script with Node-only syntax",
+      '<p id="a">x</p>\n<script data-bascik-build>\nimport { readFile } from "node:fs/promises";\nexport default async () => "<p>hi</p>";\n</script>\n',
+    ],
+    [
+      "a script inside a preserved <code> block",
+      '<p id="a">x</p>\n<code><script>const = 1;</script></code>\n',
+    ],
+    [
+      "regex and strings that look like markup",
+      '<p id="a">x</p>\n<script>\nconst re = /<\\/p>/g;\nconst s = "<!-- not a comment -->";\n</script>\n',
+    ],
+  ])("accepts %s", async (_label, html) => {
+    expect(
+      await listWith({ "src/components/ok-case/ok-case.html": html }),
+    ).toBeUndefined();
+  });
+});
+
+describe("listComponents – unclosed <style> or <script>", () => {
+  // Finding 30: a missing </style> swallowed the component and the rest of the page body as CSS,
+  // and the build said it was complete.
+  const listWith = async (name: string, html: string): Promise<unknown> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-unclosed-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, `src/components/${name}`), { recursive: true });
+      await writeFile(join(cwd, `src/components/${name}/${name}.html`), html);
+      try {
+        await listComponents([join(cwd, "src/components")]);
+        // Listed twice: an unchanged broken file must fail again, not hit a cache.
+        await listComponents([join(cwd, "src/components")]);
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+  const messageOf = (error: unknown) =>
+    error instanceof Error ? error.message : String(error);
+
+  it("fails on a <style> that is never closed, naming the line of the <style>", async () => {
+    const error = await listWith(
+      "my-counter",
+      '<!-- @bascik\nA counter.\n-->\n<style>\n  .x { color: red; }\n<button class="x">broken</button>\n',
+    );
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-counter\.html:4\b/);
+    expect(messageOf(error)).toContain("</style>");
+    expect(error).toMatchObject({ line: 4, column: 1 });
+  });
+
+  it("fails on a <script> that is never closed", async () => {
+    const error = await listWith(
+      "my-counter",
+      '<button id="inc">+</button>\n  <SCRIPT type="module">\n  console.log(1);\n',
+    );
+    expect(error).toBeInstanceOf(ComponentSyntaxError);
+    expect(messageOf(error)).toMatch(/my-counter\.html:2\b/);
+    expect(messageOf(error)).toContain("</script>");
+    expect(error).toMatchObject({ line: 2, column: 3 });
+  });
+
+  it("names the unclosed <style> even when a later <style> is closed", async () => {
+    const error = await listWith(
+      "two-styles",
+      '<p class="a">x</p>\n<style>.a { color: red; }</style>\n<style>\n.b { color: blue; }\n',
+    );
+    expect(messageOf(error)).toMatch(/two-styles\.html:3\b/);
+  });
+
+  it.each([
+    [
+      "a closer with a space",
+      '<p class="a">x</p>\n<style>.a { color: red; }</style >\n',
+    ],
+    [
+      "an uppercase closer",
+      '<p class="a">x</p>\n<style>.a { color: red; }</STYLE>\n',
+    ],
+    [
+      "<style> text in a script string",
+      '<p id="a">x</p>\n<script>\n  document.head.append("<style>");\n</script>\n',
+    ],
+    ["an unclosed <style> in an HTML comment", "<p>x</p>\n<!-- <style> -->\n"],
+    [
+      "<style> text inside <code>",
+      "<p><code>&lt;style&gt; or <style></code></p>\n",
+    ],
+    ["<style> text inside a <textarea>", "<textarea><style></textarea>\n"],
+    [
+      "a custom element whose name starts with style",
+      "<style-guide></style-guide>\n",
     ],
   ])("accepts %s", async (_label, html) => {
     expect(await listWith("good-card", html)).toBeUndefined();
@@ -2974,5 +3161,121 @@ describe("createMatchingCloseFinder", () => {
     const find = createMatchingCloseFinder(html, maskRawTextContent(html));
     expect(find("i)(", 3)).toBe(-1);
     expect(find("", 3)).toBe(-1);
+  });
+});
+
+describe("listComponents – template markup a component cannot use (findings 23, 24)", () => {
+  const warningsFor = async (html: string): Promise<string[]> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-template-shape-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const file = join(cwd, "src/components/my-widget.html");
+      await mkdir(join(file, ".."), { recursive: true });
+      await writeFile(file, html);
+      await listComponents([join(cwd, "src/components")]);
+      return warnSpy.mock.calls.map((call) => call.map(String).join(" "));
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+
+  it("names each piece of document chrome in a component saved as a whole page (24)", async () => {
+    const warnings = await warningsFor(
+      '<!DOCTYPE html>\n<html lang="en">\n<head><title>oops</title></head>\n<body><div class="x">full page</div></body>\n</html>\n',
+    );
+    const hit = warnings.filter((w) => w.includes("whole HTML document"));
+    expect(hit).toHaveLength(1);
+    for (const tag of ["<!DOCTYPE>", "<html>", "<head>", "<body>"])
+      expect(hit[0]).toContain(tag);
+    expect(hit[0]).toMatch(/my-widget\.html:1\b/);
+    expect(hit[0]).toContain("src/pages/");
+  });
+
+  it("does not count document tags in comments, scripts, code samples, or <header>/<headline-x>", async () => {
+    const warnings = await warningsFor(
+      '<header><headline-x></headline-x><!-- <html> --><pre><code>&lt;body&gt;</code></pre><script>const t = "<body>";</script></header>\n',
+    );
+    expect(warnings.filter((w) => w.includes("whole HTML document"))).toEqual(
+      [],
+    );
+  });
+
+  it("names a native <slot> element and points at data-bascik-slot (23)", async () => {
+    const warnings = await warningsFor(
+      '<div class="wc">\n  <slot>fallback</slot>\n  <slot name="title">title fallback</slot>\n</div>\n',
+    );
+    const hit = warnings.filter((w) => w.includes("<slot>"));
+    expect(hit).toHaveLength(1);
+    expect(hit[0]).toMatch(/my-widget\.html:2\b/);
+    expect(hit[0]).toContain("data-bascik-slot");
+  });
+
+  it("leaves <slot> alone inside a <template> (declarative shadow DOM and custom elements)", async () => {
+    const warnings = await warningsFor(
+      '<host-el><template shadowrootmode="open"><slot></slot></template></host-el>\n<template id="t"><slot name="x"></slot></template>\n',
+    );
+    expect(warnings.filter((w) => w.includes("<slot>"))).toEqual([]);
+  });
+});
+
+describe("listComponents – relative imports in browser scripts (finding 25)", () => {
+  const warningsFor = async (
+    files: Record<string, string>,
+  ): Promise<string[]> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-relative-import-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (const [rel, content] of Object.entries(files)) {
+        await mkdir(join(cwd, rel, ".."), { recursive: true });
+        await writeFile(join(cwd, rel), content);
+      }
+      await listComponents([join(cwd, "src/components")]);
+      return warnSpy.mock.calls
+        .map((call) => call.map(String).join(" "))
+        .filter((w) => w.includes("resolves against the page URL"));
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+
+  it("names a dynamic import of a sibling file, its line, and that the file is not published", async () => {
+    const warnings = await warningsFor({
+      "src/components/js-lab/js-lab.html":
+        '<div id="root"></div>\n<script>\n  import("./extra.js").then((m) => m.default(root));\n</script>\n',
+      "src/components/js-lab/extra.js": "export default () => {};\n",
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"./extra.js"');
+    expect(warnings[0]).toMatch(/js-lab\.html:3\b/);
+    expect(warnings[0]).toContain("not published");
+  });
+
+  it("names static and dynamic relative imports in a companion .mjs and an inline module", async () => {
+    const warnings = await warningsFor({
+      "src/components/my-chart/my-chart.html":
+        '<canvas></canvas>\n<script type="module">\n  import { draw } from "../lib/draw.js";\n</script>\n',
+      "src/components/my-chart/my-chart.mjs":
+        'const m = await import("./helper.mjs");\n',
+    });
+    expect(warnings.some((w) => w.includes('"../lib/draw.js"'))).toBe(true);
+    expect(warnings.some((w) => w.includes('"./helper.mjs"'))).toBe(true);
+    expect(warnings.some((w) => /my-chart\.mjs:1\b/.test(w))).toBe(true);
+  });
+
+  it("is silent for published URLs, bare packages, computed imports, strings, and server-side scripts", async () => {
+    const warnings = await warningsFor({
+      "src/components/ok-box/ok-box.html":
+        "<div></div>\n<script>\n" +
+        '  import("/js/extra.js");\n' +
+        '  import("https://esm.sh/lit");\n' +
+        "  const name = './x.js'; import(name);\n" +
+        "  const doc = \"import('./not-code.js')\";\n" +
+        "  // import('./commented.js')\n" +
+        "</script>\n" +
+        '<script data-bascik-build>\n  const fs = await import("./local.js");\n  return "";\n</script>\n',
+    });
+    expect(warnings).toEqual([]);
   });
 });

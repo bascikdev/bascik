@@ -14,6 +14,7 @@ import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
 import { GeneratedIdClassCollisionError } from "./generated-id-classes.ts";
+import { ComponentSyntaxError } from "./build-error.ts";
 
 const {
   listPagesMock,
@@ -928,6 +929,67 @@ describe("checkProject", () => {
       expect(item?.locations).toHaveLength(2);
     });
 
+    // Finding 30: an unclosed <style> stops the build at the component's own
+    // line; --check names the same file and line, not the config file.
+    it("reports a component syntax error at the component file and line", async () => {
+      await setupProject({
+        "pages/index.html": "<my-counter></my-counter>",
+        "src/components/my-counter.html": "<style>\n.x { color: red; }\n",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockRejectedValue(
+        new ComponentSyntaxError(
+          "[bascik] HTML error in src/components/my-counter.html:1: <style> is never closed",
+          { sourceFile: "src/components/my-counter.html", line: 1, column: 1 },
+        ),
+      );
+      deepReadDirFlatMock.mockResolvedValue([
+        join(workDir, "src/components/my-counter.html"),
+      ]);
+      const findings = await checkProject();
+      expect(
+        findings.items.find((i) => i.category === "component-syntax"),
+      ).toMatchObject({
+        severity: "error",
+        locations: [
+          { filePath: "src/components/my-counter.html", line: 1, column: 1 },
+        ],
+      });
+      expect(
+        findings.items.filter((i) => i.category === "component-list"),
+      ).toEqual([]);
+      // The fallback scan still knows the component, so its tag is not unmatched.
+      expect(
+        findings.items.filter((i) => i.category === "unmatched-tag"),
+      ).toEqual([]);
+    });
+
+    // Finding 24: a whole document saved as a component built with no word and
+    // --check said "✓ 0 errors".
+    it("warns about page chrome in a component template at its line", async () => {
+      await setupProject({
+        "pages/index.html": "<full-page></full-page>",
+        "src/components/full-page.html":
+          '<!-- note -->\n<!DOCTYPE html>\n<html lang="en"><body><div>x</div></body></html>\n',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "full-page": {
+          fileName: join(workDir, "src/components/full-page.html"),
+          fileContent: "<div>x</div>",
+        },
+      });
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "component-document",
+      );
+      expect(item).toMatchObject({
+        severity: "warning",
+        locations: [{ filePath: "src/components/full-page.html", line: 2 }],
+      });
+      expect(item?.message).toContain("<html>");
+    });
+
     it("reports two components whose #id rules generate one class, with both rule locations and the fix", async () => {
       await setupProject({
         "pages/index.html": "<site-nav></site-nav><site-nav_x></site-nav_x>",
@@ -1708,13 +1770,17 @@ describe("formatFindingsHuman — dist/ lines", () => {
 
   it("shows passing dist line when distHtmlChecked > 0, no errors", () => {
     const out = formatFindingsHuman({ ...base(), distHtmlChecked: 12 });
-    expect(out).toContain("✓ 12 dist/ HTML files pass WHATWG spec (parse5)");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 12 dist/ HTML files",
+    );
     expect(out).not.toContain("install parse5");
   });
 
   it("uses singular form when distHtmlChecked === 1", () => {
     const out = formatFindingsHuman({ ...base(), distHtmlChecked: 1 });
-    expect(out).toContain("✓ 1 dist/ HTML file pass");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 1 dist/ HTML file",
+    );
   });
 
   it("shows passing dist note alongside errors in the summary", () => {
@@ -1732,7 +1798,37 @@ describe("formatFindingsHuman — dist/ lines", () => {
       ],
     };
     const out = formatFindingsHuman(findings);
-    expect(out).toContain("✓ 8 dist/ HTML files pass WHATWG spec (parse5)");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 8 dist/ HTML files",
+    );
+  });
+
+  // Finding 30: the report said "violations" and "pass WHATWG spec" one line apart.
+  it("does not claim the dist/ files pass when parse5 reported violations", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 2,
+      distHtmlChecked: 4,
+      items: [
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[eof-in-element-that-can-contain-only-text]",
+          locations: [{ filePath: "index.html", line: 22 }],
+        },
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[end-tag-without-matching-open-element]",
+          locations: [{ filePath: "index.html", line: 30 }],
+        },
+      ],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).not.toContain("pass WHATWG spec");
+    expect(out).toContain(
+      "✗ 1 of 4 dist/ HTML files has WHATWG spec violations (parse5)",
+    );
   });
 
   it("renders dist-html-spec findings with file:line and error code", () => {

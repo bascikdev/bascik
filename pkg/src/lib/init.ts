@@ -70,9 +70,11 @@ const INDEX_HTML = `<!DOCTYPE html>
  * pki.ts writes into the project folder when `http.tls.enabled` is set
  * without a keyFile or certFile; the private key must never be committed.
  * The exact names, not `*.pem`, so certificates a project commits on purpose
- * stay tracked.
+ * stay tracked. `node_modules/` comes first so a fresh folder's first
+ * `git add .` does not stage installed packages, as create-bascik's does not.
  */
 const REQUIRED_GITIGNORE_ENTRIES = [
+  "node_modules/",
   "dist/",
   "node_modules/.cache/bascik/",
   "bascik-privkey.pem",
@@ -439,6 +441,13 @@ to change a default: https://bascik.dev/configuration
 }
 
 /**
+ * One `.gitignore` line, compared loosely: `node_modules`, `/node_modules`, and
+ * `node_modules/` all ignore the root folder, so none of them gets a twin.
+ */
+const gitignoreKey = (line: string): string =>
+  line.trim().replace(/^\//, "").replace(/\/$/, "");
+
+/**
  * Append the entries `.gitignore` lacks, in the file's own newline style (a
  * CRLF file stays CRLF). Resolves with the entries it added.
  */
@@ -454,8 +463,12 @@ async function ensureGitignoreEntries(
   }
 
   const newline = current.includes("\r\n") ? "\r\n" : "\n";
-  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
-  const toAppend = entries.filter((entry) => !existing.has(entry));
+  const existing = new Set(
+    current.split(/\r?\n/).map((line) => gitignoreKey(line)),
+  );
+  const toAppend = entries.filter(
+    (entry) => !existing.has(gitignoreKey(entry)),
+  );
   if (toAppend.length === 0) {
     return [];
   }

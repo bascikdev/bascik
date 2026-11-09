@@ -472,8 +472,10 @@ describe("recursivelyTranspile – integration", () => {
       componentList,
     );
 
+    // The child's root carries the marker, so it stays and holds its slot
+    // content (finding 27).
     expect(transpiledHtmlBody).toBe(
-      "<section>parent contentchild content</section>",
+      "<section>parent content<article>child content</article></section>",
     );
   });
 

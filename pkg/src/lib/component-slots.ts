@@ -1,4 +1,5 @@
 import { maskRawTextContent } from "./component-masking.ts";
+import { readStartTag } from "./component-attribute-scan.ts";
 import { createMatchingCloseFinder, getTag } from "./component-tags.ts";
 import {
   createMarkerWalk,
@@ -342,7 +343,9 @@ export const extractDefaultSlotContent = (
  * Extract named slot content from a component usage's inner HTML.
  * Looks for wrapper elements carrying `data-bascik-slot="slotName"`.
  *
- * e.g. '<div data-bascik-slot="header"><h1>H</h1></div>'
+ * Each content is trimmed, as the default slot's is.
+ *
+ * e.g. '<div data-bascik-slot="header"> <h1>H</h1>\n</div>'
  *      → { header: "<h1>H</h1>" }
  */
 export const extractNamedSlotContent = (
@@ -355,7 +358,9 @@ export const extractNamedSlotContent = (
     innerContent,
     componentNames,
   )) {
-    slots[slotName] = content;
+    // Trimmed like the default slot's content, so a wrapper written on its
+    // own lines renders the same as one written inline (finding 8).
+    slots[slotName] = content.trim();
   }
   return slots;
 };
@@ -401,6 +406,77 @@ export const replaceNamedSlots = (
   }
   parts.push(fileContent.slice(cursor));
   return parts.join("");
+};
+
+const ROOT_SKIPPED_TAGS = new Set(["link", "meta", "script", "style"]);
+
+/**
+ * A slot marker on the component's root element (`<div class="rs"
+ * data-bascik-slot>fallback</div>`) moved onto a new `<div>` around the
+ * root's content, so the slot fills the root instead of replacing it: the
+ * root keeps its own class, inherited usage attributes land on it, and the
+ * fallback stays inside it (finding 27). The `<div>` is a slot wrapper, so
+ * it never reaches the output. The root is the first element that is not
+ * `<link>`, `<meta>`, `<script>` or `<style>`, as attribute inheritance
+ * reads it. A void, self-closing or hyphenated root (a nested component or
+ * custom element usage) is left as written.
+ */
+export const keepSlotRoot = (fileContent: string): string => {
+  if (!fileContent.includes("data-bascik-slot")) return fileContent;
+  const masked = maskRawTextContent(fileContent);
+  const tags = /<([a-zA-Z][\w-]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = tags.exec(masked)) !== null) {
+    if (!ROOT_SKIPPED_TAGS.has(match[1].toLowerCase())) break;
+  }
+  if (match === null || match[1].includes("-")) return fileContent;
+  const tagName = match[1];
+  const start = match.index;
+  const { attributes, end } = readStartTag(fileContent.slice(start));
+  const marker = attributes.find(
+    (attr) => attr.name.toLowerCase() === "data-bascik-slot",
+  );
+  if (!marker || end === -1) return fileContent;
+  const openTag = fileContent.slice(start, start + end);
+  if (/\/\s*>$/.test(openTag)) return fileContent;
+  const contentStart = start + end;
+  const closeIndex = createMatchingCloseFinder(fileContent, masked)(
+    tagName,
+    contentStart,
+  );
+  if (closeIndex === -1) return fileContent;
+  const before = openTag.slice(0, marker.start).replace(/\s+$/, "");
+  const rootOpen = `${before}${openTag.slice(marker.end)}`;
+  const wrapper = `<div ${openTag.slice(marker.start, marker.end)}>`;
+  return (
+    fileContent.slice(0, start) +
+    rootOpen +
+    wrapper +
+    fileContent.slice(contentStart, closeIndex) +
+    "</div>" +
+    fileContent.slice(closeIndex)
+  );
+};
+
+/**
+ * The template with every slot wrapper, named and default, replaced by a
+ * space: the markup an instance renders whatever the usage passes. A tag in
+ * slot fallback content renders only when the usage leaves that slot empty,
+ * so the expansion's cycle check (finding 44) does not count it.
+ */
+export const withoutSlotWrappers = (fileContent: string): string => {
+  if (!fileContent.includes("data-bascik-slot")) return fileContent;
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { startIndex, endIndex } of parseNamedSlots(
+    fileContent,
+    new Set(),
+  )) {
+    parts.push(fileContent.slice(cursor, startIndex), " ");
+    cursor = endIndex;
+  }
+  parts.push(fileContent.slice(cursor));
+  return replaceDefaultSlots(parts.join(""), " ");
 };
 
 /**

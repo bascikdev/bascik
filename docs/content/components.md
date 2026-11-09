@@ -576,6 +576,7 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 - If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), the CLI warns `Component "header" has the same name as a native HTML element.` but still loads the component, which then replaces every `<header>` on your pages and most likely breaks the site. The editor does not flag native names; only the CLI does.
 - If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
+- A filename no tag can spell, such as `my widget.html` or `2col.html`, can never be used, because `<my widget>` is read as `<my>` with a `widget` attribute. A name must start with a lowercase ASCII letter and hold only letters, digits, `-`, `.`, and `_`. Bascik warns with the file and a name to rename it to, such as `my-widget.html`.
 - Use hyphens, not underscores, between words. An underscore is legal, but `#btn {}` in `site-nav_x.html` and `#x_btn {}` in `site-nav.html` both compile to the class `b_id_site-nav_x_btn`, so each rule would style the other component's element. The build stops on that with an error naming both rules and their lines (rename the id or the component), and the editor and `bascik --check` warn on any component name with an underscore (`component-name-underscore`).
 - If a component file is empty (such as one just created in the editor), the CLI warns `Component "stub-card" (src/components/stub-card.html) is empty, so every <stub-card> renders nothing until the file has markup.` Each `<stub-card>` usage, and whatever it wraps, is removed from the output, and every other component on the page still expands.
 
@@ -603,7 +604,7 @@ When utilizing your components inside pages or other components, choose self-clo
 </hello-card>
 ```
 
-If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. A space before `/>` is optional, so `<site-nav />` and `<site-nav/>` compile identically, including when nested inside another instance of the same component. Paired and self-closing forms compile to the exact same output.
+If a component does not declare a `data-bascik-slot` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. A space before `/>` is optional, so `<site-nav />` and `<site-nav/>` compile identically, including when nested inside another instance of the same component. Paired and self-closing forms compile to the exact same output. Children passed to a component with no `data-bascik-slot` are dropped, and the build prints a warning naming the component and the file the usage is in. A native `<slot>` element is not a Bascik slot: outside a `<template>` it stays in the output as written, and the build warns about it.
 
 ## Pick the Root Element
 

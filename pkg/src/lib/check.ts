@@ -24,6 +24,9 @@ import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
+import { templateShapeProblems } from "./component-template-shape.ts";
+import { stripBom } from "./source-text.ts";
+import { locateBuildError } from "./build-error.ts";
 import {
   GeneratedIdClassCollisionError,
   formatGeneratedIdClassCollision,
@@ -796,6 +799,29 @@ export const checkProject = async (
     componentFilePaths = Object.values(componentList)
       .map((c) => c.fileName)
       .filter((f): f is string => Boolean(f));
+    // The build's template shape warnings (findings 23 and 24), so a whole
+    // document saved as a component is not reported as passing.
+    for (const filePath of componentFilePaths) {
+      let raw: string;
+      try {
+        raw = stripBom(await readFile(filePath, "utf-8"));
+      } catch {
+        continue;
+      }
+      for (const problem of templateShapeProblems(raw)) {
+        items.push({
+          category: problem.kind,
+          severity: "warning",
+          message: problem.message,
+          locations: [
+            {
+              filePath: relative(process.cwd(), filePath).replace(/\\/g, "/"),
+              line: raw.slice(0, problem.offset).split("\n").length,
+            },
+          ],
+        });
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     let matchedIdClassCollision = false;
@@ -818,6 +844,23 @@ export const checkProject = async (
         });
       }
     }
+    // A located syntax error (an unclosed <style>, an unbalanced brace, a
+    // script that does not parse) names its own component file and line.
+    const located = locateBuildError(error);
+    if (located) {
+      items.push({
+        category: "component-syntax",
+        severity: "error",
+        message: message.replace(/^\[bascik\] [^:]+ in \S+:\d+: /, ""),
+        locations: [
+          {
+            filePath: located.file,
+            line: located.line,
+            column: located.column,
+          },
+        ],
+      });
+    }
     const duplicateBlockRegex =
       /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
     let matchedDuplicate = false;
@@ -837,7 +880,7 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision) {
+    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -1362,6 +1405,21 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Duplicate route resolution",
     description: "Multiple pages resolve to the same route path.",
   },
+  "component-syntax": {
+    title: "Component syntax errors",
+    description:
+      "The build stops here: the component would ship markup, CSS, or JavaScript the browser cannot read.",
+  },
+  "component-document": {
+    title: "Components saved as whole documents",
+    description:
+      "Every page that uses the component gets its doctype, <html>, <head>, or <body> pasted into the page body.",
+  },
+  "native-slot-element": {
+    title: "Native <slot> elements in components",
+    description:
+      "A <slot> outside a shadow root is left in the output as written; Bascik slots use data-bascik-slot.",
+  },
   "component-list": {
     title: "Component scan failures",
     description:
@@ -1383,8 +1441,18 @@ const plural = (count: number, word: string): string =>
 const statusLines = (findings: CheckFindings): string[] => {
   const lines: string[] = [];
   if ((findings.distHtmlChecked ?? null) !== null) {
+    const checked = findings.distHtmlChecked as number;
+    const failing = new Set(
+      findings.items
+        .filter((item) => item.category === "dist-html-spec")
+        .map((item) => item.locations[0]?.filePath),
+    ).size;
     lines.push(
-      `✓ ${plural(findings.distHtmlChecked as number, "dist/ HTML file")} pass WHATWG spec (parse5)`,
+      failing === 0
+        ? // What parse5 reports, not a validation claim: a whole document
+          // pasted into a body parses without one (finding 24).
+          `✓ parse5 reported no parse errors in ${plural(checked, "dist/ HTML file")}`
+        : `✗ ${failing} of ${plural(checked, "dist/ HTML file")} ${failing === 1 ? "has" : "have"} WHATWG spec violations (parse5)`,
     );
   } else if (findings.distHtmlSpecHintNeeded) {
     lines.push(

@@ -27,6 +27,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { Script } from "node:vm";
 import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
 import { availableParallelism } from "node:os";
@@ -761,6 +762,78 @@ export const checkDirectiveModuleSyntax = async (
     origin === "unknown" ? { inline: true } : { origin },
     reported,
   );
+};
+
+/** Where a browser script stops parsing: the parser's message and a 1-based position. */
+export interface ScriptSyntaxProblem {
+  detail: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * Parse a classic script the way Bascik ships it, inside a function, so a
+ * top-level `return` is accepted as it is at run time. Nothing runs: a
+ * `vm.Script` only compiles. The wrapper adds one line, which is taken off
+ * the position, and an error past the end (a body never closed) is placed
+ * on the script's last line.
+ */
+const classicScriptProblem = (
+  code: string,
+  label: string,
+): ScriptSyntaxProblem | undefined => {
+  try {
+    new Script(`(function(){\n${code}\n})`, { filename: label });
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) return undefined;
+    const lines = code.split("\n");
+    const stack = (error.stack ?? "").replace(/\r\n?/g, "\n");
+    const head = /^[^\n]*:(\d+)\n/.exec(stack);
+    const reported = head ? Number(head[1]) - 1 : lines.length;
+    const line = Math.min(Math.max(reported, 1), lines.length);
+    const stackLines = stack.split("\n");
+    const caret = stackLines.findIndex((t, i) => i > 0 && /^\s*\^/.test(t));
+    const column =
+      line === reported &&
+      caret > 0 &&
+      stackLines[caret - 1] === lines[line - 1].replace(/\r$/, "")
+        ? stackLines[caret].indexOf("^") + 1
+        : 1;
+    return { detail: error.message, line, column };
+  }
+};
+
+/**
+ * The first syntax error in a browser script, or undefined when it parses.
+ * `module` scripts use the module grammar (the shared checker, then
+ * `node --check` for the location). An untyped script or companion file is
+ * reported only when it parses neither as a classic script nor as a module,
+ * because Bascik ships a script with static `import` or `export` as a module.
+ */
+export const browserScriptSyntaxError = async (
+  code: string,
+  label: string,
+  kind: "classic" | "module",
+): Promise<ScriptSyntaxProblem | undefined> => {
+  if (!code.trim()) return undefined;
+  const classic =
+    kind === "classic" ? classicScriptProblem(code, label) : undefined;
+  if (kind === "classic" && !classic) return undefined;
+  const stderr = await nodeModuleCheck(code, label);
+  if (!stderr) return undefined;
+  if (classic && !hasStaticModuleSyntax(code)) return classic;
+  const detail =
+    /^SyntaxError: (.*)$/m.exec(stderr)?.[1]?.trim() ?? "invalid JavaScript";
+  const reported = new Error(detail);
+  reported.stack = stderr;
+  const position = stripErrorPosition(reported, code);
+  const lines = code.split("\n").length;
+  return {
+    detail,
+    line: position?.line ?? lines,
+    column: position?.column ?? 1,
+  };
 };
 
 /**

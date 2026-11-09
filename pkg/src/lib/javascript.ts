@@ -181,6 +181,8 @@ import {
   scopeCssClassSelectors,
   declaredCustomPropertyNames,
   scopeCustomPropertiesInStyleValue,
+  unescapeCssIdentifier,
+  escapeCssIdentifierTail,
 } from "./styles.ts";
 import {
   createContentShield,
@@ -195,6 +197,7 @@ import {
   rewriteUsemapReferencesInHtml,
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
+import { decodeSource } from "./source-text.ts";
 import {
   createNamedOpenTagScanner,
   createOpenTagScanner,
@@ -949,9 +952,12 @@ export const prefixElementAttribute = (
               // (`.card.active`, `button.btn`, `div#panel`): only an escaped prefix
               // (`.a\\.b`) is not a token. Attribute selectors (`[data-x=a.b]`) are
               // matched first and kept whole so a dot in their value is never a class.
+              // A token may hold CSS escapes, written `\\` in the string
+              // (`"#my\\.id"` names the id `my.id`): it is decoded before the
+              // lookup and the scoped name is escaped the same way.
               // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
               const tokenRegex = new RegExp(
-                `\\[[^\\]]*\\]|(?<!\\\\)${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+                `\\[[^\\]]*\\]|(?<!\\\\)${escapedPrefix}((?:\\\\\\\\(?:[0-9a-fA-F]{1,6} ?|[^\\s0-9a-fA-F])|[^\\s"'#.,>+~:[\\]()\\\\])+)(?![a-zA-Z0-9_-])`,
                 "g",
               );
               updatedBody = updatedBody.replace(
@@ -961,10 +967,18 @@ export const prefixElementAttribute = (
                     tokenRegex,
                     (tokenMatch, name: string | undefined) => {
                       if (name === undefined) return tokenMatch;
-                      const scoped = seenAttrMap.get(name);
+                      if (!name.includes("\\")) {
+                        const scoped = seenAttrMap.get(name);
+                        return scoped === undefined
+                          ? tokenMatch
+                          : `${prefix}${scoped}`;
+                      }
+                      const scoped = seenAttrMap.get(
+                        unescapeCssIdentifier(name.replaceAll("\\\\", "\\")),
+                      );
                       return scoped === undefined
                         ? tokenMatch
-                        : `${prefix}${scoped}`;
+                        : `${prefix}${escapeCssIdentifierTail(scoped).replaceAll("\\", "\\\\")}`;
                     },
                   ),
               );
@@ -1362,7 +1376,7 @@ export const getComponentScripts = async (
   for (const scriptPath of matchingScriptFiles) {
     let code: string;
     try {
-      code = (await readFile(scriptPath)).toString();
+      code = decodeSource(await readFile(scriptPath));
     } catch (err) {
       console.warn("warning: Failed to read script for %s", scriptPath, err);
       continue;

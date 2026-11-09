@@ -1,5 +1,10 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, posix, relative, resolve } from "node:path";
+import {
+  classifySpecifier,
+  findModuleSpecifiers,
+} from "./module-specifiers.ts";
 import { isMainThread } from "node:worker_threads";
 import {
   getComponentCss,
@@ -22,15 +27,18 @@ import {
 } from "./preserved-targets.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
+import { invalidComponentNameMessage } from "./component-name-validity.ts";
+import { templateShapeProblems } from "./component-template-shape.ts";
 import {
   transformTypeScriptScriptTags,
   TypeScriptTransformError,
+  browserScriptSyntaxError,
   hasStaticModuleSyntax,
   isTypeScriptFile,
   unbundledImportError,
   unbundledModuleImports,
 } from "./typescript.ts";
-import { getScriptType } from "./script-types.ts";
+import { getScriptType, JAVASCRIPT_SCRIPT_TYPES } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import {
@@ -47,7 +55,10 @@ import {
   cssBraceImbalanceMessage,
   findCssBraceImbalance,
 } from "./css-brace-balance.ts";
-import { ComponentCssSyntaxError } from "./build-error.ts";
+import {
+  ComponentCssSyntaxError,
+  ComponentSyntaxError,
+} from "./build-error.ts";
 import { assertNoGeneratedIdClassCollisions } from "./generated-id-classes.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
@@ -62,6 +73,7 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
+import { decodeSource, stripBom } from "./source-text.ts";
 
 // Component markup handling lives in the component-* modules; this module is its public entry.
 export {
@@ -393,6 +405,200 @@ const assertCssBracesBalanced = (
 const columnAtOffset = (text: string, offset: number): number =>
   offset - text.lastIndexOf("\n", offset - 1);
 
+/**
+ * Relative (and `@/`) imports in a component's browser scripts (finding 25).
+ * Bascik inlines the script into each page and does not bundle or publish
+ * what it imports, so the browser resolves "./extra.js" against the page's
+ * URL, not the component file, and the request fails at runtime.
+ */
+const relativeImportProblems = (
+  scan: string,
+  rawHtml: string,
+  displayPath: string,
+  componentDir: string,
+  companionScripts:
+    { scriptMap: Map<string, { relPath: string; code: string }> } | undefined,
+): Array<{ where: string; message: string }> => {
+  const problems: Array<{ where: string; message: string }> = [];
+  const report = (
+    code: string,
+    where: (offset: number) => string,
+    baseDir: string,
+  ) => {
+    if (!/\bimport\b/.test(code)) return;
+    for (const { value, start } of findModuleSpecifiers(code)) {
+      const kind = classifySpecifier(value);
+      if (kind !== "relative" && kind !== "root") continue;
+      const sibling =
+        kind === "relative" &&
+        existsSync(resolve(baseDir, value.replace(/[?#].*$/, "")));
+      problems.push({
+        where: where(start),
+        message:
+          `the import "${value}" resolves against the page URL, not the component file, because Bascik inlines this script into each page and does not bundle its imports` +
+          (sibling ? "; the file beside the component is not published" : "") +
+          `. Put the file in public/ and import its URL (such as "/js/${value.replace(/^(?:\.{1,2}\/|@\/)+/, "")}"), or bundle the script with a pipeline.exec step.`,
+      });
+    }
+  };
+  for (const match of scanElementContents(scan, "script", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const openTag = scan.slice(match.start, match.contentStart);
+    if (
+      BUILD_DIRECTIVE_RE.test(openTag) ||
+      SERVER_DIRECTIVE_RE.test(openTag) ||
+      ROUTES_DIRECTIVE_RE.test(openTag) ||
+      STREAM_DIRECTIVE_RE.test(openTag) ||
+      /\ssrc\s*=/i.test(openTag)
+    )
+      continue;
+    const type = getScriptType(openTag);
+    if (type !== undefined && !JAVASCRIPT_SCRIPT_TYPES.has(type)) continue;
+    report(
+      rawHtml.slice(match.contentStart, match.contentEnd),
+      (offset) =>
+        `${displayPath}:${getLineAtOffset(rawHtml, match.contentStart + offset)}`,
+      componentDir,
+    );
+  }
+  const seen = new Set<string>();
+  for (const { relPath, code } of companionScripts?.scriptMap.values() ?? []) {
+    if (seen.has(relPath) || !/\.m?js$/i.test(relPath)) continue;
+    seen.add(relPath);
+    report(
+      code,
+      (offset) => `${relPath}:${getLineAtOffset(code, offset)}`,
+      dirname(resolve(process.cwd(), relPath)),
+    );
+  }
+  return problems;
+};
+
+/**
+ * Thrown when a component's `<style>` or `<script>` is never closed. The
+ * browser reads everything after it, the rest of the component and of the
+ * page, as CSS or JavaScript, so the content disappears. `scan` is the
+ * component with comments, `<textarea>`, and preserved elements masked to
+ * same-length text, so its offsets are offsets in `rawHtml`.
+ */
+/**
+ * Fail on a browser script that does not parse: an inline `<script>` (a
+ * `type="module"` one with the module grammar) or a companion `.js`/`.mjs`
+ * file. The browser would reject the whole block, so the component would
+ * ship dead with a green build. TypeScript is parsed where it is stripped,
+ * and directive scripts where they are compiled, so both are skipped here.
+ */
+const assertBrowserScriptsParse = async (
+  scan: string,
+  rawHtml: string,
+  displayPath: string,
+  companionScripts:
+    { scriptMap: Map<string, { relPath: string; code: string }> } | undefined,
+): Promise<void> => {
+  for (const match of scanElementContents(scan, "script", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const openTag = scan.slice(match.start, match.contentStart);
+    if (
+      BUILD_DIRECTIVE_RE.test(openTag) ||
+      SERVER_DIRECTIVE_RE.test(openTag) ||
+      ROUTES_DIRECTIVE_RE.test(openTag) ||
+      STREAM_DIRECTIVE_RE.test(openTag) ||
+      /\ssrc\s*=/i.test(openTag)
+    ) {
+      continue;
+    }
+    const type = getScriptType(openTag);
+    if (type !== undefined && !JAVASCRIPT_SCRIPT_TYPES.has(type)) continue;
+    const body = rawHtml.slice(match.contentStart, match.contentEnd);
+    const problem = await browserScriptSyntaxError(
+      body,
+      displayPath,
+      type === "module" ? "module" : "classic",
+    );
+    if (!problem) continue;
+    const bodyStartLine = getLineAtOffset(rawHtml, match.contentStart);
+    const line = bodyStartLine + problem.line - 1;
+    const column =
+      problem.line === 1
+        ? columnAtOffset(rawHtml, match.contentStart) + problem.column - 1
+        : problem.column;
+    throw new ComponentSyntaxError(
+      `[bascik] JavaScript error in ${displayPath}:${line}: ${problem.detail}. ` +
+        "The browser would reject this whole <script>, so the build stops here.",
+      { sourceFile: displayPath, line, column },
+    );
+  }
+  const seen = new Set<string>();
+  for (const { relPath, code } of companionScripts?.scriptMap.values() ?? []) {
+    if (seen.has(relPath) || !/\.m?js$/i.test(relPath)) continue;
+    seen.add(relPath);
+    const problem = await browserScriptSyntaxError(
+      code,
+      relPath,
+      /\.mjs$/i.test(relPath) ? "module" : "classic",
+    );
+    if (!problem) continue;
+    throw new ComponentSyntaxError(
+      `[bascik] JavaScript error in ${relPath}:${problem.line}: ${problem.detail}. ` +
+        "The browser would reject this script, so the build stops here.",
+      { sourceFile: relPath, line: problem.line, column: problem.column },
+    );
+  }
+};
+
+const assertRawTextElementsClosed = (
+  scan: string,
+  rawHtml: string,
+  displayPath: string,
+): void => {
+  // `<style>` text in a closed script (a string) or `<script>` text in a
+  // closed stylesheet is content, not a tag.
+  const closed = ["style", "script"]
+    .flatMap((name) =>
+      scanElementContents(scan, name, {
+        opener: "tag-space",
+        closer: "attributes",
+      }),
+    )
+    .sort((a, b) => a.start - b.start);
+  // Merged into disjoint spans, so each lookup is a binary search.
+  const spans: Array<[number, number]> = [];
+  for (const { start, end } of closed) {
+    const last = spans[spans.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else spans.push([start, end]);
+  }
+  const insideClosed = (at: number): boolean => {
+    let low = 0;
+    let high = spans.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (spans[middle][1] <= at) low = middle + 1;
+      else high = middle;
+    }
+    return low < spans.length && spans[low][0] <= at;
+  };
+  for (const name of ["style", "script"]) {
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const opener = new RegExp(`<${name}(?=[\\t\\n\\f\\r />])`, "gi");
+    for (const match of scan.matchAll(opener)) {
+      const at = match.index;
+      if (insideClosed(at)) continue;
+      const line = getLineAtOffset(rawHtml, at);
+      throw new ComponentSyntaxError(
+        `[bascik] HTML error in ${displayPath}:${line}: <${name}> is never closed, so the browser reads ` +
+          `the rest of the component and the page after it as ${name === "style" ? "CSS" : "JavaScript"} ` +
+          `and that content disappears. Add </${name}> where the ${name === "style" ? "stylesheet" : "script"} ends.`,
+        { sourceFile: displayPath, line, column: columnAtOffset(rawHtml, at) },
+      );
+    }
+  }
+};
+
 const warnComponentCompatibility = async (
   rawHtml: string,
   fileName: string,
@@ -405,7 +611,7 @@ const warnComponentCompatibility = async (
   let rawCss = "";
   if (cssFileName) {
     try {
-      rawCss = await readFile(cssFileName, "utf8");
+      rawCss = stripBom(await readFile(cssFileName, "utf8"));
     } catch {
       rawCss = "";
     }
@@ -444,9 +650,11 @@ const warnComponentCompatibility = async (
       ),
   ]);
 
-  // An unbalanced brace would nest or drop other components' rules in the
-  // page stylesheet: stop before the fingerprint is stored, so an unchanged
-  // broken file fails again on the next listing.
+  // An unclosed <style> or <script> swallows the rest of the page, and an
+  // unbalanced brace would nest or drop other components' rules in the page
+  // stylesheet: stop before the fingerprint is stored, so an unchanged broken
+  // file fails again on the next listing.
+  assertRawTextElementsClosed(nonCodeScan, rawHtml, relHtml);
   for (const styleMatch of scanElementContents(nonCodeScan, "style", {
     opener: "tag-space",
     closer: "attributes",
@@ -466,7 +674,30 @@ const warnComponentCompatibility = async (
       (offset) => columnAtOffset(rawCss, offset),
     );
   }
+  await assertBrowserScriptsParse(
+    nonCodeScan,
+    rawHtml,
+    relHtml,
+    companionScripts,
+  );
   componentCompatFingerprints.set(fileName, fingerprint);
+
+  for (const { where, message } of relativeImportProblems(
+    nonCodeScan,
+    rawHtml,
+    relHtml,
+    dirname(fileName),
+    companionScripts,
+  )) {
+    console.warn(
+      `${colorErr.tag("warn", "[bascik] warning")} in ${colorErr.cyan(where)}: ${message}`,
+    );
+  }
+  for (const { offset, message } of templateShapeProblems(nonCodeScan)) {
+    console.warn(
+      `${colorErr.tag("warn", "[bascik] warning")} in ${colorErr.cyan(`${relHtml}:${getLineAtOffset(rawHtml, offset)}`)}: ${message}`,
+    );
+  }
 
   const seenWarnings = new Set<string>();
   const emitWarning = (
@@ -871,7 +1102,10 @@ export const listComponents = async (
       // Name the file name without the extension.
       // Name is used in all the mappings components
       const componentName = deriveComponentName(fileName);
-      if (NATIVE_HTML_ELEMENTS.has(componentName)) {
+      const invalidName = invalidComponentNameMessage(componentName, fileName);
+      if (invalidName) {
+        console.warn(invalidName);
+      } else if (NATIVE_HTML_ELEMENTS.has(componentName)) {
         console.warn(
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +
             `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
@@ -910,7 +1144,7 @@ export const listComponents = async (
             // flat-layout prefix rule out of a sibling's scripts.
             fileContentRead.then((buffer) =>
               getComponentScripts(fileName, componentScriptFileNames, {
-                html: buffer.toString(),
+                html: decodeSource(buffer),
                 componentFileNames: componentHtmlFileNames,
               }),
             ),
@@ -925,7 +1159,7 @@ export const listComponents = async (
         return {};
       }
 
-      const rawContent = fileContentBuffer.toString();
+      const rawContent = decodeSource(fileContentBuffer);
       if (!rawContent.trim()) {
         // Often a file just created in the editor: say why its usages vanish.
         const absolute = resolve(fileName);
