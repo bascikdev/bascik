@@ -874,6 +874,8 @@ jobs:
   test-gate:
     name: Verify Selected Unit and Integration Suites
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: >-
       always() && needs.changes.result == 'success' && !cancelled() &&
       !contains(needs.*.result, 'failure') &&
@@ -1336,6 +1338,8 @@ jobs:
   e2e-gate:
     name: Verify Selected End-to-End Suites
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: >-
       always() && needs.changes.result == 'success' && !cancelled() &&
       !contains(needs.*.result, 'failure') &&

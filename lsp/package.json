@@ -10,7 +10,16 @@
     "access": "public"
   },
   "description": "Language Server Protocol (LSP) server for Bascik components and scoping diagnostics",
-  "author": "Bascik Contributors",
+  "keywords": [
+    "bascik",
+    "language server",
+    "lsp",
+    "html components",
+    "diagnostics",
+    "linter"
+  ],
+  "homepage": "https://bascik.dev",
+  "author": "Collin Thomas",
   "license": "MIT",
   "type": "module",
   "bin": {

@@ -4,7 +4,7 @@ Astro and Bascik both compile component-based markup into HTML that ships no fra
 
 ## Which Astro Version This Guide Assumes
 
-This guide was checked against Astro 5, 6, and 7 on October 26, 2026, when the newest release was Astro 7.4.2 (October 21, 2026), which requires Node.js 22.23.4 or newer. The Astro examples use the Content Layer API that Astro 5 introduced and that Astro 6 and 7 keep: `post.id`, `render(post)` imported from `astro:content`, and a `loader` per collection in `src/content.config.ts`. Props, slots, named slots, and scoped `<style>` have not changed across these majors, so those sections apply to any of them.
+This guide covers Astro 5, 6, and 7, and the Astro 7 releases it was checked against required Node.js 22.23.4 or newer; Astro's own release notes list the requirement for the version you run. The Astro examples use the Content Layer API that Astro 5 introduced and that Astro 6 and 7 keep: `post.id`, `render(post)` imported from `astro:content`, and a `loader` per collection in `src/content.config.ts`. Props, slots, named slots, and scoped `<style>` have not changed across these majors, so those sections apply to any of them.
 
 A project on an older version writes some of the "before" code differently. These are the forms that matter when converting:
 
@@ -36,10 +36,10 @@ Astro 7 changed the toolchain more than the API: its Rust compiler rejects unclo
 
 Convert a single UI component, such as a card or navigation bar, to Bascik's HTML format:
 
-1. Create a project with `npm create bascik my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+1. Create a project with `npm create bascik my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
 2. Create `src/components/site-nav/site-nav.html` with your navigation markup.
 3. Move any scoped styles into `src/components/site-nav/site-nav.css`.
-4. Include `<site-nav></site-nav>` inside `src/pages/index.html`.
+4. Include `<site-nav />` inside `src/pages/index.html`.
 5. Run `npm run dev` to view the rendered page.
 
 ## .astro Files → .html Component Files
@@ -143,7 +143,7 @@ const { title, description } = Astro.props;
 <my-card
   data-bascik-prop-title="Getting Started"
   data-bascik-prop-description="Up and running in minutes."
-></my-card>
+/>
 ```
 
 > **Text only:** Bascik props accept plain text strings. Passing JSX, objects, arrays, or HTML content as a prop has no equivalent, use a slot for rich HTML content instead.
@@ -301,7 +301,7 @@ In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html`
     </script>
   </head>
   <body>
-    <site-nav></site-nav>
+    <site-nav />
     <script data-bascik-build>
       import { getPost } from "@/lib/posts.ts";
       import { renderPost } from "@/lib/render.ts";
@@ -387,12 +387,12 @@ title: Introduction
 
 Welcome to our docs.
 
-<code-example data-bascik-prop-lang="js" data-bascik-prop-code="console.log('hello')"></code-example>
+<code-example data-bascik-prop-lang="js" data-bascik-prop-code="console.log('hello')" />
 
 ## Next steps
 ```
 
-The post page renders this Markdown in a build script, as in the dynamic route above. The `<code-example>` tag stays between the two paragraphs and is expanded into the component in the next pass. Props are text only, so JavaScript expressions in MDX props become literal strings. Client behavior is plain HTML and JavaScript in the component; there is no hydration step and no equivalent of `client:*` directives.
+The post page renders this Markdown in a build script, as in the dynamic route above. The `<code-example>` tag stays between the two paragraphs and is expanded into the component in the next pass. Keep the tag alone on its own line, self-closing as shown. A tag followed by its closing tag on the same line, such as `<code-example ...></code-example>`, is inline HTML to `marked`, which wraps it in a `<p>` and leaves the component's block markup inside a paragraph; a tag alone on its line is a block of raw HTML and passes through untouched. That is how Markdown works, so the sample changes and Bascik's renderer does not. Props are text only, so JavaScript expressions in MDX props become literal strings. Client behavior is plain HTML and JavaScript in the component; there is no hydration step and no equivalent of `client:*` directives.
 
 Your Markdown pipeline moves with the files, and which pipeline that is depends on the Astro version. Before Astro 7, `.md` and `.mdx` went through remark and rehype, and any `remarkPlugins` or `rehypePlugins` from `astro.config.mjs` run unchanged in a Bascik build script with `unified` (see [Markdown](/how-to/markdown)). Astro 6.4 moved those options under `markdown.processor: unified({ … })`, and Astro 7 made the Rust-based Sätteri processor the default, which runs no remark or rehype plugins; any `mdastPlugins` or `hastPlugins` a site passed to `satteri({ … })` need a `unified` or `marked` equivalent instead. Two details to compare in the rendered output: Astro highlights code blocks with Shiki, and Astro 6 stopped stripping trailing hyphens from heading ids, so choose a highlighter and a slugger that produce the anchors your existing links expect.
 

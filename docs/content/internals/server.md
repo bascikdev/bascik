@@ -174,7 +174,7 @@ Lifecycle publication scopes preserve compilation priority but defer reload deli
 
 ## Production Server Mode (`bascik --server`)
 
-When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`server-prod.ts`). It is the same `server.ts` core that dev mode uses; `server-prod.ts` only adds the boot-time `dist/` load, and `server-dev.ts` only adds watching, live reload, and the boot page.
+When launched with `bascik --server`, Bascik runs as a production HTTP server (`server-prod.ts`). Only the flag selects that server: `BASCIK_SERVER=1` on a bare `bascik` still starts the dev server, but with the `server` mode configuration, because `config.ts` reads the variable while `index.ts` dispatches on the parsed command line. Use `bascik --server`. It is the same `server.ts` core that dev mode uses; `server-prod.ts` only adds the boot-time `dist/` load, and `server-dev.ts` only adds watching, live reload, and the boot page.
 
 ### Boot-Time Loading: Pages in Memory, Assets on Disk
 

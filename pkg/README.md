@@ -133,16 +133,17 @@ export const build = defineConfig({
 
 ## Publishing
 
-This repository has four independently versioned npm packages (plus the VS Code extension), each released by pushing a git tag. The [Release workflow](../.github/workflows/release.yml) builds and publishes, and `dist/` is **not** committed to git. The tag must equal the prefix plus the package's `package.json` version; prerelease versions such as `1.0.0-rc.10` publish under the `rc` dist-tag.
+This repository has five independently versioned npm packages (plus the VS Code extension), each released by pushing a git tag. The [Release workflow](https://github.com/bascikdev/bascik/blob/main/.github/workflows/release.yml) builds and publishes, and `dist/` is **not** committed to git. The tag must equal the prefix plus the package's `package.json` version; prerelease versions such as `1.0.0-rc.10` publish under the `rc` dist-tag.
 
 | Package                                               | Tag format                     |
 | ----------------------------------------------------- | ------------------------------ |
 | `@bascik/bascik` (`pkg/`)                             | `v<semver>`                    |
 | `create-bascik` (`create/`)                           | `create-v<semver>`             |
 | `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` |
+| `@bascik/adapter-netlify` (`adapters/netlify/`)       | `adapter-netlify-v<semver>`    |
 | `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                |
 
-[RELEASING.md](../RELEASING.md) has the release checklist, the publish order across packages, the one-time setup, and the release candidate walkthrough. `CHANGELOG.md` at the repository root records every user-visible change under `[Unreleased]`; a release moves that section under the new version and pushes the tag.
+[RELEASING.md](https://github.com/bascikdev/bascik/blob/main/RELEASING.md) has the release checklist, the publish order across packages, the one-time setup, and the release candidate walkthrough. `CHANGELOG.md` at the repository root records every user-visible change under `[Unreleased]`; a release moves that section under the new version and pushes the tag.
 
 ---
 
@@ -207,5 +208,5 @@ How Bascik turns source HTML into its output (the page and component phases, sco
 2. Write tests for new functionality (TDD preferred).
 3. Run `yarn pkg:unit` and `yarn pkg:typecheck` (both must pass).
 4. Run `yarn pkg:bench` if touching the transpile pipeline, including numbers in the PR description.
-5. Leave `CHANGELOG.md` alone: the project keeps no changelog before 1.0.0. Versions are bumped at release time, as described in [RELEASING.md](../RELEASING.md).
+5. Add a bullet under `[Unreleased]` in `CHANGELOG.md` for every user-visible change. Versions are bumped at release time, as described in [RELEASING.md](https://github.com/bascikdev/bascik/blob/main/RELEASING.md).
 6. Open a PR against `main`.

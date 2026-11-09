@@ -21,7 +21,7 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ### `[bascik] Node.js 24.11.0 or newer is required.`
 
-The CLI refuses to start on an older Node. Install Node 24.11 or newer and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
+The CLI refuses to start on an older Node. Install Node 24.11 or newer and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
 
 ### `npm create bascik` ignored my `--template`
 

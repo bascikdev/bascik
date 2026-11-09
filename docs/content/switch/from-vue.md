@@ -15,7 +15,7 @@ A client widget in Bascik ships only the inline script it needs, with no framewo
 | Concept                        | Vue (SFC)                                            | Bascik                                                                  |
 | ------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
 | Component file                 | `InfoCard.vue` (`<template>`, `<script>`, `<style>`) | `info-card.html` in `src/components/info-card/`                         |
-| Component usage                | `<InfoCard />` (imported or registered)              | `<info-card></info-card>` (auto-resolved by file name)                  |
+| Component usage                | `<InfoCard />` (imported or registered)              | `<info-card />` (auto-resolved by file name)                            |
 | Scoped styles                  | `<style scoped>`                                     | Paired `.css` file or inline `<style>` (auto-scoped)                    |
 | Slots                          | `<slot />` / `<slot name="…" />`                     | `data-bascik-slot` / `data-bascik-slot="name"`                          |
 | Component props                | `defineProps(['title'])`                             | `data-bascik-prop-title` / `data-bascik-attr-*` (text only)             |
@@ -31,7 +31,7 @@ Convert a simple Vue component into Bascik:
 1. Create a project with `npm create bascik`.
 2. Extract your `<template>` markup into `src/components/user-card/user-card.html`.
 3. Extract your `<style scoped>` into `src/components/user-card/user-card.css`.
-4. Use `<user-card></user-card>` in `src/pages/index.html`.
+4. Use `<user-card />` in `src/pages/index.html`.
 5. Run `npm run dev` to inspect the output.
 
 ## File and Folder Setup
@@ -93,7 +93,7 @@ A Bascik component is a vanilla HTML file: no `<template>` wrapper and no `<scri
 }
 ```
 
-No import or registration is needed to use this component. Bascik resolves `<site-nav></site-nav>` to `src/components/site-nav/site-nav.html` automatically by tag name.
+No import or registration is needed to use this component. Bascik resolves `<site-nav />` to `src/components/site-nav/site-nav.html` automatically by tag name.
 
 ## Default Slot
 
@@ -190,7 +190,7 @@ Vue's `defineProps` becomes Bascik's `data-bascik-prop-*` attribute system. Add 
 <info-card
   data-bascik-prop-title="Getting Started"
   data-bascik-prop-description="Up and running in minutes."
-></info-card>
+/>
 ```
 
 Prop values are escaped when they are written, so `<b>` and `&` in a value show as text. Use `data-bascik-attr-{name}="prop"` to send a prop to an attribute instead of the element's content.

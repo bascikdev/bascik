@@ -123,7 +123,7 @@ Template tags such as `the_title()` and `the_permalink()` print values from the 
   data-bascik-prop-title="Hello World"
   data-bascik-prop-excerpt="A short summary."
   data-bascik-prop-url="/blog/hello-world"
-></post-card>
+/>
 ```
 
 > **Text and attribute values:** Bascik props carry plain text strings. For rich HTML content, such as a post body, use a slot instead of a prop.

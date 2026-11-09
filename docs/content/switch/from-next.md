@@ -22,7 +22,7 @@ To evaluate Bascik on an existing Next.js codebase, migrate a single static mark
 
 1. Create a project with `npm create bascik`.
 2. Create `src/components/site-nav/site-nav.html` from your Next.js navigation component.
-3. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
+3. Create `src/pages/about.html` containing your page structure and `<site-nav />`.
 4. Run `npm run dev` to view your rendered page.
 
 To migrate a whole production site with coding agents, matching it at every breakpoint while reaching 100 in all five Lighthouse categories, follow [Migrating with Coding Agents](/how-to/agent-migration).
@@ -114,7 +114,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body>
-    <site-nav></site-nav>
+    <site-nav />
     <main>
       <h1>About</h1>
       <p>We build things.</p>
@@ -128,7 +128,7 @@ If many pages share the same outer wrapper, extract it into a layout component t
 
 ```html
 <!-- src/components/site-layout/site-layout.html -->
-<site-nav></site-nav>
+<site-nav />
 <main class="content">
   <div data-bascik-slot></div>
 </main>
@@ -250,7 +250,7 @@ export function renderPreview(post: Post): SafeHtml {
 
 ```html
 <head>
-  <site-head></site-head>
+  <site-head />
   <script data-bascik-build>
     import { renderHead } from "@/lib/site.ts";
 
@@ -322,7 +322,7 @@ export default function About() {
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body>
-    <site-nav></site-nav>
+    <site-nav />
     <h1>About</h1>
     <site-footer />
   </body>

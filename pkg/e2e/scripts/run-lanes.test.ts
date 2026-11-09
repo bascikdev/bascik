@@ -38,6 +38,12 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// WHY: these tests spawn shell and node child processes (the run-lanes stub,
+// the retrying GitHub CLI stub). Under a loaded machine, such as several
+// agents or CI jobs sharing a runner, process startup alone can exceed
+// vitest's 5s default and fail a test that is logically correct.
+vi.setConfig({ testTimeout: 30_000 });
+
 const e2eDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgDir = join(e2eDir, "..");
 const repoDir = join(pkgDir, "..");

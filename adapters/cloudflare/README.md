@@ -100,7 +100,7 @@ yarn adapter:cf:e2e:dev    # real watched platform runtime and browser reload te
 
 The E2E lanes use the built compiler and adapter, so run `yarn pkg:build && yarn adapter:cf:build` first. The watched lane runs `adapters/e2e/playwright.dev.config.ts` against the real Wrangler runtime; CI runs it separately from production acceptance. `yarn adapter:e2e:dev` runs both platforms after building both adapters.
 
-Cloudflare and Netlify run the same [demo browser contract](../e2e/demo-contract.test.ts)
+Cloudflare and Netlify run the same [demo browser contract](https://github.com/bascikdev/bascik/blob/main/adapters/e2e/demo-contract.test.ts)
 against their real runtimes. Both demos expose `/`, `/server?name=collin`,
 `/stream`, `/stream-append`, `/mixed`, `/catalog`, `/catalog-stream`, `/api-demo`,
 `/errors`, and `/static` with matching titles and navigation. The `/static`
@@ -111,4 +111,4 @@ no-JavaScript stream ordering, and safe failures. Platform-specific context and
 routing assertions remain in this adapter's own suite. Error-demo requests
 intentionally generate diagnostics.
 
-CI deploys the demo Worker after every other stage passes, and posts a preview URL on pull requests. [DEPLOYMENT.md](../../DEPLOYMENT.md) is the runbook.
+CI deploys the demo Worker after every other stage passes, and posts a preview URL on pull requests. [DEPLOYMENT.md](https://github.com/bascikdev/bascik/blob/main/DEPLOYMENT.md) is the runbook.

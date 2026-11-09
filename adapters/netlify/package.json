@@ -7,6 +7,16 @@
     "directory": "adapters/netlify"
   },
   "description": "Netlify Functions adapter for Bascik",
+  "keywords": [
+    "bascik",
+    "adapter",
+    "netlify",
+    "netlify functions",
+    "html components",
+    "serverless"
+  ],
+  "homepage": "https://bascik.dev",
+  "author": "Collin Thomas",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -28,7 +38,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "demo:build": "cd e2e/fixture && bascik --check && bascik --build --target netlify && bascik-netlify-install",
     "demo:deploy": "cd ../.. && netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --prod --site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
     "demo:deploy:preview": "cd ../.. && netlify deploy --filter bascik-e2e-netlify-fixture --dir adapters/netlify/e2e/fixture/publish --functions netlify/functions --no-build --site 268cf8fb-826b-421a-8a34-abd78bf9be1e",
@@ -56,7 +66,7 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
-    "netlify-cli": "^27.14.2",
+    "netlify-cli": "^27.16.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
