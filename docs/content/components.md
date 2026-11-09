@@ -232,7 +232,7 @@ btn.addEventListener("click", () => {
     Bascik assembles components at build time and ships vanilla HTML files with
     no framework runtime.
   </p>
-  <div id="bascik__comp-toggle__a1b__detail" hidden>
+  <div id="bascik__comp-toggle__d65f1c88__detail" hidden>
     <p class="b_el_comp-toggle_p">
       No JavaScript is added to the page. Every script in the output was written
       by you.
@@ -240,7 +240,7 @@ btn.addEventListener("click", () => {
   </div>
   <button
     class="b_el_comp-toggle_button"
-    id="bascik__comp-toggle__a1b__btn"
+    id="bascik__comp-toggle__d65f1c88__btn"
     type="button"
   >
     Read more
@@ -248,13 +248,16 @@ btn.addEventListener("click", () => {
 </div>
 <script>
   (function () {
-    const btn = document.getElementById("bascik__comp-toggle__a1b__btn");
-    const detail = document.getElementById("bascik__comp-toggle__a1b__detail");
+    const btn = document.getElementById("bascik__comp-toggle__d65f1c88__btn");
+    const detail = document.getElementById(
+      "bascik__comp-toggle__d65f1c88__detail",
+    );
     btn.addEventListener("click", () => {
       detail.hidden = !detail.hidden;
       btn.textContent = detail.hidden ? "Read more" : "Show less";
     });
   })();
+  //# sourceURL=src/components/comp-toggle/comp-toggle.html
 </script>
 ```
 
