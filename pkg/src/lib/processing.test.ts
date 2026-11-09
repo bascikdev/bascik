@@ -107,6 +107,8 @@ vi.mock("./mem.js", () => ({
     pagesDependentOnFile: vi.fn(() => []),
     recordFailedDependencies: vi.fn(),
     clearFailedDependencies: vi.fn(),
+    recordFailedPage: vi.fn(),
+    pagesWhoseLastBuildFailed: vi.fn(() => []),
     openPages: [] as string[],
     trackOpenPage: vi.fn(),
     untrackOpenPage: vi.fn(),
@@ -471,8 +473,10 @@ describe("recursivelyTranspile – integration", () => {
       componentList,
     );
 
+    // The child's root carries the marker, so it stays and holds its slot
+    // content (finding 27).
     expect(transpiledHtmlBody).toBe(
-      "<section>parent contentchild content</section>",
+      "<section>parent content<article>child content</article></section>",
     );
   });
 
@@ -2553,6 +2557,52 @@ describe("processAllPages – side effects", () => {
     errorSpy.mockRestore();
   });
 
+  it("remembers a dev page that failed, and only that page, so a component edit can rebuild it (finding 40)", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/broken.html",
+      "src/pages/working.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string) =>
+        path.endsWith("broken.html") ? "<html><head></head></html>" : PAGE_HTML,
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await processAllPages({ useWorkers: false });
+    expect(mem.recordFailedPage).toHaveBeenCalledTimes(1);
+    expect(mem.recordFailedPage).toHaveBeenCalledWith(
+      expect.stringMatching(/src\/pages\/broken\.html$/),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("remembers the failed page even when a compile scope rejects with it (finding 40)", async () => {
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
+    await expect(
+      withCompilationPublisher(vi.fn(), () =>
+        processPageBatch(["src/pages/scoped-broken.html"], {}),
+      ),
+    ).rejects.toThrow("validate markup");
+    expect(mem.recordFailedPage).toHaveBeenCalledWith(
+      expect.stringMatching(/scoped-broken\.html$/),
+    );
+  });
+
+  it("does not remember failed pages in a production build, which has no watcher", async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
+    await expect(
+      processPageBatch(["src/pages/build-broken.html"], {}),
+    ).rejects.toThrow();
+    expect(mem.recordFailedPage).not.toHaveBeenCalled();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+  });
+
   it("reports an asynchronous dev page write failure without rejecting the batch", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/index.html",
@@ -2926,6 +2976,20 @@ describe("selectivelyProcessPages", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       "transpiled",
       expect.anything(),
+    );
+  });
+
+  it("rebuilds a page whose last build failed when any component changes, since no component index names it (finding 40)", async () => {
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
+    (
+      mem.pagesWhoseLastBuildFailed as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce(["src/pages/cycle.html"]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    await selectivelyProcessPages("src/components/b-card.html");
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePagePath: "pages/cycle.html" }),
     );
   });
 

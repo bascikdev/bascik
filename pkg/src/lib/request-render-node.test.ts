@@ -497,7 +497,8 @@ describe("executeServerScriptPlan and streamServerScripts with a manifest", () =
     // A tag logged before its component existed must be logged again once
     // the component is deleted; each dev publication builds a new manifest.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const body = `<late-card>t</late-card>`;
+    // Empty: the component declares no slot, which would be its own warning.
+    const body = `<late-card></late-card>`;
     const unresolved = () =>
       warn.mock.calls
         .map((call) => call.join(" "))

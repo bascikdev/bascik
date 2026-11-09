@@ -33,10 +33,19 @@ import {
 import {
   extractDefaultSlotContent,
   extractNamedSlotContent,
+  keepSlotRoot,
   replaceDefaultSlots,
   replaceNamedSlots,
+  withoutSlotWrappers,
 } from "./component-slots.ts";
 import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
+import {
+  declaredMembers,
+  hasRenderableContent,
+  mergeDeclared,
+  sourceFileAt,
+  type DeclaredMembers,
+} from "./component-usage-members.ts";
 import {
   __componentScanStatsForTests,
   __expansionProbeForTests,
@@ -188,6 +197,28 @@ export class ComponentExpansionLimitError extends Error {
 }
 
 /**
+ * Thrown when a component's template includes itself, directly or through
+ * other templates, as soon as the expansion reaches the first repeat. It is a
+ * `ComponentExpansionLimitError` so every host that stops on the limit stops
+ * on it too; the message is the one `bascik --check` prints for the cycle.
+ */
+export class ComponentCycleError extends ComponentExpansionLimitError {
+  readonly chain: string[];
+  readonly sourceFile: string | undefined;
+  constructor(chain: string[], sourceFile: string | undefined) {
+    super(0, `<${chain[0]}>`);
+    this.chain = chain;
+    this.sourceFile = sourceFile;
+    this.message =
+      `component cycle detected: ${chain.map((name) => `<${name}>`).join(" -> ")}` +
+      (sourceFile ? ` (${sourceFile})` : "") +
+      ". Each of these templates includes the next, so the page would never finish expanding. " +
+      "Recursive components are not supported; remove one of the tags or pass it through a slot.";
+    this.name = "ComponentCycleError";
+  }
+}
+
+/**
  * Remove every `<opener...-->` marker comment. An indexOf walk rather than
  * `/<!--opener[\s\S]*?-->/g`, which rescans to the end from every unclosed
  * opener: quadratic on request-time output that carries visitor text. Once
@@ -301,6 +332,73 @@ class CloseFacts {
   }
 }
 
+const warnedUsagesByState = new WeakMap<object, Set<string>>();
+const warnedUsagesFor = (state: object): Set<string> => {
+  let warned = warnedUsagesByState.get(state);
+  if (!warned) warnedUsagesByState.set(state, (warned = new Set()));
+  return warned;
+};
+
+/**
+ * Name what a usage passes that its template does not declare: a named slot
+ * or prop (finding 47) and children given to a template with no default slot
+ * (finding 23). Each is dropped from the output, which used to happen with
+ * no word outside `bascik --check`.
+ */
+const warnUndeclaredUsage = (
+  usage: BascikComponent,
+  declared: DeclaredMembers,
+  props: Record<string, string>,
+  html: string,
+  filePath: string | undefined,
+  componentNames: ReadonlySet<string>,
+  warned: Set<string>,
+  propWarn: (message: string) => void,
+): void => {
+  const inner = usage.innerContent ?? "";
+  const propNames = Object.keys(props);
+  const problems: Array<{ key: string; text: string }> = [];
+  for (const name of propNames) {
+    if (declared.props.has(name.toLowerCase())) continue;
+    problems.push({
+      key: `prop:${name.toLowerCase()}`,
+      text: `prop "${name}" is not declared by the template, so its value`,
+    });
+  }
+  if (inner.includes("data-bascik-slot")) {
+    for (const name of Object.keys(
+      extractNamedSlotContent(inner, componentNames),
+    )) {
+      if (declared.slots.has(name.toLowerCase())) continue;
+      problems.push({
+        key: `slot:${name.toLowerCase()}`,
+        text: `slot "${name}" is not declared by the template, so its content`,
+      });
+    }
+  }
+  if (
+    !declared.hasDefaultSlot &&
+    hasRenderableContent(extractDefaultSlotContent(inner, componentNames))
+  ) {
+    problems.push({
+      key: "children",
+      text: "the template has no data-bascik-slot element, so the content between its tags",
+    });
+  }
+  let usedIn: string | undefined;
+  for (const { key, text } of problems) {
+    const id = `${usage.name}\0${key}`;
+    if (warned.has(id)) continue;
+    warned.add(id);
+    const at = (usage as { startIndex?: number }).startIndex ?? 0;
+    usedIn ??= sourceFileAt(html, at, filePath ?? "");
+    propWarn(
+      `${text} ${usedIn ? `used in "${usedIn}" ` : ""}was dropped. ` +
+        `Run \`bascik --check\` for a full report.`,
+    );
+  }
+};
+
 /**
  * Expand every component usage in `transpiledHtmlBody`, innermost-first by
  * document position, until none remains. `usedComponents` receives each
@@ -326,6 +424,34 @@ export const expandComponents = (
   // string simultaneously on the call stack (each recursive frame held its own
   // copy, leading to multi-GB heap usage on pages with many component instances).
   let substitutions = 0;
+  // The instances being expanded around the search position, outermost
+  // first: each template's span in the page, kept current by every splice.
+  // A usage found inside an instance of its own name, through templates
+  // that each include the next tag, is a cycle (finding 44). A usage nested
+  // by the page's own slot content is not, so each step of the chain must be
+  // in a template. Cleared whenever the page is edited by name, not offset.
+  let openInstances: Array<{
+    name: string;
+    fileName?: string;
+    start: number;
+    end: number;
+  }> = [];
+  const templateIncludes = new Map<string, boolean>();
+  const includesTag = (parent: string, child: string): boolean => {
+    const key = `${parent}\0${child}`;
+    let found = templateIncludes.get(key);
+    if (found === undefined) {
+      // Comments, raw text and slot fallback content do not render the tag.
+      const template = maskRawTextContent(
+        withoutSlotWrappers(componentList[parent]?.fileContent ?? ""),
+      ).toLowerCase();
+      found = new RegExp(
+        `<${child.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s/>]`,
+      ).test(template);
+      templateIncludes.set(key, found);
+    }
+    return found;
+  };
   let masked = maskRawTextContent(transpiledHtmlBody);
   // Search cursor (prompt 63). Replacement happens at the FIRST unresolved
   // component, so the prefix before its start is fully resolved and cannot
@@ -362,6 +488,10 @@ export const expandComponents = (
     return closeFacts.at(tagName);
   };
   let componentNames: Set<string> | undefined;
+  // Undeclared slots, props, and dropped children are named once per page
+  // (the instance state is the page's), not once per instance.
+  const warnedUsages = warnedUsagesFor(opts.instanceState);
+  const declaredByName = new Map<string, DeclaredMembers>();
   // Whether the next search re-reads the attribute state from the start
   // (after a whole re-mask), for the request-time scan budget.
   let rescanFromStart = false;
@@ -382,6 +512,18 @@ export const expandComponents = (
       typeof sIdx === "number" && typeof eIdx === "number"
         ? { startIndex: sIdx, endIndex: eIdx }
         : undefined;
+    if (offsets) {
+      const delta =
+        transpiledTag.length - (offsets.endIndex - offsets.startIndex);
+      for (const open of openInstances) open.end += delta;
+      if (transpiledTag)
+        openInstances.push({
+          name: component.name,
+          fileName: component.fileName,
+          start: offsets.startIndex,
+          end: offsets.startIndex + transpiledTag.length,
+        });
+    } else openInstances = [];
     const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
       ? spliceRawTextMask(
           transpiledHtmlBody,
@@ -496,6 +638,34 @@ export const expandComponents = (
     let component = partial as BascikComponent;
     lastTag = `<${component.name}>`;
     {
+      const at = (component as { startIndex?: number }).startIndex;
+      if (typeof at !== "number") openInstances = [];
+      else {
+        while (
+          openInstances.length > 0 &&
+          (openInstances[openInstances.length - 1].end <= at ||
+            openInstances[openInstances.length - 1].start > at)
+        )
+          openInstances.pop();
+        const repeat = openInstances.findLastIndex(
+          (open) => open.name === component.name,
+        );
+        if (repeat !== -1) {
+          const chain = [
+            ...openInstances.slice(repeat).map((open) => open.name),
+            component.name,
+          ];
+          if (
+            chain.every((name, i) => i === 0 || includesTag(chain[i - 1], name))
+          )
+            throw new ComponentCycleError(
+              chain,
+              openInstances[repeat].fileName,
+            );
+        }
+      }
+    }
+    {
       // The rescans this search made, and the instance's own reads: the
       // attribute state from the start after a re-mask; a close looked for
       // to the end for a usage without one; and for one with a close, its
@@ -546,6 +716,9 @@ export const expandComponents = (
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content, warn);
+      // Read before attribute bindings are filled (the build fills them
+      // before scoping), for the undeclared-usage check below.
+      const unscopedTemplate = component.fileContent;
       if (opts.injectAttrProps === "before-scope") {
         currentStage = "prop injection";
         component.fileContent = injectPropAttributes(
@@ -588,6 +761,32 @@ export const expandComponents = (
         continue;
       }
       component = scoped;
+      if (
+        Object.keys(props).length > 0 ||
+        (usage.innerContent ?? "").trim() !== ""
+      ) {
+        componentNames ??= new Set(Object.keys(componentList));
+        let declared = declaredByName.get(usage.name);
+        if (!declared) {
+          // The unscoped template where the build has it, the scoped one
+          // where a request render first sees the markup.
+          declared = mergeDeclared(
+            declaredMembers(unscopedTemplate),
+            declaredMembers(component.fileContent ?? ""),
+          );
+          declaredByName.set(usage.name, declared);
+        }
+        warnUndeclaredUsage(
+          usage,
+          declared,
+          props,
+          searchedBody,
+          filePath,
+          componentNames,
+          warnedUsages,
+          propWarn,
+        );
+      }
       if (opts.injectAttrProps === "after-scope") {
         // A binding that fails is a prop injection failure, not scoping's.
         currentStage = "prop injection";
@@ -629,6 +828,8 @@ export const expandComponents = (
       let transpiledTag: string;
       const hasTemplateSlot =
         component.fileContent.includes("data-bascik-slot");
+      if (hasTemplateSlot)
+        component.fileContent = keepSlotRoot(component.fileContent);
       const hasUsageSlot = Boolean(
         component.innerContent &&
         component.innerContent.includes("data-bascik-slot"),
@@ -789,6 +990,7 @@ export const expandComponents = (
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
         searchFrom = 0;
+        openInstances = [];
         maskFrom = null;
         maskFromEnd = null;
         maskFacts = {};

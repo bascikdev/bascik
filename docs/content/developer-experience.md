@@ -394,7 +394,7 @@ Output for a clean project:
 bascik --check
 
 ✓ 1 page and 1 component checked — no errors
-✓ 1 dist/ HTML file pass WHATWG spec (parse5)
+✓ parse5 reported no parse errors in 1 dist/ HTML file
 ✓ 2 files checked by @bascik/language-server
 ```
 

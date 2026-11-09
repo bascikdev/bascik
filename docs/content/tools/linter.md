@@ -95,6 +95,20 @@ Two rules are fixable:
 
 In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook. The editor also offers **Wrap template in html\`...\`** for [`server-script-unescaped-markup`](#server-script-unescaped-markup), which `--fix` never applies (see below).
 
+### `css-unbalanced-braces`
+
+A component's `<style>` block or companion stylesheet with a `{` that is never closed, or a `}` that closes nothing, is an error at that brace. Every component's CSS goes into one stylesheet for the page, so a missing `}` would nest every rule after it, including other components' rules, and a stray `}` would make the browser drop the rule after it. The build stops on the same brace and names the same file and line, and the dev server shows it in the error overlay. Braces inside strings, comments, and `url(...)` do not count.
+
+### `css-preserved-target`
+
+A selector in a component's `<style>` block or companion stylesheet that only matches preserved elements is a warning at that selector, and so is a class query in the component's browser script (`querySelector`, `querySelectorAll`, `closest`, `matches`, `getElementsByClassName`) that only they answer (`js-preserved-target`). A `scoping.preserve` tag (`code` by default), a `data-bascik-preserve` element, and everything inside them keep their literal `class` and `id`, while Bascik still renames the component's `.class`, `#id`, and element selectors, so the rule never applies and the query finds nothing:
+
+```text
+src/components/code-note/code-note.html:6:3 - warning: (css-preserved-target) ".inline" never matches: only preserved elements carry this class, and preserved elements keep their literal class and id while Bascik rewrites this selector to a scoped name. Move the rule to a global stylesheet, or take the element out of scoping.preserve or its data-bascik-preserve directive.
+```
+
+A class or element that a scoped element in the same component also carries is not flagged, since the rule still reaches that element. The build and the dev server print the same warning with the same file and line.
+
 ### `server-script-unescaped-markup`
 
 In any directive script (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once` or `data-bascik-routes`), and in the `.ts` and `.js` modules those scripts run in Node, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:

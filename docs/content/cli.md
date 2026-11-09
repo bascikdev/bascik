@@ -98,12 +98,12 @@ bascik init --no-skills  # skip the agent skills
 `bascik init` adds what Bascik needs to the folder it runs in. It adds to files you already have and never replaces them:
 
 - creates `src/pages/index.html` and `src/components/`
-- adds `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
+- adds `node_modules/`, `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
 - adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0`) and is skipped when `dependencies` or `devDependencies` already lists it
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 
-Bascik config files use ESM syntax, so `init` needs `"type": "module"`. `npm init -y` writes `"type": "commonjs"` since npm 11. When the project has no `.js` or `.ts` file outside `node_modules`, as right after `npm init -y`, `init` changes it to `"module"`, which cannot break anything. A project with such a file may rely on CommonJS, so `init` stops before it writes anything and names one of the files.
+Bascik config files use ESM syntax, so `init` needs `"type": "module"`. `npm init -y` writes `"type": "commonjs"` since npm 11. When the project has no `.js` or `.ts` file outside `node_modules`, as right after `npm init -y`, `init` changes it to `"module"`, which cannot break anything (a `.cjs` file is CommonJS under either setting, so it does not count). A project with such a file may rely on CommonJS, so `init` stops before it writes anything and names one of the files.
 
 Run Bascik from the project's own install (`npm run dev`, `npx bascik`). A global install (`npm install -g @bascik/bascik`) can run `bascik init`, but the project still needs `@bascik/bascik` in its own `node_modules`: `init` adds it to `package.json`, and Node resolves `import { defineConfig } from "@bascik/bascik"` in `bascik.config.ts` from the project folder, never from the global copy.
 

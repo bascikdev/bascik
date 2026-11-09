@@ -8,6 +8,7 @@ import {
   parseComponentRoots,
   parseImportRoot,
   parsePagesRoot,
+  parsePreserve,
   parseScopesName,
   parseScriptBlocks,
   hasIsolatedClientBlocks,
@@ -298,5 +299,31 @@ describe("config readers skip commented-out settings, as the compiler does", () 
     parseComponentRoots("/*".repeat(50_000) + "components: ['a']");
     parseScopesName("'/*".repeat(50_000));
     expect(performance.now() - start).toBeLessThan(250);
+  });
+});
+
+describe("parsePreserve (finding 22)", () => {
+  const config = (body: string) => `export default {\n${body}\n};\n`;
+
+  it("defaults to code without a config or a preserve setting", () => {
+    expect(parsePreserve(undefined)).toEqual(["code"]);
+    expect(
+      parsePreserve(config("  scoping: { deduplicateCss: true },")),
+    ).toEqual(["code"]);
+  });
+
+  it("reads the scoping.preserve list, wildcards and an empty list included", () => {
+    expect(
+      parsePreserve(
+        config('  scoping: { preserve: ["code", "x-*", \'kbd\'] },'),
+      ),
+    ).toEqual(["code", "x-*", "kbd"]);
+    expect(parsePreserve(config("  scoping: { preserve: [] },"))).toEqual([]);
+  });
+
+  it("ignores a commented-out preserve setting", () => {
+    expect(
+      parsePreserve(config('  scoping: {\n    // preserve: ["pre"],\n  },')),
+    ).toEqual(["code"]);
   });
 });

@@ -44,6 +44,7 @@ const elementOpenTags = (
       : -1;
   });
 import type { BascikComponent } from "./types.ts";
+import { decodeSource, stripBom } from "./source-text.ts";
 
 /**
  * The class Bascik generates for an element selector: `p { }` in component
@@ -843,8 +844,24 @@ export const removeIdSelectors = (css: string): string => {
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────
 
-/** The `#id` selector `convertCssIdSelectorsToClasses` rewrites, on masked CSS. */
-const CSS_ID_SELECTOR_PATTERN = /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g;
+/**
+ * The `#id` selector `convertCssIdSelectorsToClasses` rewrites, on masked CSS.
+ * The name may hold CSS escapes (`#my\.id`, `#my\2e id`), so an id with a
+ * CSS-special character is one selector; `idNameOf` decodes it.
+ * Built lazily: `CSS_ESCAPE_SOURCE` is declared further down this module.
+ */
+let cssIdSelectorPattern: RegExp | undefined;
+const cssIdSelectors = (): RegExp => {
+  cssIdSelectorPattern ??= new RegExp(
+    String.raw`#((?:[a-zA-Z]|${CSS_ESCAPE_SOURCE})(?:[a-zA-Z0-9_-]|${CSS_ESCAPE_SOURCE})*)(?=[^{};]*\{)`,
+    "g",
+  );
+  cssIdSelectorPattern.lastIndex = 0;
+  return cssIdSelectorPattern;
+};
+
+/** The id an `#id` selector's (possibly escaped) name stands for. */
+const idNameOf = (raw: string): string => unescapeCssIdentifier(raw);
 
 /**
  * The ids the `#id` selectors in `css` name, in first-seen order: exactly the
@@ -856,8 +873,8 @@ export const cssIdSelectorNames = (css: string): string[] => {
   if (!css.includes("#")) return [];
   const { masked } = maskCssSyntax(css, { keepUrlArguments: false });
   const names = new Set<string>();
-  for (const match of masked.matchAll(CSS_ID_SELECTOR_PATTERN))
-    names.add(match[1]);
+  for (const match of masked.matchAll(cssIdSelectors()))
+    names.add(idNameOf(match[1]));
   return [...names];
 };
 
@@ -868,10 +885,10 @@ export const cssIdSelectorNames = (css: string): string[] => {
 export const cssIdSelectorOffset = (css: string, idName: string): number => {
   if (!css.includes("#")) return -1;
   const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: false });
-  for (const match of masked.matchAll(CSS_ID_SELECTOR_PATTERN)) {
+  for (const match of masked.matchAll(cssIdSelectors())) {
     // A mask token ends before the `#`, so the restored prefix is the
     // original text up to the selector.
-    if (match[1] === idName)
+    if (idNameOf(match[1]) === idName)
       return restore(masked.slice(0, match.index)).length;
   }
   return -1;
@@ -885,7 +902,7 @@ export const cssIdSelectorOffset = (css: string, idName: string): number => {
  * ───────────────────────
  * The regex uses a lookahead to identify SELECTOR position vs VALUE position:
  *
- *   /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g
+ *   /#(name)(?=[^{};]*\{)/g   (name may hold CSS escapes: `#my\.id`)
  *
  * In selector position the next `{` appears before any `;` or `}`.
  * In value position (color declarations, gradient functions, etc.) a `;` or
@@ -920,17 +937,17 @@ export const convertCssIdSelectorsToClasses = (
   // selector pass rewrites it, never this one. This keeps genuine #id
   // selectors scoping while leaving `content: "url(#local)"` byte-identical.
   const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: false });
-  const cssStr = masked.replace(
-    CSS_ID_SELECTOR_PATTERN,
-    (_: string, idName: string) => {
-      if (!seen.has(idName)) {
-        const className = idSelectorClassName(componentName, idName);
-        seen.set(idName, className);
-        idsConverted.push({ idName, className });
-      }
-      return `.${seen.get(idName)!}`;
-    },
-  );
+  const cssStr = masked.replace(cssIdSelectors(), (_: string, raw: string) => {
+    const idName = idNameOf(raw);
+    if (!seen.has(idName)) {
+      const className = idSelectorClassName(componentName, idName);
+      seen.set(idName, className);
+      idsConverted.push({ idName, className });
+    }
+    // `my.id` -> `.b_id_<comp>_my\.id`, so the selector matches the class
+    // token added to the element whose id is `my.id`.
+    return `.${escapeCssIdentifierTail(seen.get(idName)!)}`;
+  });
   return { css: restore(cssStr), idsConverted };
 };
 
@@ -1185,16 +1202,17 @@ const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|
  * The class name after each `.` in CSS whose strings and `url()` contents are
  * shielded: an identifier that starts with a letter, `_`, a non-ASCII
  * character or an escape, and runs over word characters, `-`, non-ASCII
- * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`).
+ * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`). An escaped
+ * dot (`#my\.id`) is part of a name, never the start of a class.
  */
 const cssClassSelectorNames = (): RegExp =>
   new RegExp(
-    String.raw`(?<=\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
+    String.raw`(?<=(?:^|[^\\])(?:\\\\)*\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
     "g",
   );
 
 /** The identifier a CSS escape sequence stands for (`md\:flex` -> `md:flex`). */
-const unescapeCssIdentifier = (raw: string): string =>
+export const unescapeCssIdentifier = (raw: string): string =>
   raw.includes("\\")
     ? raw.replace(
         /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|([\s\S]))/g,
@@ -1215,7 +1233,7 @@ const unescapeCssIdentifier = (raw: string): string =>
  * character: anything other than a word character, `-` or non-ASCII is
  * escaped (control characters as hex), so `md:flex` -> `md\:flex`.
  */
-const escapeCssIdentifierTail = (name: string): string =>
+export const escapeCssIdentifierTail = (name: string): string =>
   name.replace(/[^\w\u0080-\uffff-]/g, (char) => {
     const code = char.charCodeAt(0);
     return code < 0x20 || code === 0x7f
@@ -1602,7 +1620,7 @@ export const resolveCssImports = async (
 
     try {
       const importedRaw = cleanImportedCss(
-        (await readFile(plan.targetPath)).toString(),
+        decodeSource(await readFile(plan.targetPath)),
       );
       const nestedResolved = await resolveCssImports(
         importedRaw,
@@ -1648,7 +1666,7 @@ export const resolveCssImportsSync = (
 
     try {
       const importedRaw = cleanImportedCss(
-        readFileSync(plan.targetPath, "utf-8"),
+        stripBom(readFileSync(plan.targetPath, "utf-8")),
       );
       const nestedResolved = resolveCssImportsSync(
         importedRaw,
@@ -1793,7 +1811,9 @@ export const getComponentCss = async (
   );
   if (!cssFileName) return;
   try {
-    const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
+    const raw = removeCommentsFromCss(
+      decodeSource(await readFile(cssFileName)),
+    );
     return await resolveCssImports(
       raw,
       cssFileName,

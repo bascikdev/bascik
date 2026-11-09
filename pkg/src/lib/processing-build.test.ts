@@ -105,6 +105,8 @@ vi.mock("./mem.js", () => ({
     pagesDependentOnFile: vi.fn(() => []),
     recordFailedDependencies: vi.fn(),
     clearFailedDependencies: vi.fn(),
+    recordFailedPage: vi.fn(),
+    pagesWhoseLastBuildFailed: vi.fn(() => []),
     openPages: [] as string[],
     trackOpenPage: vi.fn(),
     untrackOpenPage: vi.fn(),

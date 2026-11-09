@@ -840,6 +840,163 @@ describe.each([true, false])(
 // `security.blockScriptUrls` / `security.blockCodeBindings` at build time
 // (Collin 2026-10-29): recursivelyTranspile reads them from the config and
 // passes them to the loop as `bindings`; the loop takes the same option.
+describe("a component cycle fails on the first repeat (finding 44)", () => {
+  // Two components that include each other took ~22 s to reach the
+  // 10000-substitution limit, while --check named the cycle instantly.
+  const cycleList = (): ComponentList => ({
+    "feature-card": {
+      fileName: "src/components/feature-card/feature-card.html",
+      fileContent:
+        '<article class="card"><my-counter></my-counter><div data-bascik-slot></div></article>',
+    },
+    "my-counter": {
+      fileName: "src/components/my-counter/my-counter.html",
+      fileContent: "<div><feature-card>x</feature-card></div>",
+    },
+  });
+
+  it("names the cycle and the component file, within the first repeat", () => {
+    const used: BascikComponent[] = [];
+    let caught: unknown;
+    try {
+      clearScopingTemplates();
+      expandComponents(
+        "<feature-card></feature-card>",
+        cycleList(),
+        buildOptions(PAGE_PATH, freshState()),
+        used,
+        PAGE_PATH,
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as Error)?.message).toContain(
+      "component cycle detected: <feature-card> -> <my-counter> -> <feature-card>",
+    );
+    expect((caught as Error).message).toContain(
+      "src/components/feature-card/feature-card.html",
+    );
+    // The bound: the two templates of the cycle, not thousands of copies.
+    expect(used.length).toBeLessThanOrEqual(2);
+  });
+
+  it("the build wrapper raises it as a page error for the page", () => {
+    let caught: unknown;
+    try {
+      viaWrapper("<my-counter></my-counter>", cycleList(), PAGE_PATH);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PageProcessingError);
+    expect((caught as Error).message).toContain(
+      "component cycle detected: <my-counter> -> <feature-card> -> <my-counter>",
+    );
+  });
+
+  it("a self-including component is a cycle of one", () => {
+    const list: ComponentList = {
+      "my-card": {
+        fileName: "src/components/my-card.html",
+        fileContent: "<div><h2>Card</h2><my-card></my-card></div>",
+      },
+    };
+    expect(() =>
+      viaCore("<my-card></my-card>", list, PAGE_PATH, freshState()),
+    ).toThrow(/component cycle detected: <my-card> -> <my-card>/);
+  });
+
+  // Misuse lens: the same tag nested through a page's own markup is not a cycle.
+  it("allows a component nested in its own slot by the page", () => {
+    const list: ComponentList = {
+      "my-box": {
+        fileName: "src/components/my-box.html",
+        fileContent:
+          '<section class="box"><div data-bascik-slot></div></section>',
+      },
+    };
+    const result = viaCore(
+      "<my-box><my-box><my-box>deep</my-box></my-box></my-box>",
+      list,
+      PAGE_PATH,
+    );
+    expect(result.usedComponents).toHaveLength(3);
+    expect(result.transpiledHtmlBody).toContain("deep");
+  });
+
+  it("allows a self-reference in slot fallback content the usage replaces", () => {
+    const list: ComponentList = {
+      "tree-node": {
+        fileName: "src/components/tree-node.html",
+        fileContent:
+          "<li><div data-bascik-slot><tree-node>leaf</tree-node></div></li>",
+      },
+    };
+    const result = viaCore(
+      "<ul><tree-node><b>given</b></tree-node></ul>",
+      list,
+      PAGE_PATH,
+    );
+    expect(result.usedComponents).toHaveLength(1);
+    expect(result.transpiledHtmlBody).toContain("<b>given</b>");
+  });
+
+  it("allows a tree nested through the page when the template self-reference is fallback", () => {
+    const list: ComponentList = {
+      "tree-node": {
+        fileName: "src/components/tree-node.html",
+        fileContent:
+          "<li><ul data-bascik-slot><tree-node></tree-node></ul></li>",
+      },
+    };
+    const result = viaCore(
+      "<tree-node><tree-node><tree-node>leaf</tree-node></tree-node></tree-node>",
+      list,
+      PAGE_PATH,
+    );
+    expect(result.usedComponents).toHaveLength(3);
+    expect(result.transpiledHtmlBody).toContain("leaf");
+  });
+
+  it("does not count a tag named in a template's comment or script", () => {
+    const list: ComponentList = {
+      "doc-card": {
+        fileName: "src/components/doc-card.html",
+        fileContent:
+          '<div><!-- use <doc-card> --><div data-bascik-slot></div><script>console.log("<doc-card>")</script></div>',
+      },
+    };
+    const result = viaCore(
+      "<doc-card><doc-card>x</doc-card></doc-card>",
+      list,
+      PAGE_PATH,
+    );
+    expect(result.usedComponents).toHaveLength(2);
+  });
+
+  it("allows A inside B by slot when only B's template includes A", () => {
+    const list: ComponentList = {
+      "a-wrap": {
+        fileName: "src/components/a-wrap.html",
+        fileContent: "<div><div data-bascik-slot></div></div>",
+      },
+      "b-card": {
+        fileName: "src/components/b-card.html",
+        fileContent: "<p><a-wrap>inner</a-wrap></p>",
+      },
+    };
+    const result = viaCore(
+      "<a-wrap><b-card></b-card></a-wrap>",
+      list,
+      PAGE_PATH,
+    );
+    expect(result.usedComponents.map((c) => c.name)).toEqual([
+      "a-wrap",
+      "b-card",
+      "a-wrap",
+    ]);
+  });
+});
+
 describe("binding toggles at build time", () => {
   const list = (): ComponentList => ({
     "link-box": {
@@ -1070,5 +1227,193 @@ describe("usage attributes outside [\\w:-] reach the root (F027)", () => {
       expect(root).toMatch(/class="[^"]*card x"/);
       expect(result.transpiledHtmlBody).toContain("<span>Hi</span>");
     }
+  });
+});
+
+describe("a usage that passes what the template does not declare warns (findings 47, 23)", () => {
+  const PAGE = "src/pages/index.html";
+  const card: ComponentList = {
+    "feature-card": {
+      fileName: "src/components/feature-card.html",
+      fileContent:
+        '<article><header data-bascik-slot="header"></header><div data-bascik-slot></div><p data-bascik-prop-brand>My Site</p><a data-bascik-attr-href="link">go</a></article>',
+    },
+    "no-slot": {
+      fileName: "src/components/no-slot.html",
+      fileContent: "<p>no slot here</p>",
+    },
+  };
+  const run = (html: string, list: ComponentList = card) => {
+    const warnings: string[] = [];
+    const result = viaCore(html, list, PAGE, freshState(), {
+      warn: (message) => warnings.push(message),
+    });
+    return { html: result.transpiledHtmlBody, warnings };
+  };
+
+  it("names an undeclared named slot, its component, and the page, and says the content was dropped", () => {
+    const { warnings, html } = run(
+      '<feature-card><div data-bascik-slot="sidebar">Learn more</div></feature-card>',
+    );
+    expect(html).not.toContain("Learn more");
+    const hit = warnings.filter((w) => w.includes('slot "sidebar"'));
+    expect(hit).toHaveLength(1);
+    expect(hit[0]).toContain("<feature-card>");
+    expect(hit[0]).toContain("dropped");
+    expect(hit[0]).toContain(PAGE);
+    expect(hit[0]).toContain("bascik --check");
+  });
+
+  it("names an undeclared prop", () => {
+    const { warnings } = run(
+      '<feature-card data-bascik-prop-brnad="Acme"></feature-card>',
+    );
+    const hit = warnings.filter((w) => w.includes('prop "brnad"'));
+    expect(hit).toHaveLength(1);
+    expect(hit[0]).toContain("<feature-card>");
+    expect(hit[0]).toContain(PAGE);
+  });
+
+  it("is silent for declared slots and props, in any letter case, and for attribute bindings", () => {
+    const { warnings } = run(
+      '<feature-card data-bascik-prop-Brand="A" data-bascik-prop-link="/x"><h1 data-bascik-slot="Header">H</h1><p>body</p></feature-card>',
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns once per component and name on a page, not once per instance", () => {
+    const { warnings } = run(
+      '<feature-card data-bascik-prop-brnad="A"></feature-card>'.repeat(3),
+    );
+    expect(warnings.filter((w) => w.includes('prop "brnad"'))).toHaveLength(1);
+  });
+
+  it("a name that appears only in a template comment or script text is not declared", () => {
+    const list: ComponentList = {
+      "x-box": {
+        fileName: "src/components/x-box.html",
+        fileContent:
+          '<div><!-- data-bascik-slot="aside" --><script>const s = "data-bascik-prop-tone";</script></div>',
+      },
+    };
+    const { warnings } = run(
+      '<x-box data-bascik-prop-tone="red"><i data-bascik-slot="aside">a</i></x-box>',
+      list,
+    );
+    expect(warnings.some((w) => w.includes('slot "aside"'))).toBe(true);
+    expect(warnings.some((w) => w.includes('prop "tone"'))).toBe(true);
+  });
+
+  it("names children passed to a component with no data-bascik-slot (finding 23)", () => {
+    const { warnings, html } = run("<no-slot><p>dropped?</p></no-slot>");
+    expect(html).not.toContain("dropped?");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("<no-slot>");
+    expect(warnings[0]).toContain("data-bascik-slot");
+    expect(warnings[0]).toContain("dropped");
+    expect(warnings[0]).toContain(PAGE);
+  });
+
+  it("is silent for whitespace or comment-only children and for self-closing usages", () => {
+    expect(
+      run("<no-slot>\n  <!-- note -->\n</no-slot><no-slot />").warnings,
+    ).toEqual([]);
+  });
+
+  it("a slot wrapper meant for a nested component is not the outer usage's", () => {
+    const list: ComponentList = {
+      ...card,
+      "outer-box": {
+        fileName: "src/components/outer-box.html",
+        fileContent: "<section><div data-bascik-slot></div></section>",
+      },
+    };
+    const { warnings } = run(
+      '<outer-box><feature-card><b data-bascik-slot="header">h</b></feature-card></outer-box>',
+      list,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("a usage inside a component template names that template as where it was written", () => {
+    const list: ComponentList = {
+      ...card,
+      "page-shell": {
+        fileName: "src/components/page-shell.html",
+        fileContent:
+          '<main><feature-card data-bascik-prop-brnad="x"></feature-card></main>',
+      },
+    };
+    const { warnings } = run("<page-shell></page-shell>", list);
+    const hit = warnings.find((w) => w.includes('prop "brnad"'));
+    expect(hit).toContain("src/components/page-shell.html");
+  });
+});
+
+// Finding 27: a slot marker on the component root replaced the root, so the
+// usage's attributes landed on the slotted content (or vanished with the
+// fallback text) and the root's own class matched nothing.
+describe("a slot marker on the component root keeps the root (finding 27)", () => {
+  const list: ComponentList = {
+    "root-slot": {
+      fileName: "src/components/root-slot.html",
+      fileContent: '<div class="rs" data-bascik-slot>fallback</div>',
+    },
+    "root-named": {
+      fileName: "src/components/root-named.html",
+      fileContent:
+        '<section class="rn" data-testid="rn" data-bascik-slot="body"><p>empty</p></section>',
+    },
+  };
+  const rootOf = (html: string) =>
+    /^<(div|section)\b[^>]*>/.exec(html.trim())?.[0] ?? "";
+
+  it.each([
+    ['<root-slot class="usage-class"><p>given</p></root-slot>', "<p>given</p>"],
+    ['<root-slot class="usage-class"></root-slot>', "fallback"],
+    ['<root-slot class="usage-class" />', "fallback"],
+  ])("%s renders the root with the usage class around %s", (usage, inner) => {
+    const html = viaWrapper(usage, list).transpiledHtmlBody;
+    const root = rootOf(html);
+    expect(root, html).toMatch(/^<div\b/);
+    const classes = /class="([^"]*)"/.exec(root)![1].split(/\s+/);
+    expect(classes).toContain("usage-class");
+    expect(classes.some((c) => c.endsWith("rs"))).toBe(true);
+    expect(html).toContain(inner);
+    expect(html).not.toContain('<p class="usage-class"');
+    expect(html).not.toContain("data-bascik-slot");
+  });
+
+  it("keeps a named-slot root and lands data-testid on it", () => {
+    const filled = viaWrapper(
+      '<root-named data-testid="page-rn"><div data-bascik-slot="body"><b>x</b></div></root-named>',
+      list,
+    ).transpiledHtmlBody;
+    expect(rootOf(filled)).toMatch(/^<section\b[^>]*data-testid="page-rn"/);
+    expect(filled).toMatch(/<section\b[^>]*>\s*<b>x<\/b>\s*<\/section>/);
+    const empty = viaWrapper(
+      '<root-named data-testid="page-rn"></root-named>',
+      list,
+    ).transpiledHtmlBody;
+    expect(empty).toMatch(/<section\b[^>]*>\s*<p>empty<\/p>\s*<\/section>/);
+  });
+});
+
+// Finding 8: a named slot's content was not trimmed while the default slot's
+// was, so the same markup rendered with different whitespace by slot kind.
+describe("named slot content is trimmed like default slot content (finding 8)", () => {
+  it("drops the whitespace around a named wrapper's content", () => {
+    const list: ComponentList = {
+      "two-slots": {
+        fileName: "src/components/two-slots.html",
+        fileContent:
+          '<div><h2 data-bascik-slot="title"></h2><p data-bascik-slot></p></div>',
+      },
+    };
+    const html = viaWrapper(
+      '<two-slots><span data-bascik-slot="title">\n    Hi\n  </span>\n  Body\n</two-slots>',
+      list,
+    ).transpiledHtmlBody;
+    expect(html).toBe("<div>HiBody</div>");
   });
 });

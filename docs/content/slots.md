@@ -6,7 +6,7 @@ Slot content is the raw-markup path for components. Elements remain HTML and may
 
 ## Default slots and fallback content
 
-Add `data-bascik-slot` (no value) to any element in your component template to mark where inner content should be inserted. The element itself is replaced by the slot content.
+Add `data-bascik-slot` (no value) to any element in your component template to mark where inner content should be inserted. The element itself is replaced by the slot content, unless it is the component's root element: then the root stays and the content (or the fallback) goes inside it, so the root keeps its own class and receives the attributes written on the component tag.
 
 Place default content inside the marker and it renders whenever the component tag has no inner content.
 
@@ -65,6 +65,8 @@ Slotted content can also be read by the component's script. The [Tab Group](/exa
 
 > **How it works:** Named slot wrappers in the usage inner HTML are extracted by name and injected into the matching `data-bascik-slot="name"` placeholder in the template. Everything left over goes into the default slot.
 >
+> **A name the template does not declare is dropped.** Content wrapped for a slot name with no matching `data-bascik-slot="name"` in the template does not render, and the build and dev server print a warning naming the component, the slot, and the file the usage is in. Names match in any letter case.
+>
 > **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.
 
 ## Forwarding a Slot into a Nested Component
@@ -90,7 +92,7 @@ Only the default slot is forwarded. A named wrapper written between the inner co
 
 ## Whitespace Handling
 
-Leading and trailing whitespace is trimmed from default slot content at build time. This means you can write component usage on multiple lines without worrying about stray newlines or indentation appearing in the output:
+Leading and trailing whitespace is trimmed from all slot content at build time, default and named alike. This means you can write component usage on multiple lines without worrying about stray newlines or indentation appearing in the output:
 
 ```html
 <!-- these two usages produce identical output -->
@@ -102,7 +104,7 @@ Leading and trailing whitespace is trimmed from default slot content at build ti
 </my-card>
 ```
 
-Whitespace _within_ slot content is preserved exactly as written. Named slot wrappers (`<div data-bascik-slot="actions">`) are not trimmed: their content is inserted as written, including the newline and indentation inside the wrapper. In inline contexts such as a `<span data-bascik-slot="title">` next to text, write the wrapper content on one line (`<span data-bascik-slot="title">Title</span>`) to avoid a stray space.
+Whitespace _within_ slot content is preserved exactly as written. A named slot wrapper (`<div data-bascik-slot="actions">`) is trimmed the same way: the newline and indentation inside the wrapper never reach the output, so a wrapper written on several lines renders the same as one written on a single line.
 
 > **Code examples stay literal by default.** Bascik skips transpilation inside `<code>` elements by default, so slot trimming only applies to regular component resolution. If you configure `scoping.preserve: ['code', 'pre']`, raw `<pre>` content is preserved too.
 

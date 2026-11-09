@@ -103,6 +103,8 @@ count.addEventListener("click", () => {
 
 **Imports in a `.ts` module.** Bascik inlines a `type="module"` `.ts` script (a page's own or a component's companion) without bundling it, so the browser would resolve its imports against the page's URL. An import of a relative, `@/`, or `.ts` path therefore fails the build, naming the tag and the import. Bundle the module with esbuild (a `scripts.typescript` function, or a `pipeline.exec` step that writes a `.js` file), or import a published JavaScript URL such as `/js/util.js`.
 
+**Imports in a JavaScript component script.** The same holds for a plain `.js`/`.mjs` companion or inline `<script>` in a component: Bascik does not bundle or publish what it imports. A relative `import` or dynamic `import("./extra.js")` resolves against the page URL, so the browser's request fails at runtime. The build prints a warning naming the file, line, and specifier. Put the imported file in `public/` and import its published URL (`import("/js/extra.js")`), or bundle the script first.
+
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
 
 ```html

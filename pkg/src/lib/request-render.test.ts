@@ -1368,7 +1368,8 @@ describe.each([true, false])(
         const host = makeHost(manifest, {
           externalTags: createExternalTagMatcher(["server-card", "bad-*"]),
         });
-        const html = `<server-card>e</server-card><bad-id data-bascik-prop-v="1">x</bad-id>`;
+        // No children: server-card declares no slot, which is its own warning.
+        const html = `<server-card></server-card><bad-id data-bascik-prop-v="1">x</bad-id>`;
         const wrapped = wrapRunner(
           runnerFrom({ a: html }),
           serverPlan("a"),

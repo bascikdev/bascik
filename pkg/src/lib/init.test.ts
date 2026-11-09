@@ -203,6 +203,15 @@ describe("initProject", () => {
     );
   });
 
+  // A `.cjs` file is CommonJS whatever "type" says, so it cannot break when
+  // the package switches to "module" (an `.eslintrc.cjs` in a fresh project).
+  it("misuse: a commonjs project whose only code is a .cjs file still switches to module", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    projectTree({ "": [entry(".eslintrc.cjs"), entry("tool.cjs")] });
+    await init();
+    expect(JSON.parse(writtenTo("package.json")!).type).toBe("module");
+  });
+
   it("refuses a commonjs project with a .ts file, which Node also reads by package type", async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
     projectTree({ "": [entry("build.ts")] });
@@ -258,6 +267,41 @@ describe("initProject", () => {
     expect(lines).toContain("bascik-cert.pem");
   });
 
+  // A fresh folder has no .gitignore: without node_modules/ the first
+  // `git add .` stages every installed package (create-bascik ignores it too).
+  it("ignores node_modules/ in a new .gitignore", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      if (String(path).endsWith(".gitignore")) throw new Error("ENOENT");
+      return '{"name":"my-app"}';
+    });
+    await init();
+    const lines = writtenTo(".gitignore")!.split("\n");
+    expect(lines[0]).toBe("node_modules/");
+    expect(lines).toContain("dist/");
+  });
+
+  it("misuse: does not add node_modules/ again when .gitignore spells it node_modules or /node_modules", async () => {
+    for (const spelling of [
+      "node_modules",
+      "/node_modules",
+      "/node_modules/",
+    ]) {
+      mockWriteFile.mockClear();
+      mockReadFile.mockImplementation(async (path: unknown) =>
+        String(path).endsWith(".gitignore")
+          ? `${spelling}\n`
+          : '{"name":"my-app"}',
+      );
+      await init();
+      const lines = writtenTo(".gitignore")!.split("\n");
+      expect(
+        lines.filter(
+          (l) => l.includes("node_modules") && !l.includes(".cache"),
+        ),
+      ).toEqual([spelling]);
+    }
+  });
+
   it("keeps a CRLF .gitignore CRLF, appending only the missing lines", async () => {
     const original = "node_modules/\r\ndist/\r\n.env\r\n";
     mockReadFile.mockImplementation(async (path: unknown) =>
@@ -290,7 +334,7 @@ describe("initProject", () => {
   it("leaves .gitignore alone when every entry is already there", async () => {
     mockReadFile.mockImplementation(async (path: unknown) =>
       String(path).endsWith(".gitignore")
-        ? "dist/\nnode_modules/.cache/bascik/\nbascik-privkey.pem\nbascik-cert.pem\n"
+        ? "node_modules/\ndist/\nnode_modules/.cache/bascik/\nbascik-privkey.pem\nbascik-cert.pem\n"
         : '{"name":"my-app"}',
     );
     await init();

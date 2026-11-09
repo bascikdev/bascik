@@ -1096,6 +1096,63 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     );
   });
 
+  test("shows a located overlay for an unclosed { in a component <style>, and recovers when it is closed", async ({
+    page,
+  }) => {
+    await page.goto("/scope-test");
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+
+    // Finding 42: a missing } nested every later component's rules inside this one, silently.
+    const prefix = `${originalComponentContent}\n<style>\n`;
+    const braceLine = prefix.split("\n").length;
+    await writeFile(
+      componentPath,
+      `${prefix}.dev-brace-probe { color: red;\n</style>\n`,
+      "utf8",
+    );
+
+    const overlay = page.getByTestId("bascik-build-error-overlay");
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toContainText(`scope-test.html:${braceLine}`);
+    await expect(overlay).toContainText('Add the missing "}"');
+
+    await writeFile(
+      componentPath,
+      `${prefix}.dev-brace-probe { color: red; }\n</style>\n`,
+      "utf8",
+    );
+    await expect(overlay).not.toBeAttached({ timeout: 15000 });
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+  });
+
+  test("shows a located overlay for a stray } in a companion stylesheet, and recovers when it is removed", async ({
+    page,
+  }) => {
+    await page.goto("/scope-test");
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+
+    const prefix = `${originalScopeTestCss}\n.dev-brace-probe { color: red; }\n`;
+    const strayLine = prefix.split("\n").length;
+    await writeFile(scopeTestCssPath, `${prefix}}\n`, "utf8");
+
+    const overlay = page.getByTestId("bascik-build-error-overlay");
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toContainText(`scope-test.css:${strayLine}`);
+    await expect(overlay).toContainText('Remove the "}"');
+
+    await writeFile(scopeTestCssPath, prefix, "utf8");
+    await expect(overlay).not.toBeAttached({ timeout: 15000 });
+    await expect(page.locator("h1")).toHaveText(
+      "JS Scope Rewriting — Live Test",
+    );
+  });
+
   test("the build-error overlay is a modal alert dialog: focus moves in, Escape closes it and returns focus, and the next error shows it again", async ({
     page,
   }) => {
@@ -1894,5 +1951,92 @@ export default async function () {
       await stopChildServer(child);
       await removeChildServerOut(port);
     }
+  });
+});
+
+// Finding 40: a page that fails during component expansion is never stored, so no
+// component index named it, and fixing the component left the page 404 until the page
+// file itself was touched. A temp project keeps the broken component out of the fixture.
+test.describe("Dev Server recovery from a component that broke a page at boot", () => {
+  const port = "9994";
+  const baseUrl = `http://localhost:${port}`;
+  const entryPath = join(pkgDir, "bin/bascik.js");
+  const page = `<!doctype html><html lang="en"><head><title>P</title></head><body><a-card></a-card></body></html>\n`;
+
+  const bootAndFix = async (
+    files: Record<string, string>,
+    fixPath: string,
+    fixed: string,
+    expectedText: string,
+  ): Promise<void> => {
+    const projectDir = await mkdtemp(
+      join(tmpdir(), "bascik-dev-component-fix-"),
+    );
+    await mkdir(join(projectDir, "src/pages"), { recursive: true });
+    await mkdir(join(projectDir, "src/components"), { recursive: true });
+    await writeFile(join(projectDir, "src/pages/index.html"), page, "utf8");
+    for (const [relative, content] of Object.entries(files))
+      await writeFile(join(projectDir, relative), content, "utf8");
+
+    const child = spawn(process.execPath, [entryPath], {
+      cwd: projectDir,
+      env: { ...process.env, BASCIK_SERVER_PORT: port },
+    });
+    let output = "";
+    const capture = (data: Buffer): void => {
+      output += stripVTControlCharacters(data.toString("utf8"));
+    };
+    child.stdout?.on("data", capture);
+    child.stderr?.on("data", capture);
+    try {
+      await expect
+        .poll(() => output.includes("All tasks completed in"), {
+          timeout: 60000,
+        })
+        .toBe(true);
+      expect((await fetch(`${baseUrl}/`)).status).toBe(404);
+
+      // Only the component changes; the page file is never touched.
+      await writeFile(join(projectDir, fixPath), fixed, "utf8");
+      await expect
+        .poll(
+          async () => {
+            const res = await fetch(`${baseUrl}/`);
+            return (
+              res.status === 200 && (await res.text()).includes(expectedText)
+            );
+          },
+          { timeout: 20000, message: output },
+        )
+        .toBe(true);
+    } finally {
+      await stopChildServer(child);
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  };
+
+  test("serves the page after a component cycle is fixed, without touching the page", async () => {
+    await bootAndFix(
+      {
+        "bascik.config.js":
+          "export default { components: { expansionLimits: { maxInstances: 50 } } };\n",
+        "src/components/a-card.html": `<div class="a">A <b-card></b-card></div>\n`,
+        "src/components/b-card.html": `<div class="b">B <a-card></a-card></div>\n`,
+      },
+      "src/components/b-card.html",
+      `<div class="b">B fixed</div>\n`,
+      "B fixed",
+    );
+  });
+
+  test("serves the page after a component build script that threw is fixed, without touching the page", async () => {
+    await bootAndFix(
+      {
+        "src/components/a-card.html": `<div class="a"><script data-bascik-build>\nthrow new Error("boom");\n</script></div>\n`,
+      },
+      "src/components/a-card.html",
+      `<div class="a"><script data-bascik-build>\nexport default async () => "<i>build script fixed</i>";\n</script></div>\n`,
+      "build script fixed",
+    );
   });
 });
