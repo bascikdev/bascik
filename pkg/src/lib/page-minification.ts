@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { deepReadDirFlat } from "./file-system.ts";
+import { readPagesDirectory } from "./file-system.ts";
 import { SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
 import { BascikConfig } from "./config.ts";
 import { minifyCss } from "./css-minifier.ts";
@@ -30,9 +30,7 @@ const TRAILING_SOURCE_URL_RE = /(?:^|\n)[ \t]*(\/\/# sourceURL=[^\n]*?)[ \t]*$/;
 const resolveInlineStyles = async (): Promise<string[]> => {
   const inlineStyles = BascikConfig.assets?.inlineStyles;
   if (inlineStyles === true) {
-    return (
-      await deepReadDirFlat(BascikConfig.directory.pages, /\.css$/i)
-    ).sort();
+    return (await readPagesDirectory(/\.css$/i)).sort();
   }
   if (Array.isArray(inlineStyles)) {
     return inlineStyles;

@@ -1378,6 +1378,33 @@ describe("checkProject", () => {
       ]);
     });
 
+    // Audit 159 finding 51.
+    it("warns when about.html and about/index.html split /about and /about/", async () => {
+      await setupProject({
+        "src/pages/about.html": "<p>A</p>",
+        "src/pages/about/index.html": "<p>B</p>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "src/pages/about.html"),
+        join(workDir, "src/pages/about/index.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "duplicate-route-resolution",
+      );
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("warning");
+      expect(item?.message).toContain(
+        '"/about" and "/about/" are served by different pages',
+      );
+      expect(item?.locations).toEqual([
+        { filePath: join(workDir, "src/pages/about.html") },
+        { filePath: join(workDir, "src/pages/about/index.html") },
+      ]);
+    });
+
     it("does not emit missing-required-prop warnings because the cheap global heuristic is too noisy", async () => {
       await setupProject({
         "pages/index.html": "<card-title></card-title>",

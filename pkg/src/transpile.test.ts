@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -533,6 +535,138 @@ describe("runTranspile", () => {
     expect(failure!.message).toContain("ENOTEMPTY");
     expect(failure!.cause).toBe(busy);
     expect(_mockRunExecPhase).not.toHaveBeenCalled();
+  });
+
+  // Audit 159 finding 140: a dist/ owned by root (a sudo build, a Docker
+  // volume) or on a read-only mount is a permissions problem, not a second
+  // bascik process.
+  it.each(["EACCES", "EPERM"])(
+    "misuse: says permission denied, not another bascik process, when the clean fails with %s",
+    async (code) => {
+      (BascikConfig as any).isBuild = true;
+      _parallel.release();
+      const denied = Object.assign(new Error(`${code}: permission denied`), {
+        code,
+      });
+      _mockRm.mockResolvedValueOnce(undefined).mockRejectedValueOnce(denied);
+      const failure = await runTranspile().then(
+        () => null,
+        (err: unknown) => err as Error & { cause?: unknown },
+      );
+      expect(failure!.message).toMatch(
+        new RegExp(
+          `Could not clear the output directory \\S*[\\\\/]dist \\(${code}\\)`,
+        ),
+      );
+      expect(failure!.message).toMatch(/permission denied/);
+      expect(failure!.message).toMatch(/ownership|permissions/);
+      expect(failure!.message).not.toMatch(/another bascik/);
+      expect(failure!.cause).toBe(denied);
+    },
+  );
+
+  it("misuse: reports an unexpected clean failure with its own message, not a guessed cause", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    const odd = Object.assign(new Error("EIO: i/o error, rmdir 'dist'"), {
+      code: "EIO",
+    });
+    _mockRm.mockResolvedValueOnce(undefined).mockRejectedValueOnce(odd);
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(failure!.message).toMatch(/Could not clear the output directory/);
+    expect(failure!.message).toContain("EIO: i/o error");
+    expect(failure!.message).not.toMatch(/another bascik/);
+  });
+
+  // Audit 159 finding 141: rm() removed a dist symlink itself and the build
+  // recreated dist/ as a real folder, so output never reached the link's
+  // target and nothing said so.
+  it("misuse: refuses to clean an output directory that is a symbolic link, naming the link and its target", async () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "bascik-clean-link-")),
+    );
+    const cwd = process.cwd();
+    try {
+      mkdirSync(join(root, "served"), { recursive: true });
+      symlinkSync("served", join(root, "dist"));
+      process.chdir(root);
+      (BascikConfig as any).isBuild = true;
+      _parallel.release();
+      const failure = await runTranspile().then(
+        () => null,
+        (err: unknown) => err as Error,
+      );
+      expect(failure?.message).toMatch(/symbolic link/);
+      expect(failure?.message).toContain(join(root, "dist"));
+      expect(failure?.message).toContain(join(root, "served"));
+      expect(failure?.message).toMatch(/directory\.out/);
+      expect(_mockRm).not.toHaveBeenCalled();
+      expect(lstatSync(join(root, "dist")).isSymbolicLink()).toBe(true);
+    } finally {
+      process.chdir(cwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // Audit 159 findings 49 and 79: the build wrapped every failure as
+  // `Build pipeline failed: <Class>: ...`, so the page summary read
+  // `Build pipeline failed: PageProcessingAggregateError: Build failed with 1
+  // page errors:` and a known [bascik] error gained an `Error:` prefix.
+  it("misuse: reports a single build failure with its own message, not a wrapped class name", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    _mockWatchFiles.mockRejectedValueOnce(
+      new Error("[bascik] error: BASCIK_SITE_URL is not set."),
+    );
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(failure!.message).toBe(
+      "[bascik] error: BASCIK_SITE_URL is not set.",
+    );
+  });
+
+  it("misuse: prints the page summary with project-relative paths and a correct count", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    _mockWatchFiles.mockRejectedValueOnce(
+      new PageProcessingAggregateError([
+        new PageProcessingError(
+          resolve("src/pages/c.html"),
+          "transpile page",
+          new Error("broken"),
+        ),
+      ]),
+    );
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(failure!.message).toBe(
+      "Build failed with 1 page error:\n  src/pages/c.html\n    transpile page: broken",
+    );
+  });
+
+  it("misuse: joins several build failures by message without class names", async () => {
+    (BascikConfig as any).isBuild = true;
+    _parallel.release();
+    _mockStartExecParallel.mockImplementationOnce(() =>
+      Object.assign(Promise.reject(new Error("[bascik] exec failed: a.ts")), {
+        tasks: [],
+      }),
+    );
+    _mockWatchFiles.mockRejectedValueOnce(new Error("[bascik] other failure"));
+    const failure = await runTranspile().then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(failure!.message).toBe(
+      "[bascik] exec failed: a.ts\n[bascik] other failure",
+    );
   });
 
   it("handles server startup error gracefully when exitOnError is false", async () => {

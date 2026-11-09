@@ -67,9 +67,10 @@ export default defineConfig({
   // run start and keeps .last-run.json there, so lanes must not share one.
   outputDir: "../test-results/dev",
   // Ports dev-server-reload.test.ts binds for its own short-lived dev
-  // servers (cold start, recovery). Read by scripts/run-lanes.ts, which
+  // servers (cold start, recovery), and dev-boot-component-error.test.ts
+  // binds for its own. Read by scripts/run-lanes.ts, which
   // refuses to start if one is already bound, and by its port-collision test.
-  metadata: { childServerPorts: [9989, 9992, 9993] },
+  metadata: { childServerPorts: [9989, 9992, 9993, 44031] },
   // Upper bound across projects; each project sets its own limit below.
   workers: 4,
   fullyParallel: false,

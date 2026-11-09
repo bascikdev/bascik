@@ -206,6 +206,7 @@ import {
 } from "./caching.ts";
 import { exec, execFile } from "node:child_process";
 import { eventEmitter } from "./events.ts";
+import { clearBootFailure, setBootFailure } from "./boot-failure.ts";
 
 const mockMem = mem as unknown as {
   getPage: ReturnType<typeof vi.fn>;
@@ -894,6 +895,36 @@ describe("startHttp2Server – SSE boot-done event", () => {
           event,
           expect.any(Function),
         );
+      }
+    });
+
+    // Audit 159 finding 43: boot ended with a component that does not load,
+    // so no page will land until it is fixed. The boot tab shows the error
+    // in the overlay and reloads once the fixed page is stored.
+    it("sends a boot failure to a boot client instead of reloading it into a 404", async () => {
+      mockMem.isBooting = false;
+      setBootFailure({
+        message:
+          "[bascik] TypeScript transformation failed in src/components/a.html:1:1: x",
+        file: "src/components/a.html",
+      });
+      try {
+        const handler = getStreamHandler()!;
+        const stream = makeStream();
+        await handler(
+          stream,
+          makeHeaders(BOOT_PATH, "GET", "", "https://localhost:8443/"),
+        );
+        expect(reloadWrites(stream)).toHaveLength(0);
+        expect(stream.write).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /^event: build-error\ndata: \{"message":"\[bascik\] TypeScript transformation failed/,
+          ),
+        );
+        firePageStored("pages/index.html");
+        expect(reloadWrites(stream)).toHaveLength(1);
+      } finally {
+        clearBootFailure();
       }
     });
 

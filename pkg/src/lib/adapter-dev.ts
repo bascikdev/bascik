@@ -396,6 +396,7 @@ export const startAdapterDev = async (
     clearTimeout(debounce);
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
+    process.off("SIGHUP", onSignal);
     await watcher?.close();
     await Promise.all([stopAdapterChild(builder), stopAdapterChild(runtime)]);
     for (const client of clients) client.end();
@@ -576,6 +577,7 @@ export const startAdapterDev = async (
     });
     process.once("SIGINT", onSignal);
     process.once("SIGTERM", onSignal);
+    process.once("SIGHUP", onSignal);
     registerExitStopper(() => (closing ? null : close()));
     const { watch } = await import("chokidar");
     watcher = watch(location.roots, {

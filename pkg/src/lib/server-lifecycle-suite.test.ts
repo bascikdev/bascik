@@ -784,6 +784,29 @@ describe("startHttp2Server – graceful shutdown", () => {
     expect(events).toContain("SIGINT");
   });
 
+  // Audit 159 finding 142: a supervisor or IDE that stops the server with
+  // SIGHUP signals only this process. Without a handler it died by default
+  // action, skipped the exit stoppers, and orphaned pipeline.exec children.
+  it("shuts down gracefully on SIGHUP, as on SIGTERM", async () => {
+    await startHttp2Server();
+    const found = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
+      (c: any[]) => c[0] === "SIGHUP",
+    ) as [string, () => void] | undefined;
+    expect(found).toBeDefined();
+
+    const { runShutdownHandlers } = await import("./events.ts");
+    const mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(
+        (_code?: string | number | null) => undefined as never,
+      );
+    found![1]();
+    expect(mockServer.close).toHaveBeenCalled();
+    expect(runShutdownHandlers).toHaveBeenCalled();
+    await untilExited(mockExit);
+    mockExit.mockRestore();
+  });
+
   it("calls server.close() and runShutdownHandlers on SIGTERM", async () => {
     await startHttp2Server();
     const [, sigTermHandler] = (
@@ -848,7 +871,11 @@ describe("startHttp2Server – graceful shutdown", () => {
   // production server keeps the other signal's handler, so a SIGTERM from a
   // process manager after a Ctrl-C cannot cut the connection drain short.
   for (const [label, prod, released] of [
-    ["dev removes both signal handlers", false, ["SIGINT", "SIGTERM"]],
+    [
+      "dev removes every signal handler",
+      false,
+      ["SIGHUP", "SIGINT", "SIGTERM"],
+    ],
     ["the production server removes only the one that fired", true, []],
   ] as const) {
     it(`on the first signal, ${label}`, async () => {
@@ -871,7 +898,7 @@ describe("startHttp2Server – graceful shutdown", () => {
         sigIntHandler();
         const removed = removeSpy.mock.calls
           .map((c: any[]) => String(c[0]))
-          .filter((event) => event === "SIGINT" || event === "SIGTERM")
+          .filter((event) => ["SIGHUP", "SIGINT", "SIGTERM"].includes(event))
           .sort();
         expect(removed).toEqual([...released]);
         // Let the shutdown reach its exit while exit is still mocked.

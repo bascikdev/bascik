@@ -61,7 +61,7 @@ import {
 
 import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
-import { basename, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   deleteDistFile,
@@ -69,7 +69,7 @@ import {
   getRelativePath,
   listPages,
 } from "./file-system.ts";
-import { getHttpPath } from "./paths.ts";
+import { findSlashVariantRoutes, getHttpPath } from "./paths.ts";
 
 import {
   componentsHaveBuildScripts,
@@ -183,7 +183,8 @@ const hasBuildOnceScript = (html: string): boolean =>
 
 /**
  * Loads every component for a batch of pages. A failure is reported to the browser and then rethrown, so
- * callers still see it: dev boot must keep failing hard on a broken component.
+ * callers still see it. Dev boot recognizes it (`isComponentLoadFailure`) and keeps the server up so a
+ * fixed component recovers; a production build fails.
  *
  * `transpilePage` has its own `listComponents()` call and does not use this. Its callers publish the error
  * themselves (`pageProcessing` reports every failure), so using it there would report each one twice.
@@ -1019,6 +1020,27 @@ const releasePagePool = (
 };
 
 /**
+ * Warns, naming both files, when `about.html` and `about/index.html` serve
+ * `/about` and `/about/` with different bodies; the sitemap lists the route
+ * once (audit 159 finding 51).
+ */
+const warnSlashVariantRoutes = (pageList: string[]): void => {
+  const pages = pageList.map((filePath) => ({
+    filePath,
+    route: getHttpPath(getRelativePath(filePath, "pages")),
+  }));
+  for (const { route, flatFile, indexFile } of findSlashVariantRoutes(pages)) {
+    const show = (file: string) => relative(process.cwd(), file) || file;
+    console.warn(
+      `[bascik] warning: "${route}" and "${route}/" are served by different pages:\n` +
+        `  ${show(flatFile)}\n` +
+        `  ${show(indexFile)}\n` +
+        `  Keep one of them; the sitemap lists "${route}" only.`,
+    );
+  }
+};
+
+/**
  * Stop every page worker pool a `processAllPages` call has started, or is
  * about to start, and has not stopped yet. For a caller about to exit while
  * a phase is still running: a build runs the phase next to the static asset
@@ -1101,6 +1123,8 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     await releasePagePool(phase);
     throw error;
   }
+  if (BascikConfig.isBuild) warnSlashVariantRoutes(pageList);
+
   // FIFO on each worker's port, so this arrives before any page job, and
   // the pool replays it to any worker it spawns later. Sent now rather than
   // after the pool is fitted: the pool starts at no more workers than pages,

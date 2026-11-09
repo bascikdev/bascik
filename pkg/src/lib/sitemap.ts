@@ -267,6 +267,19 @@ export const generateSitemapFiles = async (
       entries.push({ path: encodedPath, lastmod });
     }
 
+    // about.html (/about) and about/index.html (/about/) are one route to a
+    // reader; list it once, without the slash (audit 159 finding 51). The
+    // build warns about the pair.
+    const listed = new Set(entries.map((entry) => entry.path));
+    const canonical = entries.filter(
+      (entry) =>
+        entry.path === "/" ||
+        !entry.path.endsWith("/") ||
+        !listed.has(entry.path.slice(0, -1)),
+    );
+    entries.length = 0;
+    entries.push(...canonical);
+
     entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
     const sitemapXml = buildSitemapXml(siteUrl, entries, BascikConfig.base);

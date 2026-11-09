@@ -275,7 +275,26 @@ export const resolveAdapterTarget = async (
         { cause: err },
       );
     }
-    throw err;
+    // Node's text names the importer, which is this compiler file, so a
+    // mistyped adapter path read like a Bascik crash (audit 159 finding 131).
+    const reason = (err instanceof Error ? err.message : String(err)).replace(
+      / imported from \S+/,
+      "",
+    );
+    if (
+      localPath &&
+      (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND" &&
+      !existsSync(localPath)
+    ) {
+      throw new Error(
+        `[bascik] --target ${target}: adapter file not found at ${localPath}`,
+        { cause: err },
+      );
+    }
+    throw new Error(
+      `[bascik] --target ${target}: failed to load the adapter: ${reason}`,
+      { cause: err },
+    );
   }
 
   const rawAdapter =

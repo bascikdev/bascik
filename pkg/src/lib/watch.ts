@@ -35,6 +35,23 @@ import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import { coalesceRuns } from "./coalesced-run.ts";
+import { isComponentLoadFailure } from "./page-diagnostics.ts";
+import { locateBuildError } from "./build-error.ts";
+import {
+  clearBootFailure,
+  getBootFailure,
+  setBootFailure,
+} from "./boot-failure.ts";
+
+/**
+ * A Bascik error whose message already names the file and line prints as that message alone; the stack
+ * of Bascik's own frames and the `[cause]` chain only buried it (audit 159 finding 48). Anything else
+ * keeps the full object, since its stack is the only clue to where it came from.
+ */
+const isLocatedBascikError = (err: unknown): err is Error =>
+  err instanceof Error &&
+  (err.message.startsWith("[bascik]") ||
+    (err as { located?: unknown }).located === true);
 
 export interface WatchFilesOptions {
   bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
@@ -66,8 +83,29 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     return;
   }
 
-  const onWatchError = (err: unknown) =>
-    console.error("[bascik] watch error:", err);
+  const onWatchError = (err: unknown) => {
+    if (isLocatedBascikError(err)) console.error(err.message);
+    else console.error("[bascik] watch error:", err);
+  };
+  const recordBootFailure = (error: unknown): void => {
+    console.error(error instanceof Error ? error.message : String(error));
+    setBootFailure({
+      message: error instanceof Error ? error.message : String(error),
+      ...(locateBuildError(error) ?? {}),
+    });
+  };
+  // No page compiled at boot, so the dependency graph knows no page that uses
+  // the edited component: compile them all, and keep the failure (with its
+  // new message) while the components still do not load.
+  const recoverFromBootFailure = async (): Promise<void> => {
+    try {
+      await processAllPages();
+      clearBootFailure();
+    } catch (error) {
+      if (!isComponentLoadFailure(error)) throw error;
+      recordBootFailure(error);
+    }
+  };
   // Adding, deleting or renaming many files at once (a git checkout, an
   // unzip, a script writing pages) fires one watcher event per file, and
   // each of these events rebuilds every page. Run one rebuild at a time and
@@ -314,10 +352,22 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
       );
     });
 
-    if (compileInitialSources && options.bootCompile) {
-      await options.bootCompile(compileInitialSources);
-    } else if (compileInitialSources) {
-      await compileInitialSources();
+    try {
+      if (compileInitialSources && options.bootCompile) {
+        await options.bootCompile(compileInitialSources);
+      } else if (compileInitialSources) {
+        await compileInitialSources();
+      }
+    } catch (error) {
+      // A component that does not compile used to end `bascik` with exit
+      // code 1, before the components watcher below existed, so fixing the
+      // file did nothing (audit 159 finding 43). The dev server stays up:
+      // the error is printed once, page requests get the boot page with the
+      // overlay, and the next component edit rebuilds every page. Any other
+      // boot failure (a missing pages directory) still ends the process.
+      if (!isComponentLoadFailure(error)) throw error;
+      recordBootFailure(error);
+      initialScanDone = true;
     }
 
     // Transpile pages if components change. Every configured root is watched;
@@ -350,7 +400,8 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           invalidateRuntimeModule(path);
           try {
             clearBuildScriptCaches(path);
-            await selectivelyProcessPages(path);
+            if (getBootFailure()) await recoverFromBootFailure();
+            else await selectivelyProcessPages(path);
           } catch (err) {
             onWatchError(err);
           }
@@ -359,7 +410,8 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           invalidateRuntimeModule(path);
           try {
             clearBuildScriptCaches(path);
-            await selectivelyProcessPages(path);
+            if (getBootFailure()) await recoverFromBootFailure();
+            else await selectivelyProcessPages(path);
           } catch (err) {
             onWatchError(err);
           }

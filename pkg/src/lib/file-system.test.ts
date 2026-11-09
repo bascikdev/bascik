@@ -236,6 +236,46 @@ describe("listPages", () => {
       "pages/dir/one.html",
     ]);
   });
+
+  // Audit 159 findings 38, 49, 139: `bascik` or `bascik --build` in an empty
+  // folder, a project subfolder, or with no src/pages answered with Node's
+  // raw `ENOENT: no such file or directory, scandir`.
+  it.each([
+    ["ENOENT", /does not exist/],
+    ["ENOTDIR", /is not a directory/],
+  ])(
+    "misuse: a missing pages directory (%s) names directory.pages, the folder it looked in, and the fix",
+    async (code, what) => {
+      vi.mocked(readdir).mockRejectedValueOnce(
+        Object.assign(new Error(`${code}: scandir 'pages'`), { code }),
+      );
+      const failure = await listPages().then(
+        () => null,
+        (err: unknown) => err as Error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure!.message).toMatch(
+        /^\[bascik\] error: pages directory "pages"/,
+      );
+      expect(failure!.message).toMatch(what);
+      expect(failure!.message).toContain(process.cwd());
+      expect(failure!.message).toContain("directory.pages");
+      expect(failure!.message).toContain("project root");
+      expect(failure!.message).toContain("npm create bascik");
+      expect(failure!.message).not.toContain("scandir");
+    },
+  );
+
+  it("misuse: an unreadable pages directory keeps Node's reason", async () => {
+    vi.mocked(readdir).mockRejectedValueOnce(
+      Object.assign(new Error("EACCES: permission denied, scandir 'pages'"), {
+        code: "EACCES",
+      }),
+    );
+    await expect(listPages()).rejects.toThrow(
+      /\[bascik\] error: could not read pages directory "pages" \(directory\.pages\): EACCES: permission denied/,
+    );
+  });
 });
 
 describe("getDirectoryPath", () => {

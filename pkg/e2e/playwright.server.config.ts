@@ -33,6 +33,8 @@ const prodServerTestIgnore = [
   // Dedicated to the symlink-enabled live-dev fixture.
   "**/static-asset-symlinks.test.ts",
   "**/dev-server-reload.test.ts",
+  // Starts its own dev server in a temporary project (audit 159 finding 43).
+  "**/dev-boot-component-error.test.ts",
   "**/dist-lifecycle.test.ts",
   // bascik add is a build-time authoring command with no runtime behavior;
   // serving a copied component is identical to serving any other component.

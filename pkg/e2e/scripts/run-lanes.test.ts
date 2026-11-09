@@ -427,6 +427,7 @@ describe("spec hygiene", () => {
     const tempProjectWriters = new Set([
       "base-path.test.ts",
       "exec-build-lifecycle.test.ts",
+      "dev-boot-component-error.test.ts",
     ]);
     vi.resetModules();
     const dev = (await import(join(e2eDir, MAIN_LANES.dev))) as {
