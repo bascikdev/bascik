@@ -240,6 +240,37 @@ describe("loadUserConfig", () => {
     expect(result.stderr).toContain("Unexpected identifier 'is'");
   }, 30000);
 
+  // A project run by a global or npx CLI, without @bascik/bascik in its own
+  // node_modules: the documented `import { defineConfig } from
+  // "@bascik/bascik"` cannot resolve, and the error says how to fix it.
+  it("misuse: a config importing @bascik/bascik in a project without it says to install it locally", async () => {
+    const p = await writeConfig(
+      `import { defineConfig } from "@bascik/bascik";\nexport default defineConfig({});\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    // The temp dir's real path differs on macOS (/var is /private/var).
+    expect(result.stderr).toMatch(
+      /Failed to load bascik\.config \([^)]*bascik\.config\.mjs\)/,
+    );
+    expect(result.stderr).toContain(
+      "This project does not have @bascik/bascik installed",
+    );
+    expect(result.stderr).toContain("npm install --save-dev @bascik/bascik");
+  }, 30000);
+
+  it("does not blame @bascik/bascik when the config imports some other missing package", async () => {
+    const p = await writeConfig(
+      `import x from "not-a-real-package-xyz";\nexport default {};\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not-a-real-package-xyz");
+    expect(result.stderr).not.toContain("@bascik/bascik installed");
+  }, 30000);
+
   it("names the line of a syntax error in bascik.config.js and in a --config file", async () => {
     const js = await writeConfig(`export default {\n  a: 1,,\n};\n`);
     const fromJs = buildProject(dirname(js));

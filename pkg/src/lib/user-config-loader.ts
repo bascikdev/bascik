@@ -157,6 +157,27 @@ const assertReadableExports = (
   );
 };
 
+/**
+ * The fix for a config whose `import ... from "@bascik/bascik"` cannot be
+ * resolved, or undefined for any other error. The CLI that is running may be
+ * a global install (`npm install -g @bascik/bascik`) or an `npx` download,
+ * but Node resolves the config's imports from the project folder, so only a
+ * copy installed in the project satisfies them.
+ */
+export function missingBascikPackageHint(err: unknown): string | undefined {
+  if (
+    !(err instanceof Error) ||
+    (err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND" ||
+    !/Cannot find package '@bascik\/bascik'/.test(err.message)
+  ) {
+    return undefined;
+  }
+  return (
+    "  This project does not have @bascik/bascik installed. A global or npx copy of the CLI " +
+    "cannot provide the config's imports, so install it in the project: npm install --save-dev @bascik/bascik"
+  );
+}
+
 /** Load and validate the project's bascik.config, if present. */
 export const loadUserConfig = async (
   configPath: string,
@@ -204,9 +225,11 @@ export const loadUserConfig = async (
     // than process.exit) so the CLI can surface the error and library
     // consumers (worker threads) don't nuke the whole process.
     const location = syntaxErrorLocation(configPath, err);
+    const hint = missingBascikPackageHint(err);
     throw new Error(
       `[bascik] Failed to load bascik.config (${configPath}): ${err instanceof Error ? err.message : String(err)}` +
-        (location ? `\n${location}` : ""),
+        (location ? `\n${location}` : "") +
+        (hint ? `\n${hint}` : ""),
       { cause: err },
     );
   }
