@@ -343,8 +343,10 @@ describe("installSkills", () => {
 
   describe("verifying what the skills CLI installed", () => {
     // The skills CLI exits 0 even when it skips a name the source does not have.
+    // `join()` writes backslashes on Windows; the fakes compare slashes.
+    const slashes = (path: string) => path.replace(/\\/g, "/");
     const without = (missing: string[]) => (path: string) =>
-      !missing.some((name) => path.includes(`/${name}/`));
+      !missing.some((name) => slashes(path).includes(`/${name}/`));
 
     it("misuse: a tag that lacks a requested skill is not reported as a clean pinned install", () => {
       const spawn = vi.fn(() => ok);
@@ -372,7 +374,8 @@ describe("installSkills", () => {
           runs++;
           return spawn(...args);
         }) as never,
-        exists: (path) => runs >= 2 || !path.includes("/bascik-images/"),
+        exists: (path) =>
+          runs >= 2 || !slashes(path).includes("/bascik-images/"),
       });
       expect(result.status).toBe("latest");
       expect(
@@ -386,7 +389,10 @@ describe("installSkills", () => {
         env: {},
         spawn: vi.fn(() => ok),
         exists: (path) =>
-          !(path.includes(".claude/skills/") && path.includes("/bascik-seo/")),
+          !(
+            slashes(path).includes(".claude/skills/") &&
+            slashes(path).includes("/bascik-seo/")
+          ),
       });
       expect(result.status).toBe("partial");
       expect(result.missing).toEqual(["bascik-seo"]);

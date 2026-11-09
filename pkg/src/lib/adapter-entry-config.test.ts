@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it } from "vitest";
 // something reads it (readSiteGraph without explicit options), and then
 // surface the loader's located `[bascik]` error from that call.
 const adapterEntry = fileURLToPath(new URL("../adapter.ts", import.meta.url));
+// `import()` takes a URL: a Windows path such as C:\... is read as a scheme.
+const adapterEntryUrl = new URL("../adapter.ts", import.meta.url).href;
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -69,7 +71,7 @@ describe("@bascik/bascik/adapter loads bascik.config lazily", () => {
     const result = runNode(root, [
       "--input-type=module",
       "-e",
-      `const a = await import(${JSON.stringify(adapterEntry)});
+      `const a = await import(${JSON.stringify(adapterEntryUrl)});
        console.log("aliases:" + a.pageAliasesFor("/books", "/").join(" "));`,
     ]);
     expect(result.stderr).not.toContain("Failed to load bascik.config");
@@ -86,7 +88,7 @@ describe("@bascik/bascik/adapter loads bascik.config lazily", () => {
       [
         "--input-type=module",
         "-e",
-        `await import(${JSON.stringify(adapterEntry)});`,
+        `await import(${JSON.stringify(adapterEntryUrl)});`,
       ],
     ]) {
       const result = runNode(root, args);
@@ -101,7 +103,7 @@ describe("@bascik/bascik/adapter loads bascik.config lazily", () => {
     const result = runNode(root, [
       "--input-type=module",
       "-e",
-      `const a = await import(${JSON.stringify(adapterEntry)});
+      `const a = await import(${JSON.stringify(adapterEntryUrl)});
        try {
          await a.readSiteGraph({ projectRoot: process.cwd(), distDir: "dist", version: "1" });
          console.log("NO ERROR");
@@ -120,7 +122,7 @@ describe("@bascik/bascik/adapter loads bascik.config lazily", () => {
     await mkdir(join(root, "dist"), { recursive: true });
     await writeFile(
       join(root, "read-graph.mjs"),
-      `const a = await import(${JSON.stringify(adapterEntry)});
+      `const a = await import(${JSON.stringify(adapterEntryUrl)});
        console.log("IMPORTED");
        try {
          await a.readSiteGraph({ projectRoot: process.cwd(), distDir: "dist", version: "1" });
