@@ -513,10 +513,17 @@ describe("VITE_CONFIG", () => {
     expect(VITE_CONFIG).toContain("provider: 'v8'");
   });
 
-  it("misuse: imports defineConfig from vitest/config, not vite, which the project does not declare", () => {
+  it("imports defineConfig from vitest/config, the documented entry point, even though the project also declares vite", () => {
     expect(VITE_CONFIG).toContain(
       "import { defineConfig } from 'vitest/config';",
     );
+    const pkg = JSON.parse(PACKAGE_JSON("my-app", "default"));
+    expect(pkg.devDependencies.vite).toBeTruthy();
+  });
+
+  it("misuse: the coverage report names the modules to cover, because Vitest 4 and later only count files a test loads, so an untested module would not show up as 0%", () => {
+    expect(VITE_CONFIG).toContain("include: ['src/**/*.ts']");
+    expect(VITE_CONFIG).toContain("exclude: ['src/**/*.test.ts']");
   });
 
   it("misuse: every package the generated configs import is declared in the generated package.json", () => {

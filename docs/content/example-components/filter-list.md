@@ -11,11 +11,11 @@ Pass `<li>` items in the default slot; the slot sits inside the component's `<ul
 <!-- demo:usage -->
 
 ```html
-<filter-list data-bascik-prop-label="Filter languages">
-  <li>HTML</li>
-  <li>CSS</li>
-  <li>JavaScript</li>
-  <li>TypeScript</li>
+<filter-list data-bascik-prop-label="Filter books">
+  <li>Dune</li>
+  <li>Emma</li>
+  <li>Beloved</li>
+  <li>Frankenstein</li>
 </filter-list>
 ```
 

@@ -90,6 +90,24 @@ describe("add-example", () => {
       }) => `${example.name}/${file.path}`,
     );
 
+  it("the starter site declares @bascik/language-server like create-bascik does, so `bascik --check` runs the per-file checks", () => {
+    const starterPackage = JSON.parse(
+      readFileSync(join(starterDir, "package.json"), "utf8"),
+    );
+    const scaffold = readFileSync(
+      join(examplesDir, "../create/src/scaffold.ts"),
+      "utf8",
+    );
+    const range = /"@bascik\/language-server":\s*"([^"]+)"/.exec(scaffold)?.[1];
+    expect(range).toBeTruthy();
+    expect(
+      {
+        ...starterPackage.dependencies,
+        ...starterPackage.devDependencies,
+      }["@bascik/language-server"],
+    ).toBe(range);
+  });
+
   it("maps site folders to the project folders from its config", () => {
     expect(destinationFor(component, "tab-group.html", layout)).toBe(
       join("/p/src/components", "tab-group", "tab-group.html"),
@@ -169,13 +187,128 @@ describe("add-example", () => {
     expect(contact).toContain(
       "starter-site/src/components/site-head/site-head.html",
     );
+    // Site files only: no package.json, config, or README. The posts folder the blog reads comes with it.
     expect(
       picked(["starter-site/src/pages/blog"]).every(
         (ref: string) =>
           !ref.startsWith("starter-site/") ||
-          ref.startsWith("starter-site/src/"),
+          ref.startsWith("starter-site/src/") ||
+          ref.startsWith("starter-site/content/posts/"),
       ),
     ).toBe(true);
+  });
+
+  it("copies the @/lib modules a page imports, so a copied page builds, not only passes --check", () => {
+    expect(picked(["starter-site/src/pages/blog"])).toEqual(
+      expect.arrayContaining([
+        "starter-site/src/lib/posts.ts",
+        "starter-site/src/lib/seo.ts",
+      ]),
+    );
+    expect(picked(["starter-site/src/pages/blog/index.html"])).toEqual(
+      expect.arrayContaining([
+        "starter-site/src/lib/posts.ts",
+        "starter-site/src/lib/seo.ts",
+      ]),
+    );
+    expect(picked(["starter-site/src/pages/about.html"])).toContain(
+      "starter-site/src/lib/seo.ts",
+    );
+  });
+
+  it("copies the content folder a copied helper reads by its literal path", () => {
+    const refs = picked(["starter-site/src/pages/blog/index.html"]);
+    expect(refs).toContain("starter-site/content/posts/hello-world.md");
+  });
+
+  describe("imports in a copied file", () => {
+    const fileOf = (path: string, content: string) => ({
+      path,
+      content,
+      uses: [],
+    });
+    const fake = (files: Array<[string, string]>) => ({
+      version: 1,
+      examples: [
+        {
+          name: "s",
+          kind: "site",
+          title: "S",
+          description: "d",
+          docs: "x",
+          files: files.map(([path, content]) => fileOf(path, content)),
+        },
+      ],
+    });
+    const select = (files: Array<[string, string]>, ref: string) =>
+      selectFiles(fake(files), [ref]).map(
+        ({ file }: { file: { path: string } }) => file.path,
+      );
+
+    it("follows imports through modules, relative and @/ alike, without the extension too", () => {
+      const out = select(
+        [
+          [
+            "src/pages/a.html",
+            '<script data-bascik-build>import { a } from "@/lib/a";</script>',
+          ],
+          ["src/lib/a.ts", 'import { b } from "./b.ts"; export const a = b;'],
+          ["src/lib/b.ts", 'export * from "../util/c.js";'],
+          ["src/util/c.js", "export const c = 1;"],
+          ["src/lib/unused.ts", "export const u = 1;"],
+        ],
+        "s/src/pages/a.html",
+      );
+      expect(out.sort()).toEqual([
+        "src/lib/a.ts",
+        "src/lib/b.ts",
+        "src/pages/a.html",
+        "src/util/c.js",
+      ]);
+    });
+
+    it("misuse: an import cycle terminates and lists each file once", () => {
+      const out = select(
+        [
+          ["src/lib/a.ts", 'import "./b.ts";'],
+          ["src/lib/b.ts", 'import "./a.ts";'],
+        ],
+        "s/src/lib/a.ts",
+      );
+      expect(out.sort()).toEqual(["src/lib/a.ts", "src/lib/b.ts"]);
+    });
+
+    it("misuse: packages, node: builtins, URLs, and imports that leave the example are not copied or followed", () => {
+      const out = select(
+        [
+          [
+            "src/lib/a.ts",
+            'import m from "marked"; import f from "node:fs"; import u from "https://x.test/a.js"; import e from "../../../etc/passwd"; import n from "@/lib/missing.ts"; import h from "@bascik/bascik/html";',
+          ],
+        ],
+        "s/src/lib/a.ts",
+      );
+      expect(out).toEqual(["src/lib/a.ts"]);
+    });
+
+    it("misuse: a dynamic import() and a type-only import are followed too", () => {
+      const out = select(
+        [
+          [
+            "src/lib/a.ts",
+            'import type { T } from "./t.ts"; const m = await import("./d.ts");',
+          ],
+          ["src/lib/t.ts", "export type T = 1;"],
+          ["src/lib/d.ts", "export {};"],
+        ],
+        "s/src/lib/a.ts",
+      );
+      expect(out.sort()).toEqual([
+        "src/lib/a.ts",
+        "src/lib/d.ts",
+        "src/lib/t.ts",
+      ]);
+    });
   });
 
   it("lists each file once and rejects unknown names and paths", () => {

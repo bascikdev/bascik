@@ -11,7 +11,7 @@ A dropdown menu with no JavaScript, built on the HTML `popover` attribute. Escap
 <!-- demo:usage -->
 
 ```html
-<popover-menu data-bascik-prop-label="Account">
+<popover-menu data-bascik-prop-label="Shelf">
   <a href="/example-components">All example components</a>
   <a href="/example-components/tab-group">Tab group</a>
 </popover-menu>

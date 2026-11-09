@@ -28,6 +28,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncReturns,
 } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -92,7 +93,10 @@ export function skillsRef(version: string | undefined): string | undefined {
 }
 
 /** The arguments after `npx skills` that install the project skills from `source`. */
-export function skillsAddArgs(source: string): string[] {
+export function skillsAddArgs(
+  source: string,
+  skills: readonly string[] = PROJECT_SKILLS,
+): string[] {
   return [
     "add",
     source,
@@ -100,14 +104,17 @@ export function skillsAddArgs(source: string): string[] {
     "--copy",
     "-y",
     "--skill",
-    ...PROJECT_SKILLS,
+    ...skills,
   ];
 }
 
 /** The command a reader runs to install the project skills, at `ref` when given. */
-export function skillsCommand(ref?: string): string {
+export function skillsCommand(
+  ref?: string,
+  skills: readonly string[] = PROJECT_SKILLS,
+): string {
   const source = ref ? `${SKILLS_REPO}#${ref}` : SKILLS_REPO;
-  return `npx skills ${skillsAddArgs(source).join(" ")}`;
+  return `npx skills ${skillsAddArgs(source, skills).join(" ")}`;
 }
 
 type SpawnSyncFunction = (
@@ -172,14 +179,21 @@ export interface SkillsInstallResult {
   /**
    * `pinned`: installed at the release tag. `latest`: the tag install failed
    * and the default branch worked. `custom`: installed from SKILLS_SOURCE_ENV.
-   * `failed`: nothing was installed.
+   * `partial`: the skills CLI succeeded but some skills in `missing` are not
+   * in the project (the source did not have them). `failed`: nothing was
+   * installed.
    */
-  status: "pinned" | "latest" | "custom" | "failed";
+  status: "pinned" | "latest" | "custom" | "partial" | "failed";
+  /** The PROJECT_SKILLS that are missing from a destination, when status is `partial`. */
+  missing?: string[];
   /** The release tag that was tried, when the version had one. */
   ref?: string;
   /** Why the last attempt failed. */
   error?: string;
-  /** The command to run later, when status is `failed`, pinned to `ref` when there is one. */
+  /**
+   * The command to run later: for `failed`, pinned to `ref` when there is
+   * one; for `partial`, installs just the missing skills from the default branch.
+   */
   command: string;
 }
 
@@ -203,6 +217,23 @@ function failureReason(result: SpawnSyncReturns<Buffer | string>): string {
 }
 
 /**
+ * The PROJECT_SKILLS that `cwd` lacks in at least one SKILL_DESTINATIONS
+ * folder. The skills CLI exits 0 even when it skips a name its source does
+ * not have, so this is the only proof a skill arrived.
+ */
+function missingSkills(
+  cwd: string,
+  exists: (path: string) => boolean,
+): string[] {
+  return PROJECT_SKILLS.filter(
+    (name) =>
+      !SKILL_DESTINATIONS.every((dir) =>
+        exists(join(cwd, dir, name, "SKILL.md")),
+      ),
+  );
+}
+
+/**
  * Install the project skills into `cwd` with the skills CLI: at the release
  * tag for `version` first, then from the default branch. Output is captured
  * so a failed first attempt does not alarm anyone. Never throws.
@@ -214,6 +245,8 @@ export function installSkills(
     platform?: NodeJS.Platform;
     env?: NodeJS.ProcessEnv;
     spawn?: SpawnSyncFunction;
+    /** Whether a file exists, to check what arrived. Default: node:fs existsSync. */
+    exists?: (path: string) => boolean;
   } = {},
 ): SkillsInstallResult {
   const env = options.env ?? process.env;
@@ -226,6 +259,7 @@ export function installSkills(
       : [SKILLS_REPO];
   const spawnEnv: NodeJS.ProcessEnv = { ...NPM_FETCH_ENV, ...env };
   let error = "";
+  let partial: SkillsInstallResult | undefined;
   for (const [index, source] of sources.entries()) {
     // --prefer-offline: a pinned CLI version never changes, so npm's cache is
     // used without asking the registry, which also keeps an offline run fast.
@@ -242,6 +276,18 @@ export function installSkills(
       timeout: SKILLS_TIMEOUT_MS,
     });
     if (!result.error && result.status === 0) {
+      const missing = missingSkills(cwd, options.exists ?? existsSync);
+      if (missing.length > 0) {
+        // Exit 0 with skills absent: the tag or source predates them. The
+        // default branch may have them, so go on to it.
+        partial ??= {
+          status: "partial",
+          ref,
+          missing,
+          command: skillsCommand(undefined, missing),
+        };
+        continue;
+      }
       const status = custom
         ? "custom"
         : index === 0 && ref
@@ -259,6 +305,7 @@ export function installSkills(
       break;
     }
   }
+  if (partial) return partial;
   return { status: "failed", ref, error, command: skillsCommand(ref) };
 }
 
@@ -279,6 +326,14 @@ export function skillsReportLines(result: SkillsInstallResult): string[] {
       ];
     case "custom":
       return [`✓ Installed the Bascik agent skills in ${where}`];
+    case "partial": {
+      const missing = result.missing ?? [];
+      return [
+        `Installed ${PROJECT_SKILLS.length - missing.length} of ${PROJECT_SKILLS.length} Bascik agent skills; missing: ${missing.join(", ")}.`,
+        "Install the missing ones from the default branch with:",
+        `  ${result.command}`,
+      ];
+    }
     case "failed":
       return [
         `Could not install the Bascik agent skills (${result.error}).`,

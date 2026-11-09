@@ -12,8 +12,8 @@ Copies a text value to the clipboard and announces the result to screen readers.
 
 ```html
 <copy-button
-  data-bascik-prop-text="npm create bascik"
-  data-bascik-prop-label="Copy command"
+  data-bascik-prop-text="978-0-441-17271-9"
+  data-bascik-prop-label="Copy ISBN"
 />
 ```
 

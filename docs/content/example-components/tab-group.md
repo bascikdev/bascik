@@ -11,10 +11,12 @@ Each child of the slot becomes one panel, and its `data-tab` attribute is the ta
 <!-- demo:usage -->
 
 ```html
-<tab-group data-bascik-prop-label="Pricing plans">
-  <section data-tab="Monthly"><p>$10 per month, cancel any time.</p></section>
-  <section data-tab="Yearly"><p>$100 per year, two months free.</p></section>
-  <section data-tab="Team"><p>$25 per person per month.</p></section>
+<tab-group data-bascik-prop-label="Books">
+  <section data-tab="Dune"><p>Frank Herbert, rated 4.5 out of 5.</p></section>
+  <section data-tab="Emma"><p>Jane Austen, rated 4.2 out of 5.</p></section>
+  <section data-tab="Beloved">
+    <p>Toni Morrison, rated 4.4 out of 5.</p>
+  </section>
 </tab-group>
 ```
 
