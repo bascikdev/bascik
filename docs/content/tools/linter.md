@@ -101,7 +101,7 @@ In any directive script (`data-bascik-server`, `data-bascik-stream`, `data-basci
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
 ```
 
-A module runs in Node when it is a directive script's `src=` file, an API route, or a module one of those imports with a `./`, `../` or `@/` specifier (and so on, transitively). That covers a build script's helpers in `src/lib/`, also under a component root or a `scripts.importRoot` outside the project, such as a monorepo's shared folder. A component's plain `<script src>` file runs in the browser, so it and the modules only it imports keep the [scoping rules](#compatibility-rules) instead; a module that both import gets both. A script that `exec` runs, and a module nothing above imports, is not checked. `bascik --check` checks these modules with the pages that import them and reports each finding with its file and line:
+A module runs in Node when it is a directive script's `src=` file, an API route, or a module one of those imports with a `./`, `../` or `@/` specifier (and so on, transitively). That covers a build script's helpers in `src/lib/`, also under a component root or a `scripts.importRoot` outside the project, such as a monorepo's shared folder. A component's plain `<script src>` file runs in the browser, so it and the modules only it imports keep the [scoping rules](/compatibility#javascript-scoping) instead; a module that both import gets both. A script that `exec` runs, and a module nothing above imports, is not checked. `bascik --check` checks these modules with the pages that import them and reports each finding with its file and line:
 
 ```text
 src/lib/posts.ts:6:7 - warning: (server-script-unescaped-markup) This markup template (line 5) interpolates ${post.title} (hole 1) without html. It reads post, a parameter of postCard(), which other modules can call: the value may be markup from a caller, which html would escape, so the page would show its tags as text. Build the callers' markup with html`...` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html`...` from @bascik/bascik/html.
@@ -233,14 +233,17 @@ src/components/site-nav_x.html:1:1 - warning: (component-name-underscore) Compon
 
 The name is legal HTML, so this is a warning, not an error. The build itself fails only when two components really do generate one class, with an error that names both rules and their lines; see [The Naming Scheme](/internals/scoping-system#the-remaining-collision-cases). Rename the file with hyphens, or silence the rule for the project with `"disabledRules": ["component-name-underscore"]` under `diagnostics` in `bascik.ext.json`.
 
-### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
+### Hints: Information-Severity Rules
 
-Two rules are hints: advice that is easy to ignore and never fails a run.
+Five rules report at Information severity: advice that is easy to ignore and never fails a run. The editor shows them, and `bascik --check` leaves them out of its summary and exit code.
 
 - `attr-prop-unsupplied` marks a `data-bascik-attr-*` binding in a component whose prop no usage supplies: no page, no other component, and no open editor buffer has a `<my-card data-bascik-prop-href="...">` for `data-bascik-attr-href="href"`. It cannot see usages written in Markdown or produced by a build script, which is why it is a hint.
 - `api-unguarded-json` marks a `request.json()` (or `req.json()`) call in an API route that is not inside a `try` block, because a malformed body then throws and the route answers 500.
+- `id-reference-undeclared` marks a `for`, `itemref`, ARIA ID reference, or `href="#fragment"` whose target ID is not declared in the component, so the reference is left unscoped. Because `bascik --check` does not report it, a CI run stays green for `<label for="missing">`.
+- `html-escaped-twice` marks `esc()` inside an `html` template, which shows `&amp;lt;` on the page.
+- `server-script-sink-text-unescaped` marks a request value interpolated into markup text without escaping. See [the unescaped-markup rules](#server-script-unescaped-markup).
 
-Silence either with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
+Silence any of them with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
 
 ### CI / Pre-commit Integration
 

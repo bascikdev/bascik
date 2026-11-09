@@ -96,6 +96,11 @@ describe("pages-headers", () => {
     );
     expect(headers).toContain("  X-Frame-Options: DENY");
     expect(headers).toContain("  X-Content-Type-Options: nosniff");
+    // One year, no includeSubDomains: shop and adapter demo subdomains are separate deployments.
+    expect(headers).toContain(
+      "  Strict-Transport-Security: max-age=31536000\n",
+    );
+    expect(headers).not.toMatch(/includeSubDomains|preload/);
     expect(headers).toContain(
       "  Referrer-Policy: strict-origin-when-cross-origin",
     );

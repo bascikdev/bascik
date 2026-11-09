@@ -193,7 +193,7 @@ describe("renderPagination", () => {
     expect(html).toContain('data-bascik-prop-section="Reference"');
     expect(html).toContain('data-bascik-prop-label="Development Server"');
     expect(html).toContain('data-bascik-prop-section="Tooling"');
-    expect(html).toContain('data-bascik-prop-label="Linter"');
+    expect(html).toContain('data-bascik-prop-label="Overview"');
   });
 
   it("includes section names within the same section", () => {

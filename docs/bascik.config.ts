@@ -90,6 +90,8 @@ export default defineConfig({
       // <build-breakdown> counts pages and components by reading directories, which it cannot see either.
       // <docs-search> hashes the search index built from content/, which the cache key cannot see, and a stale
       // hash would let browsers keep an old index for a year.
+      // <docs-sidebar> reads the page's own Markdown (content/<route>.md) through BASCIK_PAGE_FILE for the
+      // "On this page" list, a computed path the cache key cannot see, so a warm build kept an old list.
       // The homepage and showcase hash screenshot assets into their output, but the cache key cannot see those bytes.
       exclude: [
         "src/pages/example-components/**",
@@ -97,6 +99,7 @@ export default defineConfig({
         "src/pages/showcase.html",
         "src/components/build-breakdown/**",
         "src/components/docs-search/**",
+        "src/components/docs-sidebar/**",
       ],
     },
   },

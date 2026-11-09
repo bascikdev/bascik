@@ -219,29 +219,34 @@ The checks below cover the most common mistakes. Metadata annotation warnings us
 | Slots             | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors)                                                                                                                                                                                                 |
 | Imports           | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path                                                                                                                                                                                                                                    |
 | Styles            | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported                                                                                                                                                                  |
-| ID references     | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component                                                                                                                                                                                                                 |
+| ID references     | `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component (hint, shown in the editor and not reported by `bascik --check`)                                                                                                                                                |
 | Preserve          | A `data-bascik-preserve` value other than `id`, `name`, or `class`, and, in a project with `scoping.attributes.name: true`, a form that posts to an external URL without `data-bascik-preserve="name"`                                                                                                                               |
 | Name groups       | A component that holds a whole radio group (outside a `<form>` of its own), two or more `<details>` with one `name`, or a `<map name>`, and is used more than once on a page, so the copies act as one group (warning, `shared-name-group`). See [Component Best Practices](/component-best-practices#name-form-controls-and-groups) |
 | Annotations       | An `@prop` or `@slot` line documented twice, or one that does not match a member inferred from the markup (warnings)                                                                                                                                                                                                                 |
 
 ### Find Scoping Compatibility Issues Early
 
-Bascik rewrites CSS and JavaScript at build time to keep components isolated. Some patterns cannot be rewritten reliably, and the extension warns about them before they ship:
+Bascik rewrites CSS and JavaScript at build time to keep components isolated. Some patterns cannot be rewritten reliably, and the extension reports them as errors or warnings before they ship:
 
 ![A hover message on the standalone attribute selector [data-state] in a CSS file, explaining that it is not scoped and suggesting an anchored selector](/assets/vscode/scoping-warnings@2x.webp)
 
-Every warning includes a safer alternative, such as retaining an element reference, using a static scoped class, or anchoring a selector with a class. The rules match [Scoping Compatibility](/compatibility).
+Every finding includes a safer alternative, such as retaining an element reference, using a static scoped class, or anchoring a selector with a class. The rules match [Scoping Compatibility](/compatibility).
 
 These checks apply to component files only: the component's `.html` file and the `.css`, `.js`, and `.ts` files beside it. Those are the only files Bascik scopes, so a page, an API route, or a script outside your component folders is not checked.
 
-| Language                  | Patterns that are flagged                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| CSS                       | Standalone attribute selectors such as `[data-state]`, which can leak globally unless anchored by a scoped class |
-| CSS                       | Bare element names inside `:is()`, `:where()`, and `:has()`, which are not converted                             |
-| JavaScript and TypeScript | Runtime `.id` assignment                                                                                         |
-| JavaScript and TypeScript | Attribute selectors passed to `querySelector()` or `querySelectorAll()`                                          |
-| JavaScript and TypeScript | Template-literal class values assigned through `className` or `classList.replace()`                              |
-| JavaScript and TypeScript | Runtime custom-property names passed to `style.setProperty('--name', value)`                                     |
+| Language                  | Patterns that are flagged                                                                                        | Rule                         | Severity |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- | -------- |
+| CSS                       | `[id]` attribute selectors, which cannot be scoped and are stripped at compile time                              | `css-id-attribute-selector`  | error    |
+| CSS                       | Standalone attribute selectors such as `[data-state]`, which can leak globally unless anchored by a scoped class | `css-attribute-selector`     | error    |
+| CSS                       | Bare element names inside `:is()`, `:where()`, and `:has()`, which are not converted                             | `css-is-element-names`       | error    |
+| CSS                       | Classes named `b_el_*` or `b_id_*`, a prefix Bascik reserves for the classes it generates                        | `css-reserved-class-prefix`  | warning  |
+| JavaScript and TypeScript | Runtime `.id` assignment                                                                                         | `js-id-setter`               | error    |
+| JavaScript and TypeScript | Attribute selectors passed to `querySelector()` or `querySelectorAll()`                                          | `js-attribute-selector`      | error    |
+| JavaScript and TypeScript | Template-literal class values assigned through `className` or `classList.replace()`                              | `js-template-classname`      | error    |
+| JavaScript and TypeScript | Runtime custom-property names passed to `style.setProperty('--name', value)`                                     | `js-style-setproperty`       | error    |
+| JavaScript and TypeScript | Attribute-name DOM methods such as `removeAttribute()`, `hasAttribute()`, and `toggleAttribute()`                | `js-unsupported-dom-methods` | error    |
+| JavaScript and TypeScript | A document-level lookup of one element by class, such as `document.querySelector('.card')`                       | `js-document-class-query`    | warning  |
+| JavaScript and TypeScript | `getElementById()` with a dynamic argument (a variable, concatenation, or template literal)                      | `js-dynamic-id-lookup`       | warning  |
 
 ### Audit Server and Stream Scripts
 

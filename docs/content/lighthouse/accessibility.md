@@ -221,7 +221,7 @@ dialog::backdrop {
 }
 ```
 
-The `onclick` inline handlers are one-liners, not a script file. `<dialog>` handles focus management, keyboard dismissal, and `aria-modal` automatically.
+The script block above only wires the button to `showModal()`. `<dialog>` handles focus management, keyboard dismissal, and `aria-modal` automatically.
 
 > **MDN reference.** The [`<dialog>` element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog) on MDN covers `showModal()`, `close()`, `returnValue`, the `::backdrop` pseudo-element, and browser compatibility.
 

@@ -89,7 +89,7 @@ describe("POST /api/contact", () => {
       body: JSON.stringify({ name: "Alice", email: "alice@example.com" }),
     });
 
-    const response = await POST(request, { params: {}, remoteIp: "127.0.0.1" });
+    const response = await POST(request);
     expect(response.status).toBe(201);
 
     const data = await response.json();
