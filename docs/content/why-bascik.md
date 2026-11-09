@@ -105,11 +105,9 @@ h3 {
   </head>
   <body>
     <article class="b_el_hello-card_article">
-      <p class="b_el_hello-card_p bascik__hello-card__kicker">
-        One file. One tag.
-      </p>
+      <p class="bascik__hello-card__kicker">One file. One tag.</p>
       <h3 class="b_el_hello-card_h3">Plain HTML, ready to reuse.</h3>
-      <p class="b_el_hello-card_p bascik__hello-card__body">
+      <p class="bascik__hello-card__body">
         Bascik replaces the custom tag at build time and ships the finished
         markup.
       </p>
@@ -120,7 +118,7 @@ h3 {
 
 ## The Problem Bascik Solves
 
-You've been here. You're building a straightforward site and you've copy-pasted the same navigation markup into every page for the third time. You Google _"how to reuse HTML on multiple pages without a framework"_ or ask ChatGPT _"HTML components without React."_ The answers are always the same: Web Components (verbose, requires JavaScript to render), server-side includes (awkward, server-dependent), or a full framework (React, Vue, Astro) that feels like enormous overkill for something this simple.
+You've been here. You're building a straightforward site and you've copy-pasted the same navigation markup into every page for the third time. You Google _"how to reuse HTML on multiple pages without a framework"_ or ask ChatGPT _"HTML components without React."_ The answers are always the same: Web Components (verbose, and they need JavaScript to define and upgrade the element), server-side includes (awkward, server-dependent), or a full framework (React, Vue, Astro) that feels like enormous overkill for something this simple.
 
 Building a website has never been simpler at the language level. HTML structures content, CSS styles it, JavaScript animates it. Every browser speaks all three fluently. Developers have spent thirty years learning them, and documentation is exhaustive.
 
@@ -156,7 +154,7 @@ Each wave also asked you to learn its own syntax: `$()`, `{{ }}`, JSX, utility c
 
 Web Components are a browser-native component model, and they are a legitimate answer to the organization problem. But they come with trade-offs when aiming for zero-runtime delivery.
 
-Every Web Component requires JavaScript to be parsed, evaluated, and registered before the component renders. On a page with ten components, that is ten class definitions loading at runtime just to display content. Search engines, accessibility tools, and users on slow connections all pay that cost.
+A custom element's behavior requires JavaScript: its class has to be parsed, evaluated, and registered before the element is defined and upgraded. On a page with ten components, that is ten class definitions loading at runtime. [Declarative Shadow DOM](/compatibility) (`<template shadowrootmode="open">`) can render an encapsulated tree with no JavaScript, but you author that template again for every instance, and anything interactive still needs the class. Bascik does that duplication at build time and ships the finished markup. Search engines, accessibility tools, and users on slow connections only pay for the scripts you wrote.
 
 Web Components also introduce a non-trivial API surface: custom element registries, shadow DOM, light DOM, lifecycle callbacks, slot distribution rules. For a developer writing a navigation bar, none of that is relevant. It is framework complexity without the framework ecosystem.
 

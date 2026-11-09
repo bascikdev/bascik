@@ -305,3 +305,23 @@ No. If you run Bascik with `bascik --server`, API routes run in-process on the s
 ## Why does Bascik not include middleware chains or interceptors?
 
 Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.
+
+## Is Bascik good for SEO?
+
+Yes. Bascik outputs complete, static HTML, so crawlers read your content without running JavaScript. Titles, meta descriptions, canonical URLs, structured data, `sitemap.xml`, and `robots.txt` are ordinary markup or generated files. See [SEO](/lighthouse/seo) for the head tags to set and how to audit them.
+
+## What license is Bascik under?
+
+Bascik is released under the MIT License, which allows commercial use, modification, and redistribution. The license does not cover Bascik's names or logos. Read the full text on the [License](/license) page.
+
+## Does Bascik support internationalization (i18n)?
+
+Bascik has no i18n runtime, and none is needed. Use one folder per locale under `src/pages/` (for example `src/pages/en/` and `src/pages/fr/`), or generate locale pages from one template with a [dynamic route](/scripts/dynamic-routes) such as `src/pages/[lang]/index.html`. Shared components receive the text as props or slots. Set `<html lang>` and `hreflang` links yourself, as in any static site.
+
+## Am I locked in to Bascik? How do I leave?
+
+No. The build output in `dist/` is vanilla HTML, CSS, and JavaScript with no Bascik runtime, so it keeps working if you stop using Bascik. Your source is also vanilla HTML, CSS, and JavaScript, so moving to another tool means replacing custom tags with that tool's component syntax, not rewriting your markup.
+
+## Who maintains Bascik, and what if the maintainer disappears?
+
+Bascik is maintained by [Collin Thomas](https://github.com/collin-thomas) and is MIT licensed, so anyone can fork it. It has an extensive automated test suite, and because it adds no runtime to your pages, the sites it already built keep working regardless of the project's future. Pin the version in `package.json` and upgrade on your own schedule.

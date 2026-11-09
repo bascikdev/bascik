@@ -54,6 +54,8 @@ npm install @bascik/bascik
 
 Run `bascik init` to create the starter directory structure, or add `"dev": "bascik"` and `"build": "bascik --build"` to your `package.json` scripts.
 
+`bascik --build` also writes `sitemap.xml` and `robots.txt`, so it needs your site's URL and exits with an error until you set one: put `BASCIK_SITE_URL=https://example.com` in a `.env` file, set it in the environment, or pass `--site-url`. If the site needs no sitemap or `robots.txt`, set `generate.sitemap: false` and `generate.robots: false` instead. See [Environment files and the site URL](/cli#environment-files-and-the-site-url). The dev server does not need it.
+
 `bascik init` also adds the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), appending to files you already have, and asks whether to install the [agent skills](/agent-skills#new-projects). `bascik init -y` installs them without asking, and `bascik init --no-skills` skips them.
 
 ### Editor Setup

@@ -58,7 +58,7 @@ pnpm add @bascik/bascik
 ```
 
 `dev`: transpiles your project, starts the dev server, and watches for changes.  
-`build`: transpiles to `dist/` only.
+`build`: transpiles to `dist/` only. It also writes `sitemap.xml` and `robots.txt`, so it exits with an error until the site's URL is set: add `BASCIK_SITE_URL=https://example.com` to a `.env` file, set it in the environment, or pass `--site-url`. To skip both files, set `generate.sitemap: false` and `generate.robots: false` in `bascik.config.ts`.
 
 ---
 

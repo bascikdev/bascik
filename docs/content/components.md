@@ -312,6 +312,9 @@ All three can live in a single file. Follow the component convention order: plac
     border-radius: 8px;
     background: #fffbeb;
   }
+  .alert[hidden] {
+    display: none;
+  }
   .alert-body {
     flex: 1;
     margin: 0;
@@ -358,6 +361,9 @@ All three can live in a single file. Follow the component convention order: plac
         border-radius: 8px;
         background: #fffbeb;
       }
+      .bascik__comp-alert__alert[hidden] {
+        display: none;
+      }
       .bascik__comp-alert__alert-body {
         flex: 1;
         margin: 0;
@@ -376,12 +382,15 @@ All three can live in a single file. Follow the component convention order: plac
     </style>
   </head>
   <body>
-    <div class="bascik__comp-alert__alert" id="bascik__comp-alert__a1b__alert">
+    <div
+      class="bascik__comp-alert__alert"
+      id="bascik__comp-alert__a10a5b2a__alert"
+    >
       <p class="bascik__comp-alert__alert-body">
         Scheduled maintenance Sunday, 2am–4am UTC.
       </p>
       <button
-        id="bascik__comp-alert__a1b__close"
+        id="bascik__comp-alert__a10a5b2a__close"
         class="bascik__comp-alert__alert-close"
         type="button"
         aria-label="Dismiss"
@@ -392,12 +401,14 @@ All three can live in a single file. Follow the component convention order: plac
     <script>
       (function () {
         document
-          .getElementById("bascik__comp-alert__a1b__close")
+          .getElementById("bascik__comp-alert__a10a5b2a__close")
           .addEventListener("click", () => {
-            document.getElementById("bascik__comp-alert__a1b__alert").hidden =
-              true;
+            document.getElementById(
+              "bascik__comp-alert__a10a5b2a__alert",
+            ).hidden = true;
           });
       })();
+      //# sourceURL=src/components/comp-alert.html
     </script>
   </body>
 </html>
@@ -414,6 +425,10 @@ All three can live in a single file. Follow the component convention order: plac
   border: 1px solid #f59e0b;
   border-radius: 8px;
   background: #fffbeb;
+}
+
+.bascik__comp-alert__alert[hidden] {
+  display: none;
 }
 
 .bascik__comp-alert__alert-body {

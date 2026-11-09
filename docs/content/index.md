@@ -63,8 +63,8 @@
   <body>
     <nav class="bascik__site-nav__nav">
       <a class="bascik__site-nav__link" href="/">Home</a>
-      <a class="bascik__site-nav__link" href="/components">Components</a>
-      <a class="bascik__site-nav__link" href="/slots">Slots</a>
+      <a class="bascik__site-nav__link" href="/why-bascik">Why Bascik</a>
+      <a class="bascik__site-nav__link" href="/getting-started">Docs</a>
     </nav>
     <h1>Welcome</h1>
   </body>
@@ -176,17 +176,17 @@ inc.addEventListener("click", () => {
   </head>
   <body>
     <div class="bascik__demo-counter__ctr">
-      <span class="bascik__demo-counter__ctr-label">Instance A</span>
+      <span class="ctr-label">Instance A</span>
       <output
         class="bascik__demo-counter__ctr-count"
-        id="bascik__demo-counter__a1b2__count"
+        id="bascik__demo-counter__aefe6402__count"
         aria-live="polite"
         >0</output
       >
-      <div class="bascik__demo-counter__ctr-btns">
+      <div class="ctr-btns">
         <button
           class="bascik__demo-counter__ctr-dec"
-          id="bascik__demo-counter__a1b2__dec"
+          id="bascik__demo-counter__aefe6402__dec"
           type="button"
           aria-label="Decrease"
         >
@@ -194,7 +194,34 @@ inc.addEventListener("click", () => {
         </button>
         <button
           class="bascik__demo-counter__ctr-inc"
-          id="bascik__demo-counter__a1b2__inc"
+          id="bascik__demo-counter__aefe6402__inc"
+          type="button"
+          aria-label="Increase"
+        >
+          +
+        </button>
+      </div>
+    </div>
+    <div class="bascik__demo-counter__ctr">
+      <span class="ctr-label">Instance B</span>
+      <output
+        class="bascik__demo-counter__ctr-count"
+        id="bascik__demo-counter__eea6e425__count"
+        aria-live="polite"
+        >0</output
+      >
+      <div class="ctr-btns">
+        <button
+          class="bascik__demo-counter__ctr-dec"
+          id="bascik__demo-counter__eea6e425__dec"
+          type="button"
+          aria-label="Decrease"
+        >
+          −
+        </button>
+        <button
+          class="bascik__demo-counter__ctr-inc"
+          id="bascik__demo-counter__eea6e425__inc"
           type="button"
           aria-label="Increase"
         >
@@ -205,10 +232,14 @@ inc.addEventListener("click", () => {
     <script>
       (function () {
         const count = document.getElementById(
-          "bascik__demo-counter__a1b2__count",
+          "bascik__demo-counter__aefe6402__count",
         );
-        const dec = document.getElementById("bascik__demo-counter__a1b2__dec");
-        const inc = document.getElementById("bascik__demo-counter__a1b2__inc");
+        const dec = document.getElementById(
+          "bascik__demo-counter__aefe6402__dec",
+        );
+        const inc = document.getElementById(
+          "bascik__demo-counter__aefe6402__inc",
+        );
         let n = 0;
         dec.addEventListener("click", () => {
           n--;
@@ -219,6 +250,30 @@ inc.addEventListener("click", () => {
           count.textContent = String(n);
         });
       })();
+      //# sourceURL=src/components/demo-counter/demo-counter.ts
+    </script>
+    <script>
+      (function () {
+        const count = document.getElementById(
+          "bascik__demo-counter__eea6e425__count",
+        );
+        const dec = document.getElementById(
+          "bascik__demo-counter__eea6e425__dec",
+        );
+        const inc = document.getElementById(
+          "bascik__demo-counter__eea6e425__inc",
+        );
+        let n = 0;
+        dec.addEventListener("click", () => {
+          n--;
+          count.textContent = String(n);
+        });
+        inc.addEventListener("click", () => {
+          n++;
+          count.textContent = String(n);
+        });
+      })();
+      //# sourceURL=src/components/demo-counter/demo-counter.ts?instance=2
     </script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 # Configuration
 
-Bascik is **completely zero configuration** by default. You do not need a config file of any kind to start building. Running `bascik` or `bascik --build` works immediately right out of the box, resolving components, scoping CSS and JS, applying production minification when building or serving, and managing routing using sensible defaults.
+Bascik needs **no config file** to start building. You do not need one of any kind: running `bascik` starts the dev server right away, resolving components, scoping CSS and JS, and managing routing using sensible defaults. The one setting a production build cannot guess is your site's URL: `bascik --build` writes `sitemap.xml` and `robots.txt`, so it exits with an error until `BASCIK_SITE_URL` is set (see [The site URL](#the-site-url) below) or you turn off `generate.sitemap` and `generate.robots`.
 
 However, Bascik is also **highly configurable** for both development and production. Rather than forcing a single architectural opinion on your project, Bascik is designed to put control directly in your hands. Whenever a technical choice involves trade-offs, Bascik exposes fine-grained preferences so you can tailor the build pipeline to your exact workflow.
 
@@ -208,7 +208,7 @@ export default defineConfig({
   onMinifyError: "warn", // 'warn' in dev; 'error' in --build and --server
   http: {
     httpCache: false, // false in dev; true in --server (ETag, 304 and cacheControl)
-    port: undefined, // auto-selected port
+    port: undefined, // 8080 (8443 with TLS); the next free port when that one is busy
     hostname: "localhost", // use '0.0.0.0' to bind all interfaces
     tls: {
       enabled: false, // set true for HTTP/2 HTTPS
@@ -672,7 +672,7 @@ Configure the HTTP/HTTPS server started by `bascik` and `bascik --server`.
 
 ```ts
 http: {
-  port: 8080,               // HTTP port (default: auto)
+  port: 8080,               // HTTP port (default: 8080, or 8443 with TLS; the next free port when busy)
   hostname: 'localhost',    // hostname to bind
   tls: {
     enabled: false,         // enable HTTP/2 TLS
