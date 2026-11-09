@@ -164,6 +164,19 @@ export async function release(args, dependencies = {}) {
       );
   }
 
+  // One extension version ships to one Marketplace channel. The stable and
+  // pre-release uploads must use distinct versions, so a plan for one channel
+  // is refused when the other channel's tag for the same version is on origin.
+  const extension = plan.find((pkg) => pkg.id === "extension");
+  if (extension) {
+    const other = extensionPre ? "ext-v" : "ext-pre-v";
+    const otherTag = `${other}${extension.version}`;
+    if (run("git", ["ls-remote", "--tags", "origin", `refs/tags/${otherTag}`]))
+      throw new Error(
+        `${otherTag} already exists on origin, so ${extension.tag} would upload ${extension.version} to the other Marketplace channel. Bump the extension version (an even minor is stable, an odd minor is pre-release) instead.`,
+      );
+  }
+
   /** @param {() => Promise<boolean>} ready @param {number} timeout @param {string} label */
   async function waitFor(ready, timeout, label) {
     const deadline = now() + timeout;

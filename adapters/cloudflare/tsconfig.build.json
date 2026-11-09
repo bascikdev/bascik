@@ -6,6 +6,8 @@
     "declaration": true,
     "declarationDir": "dist",
     "sourceMap": true,
+    // dist/ ships without src/, so the maps carry their own sources.
+    "inlineSources": true,
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "noImplicitAny": false,

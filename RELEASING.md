@@ -101,56 +101,48 @@ Extension versions must be plain `x.y.z`; `--extension-pre` uses
 4. **Site.** The merge already deployed `/releases`; confirm it shows the new section and
    that the home page badge reads the new version.
 5. **Stale artifacts.** `npm deprecate <pkg>@<version> "<reason>"` for any accidental
-   publish, for example the `@bascik/adapter-netlify@0.0.0-stage` test publish, which
-   should be deprecated once 1.0.0 is out.
+   publish. The `@bascik/adapter-netlify@0.0.0-stage` test publish must be deprecated
+   once 1.0.0 is out (a maintainer with publish rights runs it; deprecating a version
+   that is not `latest` leaves installs of newer versions alone):
 
-## One-time authentication
+   ```sh
+   npm deprecate @bascik/adapter-netlify@0.0.0-stage "Test publish. Use @bascik/adapter-netlify@1."
+   npm view @bascik/adapter-netlify dist-tags deprecated --json
+   ```
 
-### npm
+## Repository settings (by hand, once)
 
-On npmjs.com, open **Settings > Trusted Publisher** for each of
-`@bascik/bascik`, `@bascik/language-server`, `create-bascik`,
-`@bascik/adapter-cloudflare`, and `@bascik/adapter-netlify`. Select **GitHub Actions**:
+Two GitHub rulesets live outside the repository files, so changes to them are commands a
+maintainer runs. Both need an authenticated `gh` with admin rights, and `jq`.
 
-| Field                | Value               |
-| -------------------- | ------------------- |
-| Organization or user | `bascikdev`         |
-| Repository           | `bascik`            |
-| Workflow filename    | `release.yml`       |
-| Environment name     | Leave blank         |
-| Allowed actions      | Allow `npm publish` |
-
-No npm token is needed. After a successful OIDC publish, delete the unused
-`NPM_TOKEN` GitHub secret and revoke old npm publish tokens.
-See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
-
-A package that has never been published (such as `@bascik/adapter-netlify`
-before `1.0.0-rc.1`) has no settings page yet, so its first version is
-published locally after its dependencies are on npm, then its trusted
-publisher is configured. Later versions use `yarn release`:
+**Protect the Netlify adapter tag.** The "Tag Rules" ruleset (id 24332486) lists every
+release tag pattern except `adapter-netlify-v*`, so that tag can still be moved or
+deleted. Add it:
 
 ```sh
-git switch main && git pull && yarn install --immutable
-yarn pkg:build && yarn adapter:nf:build
-(cd adapters/netlify && npm publish --access public --tag rc)
-git tag adapter-netlify-v1.0.0-rc.1 origin/main
-git push origin adapter-netlify-v1.0.0-rc.1
+gh api repos/bascikdev/bascik/rulesets/24332486 \
+  | jq '.conditions.ref_name.include += ["refs/tags/adapter-netlify-v*"]
+        | {name, target, enforcement, conditions, rules, bypass_actors}' \
+  | gh api -X PUT repos/bascikdev/bascik/rulesets/24332486 --input -
 ```
 
-Pushing that tag still runs the Release job, which builds and tests the package,
-then skips publishing: `publish-npm.sh` exits successfully when the version is
-already on npm.
+**Require CI on `main`.** The "Protect Main" ruleset (id 20648919) has a required status
+checks rule with an empty list, so a red CI run does not block a merge. Name the two gate
+jobs. They report one result for all the suites that ran, and a skipped suite does not
+fail them. Confirm the names first with
+`gh api repos/bascikdev/bascik/commits/main/check-runs --jq '.check_runs[].name'`:
 
-### VS Code Marketplace
+```sh
+gh api repos/bascikdev/bascik/rulesets/20648919 \
+  | jq '(.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks)
+          = [{"context": "Verify Selected Unit and Integration Suites"},
+             {"context": "Verify Selected End-to-End Suites"}]
+        | {name, target, enforcement, conditions, rules, bypass_actors}' \
+  | gh api -X PUT repos/bascikdev/bascik/rulesets/20648919 --input -
+```
 
-Use the `bascik` publisher with an Entra managed identity:
-
-1. Create a user-assigned managed identity with subscription **Reader** access.
-2. Look up its Azure DevOps profile ID through a managed-identity pipeline and add it as a Marketplace publisher **Contributor** (see the guide below).
-3. Add a GitHub federated credential for environment `marketplace`, keeping the exact generated subject.
-4. Create the GitHub environment `marketplace`, allow `ext-*` tags, and add `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` secrets.
-
-See the [VS Code publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#secure-automated-publishing).
+Read `DEPLOYMENT.md` ("One test run per commit") before adding any other required check:
+a skipped job of the same name passes.
 
 ## Failed releases
 

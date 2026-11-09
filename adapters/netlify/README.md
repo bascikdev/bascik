@@ -135,7 +135,7 @@ JavaScript disabled, API methods/params/catch-all precedence, Netlify context/co
 transport, native-function coexistence, security/CSP headers, errors, timeouts, and
 private-path handling. Error routes intentionally generate diagnostics.
 
-Both adapters also run one [shared demo browser contract](../e2e/demo-contract.test.ts)
+Both adapters also run one [shared demo browser contract](https://github.com/bascikdev/bascik/blob/main/adapters/e2e/demo-contract.test.ts)
 against their real runtimes. The canonical routes and titles match Cloudflare:
 `/`, `/server?name=collin`, `/stream`, `/stream-append`, `/mixed`, `/catalog`,
 `/catalog-stream`, `/api-demo`, `/errors`, and `/static`. The `/static` page
@@ -162,4 +162,4 @@ uses stable class-only scripts.
 This is **not** an Identity, database, OAuth or payment-service test. Those services
 are application integrations and need their own isolated resources and credentials
 if added later. Never reuse an application's users, secrets, or database here.
-See [the deployment runbook](../../DEPLOYMENT.md#netlify-adapter-acceptance-project).
+See [the deployment runbook](https://github.com/bascikdev/bascik/blob/main/DEPLOYMENT.md#netlify-adapter-acceptance-project).

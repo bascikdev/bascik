@@ -9,6 +9,8 @@
     "declaration": true,
     "declarationDir": "dist",
     "sourceMap": true,
+    // dist/ ships without src/, so the maps carry their own sources.
+    "inlineSources": true,
     "removeComments": false,
     // Allow implicit any for the initial migration — add types incrementally
     // 'yarn pkg:typecheck' (noEmit, strict) is the authoritative type-check pass
