@@ -18,6 +18,8 @@ The production server is read-only and designed for deployment:
 - It reads the build state, the server-script sidecar and the component manifest from the private build folder `.bascik/dist/`, beside `dist/`. A deploy copies both folders from the same build. A page in `dist/` that differs from the build's record (a deploy step that edited it) is served as it is, with one startup warning that names the pages and ends with how to avoid it: make the change in a `post` [exec script](/exec-scripts), which runs before the build records its pages and takes their CSP hashes. The warning compares page HTML only, so a `.bascik/dist/` from a build that changed only server-script source is not detected, and its scripts run. With `contentSecurityPolicy` set, the warning also names changed pages whose inline scripts or styles no longer match the build's hashes, counting only the kinds the policy restricts. Browsers block that code (or report it, with `reportOnly`); a `post` script that makes the same change ships with matching hashes. The server refuses to start only when it cannot run a page: a page names a server script the sidecar does not hold, or a page lost a placeholder the sidecar holds for it. A `post` script that removes a placeholder fails `bascik --build` with the same message, so this refusal catches a `dist/` edited after the build. See [What a static host receives](/deployment#what-a-static-host-receives).
 - It executes `data-bascik-server` and `data-bascik-stream` scripts in-process per request.
 - It bypasses disk I/O for HTML pages by serving directly from memory.
+- With the default `http.hostname: "localhost"`, it listens on both `127.0.0.1` and `[::1]`, and refuses to start if another program holds the port on either one.
+- Static files support single byte-range requests: `Range: bytes=a-b` gets `206 Partial Content` with `Content-Range`, a range past the end gets `416`, and `If-Range` with a strong ETag is honored; pages are always sent whole.
 - For local development with file watching and live reload, run the [Development Server](/development-server) with `bascik` instead.
 
 ## CLI Flags
@@ -159,7 +161,7 @@ On boot, `bascik --server` reads all compiled HTML documents from `dist/` into a
 
 ## Graceful Shutdown & Health Checks
 
-The production server responds to `SIGTERM` and `SIGINT` process signals by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
+The production server responds to `SIGTERM`, `SIGINT` and `SIGHUP` process signals by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
 
 - **Built-in Health Checks:** Point readiness probes at `/_health` (or `/_health/ready`) and liveness probes at `/_health/live`. Readiness answers 503 while the server boots and drains; liveness stays 200 while the process is up.
 - **Connection Draining:** In-flight streaming scripts and requests complete within `http.timeouts.drain` before connections close. Forced socket termination only occurs if the deadline expires.

@@ -215,6 +215,8 @@ bascik --build --env-file .env.staging
 bascik --build --env-file .env.base --env-file .env.staging  # later files win
 ```
 
+Node itself checks `--env-file` before Bascik starts, so a missing file stops the command with `node: <file>: not found` (exit code 9); use `--env-file-if-exists` for an optional file.
+
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
 
 Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
@@ -330,7 +332,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. Under the default [`scripts.onBuildScriptError: "error"`](/configuration#scripts), the first build-script failure stops the build at once; other page failures are collected and reported together as `Build failed with N page error(s)`, each with its project-relative path. The build then exits nonzero and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:

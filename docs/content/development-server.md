@@ -19,7 +19,7 @@ When started, Bascik:
 2. Cleans the output directory (`dist/`) to remove stale artifacts.
 3. Transpiles all pages and components into memory and disk. Pages open in your browser compile first, then the home page, then the rest (see [Compile Order](#compile-order)).
 4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
-5. Starts an HTTP development server with live reload on port 8080.
+5. Starts an HTTP development server with live reload on port 8080. With the default `http.hostname: "localhost"`, Bascik listens on both loopback addresses, `127.0.0.1` and `[::1]`, so either URL works, and a port already taken on either one counts as in use.
 
 This is the real output of a new project, recorded from the starter site on one machine. Startup takes a fraction of a second, and saving a page afterward rebuilds only that page:
 
@@ -87,6 +87,7 @@ When a syntax error, build script failure, or invalid component reference occurs
 - **Source Line Remapping:** Displays the original HTML template file, line number, and column.
 - **Detailed Stack Traces:** Strips internal V8 and Node runtime frames to highlight your authored code.
 - **Auto-Dismiss on Fix:** As soon as you correct the error and save the file, the dev server re-transpiles the page and dismisses the overlay instantly.
+- **Errors at Startup:** If a component fails to compile when the dev server starts, the server keeps running and the error overlay names the file and line; save a fix and the page loads.
 - **Keyboard and Screen Readers:** The overlay is a modal alert dialog named "Bascik Build Error". It moves focus to its Dismiss button, Escape closes it, and focus returns to where it was. The next error opens it again. While the connection is down, the reconnect banner is a polite status message, so screen readers announce it without moving focus.
 
 A typo in a build script, then the fix:
