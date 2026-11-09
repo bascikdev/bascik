@@ -143,7 +143,12 @@ export const VSCODE_LAUNCH_JSON =
     2,
   ) + "\n";
 
-/** \`vitest/config\`, not \`vite\`: the project depends on vitest, and vite is only vitest's own dependency. */
+/**
+ * Imports `defineConfig` from `vitest/config`, Vitest's documented entry point for its config. The project also
+ * declares `vite` (Vitest 5 needs it as a peer). Coverage lists `src/**\/*.ts` because Vitest 4 and later only
+ * report files a test loads, so a module no test imports would otherwise be missing, not 0%. The starter has no
+ * `.ts` modules (its tests read the component HTML), so its report is empty until you add one.
+ */
 export const VITE_CONFIG = `import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -151,6 +156,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts'],
       reporter: ['text', 'json', 'html'],
     },
   },

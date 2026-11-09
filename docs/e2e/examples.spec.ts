@@ -53,7 +53,7 @@ test.describe("example component pages", () => {
     await page.goto("/example-components/copy-button");
     const preview = page.getByTestId("demo-pane-preview");
     await expect(
-      preview.getByRole("button", { name: "Copy command" }),
+      preview.getByRole("button", { name: "Copy ISBN" }),
     ).toBeVisible();
     await page.getByTestId("demo-tab-code").click();
     const source = readFileSync(
@@ -320,12 +320,12 @@ test.describe("built examples", () => {
         }
         await expect(
           page.getByTestId("filter-a").getByRole("listitem"),
-        ).toHaveText(["Apple", "Banana", "Cherry"]);
+        ).toHaveText(["Dune", "Frankenstein", "Emma"]);
         await expect(
-          page.getByTestId("tabs-a").getByText("A yearly"),
+          page.getByTestId("tabs-a").getByText("A Emma"),
         ).toBeVisible();
         await expect(
-          page.getByTestId("tabs-a").getByText("A lifetime"),
+          page.getByTestId("tabs-a").getByText("A Beloved"),
         ).toBeVisible();
       } finally {
         await context.close();
@@ -373,15 +373,15 @@ test.describe("built examples", () => {
     }) => {
       const a = page.getByTestId("tabs-a");
       const b = page.getByTestId("tabs-b");
-      await expect(tabs(a)).toHaveText(["Monthly", "Yearly", "Lifetime"]);
-      await expect(tabs(b)).toHaveText(["One", "Two"]);
+      await expect(tabs(a)).toHaveText(["Dune", "Emma", "Beloved"]);
+      await expect(tabs(b)).toHaveText(["Persuasion", "Middlemarch"]);
       await expect(a.getByRole("tablist")).toHaveAccessibleName("Plans A");
 
       await tabs(a).nth(1).click();
       await expect(tabs(a).nth(1)).toHaveAttribute("aria-selected", "true");
-      await expect(a.getByText("A yearly")).toBeVisible();
-      await expect(a.getByText("A monthly")).toBeHidden();
-      await expect(b.getByText("B one")).toBeVisible();
+      await expect(a.getByText("A Emma")).toBeVisible();
+      await expect(a.getByText("A Dune")).toBeHidden();
+      await expect(b.getByText("B Persuasion")).toBeVisible();
 
       await page.keyboard.press("ArrowRight");
       await expect(tabs(a).nth(2)).toBeFocused();
@@ -389,7 +389,7 @@ test.describe("built examples", () => {
       await expect(tabs(a).nth(0)).toBeFocused();
       await page.keyboard.press("End");
       await expect(tabs(a).nth(2)).toHaveAttribute("aria-selected", "true");
-      await expect(a.getByRole("tabpanel")).toHaveAccessibleName("Lifetime");
+      await expect(a.getByRole("tabpanel")).toHaveAccessibleName("Beloved");
 
       const ids = await page
         .getByRole("tab")
@@ -457,11 +457,11 @@ test.describe("built examples", () => {
       await a.getByLabel("Filter A").fill("an");
       await expect(
         a.getByRole("listitem").filter({ visible: true }),
-      ).toHaveText(["Banana"]);
+      ).toHaveText(["Frankenstein"]);
       await expect(a.getByText("1 of 3 shown")).toBeVisible();
       await expect(
         b.getByRole("listitem").filter({ visible: true }),
-      ).toHaveText(["Red", "Green"]);
+      ).toHaveText(["Persuasion", "Middlemarch"]);
     });
 
     test("contact forms validate, then post JSON with literal field names to the API route", async ({

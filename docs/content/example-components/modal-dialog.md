@@ -12,10 +12,10 @@ A button that opens a native modal `<dialog>`. The browser handles focus trappin
 
 ```html
 <modal-dialog
-  data-bascik-prop-trigger="Delete project"
-  data-bascik-prop-title="Delete this project?"
+  data-bascik-prop-trigger="Remove Dune"
+  data-bascik-prop-title="Remove this book from your shelf?"
 >
-  <p>This removes every page and component. It cannot be undone.</p>
+  <p>Dune by Frank Herbert leaves your shelf. You can add it back later.</p>
 </modal-dialog>
 ```
 

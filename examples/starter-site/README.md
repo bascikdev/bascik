@@ -64,6 +64,8 @@ BASCIK_SITE_URL=https://example.com npx bascik --build
 npx bascik --server
 ```
 
+`npx bascik --check` runs the per-file checks (scoping, CSS, and script rules) through `@bascik/language-server`, which this example lists in `devDependencies`. Without it, `--check` prints that per-file checks were skipped.
+
 Before launch, check every page:
 
 - Each page has a unique `<title>` and description and one `<h1>`.

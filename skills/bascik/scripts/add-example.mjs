@@ -34,7 +34,8 @@ References:
   starter-site/src/lib/seo.ts        one file of a site
   starter-site/src/pages/blog        a folder of a site
 
-Copying site files also copies the components they use, from the site or from the example components.
+Copying site files also copies the components they use, from the site or from the example components, and the
+modules they import (such as src/lib/seo.ts) and the content folders those modules read.
 Site files map to your config's folders:
 src/components -> first directory.components root, src/pages -> directory.pages, src/lib -> <scripts.importRoot>/lib,
 src/api -> directory.api, and anything else (scripts/, content/) to the same path under the project root.
@@ -138,8 +139,73 @@ export function componentTagOf(destination, componentRoot) {
   return basename(destination, extname(destination)).toLowerCase();
 }
 
+const SCRIPT_FILE = /\.(?:html|[cm]?[jt]s)$/;
+const MODULE_EXTENSIONS = [
+  "",
+  ".ts",
+  ".mts",
+  ".js",
+  ".mjs",
+  "/index.ts",
+  "/index.js",
+];
+
+/** Resolve "a/./b/../c" against a base folder inside the example, or undefined when it leaves the example. */
+function normalizeInside(path) {
+  const out = [];
+  for (const part of path.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (!out.length) return undefined;
+      out.pop();
+    } else out.push(part);
+  }
+  return out.join("/");
+}
+
 /**
- * The files a reference selects, plus the example components those files use. Returns
+ * The paths of a site's files that a file needs to run: the modules it imports (`./x`, `../x`, and `@/x`, which is
+ * the site's `src/`), and the files or folders its code names in a string, such as a "content/posts" folder a
+ * helper reads. Packages, node: builtins, and URLs are not site files. Exported for tests.
+ */
+export function siteDependencies(file, sitePaths) {
+  if (!SCRIPT_FILE.test(file.path)) return [];
+  const found = new Set();
+  const withExtension = (base) =>
+    MODULE_EXTENSIONS.map((extension) => `${base}${extension}`).find((path) =>
+      sitePaths.has(path),
+    );
+  const source = file.content;
+  for (const match of source.matchAll(
+    /(?:\bfrom\s*|\bimport\s*\(?\s*)(["'])([^"'\n]+)\1/g,
+  )) {
+    const specifier = match[2].replace(/[?#].*$/, "");
+    const base = specifier.startsWith("@/")
+      ? normalizeInside(`src/${specifier.slice(2)}`)
+      : /^\.\.?\//.test(specifier)
+        ? normalizeInside(
+            `${file.path.split("/").slice(0, -1).join("/")}/${specifier}`,
+          )
+        : undefined;
+    const resolved = base === undefined ? undefined : withExtension(base);
+    if (resolved) found.add(resolved);
+  }
+  for (const match of source.matchAll(/(["'`])([^"'`\n]+)\1/g)) {
+    const path = normalizeInside(match[2]);
+    if (!path || !path.includes("/") || match[2].startsWith("/")) continue;
+    if (sitePaths.has(path)) found.add(path);
+    else {
+      const prefix = `${path}/`;
+      for (const sitePath of sitePaths)
+        if (sitePath.startsWith(prefix)) found.add(sitePath);
+    }
+  }
+  found.delete(file.path);
+  return [...found];
+}
+
+/**
+ * The files a reference selects, plus the example components and the modules those files use. Returns
  * [{ example, file }] with each file once. Throws on an unknown reference. Exported for tests.
  */
 export function selectFiles(bundle, references) {
@@ -147,8 +213,20 @@ export function selectFiles(bundle, references) {
     bundle.examples.map((example) => [example.name, example]),
   );
   const picked = new Map();
-  const add = (example, file) =>
-    picked.set(`${example.name}/${file.path}`, { example, file });
+  const add = (example, file) => {
+    const key = `${example.name}/${file.path}`;
+    if (picked.has(key)) return;
+    picked.set(key, { example, file });
+    // A site page that imports "@/lib/x.ts" does not build without that file, and --check cannot tell.
+    if (example.kind !== "site") return;
+    const sitePaths = new Set(example.files.map((f) => f.path));
+    for (const path of siteDependencies(file, sitePaths)) {
+      const dependency = example.files.find((f) => f.path === path);
+      add(example, dependency);
+      // A module can use components too, such as a helper that renders a tag.
+      queue.push(...dependency.uses.map((name) => [example, name]));
+    }
+  };
   // [example the using file belongs to, component name]
   const queue = [];
   for (const reference of references) {
@@ -340,9 +418,9 @@ async function main() {
   }
   const packageJson = printed.find(({ file }) => file.path === "package.json");
   if (packageJson) {
-    const wanted = Object.keys(
-      JSON.parse(packageJson.file.content).dependencies ?? {},
-    );
+    const examplePackage = JSON.parse(packageJson.file.content);
+    const wanted = Object.keys(examplePackage.dependencies ?? {});
+    const wantedDev = Object.keys(examplePackage.devDependencies ?? {});
     const projectPackage = existsSync(join(root, "package.json"))
       ? JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
       : {};
@@ -354,6 +432,11 @@ async function main() {
     if (missing.length)
       console.log(
         `\nInstall the dependencies this example uses: npm install ${missing.join(" ")}`,
+      );
+    const missingDev = wantedDev.filter((name) => !have.has(name));
+    if (missingDev.length)
+      console.log(
+        `\nInstall the dev dependencies this example uses (the language server is what runs per-file checks in \`bascik --check\`): npm install --save-dev ${missingDev.join(" ")}`,
       );
   }
   if (!values["dry-run"])

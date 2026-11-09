@@ -11,5 +11,8 @@
   "dependencies": {
     "@bascik/bascik": "^1.0.0",
     "marked": "^18.0.14"
+  },
+  "devDependencies": {
+    "@bascik/language-server": "^1.0.0"
   }
 }
