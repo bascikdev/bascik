@@ -187,6 +187,29 @@ p::before { content: ".inline code"; }
     expect(findPreservedCssTargets(".c {}", t)).toEqual([]);
   });
 
+  // Misuse: an entry is matched as the literal tag name it spells, never as
+  // a regular expression, whatever characters it carries.
+  it.each(["co\\de", "co.e", "c|code", "(code)", "co\\.e", "^code$", "code+"])(
+    "never reads preserve entry %j as a pattern",
+    (entry) => {
+      const t = collectPreservedTargets(
+        '<code class="c">x</code><cooe class="d">y</cooe>',
+        [entry],
+      );
+      expect(findPreservedCssTargets(".c {} .d {}", t)).toEqual([]);
+    },
+  );
+
+  it("matches a wildcard entry only within tag-name characters", () => {
+    const t = collectPreservedTargets(
+      '<vendor-a class="a">x</vendor-a><vendor class="b">y</vendor><p class="p"></p>',
+      ["vendor-*"],
+    );
+    expect(names(findPreservedCssTargets(".a {} .b {} .p {}", t))).toEqual([
+      "a",
+    ]);
+  });
+
   it("stays linear on long unclosed input", () => {
     const start = performance.now();
     collectPreservedTargets(`<code class="a" ${'"'.repeat(50_000)}`, ["code"]);

@@ -70,8 +70,13 @@ const preserveMatchers = (preserve: readonly string[]): RegExp[] =>
     )
     .map(
       (entry) =>
+        // Every regex metacharacter is escaped (the filter above already
+        // keeps the entries to tag-name characters), then `*` opens a run.
         new RegExp(
-          `^${entry.toLowerCase().replace(/-/g, "\\-").replace(/\*/g, "[a-z0-9-]*")}$`,
+          `^${entry
+            .toLowerCase()
+            .replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")
+            .replace(/\\\*/g, "[a-z0-9-]*")}$`,
         ),
     );
 
