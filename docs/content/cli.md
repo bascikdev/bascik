@@ -103,7 +103,9 @@ bascik init --no-skills  # skip the agent skills
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 
-A `package.json` that sets `"type": "commonjs"` stops `init` before it writes anything, because Bascik config files use ESM syntax.
+Bascik config files use ESM syntax, so `init` needs `"type": "module"`. `npm init -y` writes `"type": "commonjs"` since npm 11. When the project has no `.js` or `.ts` file outside `node_modules`, as right after `npm init -y`, `init` changes it to `"module"`, which cannot break anything. A project with such a file may rely on CommonJS, so `init` stops before it writes anything and names one of the files.
+
+Run Bascik from the project's own install (`npm run dev`, `npx bascik`). A global install (`npm install -g @bascik/bascik`) can run `bascik init`, but the project still needs `@bascik/bascik` in its own `node_modules`: `init` adds it to `package.json`, and Node resolves `import { defineConfig } from "@bascik/bascik"` in `bascik.config.ts` from the project folder, never from the global copy.
 
 ## CLI reference
 
