@@ -646,19 +646,26 @@ describe("BascikLanguageServer", () => {
       await settle();
       expect(codes(component)).toContain("attr-prop-unsupplied");
 
+      // A watched-file change republishes the open component's diagnostics
+      // after a disk read; the Windows runner takes longer than a fixed
+      // settle, so wait for the publication.
       await fs.writeFile(page, USAGE);
       await fake.handlers.get("watchedFiles")!({
         changes: [{ uri: uri(page), type: FileChangeType.Changed }],
       });
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       await fs.rm(page);
       await fake.handlers.get("watchedFiles")!({
         changes: [{ uri: uri(page), type: FileChangeType.Deleted }],
       });
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
   });
 
