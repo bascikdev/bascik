@@ -14,7 +14,7 @@ Repository-wide instructions are labeled accordingly.
 
 ## Keeping the Changelog Up to Date
 
-`CHANGELOG.md` is not actively maintained during pre-1.0 development: the 1.0.0 release entry will be written as a high-level announcement. **Once 1.0.0 ships**, resume normal changelog discipline: add an entry to `[Unreleased]` whenever you add a feature, fix a bug, or make any user-visible change to `pkg/src/`. One bullet per change, grouped under `### Added`, `### Fixed`, or `### Changed`.
+`CHANGELOG.md` at the repository root is the release notes for every package and the source of the `/releases` docs page (`docs/src/pages/releases.html` renders it at build time). From 1.0.0 on it is maintained in every pull request: **whenever you add a feature, fix a bug, or make any user-visible change** to `pkg/src/`, `create/`, `adapters/`, `lsp/`, the extension, or the public skills, add one bullet under `## [Unreleased]` (create the section at the top when it is absent), grouped under `### Added`, `### Changed`, `### Fixed`, or `### Removed`, naming the package when it is not `@bascik/bascik`. Write for a user of the package, not a contributor: what changed and what to do about it, with a docs link when one exists. Internal refactors, test-only changes, and docs-only changes get no entry. A release moves the `[Unreleased]` bullets under `## [<version>] - <date>` and adds the comparison link at the bottom (see `RELEASING.md`, "Release checklist"). Never rewrite a released version's section.
 
 ## Keeping the Compatibility Doc Up to Date
 

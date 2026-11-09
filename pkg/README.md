@@ -142,7 +142,7 @@ This repository has four independently versioned npm packages (plus the VS Code 
 | `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` |
 | `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                |
 
-[RELEASING.md](../RELEASING.md) has the publish order across packages, the one-time setup, and the release candidate walkthrough. There is no changelog before 1.0.0: a release bumps the version in `package.json` and pushes the tag.
+[RELEASING.md](../RELEASING.md) has the release checklist, the publish order across packages, the one-time setup, and the release candidate walkthrough. `CHANGELOG.md` at the repository root records every user-visible change under `[Unreleased]`; a release moves that section under the new version and pushes the tag.
 
 ---
 
