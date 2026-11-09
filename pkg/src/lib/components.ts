@@ -14,6 +14,12 @@ import {
 import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
+import {
+  collectCssClasses,
+  collectPreservedTargets,
+  findPreservedCssTargets,
+  findPreservedJsTargets,
+} from "./preserved-targets.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
 import {
@@ -37,6 +43,11 @@ import {
   isDirectiveScriptOpenTag,
 } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import {
+  cssBraceImbalanceMessage,
+  findCssBraceImbalance,
+} from "./css-brace-balance.ts";
+import { ComponentCssSyntaxError } from "./build-error.ts";
 import { assertNoGeneratedIdClassCollisions } from "./generated-id-classes.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
@@ -359,6 +370,29 @@ const getLineAtOffset = (source: string, offset: number): number => {
   return line;
 };
 
+/**
+ * Thrown when a component's `<style>` or companion stylesheet has an
+ * unbalanced brace. The message names the file and line of the brace.
+ */
+const assertCssBracesBalanced = (
+  css: string,
+  displayPath: string,
+  lineAt: (offset: number) => number,
+  columnAt: (offset: number) => number,
+): void => {
+  const imbalance = findCssBraceImbalance(css);
+  if (!imbalance) return;
+  const line = lineAt(imbalance.offset);
+  throw new ComponentCssSyntaxError(
+    `[bascik] CSS error in ${displayPath}:${line}: ${cssBraceImbalanceMessage(imbalance)}`,
+    { sourceFile: displayPath, line, column: columnAt(imbalance.offset) },
+  );
+};
+
+/** 1-based column of `offset` in `text`. */
+const columnAtOffset = (text: string, offset: number): number =>
+  offset - text.lastIndexOf("\n", offset - 1);
+
 const warnComponentCompatibility = async (
   rawHtml: string,
   fileName: string,
@@ -393,14 +427,14 @@ const warnComponentCompatibility = async (
   if (componentCompatFingerprints.get(fileName) === fingerprint) {
     return;
   }
-  componentCompatFingerprints.set(fileName, fingerprint);
 
   const relHtml =
     relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
-  const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) => {
-    const newlines = match.match(/\n/g);
-    return newlines ? newlines.join("") : " ";
-  });
+  // Mask each comment to same-length whitespace (keeping its line breaks) so offsets
+  // in the scanned text are offsets in rawHtml and every warning lands on its real line.
+  const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) =>
+    match.replace(/[^\n]/g, " "),
+  );
   const nonCodeScan = maskElementContents(noComments, [
     "textarea",
     ...(BascikConfig.scoping?.preserve ?? ["code"])
@@ -410,6 +444,30 @@ const warnComponentCompatibility = async (
       ),
   ]);
 
+  // An unbalanced brace would nest or drop other components' rules in the
+  // page stylesheet: stop before the fingerprint is stored, so an unchanged
+  // broken file fails again on the next listing.
+  for (const styleMatch of scanElementContents(nonCodeScan, "style", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    assertCssBracesBalanced(
+      nonCodeScan.slice(styleMatch.contentStart, styleMatch.contentEnd),
+      relHtml,
+      (offset) => getLineAtOffset(rawHtml, styleMatch.contentStart + offset),
+      (offset) => columnAtOffset(rawHtml, styleMatch.contentStart + offset),
+    );
+  }
+  if (cssFileName && rawCss) {
+    assertCssBracesBalanced(
+      rawCss,
+      relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName,
+      (offset) => getLineAtOffset(rawCss, offset),
+      (offset) => columnAtOffset(rawCss, offset),
+    );
+  }
+  componentCompatFingerprints.set(fileName, fingerprint);
+
   const seenWarnings = new Set<string>();
   const emitWarning = (
     displayPath: string,
@@ -418,7 +476,7 @@ const warnComponentCompatibility = async (
     message: string,
     suggestion: string,
   ) => {
-    const key = `${displayPath}:${line}:${ruleId}`;
+    const key = `${displayPath}:${line}:${ruleId}:${message}`;
     if (seenWarnings.has(key)) return;
     seenWarnings.add(key);
     console.warn(
@@ -525,6 +583,157 @@ const warnComponentCompatibility = async (
           m.rule.id,
           m.rule.message,
           m.rule.suggestion,
+        );
+      }
+    }
+  }
+
+  warnPreservedTargets(
+    noComments,
+    nonCodeScan,
+    rawHtml,
+    relHtml,
+    cssFileName,
+    rawCss,
+    companionScripts,
+    emitWarning,
+  );
+};
+
+/**
+ * Warns for component CSS rules and client-script class queries that can only target preserved elements
+ * (`scoping.preserve` tags, `data-bascik-preserve` elements, and their contents). Those keep their literal
+ * class and id while the selectors are renamed, so the rule never applies and the query finds nothing.
+ */
+const warnPreservedTargets = (
+  markup: string,
+  nonCodeScan: string,
+  rawHtml: string,
+  relHtml: string,
+  cssFileName: string | undefined,
+  rawCss: string,
+  companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined,
+  emitWarning: (
+    displayPath: string,
+    line: number,
+    ruleId: string,
+    message: string,
+    suggestion: string,
+  ) => void,
+): void => {
+  const targets = collectPreservedTargets(
+    markup,
+    (BascikConfig.scoping?.preserve ?? ["code"]).map((t) => String(t)),
+  );
+  if (
+    targets.classes.size === 0 &&
+    targets.ids.size === 0 &&
+    targets.tags.size === 0
+  ) {
+    return;
+  }
+  const relCss =
+    cssFileName &&
+    (relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName);
+  const styles = [
+    ...scanElementContents(nonCodeScan, "style", {
+      opener: "tag-space",
+      closer: "attributes",
+    }),
+  ].map((match) => ({
+    css: nonCodeScan.slice(match.contentStart, match.contentEnd),
+    offset: match.contentStart,
+  }));
+  const cssClasses = new Set<string>();
+  for (const { css } of styles) {
+    for (const className of collectCssClasses(css)) cssClasses.add(className);
+  }
+  for (const className of collectCssClasses(rawCss)) cssClasses.add(className);
+
+  for (const { css, offset } of styles) {
+    for (const m of findPreservedCssTargets(css, targets)) {
+      emitWarning(
+        relHtml,
+        getLineAtOffset(rawHtml, offset + m.index),
+        "css-preserved-target",
+        m.message,
+        m.suggestion,
+      );
+    }
+  }
+  if (relCss) {
+    for (const m of findPreservedCssTargets(rawCss, targets)) {
+      emitWarning(
+        relCss,
+        getLineAtOffset(rawCss, m.index),
+        "css-preserved-target",
+        m.message,
+        m.suggestion,
+      );
+    }
+  }
+  if (cssClasses.size === 0) return;
+  for (const scriptMatch of scanElementContents(nonCodeScan, "script", {
+    opener: "tag-space",
+    closer: "attributes",
+  })) {
+    const openTag = nonCodeScan.slice(
+      scriptMatch.start,
+      scriptMatch.contentStart,
+    );
+    if (
+      BUILD_DIRECTIVE_RE.test(openTag) ||
+      SERVER_DIRECTIVE_RE.test(openTag) ||
+      ROUTES_DIRECTIVE_RE.test(openTag) ||
+      STREAM_DIRECTIVE_RE.test(openTag)
+    ) {
+      continue;
+    }
+    const typeVal = (
+      /\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
+        .exec(openTag)
+        ?.slice(1)
+        .find((v) => v !== undefined) ?? ""
+    ).toLowerCase();
+    if (
+      typeVal &&
+      typeVal !== "module" &&
+      typeVal !== "text/javascript" &&
+      typeVal !== "application/javascript" &&
+      typeVal !== "text/typescript"
+    ) {
+      continue;
+    }
+    const body = nonCodeScan.slice(
+      scriptMatch.contentStart,
+      scriptMatch.contentEnd,
+    );
+    for (const m of findPreservedJsTargets(body, targets, cssClasses)) {
+      emitWarning(
+        relHtml,
+        getLineAtOffset(rawHtml, scriptMatch.contentStart + m.index),
+        "js-preserved-target",
+        m.message,
+        m.suggestion,
+      );
+    }
+  }
+  if (companionScripts && companionScripts.scriptMap.size > 0) {
+    const visited = new Set<string>();
+    for (const scriptInfo of companionScripts.scriptMap.values()) {
+      if (visited.has(scriptInfo.relPath)) continue;
+      visited.add(scriptInfo.relPath);
+      for (const m of findPreservedJsTargets(
+        scriptInfo.code,
+        targets,
+        cssClasses,
+      )) {
+        emitWarning(
+          scriptInfo.relPath,
+          getLineAtOffset(scriptInfo.code, m.index),
+          "js-preserved-target",
+          m.message,
+          m.suggestion,
         );
       }
     }

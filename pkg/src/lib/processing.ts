@@ -608,6 +608,18 @@ export const pageWriteIdle = async (
   }
 };
 
+/**
+ * Reports page errors as {@link reportPageErrors} does, after remembering each failed page in dev.
+ * A page that fails during component expansion (a cycle, a component build script that throws) is
+ * never stored, so no component index names it; remembering it lets a component edit rebuild it
+ * (finding 40). It is recorded first because a compile scope makes the report throw.
+ */
+const reportAndRememberPageErrors = (pageErrors: PageProcessingError[]) => {
+  if (!BascikConfig.isBuild)
+    for (const error of pageErrors) mem.recordFailedPage(error.pagePath);
+  reportPageErrors(pageErrors);
+};
+
 export const processPageBatch = async (
   pageInputs: (string | PageJob)[],
   componentList?: ComponentList,
@@ -620,7 +632,7 @@ export const processPageBatch = async (
   resetModuleCheckerForBuild();
   const pageErrors = [...initialPageErrors];
   if (pageInputs.length === 0) {
-    reportPageErrors(pageErrors);
+    reportAndRememberPageErrors(pageErrors);
     return [];
   }
 
@@ -678,7 +690,7 @@ export const processPageBatch = async (
     }
   }
   if (jobs.length === 0) {
-    reportPageErrors(pageErrors);
+    reportAndRememberPageErrors(pageErrors);
     return [];
   }
 
@@ -791,7 +803,7 @@ export const processPageBatch = async (
     }
   }
 
-  reportPageErrors(pageErrors);
+  reportAndRememberPageErrors(pageErrors);
 
   return results
     .map((r) => r?.relativePagePath ?? null)
@@ -881,6 +893,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
     ...mem.pagesThisComponentIsUsedOn(componentName),
     ...pagesImportingStylesheet(path),
     ...mem.pagesDependentOnFile(path),
+    ...mem.pagesWhoseLastBuildFailed(),
   ]);
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
@@ -1302,7 +1315,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       startManifestFromSources();
       await compiled;
 
-      reportPageErrors(pageErrors);
+      reportAndRememberPageErrors(pageErrors);
     } finally {
       // Always terminate — otherwise a rejected job leaves worker threads
       // alive and the CLI hangs on exit instead of reporting the failure.

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   deps: vi.fn(),
   components: vi.fn(),
   planPages: vi.fn(),
+  failedPages: vi.fn(),
   buildScripts: vi.fn(),
   importers: vi.fn(),
   clear: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("./mem.ts", () => ({
     pagesDependentOnFile: mocks.deps,
     pagesThisComponentIsUsedOn: mocks.components,
     pagesWithServerScriptPlan: mocks.planPages,
+    pagesWhoseLastBuildFailed: mocks.failedPages,
   },
 }));
 vi.mock("./components.ts", () => ({
@@ -91,6 +93,7 @@ beforeEach(() => {
   mocks.deps.mockReset().mockReturnValue(["src/pages/consumer.html"]);
   mocks.components.mockReset().mockReturnValue([]);
   mocks.planPages.mockReset().mockReturnValue([]);
+  mocks.failedPages.mockReset().mockReturnValue([]);
   mocks.buildScripts.mockReset().mockReturnValue(false);
   mocks.importers.mockReset().mockReturnValue([]);
   mocks.config.pipeline.watchPaths = ["content/*.md"];
@@ -331,6 +334,27 @@ describe("source observer and phase queue integration", () => {
 
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedComponent);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/index.html"),
+    ]);
+  });
+
+  it("rebuilds a page whose last build failed when a component file changes, though no index names it (finding 40)", async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.failedPages.mockReturnValue(["src/pages/cycle.html"]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+
+    watcher.emit("all", "change", resolve("src/components/b-card.html"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
+      resolve("src/pages/cycle.html"),
+    ]);
+
+    // A page edit does not need them: only component inputs can fix an expansion failure.
+    mocks.batch.mockClear();
+    watcher.emit("all", "change", "src/pages/index.html");
+    await vi.advanceTimersByTimeAsync(50);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
       resolve("src/pages/index.html"),
     ]);

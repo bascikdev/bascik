@@ -34,6 +34,11 @@ export interface ProjectSnapshot {
    * its top-level names stay in that block. On by default. Page scripts are never wrapped.
    */
   scopesScriptBlocks?: boolean;
+  /**
+   * `scoping.preserve`: the tag names (or `*` patterns) whose `class` and `id` stay unscoped. `["code"]` when
+   * the config does not set it.
+   */
+  preserve?: string[];
 }
 
 /**
@@ -109,6 +114,18 @@ export function parseScopesName(source: string | undefined): boolean {
   const attributes = /(?<![\w$])attributes\s*:\s*\{([^{}]*)\}/.exec(code);
   if (!attributes) return false;
   return /(?<![\w$-])["']?name["']?\s*:\s*true\b/.test(attributes[1]);
+}
+
+/**
+ * Reads `scoping.preserve` from the config source: the string literals in its array, or `["code"]`, the
+ * compiler's default, when it is not set.
+ */
+export function parsePreserve(source: string | undefined): string[] {
+  const match = /(?<![\w$-])["']?preserve["']?\s*:\s*\[([^\]]*)\]/.exec(
+    stripConfigComments(source),
+  );
+  if (!match) return ["code"];
+  return Array.from(match[1].matchAll(/['"]([^'"]*)['"]/g), (item) => item[1]);
 }
 
 /** Reads `scoping.scriptBlocks` from the config source: on unless it is set to `false`. */
@@ -396,6 +413,7 @@ export async function buildSnapshot(
     componentSourceByFile,
     scopesName: parseScopesName(configSource),
     scopesScriptBlocks: parseScriptBlocks(configSource),
+    preserve: parsePreserve(configSource),
   };
 }
 

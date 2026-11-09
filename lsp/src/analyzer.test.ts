@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { pathToFileURL } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { DiagnosticSeverity } from "vscode-languageserver";
 import type { CompletionItem, TextEdit } from "vscode-languageserver";
 import {
   createDiagnostics,
@@ -507,6 +508,163 @@ describe("Bascik Language Server Analyzer", () => {
           '<div class="a"></div><script>a();</script\u00a0>el.id = "x";</script>',
         ),
       ).toContain("js-id-setter");
+    });
+
+    it("reports the same lines as the build after a five-line @bascik doc comment", () => {
+      // Finding 104: pkg components.test.ts pins the build warnings for this file at 11 and 15.
+      const source =
+        "<!-- @bascik\nA book card.\n@prop title - The title.\n@prop author - The author.\n-->\n" +
+        "<article>\n  <h2 data-bascik-prop-title></h2>\n  <p data-bascik-prop-author></p>\n</article>\n" +
+        "<style>\n  [data-state] { color: blue; }\n</style>\n" +
+        '<script>\n  const el = document.getElementById("card");\n  el.id = "new-card";\n</script>\n';
+      const lines = createDiagnostics(
+        TextDocument.create(`file://${componentPath}`, "html", 1, source),
+        componentPath,
+        mockSnapshot,
+      )
+        .filter(
+          (d) =>
+            d.code === "css-attribute-selector" || d.code === "js-id-setter",
+        )
+        .map((d) => [d.code, d.range.start.line + 1]);
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          ["css-attribute-selector", 11],
+          ["js-id-setter", 15],
+        ]),
+      );
+      expect(lines).toHaveLength(2);
+    });
+
+    it("reports an unclosed { and a stray } in a component <style> at the brace's line (finding 42)", () => {
+      const braces = (source: string) =>
+        createDiagnostics(
+          TextDocument.create(`file://${componentPath}`, "html", 1, source),
+          componentPath,
+          mockSnapshot,
+        )
+          .filter((d) => d.code === "css-unbalanced-braces")
+          .map((d) => [d.range.start.line + 1, d.range.start.character]);
+      expect(
+        braces(
+          '<!-- doc\n-->\n<p class="a">x</p>\n<style>\n  .a { color: red;\n</style>\n',
+        ),
+      ).toEqual([[5, 5]]);
+      expect(
+        braces(
+          '<p class="a">x</p>\n<style>\n  .a { color: red; }\n  }\n</style>\n',
+        ),
+      ).toEqual([[4, 2]]);
+      expect(
+        braces(
+          '<p class="a">x</p>\n<style>\n  .a::after { content: "}"; }\n  /* { */\n  @media (min-width: 1px) { .a { & b { color: red; } } }\n</style>\n',
+        ),
+      ).toEqual([]);
+      expect(
+        braces('<p class="a">x</p>\n<!-- <style> .a { </style> -->\n'),
+      ).toEqual([]);
+    });
+
+    it("reports an unbalanced brace in a component's companion stylesheet", () => {
+      const cssPath = "/test-project/src/components/demo-card.css";
+      const found = createDiagnostics(
+        TextDocument.create(
+          `file://${cssPath}`,
+          "css",
+          1,
+          ".a {\n  color: red;\n\n.b { color: blue; }\n",
+        ),
+        cssPath,
+        mockSnapshot,
+      ).filter((d) => d.code === "css-unbalanced-braces");
+      expect(found.map((d) => d.range.start.line + 1)).toEqual([1]);
+      expect(String(found[0]?.message)).toContain('Add the missing "}"');
+    });
+
+    it("warns at the selector for CSS and class queries that only reach preserved elements (finding 22)", () => {
+      const preserved = (
+        source: string,
+        snapshot: ProjectSnapshot = mockSnapshot,
+      ) =>
+        createDiagnostics(
+          TextDocument.create(`file://${componentPath}`, "html", 1, source),
+          componentPath,
+          snapshot,
+        )
+          .filter(
+            (d) =>
+              d.code === "css-preserved-target" ||
+              d.code === "js-preserved-target",
+          )
+          .map((d) => [
+            d.code,
+            d.range.start.line + 1,
+            source
+              .split("\n")
+              [d.range.start.line].slice(
+                d.range.start.character,
+                d.range.end.character,
+              ),
+            d.severity,
+          ]);
+      const source =
+        '<!-- doc\n-->\n<div class="note"><code class="inline" id="snippet">x</code></div>\n<style>\n  .note code { color: red; }\n  .inline, #snippet { color: red; }\n  .note { color: blue; }\n</style>\n<script>\n  document.getElementById("snippet");\n  document.querySelector(".note .inline");\n</script>\n';
+      expect(preserved(source)).toEqual([
+        ["css-preserved-target", 5, "code", DiagnosticSeverity.Warning],
+        ["css-preserved-target", 6, ".inline", DiagnosticSeverity.Warning],
+        ["css-preserved-target", 6, "#snippet", DiagnosticSeverity.Warning],
+        ["js-preserved-target", 11, ".inline", DiagnosticSeverity.Warning],
+      ]);
+      // The project's scoping.preserve list decides: an empty list preserves nothing, a wildcard matches.
+      expect(preserved(source, { ...mockSnapshot, preserve: [] })).toEqual([]);
+      expect(
+        preserved(
+          '<x-chart class="chart-a"></x-chart><p data-bascik-preserve="class" class="kept"></p>\n<style>\n  .chart-a, .kept { color: red; }\n</style>\n',
+          { ...mockSnapshot, preserve: ["x-*"] },
+        ).map(([, line, written]) => [line, written]),
+      ).toEqual([
+        [3, ".chart-a"],
+        [3, ".kept"],
+      ]);
+      // A page, or a file outside any project, is never scoped, so its `code {}` rule works.
+      const pagePath = "/test-project/src/pages/index.html";
+      for (const snapshot of [mockSnapshot, undefined]) {
+        expect(
+          createDiagnostics(
+            TextDocument.create(`file://${pagePath}`, "html", 1, source),
+            pagePath,
+            snapshot,
+          ).filter((d) => String(d.code).endsWith("preserved-target")),
+        ).toEqual([]);
+      }
+      // A class a scoped element shares stays quiet.
+      expect(
+        preserved(
+          '<code class="shared">x</code><em class="shared"></em>\n<style>\n  .shared { color: red; }\n</style>\n',
+        ),
+      ).toEqual([]);
+    });
+
+    it("warns in a companion stylesheet for a class only its component's preserved elements carry", () => {
+      const cssPath = "/test-project/src/components/demo-card.css";
+      const found = createDiagnostics(
+        TextDocument.create(
+          `file://${cssPath}`,
+          "css",
+          1,
+          ".a {}\n.inline { color: red; }\n",
+        ),
+        cssPath,
+        mockSnapshot,
+        [
+          {
+            fsPath: componentPath,
+            text: '<p class="a"></p><code class="inline">x</code>\n',
+          },
+        ],
+      ).filter((d) => d.code === "css-preserved-target");
+      expect(found.map((d) => d.range.start.line + 1)).toEqual([2]);
+      expect(String(found[0]?.message)).toContain('".inline"');
     });
 
     it("does not read a <style-guide> or <script-loader> element as a style or script block", () => {

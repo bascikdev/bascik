@@ -1354,6 +1354,149 @@ describe("listComponents", () => {
   });
 });
 
+describe("listComponents – compatibility warning lines after comments", () => {
+  // Finding 104: the scan collapsed each HTML comment to its newlines only, then read lines from the
+  // uncollapsed source with offsets from the shortened text, so every warning after a doc comment
+  // pointed lines too early. The language server reports these same lines (lsp analyzer.test.ts).
+  const warningsFor = async (name: string, html: string): Promise<string[]> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-compat-lines-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, `src/components/${name}`), { recursive: true });
+      await writeFile(join(cwd, `src/components/${name}/${name}.html`), html);
+      await listComponents([join(cwd, "src/components")]);
+      return warnSpy.mock.calls
+        .map((c) => c.join(" "))
+        .filter((msg) => msg.includes("[bascik] warning"));
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+  const lineOf = (warnings: string[], ruleId: string, file: string) =>
+    warnings
+      .filter((w) => w.includes(`(${ruleId})`))
+      .map((w) => Number(new RegExp(`${file}:(\\d+)`).exec(w)?.[1]));
+
+  it("reports the real lines when a five-line @bascik doc comment precedes <style> and <script>", async () => {
+    const warnings = await warningsFor(
+      "book-card",
+      "<!-- @bascik\nA book card.\n@prop title - The title.\n@prop author - The author.\n-->\n" +
+        "<article>\n  <h2 data-bascik-prop-title></h2>\n  <p data-bascik-prop-author></p>\n</article>\n" +
+        "<style>\n  [data-state] { color: blue; }\n</style>\n" +
+        '<script>\n  const el = document.getElementById("card");\n  el.id = "new-card";\n</script>\n',
+    );
+    expect(
+      lineOf(warnings, "css-attribute-selector", "book-card.html"),
+    ).toEqual([11]);
+    expect(lineOf(warnings, "js-id-setter", "book-card.html")).toEqual([15]);
+  });
+
+  it("reports the real line after an HTML comment and a CSS comment inside <style>", async () => {
+    const warnings = await warningsFor(
+      "note-card",
+      '<p class="a">x</p>\n<style>\n  <!-- an html\n  comment -->\n  /* a css\n  comment */\n  .a { color: red; }\n  [data-x] { color: blue; }\n</style>\n',
+    );
+    expect(
+      lineOf(warnings, "css-attribute-selector", "note-card.html"),
+    ).toEqual([8]);
+  });
+
+  it("reports the real line in a second <script> after a <!-- --> between two scripts", async () => {
+    const warnings = await warningsFor(
+      "two-scripts",
+      '<p id="p">x</p>\n<script>\n  console.log(1);\n</script>\n<!--\n\n  between\n\n-->\n<script>\n  const el = document.getElementById("p");\n  el.id = "q";\n</script>\n',
+    );
+    expect(lineOf(warnings, "js-id-setter", "two-scripts.html")).toEqual([12]);
+  });
+});
+
+describe("listComponents – unbalanced braces in component CSS", () => {
+  // Finding 42: a missing or extra brace in one component nested or dropped the rules of every
+  // other component in the page stylesheet, and the build passed.
+  const listWith = async (
+    name: string,
+    html: string,
+    css?: string,
+  ): Promise<unknown> => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-css-braces-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, `src/components/${name}`), { recursive: true });
+      await writeFile(join(cwd, `src/components/${name}/${name}.html`), html);
+      if (css !== undefined)
+        await writeFile(join(cwd, `src/components/${name}/${name}.css`), css);
+      try {
+        await listComponents([join(cwd, "src/components")]);
+        // Listed twice: an unchanged broken file must fail again, not hit a cache.
+        await listComponents([join(cwd, "src/components")]);
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  };
+  const messageOf = (error: unknown) =>
+    error instanceof Error ? error.message : String(error);
+
+  it("fails on a missing } in <style>, naming the line of the unclosed {", async () => {
+    const error = await listWith(
+      "feature-card",
+      '<!-- @bascik\nA card.\n-->\n<article class="card"><div class="body">x</div></article>\n<style>\n  article { color: red;\n  .body { flex: 1; }\n</style>\n',
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(messageOf(error)).toMatch(/feature-card\.html:6\b/);
+    expect(messageOf(error)).toContain('"{"');
+    expect(messageOf(error)).toMatch(/add the missing "}"/i);
+  });
+
+  it("fails on an extra } in <style>, naming the line of the stray }", async () => {
+    const error = await listWith(
+      "feature-card",
+      '<article class="body">x</article>\n<style>\n  article { color: red; }\n  }\n  .body { flex: 1; }\n</style>\n',
+    );
+    expect(messageOf(error)).toMatch(/feature-card\.html:4\b/);
+    expect(messageOf(error)).toMatch(/remove the "}"/i);
+  });
+
+  it("fails on a missing } in the companion stylesheet, naming its own file and line", async () => {
+    const error = await listWith(
+      "book-card",
+      '<article class="card">x</article>\n',
+      ".card {\n  color: red;\n}\n\n.card .title {\n  font-weight: bold;\n",
+    );
+    expect(messageOf(error)).toMatch(/book-card\.css:5\b/);
+  });
+
+  it.each([
+    [
+      "a } inside a string",
+      '<p class="a">x</p>\n<style>\n  .a::after { content: "}"; }\n</style>\n',
+    ],
+    [
+      "a { inside a CSS comment",
+      '<p class="a">x</p>\n<style>\n  /* { */\n  .a { color: red; }\n</style>\n',
+    ],
+    [
+      "@media nesting and CSS nesting",
+      '<p class="a"><span class="b">x</span></p>\n<style>\n  @media (min-width: 40rem) {\n    .a { color: red; & .b { color: blue; } }\n  }\n</style>\n',
+    ],
+    [
+      "a broken <style> inside an HTML comment",
+      '<p class="a">x</p>\n<!-- <style> .a { color: red; </style> -->\n',
+    ],
+    [
+      "<style> text inside a <textarea>",
+      '<p class="a">x</p>\n<textarea><style>.a {</style></textarea>\n',
+    ],
+  ])("accepts %s", async (_label, html) => {
+    expect(await listWith("good-card", html)).toBeUndefined();
+  });
+});
+
 describe("listComponents – reserved generated class head", () => {
   it("warns, with file and line, about an authored .b_el_ or .b_id_ class, and not about .el__p", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "bascik-reserved-head-"));
