@@ -35,7 +35,7 @@ export type Template = (typeof TEMPLATES)[number];
  * rejects a compatibility date newer than itself and the adapter pins a recent one.
  */
 const WRANGLER_VERSION = "^4.153.0";
-const NETLIFY_CLI_VERSION = "^27.14.2";
+const NETLIFY_CLI_VERSION = "^27.16.2";
 
 export const PACKAGE_JSON = (
   name: string,
