@@ -508,6 +508,43 @@ node dist/.bascik/__adapters_custom-node_ts_602c65fd/server.mjs
 
 Open `http://localhost:3000` in your browser. Dynamic pages render per request, stream script output arrives as each script resolves, and a page whose scripts return component tags is rendered the way `bascik --server` renders it.
 
+### Step 7: Add local development
+
+`bascik --target ./adapters/custom-node.ts` (without `--build`) runs the site on your adapter's runtime while you edit. It builds the site, starts the command your adapter's optional `dev` hook returns, and serves it through a live-reload proxy that rebuilds and restarts the runtime when a file in `src/` changes. An adapter without a `dev` hook stops with an error that names the missing hook.
+
+Add the hook to the object in `adapters/custom-node.ts`, next to `build`:
+
+```ts
+import {
+  defineAdapter,
+  type AdapterDevCommand,
+  type AdapterDevContext,
+} from "@bascik/bascik/adapter";
+
+export default defineAdapter({
+  name: "custom-node",
+  async build(context) {
+    // ... Steps 1 to 4 ...
+  },
+  async dev(context: AdapterDevContext): Promise<AdapterDevCommand> {
+    return {
+      command: process.execPath,
+      args: [join(context.outDir, "server.mjs")],
+      cwd: context.projectRoot,
+      env: { PORT: String(context.port) },
+    };
+  },
+});
+```
+
+Bascik calls `dev` after each build, with the same `projectRoot`, `distDir`, `outDir` and `variant` that `build` received, and a private `port` for the runtime to listen on. The returned command runs from `cwd`, with `env` added to the environment. The server from Step 4 already reads `PORT`, so it listens where the proxy expects it. The proxy listens on port 8888 by default; `--port` or `BASCIK_SERVER_PORT` changes it:
+
+```sh
+bascik --target ./adapters/custom-node.ts --port 4000
+```
+
+To run a platform's own local runtime instead, such as a provider's CLI, return its command. `resolvePlatformCli` finds a package's bin in the project's `node_modules`, and `availableDevPort` picks a free port for a second listener such as an inspector.
+
 ---
 
 ## Target resolution
@@ -523,6 +560,8 @@ The `--target` flag resolves in three ways:
    ```
 
 Bascik dynamically imports the resolved module and reads its default export. A package is found the way Node finds it, in the `node_modules` folders from the project up, and its `exports` may offer only an `import` condition (an ESM-only package); a subpath such as `--target @acme/adapter/workers` resolves through `exports` too. Official targets such as `cloudflare` resolve their package the same way. As in Node, an `exports` target or `*` match with a `.`, `..` or `node_modules` segment is never followed, so an entry cannot point outside the package folder. An installed package whose `exports` have no entry for the name you passed fails with a message naming the folder it is installed in, not a request to install it.
+
+A local path that does not exist fails with `adapter file not found at <path>`, and an adapter file that throws while loading fails with its own message after `[bascik] --target <path>:`. A name that is not installed but is close to an official target, such as `cloudfare` or `netlfy`, fails with `Did you mean --target cloudflare?` (or `netlify`).
 
 ---
 
@@ -615,15 +654,35 @@ Follow these principles when authoring adapters:
 export interface HostingAdapter {
   name: string;
   build(context: AdapterBuildContext): Promise<AdapterBuildResult>;
+  dev?(context: AdapterDevContext): Promise<AdapterDevCommand>;
 }
 
 export function defineAdapter(adapter: HostingAdapter): HostingAdapter;
 ```
 
-| Property | Type                                                            | Description                                                                  |
-| :------- | :-------------------------------------------------------------- | :--------------------------------------------------------------------------- |
-| `name`   | `string`                                                        | Unique identifier for the adapter, used in diagnostic logs and output paths. |
-| `build`  | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async hook called after static build completes.                              |
+| Property | Type                                                            | Description                                                                                                              |
+| :------- | :-------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `name`   | `string`                                                        | Unique identifier for the adapter, used in diagnostic logs and output paths.                                             |
+| `build`  | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async hook called after static build completes.                                                                          |
+| `dev`    | `(context: AdapterDevContext) => Promise<AdapterDevCommand>`    | Optional. Returns the command `bascik --target` runs for local development. See [Step 7](#step-7-add-local-development). |
+
+Importing `@bascik/bascik/adapter` does not read `bascik.config`, so an adapter package loads through CommonJS `require` or ESM `import` even in a project whose config is broken; `readSiteGraph` loads the config the first time it is called.
+
+### `AdapterDevContext` and `AdapterDevCommand`
+
+| Property      | Type                                  | Description                                                                     |
+| :------------ | :------------------------------------ | :------------------------------------------------------------------------------ |
+| `projectRoot` | `string`                              | Context. Absolute path to the project folder.                                   |
+| `distDir`     | `string`                              | Context. Absolute path to the static build folder (`dist/`).                    |
+| `outDir`      | `string`                              | Context. The folder `build` wrote to (`dist/.bascik/<target>/`).                |
+| `variant`     | `string \| undefined`                 | Context. The same variant `build` received.                                     |
+| `port`        | `number`                              | Context. Private port the runtime must listen on, behind the live-reload proxy. |
+| `command`     | `string`                              | Command. Executable to start, such as `process.execPath` for Node.              |
+| `args`        | `string[]`                            | Command. Arguments passed to the executable.                                    |
+| `cwd`         | `string`                              | Command. Working folder for the process.                                        |
+| `env`         | `Record<string, string \| undefined>` | Command. Optional variables added to the environment.                           |
+
+Two helpers from `@bascik/bascik/adapter` support dev hooks. `resolvePlatformCli` takes the project root, a package name and a bin name, and returns the bin's path inside the project's `node_modules`, failing with an install hint when the package is missing. `availableDevPort` returns a free local port for a second listener.
 
 ### `AdapterBuildContext`
 

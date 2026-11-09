@@ -5,7 +5,7 @@
  * Netlify reads: `publish/` (netlify.toml's publish directory) and
  * `.netlify/v1/functions/` (the Frameworks API functions directory).
  *
- *   bascik --build --target @bascik/adapter-netlify && bascik-netlify-install
+ *   bascik --build --target netlify && bascik-netlify-install
  *
  * Bascik rejects adapter output outside the target folder, so this runs as a
  * separate step after the build.
@@ -50,7 +50,7 @@ export async function findAdapterOutput(distDir: string): Promise<string> {
   }
   if (!newest)
     throw new Error(
-      `[netlify-install] no "${ADAPTER_NAME}" adapter build found under ${root}. Run bascik --build --target @bascik/adapter-netlify first.`,
+      `[netlify-install] no "${ADAPTER_NAME}" adapter build found under ${root}. Run bascik --build --target netlify first.`,
     );
   return newest.dir;
 }
