@@ -38,14 +38,14 @@ No client-side JavaScript is added, nothing hydrates, and there is no per-fragme
 For a new site, let `create-bascik` set this up:
 
 ```sh
-npm create bascik@rc my-site -- --template netlify
+npm create bascik my-site -- --template netlify
 ```
 
 The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter and Netlify CLI installed, `npm run dev` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
-- Node.js 22.22 or newer for the build (Node.js 24 LTS recommended).
+- Node.js 24.11 or newer for the build.
 - `@bascik/adapter-netlify` installed in your project:
 
 ```sh

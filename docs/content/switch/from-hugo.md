@@ -17,7 +17,7 @@ Hugo is a static site generator; Bascik is a build tool for HTML components. Bot
 
 Migrate a simple partial (like a header or footer) into a Bascik component:
 
-1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+1. Create a project with `npm create bascik my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
 2. Create `src/components/site-footer/site-footer.html`.
 3. Copy the markup from `layouts/partials/footer.html` into it. Replace Go template values such as `{{ .Site.Title }}` with fixed text.
 4. Use `<site-footer />` inside `src/pages/index.html`.

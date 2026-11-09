@@ -2,7 +2,7 @@
 
 Bascik supports automated testing and debugging across every layer of your application, from pure TypeScript utilities and component markup contracts to build-time scripts, request-time server scripts, browser component interactivity, and multi-environment end-to-end workflows.
 
-Because Node 24 and Node 22.22+ natively execute TypeScript files by erasing type annotations, test runners and build scripts import `.ts` modules directly with zero compilation delay and zero build tooling overhead.
+Because Node 24 and Node 24.11+ natively execute TypeScript files by erasing type annotations, test runners and build scripts import `.ts` modules directly with zero compilation delay and zero build tooling overhead.
 
 ## Testing Architecture & Tiers
 
@@ -19,7 +19,7 @@ Testing a Bascik application is structured into six core tiers:
 
 ## Quick Start with `create-bascik`
 
-Projects created with `npm create bascik@rc` include a pre-configured testing environment powered by Vitest, Playwright, V8 code coverage, and VS Code debug launchers.
+Projects created with `npm create bascik` include a pre-configured testing environment powered by Vitest, Playwright, V8 code coverage, and VS Code debug launchers.
 
 Execute test suites directly from your project root:
 

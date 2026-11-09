@@ -7,7 +7,7 @@ Cloudflare Workers with Static Assets and Cloudflare Pages hosting adapter for [
 
 ## Overview
 
-This adapter compiles Bascik request-time scripts and API routes into a Cloudflare Workers deployment bundle with static asset routing. Install it in a Bascik project that deploys to Cloudflare (Node.js 22.22 or newer), or start one with `npm create bascik@rc my-site -- --template cloudflare`:
+This adapter compiles Bascik request-time scripts and API routes into a Cloudflare Workers deployment bundle with static asset routing. Install it in a Bascik project that deploys to Cloudflare (Node.js 24.11 or newer), or start one with `npm create bascik my-site -- --template cloudflare`:
 
 ```sh
 npm install --save-dev @bascik/adapter-cloudflare wrangler

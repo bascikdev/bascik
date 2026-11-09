@@ -11,7 +11,7 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ## Start here
 
-1. **Check the Node version.** Bascik needs Node 22.22 or newer; the message is `[bascik] Node.js 22.22.0 or newer is required. Detected <version>.`
+1. **Check the Node version.** Bascik needs Node 24.11 or newer; the message is `[bascik] Node.js 24.11.0 or newer is required. Detected <version>.`
 2. **Run `bascik --check`.** Most "it builds but looks wrong" problems are an unresolved tag, an unknown directive, or a config typo, and the report names each one.
 3. **Restart after a config change.** The dev server prints `[bascik] Config file changed: <path>. Restart the server to apply configuration changes.` and keeps the old config until you do.
 4. **Run a full `bascik --build` before `bascik --server` or a deploy.** A targeted `--only` build, or a `dist/` left by an older Bascik version, is the usual cause of a stale-artifact message.
@@ -19,16 +19,16 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ## Installing and scaffolding
 
-### `[bascik] Node.js 22.22.0 or newer is required.`
+### `[bascik] Node.js 24.11.0 or newer is required.`
 
-The CLI refuses to start on an older Node. Install Node 22.22 or newer (Node 24 is recommended) and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
+The CLI refuses to start on an older Node. Install Node 24.11 or newer and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
 
 ### `npm create bascik` ignored my `--template`
 
-npm keeps flags that come before `--` for itself. If you ran `npm create bascik@rc my-site --template cloudflare`, the scaffolder sees no template and reports:
+npm keeps flags that come before `--` for itself. If you ran `npm create bascik my-site --template cloudflare`, the scaffolder sees no template and reports:
 
 ```text
-npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik@rc my-site -- --template cloudflare
+npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --template cloudflare
 ```
 
 Put every scaffolder flag after `--`. `yarn create` and `pnpm create` pass flags through without it. See [Scaffold a new project](/cli#scaffold-a-new-project).

@@ -314,7 +314,7 @@ describe("npm create bascik and the agent skills", () => {
     async (...args) => {
       const { status, output, parent } = await create(args);
       expect(status).toBe(0);
-      expect(output).toContain("Usage: npm create bascik@rc");
+      expect(output).toContain("Usage: npm create bascik");
       expect(output).toContain("--template <name>");
       expect(output).not.toContain("Project name");
       expect(readdirSync(parent)).toEqual([]);

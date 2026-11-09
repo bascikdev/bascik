@@ -1,4 +1,4 @@
-// A small, tolerant HTML tree builder for the skill scripts. Dependency-free; Node.js 22.22+.
+// A small, tolerant HTML tree builder for the skill scripts. Dependency-free; Node.js 24.11+.
 // Heuristic by design: it never throws on broken markup, keeps 1-based line numbers for every element, and never
 // reads markup inside comments, <script>, <style>, <textarea>, or <title>. The compiler is the authority on output.
 

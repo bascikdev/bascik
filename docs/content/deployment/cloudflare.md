@@ -39,14 +39,14 @@ No client-side JavaScript is added, nothing hydrates, and there is no per-fragme
 For a new site, let `create-bascik` set this up:
 
 ```sh
-npm create bascik@rc my-site -- --template cloudflare
+npm create bascik my-site -- --template cloudflare
 ```
 
 The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run dev` set to `bascik --target cloudflare`, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
-- Node.js 22.22 or newer for the build (Node.js 24 LTS recommended).
+- Node.js 24.11 or newer for the build.
 - `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh
@@ -205,14 +205,14 @@ The workflow runs only on push, so a pull request shows the checks and Previews 
 
 Workers Builds builds and deploys the Worker on every push to the production branch. In the Cloudflare dashboard, open **Workers & Pages**, then either **Create** > **Import a repository** for a new Worker, or open an existing Worker and use **Settings** > **Build** > **Connect**. Use these build settings for a Bascik project:
 
-| Setting                                    | Value                                                                                          |
-| :----------------------------------------- | :--------------------------------------------------------------------------------------------- |
-| Root directory                             | The folder with your `package.json` (the repository root for most projects)                    |
-| Build command                              | `npm run build`, or `npx bascik --build --target cloudflare`                                   |
-| Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc`     |
-| Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                      |
-| Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                         |
-| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (22.22 or newer, 24 recommended) |
+| Setting                                    | Value                                                                                      |
+| :----------------------------------------- | :----------------------------------------------------------------------------------------- |
+| Root directory                             | The folder with your `package.json` (the repository root for most projects)                |
+| Build command                              | `npm run build`, or `npx bascik --build --target cloudflare`                               |
+| Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc` |
+| Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                  |
+| Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                     |
+| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (24.11 or newer)             |
 
 The root directory is where the build runs, not the folder Wrangler deploys: the generated folder does not exist until the build command has run. Workers Builds installs your dependencies with the package manager your lock file names, and uses the Wrangler version your `package.json` pins.
 

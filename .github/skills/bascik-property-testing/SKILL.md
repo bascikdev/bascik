@@ -98,7 +98,7 @@ describe("CSS Scoping Property Tests", () => {
 
 ### Bounding Every Property
 
-The skeletons above pass a bare `numRuns`. In this repository, pass `propertyBounds(ciRuns, runsVariable?)` from `pkg/src/lib/property-runs.test-helper.ts` instead: a fixed seed, a run count sized to finish well under a second locally, and a 30 s test timeout for the slow Node 22.22 floor runner on CI. An unbounded property (random seed, Vitest's 5 s default timeout) timed out there.
+The skeletons above pass a bare `numRuns`. In this repository, pass `propertyBounds(ciRuns, runsVariable?)` from `pkg/src/lib/property-runs.test-helper.ts` instead: a fixed seed, a run count sized to finish well under a second locally, and a 30 s test timeout for the slow Node 24.11 floor runner on CI. An unbounded property (random seed, Vitest's 5 s default timeout) timed out there.
 
 ```ts
 const BOUNDS = propertyBounds(150, "SCAN_ORACLE_RUNS");

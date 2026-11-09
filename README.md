@@ -12,7 +12,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and Jav
 ## Get Started
 
 ```sh
-npm create bascik@rc my-site
+npm create bascik my-site
 ```
 
 The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
@@ -81,7 +81,7 @@ This repository holds Bascik and everything around it. Each folder is a Yarn wor
 
 ## Working in This Repo
 
-Develop on **Node 24**: the full test suite needs it. The published packages support **Node 22.22** and newer, and CI checks that floor in its own job. The repo uses Yarn 4 workspaces (`yarn@4.18.0`, through Corepack), so one install at the root wires everything up:
+Develop on **Node 24**: the full test suite needs it. The published packages support **Node 24.11** and newer, and CI checks that floor in its own job. The repo uses Yarn 4 workspaces (`yarn@4.18.0`, through Corepack), so one install at the root wires everything up:
 
 ```sh
 corepack enable

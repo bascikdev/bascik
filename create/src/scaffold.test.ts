@@ -180,7 +180,7 @@ describe("parseCliOptions", () => {
   // plain argument, so a second positional must be reported, not dropped.
   it("rejects a stray second positional and points at the -- form", () => {
     expect(() => parseCliOptions(["my-site", "cloudflare", "-y"], {})).toThrow(
-      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik my-site -- --template cloudflare',
     );
   });
 
@@ -225,7 +225,7 @@ describe("parseCliOptions", () => {
     expect(() =>
       parseCliOptions(["my-site"], { npm_config_template: "true" }),
     ).toThrow(
-      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
+      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --template cloudflare',
     );
   });
 });
@@ -452,9 +452,9 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.name).toBe("cool-site");
   });
 
-  it("declares the same Node 22.22 engine floor as the bascik package", () => {
+  it("declares the same Node 24.11 engine floor as the bascik package", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.engines.node).toBe(">=22.22.0");
+    expect(pkg.engines.node).toBe(">=24.11.0");
   });
 
   it("treats the default template the same as no template", () => {
@@ -1752,7 +1752,7 @@ describe("parseCliOptions --no-skills", () => {
     ])
       expect(USAGE).toContain(flag);
     expect(USAGE).toContain(
-      "npm create bascik@rc my-site -- --template cloudflare",
+      "npm create bascik my-site -- --template cloudflare",
     );
   });
 

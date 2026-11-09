@@ -547,7 +547,7 @@ jobs:
       - name: Run extension unit tests
         run: yarn ext:unit
 
-  # ── Stage 3: Selected integration, linear-time, and Node 22.22 suites
+  # ── Stage 3: Selected integration, linear-time, and Node 24.11 suites
 
   integration-pkg:
     name: Framework Integration Tests
@@ -701,13 +701,13 @@ jobs:
       - name: Run agent skills integration tests
         run: yarn skills:integration
 
-  # The published packages declare `engines.node >=22.22.0`, and `bin/bascik.js` enforces it, so one lane proves every
+  # The published packages declare `engines.node >=24.11.0`, and `bin/bascik.js` enforces it, so one lane proves every
   # workspace still builds and passes its unit tests on that floor, plus the framework integration tests (real builds,
-  # servers and sockets; Node 22.22 bundles an older nghttp2 than 24, see body-limit-linger.integration.test.ts). The
+  # servers and sockets; Node 24.11 bundles an older nghttp2 than 24.17, see body-limit-linger.integration.test.ts). The
   # other jobs stay on Node 24: two pkg test helpers need a V8 13.6 intrinsic and Node 24's TLS cleanup callback
-  # ordering, and those tests skip themselves on Node 22.
+  # ordering, and those tests skip themselves below those versions.
   node-floor:
-    name: Node 22.22 Floor
+    name: Node 24.11 Floor
     runs-on: ubuntu-latest
     if: >-
       !cancelled() &&
@@ -742,10 +742,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 22.22
+      - name: Use Node.js 24.11
         uses: actions/setup-node@v5
         with:
-          node-version: 22.22.0
+          node-version: 24.11.0
           cache: "yarn"
 
       - name: Install dependencies
@@ -786,7 +786,7 @@ jobs:
         if: ${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
         with:
-          name: profiling-diagnostics-node22.22
+          name: profiling-diagnostics-node24.11
           path: ${{ runner.temp }}/bascik-profile-test-*
           if-no-files-found: ignore
           retention-days: 7

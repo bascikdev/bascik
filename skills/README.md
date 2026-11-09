@@ -18,7 +18,7 @@ Without it, download every skill into the shared `.agents/skills/` folder (use `
 mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
 ```
 
-New projects created with `npm create bascik@rc` include every skill except the opt-in `bascik-refactor`. Install that one on its own when you want coding agents to refactor a live site:
+New projects created with `npm create bascik` include every skill except the opt-in `bascik-refactor`. Install that one on its own when you want coding agents to refactor a live site:
 
 ```sh
 npx skills add bascikdev/bascik --skill bascik-refactor
@@ -43,7 +43,7 @@ The skills hold the rules an assistant must follow and point to the docs at http
 
 ## Scripts
 
-The skills ship Node.js scripts (Node 22.22+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
+The skills ship Node.js scripts (Node 24.11+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
 
 | Script                                               | Purpose                                                                                                                                                                                                         |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

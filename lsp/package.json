@@ -1,6 +1,6 @@
 {
   "name": "@bascik/language-server",
-  "version": "0.1.0-rc.6",
+  "version": "1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -19,7 +19,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.11.0"
   },
   "exports": {
     ".": {

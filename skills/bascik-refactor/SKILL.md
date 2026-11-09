@@ -9,7 +9,7 @@ metadata:
 
 # Refactoring a Live Site with Coding Agents
 
-Requires the `bascik` skill for component rules and the `bascik-migrate` skill for the framework-to-Bascik procedure; this skill runs that procedure route by route until every route matches production except documented, verified defect corrections. It is opt-in, so projects created with `npm create bascik@rc` do not include it. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
+Requires the `bascik` skill for component rules and the `bascik-migrate` skill for the framework-to-Bascik procedure; this skill runs that procedure route by route until every route matches production except documented, verified defect corrections. It is opt-in, so projects created with `npm create bascik` do not include it. Install it with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 
 ## Procedure
 

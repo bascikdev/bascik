@@ -2,7 +2,7 @@
 // Capture baselines: record production alone, before any target page exists. Per route and matrix case it writes a
 // full-page PNG and the collectNodes geometry (the boxes geometry-diff and compare-route compare), and with --states
 // every open state state-capture finds (dropdowns, drawers, accordions, tabs) as a crop, plus an index.json that names
-// each baseline by its id, <route>@<caseId>. Dependency-free; Node.js 22.22+; needs playwright (and sharp for
+// each baseline by its id, <route>@<caseId>. Dependency-free; Node.js 24.11+; needs playwright (and sharp for
 // --states) in your project. Read-only toward production without --states; --states clicks production's controls the
 // way state-capture does (pass side-effecting ones with --skip-control).
 //

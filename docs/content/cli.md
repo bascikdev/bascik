@@ -5,9 +5,9 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ## Scaffold a new project
 
 ```sh
-npm create bascik@rc
-# or: npm create bascik@rc my-project
-# or: npm create bascik@rc my-project -- --template cloudflare
+npm create bascik
+# or: npm create bascik my-project
+# or: npm create bascik my-project -- --template cloudflare
 ```
 
 Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter, and `--template netlify` adds the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the same demo; it goes after `--` because npm keeps flags placed before it for itself. Creates:
@@ -99,7 +99,7 @@ bascik init --no-skills  # skip the agent skills
 
 - creates `src/pages/index.html` and `src/components/`
 - adds `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
-- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0-rc.10`) and is skipped when `dependencies` or `devDependencies` already lists it
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0`) and is skipped when `dependencies` or `devDependencies` already lists it
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 

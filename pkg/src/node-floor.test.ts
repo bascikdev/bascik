@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// WHY: chokidar 6 (the dev watcher) needs Node 22.22, so the published floor
-// moved from 22.18. `bin/bascik.js` enforces the floor before anything loads;
+// WHY: the floor is Node 24.11, the first Node 24 LTS release. It bundles
+// npm 11.6, the first npm that installs the starter project (npm 10.9, bundled
+// with Node 22, crashes on its peer set), and chokidar 6 needs 22.22 or newer.
+// `bin/bascik.js` enforces the floor before anything loads;
 // these cases pin the boundary and the message an author on an old Node sees.
 const bin = fileURLToPath(new URL("../bin/bascik.js", import.meta.url));
 const pkg = JSON.parse(
@@ -28,7 +30,7 @@ const runAs = (version: string) => {
 
 describe("bin/bascik.js Node floor", () => {
   it("declares the same floor in engines", () => {
-    expect(pkg.engines.node).toBe(">=22.22.0");
+    expect(pkg.engines.node).toBe(">=24.11.0");
   });
 
   // Every published workspace states the floor, so a package manager that
@@ -44,18 +46,18 @@ describe("bin/bascik.js Node floor", () => {
     expect(other.engines?.node, `${file} engines.node`).toBe(pkg.engines.node);
   });
 
-  it.each(["22.21.9", "22.18.0", "20.19.0", "not.a.version"])(
+  it.each(["24.10.9", "22.22.0", "22.23.4", "20.19.0", "not.a.version"])(
     "refuses Node %s with one located line",
     (version) => {
       const result = runAs(version);
       expect(result.status).toBe(1);
       expect(result.stderr.trim()).toBe(
-        `[bascik] Node.js 22.22.0 or newer is required. Detected ${version}.`,
+        `[bascik] Node.js 24.11.0 or newer is required. Detected ${version}.`,
       );
     },
   );
 
-  it.each(["22.22.0", "22.23.1", "24.0.0", "26.1.0"])(
+  it.each(["24.11.0", "24.11.1", "24.21.0", "26.1.0"])(
     "accepts Node %s",
     (version) => {
       const result = runAs(version);

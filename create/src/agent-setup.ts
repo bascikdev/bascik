@@ -39,7 +39,7 @@ export const SKILLS_REPO = "bascikdev/bascik";
 
 /**
  * The skills CLI, pinned so its flags cannot change under a released
- * create-bascik. 1.7.4 needs Node 22.20, below Bascik's 22.22 floor.
+ * create-bascik. 1.7.4 needs Node 22.20, below Bascik's 24.11 floor.
  */
 export const SKILLS_CLI = "skills@1.7.4";
 

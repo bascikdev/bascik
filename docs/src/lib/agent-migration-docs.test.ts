@@ -431,7 +431,7 @@ describe("agent migration page: a newcomer can follow it on day one", () => {
 
   it("scaffolds without prompts and without starting the dev server", () => {
     expect(md()).toMatch(
-      /npm create bascik@rc site -y -- --template (default|cloudflare) --no-dev/,
+      /npm create bascik site -y -- --template (default|cloudflare) --no-dev/,
     );
   });
 
@@ -551,7 +551,7 @@ describe("bascik-refactor skill: files the page hands out", () => {
     for (const rel of SCRIPTS) {
       const src = readFileSync(path.join(SKILL_DIR, rel), "utf8");
       expect(src.startsWith("#!/usr/bin/env node\n"), rel).toBe(true);
-      expect(src, rel).toMatch(/Node\.js 22\.22\+/);
+      expect(src, rel).toMatch(/Node\.js 24\.11\+/);
       expect(src, rel).toMatch(/\bconst HELP = /);
       expect(src, rel).toMatch(/parseArgs/);
       expect(src, rel).toMatch(/isMain\(import\.meta\.url\)/);

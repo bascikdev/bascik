@@ -2,7 +2,7 @@
 
 Official Language Server Protocol (LSP) server for Bascik projects.
 
-Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor. Use it to wire Bascik into Neovim, Zed, Helix, a coding agent, or CI. In VS Code, install the [Bascik extension](https://bascik.dev/tools/vscode-extension) instead: it bundles this server. Requires Node.js 22.22 or newer. Every rule is documented on the [Linter](https://bascik.dev/tools/linter) page.
+Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor. Use it to wire Bascik into Neovim, Zed, Helix, a coding agent, or CI. In VS Code, install the [Bascik extension](https://bascik.dev/tools/vscode-extension) instead: it bundles this server. Requires Node.js 24.11 or newer. Every rule is documented on the [Linter](https://bascik.dev/tools/linter) page.
 
 ## Capabilities
 

@@ -1361,7 +1361,7 @@ describe("CI stages and the deploy stage", () => {
 
   it.each([
     ["integration-pkg", "node24"],
-    ["node-floor", "node22.22"],
+    ["node-floor", "node24.11"],
   ])(
     "uploads retained profiling diagnostics only after %s integration tests fail",
     (id, runtime) => {

@@ -1,4 +1,4 @@
-// Which build scripts depend on the page they run for. Dependency-free; Node.js 22.22+.
+// Which build scripts depend on the page they run for. Dependency-free; Node.js 24.11+.
 //
 // A `data-bascik-build` script runs once per page with that page's context: BASCIK_PAGE_PATH, BASCIK_PAGE_FILE and,
 // in a dynamic route, BASCIK_ROUTE. A `data-bascik-build-once` script runs once and every use shares its output, so

@@ -30,7 +30,7 @@ import { TestRunner, expect, inject } from "vitest";
  * Linear work grows about 4 times when the input quadruples, and quadratic
  * work about 16 (15.5 to 16.3 measured). Linear work can read twice 4 where
  * the CPU cache holds the quarter-size input and its output but not the
- * full-size ones, which then run slower per character: the Node 22.22 lane
+ * full-size ones, which then run slower per character: the Node 24.11 lane
  * on CI read 8.1, 8.1 and 9.2 for linear masking at 200k characters, which
  * an earlier bar of 8 failed. 12 leaves room on both sides, and still fails
  * work whose quadratic term is three quarters of the quarter-size run (13).
