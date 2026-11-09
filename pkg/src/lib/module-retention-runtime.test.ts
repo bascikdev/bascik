@@ -16,7 +16,7 @@ const destroySslPrototype = { _destroySSL() {} };
 
 describe("TLS cleanup runtime gate", () => {
   it.each([
-    ["v24.11.0", false],
+    ["v24.11.0", true],
     ["v23.11.1", false],
     ["v24.0.0", true],
     ["v24.21.0", true],
@@ -54,11 +54,12 @@ describe("TLS cleanup runtime gate", () => {
   });
 });
 
-// WHY: on the Node 24.11 floor lane the http2 retention rows skip, and the
-// default reporter shows only a skipped count: not the note passed to
-// `skip()`, not a skipped test's console output. The lane gate writes its
-// reason straight to stderr, which every reporter passes through, and gates
-// only http2 so the http1 and dev rows still assert there.
+// WHY: on a runtime outside the verified Node 24 line (Node 25 or newer) the
+// http2 retention rows skip, and the default reporter shows only a skipped
+// count: not the note passed to `skip()`, not a skipped test's console output.
+// The lane gate writes its reason straight to stderr, which every reporter
+// passes through, and gates only http2 so the http1 and dev rows still assert
+// there. The Node 24.11 floor runs every lane.
 describe("retention lane gate", () => {
   const record = (mode: "dev" | "http1" | "http2", version: string) => {
     const skipped: string[] = [];
@@ -73,13 +74,20 @@ describe("retention lane gate", () => {
   };
 
   it("skips an http2 lane off Node 24 and logs why", () => {
-    const { skipped, logged } = record("http2", "v24.11.0");
+    const { skipped, logged } = record("http2", "v25.0.0");
     expect(skipped).toHaveLength(1);
-    expect(skipped[0]).toMatch(/TLS cleanup callback ordering.*v22\.22\.0/);
+    expect(skipped[0]).toMatch(/TLS cleanup callback ordering.*v25\.0\.0/);
     expect(logged).toEqual([`[retention] skipped: ${skipped[0]}`]);
   });
 
   it.each(["dev", "http1"] as const)(
+    "runs the %s lane off Node 24 without skipping",
+    (mode) => {
+      expect(record(mode, "v25.0.0")).toEqual({ skipped: [], logged: [] });
+    },
+  );
+
+  it.each(["dev", "http1", "http2"] as const)(
     "runs the %s lane on the Node 24.11 floor",
     (mode) => {
       expect(record(mode, "v24.11.0")).toEqual({ skipped: [], logged: [] });
