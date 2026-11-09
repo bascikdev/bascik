@@ -26,9 +26,12 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `BASCIK_SITE_URL=https://bascik.dev ${bascik} --build && ${bascik} --server --port ${e2ePort}`,
+    command: `NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev ${bascik} --build && NODE_OPTIONS=--disable-warning=ExperimentalWarning ${bascik} --server --port ${e2ePort}`,
     cwd: join(e2eDir, ".."),
     url: baseURL,
+    // The build runs before the server starts, and the sidebar's "On this page" script reruns for every page
+    // (it reads the page's Markdown, which the script cache cannot see), so a build can pass Playwright's 60s default.
+    timeout: 180_000,
     // A server already on the port is used only when BASCIK_E2E_PORT names it (one started with `yarn e2e:serve`).
     // Otherwise a taken port fails the run instead of testing whatever answers there.
     reuseExistingServer:

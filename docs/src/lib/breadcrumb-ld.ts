@@ -15,7 +15,7 @@ import type { SafeHtml } from "@bascik/bascik/html";
 import { NAV } from "./nav.ts";
 import { renderJsonLd } from "./json-ld.ts";
 
-// Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment, /lighthouse, /example-components, /scripts)
+// Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment, /lighthouse, /example-components, /scripts, /how-to, /tools)
 export const SECTIONS_WITH_PAGE = new Set([
   "internals",
   "scripts",
@@ -24,6 +24,8 @@ export const SECTIONS_WITH_PAGE = new Set([
   "deployment",
   "lighthouse",
   "example-components",
+  "how-to",
+  "tools",
 ]);
 
 const SECTION_LABELS: Record<string, string> = {
@@ -33,6 +35,7 @@ const SECTION_LABELS: Record<string, string> = {
   lighthouse: "Lighthouse 100s",
   scripts: "Scripts & Routing",
   switch: "Switch",
+  tools: "Tooling",
   testing: "Testing & Debugging",
   "how-to": "How-to",
   resources: "Resources",

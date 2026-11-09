@@ -36,7 +36,7 @@ export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 export const HTML_CACHE_CONTROL =
   "public, max-age=0, stale-while-revalidate=86400";
 
-export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n`;
+export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Strict-Transport-Security: max-age=31536000\n`;
 
 /**
  * Every workers.dev host: the Worker's preview URLs (`<alias>-bascik.<account>.workers.dev`, uploaded by CI with
