@@ -38,7 +38,7 @@ Every project scaffolded with `npm create bascik` includes a `lint` script in `p
 npm run lint
 ```
 
-Each finding gives the file, line and column, a rule name, and a suggested fix. This is a real run against a project with four problems planted in it:
+Each finding gives the file, line and column, a rule name, and a suggested fix. The API route rules `invalid-method-case`, `api-handler-return-type` and `missing-method-handler` are reported at the export they are about (the first export, or the first line of code when nothing is exported), not at `1:1`. A scoping or naming finding is reported once, with the rule's severity: `bascik --check` silences the build's console warnings for the same rules, so nothing is printed twice. A component whose file name has no hyphen, has an underscore, or has capitals is counted as used when a page or component writes its tag (matched ignoring case), so it is never listed under unused components. This is a real run against a project with four problems planted in it:
 
 ![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feature-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
@@ -47,6 +47,8 @@ To run only the linter, without the project-wide checks, call the language serve
 ```sh
 npx @bascik/language-server --check
 ```
+
+Run `npx bascik-language-server --help` for usage. Started with no `--check` and no transport flag (`--stdio`, `--node-ipc` or `--socket=<port>`), the server prints a one-line hint and exits 1 instead of starting.
 
 Check a specific path or page:
 

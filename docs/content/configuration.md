@@ -421,7 +421,7 @@ export default defineConfig({
 
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
 
-For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. See [Preserve Scoping](/preserve).
+For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. A preserved element keeps its literal `class` and `id`, so a component rule or class query that only preserved elements answer never matches; Bascik warns with `css-preserved-target` or `js-preserved-target`. Put such rules in a global stylesheet. See [Preserve Scoping](/preserve).
 
 ### `minify` (BYOMinifier)
 

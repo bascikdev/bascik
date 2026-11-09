@@ -82,7 +82,7 @@ export default defineAdapter({
 });
 ```
 
-It also exports the site-graph readers used inside adapters: `readSiteGraph`, `pageAliasesFor`, `detectPublicCollisions`, `isPublicAssetPath`, and `splitDistPageIntoSegments`.
+It also exports the site-graph readers used inside adapters: `readSiteGraph`, `pageAliasesFor`, `detectPublicCollisions`, `isPublicAssetPath`, and `splitDistPageIntoSegments`. Importing `@bascik/bascik/adapter` does not read `bascik.config`; it loads through CommonJS `require` or ESM `import`, and `readSiteGraph` loads the config on first call.
 
 See [Custom Adapters](/deployment/custom-adapters) for the full tutorial and API reference.
 

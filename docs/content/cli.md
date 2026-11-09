@@ -274,7 +274,7 @@ bascik --build --target cloudflare-workers
 bascik --build --target netlify
 ```
 
-`--target <name>` accepts an official target name, an installed adapter package, or a local file path: an absolute path, or one starting with `./` or `../` (on Windows also `.\` or `..\`, as PowerShell completes it). Anything else is read as a package name. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) and [Netlify Adapter](/deployment/netlify) guides for the full workflows.
+`--target <name>` accepts an official target name, an installed adapter package, or a local file path: an absolute path, or one starting with `./` or `../` (on Windows also `.\` or `..\`, as PowerShell completes it). Anything else is read as a package name. The target is checked before anything is transpiled: a typo of an official target, such as `cloudfare`, fails with `Did you mean --target cloudflare?`, and a missing local adapter file fails with `adapter file not found at <path>`. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) and [Netlify Adapter](/deployment/netlify) guides for the full workflows.
 
 ## Starting the dev server
 
@@ -423,6 +423,8 @@ Per-file checks (2)
 ✓ 0 errors, 6 warnings
 ✓ 31 files checked by @bascik/language-server
 ```
+
+Project-level findings (missing site URL, config validation, pages directory) cite the config file in use, such as `bascik.config.ts`, or `no bascik.config file, defaults in use` when the project has none. `dist/` spec violations are reported as `file:line:col`, and the summary reads `1 of 3 dist/ HTML files fail WHATWG spec (parse5)` when any fail. If a failing file contains a tag listed under components with no matching file, the finding says that tag probably caused it.
 
 ### Check Reference
 
