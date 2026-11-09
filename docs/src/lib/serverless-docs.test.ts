@@ -76,11 +76,14 @@ describe("serverless docs: claims", () => {
     expect(md).toContain("/deployment/cloudflare");
   });
 
-  it("the guide carries a support matrix that marks other hosts as manual porting, not supported", async () => {
+  it("the guide carries a support matrix that marks other hosts as needing a custom adapter, not supported", async () => {
     const md = await read("deployment/cloudflare.md");
     expect(md).toContain("## What runs where");
     expect(md).toMatch(/Other serverless hosts/);
-    expect(md).toMatch(/Manual porting/);
+    expect(md).toMatch(/\| Custom adapter +\|/);
+    // Netlify is an official adapter (finding 60), not a custom one.
+    expect(md).toMatch(/\| \[Netlify\]\(\/deployment\/netlify\) \|/);
+    expect(md).not.toMatch(/only official|initial official/i);
     // No blanket claim.
     expect(md).not.toMatch(/runs anywhere/i);
     expect(md).not.toMatch(/any cloud/i);

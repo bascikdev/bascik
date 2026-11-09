@@ -2,7 +2,7 @@
 /**
  * @module cli
  *
- * `bascik-netlify-install`: run after `bascik --build --target @bascik/adapter-netlify`.
+ * `bascik-netlify-install`: run after `bascik --build --target netlify`.
  */
 
 import { FUNCTION_FILE, NETLIFY_FUNCTION_DIR, PUBLISH_DIR } from "./paths.js";

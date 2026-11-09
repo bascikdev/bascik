@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Readable } from "node:stream";
-import { AdapterDevHtmlTransform, adapterDevCsp } from "./adapter-dev.ts";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  AdapterDevHtmlTransform,
+  adapterDevCsp,
+  startAdapterDev,
+} from "./adapter-dev.ts";
+import type { CliFlags } from "./cli.ts";
 
 const transform = async (chunks: Buffer[]): Promise<string> => {
   const stream = Readable.from(chunks).pipe(new AdapterDevHtmlTransform(7));
@@ -49,5 +57,35 @@ describe("adapter dev HTTP boundary", () => {
     expect(policy).toContain("script-src-elem 'sha256-abc' 'self'");
     expect(policy).toContain("default-src 'none'");
     expect(policy).not.toContain("unsafe-inline");
+  });
+});
+
+// Finding 127: a custom adapter without a dev hook failed `bascik --target`
+// with "does not support local development" and no pointer to the hook that
+// adds it, which the Custom Adapters page did not document either.
+describe("startAdapterDev without a dev hook", () => {
+  it("misuse: names the missing dev hook and the docs section that adds one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bascik-adapter-no-dev-"));
+    await writeFile(
+      join(root, "no-dev.mjs"),
+      'export default { name: "custom-node", build: async () => ({ publicDir: "public" }) };\n',
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
+    try {
+      const error = await startAdapterDev([], {
+        target: "./no-dev.mjs",
+      } as CliFlags).then(
+        () => undefined,
+        (caught: Error) => caught,
+      );
+      expect(error?.message).toBe(
+        '[bascik] Adapter "custom-node" has no dev() hook, so `bascik --target ./no-dev.mjs` cannot run it locally.\n' +
+          "  Add one: https://bascik.dev/deployment/custom-adapters#step-7-add-local-development\n" +
+          "  Or build and run the output yourself: bascik --build --target ./no-dev.mjs",
+      );
+    } finally {
+      cwd.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

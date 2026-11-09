@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkAdapterTarget,
   isLocalAdapterPath,
   resolveAdapterTarget,
+  suggestOfficialTarget,
 } from "./adapter-resolution.ts";
 import { join, posix, win32 } from "node:path";
 import { writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -391,5 +393,152 @@ describe("isLocalAdapterPath", () => {
     ["..adapter", false],
   ])("win32 %s -> %s", (target, expected) => {
     expect(isLocalAdapterPath(target, win32)).toBe(expected);
+  });
+});
+
+// Finding 131: a missing local adapter file surfaced Node's raw "Cannot find
+// module ... imported from .../adapter-resolution.js", naming the compiler's
+// internals instead of the file the user typed.
+describe("local adapter files that do not load (131)", () => {
+  it.each(["./adapters/nope.ts", "ABSOLUTE"])(
+    "misuse: --target %s that does not exist names the file, not the compiler",
+    async (form) => {
+      const root = await project({});
+      try {
+        const absolute = join(root, "adapters", "nope.ts");
+        const target = form === "ABSOLUTE" ? absolute : form;
+        const error = await resolveAdapterTarget(target, root).then(
+          () => undefined,
+          (caught: Error) => caught,
+        );
+        expect(error?.message).toBe(
+          `[bascik] --target ${target}: adapter file not found at ${absolute}`,
+        );
+        expect(() => checkAdapterTarget(target, root)).toThrow(error!.message);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("misuse: an adapter file that fails to import is prefixed and drops the compiler's importer path", async () => {
+    const root = await project({
+      "adapters/broken.mjs":
+        'import "./missing-helper.mjs";\nexport default {};\n',
+    });
+    try {
+      const error = await resolveAdapterTarget(
+        "./adapters/broken.mjs",
+        root,
+      ).then(
+        () => undefined,
+        (caught: Error) => caught,
+      );
+      expect(error?.message).toMatch(
+        /^\[bascik\] --target \.\/adapters\/broken\.mjs: the adapter failed to load: Cannot find module '.*missing-helper\.mjs'/,
+      );
+      expect(error?.message).not.toMatch(/imported from|adapter-resolution/);
+      expect(error?.cause).toBeInstanceOf(Error);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("misuse: an adapter file that throws while loading keeps its own message after the prefix", async () => {
+    const root = await project({
+      "adapters/throws.mjs": 'throw new Error("adapter exploded");\n',
+    });
+    try {
+      await expect(
+        resolveAdapterTarget("./adapters/throws.mjs", root),
+      ).rejects.toThrow(
+        "[bascik] --target ./adapters/throws.mjs: the adapter failed to load: adapter exploded",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// Finding 130: a typo'd official target asked the user to install a package
+// named after the typo. The nearest official name is suggested instead, and
+// checkAdapterTarget lets the CLI reject the target before transpiling.
+describe("suggestOfficialTarget (130)", () => {
+  it.each([
+    ["cloudfare", "cloudflare"],
+    ["Cloudflare", "cloudflare"],
+    ["netlfy", "netlify"],
+    ["netifly", "netlify"],
+    ["cloudflare-page", "cloudflare-pages"],
+    ["cloudflare-worker", "cloudflare-workers"],
+  ])("suggests %s -> %s", (typo, official) => {
+    expect(suggestOfficialTarget(typo)).toBe(official);
+  });
+
+  it.each([
+    "my-adaptr",
+    "bascik-adapter-fastly",
+    "@acme/adapter",
+    "./adapters/cloudfare.ts",
+    "cloudflare",
+    "netlify",
+    "",
+    "vercel",
+  ])("does not suggest for %j", (name) => {
+    expect(suggestOfficialTarget(name)).toBeUndefined();
+  });
+
+  it("misuse: an uninstalled typo of an official target names the official target", async () => {
+    const root = await project({ "package.json": "{}" });
+    try {
+      const error = await resolveAdapterTarget("cloudfare", root).then(
+        () => undefined,
+        (caught: Error) => caught,
+      );
+      expect(error?.message).toBe(
+        `[bascik] --target: could not resolve adapter package "cloudfare" from ${root}.\n` +
+          "  Did you mean --target cloudflare?\n" +
+          "  Ensure it is installed in package.json dependencies or devDependencies.",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("checkAdapterTarget (130 preflight)", () => {
+  it("passes for an existing local file and an installed package without importing them", async () => {
+    const root = await project({
+      "package.json": "{}",
+      // Importing either would throw, so passing proves no import happened.
+      "adapters/side-effect.mjs": 'throw new Error("imported");\n',
+      "node_modules/my-adapter/package.json": JSON.stringify({
+        name: "my-adapter",
+        exports: { import: "./index.mjs" },
+      }),
+      "node_modules/my-adapter/index.mjs": 'throw new Error("imported");\n',
+    });
+    try {
+      expect(() =>
+        checkAdapterTarget("./adapters/side-effect.mjs", root),
+      ).not.toThrow();
+      expect(() => checkAdapterTarget("my-adapter", root)).not.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("misuse: rejects a typo with the suggestion and an uninstalled official target with the install hint", async () => {
+    const root = await project({ "package.json": "{}" });
+    try {
+      expect(() => checkAdapterTarget("netlfy", root)).toThrow(
+        /could not resolve adapter package "netlfy"[\s\S]*Did you mean --target netlify\?/,
+      );
+      expect(() => checkAdapterTarget("netlify", root)).toThrow(
+        /required package "@bascik\/adapter-netlify" is not installed[\s\S]*npm install --save-dev @bascik\/adapter-netlify/,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
