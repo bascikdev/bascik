@@ -1406,17 +1406,27 @@ test.describe("private order page", () => {
     );
   });
 
-  test("a link to an order that no longer exists reports it from the exchange, without a layout change", async ({
-    page,
-  }) => {
-    await page.goto(`/order#token=${fixtureToken("ab".repeat(16))}`);
-    await expect(page.locator("[data-order-status]")).toContainText(
-      "This order link has expired.",
-    );
-    await expect(page).toHaveURL(/\/order#token=/);
-    await expect(page.getByTestId("order-summary")).toBeHidden();
-    await expect(page.getByTestId("order-skeleton")).toBeHidden();
-  });
+  for (const delay of [0, 1500]) {
+    test(`a link to an order that no longer exists reports it from the exchange, without a layout change (exchange answers after ${delay} ms)`, async ({
+      page,
+    }) => {
+      // The exchange's 404 may land before or after the component module
+      // runs; both orderings must show the message.
+      if (delay)
+        await page.route("**/api/order", async (route) => {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          await route.continue();
+        });
+      await page.goto(`/order#token=${fixtureToken("ab".repeat(16))}`);
+      if (delay) await expect(page.getByTestId("order-skeleton")).toBeVisible();
+      await expect(page.locator("[data-order-status]")).toContainText(
+        "This order link has expired.",
+      );
+      await expect(page).toHaveURL(/\/order#token=/);
+      await expect(page.getByTestId("order-summary")).toBeHidden();
+      await expect(page.getByTestId("order-skeleton")).toBeHidden();
+    });
+  }
 
   test("the skeleton and the result occupy about the same space", async ({
     page,

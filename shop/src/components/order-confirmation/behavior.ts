@@ -45,8 +45,17 @@ export function initOrderConfirmation(root: HTMLElement) {
       console.error("Could not update the cart after payment", error);
     }
   };
-  // The exchange in <head> failed (a bad or revoked link): say so in place.
-  const exchangeError = document.documentElement.dataset.orderError;
+  // The exchange in <head> fails for a bad or revoked link. It may have
+  // failed before this module ran (the dataset holds the message) or it may
+  // fail later (the event says so): either way the message replaces the
+  // server's "use your link" notice.
+  const showExchangeError = () => {
+    const message = document.documentElement.dataset.orderError;
+    const result = element(RESULT);
+    if (message && result?.dataset.orderNotice === "no-ticket")
+      status("[data-order-status]", message, true);
+  };
+  document.addEventListener("order-exchange-failed", showExchangeError);
   const settle = (result: HTMLElement | null) => {
     if (!result) return;
     clearCart(result);
@@ -106,12 +115,8 @@ export function initOrderConfirmation(root: HTMLElement) {
     void check();
   };
   const ready = () => {
-    const result = element(RESULT);
-    if (exchangeError && result?.dataset.orderNotice === "no-ticket") {
-      status("[data-order-status]", exchangeError, true);
-      return;
-    }
-    settle(result);
+    showExchangeError();
+    settle(element(RESULT));
   };
   // The result streams in after the shell; wait for it when it is not here yet.
   if (element(RESULT) || document.readyState === "complete") ready();

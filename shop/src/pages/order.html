@@ -34,6 +34,8 @@
             document.documentElement.classList.remove("order-exchanging");
             document.documentElement.dataset.orderError =
               error instanceof Error ? error.message : "Order lookup failed.";
+            // The component script may already be waiting for this.
+            document.dispatchEvent(new Event("order-exchange-failed"));
           });
       })();
     </script>

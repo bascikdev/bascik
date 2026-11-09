@@ -14,14 +14,6 @@
 .confirmation:has(.result) .skeleton {
   display: none;
 }
-/* While the head script exchanges the long-lived link for a ticket, the
-   "use your link" notice the server sent stays hidden behind the skeleton. */
-html.order-exchanging .confirmation .result {
-  display: none;
-}
-html.order-exchanging .confirmation .skeleton {
-  display: block;
-}
 .skeleton .visually-hidden {
   position: absolute;
   width: 1px;
