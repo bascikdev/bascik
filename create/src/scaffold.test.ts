@@ -175,12 +175,12 @@ describe("parseCliOptions", () => {
     );
   });
 
-  // `npm create bascik my-site --template cloudflare` (no `--`) reaches the CLI
+  // `npm create bascik@rc my-site --template cloudflare` (no `--`) reaches the CLI
   // as ["my-site", "cloudflare"]: npm keeps the flag and forwards its value as a
   // plain argument, so a second positional must be reported, not dropped.
   it("rejects a stray second positional and points at the -- form", () => {
     expect(() => parseCliOptions(["my-site", "cloudflare", "-y"], {})).toThrow(
-      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik my-site -- --template cloudflare',
+      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
     );
   });
 
@@ -225,7 +225,7 @@ describe("parseCliOptions", () => {
     expect(() =>
       parseCliOptions(["my-site"], { npm_config_template: "true" }),
     ).toThrow(
-      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --template cloudflare',
+      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik@rc my-site -- --template cloudflare',
     );
   });
 });
@@ -1707,7 +1707,7 @@ describe("parseCliOptions --no-skills", () => {
   });
 
   it("misuse: honors --no-skills and --no-install written before --, which npm exports as empty npm_config_* values", () => {
-    // What npm 11 sets for `npm create bascik my-site --no-skills --no-install`.
+    // What npm 11 sets for `npm create bascik@rc my-site --no-skills --no-install`.
     expect(
       parseCliOptions(["my-site"], {
         npm_config_skills: "",
@@ -1759,7 +1759,7 @@ describe("parseCliOptions --no-skills", () => {
     ])
       expect(USAGE).toContain(flag);
     expect(USAGE).toContain(
-      "npm create bascik my-site -- --template cloudflare",
+      "npm create bascik@rc my-site -- --template cloudflare",
     );
   });
 

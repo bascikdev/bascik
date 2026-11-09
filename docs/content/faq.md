@@ -229,7 +229,7 @@ Yes. Dev mode stores the updated page in memory first so it can be served immedi
 - Components a server or stream script cannot return, with the reason, after a build of a site that has server or stream scripts ([Request-Time Component Rendering](/compatibility#request-time-component-rendering))
 - WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
 
-**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik` already have):
+**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik@rc` already have):
 
 - Unknown `data-bascik-*` attribute names (likely typos)
 - Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`

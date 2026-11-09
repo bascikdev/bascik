@@ -13,7 +13,7 @@ bascik/
       index.ts        ← CLI entry point
       transpile.ts    ← dev/build startup (called by index.ts)
       lib/            ← all library modules
-  create/       ← standalone generator used by `npm create bascik`
+  create/       ← standalone generator used by `npm create bascik@rc`
   lsp/          ← the @bascik/language-server package
   adapters/     ← deployment adapters, including @bascik/adapter-cloudflare
   docs/         ← this documentation site (a Bascik project itself)

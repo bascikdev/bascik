@@ -34,7 +34,7 @@ const HERE = import.meta.dirname;
 const REPO = resolve(HERE, "../..");
 
 describe("the two copies", () => {
-  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik set projects up the same way", () => {
+  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik@rc set projects up the same way", () => {
     expect(readFileSync(join(REPO, "pkg/src/lib/agent-setup.ts"), "utf8")).toBe(
       readFileSync(join(HERE, "agent-setup.ts"), "utf8"),
     );

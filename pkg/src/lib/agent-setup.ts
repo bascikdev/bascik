@@ -19,7 +19,7 @@
  * says which command to run later.
  *
  * Two identical copies exist, `create/src/agent-setup.ts` for
- * `npm create bascik` and `pkg/src/lib/agent-setup.ts` for `bascik init`.
+ * `npm create bascik@rc` and `pkg/src/lib/agent-setup.ts` for `bascik init`.
  * `create/src/agent-setup.test.ts` fails when they differ.
  */
 

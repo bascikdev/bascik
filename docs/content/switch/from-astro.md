@@ -36,7 +36,7 @@ Astro 7 changed the toolchain more than the API: its Rust compiler rejects unclo
 
 Convert a single UI component, such as a card or navigation bar, to Bascik's HTML format:
 
-1. Create a project with `npm create bascik my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
+1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
 2. Create `src/components/site-nav/site-nav.html` with your navigation markup.
 3. Move any scoped styles into `src/components/site-nav/site-nav.css`.
 4. Include `<site-nav />` inside `src/pages/index.html`.

@@ -46,7 +46,7 @@ The scripts are plain Node.js modules with unit tests in the Bascik repository. 
 
 ## What You Need
 
-1. A Bascik project on Node.js 24.21 or newer. `npm create bascik` creates one with every agent skill except the opt-in `bascik-refactor` already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
+1. A Bascik project on Node.js 24.21 or newer. `npm create bascik@rc` creates one with every agent skill except the opt-in `bascik-refactor` already in `.agents/skills/` and `.claude/skills/`. For an existing project, install the skills as [Agent Skills](/agent-skills) describes.
 2. A read-only checkout of the legacy repository.
 3. The live production URL.
 4. sharp and Lighthouse 13.3 or later as dev dependencies, plus Playwright, which the starter already has. The scripts load them from your project, never from the skill.
@@ -96,7 +96,7 @@ Production defects, such as low contrast, a missing focus outline or a blurry im
 
    ```sh
    cd migration
-   npm create bascik site -y -- --template default --no-dev
+   npm create bascik@rc site -y -- --template default --no-dev
    cd site
    npx skills add bascikdev/bascik --skill bascik-refactor -y
    npm install -D sharp lighthouse
@@ -827,7 +827,7 @@ Run `npx wrangler dev --config wrangler.wrapper.jsonc` and `npx wrangler deploy 
 
 ## Day-One Checklist
 
-1. Create the project with `npm create bascik site -y -- --template default --no-dev`, or install the skills in an existing one, then install the opt-in skill with `npx skills add bascikdev/bascik --skill bascik-refactor`.
+1. Create the project with `npm create bascik@rc site -y -- --template default --no-dev`, or install the skills in an existing one, then install the opt-in skill with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 2. Check out the legacy repository read-only, next to the new site.
 3. Install sharp and Lighthouse as dev dependencies, and the Chromium browser.
 4. Create `docs/migration/`, `artifacts/` and `scripts/`, ignore `artifacts/`, set `PROD_URL`, `TARGET_URL`, `BASCIK_SITE_URL` and `REFACTOR`, and copy the two site scripts.

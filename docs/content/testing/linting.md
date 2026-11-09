@@ -5,7 +5,7 @@ Bascik's linter checks Bascik syntax. Third-party standards and accessibility li
 1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules in your editor, and from the command line through [`bascik --check`](/cli#static-analysis-with-bascik-check), which is what `npm run lint` runs in a scaffolded project. `bascik --check` adds the project-wide checks, so one CI step covers both. See the [Linter](/tools/linter) guide.
 2. **Optional Web Standards & Accessibility Linter (`webhint`)**: Audits HTML for W3C web standards, cross-browser compatibility, and accessibility, in the editor through the [webhint VS Code extension](https://marketplace.visualstudio.com/items?itemName=webhint.vscode-webhint) and on the built site through the `hint` CLI (`npx hint`).
 
-Neither `npm create bascik` nor `bascik init` installs third-party linters, adds them as dependencies, or creates or modifies their config files. If you choose one, copy the relevant settings below and adapt them to your project.
+Neither `npm create bascik@rc` nor `bascik init` installs third-party linters, adds them as dependencies, or creates or modifies their config files. If you choose one, copy the relevant settings below and adapt them to your project.
 
 Neither tool decides which elements you use. [Component Best Practices](/component-best-practices#use-htmls-elements) covers picking them, and the `bascik` agent skill's `audit-components.mjs` warns about a clickable `<div>`, a wrapper `<div>` root, a skipped heading level, missing `alt`, an unlabeled control, and a page with no `<main>`.
 

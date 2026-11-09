@@ -193,7 +193,7 @@ npx @bascik/language-server --check   # the per-file checks on their own (bascik
 
 `bascik --check` and the linter are not two overlapping tools. `bascik --check` answers project questions (duplicate routes, unused components, config), and the linter answers per-file questions (attribute typos, CSS that cannot be scoped). `bascik --check` runs the linter too, so use it, and reach for the linter alone only on a folder outside the project.
 
-New project: `npm create bascik my-site -y`. It and `bascik init` both write `.vscode/settings.json` with `"html.validate.scripts": false` and recommend the Bascik extension in `.vscode/extensions.json`, merging into files the folder already has. Third-party linters such as Webhint are opt-in: neither command installs them or creates or modifies their configs. A project set up any other way (a migration, or files copied in with `add-example.mjs`) needs that VS Code setting added by hand, or VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports". The setting turns off only VS Code's own check of inline scripts, not Bascik's checks. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
+New project: `npm create bascik@rc my-site -y`. It and `bascik init` both write `.vscode/settings.json` with `"html.validate.scripts": false` and recommend the Bascik extension in `.vscode/extensions.json`, merging into files the folder already has. Third-party linters such as Webhint are opt-in: neither command installs them or creates or modifies their configs. A project set up any other way (a migration, or files copied in with `add-example.mjs`) needs that VS Code setting added by hand, or VS Code joins a page's `<script>` blocks into one file and reports false errors such as "A module cannot have multiple default exports". The setting turns off only VS Code's own check of inline scripts, not Bascik's checks. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
 ## Verify every change
 
@@ -279,7 +279,7 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 
 ## Build a new site
 
-1. `npm create bascik my-site -y`, or read the existing project first with `list-components.mjs`. Add `BASCIK_SITE_URL=https://example.com` to `.env`.
+1. `npm create bascik@rc my-site -y`, or read the existing project first with `list-components.mjs`. Add `BASCIK_SITE_URL=https://example.com` to `.env`.
 2. Plan the pages and URLs (one purpose and one `<h1>` each), then the components each page is made of: the shared layout (head, header, footer), one component per section with a job, and one per repeated block. Plan repeated content (a collection in `content/`) and anything that needs a server (API routes, per-request markup). Ask when the plan is unclear.
 3. Copy the foundation: `add-example.mjs starter-site`, or only the parts you need. Then replace the example name, navigation (`src/components/site-header/links.ts`), colors (tokens in `src/pages/css/styles.css`), and every page's `seo({ title, description })`.
 4. Add components (`new-component.mjs --script inline` or `--script ts`), then pages as lists of their tags, and interactive examples. Load the companion skill for each area.

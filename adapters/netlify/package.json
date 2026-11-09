@@ -1,6 +1,6 @@
 {
   "name": "@bascik/adapter-netlify",
-  "version": "1.0.0",
+  "version": "1.0.0-rc.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -58,10 +58,10 @@
     "esbuild": "^0.28.2"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0"
+    "@bascik/bascik": "^1.0.0-rc.12"
   },
   "devDependencies": {
-    "@bascik/bascik": "^1.0.0",
+    "@bascik/bascik": "^1.0.0-rc.12",
     "@netlify/functions": "^5.2.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.19.1",

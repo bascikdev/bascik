@@ -205,12 +205,12 @@ describe("the bundled language server", () => {
     ]);
   });
 
-  it("is released as 1.0.0, the launch version that bundles the language server with the html lint", async () => {
+  it("is released as 0.7.0 on the pre-release channel (an odd minor), the candidate that bundles the language server with the html lint", async () => {
     const { readFile } = await import("node:fs/promises");
     // The tests compile to CommonJS, so the manifest is found from the working directory (the extension root).
     const manifest = JSON.parse(
       await readFile(join(process.cwd(), "package.json"), "utf8"),
     ) as { version: string };
-    expect(manifest.version).toBe("1.0.0");
+    expect(manifest.version).toBe("0.7.0");
   });
 });

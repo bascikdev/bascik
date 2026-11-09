@@ -18,7 +18,7 @@ Without it, download every skill into the shared `.agents/skills/` folder (use `
 mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
 ```
 
-New projects created with `npm create bascik` include every skill except the opt-in `bascik-refactor`. Install that one on its own when you want coding agents to refactor a live site:
+New projects created with `npm create bascik@rc` include every skill except the opt-in `bascik-refactor`. Install that one on its own when you want coding agents to refactor a live site:
 
 ```sh
 npx skills add bascikdev/bascik --skill bascik-refactor
@@ -89,4 +89,4 @@ The example components and the starter site live in the repository's [`examples/
 
 ## Contributing
 
-These files are the source of truth. The docs build publishes them to `https://bascik.dev/assets/skills.tar.gz`, `https://bascik.dev/.well-known/agent-skills/` (one archive per skill plus `index.json`), and the core skill to `https://bascik.dev/assets/SKILL.md`. `npm create bascik` and `bascik init` offer to install every skill except the opt-in `bascik-refactor` with `npx skills add`, pinned to the matching release. The skills' tests and fixtures live in [`skills-tests/`](../skills-tests/README.md), because this folder ships to users as is. Contributor-only skills for working on Bascik itself live in `.github/skills/` and are marked `metadata.internal`, so `npx skills add` does not offer them.
+These files are the source of truth. The docs build publishes them to `https://bascik.dev/assets/skills.tar.gz`, `https://bascik.dev/.well-known/agent-skills/` (one archive per skill plus `index.json`), and the core skill to `https://bascik.dev/assets/SKILL.md`. `npm create bascik@rc` and `bascik init` offer to install every skill except the opt-in `bascik-refactor` with `npx skills add`, pinned to the matching release. The skills' tests and fixtures live in [`skills-tests/`](../skills-tests/README.md), because this folder ships to users as is. Contributor-only skills for working on Bascik itself live in `.github/skills/` and are marked `metadata.internal`, so `npx skills add` does not offer them.

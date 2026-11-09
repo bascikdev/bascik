@@ -17,7 +17,7 @@
  * that is not valid JSON is left alone and reported.
  *
  * Two identical copies exist, `create/src/vscode-settings.ts` for
- * `npm create bascik` and `pkg/src/lib/vscode-settings.ts` for `bascik init`.
+ * `npm create bascik@rc` and `pkg/src/lib/vscode-settings.ts` for `bascik init`.
  * `create/src/vscode-settings.test.ts` fails when they differ.
  */
 

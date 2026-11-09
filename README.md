@@ -12,7 +12,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and Jav
 ## Get Started
 
 ```sh
-npm create bascik my-site
+npm create bascik@rc my-site
 ```
 
 The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
@@ -72,7 +72,7 @@ This repository holds Bascik and everything around it. Each folder is a Yarn wor
 | Folder                      | What it is                                                                                                    | README                                                                   |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `pkg/`                      | `@bascik/bascik`: the compiler, CLI, dev server, and production server                                        | [pkg/README.md](pkg/README.md)                                           |
-| `create/`                   | `create-bascik`: the project scaffolder behind `npm create bascik`                                            | [create/README.md](create/README.md)                                     |
+| `create/`                   | `create-bascik`: the project scaffolder behind `npm create bascik@rc`                                         | [create/README.md](create/README.md)                                     |
 | `lsp/`                      | `@bascik/language-server`: diagnostics, completion, hover, and the `--check` linter for any LSP editor        | [lsp/README.md](lsp/README.md)                                           |
 | `extensions/vscode-bascik/` | The VS Code extension, a thin client of the language server                                                   | [extensions/vscode-bascik/README.md](extensions/vscode-bascik/README.md) |
 | `adapters/cloudflare/`      | `@bascik/adapter-cloudflare`: builds server scripts and API routes into a Cloudflare Worker                   | [adapters/cloudflare/README.md](adapters/cloudflare/README.md)           |

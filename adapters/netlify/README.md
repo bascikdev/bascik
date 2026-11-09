@@ -4,7 +4,7 @@ Netlify Functions hosting adapter for [Bascik](https://bascik.dev).
 
 ## Overview
 
-This adapter serves a Bascik site from Netlify: the CDN serves every static file, and one Netlify Function (Functions API v2, streaming) runs the `data-bascik-server` and `data-bascik-stream` scripts, the component tags they return (rendered with the component's markup and scoped CSS), and the API routes in `src/api/`. Install it in a Bascik project that deploys to Netlify (Node.js 24.21 or newer), or start one with `npm create bascik my-site -- --template netlify`:
+This adapter serves a Bascik site from Netlify: the CDN serves every static file, and one Netlify Function (Functions API v2, streaming) runs the `data-bascik-server` and `data-bascik-stream` scripts, the component tags they return (rendered with the component's markup and scoped CSS), and the API routes in `src/api/`. Install it in a Bascik project that deploys to Netlify (Node.js 24.21 or newer), or start one with `npm create bascik@rc my-site -- --template netlify`:
 
 ```sh
 npm install --save-dev @bascik/adapter-netlify

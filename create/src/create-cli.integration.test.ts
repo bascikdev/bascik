@@ -9,7 +9,7 @@
  *
  * Collaborators:
  * - The TypeScript compiler, which builds `src/` into a temporary folder once, so the test runs the
- *   same JavaScript `npm create bascik` runs without depending on a separate `yarn create:build`.
+ *   same JavaScript `npm create bascik@rc` runs without depending on a separate `yarn create:build`.
  * - The real skills CLI through npx. `BASCIK_SKILLS_SOURCE` points it at this repository's checkout,
  *   so it installs the skills on this branch without GitHub; npx needs the network only the first
  *   time it fetches the pinned CLI.
@@ -123,7 +123,7 @@ async function create(
 
 const QUIET = ["--no-install", "--no-dev"];
 
-describe("npm create bascik and the agent skills", () => {
+describe("npm create bascik@rc and the agent skills", () => {
   it("-y --no-skills writes AGENTS.md and CLAUDE.md and installs no skills", async () => {
     const { status, output, parent } = await create([
       "my-site",
@@ -159,7 +159,7 @@ describe("npm create bascik and the agent skills", () => {
   });
 
   it("misuse: --no-skills and --no-install written before --, which npm exports as empty values, are honored", async () => {
-    // What npm 11 hands over for `npm create bascik my-site -y --no-skills --no-install -- --no-dev`.
+    // What npm 11 hands over for `npm create bascik@rc my-site -y --no-skills --no-install -- --no-dev`.
     const { status, output, parent } = await create(["my-site", "--no-dev"], {
       env: {
         npm_config_yes: "true",
@@ -314,7 +314,7 @@ describe("npm create bascik and the agent skills", () => {
     async (...args) => {
       const { status, output, parent } = await create(args);
       expect(status).toBe(0);
-      expect(output).toContain("Usage: npm create bascik");
+      expect(output).toContain("Usage: npm create bascik@rc");
       expect(output).toContain("--template <name>");
       expect(output).not.toContain("Project name");
       expect(readdirSync(parent)).toEqual([]);

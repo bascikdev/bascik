@@ -9,10 +9,10 @@
     "check": "bascik --check"
   },
   "dependencies": {
-    "@bascik/bascik": "^1.0.0",
+    "@bascik/bascik": "^1.0.0-rc.12",
     "marked": "^18.0.14"
   },
   "devDependencies": {
-    "@bascik/language-server": "^1.0.0"
+    "@bascik/language-server": "^1.0.0-rc.1"
   }
 }

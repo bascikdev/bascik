@@ -9,13 +9,21 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
-## [1.0.0] - 2026-11-12
+## [1.0.0-rc.12] - 2026-11-09
 
-The first stable release. Bascik is a build tool for HTML components with
-automatically scoped CSS and JavaScript and no runtime: you write vanilla HTML,
-CSS, and JavaScript in one file per component, and `bascik --build` emits static
-HTML pages with the component's styles and scripts scoped to each instance. Every
-package ships as 1.0.0 together.
+The release candidate for 1.0.0: the full pre-launch audit lands here so every
+site can be tested against it before the stable release. Install it with
+`npm create bascik@rc` or `@bascik/bascik@rc`. This candidate ships
+`@bascik/bascik`, `create-bascik` and `@bascik/adapter-cloudflare` as
+1.0.0-rc.12, `@bascik/adapter-netlify` as 1.0.0-rc.2, `@bascik/language-server`
+as 1.0.0-rc.1, and the VS Code extension as 0.7.0 on the pre-release channel.
+
+Bascik is a build tool for HTML components with automatically scoped CSS and
+JavaScript and no runtime: you write vanilla HTML, CSS, and JavaScript in one
+file per component, and `bascik --build` emits static HTML pages with the
+component's styles and scripts scoped to each instance. The notes below cover
+everything since the project started; 1.0.0 will carry the same notes plus
+whatever the candidate period finds.
 
 ### Added
 
@@ -71,8 +79,4 @@ package ships as 1.0.0 together.
   project's dependencies, and Node 24.21 is the first release where `node --check`
   locates a syntax error in a `.js` config, which `bascik` relies on to name the
   line. The floor is the first version proven to work end to end.
-- `npm create bascik` replaces `npm create bascik@rc` in every document and in the
-  CLI's own help. The `rc` dist-tag is left pointing at 1.0.0 so older links keep
-  working.
-
-[1.0.0]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0
+  [1.0.0-rc.12]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0-rc.12
