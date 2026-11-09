@@ -709,6 +709,18 @@ export const runServerScriptJob = async (
   // file either; a nested component script's timeout (prompt 157) would
   // otherwise be impossible to place.
   if (
+    err.name === "TypeError" &&
+    /does not export a function named "default"\.$/.test(err.message)
+  ) {
+    // Written like a build script that prints markup, or missing its
+    // `export default`: Node's text names the module, which for an inline
+    // script is a URL-encoded data: URL. Name where the script starts and
+    // what it needs instead (audit 159 finding 134).
+    cleanedMsg =
+      `The server script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1} has no default export. ` +
+      "Export a function that returns the markup, for example " +
+      '`export default () => "<p>Hello</p>";` (see /scripts/server).';
+  } else if (
     (err instanceof SyntaxError || result.timedOut) &&
     !cleanedMsg.includes(`${originalSourcePath}:`)
   ) {

@@ -126,11 +126,12 @@ export const exitAfterStopping = (
 };
 
 /**
- * Remove every SIGINT and SIGTERM listener, so the next one of either ends
- * the process at once with the signal's default action. For a process that
- * is already on its way out and only waiting for stoppers.
+ * Remove every SIGINT, SIGTERM and SIGHUP listener, so the next one of them
+ * ends the process at once with the signal's default action. For a process
+ * that is already on its way out and only waiting for stoppers.
  */
 export const releaseSignals = (): void => {
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
 };

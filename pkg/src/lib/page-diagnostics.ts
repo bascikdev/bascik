@@ -106,12 +106,14 @@ export class PageProcessingAggregateError extends AggregateError {
     const details = pageErrors
       .map(
         ({ pagePath, stage, message }) =>
-          `  ${pagePath}\n    ${stage}: ${message.replace(`${stage}: `, "")}`,
+          `  ${relativePagePathForDiagnostics(pagePath)}\n    ${stage}: ${message.replace(`${stage}: `, "")}`,
       )
       .join("\n");
+    // Project-relative paths and a correct plural: this is the summary the
+    // CLI prints, as docs/content/cli.md shows it (audit 159 finding 79).
     super(
       pageErrors,
-      `Build failed with ${pageErrors.length} page errors:\n${details}`,
+      `Build failed with ${pageErrors.length} page error${pageErrors.length === 1 ? "" : "s"}:\n${details}`,
     );
     this.name = "PageProcessingAggregateError";
     this.pageErrors = pageErrors;
@@ -144,6 +146,18 @@ export const publishBuildError = (err: PageProcessingError): void => {
   });
 };
 
+const componentLoadFailures = new WeakSet<object>();
+
+/**
+ * True for an error that {@link reportComponentLoadFailure} has seen: the components could not be loaded,
+ * so no page compiled. Dev boot keeps the server up for this one and lets a fixed component recover it
+ * (audit 159 finding 43); any other boot failure (a missing pages directory) still ends the process.
+ */
+export const isComponentLoadFailure = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  componentLoadFailures.has(error);
+
 /**
  * Tells the dev browser that the components could not be loaded, which is the one failure that happens
  * before any page exists to attach it to. A component's build script that throws lands here.
@@ -153,6 +167,8 @@ export const publishBuildError = (err: PageProcessingError): void => {
  * Everything else (the plain dev watcher, a newly added component) has no other owner, so it publishes.
  */
 export const reportComponentLoadFailure = (error: unknown): void => {
+  if (typeof error === "object" && error !== null)
+    componentLoadFailures.add(error);
   if (BascikConfig.isBuild || getCompilationPageErrorPolicy() === "throw")
     return;
   const location = locateBuildError(error);

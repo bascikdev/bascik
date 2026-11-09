@@ -180,3 +180,20 @@ it("keeps an overlapping publisher active after another scope completes", async 
     eventEmitter.removeListener("transpiled", listener);
   }
 });
+
+it("misuse: rethrows a single compilation failure as it is, with no `Error:` prefix in its message", async () => {
+  const failure = new Error("[bascik] error: pages directory missing");
+  const caught = await withCompilationPublisher(vi.fn(), async () => {
+    throw failure;
+  }).catch((error: unknown) => error);
+  expect(caught).toBe(failure);
+});
+
+it("misuse: joins several compilation failures by message, not by String(error)", async () => {
+  const caught = (await withCompilationPublisher(vi.fn(), async () => {
+    trackCompilationWrite(Promise.reject(new Error("second failure")));
+    throw new Error("first failure");
+  }).catch((error: unknown) => error)) as Error;
+  expect(caught).toBeInstanceOf(AggregateError);
+  expect(caught.message).toBe("first failure\nsecond failure");
+});

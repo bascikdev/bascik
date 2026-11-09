@@ -5,6 +5,11 @@ import http2 from "node:http2";
 import { basename, extname, resolve, sep } from "node:path";
 import { folderPrefix, isSameOrInside } from "./path-containment.ts";
 import { isNoSuchFileError } from "./fs-errors.ts";
+import { lookup as dnsLookup } from "node:dns/promises";
+import {
+  createServer as createNetServer,
+  Server as NodeNetServer,
+} from "node:net";
 import type { Server as NetServer } from "node:net";
 import type { BascikConfigOptions } from "./types.ts";
 import { mem } from "./mem.ts";
@@ -25,6 +30,14 @@ import {
 } from "./server-scripts.ts";
 import { createResponseSink } from "./response-sink.ts";
 import { getBootPageHtml } from "./boot-page.ts";
+import { getBootFailure } from "./boot-failure.ts";
+import {
+  contentRange,
+  ifRangeAllows,
+  parseByteRange,
+  unsatisfiedContentRange,
+  type ByteRange,
+} from "./byte-range.ts";
 import { formatDuration } from "./format.ts";
 import { colorStatus, stdout as colorOut } from "./colors.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
@@ -345,7 +358,27 @@ interface StreamedAssetContext {
   mimeType: string;
   cacheControlVal: string;
   secHeaders: Record<string, string>;
+  /** The request's `Range` header on a GET, or undefined (finding 34). */
+  rangeHeader: string | undefined;
 }
+
+/**
+ * The byte range to answer for a static file, `"unsatisfiable"` for a 416,
+ * or undefined for the whole file: a single `bytes=` range on a GET whose
+ * `If-Range`, if any, names this exact version (audit 159 finding 34).
+ */
+const selectByteRange = (
+  req: BascikRequest,
+  rangeHeader: string | undefined,
+  size: number,
+  etag: string,
+): ByteRange | "unsatisfiable" | undefined => {
+  if (!rangeHeader) return undefined;
+  const ifRange = req.headers["if-range"];
+  if (!ifRangeAllows(typeof ifRange === "string" ? ifRange : undefined, etag))
+    return undefined;
+  return parseByteRange(rangeHeader, size);
+};
 
 /**
  * Access-log status for a response whose peer went away (before or after
@@ -387,7 +420,15 @@ const serveStreamedAsset = async (
   delivery: StreamedStaticDelivery,
   ctx: StreamedAssetContext,
 ): Promise<number> => {
-  const { req, res, isHead, mimeType, cacheControlVal, secHeaders } = ctx;
+  const {
+    req,
+    res,
+    isHead,
+    mimeType,
+    cacheControlVal,
+    secHeaders,
+    rangeHeader,
+  } = ctx;
   const httpCache = BascikConfig.http.httpCache !== false;
   try {
     if (res.destroyed) {
@@ -413,6 +454,7 @@ const serveStreamedAsset = async (
       "cache-control": cacheControlVal,
       vary: "Accept-Encoding",
       "content-length": delivery.size,
+      "accept-ranges": "bytes",
       ...secHeaders,
     };
     if (httpCache) {
@@ -425,15 +467,38 @@ const serveStreamedAsset = async (
       return 200;
     }
 
+    const range = selectByteRange(
+      req,
+      rangeHeader,
+      delivery.size,
+      delivery.etag,
+    );
+    if (range === "unsatisfiable") {
+      res.respond(416, {
+        "content-range": unsatisfiedContentRange(delivery.size),
+        ...secHeaders,
+      });
+      res.end();
+      return 416;
+    }
+    const status = range ? 206 : 200;
+    const start = range?.start ?? 0;
+    const end = range?.end ?? delivery.size - 1;
+    const length = end - start + 1;
+    if (range) {
+      headers["content-range"] = contentRange(range, delivery.size);
+      headers["content-length"] = length;
+    }
+
     // Own the read stream before committing headers so an open failure can
     // still become a clean 500 rather than a truncated 200. The read range is
     // clamped to the advertised length: EOF is not the framing, `size` is.
     const fileStream = delivery.fd.createReadStream({
-      start: 0,
-      end: delivery.size - 1,
+      start,
+      end,
       autoClose: false,
     });
-    res.respond(200, headers);
+    res.respond(status, headers);
     if (res.destroyed) {
       // The peer vanished as headers committed; nothing to write to.
       fileStream.destroy();
@@ -451,18 +516,18 @@ const serveStreamedAsset = async (
       res.close(http2.constants.NGHTTP2_INTERNAL_ERROR);
       return 500;
     }
-    if (fileStream.bytesRead !== delivery.size) {
+    if (fileStream.bytesRead !== length) {
       // The file shrank under the open handle: the read range ended early and
       // `pipeline` finished the transport with fewer bytes than advertised.
       // Destroy it so the client sees a broken response rather than a short
       // body it might treat as complete.
       console.error(
-        `[bascik] streamed asset truncated after headers: ${req.path} advertised ${delivery.size} bytes, read ${fileStream.bytesRead}`,
+        `[bascik] streamed asset truncated after headers: ${req.path} advertised ${length} bytes, read ${fileStream.bytesRead}`,
       );
       res.close(http2.constants.NGHTTP2_INTERNAL_ERROR);
       return 500;
     }
-    return 200;
+    return status;
   } catch (err) {
     if (!res.headersSent && !res.destroyed) {
       res.respond(500, {
@@ -771,9 +836,15 @@ export const createRequestHandler = () => {
           BascikConfig.http.compression !== false &&
           isCompressibleMime(mimeType, ext.toLowerCase()) &&
           fileStat.size >= COMPRESSION_MIN_BYTES;
-        const negotiatedEncoding = enableCompression
-          ? negotiateCompression(req.headers["accept-encoding"])
-          : "identity";
+        // A Range names bytes of the file itself, so a ranged GET gets the
+        // identity representation (finding 34).
+        const rangeValue = req.method === "GET" ? req.headers["range"] : "";
+        const rangeHeader =
+          typeof rangeValue === "string" && rangeValue ? rangeValue : undefined;
+        const negotiatedEncoding =
+          enableCompression && !rangeHeader
+            ? negotiateCompression(req.headers["accept-encoding"])
+            : "identity";
 
         // Acquire the selected delivery as one owner (prompt 140). At or under
         // MAX_BUFFERED_ASSET_BYTES this is the prompt 107 immutable
@@ -803,6 +874,7 @@ export const createRequestHandler = () => {
             mimeType,
             cacheControlVal,
             secHeaders,
+            rangeHeader,
           });
           return;
         }
@@ -837,12 +909,23 @@ export const createRequestHandler = () => {
           "cache-control": cacheControlVal,
           vary: "Accept-Encoding",
           "content-length": representation.size,
+          "accept-ranges": "bytes",
           ...secHeaders,
         };
 
         if (BascikConfig.http.httpCache !== false) {
           staticHeaders["etag"] = effectiveEtag;
         }
+
+        const range =
+          representation.encoding === "identity" && !isHead
+            ? selectByteRange(
+                req,
+                rangeHeader,
+                representation.size,
+                effectiveEtag,
+              )
+            : undefined;
 
         if (
           representation.encoding !== "identity" &&
@@ -855,6 +938,27 @@ export const createRequestHandler = () => {
         // acquired; never commit headers or a body to a destroyed stream.
         if (res.destroyed) {
           return;
+        }
+
+        if (range === "unsatisfiable") {
+          responseStatus = 416;
+          res.respond(416, {
+            "content-range": unsatisfiedContentRange(representation.size),
+            ...secHeaders,
+          });
+          return res.end();
+        }
+        if (range) {
+          responseStatus = 206;
+          staticHeaders["content-range"] = contentRange(
+            range,
+            representation.size,
+          );
+          staticHeaders["content-length"] = range.end - range.start + 1;
+          res.respond(206, staticHeaders);
+          return res.end(
+            representation.buffer.subarray(range.start, range.end + 1),
+          );
         }
 
         responseStatus = 200;
@@ -1042,7 +1146,16 @@ export const createRequestHandler = () => {
           // Boot already finished, or this page landed in memory between the
           // boot page being served and its SSE connection arriving: nothing
           // further will announce it, so reload now.
-          if (!mem.isBooting || pageInMemory) sendBootReload();
+          // A component failed to load at boot (boot-failure.ts): no page will
+          // land until it is fixed, so show the error in the overlay instead
+          // of reloading into a 404. The next stored page reloads this tab.
+          const bootFailure = getBootFailure();
+          if (bootFailure && !pageInMemory)
+            sseManager.send(
+              client,
+              `event: build-error\ndata: ${JSON.stringify(bootFailure)}\n\n`,
+            );
+          else if (!mem.isBooting || pageInMemory) sendBootReload();
         }
         return;
       }
@@ -1077,7 +1190,11 @@ export const createRequestHandler = () => {
 
       // During the initial transpile in dev mode, serve a boot page instead of 404 for any page
       // that has not yet finished transpiling into memory.
-      if (!exactPage && mem.isBooting && !BascikConfig.isProdServer) {
+      if (
+        !exactPage &&
+        (mem.isBooting || getBootFailure()) &&
+        !BascikConfig.isProdServer
+      ) {
         responseStatus = 200;
         res.respond(200, {
           "content-type": "text/html; charset=utf-8",
@@ -1298,6 +1415,50 @@ export const createRequestHandler = () => {
   };
 };
 
+/**
+ * The loopback address `localhost` does not bind on its own. Node's
+ * `listen(port, "localhost")` takes the first address the resolver returns
+ * (`::1` on macOS with Node 24), so `http://127.0.0.1:<port>` was refused and
+ * a program already there went unnoticed (audit 159 findings 46, 86, 143).
+ */
+const otherLoopbackFor = async (
+  hostname: string,
+): Promise<string | undefined> => {
+  if (hostname !== "localhost") return undefined;
+  try {
+    const { family } = await dnsLookup("localhost");
+    return family === 6 ? "127.0.0.1" : "::1";
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Listens on `host:port` and hands each connection to `server`, so one
+ * server answers on both loopbacks: the HTTP/1.1, HTTPS and HTTP/2 servers
+ * all take a socket through their "connection" event. Resolves with the
+ * listener, `"in-use"` when another program holds the address, or
+ * `undefined` when the host has no such address family.
+ */
+const listenCompanion = (
+  server: NetServer,
+  port: number,
+  host: string,
+): Promise<NetServer | "in-use" | undefined> =>
+  new Promise((resolve) => {
+    const companion = createNetServer((socket) =>
+      server.emit("connection", socket),
+    );
+    companion.once("error", (err: NodeJS.ErrnoException) =>
+      resolve(err.code === "EADDRINUSE" ? "in-use" : undefined),
+    );
+    companion.listen(port, host, () => {
+      companion.removeAllListeners("error");
+      companion.on("error", (error) => console.error(error));
+      resolve(companion);
+    });
+  });
+
 export const startServerInstance = async (
   server: NetServer,
   protocol: "http" | "https",
@@ -1318,11 +1479,31 @@ export const startServerInstance = async (
   const startPort =
     !isNaN(rawStartPort) && rawStartPort > 0 ? rawStartPort : defaultPort;
   let origin = "";
+  // Only a real server can take a handed-over socket.
+  const otherLoopback =
+    server instanceof NodeNetServer
+      ? await otherLoopbackFor(hostname)
+      : undefined;
+  let companion: NetServer | undefined;
 
-  // Find the first available port, incrementing if the preferred one is in use.
+  // Find the first available port, incrementing if the preferred one is in
+  // use on either loopback.
   await new Promise<void>((resolve, reject) => {
     let attempts = 0;
-    const tryPort = (p: number) => {
+    const portInUse = (p: number) => {
+      if (BascikConfig.isProdServer) {
+        reject(
+          new Error(
+            `Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`,
+          ),
+        );
+        return;
+      }
+      attempts++;
+      console.warn(`Port ${p} is in use, trying ${p + 1}…`);
+      tryPort(p + 1);
+    };
+    const tryPort = async (p: number) => {
       if (p > 65535 || attempts >= MAX_PORT_INCREMENTS) {
         reject(
           new RangeError(
@@ -1331,39 +1512,54 @@ export const startServerInstance = async (
         );
         return;
       }
+      // The other loopback first, so a conflict there never needs the
+      // server itself closed and listened again.
+      const bound = otherLoopback
+        ? await listenCompanion(server, p, otherLoopback)
+        : undefined;
+      if (bound === "in-use") return portInUse(p);
       const errorHandler = (err: NodeJS.ErrnoException) => {
         server.removeListener("error", errorHandler);
-        if (err.code === "EADDRINUSE") {
-          if (BascikConfig.isProdServer) {
-            reject(
-              new Error(
-                `Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`,
-              ),
-            );
-            return;
-          }
-          attempts++;
-          console.warn(`Port ${p} is in use, trying ${p + 1}…`);
-          tryPort(p + 1);
-        } else {
-          reject(err);
-        }
+        const release = bound
+          ? new Promise<void>((r) => bound.close(() => r()))
+          : Promise.resolve();
+        void release.then(() => {
+          if (err.code === "EADDRINUSE") portInUse(p);
+          else reject(err);
+        });
       };
       server.once("error", errorHandler);
       server.listen(p, hostname, () => {
         server.removeListener("error", errorHandler);
+        companion = bound;
         origin = formatServerOrigin(protocol, hostname, p);
         setServerHealthState("ready");
         resolve();
       });
     };
-    tryPort(startPort);
+    void tryPort(startPort);
   });
+
+  if (companion) {
+    // close() stops both listeners and calls back once the connections of
+    // both have ended, so a graceful drain covers the IPv4 clients too.
+    const listener = companion;
+    const closeServer = server.close.bind(server);
+    server.close = ((callback?: (err?: Error) => void) => {
+      const companionClosed = new Promise<void>((r) =>
+        listener.close(() => r()),
+      );
+      closeServer((err?: Error) => {
+        void companionClosed.then(() => callback?.(err));
+      });
+      return server;
+    }) as NetServer["close"];
+  }
 
   // General runtime error handler
   server.on("error", (error) => console.error(error));
 
-  // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
+  // ── Graceful shutdown on SIGTERM / SIGINT / SIGHUP ───────────────────────
   const drainTimeout =
     BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
@@ -1375,7 +1571,7 @@ export const startServerInstance = async (
     runShutdownHandlers,
   });
 
-  process.setMaxListeners(process.getMaxListeners() + 2);
+  process.setMaxListeners(process.getMaxListeners() + 3);
   // Each handler runs once, so a repeat of the same signal takes the
   // default action and ends the process at once. In dev the first signal
   // also removes the other handler: any further Ctrl-C or SIGTERM ends the
@@ -1386,6 +1582,7 @@ export const startServerInstance = async (
   const releaseShutdownSignals = () => {
     process.removeListener("SIGTERM", sigtermHandler);
     process.removeListener("SIGINT", sigintHandler);
+    process.removeListener("SIGHUP", sighupHandler);
   };
   const onFirstSignal = () => {
     if (!BascikConfig.isProdServer) releaseShutdownSignals();
@@ -1398,12 +1595,20 @@ export const startServerInstance = async (
     onFirstSignal();
     void gracefulShutdown("SIGINT");
   };
+  // A supervisor or IDE that stops the server with SIGHUP signals only this
+  // process; by default it would die without running the exit stoppers and
+  // orphan pipeline.exec children (audit 159 finding 142). Treat it as SIGTERM.
+  const sighupHandler = () => {
+    onFirstSignal();
+    void gracefulShutdown("SIGHUP");
+  };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
+  process.once("SIGHUP", sighupHandler);
 
   server.once("close", () => {
     releaseShutdownSignals();
-    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 2));
+    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 3));
   });
 
   return origin;

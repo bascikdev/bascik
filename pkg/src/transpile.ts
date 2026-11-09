@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { rm } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
 import { runExecPhase, startExecParallel } from "./lib/exec.ts";
@@ -62,6 +63,55 @@ const findSourceInsideCleanTargets = (
   return undefined;
 };
 
+/**
+ * Why the output clean failed, in words that fit the error code. A busy or
+ * refilled folder is most likely another bascik process writing it;
+ * permission errors (a dist/ owned by root after a sudo build or a Docker
+ * volume, a read-only mount, a sync client's lock) are not, so saying so
+ * would send the user after a process that does not exist (audit 159
+ * finding 140). Anything else is reported with Node's own message.
+ */
+const cleanFailureCause = (err: unknown, code: string | undefined): string => {
+  if (code === "EACCES" || code === "EPERM")
+    return (
+      `permission denied. Check the ownership and permissions of the folder ` +
+      `and everything in it (a folder created by \`sudo\` or a container ` +
+      `belongs to another user), or set directory.out to a folder you can write.`
+    );
+  if (code === "ENOTEMPTY" || code === "EBUSY")
+    return (
+      `another bascik dev server or build may be writing to it. Stop it, or ` +
+      `give this one its own directory.out.`
+    );
+  return err instanceof Error ? err.message : String(err);
+};
+
+/** Refuse an output directory that is a symbolic link (see the clean below). */
+const assertOutputIsNotSymlink = (outputDirectory: string): void => {
+  let isLink = false;
+  try {
+    isLink = lstatSync(outputDirectory).isSymbolicLink();
+  } catch {
+    return; // Absent (or unreadable, which the clean then reports).
+  }
+  if (!isLink) return;
+  let target: string;
+  try {
+    target = realpathSync(outputDirectory);
+  } catch {
+    target = resolve(dirname(outputDirectory), readlinkSync(outputDirectory));
+  }
+  throw new Error(
+    `[bascik] error: the output directory ${outputDirectory} is a symbolic ` +
+      `link to ${target}. Every build empties and rewrites the output ` +
+      `directory, so Bascik does not follow links there: the link would be ` +
+      `replaced by a real folder and nothing would reach ${target}. Remove ` +
+      `the link and set directory.out to a folder inside the project, then ` +
+      `copy or sync it to ${target} after the build (a pipeline.exec "post" ` +
+      `script or your deploy step).`,
+  );
+};
+
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
 ): Promise<void> => {
@@ -92,6 +142,15 @@ export const runTranspile = async (
         `folder of its own, such as "dist".`,
     );
   }
+  // A typo'd or uninstalled --target used to surface only after the whole
+  // site had been transpiled and dist/ rewritten. Resolve (and load) the
+  // adapter first, so the build stops before any work and leaves the
+  // previous dist/ alone (audit 159 finding 130).
+  if (BascikConfig.isBuild && BascikConfig.target) {
+    const { resolveAdapterTarget } =
+      await import("./lib/adapter-resolution.ts");
+    await resolveAdapterTarget(BascikConfig.target, projectRoot);
+  }
   // Targeted builds added by prompt 33 must skip this full output clean.
   const isTargetedBuild = Boolean(
     BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0,
@@ -100,6 +159,12 @@ export const runTranspile = async (
     await assertProductionBuildState("targeted-build");
   }
   if (!isTargetedBuild) {
+    // rm() would remove a symbolic link itself, and the build would then
+    // recreate the folder as a real directory: the output would never reach
+    // the link's target, with no message (audit 159 finding 141). Following
+    // the link instead would empty a folder that may be outside the project
+    // on every build, so refuse and say which folder to name.
+    assertOutputIsNotSymlink(outputDirectory);
     // Another process writing this directory (a second dev server in the
     // project, a build beside a running dev server) adds files while the
     // removal walks it, and rmdir fails with ENOTEMPTY. Do not retry: a retry
@@ -120,9 +185,7 @@ export const runTranspile = async (
         const code = (err as NodeJS.ErrnoException)?.code;
         throw new Error(
           `Could not clear ${what} ${dir}` +
-            `${code ? ` (${code})` : ""}: another bascik dev server or build ` +
-            `may be writing to it. Stop it, or give this one its own ` +
-            `directory.out.`,
+            `${code ? ` (${code})` : ""}: ${cleanFailureCause(err, code)}`,
           { cause: err },
         );
       }
@@ -146,11 +209,22 @@ export const runTranspile = async (
         await toleratingExecFailure(() => runExecPhase("post"));
       })(),
     ]);
-    const failures = results.filter((result) => result.status === "rejected");
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason as unknown);
+    // A single failure is thrown as it is, so its own message (already a
+    // located [bascik] error or the page summary) is what the CLI prints,
+    // with no class name or `Error:` prefix in front (audit 159 findings 49
+    // and 79). Several are joined by message, one per line.
+    if (failures.length === 1) throw failures[0];
     if (failures.length)
       throw new AggregateError(
-        failures.map((result) => result.reason),
-        `Build pipeline failed: ${failures.map((result) => String(result.reason)).join("; ")}`,
+        failures,
+        failures
+          .map((reason) =>
+            reason instanceof Error ? reason.message : String(reason),
+          )
+          .join("\n"),
       );
     const version = await readVersion();
     // Prompt 101: all metadata (sidecar, CSP, manifest) and the durable

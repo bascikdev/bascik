@@ -77,6 +77,7 @@ vi.mock("./file-system.js", async (importOriginal) => {
     ...actual,
     listPages: vi.fn(),
     deepReadDirFlat: vi.fn(actual.deepReadDirFlat),
+    readPagesDirectory: vi.fn(actual.readPagesDirectory),
   };
 });
 
@@ -253,7 +254,7 @@ import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { mem } from "./mem.ts";
 import { invalidateComponentListCache } from "./components.ts";
-import { listPages } from "./file-system.ts";
+import { deepReadDirFlat, listPages } from "./file-system.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A: Slot fallback content
@@ -1337,8 +1338,8 @@ describe("pageProcessing – inlineStyles", () => {
 
   it("inlines every page stylesheet when inlineStyles is true", async () => {
     (BascikConfig as any).assets = { inlineStyles: true, exclude: [] };
-    const { deepReadDirFlat } = await import("./file-system.ts");
-    (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([
+    const { readPagesDirectory } = await import("./file-system.ts");
+    (readPagesDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/css/a.css",
       "src/pages/css/b.css",
     ]);
@@ -1357,6 +1358,9 @@ describe("pageProcessing – inlineStyles", () => {
 describe("selectivelyProcessPagesForWatchPath", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The component list is read with deepReadDirFlat: these tests have no
+    // component folder on disk, so it lists none.
+    (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
   });
@@ -3246,7 +3250,7 @@ describe("component load failures (a component build script that throws)", () =>
         () => processPageBatch(["src/pages/index.html"]),
         { onPageErrors: "throw" },
       ),
-    ).rejects.toBeInstanceOf(AggregateError);
+    ).rejects.toThrow(/boom|build script/);
     expect(await emitted()).toHaveLength(0);
   });
 

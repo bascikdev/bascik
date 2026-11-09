@@ -48,7 +48,7 @@ import {
   runLanguageServerCheck,
   type LanguageServerDiagnostic,
 } from "./check-language-server.ts";
-import { getHttpPath } from "./paths.ts";
+import { findSlashVariantRoutes, getHttpPath } from "./paths.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
 import { findConfigFile } from "./config-file-names.ts";
@@ -1114,6 +1114,23 @@ export const checkProject = async (
     } else if (!firstSeen) {
       firstRouteByLower.set(lowerRoute, { route, filePath: pagePath });
     }
+  }
+  const slashVariants = findSlashVariantRoutes(
+    [...pagesByRouteExact.entries()].map(([route, files]) => ({
+      route,
+      filePath: files[0],
+    })),
+  );
+  for (const { route, flatFile, indexFile } of slashVariants) {
+    items.push({
+      category: "duplicate-route-resolution",
+      severity: "warning",
+      message: `"${route}" and "${route}/" are served by different pages; keep one of them`,
+      locations: [
+        { filePath: toDisplay(flatFile) },
+        { filePath: toDisplay(indexFile) },
+      ],
+    });
   }
   for (const [route, files] of pagesByRouteExact.entries()) {
     if (files.length < 2) continue;

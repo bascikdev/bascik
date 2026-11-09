@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getHttpPath } from "./paths.ts";
+import { findSlashVariantRoutes, getHttpPath } from "./paths.ts";
 
 describe("getHttpPath", () => {
   it("converts pages/index.html to /", () => {
@@ -79,5 +79,36 @@ describe("getHttpPath", () => {
     ["pages/blog/", "/blog/"],
   ])("canonicalizes %s", (input, expected) => {
     expect(getHttpPath(input)).toBe(expected);
+  });
+});
+
+// Audit 159 finding 51: about.html serves /about and about/index.html serves
+// /about/, two pages for what a reader takes as one URL.
+describe("findSlashVariantRoutes", () => {
+  it("pairs a flat page with the directory index of the same name", () => {
+    expect(
+      findSlashVariantRoutes([
+        { route: "/", filePath: "src/pages/index.html" },
+        { route: "/about/", filePath: "src/pages/about/index.html" },
+        { route: "/about", filePath: "src/pages/about.html" },
+        { route: "/blog/", filePath: "src/pages/blog/index.html" },
+      ]),
+    ).toEqual([
+      {
+        route: "/about",
+        flatFile: "src/pages/about.html",
+        indexFile: "src/pages/about/index.html",
+      },
+    ]);
+  });
+
+  it("finds nothing when every route has one form", () => {
+    expect(
+      findSlashVariantRoutes([
+        { route: "/", filePath: "src/pages/index.html" },
+        { route: "/about", filePath: "src/pages/about.html" },
+        { route: "/about/team", filePath: "src/pages/about/team.html" },
+      ]),
+    ).toEqual([]);
   });
 });

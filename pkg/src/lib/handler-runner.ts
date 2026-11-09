@@ -325,15 +325,30 @@ export const runDirectiveHandler = async <T = unknown>(
           const stoppedByNode = typeof failure.code === "string";
           const withReport = (reason: string): string =>
             report ? `${reason}\n${report}` : reason;
-          failure.message = stoppedByNode
-            ? withReport(
-                `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
-              )
-            : timedOut
+          // Exit code 13 is Node's "unsettled top-level await": the script
+          // awaited a promise that never settled and the event loop emptied.
+          // Node's warning names Bascik's runner file and line, not the
+          // script, so it is replaced by a sentence about the script; what the
+          // script logged before is kept (audit 159 finding 52).
+          const unsettledWarning =
+            /(?:^|\n)Warning: Detected unsettled top-level await at [^\n]*(?:\n[^\n]*\n[ \t]*\^[^\n]*)?/;
+          const unsettled =
+            failure.code === 13 && unsettledWarning.test(report);
+          failure.message = unsettled
+            ? (() => {
+                const logged = report.replace(unsettledWarning, "").trim();
+                const reason = `Directive script (data-bascik-${kind}) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.`;
+                return logged ? `${reason}\n${logged}` : reason;
+              })()
+            : stoppedByNode
               ? withReport(
-                  `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                  `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
                 )
-              : report || withoutRunnerFrames(failure.message);
+              : timedOut
+                ? withReport(
+                    `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                  )
+                : report || withoutRunnerFrames(failure.message);
           reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
         } else {
           resolve({ stdout: cleanedStdout, stderr: cleanedStderr });

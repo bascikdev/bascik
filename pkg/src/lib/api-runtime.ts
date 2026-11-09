@@ -53,6 +53,13 @@ export interface ExecuteApiRouteOptions {
    * Called just before that 413 is returned, so the transport can drain.
    */
   onDeclaredBodyTooLarge?: () => void;
+  /**
+   * Whether the handler is still waiting on a request body that has not
+   * finished arriving. A deadline that fires then is the client's slow
+   * upload, answered 408 like `http.timeouts.request`, not a 504 that
+   * blames the handler (audit 159 finding 39).
+   */
+  isBodyPending?: () => boolean;
 }
 
 export class PayloadTooLargeError extends Error {
@@ -330,6 +337,38 @@ export const createWebRequest = (
 };
 
 /**
+ * The answer for a fired `apiTimeout`: 408 when the request body was still
+ * arriving (the client is slow, and the connection closes since the rest of
+ * the body will not be read), otherwise 504 for a handler that ran too long.
+ */
+const deadlineResponse = (
+  filePath: string,
+  method: string,
+  timeoutMs: number,
+  bodyPending: boolean,
+): Response => {
+  if (bodyPending) {
+    console.error(
+      "[bascik] API route %s (%s): the request body was still arriving after %dms (http.apiTimeout); answered 408",
+      filePath,
+      method,
+      timeoutMs,
+    );
+    return new Response("Request Timeout", {
+      status: 408,
+      headers: { connection: "close" },
+    });
+  }
+  console.error(
+    "[bascik] API route handler timed out in %s (%s) after %dms",
+    filePath,
+    method,
+    timeoutMs,
+  );
+  return new Response("Gateway Timeout", { status: 504 });
+};
+
+/**
  * Execute an API route handler module.
  */
 export const executeApiRoute = async (
@@ -344,6 +383,7 @@ export const executeApiRoute = async (
     timeoutMs,
     clock = nativeClock,
     onDeclaredBodyTooLarge,
+    isBodyPending,
   } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
@@ -367,12 +407,14 @@ export const executeApiRoute = async (
 
   let timer: TimeoutHandle | undefined;
   let didTimeout = false;
+  let bodyPendingAtDeadline = false;
 
   if (effectiveTimeout && effectiveTimeout > 0) {
     timer = clock.setTimeout(() => {
       // A client that already went away stays a 499, not a late 504.
       if (abortController.signal.aborted) return;
       didTimeout = true;
+      bodyPendingAtDeadline = isBodyPending?.() === true;
       abortController.abort(
         new Error(`API route handler timed out after ${effectiveTimeout}ms`),
       );
@@ -458,13 +500,12 @@ export const executeApiRoute = async (
     // The core reports an upstream abort as 499. When our own deadline caused
     // that abort the truthful status is 504, matching the pre-132 behavior.
     if (response.status === 499 && didTimeout) {
-      console.error(
-        "[bascik] API route handler timed out in %s (%s) after %dms",
+      return deadlineResponse(
         filePath,
         method,
         effectiveTimeout,
+        bodyPendingAtDeadline,
       );
-      return new Response("Gateway Timeout", { status: 504 });
     }
     return response;
   } catch (err) {
@@ -490,13 +531,12 @@ export const executeApiRoute = async (
     }
 
     if (didTimeout || (err as Error)?.message?.includes("timed out after")) {
-      console.error(
-        "[bascik] API route handler timed out in %s (%s) after %dms",
+      return deadlineResponse(
         filePath,
         method,
         effectiveTimeout,
+        bodyPendingAtDeadline,
       );
-      return new Response("Gateway Timeout", { status: 504 });
     }
 
     console.error(

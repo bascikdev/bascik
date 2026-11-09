@@ -1527,6 +1527,71 @@ describe("API runtime execution", () => {
       expect((await pending).status).toBe(504);
     });
 
+    // Audit 159 finding 39: a client whose body has not finished arriving
+    // when the deadline fires is a request timeout (408), not an upstream
+    // one; 504 blamed the handler for a slow upload.
+    it("misuse: a deadline that fires while the request body is still arriving is a 408, not a 504", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let started = false;
+      vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+        filePath: "/app/src/api/deadline.ts",
+        module: {
+          POST: async (request: Request) => {
+            started = true;
+            return new Response(await request.text());
+          },
+        },
+        version: 0,
+      });
+      const { clock, fire } = manualClock();
+      const pending = executeApiRoute({
+        filePath: "/app/src/api/deadline.ts",
+        request: new Request("http://localhost:8080/api/deadline", {
+          method: "POST",
+          body: new ReadableStream({ start() {} }),
+          duplex: "half",
+        } as RequestInit),
+        params: {},
+        remoteIp: "127.0.0.1",
+        timeoutMs: 50,
+        clock,
+        isBodyPending: () => true,
+      });
+      await tickUntil(() => started);
+      fire();
+      const res = await pending;
+      expect(res.status).toBe(408);
+      expect(await res.text()).toBe("Request Timeout");
+      expect(res.headers.get("connection")).toBe("close");
+      const logged = String(errorSpy.mock.calls[0]?.[0]);
+      expect(logged).not.toContain("handler timed out");
+      expect(errorSpy.mock.calls[0]?.join(" ")).toContain(
+        "request body was still arriving",
+      );
+    });
+
+    it("a deadline with the body fully received stays a 504", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      let started = false;
+      route(() => {
+        started = true;
+        return new Promise<Response>(() => {});
+      });
+      const { clock, fire } = manualClock();
+      const pending = executeApiRoute({
+        filePath: "/app/src/api/deadline.ts",
+        request: new Request("http://localhost:8080/api/deadline"),
+        params: {},
+        remoteIp: "127.0.0.1",
+        timeoutMs: 50,
+        clock,
+        isBodyPending: () => false,
+      });
+      await tickUntil(() => started);
+      fire();
+      expect((await pending).status).toBe(504);
+    });
+
     it("misuse: a handler that returns a Response inside its abort listener on a client abort is a 499, not a 200 or a 504", async () => {
       let started = false;
       route((_r: Request, _c: unknown, { signal }: { signal: AbortSignal }) => {

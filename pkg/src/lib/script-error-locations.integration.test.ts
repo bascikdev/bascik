@@ -235,6 +235,11 @@ const SERVER_SYNTAX_PAGE = page(
   "Server syntax",
   `    <script data-bascik-server>\n      export default () => {\n        return "x" +;\n      };\n    </script>`,
 );
+/** Written like a build script that prints markup: no `export default` (audit 159 finding 134). */
+const NO_DEFAULT_PAGE = page(
+  "No default",
+  `    <script data-bascik-server>\n      console.log("<p>I forgot export default</p>");\n    </script>`,
+);
 /** Windows line endings: lines are counted by `\n`, and a `\r` never shifts a column. */
 const CRLF_SERVER_PAGE = page(
   "CRLF",
@@ -323,6 +328,7 @@ describe.each(SERVER_MODES)(
         "src/components/server-card/server-card.html": SERVER_COMPONENT,
         "src/pages/stream.html": STREAM_PAGE,
         "src/pages/server-syntax.html": SERVER_SYNTAX_PAGE,
+        "src/pages/no-default.html": NO_DEFAULT_PAGE,
         "src/pages/crlf.html": CRLF_SERVER_PAGE,
       });
       // The production server reads the sidecar the build wrote, so the recorded
@@ -415,6 +421,25 @@ describe.each(SERVER_MODES)(
         expect(output.split(message).length - 1).toBe(1);
       },
     );
+
+    it("misuse: names the file and line of a server script with no default export, not a data: URL", async () => {
+      const response = await fetch(`${base}/no-default`);
+      expect(response.status).toBe(500);
+      await response.text();
+      await waitFor(/no default export/);
+
+      const report = reportFor(
+        output,
+        `[bascik] server script error at "/no-default":`,
+      );
+      expect(report).toContain(
+        `The server script that starts at src/pages/no-default.html:${locationOf(NO_DEFAULT_PAGE, "console.log")} has no default export.`,
+      );
+      expect(report).toContain("export default");
+      expect(report).not.toMatch(
+        /data:text\/javascript|does not export a function/,
+      );
+    });
 
     it("names the file and the line the script starts on for a syntax error, which Node reports with no location", async () => {
       const response = await fetch(`${base}/server-syntax`);

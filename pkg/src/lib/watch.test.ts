@@ -258,6 +258,8 @@ import {
 } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
+import { clearBootFailure, getBootFailure } from "./boot-failure.ts";
+import { reportComponentLoadFailure } from "./page-diagnostics.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1990,5 +1992,79 @@ describe("watchFiles – full rebuilds are coalesced", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit 159 findings 43 and 48: a broken component at dev boot
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("watchFiles – a component that fails to load at dev boot", () => {
+  const located = () =>
+    Object.assign(
+      new Error(
+        "[bascik] TypeScript transformation failed in src/components/my-counter/my-counter.html:4:1: Expected '}'",
+      ),
+      { name: "TypeScriptTransformError" },
+    );
+
+  afterEach(() => {
+    clearBootFailure();
+  });
+
+  it("keeps the dev server up, prints the located message only, and records the boot failure", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = located();
+    reportComponentLoadFailure(error);
+    mockProcessAllPages.mockRejectedValueOnce(error);
+
+    await expect(watchFiles()).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(error.message);
+    expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    expect(getBootFailure()?.message).toBe(error.message);
+    // The components watcher is installed, so fixing the file recovers.
+    expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
+    errorSpy.mockRestore();
+  });
+
+  it("rebuilds every page when a component changes while the boot failure stands", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = located();
+    reportComponentLoadFailure(error);
+    mockProcessAllPages.mockRejectedValueOnce(error);
+    await watchFiles();
+    mockProcessAllPages.mockClear();
+
+    await getHandler(2, "change")?.("/project/src/components/my-counter.html");
+
+    expect(processAllPages).toHaveBeenCalledOnce();
+    vi.mocked(console.error).mockRestore();
+  });
+
+  it("still rejects boot for a failure that is not a component load failure", async () => {
+    mockProcessAllPages.mockRejectedValueOnce(
+      new Error("[bascik] pages directory not found: src/pages"),
+    );
+    await expect(watchFiles()).rejects.toThrow("pages directory not found");
+    expect(getBootFailure()).toBeUndefined();
+  });
+});
+
+describe("watchFiles – watch error output (audit 159 finding 48)", () => {
+  it("prints only the message of a located [bascik] error", async () => {
+    await watchFiles();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new Error(
+      "[bascik] TypeScript transformation failed in src/components/a.html:2:3: Unexpected token",
+    );
+    mockPageProcessing.mockRejectedValueOnce(error);
+
+    getHandler(1, "change")?.("/project/src/pages/index.html");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(errorSpy).toHaveBeenCalledWith(error.message);
+    expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    errorSpy.mockRestore();
   });
 });

@@ -308,6 +308,62 @@ describe("http.timeouts reach the Node servers", { timeout: 15_000 }, () => {
     },
   );
 
+  // Audit 159 finding 39: an API route reading a body that stops arriving
+  // hits apiTimeout first; that is the client's slow upload (408), not a
+  // handler that ran too long (504).
+  describe("an API body still arriving at apiTimeout", () => {
+    let saved: number;
+    beforeAll(() => {
+      saved = configState.http.apiTimeout;
+      configState.http.apiTimeout = 300;
+    });
+    afterAll(() => {
+      configState.http.apiTimeout = saved;
+    });
+
+    it("HTTP/1.1: gets 408 Request Timeout and the connection closes", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const res = await exchange(plain(), async (s) => {
+          s.write(
+            "POST /api/upload HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 100\r\n\r\n0123456789",
+          );
+        });
+        expect(res.timedOut).toBe(false);
+        expect(statusLines(res.text)).toEqual(["HTTP/1.1 408"]);
+        expect(res.text).toContain("Request Timeout");
+        expect(res.closedAfterMs).toBeLessThan(REQUEST_MS);
+        const logged = errors.mock.calls.map((c) => c.join(" ")).join("\n");
+        expect(logged).toContain("request body was still arriving");
+        expect(logged).not.toContain("handler timed out");
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it("HTTP/2: gets 408 on the stream", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const client = connectH2();
+      try {
+        const status = await new Promise<number>((resolve, reject) => {
+          const req = client.request({
+            ":method": "POST",
+            ":path": "/api/upload",
+            "content-length": "100",
+          });
+          req.on("response", (h) => resolve(Number(h[":status"])));
+          req.on("error", reject);
+          req.write("0123456789");
+          req.resume();
+        });
+        expect(status).toBe(408);
+      } finally {
+        client.close();
+        errors.mockRestore();
+      }
+    });
+  });
+
   it("a body that trickles past request is cut off", async () => {
     const res = await exchange(plain(), async (s) => {
       s.write(

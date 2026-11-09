@@ -392,6 +392,13 @@ export class ApiRouteRegistry {
           remoteIp: req.remoteIp,
           signal: abort.signal,
           onDeclaredBodyTooLarge: declaredTooLarge ? linger : undefined,
+          // The handler started reading a body the client has not finished
+          // sending: a deadline then is a slow upload (408), not a slow
+          // handler (504).
+          isBodyPending: () =>
+            webReq.bodyUsed &&
+            req.rawStream != null &&
+            req.rawStream.readableEnded !== true,
         }),
         aborted.then(() => null),
       ]);

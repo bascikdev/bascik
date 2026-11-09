@@ -775,6 +775,51 @@ describe("over-limit bodies get a complete 413 (lingering close)", () => {
       },
       CUTOFF_BUDGET_MS * 2,
     );
+    // Audit 159 finding 36: curl uploads at full speed and keeps sending
+    // DATA after the 413; the stream error that follows a complete response
+    // is the peer's doing, and logged a Node stack trace for every upload.
+    it(
+      "HTTP/2: an upload that keeps sending after the 413 logs no stream error",
+      async () => {
+        const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+          const { execFile } = await import("node:child_process");
+          const status = await new Promise<string>((resolve) =>
+            execFile(
+              "curl",
+              [
+                "-sk",
+                "--http2",
+                "-X",
+                "POST",
+                "-H",
+                "Expect:",
+                "-H",
+                "content-type: application/octet-stream",
+                "--data-binary",
+                "@-",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                `https://127.0.0.1:${tlsPort}/api/upload`,
+              ],
+              { timeout: CUTOFF_BUDGET_MS },
+              (_error, stdout) => resolve(String(stdout)),
+            ).stdin!.end(Buffer.alloc(OVERSIZE, 0x61)),
+          );
+          expect(status).toBe("413");
+          await sleep(200);
+          const streamErrors = errors.mock.calls.filter((call) =>
+            String(call[0]).includes("HTTP/2 stream error"),
+          );
+          expect(streamErrors).toEqual([]);
+        } finally {
+          errors.mockRestore();
+        }
+      },
+      CUTOFF_BUDGET_MS * 2,
+    );
     it(
       "a handler that catches the error and returns its own 413 (no Content-Length) reaches the client whole while the client still holds the rest of its body",
       async () => {

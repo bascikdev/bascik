@@ -289,6 +289,32 @@ describe("loadUserConfig", () => {
     expect(fromFlag.stderr).toContain(`${custom}:3`);
   }, 30000);
 
+  // Audit 159 finding 50: a .ts config is not checked by `node --check`, so a
+  // missing brace was reported with no line at all.
+  it("misuse: names the line, column, and offending line for a syntax error in bascik.config.ts", async () => {
+    const p = await writeConfig(
+      `export default {\n  generate: { sitemap: false, robots: false },\n  http: { port: 41001 \n};\n`,
+      "bascik.config.ts",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Failed to load bascik.config");
+    expect(result.stderr).toContain("Expected ',', got ';'");
+    expect(result.stderr).toMatch(/bascik\.config\.ts:4:2\n};\n \^\n/);
+  }, 30000);
+
+  it("misuse: locates a type-annotated bascik.config.ts syntax error on its own line", async () => {
+    const p = await writeConfig(
+      `const port: number = 1;\nexport default {\n  http: { port },\n  this is bad\n};\n`,
+      "bascik.config.ts",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      /bascik\.config\.ts:4:\d+\n  this is bad\n *\^/,
+    );
+  }, 30000);
+
   it("locates a syntax error in a CommonJS bascik.config.js at its real line", async () => {
     // With no "type" in package.json a .js config loads as CommonJS, where
     // sloppy-mode syntax such as a legacy octal literal is legal. Checking it

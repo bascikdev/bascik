@@ -10,11 +10,13 @@ const load = async () => {
 let savedExitCode: typeof process.exitCode;
 let savedSigint: NodeJS.SignalsListener[];
 let savedSigterm: NodeJS.SignalsListener[];
+let savedSighup: NodeJS.SignalsListener[];
 
 beforeEach(() => {
   savedExitCode = process.exitCode;
   savedSigint = process.listeners("SIGINT") as NodeJS.SignalsListener[];
   savedSigterm = process.listeners("SIGTERM") as NodeJS.SignalsListener[];
+  savedSighup = process.listeners("SIGHUP") as NodeJS.SignalsListener[];
 });
 
 afterEach(() => {
@@ -22,8 +24,10 @@ afterEach(() => {
   process.exitCode = savedExitCode;
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
   for (const listener of savedSigint) process.on("SIGINT", listener);
   for (const listener of savedSigterm) process.on("SIGTERM", listener);
+  for (const listener of savedSighup) process.on("SIGHUP", listener);
 });
 
 const deferred = () => {
@@ -110,6 +114,7 @@ describe("exitAfterStopping", () => {
     const sigint = vi.fn();
     process.on("SIGINT", sigint);
     process.on("SIGTERM", sigint);
+    process.on("SIGHUP", sigint);
     process.exitCode = undefined;
     const exit = vi.fn();
     exitAfterStopping(1, exit);
@@ -118,6 +123,8 @@ describe("exitAfterStopping", () => {
     // A Ctrl-C now takes the default action (ends the process at once).
     expect(process.listenerCount("SIGINT")).toBe(0);
     expect(process.listenerCount("SIGTERM")).toBe(0);
+    // SIGHUP too (audit 159 finding 142).
+    expect(process.listenerCount("SIGHUP")).toBe(0);
     stop.resolve();
     await flush();
     expect(exit).toHaveBeenCalledTimes(1);
