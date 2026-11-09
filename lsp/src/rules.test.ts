@@ -244,3 +244,66 @@ describe("api-unguarded-json", () => {
     ).toBe(0);
   });
 });
+
+describe("API Route Rules: locations", () => {
+  const rangeOf = (ts: string, code: string) =>
+    analyzeApiRouteSource(ts).find((d) => d.code === code)?.range;
+
+  it("anchors invalid-method-case to the misspelled export name", () => {
+    const ts =
+      'import x from "y";\n\nexport const post = () => new Response("ok");\nexport const GET = () => new Response("ok");\n';
+    expect(rangeOf(ts, "invalid-method-case")).toEqual({
+      startLine: 2,
+      startChar: 13,
+      endLine: 2,
+      endChar: 17,
+    });
+  });
+
+  it("anchors invalid-method-case in an export clause to the specifier", () => {
+    const ts = 'const get = () => new Response("ok");\nexport {\n  get,\n};\n';
+    expect(rangeOf(ts, "invalid-method-case")).toEqual({
+      startLine: 2,
+      startChar: 2,
+      endLine: 2,
+      endChar: 5,
+    });
+  });
+
+  it("anchors api-handler-return-type to the handler export name", () => {
+    const ts =
+      '// header\n\nexport const POST = async (): Promise<string> => "x";\n';
+    expect(rangeOf(ts, "api-handler-return-type")).toEqual({
+      startLine: 2,
+      startChar: 13,
+      endLine: 2,
+      endChar: 17,
+    });
+  });
+
+  it("anchors missing-method-handler to the first export, not line 1", () => {
+    const ts = "// header\n\nconst a = 1;\nexport const helper = () => 1;\n";
+    expect(rangeOf(ts, "missing-method-handler")).toEqual({
+      startLine: 3,
+      startChar: 13,
+      endLine: 3,
+      endChar: 19,
+    });
+  });
+
+  it("anchors missing-method-handler to the first code line when nothing is exported", () => {
+    const ts = "// header\n\nconst a = 1;\n";
+    expect(rangeOf(ts, "missing-method-handler")).toEqual({
+      startLine: 2,
+      startChar: 0,
+      endLine: 2,
+      endChar: 12,
+    });
+  });
+
+  it("never reports a located rule without a range", () => {
+    for (const ts of ["", "export default {};", "export const get = 1;"]) {
+      for (const d of analyzeApiRouteSource(ts)) expect(d.range).toBeDefined();
+    }
+  });
+});

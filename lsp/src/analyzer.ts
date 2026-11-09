@@ -659,6 +659,19 @@ export function completionReplacementRange(
  * `b_id_<component>_<id>`, so `<a_b>` with `#c` and `<a>` with `#b_c` spell
  * one class, which the build rejects; the example uses the file's own name.
  */
+/**
+ * A hyphenated name to suggest for a component file without one: camelCase and underscores split into
+ * words (`MyCard.html` -> `my-card`), a single word gets an `app-` prefix (`card.html` -> `app-card`).
+ */
+export const suggestHyphenatedName = (fileName: string): string => {
+  const base = fileName.split(".")[0];
+  const words = base
+    .split(/_+|(?<=[a-z0-9])(?=[A-Z])/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+  return words.length > 1 ? words.join("-") : `app-${words[0] ?? base}`;
+};
+
 export const componentNameUnderscoreMessage = (
   fileName: string,
 ): string | null => {
@@ -885,6 +898,7 @@ export function createDiagnostics(
     if (isComponentDocument) {
       const fileName = path.basename(normalizedDocumentPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, "").toLowerCase();
+      const suggestedName = suggestHyphenatedName(fileName);
       if (
         !nameWithoutExt.includes("-") &&
         !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)
@@ -895,7 +909,7 @@ export function createDiagnostics(
             end: { line: 0, character: Math.min(text.length, 10) },
           },
           code: "component-name-not-hyphenated",
-          message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${nameWithoutExt}") to avoid collisions with future HTML standards.`,
+          message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "${suggestedName}") to avoid collisions with future HTML standards.`,
           severity: DiagnosticSeverity.Warning,
           source: "bascik",
         });

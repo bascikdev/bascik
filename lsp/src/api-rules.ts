@@ -204,19 +204,43 @@ function insideTryBlocks(code: string, offsets: readonly number[]): boolean[] {
 export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
   const diagnostics: ApiRouteDiagnostic[] = [];
   const code = maskCommentsAndStrings(text);
+  /** The line and character of an offset in `text`. */
+  const position = (offset: number) => {
+    const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+    let line = 0;
+    for (let at = text.indexOf("\n"); at !== -1 && at < offset;) {
+      line++;
+      at = text.indexOf("\n", at + 1);
+    }
+    return { line, character: offset - lineStart };
+  };
+  /** The range of `[start, end)` in `text`. */
+  const rangeOf = (start: number, end: number): ApiRouteDiagnostic["range"] => {
+    const from = position(start);
+    const to = position(end);
+    return {
+      startLine: from.line,
+      startChar: from.character,
+      endLine: to.line,
+      endChar: to.character,
+    };
+  };
   METHOD_LIKE_REGEX.lastIndex = 0;
 
   const exportedNames: string[] = [];
+  let firstExportAt = -1;
+  let firstExportEnd = -1;
   let match: RegExpExecArray | null;
 
   // Warning: lowercase or mixed-case export that looks like a method (e.g. `post`, `Get`, `pOST`)
-  const checkMethodCase = (name: string) => {
+  const checkMethodCase = (name: string, at: number) => {
     const upper = name.toUpperCase();
     if (VALID_METHODS.has(upper) && name !== upper) {
       diagnostics.push({
         code: "invalid-method-case",
         message: `API route method export "${name}" must be uppercase ("${upper}"). Lowercase or mixed-case HTTP methods are not recognized by the dispatcher.`,
         severity: "warning",
+        range: rangeOf(at, at + name.length),
       });
     }
   };
@@ -224,21 +248,27 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
   EXPORT_CLAUSE_REGEX.lastIndex = 0;
   while ((match = EXPORT_CLAUSE_REGEX.exec(code)) !== null) {
     if (match[1]) continue;
+    let specifierStart = match.index + match[0].indexOf("{") + 1;
     for (const specifier of match[2].split(",")) {
+      const at = specifierStart;
+      specifierStart += specifier.length + 1;
       const parts = specifier.trim().split(/\s+/);
       if (parts[0] === "type" && parts.length > 1) continue;
       const name =
         parts.length === 3 && parts[1] === "as" ? parts[2] : parts[0];
       if (!name || !/^[A-Za-z_$][\w$]*$/.test(name)) continue;
       exportedNames.push(name);
-      checkMethodCase(name);
+      checkMethodCase(name, at + specifier.lastIndexOf(name));
     }
   }
 
   while ((match = METHOD_LIKE_REGEX.exec(code)) !== null) {
     const name = match[1];
+    const nameAt = match.index + match[0].length - name.length;
+    if (firstExportAt < 0) firstExportAt = nameAt;
+    firstExportEnd = firstExportEnd < 0 ? nameAt + name.length : firstExportEnd;
     exportedNames.push(name);
-    checkMethodCase(name);
+    checkMethodCase(name, nameAt);
 
     // Warning: handler whose return type is annotated and not Response / Promise<Response>
     // Check for pattern like: `export const GET = async (...): Promise<string> =>` or `export function GET(...): string`
@@ -264,10 +294,23 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
           code: "api-handler-return-type",
           message: `API route handler "${name}" has return type "${returnType}". Handlers must return a standard WHATWG Response (or Promise<Response>).`,
           severity: "warning",
+          range: rangeOf(nameAt, nameAt + name.length),
         });
       }
     }
   }
+
+  /** The first exported name, else the first line with code, else the start of the file. */
+  const missingHandlerRange = (): ApiRouteDiagnostic["range"] => {
+    if (firstExportAt >= 0) return rangeOf(firstExportAt, firstExportEnd);
+    const codeStart = code.search(/\S/);
+    if (codeStart < 0) return rangeOf(0, 0);
+    const lineEnd = code.indexOf("\n", codeStart);
+    return rangeOf(
+      text.lastIndexOf("\n", codeStart - 1) + 1,
+      lineEnd === -1 ? text.length : lineEnd,
+    );
+  };
 
   const hasRecognizedMethod =
     exportedNames.some((n) => VALID_METHODS.has(n)) ||
@@ -277,6 +320,7 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
       code: "missing-method-handler",
       message: `API route file does not export any recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`,
       severity: "error",
+      range: missingHandlerRange(),
     });
   }
 

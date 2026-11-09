@@ -4,6 +4,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import type { CompletionItem, TextEdit } from "vscode-languageserver";
 import {
   createDiagnostics,
+  suggestHyphenatedName,
   createCompletions,
   createHover,
   createDefinition,
@@ -578,5 +579,17 @@ describe("Bascik Language Server Analyzer", () => {
     ])("warns for %s", (formTag) => {
       expect(formDiagnostics(formTag)).toHaveLength(1);
     });
+  });
+});
+
+describe("suggestHyphenatedName (finding 45)", () => {
+  it.each([
+    ["card.html", "app-card"],
+    ["MyCard.html", "my-card"],
+    ["plan_card.html", "plan-card"],
+    ["badcomp.html", "app-badcomp"],
+    ["card.test.html", "app-card"],
+  ])("%s -> %s, never a prefixed copy of the old name", (file, expected) => {
+    expect(suggestHyphenatedName(file)).toBe(expected);
   });
 });
