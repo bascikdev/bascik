@@ -36,7 +36,10 @@ import {
   STREAM_ATTR_NAME,
   isDirectiveScriptOpenTag,
 } from "./html-patterns.ts";
-import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import {
+  compatibilityRules,
+  findCompatibilityMatches,
+} from "./compatibility-checker.ts";
 import { assertNoGeneratedIdClassCollisions } from "./generated-id-classes.ts";
 import { stderr as colorErr } from "./colors.ts";
 import {
@@ -80,6 +83,11 @@ export {
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
 } from "./component-inheritance.ts";
+
+/** Each compatibility rule's severity: `error` where the rules JSON says so, otherwise `warning`. */
+const ruleSeverity = new Map(
+  compatibilityRules.map((rule) => [rule.id, rule.severity ?? "warning"]),
+);
 
 // Warn if a component name shadows a native HTML element: every element of
 // WHATWG HTML, the obsolete ones its parser still knows included, plus the
@@ -421,8 +429,11 @@ const warnComponentCompatibility = async (
     const key = `${displayPath}:${line}:${ruleId}`;
     if (seenWarnings.has(key)) return;
     seenWarnings.add(key);
+    if (componentWarningsSilenced) return;
+    // The rule's own severity from the rules JSON, the one the language server and --check report.
+    const severity = ruleSeverity.get(ruleId) ?? "warning";
     console.warn(
-      `${colorErr.tag("warn", "[bascik] warning")} ${colorErr.dim(`(${ruleId})`)} in ${colorErr.cyan(`${displayPath}:${line}`)}: ${message} ${colorErr.dim(suggestion)}`,
+      `${colorErr.tag(severity === "error" ? "error" : "warn", `[bascik] ${severity}`)} ${colorErr.dim(`(${ruleId})`)} in ${colorErr.cyan(`${displayPath}:${line}`)}: ${message} ${colorErr.dim(suggestion)}`,
     );
   };
 
@@ -560,6 +571,30 @@ const companionScriptFor = <Info>(
  * Derives the component tag name from a file path.
  * Lowercases the base name without the file extension.
  */
+/**
+ * A hyphenated name to suggest for a component file without one: camelCase and underscores split into
+ * words (`MyCard` -> `my-card`), a single word gets an `app-` prefix (`card` -> `app-card`).
+ */
+export const suggestHyphenatedName = (fileName: string): string => {
+  const base = fileName.replace(/^.*[\\/]/, "").split(".")[0];
+  const words = base
+    .split(/_+|(?<=[a-z0-9])(?=[A-Z])/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+  return words.length > 1 ? words.join("-") : `app-${words[0] ?? base}`;
+};
+
+let componentWarningsSilenced = false;
+
+/**
+ * Silences the console warnings `listComponents` prints while it reads components: the scoping
+ * compatibility rules and the component-name advice. `bascik --check` turns them off because it reports
+ * the same findings, once, from the language server.
+ */
+export const setComponentWarningsSilenced = (silenced: boolean): void => {
+  componentWarningsSilenced = silenced;
+};
+
 export const deriveComponentName = (fileName: string): string => {
   return fileName
     .replace(/^.*[\\/]/, "")
@@ -662,15 +697,17 @@ export const listComponents = async (
       // Name the file name without the extension.
       // Name is used in all the mappings components
       const componentName = deriveComponentName(fileName);
-      if (NATIVE_HTML_ELEMENTS.has(componentName)) {
+      if (componentWarningsSilenced) {
+        // --check reports these itself.
+      } else if (NATIVE_HTML_ELEMENTS.has(componentName)) {
         console.warn(
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +
-            `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
+            `This may cause unexpected behavior — consider a hyphenated name like "${suggestHyphenatedName(fileName)}".`,
         );
       } else if (!componentName.includes("-")) {
         console.warn(
           `warning: Component "${componentName}" is not hyphenated. ` +
-            `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${componentName}") to avoid collisions with future HTML standards.`,
+            `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "${suggestHyphenatedName(fileName)}") to avoid collisions with future HTML standards.`,
         );
       }
       let fileContentBuffer: Buffer;
