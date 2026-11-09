@@ -62,6 +62,9 @@ describe("published type declarations", () => {
       "false",
       "--sourceMap",
       "false",
+      // tsconfig.build.json sets inlineSources, which needs a source map.
+      "--inlineSources",
+      "false",
       "--outDir",
       join(installed, "dist"),
       "--declarationDir",
