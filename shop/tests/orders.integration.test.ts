@@ -2,7 +2,14 @@ import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { createHmac } from "node:crypto";
 import { Miniflare } from "miniflare";
-import { type Env, hmac, now, orderToken } from "../src/lib/platform.ts";
+import {
+  type Env,
+  hmac,
+  now,
+  orderToken,
+  verifyTicket,
+} from "../src/lib/platform.ts";
+import { orderView, orderViewByToken } from "../src/lib/order-view.ts";
 import { products } from "../src/lib/catalog.ts";
 import {
   quoteRequest,
@@ -1026,6 +1033,110 @@ test("private order tokens work, public payment IDs and forged tokens do not", a
   expect(JSON.stringify(await response.json())).not.toContain(
     "buyer@example.com",
   );
+});
+test("order status issues a ticket that verifies and names the same order", async () => {
+  const token = await orderToken(env, id);
+  const response = await orderStatus(post("/api/order", { token }), {
+    platform: { env },
+  });
+  const { ticket } = await response.json();
+  expect(typeof ticket).toBe("string");
+  expect(await verifyTicket(env, ticket)).toEqual({ id, expired: false });
+  // A ticket is never accepted where a token is expected.
+  expect(
+    (
+      await orderStatus(post("/api/order", { token: ticket }), {
+        platform: { env },
+      })
+    ).status,
+  ).toBe(404);
+});
+test("order status rejects revoked and expired tokens with a 404", async () => {
+  const token = await orderToken(env, id);
+  const context = { platform: { env } };
+  await env.DB.prepare("UPDATE orders SET token_revoked=1 WHERE id=?")
+    .bind(id)
+    .run();
+  expect(
+    (await orderStatus(post("/api/order", { token }), context)).status,
+  ).toBe(404);
+  await env.DB.prepare(
+    "UPDATE orders SET token_revoked=0,created_at=? WHERE id=?",
+  )
+    .bind(now() - 91 * 86400, id)
+    .run();
+  expect(
+    (await orderStatus(post("/api/order", { token }), context)).status,
+  ).toBe(404);
+  expect(await orderViewByToken(env, token)).toBeNull();
+  expect(await orderView(env, id)).toBeNull();
+});
+test("one order lookup serves the API and the page with a single batch of queries", async () => {
+  // Miniflare's D1 binding is a null-prototype proxy that vi.spyOn cannot
+  // wrap, so the calls are counted through a thin wrapper.
+  const calls = { batch: 0, statements: 0, prepare: 0, first: 0, run: 0 };
+  const DB = env.DB;
+  // Bound statements must stay real D1 objects (the batch is serialized
+  // across the Miniflare boundary), so only the single-row reads are wrapped.
+  const statement = (bound: ReturnType<Env["DB"]["prepare"]>) =>
+    new Proxy(bound, {
+      get(target, key, receiver) {
+        if (key === "first") return () => (calls.first++, target.first());
+        if (key === "run") return () => (calls.run++, target.run());
+        return Reflect.get(target, key, receiver);
+      },
+    });
+  const counted = {
+    ...env,
+    DB: {
+      prepare: (sql: string) => {
+        calls.prepare++;
+        const prepared = DB.prepare(sql);
+        return {
+          bind: (...values: unknown[]) => statement(prepared.bind(...values)),
+        };
+      },
+      batch: (statements: Parameters<typeof DB.batch>[0]) => {
+        calls.batch++;
+        calls.statements += statements.length;
+        return DB.batch(statements);
+      },
+    } as unknown as Env["DB"],
+  };
+  const view = await orderView(counted, id);
+  expect(calls).toEqual({
+    batch: 1,
+    statements: 3,
+    prepare: 3,
+    first: 0,
+    run: 0,
+  });
+  expect(view).toMatchObject({
+    orderId: id,
+    status: "pending",
+    paymentConfirmed: false,
+    summary: null,
+    confirmationEmail: "disabled",
+    items: [{ variantId, quantity: 1 }],
+    shipments: [],
+  });
+  expect(await orderViewByToken(env, await orderToken(env, id))).toEqual(view);
+  expect(await orderViewByToken(env, "not-a-token")).toBeNull();
+  expect(await orderViewByToken(env, `${id}.${"0".repeat(64)}`)).toBeNull();
+  const response = await orderStatus(
+    post("/api/order", { token: await orderToken(env, id) }),
+    { platform: { env: counted } },
+  );
+  expect(calls).toEqual({
+    batch: 2,
+    statements: 6,
+    prepare: 6,
+    first: 0,
+    run: 0,
+  });
+  const { ticket, ...status } = await response.json();
+  expect(status).toEqual(JSON.parse(JSON.stringify(view)));
+  expect(ticket).toMatch(/\./);
 });
 test("printable confirmation exposes only verified purchase totals and a stable reference", async () => {
   const token = await orderToken(env, id);

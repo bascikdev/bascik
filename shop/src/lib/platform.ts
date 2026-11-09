@@ -265,6 +265,34 @@ export function equal(a: string, b: string) {
 export async function orderToken(env: Env, id: string) {
   return `${id}.${await hmac(env.ORDER_TOKEN_SECRET, `order:${id}`)}`;
 }
+/** How long a ticket (the short-lived form of an order token) stays valid. */
+export const TICKET_LIFETIME_SECONDS = 600;
+const ORDER_ID = /^(?:[a-f0-9]{32}|[a-f0-9-]{36})$/;
+const ticketSignature = (env: Env, id: string, exp: number) =>
+  hmac(env.ORDER_TOKEN_SECRET, `order-ticket:${id}.${exp}`);
+/**
+ * A ticket is `<id>.<exp>.<hmac>`: the order token exchanged for a short-lived
+ * form that can travel in a URL, so only a value that expires in minutes
+ * reaches request logs. The `order-ticket:` prefix keeps a ticket from
+ * passing as a token and the other way round.
+ */
+export async function orderTicket(env: Env, id: string) {
+  const exp = now() + TICKET_LIFETIME_SECONDS;
+  return `${id}.${exp}.${await ticketSignature(env, id, exp)}`;
+}
+/** `{ id, expired }` for a ticket with a good signature, `null` otherwise. */
+export async function verifyTicket(
+  env: Env,
+  ticket: string,
+): Promise<{ id: string; expired: boolean } | null> {
+  if (!env.ORDER_TOKEN_SECRET) return null;
+  const match = /^([a-f0-9-]+)\.([0-9]{1,12})\.([a-f0-9]{64})$/.exec(ticket);
+  if (!match || !ORDER_ID.test(match[1])) return null;
+  const [, id, expText, signature] = match;
+  const exp = Number(expText);
+  if (!equal(signature, await ticketSignature(env, id, exp))) return null;
+  return { id, expired: exp < now() };
+}
 export async function rateLimit(request: Request, env: Env) {
   const bucket = Math.floor(now() / 60);
   const id = await digest(

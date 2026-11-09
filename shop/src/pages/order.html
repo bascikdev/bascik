@@ -2,6 +2,41 @@
 <html lang="en">
   <head>
     <page-head />
+    <script type="text/typescript">
+      // Runs before the body parses. A long-lived link (`#token=`) is traded,
+      // in a POST body that request logs never record, for a ticket that
+      // expires in minutes and can travel in the URL the server renders.
+      (() => {
+        const token = new URLSearchParams(location.hash.slice(1)).get("token");
+        if (!token) return;
+        const ticket = new URLSearchParams(location.search).get("ticket");
+        if (ticket) {
+          // A ticket about to expire would only render "refreshing": trade
+          // the token again now instead.
+          const exp = Number(ticket.split(".")[1]);
+          if (Number.isFinite(exp) && exp - Date.now() / 1000 > 30) return;
+        }
+        document.documentElement.classList.add("order-exchanging");
+        fetch("/api/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || typeof data.ticket !== "string")
+              throw new Error(data.error ?? "Order lookup failed.");
+            location.replace(
+              `/order?ticket=${encodeURIComponent(data.ticket)}${location.hash}`,
+            );
+          })
+          .catch((error: unknown) => {
+            document.documentElement.classList.remove("order-exchanging");
+            document.documentElement.dataset.orderError =
+              error instanceof Error ? error.message : "Order lookup failed.";
+          });
+      })();
+    </script>
   </head>
   <body>
     <navigation />

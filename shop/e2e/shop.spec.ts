@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { products } from "../src/lib/catalog.ts";
+import {
+  TEST_CONTROL_PORT,
+  type FixtureOrder,
+  fixtureOrders,
+  fixtureTicket,
+  fixtureToken,
+} from "../scripts/order-fixtures.ts";
 import { shippingCountries } from "../src/components/checkout-form/shipping-countries.ts";
 
 for (const path of [
@@ -1241,230 +1248,414 @@ test("responsive images reserve space and stay within the mobile transfer budget
   }
 });
 
-for (const state of [
-  {
-    status: "expired",
-    paymentConfirmed: false,
-    lines: 1,
-    label: "expired without payment",
-  },
-  {
-    status: "paid",
-    paymentConfirmed: true,
-    lines: 0,
-    label: "Payment received",
-  },
-  {
-    status: "test_draft",
-    paymentConfirmed: true,
-    lines: 0,
-    label: "Nothing will be produced or shipped",
-  },
-]) {
-  test(`cart clearing requires confirmed payment, not just ${state.status} status`, async ({
+// The order page renders from real rows seeded by scripts/serve-tests.ts,
+// opened through the exact private link format customers already hold.
+const fixture = (status: string, extra: Partial<FixtureOrder> = {}) => {
+  const order = fixtureOrders.find(
+    (candidate) =>
+      candidate.status === status &&
+      !candidate.broken === !extra.broken &&
+      !candidate.readOnly === !extra.readOnly &&
+      !candidate.readOnly === !extra.readOnly &&
+      Object.entries(extra).every(
+        ([key, value]) =>
+          JSON.stringify(candidate[key as keyof FixtureOrder]) ===
+          JSON.stringify(value),
+      ),
+  );
+  if (!order) throw new Error(`No fixture order with status ${status}`);
+  return order;
+};
+const control = (path: string, data: unknown = {}) =>
+  fetch(`http://127.0.0.1:${TEST_CONTROL_PORT}${path}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+const setOrder = (id: string, set: string, params: unknown[] = []) =>
+  control("/sql", {
+    sql: `UPDATE orders SET ${set} WHERE id=?`,
+    params: [...params, id],
+  });
+/** The plain paid order: no refund, no shipment, an ordinary title. */
+const paidOrder = () =>
+  fixtureOrders.find(
+    (candidate) =>
+      candidate.status === "submitted" &&
+      candidate.tax === 276 &&
+      !candidate.refund &&
+      !candidate.shipments &&
+      !candidate.title &&
+      !candidate.broken,
+  )!;
+const privateLink = (id: string) => `/order#token=${fixtureToken(id)}`;
+const ticketUrl = (id: string, exp = Math.floor(Date.now() / 1000) + 600) =>
+  `/order?ticket=${encodeURIComponent(fixtureTicket(id, exp))}`;
+const ticketPattern = /\/order\?ticket=[a-f0-9]+\.\d+\.[a-f0-9]{64}/;
+
+test.describe("private order page", () => {
+  for (const state of [
+    { status: "expired", lines: 1, label: "expired without payment" },
+    { status: "paid", lines: 0, label: "Payment received" },
+    {
+      status: "test_draft",
+      lines: 0,
+      label: "Nothing will be produced or shipped",
+    },
+  ]) {
+    test(`cart clearing requires confirmed payment, not just ${state.status} status`, async ({
+      page,
+    }) => {
+      await page.goto(`/products/${products[0].slug}`);
+      await page.getByTestId("add-to-cart").click();
+      await page.goto(privateLink(fixture(state.status).id));
+      await expect(page).toHaveURL(ticketPattern);
+      await expect(page.locator("[data-order-status]")).toContainText(
+        state.label,
+      );
+      await page.getByTestId("shop-nav-cart").click();
+      await expect(page.getByTestId("cart-line")).toHaveCount(state.lines);
+    });
+  }
+
+  test("the link format already in customers' email lands on a server-rendered ticket URL, and back does not return to the empty shell", async ({
     page,
   }) => {
-    await page.goto(`/products/${products[0].slug}`);
-    await page.getByTestId("add-to-cart").click();
-    await page.route("**/api/order", (route) =>
-      route.fulfill({
-        json: {
-          orderId: "browser-fixture",
-          status: state.status,
-          paymentConfirmed: state.paymentConfirmed,
-          items: [{ variantId: products[0].variants[0].id, quantity: 1 }],
-          shipments: [],
-        },
-      }),
+    const order = paidOrder();
+    await page.goto("/");
+    await page.goto(privateLink(order.id));
+    await expect(page).toHaveURL(ticketPattern);
+    expect(new URL(page.url()).hash).toBe(`#token=${fixtureToken(order.id)}`);
+    await expect(page.getByTestId("order-summary")).toBeVisible();
+    await expect(page.getByTestId("order-reference")).toHaveText(
+      `BASCIK-${order.id.toUpperCase()}`,
     );
-    await page.goto("/order#token=browser-fixture");
-    await expect(page.getByRole("status")).toContainText(state.label);
-    await page.getByTestId("shop-nav-cart").click();
-    await expect(page.getByTestId("cart-line")).toHaveCount(state.lines);
+    await expect(page.getByTestId("order-skeleton")).toBeHidden();
+    await page.goBack();
+    await expect(page).toHaveURL("/");
   });
-}
 
-test("order polling follows payment and asynchronous draft readiness", async ({
-  page,
-}) => {
-  await page.clock.install();
-  const states = ["pending", "paid", "submitting", "test_draft"];
-  let calls = 0;
-  await page.route("**/api/order", (route) =>
-    route.fulfill({
-      json: {
-        orderId: "polling-fixture",
-        status: states[Math.min(calls++, states.length - 1)],
-        paymentConfirmed: calls > 1,
-        testMode: true,
-        items: [],
-        shipments: [],
-      },
-    }),
-  );
-  await page.goto("/order#token=polling-fixture");
-  await expect(page.getByRole("status")).toContainText("Waiting for payment");
-  await page.clock.fastForward(3000);
-  await expect(page.getByRole("status")).toContainText("Payment received");
-  await page.clock.fastForward(6000);
-  await expect(page.getByRole("status")).toContainText("submitted to Printful");
-  await page.clock.fastForward(9000);
-  await expect(page.getByRole("status")).toContainText(
-    "Nothing will be produced or shipped",
-  );
-  await page.clock.fastForward(30000);
-  expect(calls).toBe(4);
-});
-for (const [state, amount, text] of [
-  ["refunded", 3750, "Your full refund of $37.50 has been issued."],
-  ["partial", 1000, "A partial refund of $10.00 has been issued."],
-  ["pending", 0, "A refund is processing."],
-  [
-    "failed",
-    1000,
-    "A refund needs attention. $10.00 has already been refunded.",
-  ],
-  ["none", 0, "A full refund has not yet been confirmed."],
-] as const) {
-  test(`private order shows ${state} refund without rewriting the receipt`, async ({
+  test("a ticket URL renders the summary in the first response, with JavaScript off", async ({
+    browser,
+  }) => {
+    const order = paidOrder();
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    const response = await page.goto(ticketUrl(order.id));
+    expect(response?.status()).toBe(200);
+    expect(await response?.text()).toContain(
+      `BASCIK-${order.id.toUpperCase()}`,
+    );
+    await expect(page.getByTestId("order-summary")).toBeVisible();
+    await expect(page.getByTestId("order-skeleton")).toBeHidden();
+    await expect(page.getByTestId("order-item")).toHaveCount(1);
+    await context.close();
+  });
+
+  test("a bad ticket is a real 404", async ({ page, request }) => {
+    const order = paidOrder();
+    const genuine = fixtureTicket(
+      order.id,
+      Math.floor(Date.now() / 1000) + 600,
+    );
+    const forged = `${genuine.slice(0, -1)}${genuine.endsWith("0") ? "1" : "0"}`;
+    const response = await page.goto(
+      `/order?ticket=${encodeURIComponent(forged)}`,
+    );
+    expect(response?.status()).toBe(404);
+    await expect(page).toHaveTitle(/Not found/);
+    const garbage = await request.get("/order?ticket=garbage");
+    expect(garbage.status()).toBe(404);
+    expect(garbage.headers()["content-security-policy"]).toContain(
+      "default-src 'self'",
+    );
+    expect(garbage.headers()["cache-control"]).toBe("no-store");
+    expect((await request.head("/order?ticket=garbage")).status()).toBe(404);
+    expect((await request.get("/order")).status()).toBe(200);
+    expect((await request.get("/order")).headers()["cache-control"]).toContain(
+      "no-store",
+    );
+    expect(
+      (await request.get(ticketUrl(order.id))).headers()["cache-control"],
+    ).toContain("no-store");
+  });
+
+  test("an expired ticket with the private link recovers on its own; without it, the page says to use the email link", async ({
+    page,
+    browser,
+  }) => {
+    const order = paidOrder();
+    const expired = ticketUrl(order.id, Math.floor(Date.now() / 1000) - 5);
+    await page.goto(`${expired}#token=${fixtureToken(order.id)}`);
+    await expect(page).toHaveURL(ticketPattern);
+    expect(new URL(page.url()).search).not.toBe(
+      new URL(expired, "http://x").search,
+    );
+    await expect(page.getByTestId("order-summary")).toBeVisible();
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const plain = await context.newPage();
+    await plain.goto(expired);
+    await expect(plain.locator("[data-order-status]")).toContainText(
+      "Refreshing your order link",
+    );
+    await expect(plain.getByTestId("order-help")).toContainText("private link");
+    await expect(plain.getByTestId("order-summary")).toBeHidden();
+    await context.close();
+    await page.goto("/order");
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Use the private link from your order confirmation.",
+    );
+  });
+
+  test("a link to an order that no longer exists reports it from the exchange, without a layout change", async ({
     page,
   }) => {
-    await page.route("**/api/order", (route) =>
-      route.fulfill({
-        json: {
-          orderId: "refund-fixture",
-          status:
-            state === "refunded" || state === "none"
-              ? "cancelled"
-              : "submitted",
-          paymentConfirmed: true,
-          confirmationEmail: "sent",
-          refund: { state, amount, checkedAt: 1 },
-          summary: {
-            reference: "BASCIK-REFUND",
-            placedAt: "2026-11-07T19:45:07.000Z",
-            items: [
-              {
-                variantId: products[0].variants[0].id,
-                title: "Logo shirt / Black / M",
-                quantity: 1,
-                price: 3000,
-              },
-            ],
-            subtotal: 3000,
-            shipping: 500,
-            shippingService: "Standard",
-            tax: 250,
-            total: 3750,
-          },
-          items: [],
-          shipments: [],
-        },
-      }),
+    await page.goto(`/order#token=${fixtureToken("ab".repeat(16))}`);
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "This order link has expired.",
     );
-    await page.goto("/order#token=private-refund-fixture");
-    await expect(page.getByTestId("order-refund")).toBeVisible();
-    await expect(page.getByTestId("order-refund")).toContainText(text);
-    await expect(page.getByTestId("order-summary")).toContainText("$37.50");
-    await expect(page.getByTestId("order-summary")).toContainText("Total paid");
-    await expect(page.getByTestId("order-print")).toBeVisible();
+    await expect(page).toHaveURL(/\/order#token=/);
+    await expect(page.getByTestId("order-summary")).toBeHidden();
+    await expect(page.getByTestId("order-skeleton")).toBeHidden();
   });
-}
 
-test("paid orders show a printable confirmation without leaking the private token into print headers", async ({
-  page,
-}) => {
-  await page.clock.install();
-  let emailStatus = "pending";
-  await page.route("**/api/order", (route) =>
-    route.fulfill({
-      json: {
-        orderId: "confirmation-fixture",
-        status: "submitted",
-        paymentConfirmed: true,
-        confirmationEmail: emailStatus,
-        summary: {
-          reference: "BASCIK-32CE1859BFE24C8FA5C68863B425379F",
-          placedAt: "2026-11-07T19:45:07.000Z",
-          items: [
-            {
-              variantId: products[0].variants[0].id,
-              title: "Logo shirt / Black / M",
-              quantity: 1,
-              price: 3000,
-            },
-          ],
-          subtotal: 3000,
-          shipping: 495,
-          shippingService: "Standard",
-          tax: 276,
-          total: 3771,
-        },
-        items: [],
-        shipments: [],
-      },
-    }),
-  );
-  await page.goto("/order#token=private-confirmation-fixture");
-  await expect(page.getByTestId("order-reference")).toHaveText(
-    "BASCIK-32CE1859BFE24C8FA5C68863B425379F",
-  );
-  await expect(page.getByTestId("order-summary")).toContainText(
-    "Logo shirt / Black / M",
-  );
-  await expect(page.getByTestId("order-summary")).toContainText("$37.71");
-  await expect(page.getByTestId("order-summary")).toContainText("$2.76");
-  await expect(page.getByTestId("order-email")).toContainText("queued");
-  emailStatus = "sent";
-  await page.clock.fastForward(3000);
-  await expect(page.getByTestId("order-email")).toContainText("has been sent");
-  await expect(page.getByTestId("order-print")).toBeVisible();
-  expect(
+  test("the skeleton and the result occupy about the same space", async ({
+    page,
+  }) => {
+    const order = paidOrder();
+    await page.goto("/");
+    await page.evaluate(() => {
+      (window as unknown as { __cls: number }).__cls = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEntry & {
+          hadRecentInput: boolean;
+          value: number;
+        })[])
+          if (!entry.hadRecentInput)
+            (window as unknown as { __cls: number }).__cls += entry.value;
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    const response = await page.goto(ticketUrl(order.id));
+    expect(response?.status()).toBe(200);
+    await expect(page.getByTestId("order-summary")).toBeVisible();
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.evaluate(() => {
-    window.print = () => {
-      window.dispatchEvent(new Event("beforeprint"));
-    };
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => setTimeout(resolve, 200)),
+        ),
+    );
+    const cls = await page.evaluate(() => {
+      let total = 0;
+      for (const entry of performance.getEntriesByType(
+        "layout-shift",
+      ) as (PerformanceEntry & {
+        hadRecentInput: boolean;
+        value: number;
+      })[])
+        if (!entry.hadRecentInput) total += entry.value;
+      return total;
+    });
+    expect(cls).toBeLessThanOrEqual(0.02);
   });
-  await page.getByTestId("order-print").click();
-  expect(new URL(page.url()).hash).toBe("");
-  await page.emulateMedia({ media: "print" });
-  await expect(page.getByTestId("shop-nav")).toBeHidden();
-  await expect(page.getByTestId("shop-footer")).toBeHidden();
-  await expect(page.getByTestId("order-print")).toBeHidden();
-  await expect(page.getByTestId("order-summary")).toBeVisible();
-  await expect(page.getByTestId("order-help")).toBeHidden();
-  await expect(page.getByTestId("order")).toHaveCSS("margin-top", "0px");
-  await expect(page.getByTestId("order-summary")).toHaveCSS("padding", "0px");
-  await expect(page.getByTestId("order-item")).toHaveCSS(
-    "break-inside",
-    "avoid",
-  );
-  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
-  expect(new URL(page.url()).hash).toBe("#token=private-confirmation-fixture");
-});
-test("unpaid orders cannot display or print a paid confirmation", async ({
-  page,
-}) => {
-  await page.route("**/api/order", (route) =>
-    route.fulfill({
-      json: {
-        orderId: "unpaid-fixture",
-        status: "pending",
-        paymentConfirmed: false,
-        summary: null,
-        items: [],
-        shipments: [],
-      },
-    }),
-  );
-  await page.goto("/order#token=unpaid-fixture");
-  await expect(page.getByRole("status")).toContainText("Waiting for payment");
-  await expect(page.getByTestId("order-summary")).toBeHidden();
-  await expect(page.getByTestId("order-print")).toBeHidden();
+
+  test("order polling follows payment and asynchronous draft readiness", async ({
+    page,
+  }, testInfo) => {
+    const pendingOrders = fixtureOrders.filter(
+      (candidate) => candidate.status === "pending" && !candidate.readOnly,
+    );
+    const order = pendingOrders[testInfo.project.name === "mobile" ? 1 : 0];
+    await page.goto(privateLink(order.id));
+    await expect(page).toHaveURL(ticketPattern);
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Waiting for payment",
+    );
+    await expect(page.getByTestId("order-summary")).toBeHidden();
+    const before = page.url();
+    await control("/sql", {
+      sql: "INSERT OR REPLACE INTO payment_events(id,order_id,created_at) VALUES (?,?,?)",
+      params: [`evt_${order.id}`, order.id, Math.floor(Date.now() / 1000)],
+    });
+    await setOrder(
+      order.id,
+      "status='paid',payment_tax=276,payment_total=3771",
+    );
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Payment received",
+      { timeout: 15000 },
+    );
+    await expect(page.getByTestId("order-summary")).toBeVisible();
+    await expect(page.getByTestId("order-print")).toBeVisible();
+    expect(page.url()).toMatch(ticketPattern);
+    expect(page.url()).not.toBe(before);
+    expect(new URL(page.url()).hash).toBe(`#token=${fixtureToken(order.id)}`);
+    await setOrder(order.id, "status='submitting'");
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "submitted to Printful",
+      { timeout: 15000 },
+    );
+    await setOrder(order.id, "status='test_draft'");
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Nothing will be produced or shipped",
+      { timeout: 15000 },
+    );
+    await control("/sql", {
+      sql: "DELETE FROM payment_events WHERE order_id=?",
+      params: [order.id],
+    });
+    await setOrder(
+      order.id,
+      "status='pending',payment_tax=NULL,payment_total=NULL",
+    );
+  });
+
+  for (const [state, amount, text] of [
+    ["refunded", 3771, "Your full refund of $37.71 has been issued."],
+    ["partial", 1000, "A partial refund of $10.00 has been issued."],
+    ["pending", 0, "A refund is processing."],
+    [
+      "failed",
+      1000,
+      "A refund needs attention. $10.00 has already been refunded.",
+    ],
+    ["none", 0, "A full refund has not yet been confirmed."],
+  ] as const) {
+    test(`private order shows ${state} refund without rewriting the receipt`, async ({
+      page,
+    }) => {
+      const order = fixtureOrders.find(
+        (candidate) =>
+          candidate.refund?.state === state &&
+          candidate.refund.amount === amount,
+      )!;
+      await page.goto(privateLink(order.id));
+      await expect(page.getByTestId("order-refund")).toBeVisible();
+      await expect(page.getByTestId("order-refund")).toContainText(text);
+      await expect(page.getByTestId("order-summary")).toContainText("$37.71");
+      await expect(page.getByTestId("order-summary")).toContainText(
+        "Total paid",
+      );
+      await expect(page.getByTestId("order-print")).toBeVisible();
+    });
+  }
+
+  test("item titles with markup and replacement tokens render as text", async ({
+    page,
+  }) => {
+    const order = fixture("submitted", {
+      title: 'Logo shirt <script>alert("$&")</script> / Black / M',
+    });
+    const errors: string[] = [];
+    page.on("dialog", (dialog) => {
+      errors.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goto(ticketUrl(order.id));
+    await expect(page.getByTestId("order-item").locator("h3")).toHaveText(
+      'Logo shirt <script>alert("$&")</script> / Black / M',
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test("shipments link only to https tracking pages", async ({ page }) => {
+    const order = fixture("shipped");
+    await page.goto(ticketUrl(order.id));
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "has shipped",
+    );
+    const link = page.getByRole("link", { name: "Track shipment" });
+    await expect(link).toHaveAttribute("rel", "noreferrer noopener");
+    await expect(link).toHaveAttribute("href", /^https:\/\/tools\.usps\.com\//);
+  });
+
+  test("paid orders show a printable confirmation without leaking the private link into print headers", async ({
+    page,
+  }) => {
+    const order = paidOrder();
+    await page.goto(privateLink(order.id));
+    await expect(page).toHaveURL(ticketPattern);
+    await expect(page.getByTestId("order-reference")).toHaveText(
+      `BASCIK-${order.id.toUpperCase()}`,
+    );
+    await expect(page.getByTestId("order-summary")).toContainText(
+      "Logo shirt / Black / M",
+    );
+    await expect(page.getByTestId("order-summary")).toContainText("$37.71");
+    await expect(page.getByTestId("order-summary")).toContainText("$2.76");
+    await expect(page.getByTestId("order-email")).toContainText(
+      "disabled for test orders",
+    );
+    await expect(page.getByTestId("order-print")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    const privateUrl = page.url();
+    await page.evaluate(() => {
+      window.print = () => {
+        window.dispatchEvent(new Event("beforeprint"));
+      };
+    });
+    await page.getByTestId("order-print").click();
+    expect(new URL(page.url()).hash).toBe("");
+    expect(new URL(page.url()).search).toBe("");
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByTestId("shop-nav")).toBeHidden();
+    await expect(page.getByTestId("shop-footer")).toBeHidden();
+    await expect(page.getByTestId("order-print")).toBeHidden();
+    await expect(page.getByTestId("order-summary")).toBeVisible();
+    await expect(page.getByTestId("order-help")).toBeHidden();
+    await expect(page.getByTestId("order")).toHaveCSS("margin-top", "0px");
+    await expect(page.getByTestId("order-summary")).toHaveCSS("padding", "0px");
+    await expect(page.getByTestId("order-item")).toHaveCSS(
+      "break-inside",
+      "avoid",
+    );
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+    expect(page.url()).toBe(privateUrl);
+  });
+
+  test("legacy paid orders do not invent unrecorded tax or a final total", async ({
+    page,
+  }) => {
+    const order = fixture("submitted", { tax: null });
+    await page.goto(ticketUrl(order.id));
+    await expect(page.getByTestId("order-summary")).toContainText(
+      "See Stripe receipt",
+    );
+    await expect(page.getByTestId("order-summary")).toContainText(
+      "Total before tax",
+    );
+    await expect(page.getByTestId("order-summary")).toContainText("$34.95");
+  });
+
+  test("unpaid orders cannot display or print a paid confirmation", async ({
+    page,
+  }) => {
+    const order = fixture("pending", { readOnly: true });
+    await page.goto(ticketUrl(order.id));
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Waiting for payment",
+    );
+    await expect(page.getByTestId("order-summary")).toBeHidden();
+    await expect(page.getByTestId("order-print")).toBeHidden();
+  });
+
+  test("a lookup that throws mid-stream ends in an error message, not a skeleton that never resolves", async ({
+    page,
+  }) => {
+    const order = fixture("submitted", { broken: true });
+    const response = await page.goto(ticketUrl(order.id));
+    expect(response?.status()).toBe(200);
+    await expect(page.locator("[data-order-status]")).toContainText(
+      "Order lookup failed.",
+    );
+    await expect(page.getByTestId("order-skeleton")).toBeHidden();
+    await expect(page.getByTestId("order-summary")).toBeHidden();
+    const content = await page.content();
+    expect(content).not.toContain("    at ");
+    expect(content).not.toContain("SyntaxError");
+  });
 });
 
 test("published customer policies preserve previous shop routes and decisions", async ({
