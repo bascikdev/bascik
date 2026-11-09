@@ -34,7 +34,7 @@ This is the package you install in a Bascik project: the compiler, the `bascik` 
 
 ## Getting Started
 
-Requires **Node.js ≥ 24.11**. To start a new site with a starter project, run `npm create bascik my-site` (see [Getting Started](https://bascik.dev/getting-started)). To add Bascik to an existing project:
+Requires **Node.js ≥ 24.21**. To start a new site with a starter project, run `npm create bascik my-site` (see [Getting Started](https://bascik.dev/getting-started)). To add Bascik to an existing project:
 
 ```sh
 yarn add @bascik/bascik
@@ -149,7 +149,7 @@ This repository has five independently versioned npm packages (plus the VS Code 
 
 ## Development
 
-Requires Node.js ≥ 24. The published package supports Node.js 24.11 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on older versions. Run `yarn install` from the repo root.
+Requires Node.js ≥ 24. The published package supports Node.js 24.21 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on older versions. Run `yarn install` from the repo root.
 
 ```sh
 yarn pkg:build        # compile dist/

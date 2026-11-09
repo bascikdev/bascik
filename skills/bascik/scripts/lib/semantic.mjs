@@ -1,4 +1,4 @@
-// Semantic HTML checks for the skill scripts. Dependency-free; Node.js 24.11+.
+// Semantic HTML checks for the skill scripts. Dependency-free; Node.js 24.21+.
 // Heuristic by design: each check is a warning with a fix, never a rule the build enforces. Bascik ships the markup
 // you wrote, so the element you pick is the element visitors and screen readers get.
 // Spec: https://html.spec.whatwg.org/multipage/dom.html#kinds-of-content

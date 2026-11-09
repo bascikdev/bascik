@@ -825,7 +825,7 @@ const tlsCleanupRuntimeSkipReasonFor = (version: string) =>
  * Lane gate for the retention rows: skips an http2 row off Node 24 and writes
  * the reason straight to stderr, because Vitest's default reporter prints a
  * skipped count but neither the note passed to `skip()` nor console output
- * from a skipped test (on the Node 24.11 floor lane the skip would otherwise
+ * from a skipped test (on the Node 24.21 floor lane the skip would otherwise
  * be silent). Only http2 is gated: the dev and http1 rows run, and assert, on
  * every supported runtime.
  */

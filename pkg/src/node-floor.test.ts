@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// WHY: the floor is Node 24.11, the first Node 24 LTS release. It bundles
-// npm 11.6, the first npm that installs the starter project (npm 10.9, bundled
-// with Node 22, crashes on its peer set), and chokidar 6 needs 22.22 or newer.
+// WHY: the floor is Node 24.21. Node 24 LTS bundles npm 11.6, the first npm
+// that installs the starter project (npm 10.9, bundled with Node 22, crashes on
+// its peer set), and 24.21 is the first release where `node --check` locates a
+// syntax error in a `.js` config (user-config-loader.ts relies on it).
 // `bin/bascik.js` enforces the floor before anything loads;
 // these cases pin the boundary and the message an author on an old Node sees.
 const bin = fileURLToPath(new URL("../bin/bascik.js", import.meta.url));
@@ -30,7 +31,7 @@ const runAs = (version: string) => {
 
 describe("bin/bascik.js Node floor", () => {
   it("declares the same floor in engines", () => {
-    expect(pkg.engines.node).toBe(">=24.11.0");
+    expect(pkg.engines.node).toBe(">=24.21.0");
   });
 
   // Every published workspace states the floor, so a package manager that
@@ -52,12 +53,12 @@ describe("bin/bascik.js Node floor", () => {
       const result = runAs(version);
       expect(result.status).toBe(1);
       expect(result.stderr.trim()).toBe(
-        `[bascik] Node.js 24.11.0 or newer is required. Detected ${version}.`,
+        `[bascik] Node.js 24.21.0 or newer is required. Detected ${version}.`,
       );
     },
   );
 
-  it.each(["24.11.0", "24.11.1", "24.21.0", "26.1.0"])(
+  it.each(["24.21.0", "24.21.1", "24.21.0", "26.1.0"])(
     "accepts Node %s",
     (version) => {
       const result = runAs(version);

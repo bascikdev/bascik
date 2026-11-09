@@ -1,5 +1,5 @@
 // Shared plumbing for the parity checks (interaction-crawl.mjs through production-defects.mjs and run-checks.mjs).
-// Dependency-free; Node.js 24.11+. Nothing here imports Playwright: the browser comes from the caller.
+// Dependency-free; Node.js 24.21+. Nothing here imports Playwright: the browser comes from the caller.
 //
 // Every check module exports CHECK (its name) and runCheck(browser, options), which resolves to
 // { check, ok, findings, ... } where each finding is { check, kind, message, ... } and ok is findings.length === 0.

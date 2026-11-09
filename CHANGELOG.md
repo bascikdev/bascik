@@ -66,10 +66,11 @@ package ships as 1.0.0 together.
 
 ### Changed
 
-- The minimum supported Node.js version is 24.11.0, the first Node 24 LTS release.
-  Earlier release candidates supported Node 22.22; npm 10.9 (bundled with Node 22)
-  cannot install the starter project's dependencies, so the floor moved to the first
-  version proven to work end to end.
+- The minimum supported Node.js version is 24.21.0. Earlier release candidates
+  supported Node 22.22; npm 10.9 (bundled with Node 22) cannot install the starter
+  project's dependencies, and Node 24.21 is the first release where `node --check`
+  locates a syntax error in a `.js` config, which `bascik` relies on to name the
+  line. The floor is the first version proven to work end to end.
 - `npm create bascik` replaces `npm create bascik@rc` in every document and in the
   CLI's own help. The `rc` dist-tag is left pointing at 1.0.0 so older links keep
   working.

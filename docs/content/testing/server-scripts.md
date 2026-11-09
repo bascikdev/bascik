@@ -76,7 +76,7 @@ Inside the component template, import the helper module and execute request-time
 </script>
 ```
 
-> **ESM Import Convention:** Import a local TypeScript module by its real `.ts` filename. Node 24.11+ strips the types at runtime, so the same specifier works in the dev server, `bascik --server`, and Vitest. A `.js` specifier is not mapped to a `.ts` file and fails with `ERR_MODULE_NOT_FOUND`.
+> **ESM Import Convention:** Import a local TypeScript module by its real `.ts` filename. Node 24.21+ strips the types at runtime, so the same specifier works in the dev server, `bascik --server`, and Vitest. A `.js` specifier is not mapped to a `.ts` file and fails with `ERR_MODULE_NOT_FOUND`.
 
 ## Writing Server Logic Unit Tests
 

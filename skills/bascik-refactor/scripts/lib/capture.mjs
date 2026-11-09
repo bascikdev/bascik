@@ -1,4 +1,4 @@
-// Identical capture settings for production and the Bascik target. Dependency-free; Node.js 24.11+.
+// Identical capture settings for production and the Bascik target. Dependency-free; Node.js 24.21+.
 // The functions take a Playwright page or browser from the caller; nothing here imports Playwright.
 
 /**

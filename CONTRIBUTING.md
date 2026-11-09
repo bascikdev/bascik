@@ -12,7 +12,7 @@ welcome.
 
 ## Set up
 
-You need Node 24.11 or newer and Yarn (the repository pins it through Corepack).
+You need Node 24.21 or newer and Yarn (the repository pins it through Corepack).
 
 ```sh
 corepack enable

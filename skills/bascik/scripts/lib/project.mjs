@@ -1,4 +1,4 @@
-// Shared helpers for the Bascik skill scripts. Dependency-free; Node.js 24.11+.
+// Shared helpers for the Bascik skill scripts. Dependency-free; Node.js 24.21+.
 import {
   existsSync,
   readFileSync,

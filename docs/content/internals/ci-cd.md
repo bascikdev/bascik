@@ -26,7 +26,7 @@ concurrency:
 - **Only a merged pull request deploys.** Since `main` runs no tests, each deploy job on `main` fails before Wrangler unless `github.sha` came from a pull request merged into `main`, so a commit pushed straight to `main` deploys nothing. The manual emergency deploy in `DEPLOYMENT.md` is the bypass.
 - **A newer push to a branch cancels the older run**, its Preview upload included. Runs on `main` each get their own concurrency group, so none is canceled or left pending behind another. No job has a group of its own: a shared group holds only one pending job, so on `main` an older commit's deploy that queued later would cancel the newer commit's pending deploy.
 
-It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a Node 24.11 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
+It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a Node 24.21 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
 
 ### Stage 1: Static Analysis, Typechecks, and Standards
 
@@ -39,16 +39,16 @@ It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a N
 
 Unit tests with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:unit`), `bascik-skills-tests` (`yarn skills:unit`, job `unit-skills`), `extensions/vscode-bascik` (`yarn ext:unit`), `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`), and `@bascik/language-server` (`yarn lsp:test:ci`, job `unit-lsp`). The Windows job (`unit-windows`, `windows-latest`) runs the framework, language server, Cloudflare adapter, and `create-bascik` unit tests in this stage too, because Windows is a supported platform.
 
-### Stage 3: Integration Tests and the Node 24.11 Floor
+### Stage 3: Integration Tests and the Node 24.21 Floor
 
 Integration tests spawn real processes, servers, browsers, and worker threads, so they start only after every unit job passes:
 
 - **Framework Integration Tests (`integration-pkg`)**: `yarn pkg:integration`.
 - **Docs Integration Tests (`integration-docs`)**: `yarn docs:integration`.
 - **Agent Skills Integration Tests (`integration-skills`)**: `yarn skills:integration`, with Chromium installed for the `bascik-refactor` parity checks.
-- **Node 24.11 Floor (`node-floor`)**: Builds every workspace and runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor, to prove the packages still work there.
+- **Node 24.21 Floor (`node-floor`)**: Builds every workspace and runs `yarn typecheck:all`, every workspace's unit tests, and the framework integration tests on the published engine floor, to prove the packages still work there.
 
-If framework integration tests fail, both framework jobs upload retained profiling test directories as `profiling-diagnostics-node24` or `profiling-diagnostics-node24.11`, kept for seven days. These artifacts contain synthetic fixtures, capture logs, manifests, and profiler output for diagnosing capture failures. Unexpected profiler failures report the original subprocess error rather than a secondary assertion; the existing HeapProfiler invalid-allocation rejection remains strict. Successful profiling tests remove their temporary reports.
+If framework integration tests fail, both framework jobs upload retained profiling test directories as `profiling-diagnostics-node24` or `profiling-diagnostics-node24.21`, kept for seven days. These artifacts contain synthetic fixtures, capture logs, manifests, and profiler output for diagnosing capture failures. Unexpected profiler failures report the original subprocess error rather than a secondary assertion; the existing HeapProfiler invalid-allocation rejection remains strict. Successful profiling tests remove their temporary reports.
 
 ### Stage 4: End-to-End Test Matrix
 

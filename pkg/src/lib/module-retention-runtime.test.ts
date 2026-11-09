@@ -16,7 +16,7 @@ const destroySslPrototype = { _destroySSL() {} };
 
 describe("TLS cleanup runtime gate", () => {
   it.each([
-    ["v24.11.0", true],
+    ["v24.21.0", true],
     ["v23.11.1", false],
     ["v24.0.0", true],
     ["v24.21.0", true],
@@ -31,7 +31,7 @@ describe("TLS cleanup runtime gate", () => {
     expect(isTlsCleanupRuntimeSupported(version)).toBe(supported);
   });
 
-  it.each(["v24.11.0", "v24.21.0", "v25.0.0", "v26.1.0"])(
+  it.each(["v24.21.0", "v24.21.0", "v25.0.0", "v26.1.0"])(
     "assertion agrees with the skip predicate for %s",
     (version) => {
       const run = () =>
@@ -59,7 +59,7 @@ describe("TLS cleanup runtime gate", () => {
 // count: not the note passed to `skip()`, not a skipped test's console output.
 // The lane gate writes its reason straight to stderr, which every reporter
 // passes through, and gates only http2 so the http1 and dev rows still assert
-// there. The Node 24.11 floor runs every lane.
+// there. The Node 24.21 floor runs every lane.
 describe("retention lane gate", () => {
   const record = (mode: "dev" | "http1" | "http2", version: string) => {
     const skipped: string[] = [];
@@ -88,9 +88,9 @@ describe("retention lane gate", () => {
   );
 
   it.each(["dev", "http1", "http2"] as const)(
-    "runs the %s lane on the Node 24.11 floor",
+    "runs the %s lane on the Node 24.21 floor",
     (mode) => {
-      expect(record(mode, "v24.11.0")).toEqual({ skipped: [], logged: [] });
+      expect(record(mode, "v24.21.0")).toEqual({ skipped: [], logged: [] });
     },
   );
 

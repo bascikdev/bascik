@@ -46,7 +46,7 @@ The `--` is required: npm keeps flags placed before it for itself and does not p
 
 ## Prerequisites
 
-- Node.js 24.11 or newer for the build.
+- Node.js 24.21 or newer for the build.
 - `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh
@@ -212,7 +212,7 @@ Workers Builds builds and deploys the Worker on every push to the production bra
 | Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc` |
 | Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                  |
 | Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                     |
-| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (24.11 or newer)             |
+| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (24.21 or newer)             |
 
 The root directory is where the build runs, not the folder Wrangler deploys: the generated folder does not exist until the build command has run. Workers Builds installs your dependencies with the package manager your lock file names, and uses the Wrangler version your `package.json` pins.
 

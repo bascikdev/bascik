@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Audit how a Bascik project's pages are composed from components, whether they use semantic HTML, and whether
 // their code is TypeScript.
-// Dependency-free; Node.js 24.11+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
+// Dependency-free; Node.js 24.21+. Run from the project root. Heuristic: every finding is a suggestion to weigh.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";

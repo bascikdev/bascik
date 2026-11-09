@@ -91,7 +91,7 @@ describe("measureGrowth", () => {
   });
 
   // A linear scan slows per character once its input and output outgrow the
-  // CPU cache: the Node 24.11 lane on CI read growths of 8.1, 8.1 and 9.2
+  // CPU cache: the Node 24.21 lane on CI read growths of 8.1, 8.1 and 9.2
   // for linear masking at 200k characters, never above 5.2 locally, where
   // the cache holds both sizes.
   it("passes linear work that runs 2.3 times slower per character at full size", () => {

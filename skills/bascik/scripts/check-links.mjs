@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Find broken internal links, missing assets, and dead #fragments in the built site. Dependency-free; Node 24.11+.
+// Find broken internal links, missing assets, and dead #fragments in the built site. Dependency-free; Node 24.21+.
 // Run from the project root after `bascik --build`.
 import {
   existsSync,

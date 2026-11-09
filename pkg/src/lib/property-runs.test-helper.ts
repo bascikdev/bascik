@@ -4,7 +4,7 @@
  *
  * A property with no explicit bounds draws a fresh random seed on every run,
  * so its cost changes from run to run, and runs under Vitest's 5 s default
- * timeout: the Node 24.11 floor runner on CI timed out a property that takes
+ * timeout: the Node 24.21 floor runner on CI timed out a property that takes
  * under a second on a developer machine. Each property therefore runs a
  * fixed number of cases from a fixed seed, sized to finish well under a
  * second locally, with a 30 s timeout as the margin for a slow runner.

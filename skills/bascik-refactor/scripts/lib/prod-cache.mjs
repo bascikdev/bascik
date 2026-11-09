@@ -1,5 +1,5 @@
 // The production cache: what a parity check measured on production, kept on disk so the next run reads it instead of
-// loading production again at every matrix case. Dependency-free; Node.js 24.11+. Nothing here imports Playwright.
+// loading production again at every matrix case. Dependency-free; Node.js 24.21+. Nothing here imports Playwright.
 //
 // Why: production does not change between two runs of the iteration loop, but every run measured it again, which made
 // a full run take 20 to 50 minutes per route. The key holds everything that changes what production measures, so a

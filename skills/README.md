@@ -43,7 +43,7 @@ The skills hold the rules an assistant must follow and point to the docs at http
 
 ## Scripts
 
-The skills ship Node.js scripts (Node 24.11+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
+The skills ship Node.js scripts (Node 24.21+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
 
 | Script                                               | Purpose                                                                                                                                                                                                         |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

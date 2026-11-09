@@ -32,7 +32,7 @@ body:
     id: node-version
     attributes:
       label: Node.js version and operating system
-      placeholder: Node 24.11.0 on macOS 15
+      placeholder: Node 24.21.0 on macOS 15
     validations:
       required: true
   - type: dropdown

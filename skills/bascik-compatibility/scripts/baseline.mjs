@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Look up the Baseline browser support status of web platform features from the Web Platform Status API
 // (https://webstatus.dev), which is built on the web-features data that MDN and caniuse also use.
-// Dependency-free; Node.js 24.11+.
+// Dependency-free; Node.js 24.21+.
 import { parseArgs } from "node:util";
 import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";

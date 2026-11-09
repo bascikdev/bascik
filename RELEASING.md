@@ -93,7 +93,7 @@ Extension versions must be plain `x.y.z`; `--extension-pre` uses
    ```
 
 3. **Verify as a user.** In an empty directory on the floor Node version
-   (`nvm use 24.11.0`): `npm create bascik my-site -y -- --no-dev`, then `npm run lint`,
+   (`nvm use 24.21.0`): `npm create bascik my-site -y -- --no-dev`, then `npm run lint`,
    `npm run build` with `BASCIK_SITE_URL` set, and `npm run e2e`. Check
    `npm view @bascik/bascik dist-tags` shows `latest` at the new version, and that the
    Marketplace stable channel lists the extension version (the pre-release toggle in VS
