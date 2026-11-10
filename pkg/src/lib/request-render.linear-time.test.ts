@@ -412,7 +412,16 @@ describe.each([true, false])(
           `<server-card>${unit.repeat(BASE_USAGES)}${fill(unit, size)}</server-card>`;
         const full = html(HOSTILE_SIZE);
         expect(expand(full)).toBe("limit");
-        expectLinearTime(html, HOSTILE_SIZE, expand, { baseline: html(0) });
+        // The growth is taken over the baseline (the 1000 substitutions
+        // both sizes pay). At 200k that baseline was two thirds of the
+        // quarter-size run, so a few milliseconds of jitter in that sample
+        // read as a growth of 14 on the Node 26 CI lane (4 to 6 alone).
+        // Measured at four times the size, the part that varies is most of
+        // the quarter-size run, and the check still runs well under the
+        // ceiling.
+        expectLinearTime(html, 4 * HOSTILE_SIZE, expand, {
+          baseline: html(0),
+        });
         expectCostRatio(
           measureCostRatio(
             () => expand(full),

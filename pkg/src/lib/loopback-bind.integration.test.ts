@@ -101,12 +101,25 @@ const fetchFrom = (host: string, port: number) =>
     );
   });
 
-const bindable = (host: string, port: number) =>
+const bindOnce = (host: string, port: number) =>
   new Promise<boolean>((resolve) => {
     const probe = net.createServer();
     probe.once("error", () => resolve(false));
     probe.listen(port, host, () => probe.close(() => resolve(true)));
   });
+/**
+ * Whether `host:port` can be bound. A listener's `close()` callback runs
+ * before the kernel has always released the address (the floor lane on
+ * Linux read the IPv4 side as busy once, a few milliseconds after close), so
+ * the probe retries for up to a second before calling the address held.
+ */
+const bindable = async (host: string, port: number) => {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (await bindOnce(host, port)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+};
 
 describe("hostname localhost listens on both loopbacks", () => {
   it("answers on 127.0.0.1 and on [::1] (findings 46 and 86)", async () => {
