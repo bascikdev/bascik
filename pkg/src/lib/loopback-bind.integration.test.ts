@@ -11,6 +11,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import net from "node:net";
 
+// WHY: each case opens real listeners on both loopbacks and, for the
+// port-conflict cases, closes and reopens them on the next port. The Node
+// floor runner on CI took over the default 5 s for that under load (the
+// socket close is what waits, not Bascik), while the same case takes a few
+// milliseconds alone.
+vi.setConfig({ testTimeout: 30_000 });
+
 const { configState } = vi.hoisted(() => ({
   configState: {
     base: "/",
