@@ -104,10 +104,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -160,10 +160,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -191,10 +191,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -233,10 +233,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -267,10 +267,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -302,10 +302,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -349,10 +349,10 @@ jobs:
           }
           corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       # On Windows, Corepack's shims are written next to the active `node`, so the
@@ -405,10 +405,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -439,10 +439,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -473,10 +473,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -504,10 +504,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -535,10 +535,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -579,10 +579,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -642,10 +642,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -684,10 +684,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -703,8 +703,9 @@ jobs:
 
   # The published packages declare `engines.node >=24.21.0`, and `bin/bascik.js` enforces it, so one lane proves every
   # workspace still builds and passes its unit tests on that floor, plus the framework integration tests (real builds,
-  # servers and sockets). The other jobs stay on the current Node 24: two pkg test helpers need a V8 13.6
-  # intrinsic and Node 24's TLS cleanup callback ordering, and those tests skip themselves below those versions.
+  # servers and sockets). The other jobs run the `.nvmrc` Node (26, the current LTS): two pkg test helpers need a V8
+  # 13.6 intrinsic and a verified TLS cleanup callback ordering (Node 24 and 26), and those tests skip themselves on
+  # other versions.
   node-floor:
     name: Node 24.21 Floor
     runs-on: ubuntu-latest
@@ -849,10 +850,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -937,10 +938,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -980,10 +981,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1032,10 +1033,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1075,10 +1076,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1118,10 +1119,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1166,10 +1167,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1216,10 +1217,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1259,10 +1260,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1299,10 +1300,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1415,10 +1416,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1551,10 +1552,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1692,10 +1693,10 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: "yarn"
 
       - name: Install dependencies
@@ -1808,10 +1809,10 @@ jobs:
 
       # This job installs nothing: it runs one dependency-free script. setup-node v5 caches the package manager
       # named in package.json by default, which would call Yarn without Corepack, so the cache is turned off.
-      - name: Use Node.js 24
+      - name: Use the .nvmrc Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           package-manager-cache: false
 
       # A push run builds the branch commit itself, github.sha, so that is the commit the comment names.

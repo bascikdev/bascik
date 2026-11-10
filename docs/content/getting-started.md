@@ -1,6 +1,6 @@
 # Getting Started
 
-Bascik runs on Node.js 24.21 or newer.
+Bascik runs on Node.js 24.21 or newer; Node.js 26, the current LTS, is recommended.
 
 ## Quick Start
 

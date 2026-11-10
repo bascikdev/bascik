@@ -52,7 +52,7 @@ describe("packet R2: fixed production batches", () => {
     "production-only 102 warmup + 252 + 252 sequential requests across three routes (%s)",
     { timeout: 120_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);
@@ -127,7 +127,7 @@ describe("packet R3 row: cancel before headers", () => {
     "cancel before headers %s: 10 smoke then 100 measured cycles",
     { timeout: 180_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);
@@ -192,7 +192,7 @@ describe("packet R3 row: cancel after exact prefix", () => {
     "cancel after exact prefix %s: 10 smoke then 100 measured cycles",
     { timeout: 180_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);
@@ -263,7 +263,7 @@ describe("packet R3 row: reject after acknowledged abort", () => {
     "reject after acknowledged abort %s: 10 smoke then 100 measured cycles",
     { timeout: 180_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);
@@ -327,7 +327,7 @@ describe("packet R3 row: fixed failed import", () => {
     "fixed failed import %s: 10 smoke then 100 measured cycles",
     { timeout: 180_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);

@@ -34,7 +34,7 @@ create/README.md adapters/*/README.md` and fix what the bump left behind (instal
 ## Release
 
 Update package versions and dependent ranges, pass CI, and merge into `main`.
-Then, with Node 24, Git, and an authenticated GitHub CLI:
+Then, with the `.nvmrc` Node, Git, and an authenticated GitHub CLI:
 
 ```sh
 yarn release                       # Publish all six artifacts

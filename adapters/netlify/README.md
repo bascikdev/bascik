@@ -109,7 +109,7 @@ Return the same `user_metadata` from `identity-signup` for new users. An affecte
 The permanent fixture in `e2e/fixture/` deploys to
 [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev/).
 It is independent of application projects and contains synthetic data only.
-Run these commands from the monorepo root on Node 24:
+Run these commands from the monorepo root on the `.nvmrc` Node:
 
 ```sh
 yarn adapter:nf:unit          # Runtime, installer and real-build/Node parity tests

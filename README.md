@@ -84,7 +84,7 @@ This repository holds Bascik and everything around it. Each folder is a Yarn wor
 
 ## Working in This Repo
 
-Develop on **Node 24**: the full test suite needs it. The published packages support **Node 24.21** and newer, and CI checks that floor in its own job. The repo uses Yarn 4 workspaces (`yarn@4.18.0`, through Corepack), so one install at the root wires everything up:
+Develop on **Node 26**, the current LTS (`.nvmrc` pins it; Node 24 works too). The published packages support **Node 24.21** and newer, and CI runs every suite on Node 26 and checks the floor in its own job. The repo uses Yarn 4 workspaces (`yarn@4.18.0`, through Corepack), so one install at the root wires everything up:
 
 ```sh
 corepack enable

@@ -149,7 +149,7 @@ This repository has five independently versioned npm packages (plus the VS Code 
 
 ## Development
 
-Requires Node.js ≥ 24. The published package supports Node.js 24.21 and newer, but the full test suite needs Node 24: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on Node 24's TLS cleanup callback ordering, and those tests skip on older versions. Run `yarn install` from the repo root.
+Develop on Node.js 26, the current LTS (`.nvmrc` pins it); Node 24 works too. The published package supports Node.js 24.21 and newer. The full test suite runs on both lines: two test helpers depend on the V8 `%StringIsFlat` intrinsic (V8 13.6) and on a verified TLS cleanup callback ordering (Node 24 and 26), and those tests skip on other versions. Run `yarn install` from the repo root.
 
 ```sh
 yarn pkg:build        # compile dist/

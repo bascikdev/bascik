@@ -26,7 +26,7 @@ concurrency:
 - **Only a merged pull request deploys.** Since `main` runs no tests, each deploy job on `main` fails before Wrangler unless `github.sha` came from a pull request merged into `main`, so a commit pushed straight to `main` deploys nothing. The manual emergency deploy in `DEPLOYMENT.md` is the bypass.
 - **A newer push to a branch cancels the older run**, its Preview upload included. Runs on `main` each get their own concurrency group, so none is canceled or left pending behind another. No job has a group of its own: a shared group holds only one pending job, so on `main` an older commit's deploy that queued later would cancel the newer commit's pending deploy.
 
-It runs four gated test stages on Node 24 and Ubuntu, with a Windows job and a Node 24.21 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
+It runs four gated test stages on the `.nvmrc` Node (26, the current LTS) and Ubuntu, with a Windows job and a Node 24.21 job inside them, then a fifth stage that deploys. Every job in a stage waits for every job in the stage before it, so CI fails fast: a type error or a spelling mistake stops the run before any test starts, a failing unit test stops it before the slower integration tests, an integration failure stops it before the end-to-end matrix, and nothing deploys until every test has passed.
 
 ### Stage 1: Static Analysis, Typechecks, and Standards
 
@@ -215,4 +215,4 @@ Use a prerelease version and the matching tag, for example `1.0.0-rc.1` with `v1
 
 The release workflow picks up the tag, runs tests, builds `dist/` (which is not committed to git), and publishes to npm.
 
-> **Prerequisite.** Save each package's npm trusted-publisher configuration before pushing a release tag. The jobs already have `id-token: write` and Node 24 with an OIDC-capable npm CLI; no `NPM_TOKEN` secret is needed.
+> **Prerequisite.** Save each package's npm trusted-publisher configuration before pushing a release tag. The jobs already have `id-token: write` and the `.nvmrc` Node with an OIDC-capable npm CLI; no `NPM_TOKEN` secret is needed.

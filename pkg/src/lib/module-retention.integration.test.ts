@@ -133,7 +133,7 @@ describe("module retention lifecycle evidence", () => {
     "retains a fixed-source %s production control",
     { timeout: 60_000 },
     async (mode, { skip }) => {
-      // WHY: the http2 child requires Node 24's TLS cleanup callback ordering
+      // WHY: the http2 child requires Node 24's or 26's verified TLS cleanup callback ordering
       // (assertSupportedTlsCleanupRuntime); the gate skips that lane off Node
       // 24 and logs why, so the skip is visible in every reporter.
       skipUnsupportedRetentionLane(mode, skip);

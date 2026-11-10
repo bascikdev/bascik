@@ -21,7 +21,8 @@ describe("TLS cleanup runtime gate", () => {
     ["v24.0.0", true],
     ["v24.21.0", true],
     ["v25.0.0", false],
-    ["v26.1.0", false],
+    ["v26.13.0", true],
+    ["v27.0.0", false],
     // Misuse: a bare version without the `v` prefix, or a prefix lookalike,
     // must not be read as Node 24.
     ["24.21.0", false],
@@ -31,7 +32,7 @@ describe("TLS cleanup runtime gate", () => {
     expect(isTlsCleanupRuntimeSupported(version)).toBe(supported);
   });
 
-  it.each(["v24.21.0", "v24.21.0", "v25.0.0", "v26.1.0"])(
+  it.each(["v24.21.0", "v25.0.0", "v26.13.0", "v27.0.0"])(
     "assertion agrees with the skip predicate for %s",
     (version) => {
       const run = () =>
@@ -54,7 +55,7 @@ describe("TLS cleanup runtime gate", () => {
   });
 });
 
-// WHY: on a runtime outside the verified Node 24 line (Node 25 or newer) the
+// WHY: on a runtime outside the verified Node 24 and 26 lines (Node 25, 27) the
 // http2 retention rows skip, and the default reporter shows only a skipped
 // count: not the note passed to `skip()`, not a skipped test's console output.
 // The lane gate writes its reason straight to stderr, which every reporter
@@ -73,7 +74,7 @@ describe("retention lane gate", () => {
     return { skipped, logged };
   };
 
-  it("skips an http2 lane off Node 24 and logs why", () => {
+  it("skips an http2 lane off Node 24 and 26 and logs why", () => {
     const { skipped, logged } = record("http2", "v25.0.0");
     expect(skipped).toHaveLength(1);
     expect(skipped[0]).toMatch(/TLS cleanup callback ordering.*v25\.0\.0/);
@@ -81,7 +82,7 @@ describe("retention lane gate", () => {
   });
 
   it.each(["dev", "http1"] as const)(
-    "runs the %s lane off Node 24 without skipping",
+    "runs the %s lane off Node 24 and 26 without skipping",
     (mode) => {
       expect(record(mode, "v25.0.0")).toEqual({ skipped: [], logged: [] });
     },
@@ -94,7 +95,10 @@ describe("retention lane gate", () => {
     },
   );
 
-  it("runs the http2 lane on Node 24 without logging", () => {
-    expect(record("http2", "v24.21.0")).toEqual({ skipped: [], logged: [] });
-  });
+  it.each(["v24.21.0", "v26.13.0"])(
+    "runs the http2 lane on %s without logging",
+    (version) => {
+      expect(record("http2", version)).toEqual({ skipped: [], logged: [] });
+    },
+  );
 });
