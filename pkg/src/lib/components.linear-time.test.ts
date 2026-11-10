@@ -238,7 +238,14 @@ describe("replaceDefaultSlots", () => {
       const content = "x".repeat(20_000);
       const out = replaceDefaultSlots(template(2000), content);
       expect(out).toBe(`<div>${content.repeat(2000)}</div>`);
-      expectLinearTime(template, 2000, (t) => replaceDefaultSlots(t, content));
+      // Growth is measured with 2000-character content: the 40 MB output of
+      // the 20000-character case spills the CPU cache at full size but not
+      // at a quarter, which read as a growth of 17 on a loaded Node 26 CI
+      // runner for work that is linear (4 locally on Node 24 and 26). The
+      // defect this guards against, one copy of the result per marker, is
+      // quadratic at any content length.
+      const measured = "x".repeat(2000);
+      expectLinearTime(template, 2000, (t) => replaceDefaultSlots(t, measured));
       // Past the limit, the time to fail is not a matter of growth: building
       // the result up to the engine's limit before failing takes seconds.
       const huge = "x".repeat(300_000);

@@ -353,11 +353,16 @@ describe("usages cut mid-tag render without re-masking the instance", () => {
   // without and with coverage (which slows the renderer, not the copying),
   // at each size: the copying is a larger share of a larger output (200k:
   // 1.35 to 1.53 plain, 1.63 to 2.71 coverage; 1M: 1.04 to 1.26 plain, 1.05
-  // to 2.39 coverage). Measure again after a change that makes these renders
-  // cheaper.
+  // to 2.39 coverage). At 1M one run takes about 300 ms, so each sample is a
+  // single run and one GC pause lands whole on the ratio: the full
+  // integration run on a loaded Node 26 CI runner read 2.40 for a shape that
+  // reads 1.45 to 1.75 alone (Node 24 and 26), so the 1M plain calibration
+  // carries that reading. The old loops cost tens of times the reference, so
+  // twice this still fails them. Measure again after a change that makes
+  // these renders cheaper.
   const NESTED_COST: Record<string, CalibratedRatio> = {
     "200k": { plain: 1.53, coverage: 2.71 },
-    "1M": { plain: 1.26, coverage: 2.39 },
+    "1M": { plain: 2.4, coverage: 2.4 },
   };
   const list: ComponentList = {
     "my-card": {
