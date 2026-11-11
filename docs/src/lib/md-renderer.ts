@@ -324,6 +324,12 @@ interface RenderMdOptions {
   pageTop?: boolean;
   stripDemoBlocks?: boolean;
   skipToFirstH2?: boolean;
+  /**
+   * Prefix each `<h3>` id with the id of the `<h2>` it sits under. For a document that repeats its sub-headings in
+   * every section, such as a changelog with "Added" and "Fixed" under each version: without it every "Fixed" after
+   * the first shares the id `#fixed`.
+   */
+  sectionScopedH3Ids?: boolean;
 }
 
 interface RenderRange {
@@ -454,6 +460,7 @@ export async function renderMd(
     skipFirstHeading = false,
     stripDemoBlocks = false,
     skipToFirstH2 = false,
+    sectionScopedH3Ids = false,
   }: RenderMdOptions = {},
 ): Promise<string> {
   let md: string;
@@ -474,7 +481,7 @@ export async function renderMd(
   }
   return _transformMd(
     md,
-    { skipFirstHeading, stripDemoBlocks, pageTop: true },
+    { skipFirstHeading, stripDemoBlocks, pageTop: true, sectionScopedH3Ids },
     filePath,
   );
 }
@@ -539,6 +546,7 @@ function _transformMd(
     skipFirstHeading = false,
     stripDemoBlocks = false,
     pageTop = false,
+    sectionScopedH3Ids = false,
   }: RenderMdOptions = {},
   filePath = "Markdown",
 ): string {
@@ -563,8 +571,14 @@ function _transformMd(
   // Two headings with one id send the second one's anchor link, its "On this page" entry and its search result
   // to the first, so a repeat is reported (heading-ids.test.ts fails on one in docs/content too).
   const headingsById = new Map<string, string>();
+  let sectionSlug = "";
   html = html.replace(/<h([23])>(.*?)<\/h\1>/g, (_, level, text) => {
-    const slug = slugFromHeadingHtml(text);
+    const ownSlug = slugFromHeadingHtml(text);
+    if (level === "2") sectionSlug = ownSlug;
+    const slug =
+      sectionScopedH3Ids && level === "3" && sectionSlug
+        ? `${sectionSlug}-${ownSlug}`
+        : ownSlug;
     const first = headingsById.get(slug);
     if (first === undefined) headingsById.set(slug, headingPlainText(text));
     else
