@@ -173,7 +173,7 @@ __metadata:
     esbuild: "npm:^0.28.2"
     jsonc-parser: "npm:^3.3.1"
     miniflare: "npm:4.20260730.0"
-    smol-toml: "npm:^1.9.0"
+    smol-toml: "npm:^1.9.1"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"
@@ -226,7 +226,7 @@ __metadata:
     dependency-cruiser: "npm:^18.5.0"
     esbuild: "npm:^0.28.2"
     fast-check: "npm:^4.10.2"
-    parse5: "npm:^8.0.1"
+    parse5: "npm:^8.1.0"
     postcss: "npm:^8.5.28"
     typescript: "npm:^7.0.2"
     typescript-6: "npm:typescript@^6.0.3"
@@ -259,8 +259,8 @@ __metadata:
     typescript-6: "npm:typescript@^6.0.3"
     vite: "npm:^8.3.4"
     vitest: "npm:^5.0.3"
-    vscode-languageserver: "npm:^10.1.2"
-    vscode-languageserver-textdocument: "npm:^1.0.15"
+    vscode-languageserver: "npm:^11.0.0"
+    vscode-languageserver-textdocument: "npm:^1.0.16"
   peerDependencies:
     typescript: ">=5.0 <7"
   peerDependenciesMeta:
@@ -5159,15 +5159,15 @@ __metadata:
     "@zachleat/heading-anchors": "npm:^1.0.5"
     axe-core: "npm:^4.13.0"
     canvas-confetti: "npm:^1.9.4"
-    ejs: "npm:^6.0.1"
+    ejs: "npm:^7.0.2"
     esbuild: "npm:^0.28.2"
     handlebars: "npm:^4.7.10"
     lighthouse: "npm:^13.5.0"
-    marked: "npm:^18.0.14"
+    marked: "npm:^18.1.3"
     node-pty: "npm:^1.1.0"
     nunjucks: "npm:^3.2.4"
     opentype.js: "npm:^2.0.0"
-    parse5: "npm:^8.0.1"
+    parse5: "npm:^8.1.0"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"
@@ -5200,7 +5200,7 @@ __metadata:
     "@types/node": "npm:^24.19.1"
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
-    parse5: "npm:^8.0.1"
+    parse5: "npm:^8.1.0"
     prettier: "npm:3.9.10"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
@@ -5217,7 +5217,7 @@ __metadata:
     "@playwright/test": "npm:^1.63.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.0.3"
-    marked: "npm:^18.0.14"
+    marked: "npm:^18.1.3"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.4"
@@ -7775,12 +7775,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ejs@npm:^6.0.1":
-  version: 6.0.1
-  resolution: "ejs@npm:6.0.1"
+"ejs@npm:^7.0.2":
+  version: 7.0.2
+  resolution: "ejs@npm:7.0.2"
   bin:
     ejs: bin/cli.js
-  checksum: 10c0/475665efdab9deb01448a0b136129d138483228520138b2fba7991330255e4e1050eae145124c26101ff1ab158bf5f506f19a8dae5996054fc7e76bb94a12ebd
+  checksum: 10c0/f5f8b44411766186e38aec59a4974612cc259121e58a6af40c04a5613218503a92386cedc9fe7faf474bf928596c4ede9b7ce98babcf08d6d2e55c7189617259
   languageName: node
   linkType: hard
 
@@ -7910,10 +7910,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"entities@npm:^8.0.0":
-  version: 8.1.0
-  resolution: "entities@npm:8.1.0"
-  checksum: 10c0/da0bf22912c19d2a4707783e1b905d3f6a977e93e0655a8d2c526455eb3996f668f9f2e4c2a07af8d6927d232c41b6e929a7044df0236c7bf6e9c38e070e3719
+"entities@npm:^9.0.0":
+  version: 9.0.0
+  resolution: "entities@npm:9.0.0"
+  checksum: 10c0/ef713ce6256d2d878390376f0c42e6ccfeee9032c57c48bd224b9a48f8eb44d4403ad4321d1aeebe973fb08eac8ab324abeebc04a92748c0bac9261968e6d395
   languageName: node
   linkType: hard
 
@@ -12157,12 +12157,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"marked@npm:^18.0.14":
-  version: 18.0.14
-  resolution: "marked@npm:18.0.14"
+"marked@npm:^18.1.3":
+  version: 18.1.3
+  resolution: "marked@npm:18.1.3"
   bin:
     marked: bin/marked.js
-  checksum: 10c0/1214c7553fdcb1db6c5adad29a7d019f9350f861bc9783ed41a2d177f021551fb22884de012ea26be446af8650d8abbf76d822b9ad5b0c5d592628f66663c42e
+  checksum: 10c0/13e72a88c479f388f8c476f8fd50498740097f239091fcfc57d477ac1732c72c70261170029ef6f5029f48cda68663a4d2cd892041f588d95daf52caca02e1a2
   languageName: node
   linkType: hard
 
@@ -13955,12 +13955,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"parse5@npm:^8.0.1":
-  version: 8.0.1
-  resolution: "parse5@npm:8.0.1"
+"parse5@npm:^8.1.0":
+  version: 8.1.0
+  resolution: "parse5@npm:8.1.0"
   dependencies:
-    entities: "npm:^8.0.0"
-  checksum: 10c0/c3c1c5aab55f6e4be5245599790e56e64be7764a4a0edd7f98db4fe3bb380f63add752fa047dff0496446c25f4104f0c7c1967723de640bde92306a7bb67ed2f
+    entities: "npm:^9.0.0"
+  checksum: 10c0/2b00189fbeb73a47422bed831b970502258a44dc53134c0db8e2d3114cec0766fea5346dbb61aff94978c6bf666e5243bc5bcb2279b680f130f8de98cd28ac18
   languageName: node
   linkType: hard
 
@@ -16018,17 +16018,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"smol-toml@npm:^1.5.2":
+"smol-toml@npm:^1.5.2, smol-toml@npm:^1.9.1":
   version: 1.9.1
   resolution: "smol-toml@npm:1.9.1"
   checksum: 10c0/8acccf7bbc063f29405f58f5014ab39bf4eb9d7f0e000e5e3f140f7d4d6ead5696681a7c15260d1f2910213012c0af43b31a05bf94f704b0bdf39989fba08c02
-  languageName: node
-  linkType: hard
-
-"smol-toml@npm:^1.9.0":
-  version: 1.9.0
-  resolution: "smol-toml@npm:1.9.0"
-  checksum: 10c0/9a15a7560e15d050961f12cffab502f8b42af9d9e4713218181d10d3bda5e0265c4c81a92d6877e7d4e73145fc44d7fbc7cce997d9317b855fea974fc3bbc238
   languageName: node
   linkType: hard
 
@@ -18110,6 +18103,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"vscode-jsonrpc@npm:10.0.0":
+  version: 10.0.0
+  resolution: "vscode-jsonrpc@npm:10.0.0"
+  checksum: 10c0/c8a4b44d753e850bc61686c45eeb43d894d14751c6074ea3fa97d44903b01e4ffb498028d20468ade6ace4fe4555ba6ee764a2d1af50bdaed175c8be00449cab
+  languageName: node
+  linkType: hard
+
 "vscode-jsonrpc@npm:9.0.3":
   version: 9.0.3
   resolution: "vscode-jsonrpc@npm:9.0.3"
@@ -18139,10 +18139,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vscode-languageserver-textdocument@npm:1.0.15, vscode-languageserver-textdocument@npm:^1.0.15":
+"vscode-languageserver-protocol@npm:3.18.5":
+  version: 3.18.5
+  resolution: "vscode-languageserver-protocol@npm:3.18.5"
+  dependencies:
+    vscode-jsonrpc: "npm:10.0.0"
+    vscode-languageserver-types: "npm:3.18.5"
+  checksum: 10c0/d5ca0dff85619d15557629bce33a745d2662a2c6ef43d0c4dd41ea6407bb2c3ee5a01c1e4e1c25a89d1c413926dc50ae38131122112606391c3a062fa1f08882
+  languageName: node
+  linkType: hard
+
+"vscode-languageserver-textdocument@npm:1.0.15":
   version: 1.0.15
   resolution: "vscode-languageserver-textdocument@npm:1.0.15"
   checksum: 10c0/b2e5c47fe9b0c3278855aa9ef99a3de7306fe5d45399bf0f6d59f5fb4daebff6dcbadf041e991296560b0c9367627f0014f1d7e40136d2b459f21c19b671df10
+  languageName: node
+  linkType: hard
+
+"vscode-languageserver-textdocument@npm:^1.0.16":
+  version: 1.0.16
+  resolution: "vscode-languageserver-textdocument@npm:1.0.16"
+  checksum: 10c0/b21f9d0b6fa84856fc62eb83342f6459264c3832ce5c855a8cc85b86c8230e07ad7662dde0cfa7664c2855c62cd7926874551382aec1f075efe93f8ef697da16
   languageName: node
   linkType: hard
 
@@ -18153,14 +18170,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vscode-languageserver@npm:^10.1.2":
-  version: 10.1.2
-  resolution: "vscode-languageserver@npm:10.1.2"
+"vscode-languageserver-types@npm:3.18.5":
+  version: 3.18.5
+  resolution: "vscode-languageserver-types@npm:3.18.5"
+  checksum: 10c0/de783b4c3d22908e5e4b0434548aa7935771d2a2514f65706f7746b859fdd755ee8aedae020f81e8416c4a87f2b131d2b43124b9010baed957c4b4a661726cfa
+  languageName: node
+  linkType: hard
+
+"vscode-languageserver@npm:^11.0.0":
+  version: 11.0.0
+  resolution: "vscode-languageserver@npm:11.0.0"
   dependencies:
-    vscode-languageserver-protocol: "npm:3.18.4"
+    vscode-languageserver-protocol: "npm:3.18.5"
   bin:
     installServerIntoExtension: bin/installServerIntoExtension
-  checksum: 10c0/8c8f355de5e614f3c0cb85cc0fd1fdca7434fd1dfe46794c35139dc8b60c20e32992ce8cbdca0ee1db23745c0deb2fe3d44bf141197d5e403b19b5554686dde0
+  checksum: 10c0/1112cf27e9679164f307742015f27fb860ecbaac73e2a76856ae3cf3f4849e186c5c69e3aa305b3fe7fd2cab16f32a8cf3664ca515e87af9db1fdfba6ffea730
   languageName: node
   linkType: hard
 
