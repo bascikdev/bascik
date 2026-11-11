@@ -62,14 +62,14 @@
   },
   "devDependencies": {
     "@bascik/bascik": "^1.0.0-rc.12",
-    "@netlify/functions": "^5.2.0",
-    "@playwright/test": "^1.63.0",
+    "@netlify/functions": "^6.1.0",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.1",
-    "@vitest/coverage-v8": "^5.0.3",
+    "@vitest/coverage-v8": "^5.1.0",
     "netlify-cli": "^27.16.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.3"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"

@@ -10,6 +10,12 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    ignore:
+      # The types follow the oldest supported runtime, not the newest: Node 24.21 is the published floor, and
+      # `engines.vscode` is ^1.91.0 (vsce refuses to package when @types/vscode is newer than that).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/vscode"
     groups:
       dev-dependencies:
         dependency-type: development

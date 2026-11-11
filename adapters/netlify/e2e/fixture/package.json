@@ -9,6 +9,6 @@
   "devDependencies": {
     "@bascik/adapter-netlify": "workspace:*",
     "@bascik/bascik": "workspace:*",
-    "@netlify/functions": "^5.2.0"
+    "@netlify/functions": "^6.1.0"
   }
 }
