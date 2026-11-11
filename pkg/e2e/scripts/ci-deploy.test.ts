@@ -1380,7 +1380,8 @@ describe("CI stages and the deploy stage", () => {
         /^ {10}TMPDIR: \$\{\{ runner.temp \}\}$/m,
       );
       const upload = job.steps.find((step) =>
-        /uses: actions\/upload-artifact@v4/.test(step.text),
+        // Any major: Dependabot bumps the action, and the step's place and inputs are what is checked here.
+        /uses: actions\/upload-artifact@v\d+/.test(step.text),
       )!;
       expect(job.steps.indexOf(upload)).toBe(
         job.steps.indexOf(integration) + 1,
