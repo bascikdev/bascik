@@ -396,11 +396,12 @@ export const formatServerlessSummary = (
     }
   }
   // The deploy folder sits inside the output directory, so after a --target
-  // build that directory holds the Worker (with every server script's
+  // build that directory holds the bundle (with every server script's
   // source) and its config: it is no longer a folder to publish as is.
   const outputDir = dirname(dirname(result.outDir));
+  const bundleName = result.workerPath ? "the Worker" : "the deployment bundle";
   lines.push(
-    `  note: ${rel(outputDir)}/ now also holds ${rel(result.outDir)}/ (the Worker and its config). ` +
+    `  note: ${rel(outputDir)}/ now also holds ${rel(result.outDir)}/ (${bundleName} and its config). ` +
       `Deploy that folder; do not publish ${rel(outputDir)}/ to a static host.`,
   );
   return lines.join("\n");

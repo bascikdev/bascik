@@ -18,7 +18,7 @@
   "bugs": {
     "url": "https://github.com/bascikdev/bascik/issues"
   },
-  "version": "1.0.0-rc.11",
+  "version": "1.0.0-rc.12",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -59,7 +59,7 @@
     }
   },
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.21.0"
   },
   "publishConfig": {
     "access": "public"
@@ -69,7 +69,7 @@
     "parse5": "^8.0.1"
   },
   "peerDependencies": {
-    "@bascik/language-server": ">=0.1.0-rc.6"
+    "@bascik/language-server": ">=1.0.0-rc.1"
   },
   "peerDependenciesMeta": {
     "@bascik/language-server": {
@@ -103,7 +103,7 @@
     "webidl2": "^24.5.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node bin/code-map.mjs --background",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node bin/code-map.mjs --background",
     "code-map": "node bin/code-map.mjs",
     "prepack": "cp ../LICENSE LICENSE",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",

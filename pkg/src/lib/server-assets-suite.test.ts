@@ -561,6 +561,85 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     (BascikConfig as any).http.compression = true;
   });
 
+  // Audit 159 finding 34: a single byte range gets 206 and the slice; a
+  // range past the end gets 416; the whole file advertises Accept-Ranges.
+  describe("byte ranges (finding 34)", () => {
+    const bytes = Buffer.from("0123456789".repeat(100));
+    const withCache = async () => {
+      (BascikConfig as any).http.httpCache = true;
+      mockReadFile.mockResolvedValueOnce(bytes);
+    };
+    afterEach(() => {
+      (BascikConfig as any).http.httpCache = false;
+    });
+
+    it("advertises Accept-Ranges on a whole static file", async () => {
+      await withCache();
+      const stream = makeStream();
+      await getStreamHandler()!(stream, makeHeaders("/style.css", "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 200, "accept-ranges": "bytes" }),
+      );
+    });
+
+    it("answers a single range with 206, Content-Range and the identity slice, even when gzip is accepted", async () => {
+      await withCache();
+      const stream = makeStream();
+      await getStreamHandler()!(
+        stream,
+        makeHeaders("/style.css", "GET", "gzip, br", undefined, {
+          range: "bytes=10-19",
+        }),
+      );
+      const headers = stream.respond.mock.calls[0][0];
+      expect(headers).toMatchObject({
+        ":status": 206,
+        "content-range": `bytes 10-19/${bytes.byteLength}`,
+        "content-length": 10,
+        "accept-ranges": "bytes",
+      });
+      expect(headers).not.toHaveProperty("content-encoding");
+      expect(Buffer.from(stream.end.mock.calls[0][0]).toString()).toBe(
+        "0123456789",
+      );
+    });
+
+    it("answers a range past the end with 416 and the file size", async () => {
+      await withCache();
+      const stream = makeStream();
+      await getStreamHandler()!(
+        stream,
+        makeHeaders("/style.css", "GET", "", undefined, {
+          range: "bytes=5000-",
+        }),
+      );
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 416,
+          "content-range": `bytes */${bytes.byteLength}`,
+        }),
+      );
+    });
+
+    it("sends the whole file when If-Range names another version", async () => {
+      await withCache();
+      const stream = makeStream();
+      await getStreamHandler()!(
+        stream,
+        makeHeaders("/style.css", "GET", "", undefined, {
+          range: "bytes=0-9",
+          "if-range": '"stale"',
+        }),
+      );
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 200,
+          "content-length": bytes.byteLength,
+        }),
+      );
+    });
+  });
+
   it("returns 304 for a static asset when If-None-Match matches", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.httpCache = true;
@@ -816,6 +895,59 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
     expect(close).toHaveBeenCalledTimes(1);
     expect(getOpenStreamedAssetHandles()).toBe(0);
     (BascikConfig as any).http.httpCache = false;
+  });
+
+  it("streams only the requested range with 206 (finding 34)", async () => {
+    const body = Buffer.from("0123456789");
+    const { handle, close, createReadStream } = makeHandle(body);
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    await getStreamHandler()!(
+      stream,
+      makeHeaders("/big.png", "GET", "", undefined, {
+        range: "bytes=100-109",
+      }),
+    );
+
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 206,
+        "content-range": `bytes 100-109/${LARGE}`,
+        "content-length": 10,
+        "accept-ranges": "bytes",
+      }),
+    );
+    expect(createReadStream).toHaveBeenCalledWith({
+      start: 100,
+      end: 109,
+      autoClose: false,
+    });
+    expect(Buffer.concat(stream.chunks).equals(body)).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(accessLineFor("/big.png")).toContain(" 206 ");
+  });
+
+  it("answers an unsatisfiable range on a large file with 416 without reading it (finding 34)", async () => {
+    const { handle, close, createReadStream } = makeHandle(Buffer.from("x"));
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    await getStreamHandler()!(
+      stream,
+      makeHeaders("/big.png", "GET", "", undefined, {
+        range: `bytes=${LARGE}-`,
+      }),
+    );
+
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 416,
+        "content-range": `bytes */${LARGE}`,
+      }),
+    );
+    expect(createReadStream).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("answers HEAD from the handle's stat without creating a read stream and closes the handle", async () => {

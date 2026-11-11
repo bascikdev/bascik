@@ -848,9 +848,7 @@
                 <nav class="how-nav">
                   <a class="how-nav-link" href="/">Home</a>
                   <a class="how-nav-link" href="/why-bascik">Why Bascik</a>
-                  <a class="how-nav-link" href="/getting-started"
-                    >Getting Started</a
-                  >
+                  <a class="how-nav-link" href="/getting-started">Docs</a>
                 </nav>
                 <h3>Welcome</h3>
               </div>
@@ -869,7 +867,8 @@
           <p class="section-sub">
             Bascik scopes CSS class names and DOM selectors at build time. Each
             instance gets its own namespace with no runtime JS, no Shadow DOM,
-            and no virtual DOM.
+            and no virtual DOM. A class that the component CSS never mentions,
+            like <code>ctr-label</code> below, stays global.
           </p>
 
           <div class="demo-layout">
@@ -1241,7 +1240,7 @@
             </script>
             <figcaption>
               Recorded for real: the starter site from
-              <code>npm create bascik</code>, edited in VS Code and served by
+              <code>npm create bascik@rc</code>, edited in VS Code and served by
               the Bascik dev server. Nothing here is mocked.
             </figcaption>
           </figure>
@@ -1263,9 +1262,10 @@
             and it is tuned for performance. Component scoping runs once, then
             every instance reuses the result. Build script output is cached, so
             only scripts whose inputs changed run again. The dev server serves
-            files from memory. Unchanged assets are symlinked instead of copied.
-            Watch the terminal: the server is up almost instantly, and edits are
-            back in the browser before you have switched windows.
+            files from memory, and you can opt in to symlinking unchanged assets
+            instead of copying them. Watch the terminal: the server is up almost
+            instantly, and edits are back in the browser before you have
+            switched windows.
             <a href="/development-server">See how the dev server works</a>.
           </p>
           <div class="speed-grid">
@@ -1279,10 +1279,10 @@
                   );
               </script>
               <figcaption>
-                A new <code>npm create bascik</code> project, recorded for real
-                on a laptop: the server is up almost immediately, its address
-                stays pinned to the top row, and saving one file rebuilds only
-                that page.
+                A new <code>npm create bascik@rc</code> project, recorded for
+                real on a laptop: the server is up almost immediately, its
+                address stays pinned to the top row, and saving one file
+                rebuilds only that page.
               </figcaption>
             </figure>
 
@@ -1290,14 +1290,16 @@
               <div class="metric-card">
                 <div class="metric-number">Builds in Milliseconds</div>
                 <div class="metric-label">
-                  Sites on average take just a couple seconds or less to boot
+                  A four-page starter site transpiles in under a quarter of a
+                  second, and saving a file rebuilds only that page.
+                  <a href="/internals/benchmarking">See how it is measured</a>.
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-number">Instantaneous Assets</div>
                 <div class="metric-label">
-                  Assets are symlinked by default to save on disk space and
-                  time.
+                  Set <code>assets.symlink: true</code> to link unchanged static
+                  assets in development instead of copying them.
                 </div>
               </div>
             </div>
@@ -1317,21 +1319,22 @@
 
           <div class="pillars-grid">
             <div class="pillar">
-              <div class="pillar-label">Zero Configuration</div>
-              <h3>Works instantly</h3>
+              <div class="pillar-label">Zero Config Files</div>
+              <h3>Starts instantly</h3>
               <p>
                 No bundler setups, complex configs, or transpiler chains. Run
-                <code>bascik</code> and start building instantly with standard
-                Node.js.
+                <code>bascik</code> and start building with standard Node.js. A
+                production build only needs your site’s URL, set once.
               </p>
             </div>
             <div class="pillar">
               <div class="pillar-label">Zero Dependencies</div>
               <h3>Lean in production</h3>
               <p>
-                Zero production dependencies at build and server runtime. A
-                single optional dependency (<code>chokidar</code>) powers local
-                dev file watching.
+                Zero required dependencies at build and server runtime. Two
+                optional ones: <code>chokidar</code> for dev file watching and
+                <code>parse5</code> for the HTML validation in
+                <code>bascik --check</code>.
               </p>
             </div>
             <div class="pillar">

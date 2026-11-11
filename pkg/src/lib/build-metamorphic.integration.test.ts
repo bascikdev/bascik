@@ -17,7 +17,7 @@
  *   - record actual ordering; do not use sleeps or equate workers-disabled with sequential execution.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -166,6 +166,11 @@ async function writeMetamorphicFixture(
   </body></html>`,
   );
 }
+
+// WHY: each case runs several full builds (two roots, workers on and off),
+// which take over the default 5 s on a loaded machine (every other suite
+// running beside this one in CI or a parallel session) and then pass alone.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("packet B1: metamorphic build artifact comparison and ordering", () => {
   // ── Step 1: Failing Oracle and Negative Controls ───────────────────────────

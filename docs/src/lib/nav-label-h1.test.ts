@@ -36,6 +36,8 @@ const LABEL_H1_EXCEPTIONS: Record<string, { label: string; h1: string }> = {
   "/deployment": { label: "Overview", h1: "Deployment Overview" },
   "/internals": { label: "Overview", h1: "Internals Overview" },
   "/switch": { label: "Overview", h1: "Switch to Bascik" },
+  "/tools": { label: "Overview", h1: "Tooling Overview" },
+  "/how-to": { label: "Overview", h1: "How-to Overview" },
   "/testing": { label: "Overview", h1: "Testing and Debugging Overview" },
   "/lighthouse": { label: "Overview", h1: "Lighthouse 100s Overview" },
   "/example-components": { label: "Overview", h1: "Example Components" },

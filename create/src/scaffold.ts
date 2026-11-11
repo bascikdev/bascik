@@ -14,7 +14,7 @@ import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
  * The `@bascik/bascik` release a new project depends on. The agent skills are
  * installed from the same release's tag, so the two always match.
  */
-export const BASCIK_VERSION = "1.0.0-rc.11";
+export const BASCIK_VERSION = "1.0.0-rc.12";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ export type Template = (typeof TEMPLATES)[number];
  * rejects a compatibility date newer than itself and the adapter pins a recent one.
  */
 const WRANGLER_VERSION = "^4.153.0";
-const NETLIFY_CLI_VERSION = "^27.14.2";
+const NETLIFY_CLI_VERSION = "^27.16.2";
 
 export const PACKAGE_JSON = (
   name: string,
@@ -50,7 +50,7 @@ export const PACKAGE_JSON = (
         version: "0.1.0",
         type: "module",
         engines: {
-          node: ">=22.22.0",
+          node: ">=24.21.0",
         },
         scripts: {
           dev: cloudflare
@@ -83,13 +83,14 @@ export const PACKAGE_JSON = (
           "@bascik/bascik": `^${BASCIK_VERSION}`,
         },
         devDependencies: {
-          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.11" }),
-          ...(netlify && { "@bascik/adapter-netlify": "^1.0.0-rc.1" }),
-          "@bascik/language-server": "^0.1.0-rc.6",
+          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.12" }),
+          ...(netlify && { "@bascik/adapter-netlify": "^1.0.0-rc.2" }),
+          "@bascik/language-server": "^1.0.0-rc.1",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
-          "@vitest/coverage-v8": "^4.1.10",
-          vitest: "^4.1.10",
+          "@vitest/coverage-v8": "^5.0.3",
+          vitest: "^5.0.3",
+          vite: "^8.3.4",
           ...(cloudflare && { wrangler: WRANGLER_VERSION }),
           ...(netlify && { "netlify-cli": NETLIFY_CLI_VERSION }),
         },
@@ -142,7 +143,12 @@ export const VSCODE_LAUNCH_JSON =
     2,
   ) + "\n";
 
-/** \`vitest/config\`, not \`vite\`: the project depends on vitest, and vite is only vitest's own dependency. */
+/**
+ * Imports `defineConfig` from `vitest/config`, Vitest's documented entry point for its config. The project also
+ * declares `vite` (Vitest 5 needs it as a peer). Coverage lists `src/**\/*.ts` because Vitest 4 and later only
+ * report files a test loads, so a module no test imports would otherwise be missing, not 0%. The starter has no
+ * `.ts` modules (its tests read the component HTML), so its report is empty until you add one.
+ */
 export const VITE_CONFIG = `import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -150,6 +156,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts'],
       reporter: ['text', 'json', 'html'],
     },
   },

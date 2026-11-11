@@ -293,7 +293,7 @@ describe("release.yml publishes only commits on main", () => {
     for (const job of npmJobs) {
       expect(job).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
       expect(job).toMatch(/^ {6}id-token: write$/m);
-      expect(job).toMatch(/^ {10}node-version: 24$/m);
+      expect(job).toMatch(/^ {10}node-version-file: .nvmrc$/m);
       expect(job).toMatch(
         /^ {10}registry-url: "https:\/\/registry\.npmjs\.org"$/m,
       );

@@ -1,12 +1,22 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0-rc.11",
+  "version": "1.0.0-rc.12",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
     "directory": "adapters/cloudflare"
   },
   "description": "Cloudflare Pages and Workers adapter for Bascik",
+  "keywords": [
+    "bascik",
+    "adapter",
+    "cloudflare",
+    "cloudflare workers",
+    "html components",
+    "serverless"
+  ],
+  "homepage": "https://bascik.dev",
+  "author": "Collin Thomas",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -21,7 +31,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "cover": "yarn coverage",
     "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
     "prepack": "cp ../../LICENSE LICENSE",
@@ -42,10 +52,10 @@
     "smol-toml": "^1.9.0"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.11"
+    "@bascik/bascik": "^1.0.0-rc.12"
   },
   "devDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.11",
+    "@bascik/bascik": "^1.0.0-rc.12",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
@@ -59,6 +69,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.21.0"
   }
 }

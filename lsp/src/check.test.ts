@@ -143,6 +143,71 @@ describe("checkFiles", () => {
     );
   });
 
+  it("reports an unbalanced brace in a component <style> and companion stylesheet at the build's lines (finding 42)", async () => {
+    write(
+      "src/components/feature-card/feature-card.html",
+      '<article class="card">x</article>\n<style>\n  article { color: red;\n  .card { flex: 1; }\n</style>\n',
+    );
+    write(
+      "src/components/book-card/book-card.html",
+      '<p class="title">x</p>\n',
+    );
+    write(
+      "src/components/book-card/book-card.css",
+      ".title { color: red; }\n}\n",
+    );
+    write(
+      "src/components/good-card/good-card.html",
+      '<p class="a">x</p>\n<style>\n  .a::after { content: "}"; }\n  /* { */\n</style>\n',
+    );
+    const found = (await checkFiles({ cwd: root })).diagnostics
+      .filter((d) => d.code === "css-unbalanced-braces")
+      .map((d) => [d.filePath, d.line, d.severity]);
+    expect(found).toEqual(
+      expect.arrayContaining([
+        [
+          path.join("src", "components", "feature-card", "feature-card.html"),
+          3,
+          "error",
+        ],
+        [
+          path.join("src", "components", "book-card", "book-card.css"),
+          2,
+          "error",
+        ],
+      ]),
+    );
+    expect(found).toHaveLength(2);
+  });
+
+  it("reports CSS that only targets preserved elements at the build's lines (finding 22)", async () => {
+    write(
+      "bascik.config.ts",
+      "export default { directory: { api: 'server/routes' }, scoping: { preserve: ['code', 'x-*'] } };\n",
+    );
+    write(
+      "src/components/code-note/code-note.html",
+      '<div class="note">\n  <code class="inline">x</code>\n  <x-chart class="chart-a"></x-chart>\n</div>\n<style>\n  .note code { color: red; }\n  .chart-a { color: red; }\n  .note { color: blue; }\n</style>\n',
+    );
+    write(
+      "src/components/code-note/code-note.css",
+      "\n.inline { color: red; }\n",
+    );
+    const found = (await checkFiles({ cwd: root })).diagnostics
+      .filter((d) => d.code === "css-preserved-target")
+      .map((d) => [d.filePath, d.line, d.severity]);
+    const html = path.join("src", "components", "code-note", "code-note.html");
+    const css = path.join("src", "components", "code-note", "code-note.css");
+    expect(found).toEqual(
+      expect.arrayContaining([
+        [html, 6, "warning"],
+        [html, 7, "warning"],
+        [css, 2, "warning"],
+      ]),
+    );
+    expect(found).toHaveLength(3);
+  });
+
   it("raises a usage error, not a finding, for a path that does not exist", async () => {
     await expect(
       checkFiles({ cwd: root, targets: ["nope"] }),

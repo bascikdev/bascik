@@ -22,7 +22,9 @@ afterEach(async () => {
 });
 
 describe("a self-including component under a bounded heap", () => {
-  it("fails with the expansion limit error naming the component", async () => {
+  // Finding 44: the cycle is named on its first repeat, with the message
+  // `bascik --check` prints, instead of after 10000 substitutions.
+  it("fails with the component cycle error naming the component", async () => {
     const root = fixtureRoot("self-including-component");
     fixtureRoots.push(root);
     await mkdir(join(root, "src/pages"), { recursive: true });
@@ -55,9 +57,9 @@ describe("a self-including component under a bounded heap", () => {
     expect(failure, "the build should fail").toBeDefined();
     expect(failure).not.toMatch(/heap out of memory|heap limit/i);
     expect(failure).toContain("index.html");
-    expect(failure).toMatch(
-      /exceeded safety limits \(10000 substitutions\)[^]*<my-card> contains its own tag/,
+    expect(failure).toContain(
+      "component cycle detected: <my-card> -> <my-card> (components/my-card.html)",
     );
-    expect(failure).toContain("components.expansionLimits");
+    expect(failure).not.toContain("exceeded safety limits");
   }, 120_000);
 });

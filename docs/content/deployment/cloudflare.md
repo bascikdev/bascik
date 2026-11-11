@@ -46,7 +46,7 @@ The `--` is required: npm keeps flags placed before it for itself and does not p
 
 ## Prerequisites
 
-- Node.js 22.22 or newer for the build (Node.js 24 LTS recommended).
+- Node.js 24.21 or newer for the build.
 - `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh
@@ -77,10 +77,10 @@ dist/.bascik/cloudflare/
   build-info.json    release id, the compatibility date and flags it deploys with, bundle size, routes
 ```
 
-The build notes, printed and kept in `build-info.json`, name the manifest's share of the bundle, so a growing component library is visible against the Worker size limit. The demo site reports:
+The build notes, printed and kept in `build-info.json`, name the manifest's share of the bundle, so a growing component library is visible against the Worker size limit. The adapter's demo site (`adapters/cloudflare/e2e/fixture` in the Bascik repository) prints:
 
 ```text
-component manifest: 5781 bytes (3 components)
+component manifest: 7907 bytes (6 components)
 ```
 
 A static-only site has no manifest and its `worker.js` is unchanged. A script inside a component is bundled like a page job: one that imports a module the Workers runtime does not provide fails the build with the component's file and line.
@@ -205,14 +205,14 @@ The workflow runs only on push, so a pull request shows the checks and Previews 
 
 Workers Builds builds and deploys the Worker on every push to the production branch. In the Cloudflare dashboard, open **Workers & Pages**, then either **Create** > **Import a repository** for a new Worker, or open an existing Worker and use **Settings** > **Build** > **Connect**. Use these build settings for a Bascik project:
 
-| Setting                                    | Value                                                                                          |
-| :----------------------------------------- | :--------------------------------------------------------------------------------------------- |
-| Root directory                             | The folder with your `package.json` (the repository root for most projects)                    |
-| Build command                              | `npm run build`, or `npx bascik --build --target cloudflare`                                   |
-| Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc`     |
-| Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                      |
-| Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                         |
-| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (22.22 or newer, 24 recommended) |
+| Setting                                    | Value                                                                                      |
+| :----------------------------------------- | :----------------------------------------------------------------------------------------- |
+| Root directory                             | The folder with your `package.json` (the repository root for most projects)                |
+| Build command                              | `npm run build`, or `npx bascik --build --target cloudflare`                               |
+| Deploy command                             | `npm run deploy`, or `npx wrangler deploy --config dist/.bascik/cloudflare/wrangler.jsonc` |
+| Enable Preview Builds (**Branch control**) | On, if you want a Preview for each branch                                                  |
+| Preview command                            | `npx wrangler preview --config dist/.bascik/cloudflare/wrangler.jsonc`                     |
+| Build variables                            | `BASCIK_SITE_URL` for a sitemap or robots.txt; `NODE_VERSION` (24.21 or newer)             |
 
 The root directory is where the build runs, not the folder Wrangler deploys: the generated folder does not exist until the build command has run. Workers Builds installs your dependencies with the package manager your lock file names, and uses the Wrangler version your `package.json` pins.
 
@@ -235,7 +235,7 @@ npx wrangler preview --name book-sale
 npx wrangler preview delete --name book-sale -y
 ```
 
-`--name` defaults to the current git branch, which is what Workers Builds uses for branch builds. Wrangler prints the Preview's URLs; `--json` prints them for a script. `wrangler preview` is in open beta, and it uploads code without touching your routes or custom domains.
+`--name` defaults to the current git branch, which is what Workers Builds uses for branch builds. Wrangler prints the Preview's URLs; `--json` prints them for a script. Previews need [Wrangler 4.135.0 or later](https://developers.cloudflare.com/workers/previews/), and `wrangler preview --help` labels the command "open beta" (Wrangler 4.152.0). A Preview uploads code without touching your routes or custom domains.
 
 Preview URLs are public. Cloudflare adds `X-Robots-Tag: noindex` to every `workers.dev` Preview and version URL, so search engines skip those on their own. A Preview URL on a custom domain does not get that header. To keep one out of search results, put Cloudflare Access in front of it, or add a host rule to your `_headers`, written from a `post` [exec script](/exec-scripts) as shown in [Security settings on Cloudflare](#security-settings-on-cloudflare). Previews on `shop.example.com` are served at `<preview-name>.shop.example.com`, and a host placeholder matches one DNS label, so this rule never matches the production domain:
 
@@ -287,7 +287,7 @@ With a `wrangler.jsonc` in the project root, the build reads it and writes the g
 }
 ```
 
-`bascik --build --target cloudflare` then writes this beside `worker.js` (the `run_worker_first` routes come from the site's dynamic pages and API routes):
+With a server-script page at `src/pages/stock.html` and API routes in `src/api/`, `bascik --build --target cloudflare` then writes this beside `worker.js`. The `run_worker_first` routes come from the site: the generated control files, the API prefix, and each dynamic page's aliases (see [Keeping Application Configuration Aligned](#keeping-application-configuration-aligned-with-basciks-route-inventory)):
 
 ```jsonc
 // dist/.bascik/cloudflare/wrangler.jsonc (generated)
@@ -308,7 +308,14 @@ With a `wrangler.jsonc` in the project root, the build reads it and writes the g
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/stock"],
+    "run_worker_first": [
+      "/_routes.json",
+      "/_worker.js",
+      "/api/*",
+      "/stock",
+      "/stock.html",
+      "/stock/",
+    ],
   },
 }
 ```
@@ -366,7 +373,7 @@ Requests **not** listed in `run_worker_first` are served directly by the CDN fro
 
 ### Selective vs. Global `run_worker_first`
 
-- **Selective patterns** (recommended for most projects): Only list paths that must execute server code. Example: `["/api/*", "/stream"]` routes API and stream requests through the Worker, while everything else (`/`, `/about`, `/blog/*`, etc.) is served statically from the CDN.
+- **Selective patterns** (recommended for most projects): Only list paths that must execute server code. The generated list for a site with API routes and one stream page, `["/_routes.json", "/_worker.js", "/api/*", "/stream", "/stream.html", "/stream/"]`, routes API and stream requests through the Worker, while everything else (`/`, `/about`, `/blog/*`, etc.) is served statically from the CDN.
 
 - **Global `["/*"]`**: Routes **every** request through the Worker first. The Worker then forwards non-matching requests to `env.ASSETS.fetch(request)`, which the CDN serves. This is appropriate when you need **every** request to pass through your middleware (redirects, authentication, headers, observability), but it forfeits the static-asset Worker bypass for all paths.
 
@@ -433,7 +440,14 @@ With no `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` in the project root
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/stream"],
+    "run_worker_first": [
+      "/_routes.json",
+      "/_worker.js",
+      "/api/*",
+      "/stream",
+      "/stream.html",
+      "/stream/",
+    ],
   },
 }
 ```
@@ -641,16 +655,14 @@ An API route can accept a WebSocket the Workers way: create a `WebSocketPair` an
 
 ## What runs where
 
-| Site shape                 | Any static host | `bascik --server` | Cloudflare (this guide) | Other serverless hosts    |
-| :------------------------- | :-------------- | :---------------- | :---------------------- | :------------------------ |
-| Static pages only          | Supported       | Supported         | Supported               | Supported (static upload) |
-| `data-bascik-server` pages | No              | Supported         | Supported               | Manual porting            |
-| `data-bascik-stream` pages | No              | Supported         | Supported               | Manual porting            |
-| API routes                 | No              | Supported         | Supported               | Manual porting            |
+| Site shape                 | Any static host | `bascik --server` | Cloudflare (this guide) | [Netlify](/deployment/netlify) | Other serverless hosts    |
+| :------------------------- | :-------------- | :---------------- | :---------------------- | :----------------------------- | :------------------------ |
+| Static pages only          | Supported       | Supported         | Supported               | Supported                      | Supported (static upload) |
+| `data-bascik-server` pages | No              | Supported         | Supported               | Supported                      | Custom adapter            |
+| `data-bascik-stream` pages | No              | Supported         | Supported               | Supported                      | Custom adapter            |
+| API routes                 | No              | Supported         | Supported               | Supported                      | Custom adapter            |
 
-"Manual porting" means the handler function is reusable because it takes a standard `Request`, but you write the platform wrapper, the route table, and the method dispatch yourself. Bascik generates those only for the targets in this table.
-
-Cloudflare Workers and Pages are Bascik's initial official serverless adapters. Future official adapters will expand out-of-the-box platform targets, and developers can author and publish custom adapters for other hosts (such as Fastly, AWS, or Netlify) using the `@bascik/bascik/adapter` contract. See [Custom Adapters](/deployment/custom-adapters) for authoring details.
+"Custom adapter" means the handler function is reusable because it takes a standard `Request`, but the platform wrapper, the route table, and the method dispatch come from an adapter you write or install. Bascik generates them for `bascik --server` and its two official adapters, `@bascik/adapter-cloudflare` (`--target cloudflare`, `cloudflare-workers` or `cloudflare-pages`) and `@bascik/adapter-netlify` (`--target netlify`). For another host, such as Fastly or AWS, author and publish an adapter with the `@bascik/bascik/adapter` contract; see [Custom Adapters](/deployment/custom-adapters).
 
 ## Limits that come with the platform
 
@@ -682,17 +694,18 @@ Fetching your static HTML from a second public origin and having a Worker rewrit
 
 ## How this compares to other full-stack frameworks
 
-Modern full-stack web frameworks such as Next.js, Astro, SvelteKit, and Nuxt also offer Cloudflare deployment targets that divide traffic between static CDN assets and edge workers. Bascik adopts the same unified CDN-plus-worker deployment topology, but with a different client runtime footprint:
+Next.js, Astro, SvelteKit, Nuxt and Remix also deploy to Cloudflare, with static assets on the CDN and server rendering in a Worker. Bascik uses the same split. The difference is what reaches the browser by default:
 
-| Capability                        | Bascik (`@bascik/adapter-cloudflare`)        | Astro (`@astrojs/cloudflare`)           | Next.js (`@opennextjs/cloudflare` / Vercel Edge) | SvelteKit / Nuxt / Remix            |
-| :-------------------------------- | :------------------------------------------- | :-------------------------------------- | :----------------------------------------------- | :---------------------------------- |
-| **Unified CDN + Worker output**   | Yes (`wrangler.jsonc` / `_routes.json`)      | Yes (`_routes.json`)                    | Yes (via OpenNext or Vercel)                     | Yes (`_routes.json`)                |
-| **Client-side framework runtime** | **Zero JS** (vanilla HTML/CSS/JS only)       | Opt-in per island (`client:*`)          | Required (React runtime + hydration)             | Required (Svelte/Vue/React)         |
-| **Client hydration overhead**     | **0 KB**                                     | 0 KB (unless using interactive islands) | 70–120+ KB base                                  | 20–50+ KB base                      |
-| **Streaming mechanism**           | Native HTTP streaming in document order      | Native HTTP streaming                   | React Server Components (RSC) streaming          | Framework SSR streaming             |
-| **Edge Worker bundle content**    | Compiled HTML templates + server/stream jobs | Component SSR render functions          | React SSR runtime + compiled routes              | Framework SSR runtime + virtual DOM |
+| Framework | Client JavaScript on a server-rendered page                                                                                                                                                           |
+| :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bascik    | None added. The page ships only the scripts you wrote.                                                                                                                                                |
+| Astro     | None by default; [islands](https://docs.astro.build/en/concepts/islands/) opt in per component with `client:*`.                                                                                       |
+| SvelteKit | Hydrates by default; [`export const csr = false`](https://svelte.dev/docs/kit/page-options#csr) ships no JavaScript for a page.                                                                       |
+| Nuxt      | Hydrates by default; the [`noScripts`](https://nuxt.com/docs/4.x/guide/going-further/features#noscripts) feature or route rule omits Nuxt's scripts.                                                  |
+| Remix     | Hydrates by default; leaving out [`<Scripts/>`](https://remix.run/docs/en/main/components/scripts) serves the app without JavaScript.                                                                 |
+| Next.js   | Ships React: the browser reconciles the [Server Component payload](https://nextjs.org/docs/app/getting-started/server-and-client-components#on-the-client-first-load) and hydrates Client Components. |
 
-With Bascik, dynamic edge execution does not force a client-side JavaScript framework or hydration layer onto the visitor. The Worker executes data-fetching scripts at the edge, populates server slots, streams the document progressively, and finishes with zero client hydration overhead.
+With Bascik there is no opt-out to remember: the Worker runs the data-fetching scripts, fills the server slots, and streams the document, and the browser receives HTML, CSS and your own scripts.
 
 ## Rollback and diagnostics
 

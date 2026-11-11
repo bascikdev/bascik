@@ -17,7 +17,7 @@ Hugo is a static site generator; Bascik is a build tool for HTML components. Bot
 
 Migrate a simple partial (like a header or footer) into a Bascik component:
 
-1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
 2. Create `src/components/site-footer/site-footer.html`.
 3. Copy the markup from `layouts/partials/footer.html` into it. Replace Go template values such as `{{ .Site.Title }}` with fixed text.
 4. Use `<site-footer />` inside `src/pages/index.html`.
@@ -72,7 +72,7 @@ A Hugo `{{ partial "nav.html" . }}` call becomes a self-contained Bascik compone
 </nav>
 
 <!-- Used in a page with: -->
-<site-nav></site-nav>
+<site-nav />
 ```
 
 ## Base Templates → Slot-based Layout Components
@@ -107,7 +107,7 @@ The layout component wraps only the repeated inner structure. The `<html>`, `<he
 
 ```html
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
-<site-nav></site-nav>
+<site-nav />
 <main><div data-bascik-slot></div></main>
 <site-footer />
 
@@ -157,7 +157,7 @@ Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front mat
   data-bascik-prop-title="My Post"
   data-bascik-prop-description="A short summary."
   data-bascik-prop-url="/posts/my-post"
-></post-card>
+/>
 ```
 
 > **Text and attribute values:** Bascik props carry plain text strings. For rich HTML content, such as a post body rendered from Markdown, use a slot instead of a prop.
@@ -239,7 +239,7 @@ Hugo shortcodes (`{{< callout >}}text{{< /callout >}}`) are reusable template fr
 
 ## SCSS / Sass → Plain CSS
 
-Hugo ships a built-in asset pipeline with SCSS/Sass support via `resources.ToCSS`. Bascik does not include a CSS preprocessor, write vanilla CSS in the paired `.css` file alongside each component. Bascik's scoping engine handles selector scoping automatically, so there is rarely a need for nesting or variables beyond what native CSS custom properties and `:is()` provide.
+Hugo ships a built-in asset pipeline with SCSS/Sass support via `css.Sass` (the older `resources.ToCSS` is its alias). Bascik does not include a CSS preprocessor, so write vanilla CSS in the paired `.css` file alongside each component. Bascik's scoping engine handles selector scoping automatically, so there is rarely a need for nesting or variables beyond what native CSS custom properties and `:is()` provide.
 
 ```text
 Before (Hugo)                After (Bascik)

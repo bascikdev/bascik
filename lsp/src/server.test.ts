@@ -177,8 +177,10 @@ describe("BascikLanguageServer", () => {
         // The server still answers: an open document gets diagnostics.
         const page = await write("src/pages/index.html", "<p>hi</p>\n");
         open(page, "<p data-bascik-slott>hi</p>\n");
-        await settle();
-        expect(codes(page)).toContain("unknown-bascik-attribute");
+        await vi.waitFor(
+          () => expect(codes(page)).toContain("unknown-bascik-attribute"),
+          { timeout: 5000 },
+        );
       } finally {
         process.off("unhandledRejection", onUnhandled);
       }
@@ -208,8 +210,10 @@ describe("BascikLanguageServer", () => {
       await initialize();
       const component = await write("src/components/my-card.html", COMPONENT);
       open(component, COMPONENT);
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       fake.handlers.get("workspaceFolders")!({
         removed: [{ uri: uri(root), name: "site" }],
@@ -222,8 +226,10 @@ describe("BascikLanguageServer", () => {
         removed: [],
         added: [{ uri: uri(root), name: "site" }],
       });
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
 
     it("rebuilds a project from disk when its folder is removed and added again", async () => {
@@ -263,8 +269,10 @@ describe("BascikLanguageServer", () => {
       await initialize();
       const component = await write("src/components/my-card.html", COMPONENT);
       open(component, COMPONENT, "html", 7);
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
       expect(fake.connection.sendDiagnostics).toHaveBeenCalledWith(
         expect.objectContaining({ version: 7 }),
       );
@@ -386,8 +394,10 @@ describe("BascikLanguageServer", () => {
         const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
         open(css, ATTRIBUTE_CSS, "css");
         open(route, DEFAULT_EXPORT_ROUTE, "typescript");
-        await settle();
-        expect(codes(css)).toContain("css-attribute-selector");
+        await vi.waitFor(
+          () => expect(codes(css)).toContain("css-attribute-selector"),
+          { timeout: 5000 },
+        );
         expect(codes(route)).toContain("missing-method-handler");
       },
     );
@@ -404,8 +414,10 @@ describe("BascikLanguageServer", () => {
         await initialize();
         const css = await write("src/components/button.css", ATTRIBUTE_CSS);
         open(css, ATTRIBUTE_CSS, "css");
-        await settle();
-        expect(codes(css)).toContain("css-attribute-selector");
+        await vi.waitFor(
+          () => expect(codes(css)).toContain("css-attribute-selector"),
+          { timeout: 5000 },
+        );
       },
     );
 
@@ -424,8 +436,10 @@ describe("BascikLanguageServer", () => {
         await initialize();
         const css = await write("src/components/button.css", ATTRIBUTE_CSS);
         open(css, ATTRIBUTE_CSS, "css");
-        await settle();
-        expect(codes(css)).toContain("css-attribute-selector");
+        await vi.waitFor(
+          () => expect(codes(css)).toContain("css-attribute-selector"),
+          { timeout: 5000 },
+        );
       },
     );
 
@@ -472,8 +486,10 @@ describe("BascikLanguageServer", () => {
         textDocument: { uri: uri(css), version: 2 },
         contentChanges: [{ text: ATTRIBUTE_CSS }],
       });
-      await settle();
-      expect(codes(css)).toContain("css-attribute-selector");
+      await vi.waitFor(
+        () => expect(codes(css)).toContain("css-attribute-selector"),
+        { timeout: 5000 },
+      );
     });
 
     it.each([0, 250])(
@@ -524,15 +540,19 @@ describe("BascikLanguageServer", () => {
       const page = await write("src/pages/index.html", "<p>no usage</p>\n");
       open(component, COMPONENT);
       open(page, "<p>no usage</p>\n");
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       fake.handlers.get("didChange")!({
         textDocument: { uri: uri(page), version: 2 },
         contentChanges: [{ text: USAGE }],
       });
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
 
     it("checks a component again when the page that supplied its prop closes", async () => {
@@ -541,12 +561,16 @@ describe("BascikLanguageServer", () => {
       const page = await write("src/pages/index.html", "<p>no usage</p>\n");
       open(component, COMPONENT);
       open(page, USAGE);
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       close(page);
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
 
     it("stops counting a deleted page's buffer that the editor keeps open, until it is edited", async () => {
@@ -556,23 +580,29 @@ describe("BascikLanguageServer", () => {
       const page = await write("src/pages/old.html", USAGE);
       open(component, COMPONENT);
       open(page, USAGE);
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       await fs.rm(page);
       await fake.handlers.get("watchedFiles")!({
         changes: [{ uri: uri(page), type: FileChangeType.Deleted }],
       });
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       // Typing in the orphaned buffer makes it unsaved work, which counts again.
       fake.handlers.get("didChange")!({
         textDocument: { uri: uri(page), version: 2 },
         contentChanges: [{ text: USAGE }],
       });
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
 
     it("checks an open helper again when an unsaved page starts or stops importing it", async () => {
@@ -591,8 +621,10 @@ describe("BascikLanguageServer", () => {
         textDocument: { uri: uri(page), version: 2 },
         contentChanges: [{ text: importing }],
       });
-      await settle();
-      expect(codes(helper)).toEqual(["server-script-unescaped-markup"]);
+      await vi.waitFor(
+        () => expect(codes(helper)).toEqual(["server-script-unescaped-markup"]),
+        { timeout: 5000 },
+      );
 
       fake.handlers.get("didChange")!({
         textDocument: { uri: uri(page), version: 3 },
@@ -621,8 +653,10 @@ describe("BascikLanguageServer", () => {
         textDocument: { uri: uri(a), version: 2 },
         contentChanges: [{ text: 'import "./b.ts";\nexport const a = 1;\n' }],
       });
-      await settle();
-      expect(codes(b)).toEqual(["hand-written-html-escaper"]);
+      await vi.waitFor(
+        () => expect(codes(b)).toEqual(["hand-written-html-escaper"]),
+        { timeout: 5000 },
+      );
     });
 
     it("publishes analysis-failed for a module it cannot analyze, and keeps running", async () => {
@@ -634,8 +668,9 @@ describe("BascikLanguageServer", () => {
       const DEEP = `${ANALYSIS_THROWS}\nexport const t = \`\${\`x\`}\`;\n`;
       const deep = await write("src/lib/deep.ts", DEEP);
       open(deep, DEEP, "typescript");
-      await settle();
-      expect(codes(deep)).toEqual(["analysis-failed"]);
+      await vi.waitFor(() => expect(codes(deep)).toEqual(["analysis-failed"]), {
+        timeout: 5000,
+      });
     });
 
     it("reads a saved page from disk without rebuilding the project", async () => {
@@ -643,22 +678,31 @@ describe("BascikLanguageServer", () => {
       const component = await write("src/components/my-card.html", COMPONENT);
       const page = await write("src/pages/index.html", "<p>no usage</p>\n");
       open(component, COMPONENT);
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
+      // A watched-file change republishes the open component's diagnostics
+      // after a disk read; the Windows runner takes longer than a fixed
+      // settle, so wait for the publication.
       await fs.writeFile(page, USAGE);
       await fake.handlers.get("watchedFiles")!({
         changes: [{ uri: uri(page), type: FileChangeType.Changed }],
       });
-      await settle();
-      expect(codes(component)).not.toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).not.toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
 
       await fs.rm(page);
       await fake.handlers.get("watchedFiles")!({
         changes: [{ uri: uri(page), type: FileChangeType.Deleted }],
       });
-      await settle();
-      expect(codes(component)).toContain("attr-prop-unsupplied");
+      await vi.waitFor(
+        () => expect(codes(component)).toContain("attr-prop-unsupplied"),
+        { timeout: 5000 },
+      );
     });
   });
 
@@ -770,8 +814,10 @@ describe("BascikLanguageServer", () => {
           },
         ],
       });
-      await settle();
-      expect(codes(b)).toEqual(["server-script-unescaped-markup"]);
+      await vi.waitFor(
+        () => expect(codes(b)).toEqual(["server-script-unescaped-markup"]),
+        { timeout: 5000 },
+      );
 
       // And stops again.
       await write("src/lib/a.ts", "export const a = () => 'Milk frother';\n");
@@ -823,8 +869,12 @@ describe("BascikLanguageServer", () => {
       expect(await server.getSnapshotForFile(page)).toBeDefined();
       await settle();
       open(cards, cardsText, "typescript");
-      await settle();
-      expect(codes(cards)).toEqual(["server-script-unescaped-markup"]);
+      // The helper's diagnostics follow a project build for the importing
+      // site; the Windows runner takes longer than a fixed settle.
+      await vi.waitFor(
+        () => expect(codes(cards)).toEqual(["server-script-unescaped-markup"]),
+        { timeout: 5000 },
+      );
     });
 
     it("ignores changes inside node_modules and dist", async () => {

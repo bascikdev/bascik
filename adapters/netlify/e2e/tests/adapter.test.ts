@@ -463,19 +463,28 @@ test("API routes dispatch methods, parameters and catch-all precedence", async (
   });
 });
 
-test("Netlify context and native functions coexist with Bascik API routes on Node 24", async ({
+test("Netlify context and native functions coexist with Bascik API routes on the same Node runtime", async ({
   request,
 }) => {
   const response = await request.get("/api/context");
   expect(response.headers()["x-bascik-handler"]).toBe("bascik-pages");
-  expect(await response.json()).toEqual({
+  const context = await response.json();
+  // Netlify Dev runs the functions on the machine's Node (the `.nvmrc`
+  // version locally and in CI); the hosted project pins NODE_VERSION in
+  // netlify.toml. Either way both handlers must see one runtime at or above
+  // the published floor.
+  expect(context).toEqual({
     platform: "netlify",
     hasCookies: true,
     hasWaitUntil: true,
-    nodeMajor: 24,
+    nodeMajor: expect.any(Number),
   });
+  expect(context.nodeMajor).toBeGreaterThanOrEqual(24);
   const native = await request.get("/native-check");
-  expect(await native.json()).toEqual({ native: true, nodeMajor: 24 });
+  expect(await native.json()).toEqual({
+    native: true,
+    nodeMajor: context.nodeMajor,
+  });
   expect(native.headers()["x-bascik-handler"]).toBeUndefined();
 });
 

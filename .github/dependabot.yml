@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Yarn 4 workspaces: one root lockfile covers every package.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Matches npmMinimalAgeGate: "7d" in .yarnrc.yml so the PR never proposes
+    # a version Yarn would refuse to install.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

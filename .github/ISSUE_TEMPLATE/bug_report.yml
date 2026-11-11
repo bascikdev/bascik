@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Bascik does not work as documented.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report security problems privately through the Security tab, not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: A minimal repository, or the page and component source plus the command you ran.
+    validations:
+      required: true
+  - type: input
+    id: bascik-version
+    attributes:
+      label: Package versions
+      description: Output of `npm ls @bascik/bascik` and any adapter you use.
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version and operating system
+      placeholder: Node 24.21.0 on macOS 15
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen
+      options:
+        - Build output (bascik --build)
+        - Dev server
+        - Production server
+        - Cloudflare or Netlify adapter
+        - Create app scaffolder
+        - Language server or VS Code extension
+        - Docs
+        - Not sure
+    validations:
+      required: true

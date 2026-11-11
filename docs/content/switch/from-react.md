@@ -10,15 +10,15 @@ React and Bascik both structure user interfaces into reusable components, but th
 
 ## Mental Model Comparison
 
-| Concept              | React                                      | Bascik                                                           |
-| -------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| Component definition | JSX function returning React elements      | Plain `.html` file in `src/components/`                          |
-| Component invocation | `<SiteNav prop="val" />` (requires import) | `<site-nav data-bascik-prop-*="val"></site-nav>` (auto-resolved) |
-| Child content        | `props.children`                           | `<div data-bascik-slot></div>`                                   |
-| Named content areas  | Render props / Compound components         | Named slots (`data-bascik-slot="name"`)                          |
-| Scoped styles        | CSS Modules (`styles.foo`) / CSS-in-JS     | Paired `.css` files or inline `<style>` (auto-scoped)            |
-| Client interactivity | `useState`, `useEffect`, SyntheticEvents   | Standard vanilla DOM APIs in `<script>` tags                     |
-| Build output         | JS bundles + Client hydration runtime      | Vanilla HTML, CSS, and optional scoped JS                        |
+| Concept              | React                                      | Bascik                                                  |
+| -------------------- | ------------------------------------------ | ------------------------------------------------------- |
+| Component definition | JSX function returning React elements      | Plain `.html` file in `src/components/`                 |
+| Component invocation | `<SiteNav prop="val" />` (requires import) | `<site-nav data-bascik-prop-*="val" />` (auto-resolved) |
+| Child content        | `props.children`                           | `<div data-bascik-slot></div>`                          |
+| Named content areas  | Render props / Compound components         | Named slots (`data-bascik-slot="name"`)                 |
+| Scoped styles        | CSS Modules (`styles.foo`) / CSS-in-JS     | Paired `.css` files or inline `<style>` (auto-scoped)   |
+| Client interactivity | `useState`, `useEffect`, SyntheticEvents   | Standard vanilla DOM APIs in `<script>` tags            |
+| Build output         | JS bundles + Client hydration runtime      | Vanilla HTML, CSS, and optional scoped JS               |
 
 ## A Low-Risk First Step
 
@@ -27,7 +27,7 @@ Migrate a simple static component (such as a card or navigation bar) to get fami
 1. Create a project with `npm create bascik@rc my-site`.
 2. Extract your JSX markup into a standard HTML file in `src/components/site-nav/site-nav.html`.
 3. Move your CSS Module rules into `src/components/site-nav/site-nav.css`.
-4. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.
+4. Use `<site-nav />` inside `src/pages/index.html` without import statements.
 5. Run `npm run dev` to inspect the scoped output.
 
 To migrate a whole production site with coding agents, matching it at every breakpoint while reaching 100 in all five Lighthouse categories, follow [Migrating with Coding Agents](/how-to/agent-migration).
@@ -58,7 +58,7 @@ export function SiteNav() {
 </nav>
 ```
 
-No import statement is needed to use this component. Bascik resolves `<site-nav></site-nav>` to `src/components/site-nav/site-nav.html` automatically by tag name.
+No import statement is needed to use this component. Bascik resolves `<site-nav />` to `src/components/site-nav/site-nav.html` automatically by tag name.
 
 ## children → Default Slot
 
@@ -150,7 +150,7 @@ export function AlertBox({ title, message }) {
 <alert-box
   data-bascik-prop-title="Success"
   data-bascik-prop-message="Your changes were saved."
-></alert-box>
+/>
 ```
 
 > **Text only:** Props accept plain text strings, which Bascik escapes. Boolean and number props arrive as text too, so a `stocked={true}` prop becomes `data-bascik-prop-stocked="true"` and a script compares it with the string. Object and array props have no equivalent. For rich HTML content, use a named slot instead. For computed or array-based content, print one component per item from a `<script data-bascik-build>` block.
@@ -259,7 +259,7 @@ React's rule is that state lives in the closest common parent, which passes valu
 ```html
 <!-- src/components/filterable-list/filterable-list.html: the parent owns the state -->
 <div id="root">
-  <search-bar></search-bar>
+  <search-bar />
 </div>
 <script>
   const root = document.getElementById("root");

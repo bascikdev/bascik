@@ -60,8 +60,8 @@
                 <span data-bascik-slot="eyebrow">Named slot</span>
                 <span data-bascik-slot="title">Build-time slot layout</span>
                 <p>
-                  Use named slots for fixed regions and the default slot for the
-                  main body content.
+                  Use named slots for fixed regions and the default slot for
+                  body content.
                 </p>
                 <div data-bascik-slot="actions">
                   <a href="/configuration">Read configuration</a>
@@ -104,6 +104,15 @@
                   import { extractDemoBlock } from "@/lib/md-renderer.ts";
                   export default async () =>
                     await extractDemoBlock("./content/slots.md", "output-html");
+                </script>
+              </code-block>
+            </div>
+            <div data-bascik-slot="output-css">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from "@/lib/md-renderer.ts";
+                  export default async () =>
+                    await extractDemoBlock("./content/slots.md", "output-css");
                 </script>
               </code-block>
             </div>

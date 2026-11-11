@@ -32,13 +32,13 @@ Use the linter on its own, without `bascik`, when you want per-file checks and n
 
 ## CLI Linter
 
-Every project scaffolded with `npm create bascik` includes a `lint` script in `package.json`. It runs [`bascik --check`](/cli#static-analysis-with-bascik-check), which hands your files to the linter and adds the project-wide checks:
+Every project scaffolded with `npm create bascik@rc` includes a `lint` script in `package.json`. It runs [`bascik --check`](/cli#static-analysis-with-bascik-check), which hands your files to the linter and adds the project-wide checks:
 
 ```sh
 npm run lint
 ```
 
-Each finding gives the file, line and column, a rule name, and a suggested fix. This is a real run against a project with four problems planted in it:
+Each finding gives the file, line and column, a rule name, and a suggested fix. The API route rules `invalid-method-case`, `api-handler-return-type` and `missing-method-handler` are reported at the export they are about (the first export, or the first line of code when nothing is exported), not at `1:1`. A scoping or naming finding is reported once, with the rule's severity: `bascik --check` silences the build's console warnings for the same rules, so nothing is printed twice. A component whose file name has no hyphen, has an underscore, or has capitals is counted as used when a page or component writes its tag (matched ignoring case), so it is never listed under unused components. This is a real run against a project with four problems planted in it:
 
 ![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feature-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
@@ -47,6 +47,8 @@ To run only the linter, without the project-wide checks, call the language serve
 ```sh
 npx @bascik/language-server --check
 ```
+
+Run `npx bascik-language-server --help` for usage. Started with no `--check` and no transport flag (`--stdio`, `--node-ipc` or `--socket=<port>`), the server prints a one-line hint and exits 1 instead of starting.
 
 Check a specific path or page:
 
@@ -93,6 +95,20 @@ Two rules are fixable:
 
 In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook. The editor also offers **Wrap template in html\`...\`** for [`server-script-unescaped-markup`](#server-script-unescaped-markup), which `--fix` never applies (see below).
 
+### `css-unbalanced-braces`
+
+A component's `<style>` block or companion stylesheet with a `{` that is never closed, or a `}` that closes nothing, is an error at that brace. Every component's CSS goes into one stylesheet for the page, so a missing `}` would nest every rule after it, including other components' rules, and a stray `}` would make the browser drop the rule after it. The build stops on the same brace and names the same file and line, and the dev server shows it in the error overlay. Braces inside strings, comments, and `url(...)` do not count.
+
+### `css-preserved-target`
+
+A selector in a component's `<style>` block or companion stylesheet that only matches preserved elements is a warning at that selector, and so is a class query in the component's browser script (`querySelector`, `querySelectorAll`, `closest`, `matches`, `getElementsByClassName`) that only they answer (`js-preserved-target`). A `scoping.preserve` tag (`code` by default), a `data-bascik-preserve` element, and everything inside them keep their literal `class` and `id`, while Bascik still renames the component's `.class`, `#id`, and element selectors, so the rule never applies and the query finds nothing:
+
+```text
+src/components/code-note/code-note.html:6:3 - warning: (css-preserved-target) ".inline" never matches: only preserved elements carry this class, and preserved elements keep their literal class and id while Bascik rewrites this selector to a scoped name. Move the rule to a global stylesheet, or take the element out of scoping.preserve or its data-bascik-preserve directive.
+```
+
+A class or element that a scoped element in the same component also carries is not flagged, since the rule still reaches that element. The build and the dev server print the same warning with the same file and line.
+
 ### `server-script-unescaped-markup`
 
 In any directive script (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once` or `data-bascik-routes`), and in the `.ts` and `.js` modules those scripts run in Node, a template literal that looks like markup (it holds a tag) and interpolates a value without [`html`](/html-helpers) is a warning on that hole:
@@ -101,7 +117,7 @@ In any directive script (`data-bascik-server`, `data-bascik-stream`, `data-basci
 src/pages/search.html:14:31 - warning: (server-script-unescaped-markup) This markup template (line 14) interpolates ${q} (hole 1) without html. Wrap the template in html`...` from @bascik/bascik/html, which escapes each value for where it lands.
 ```
 
-A module runs in Node when it is a directive script's `src=` file, an API route, or a module one of those imports with a `./`, `../` or `@/` specifier (and so on, transitively). That covers a build script's helpers in `src/lib/`, also under a component root or a `scripts.importRoot` outside the project, such as a monorepo's shared folder. A component's plain `<script src>` file runs in the browser, so it and the modules only it imports keep the [scoping rules](#compatibility-rules) instead; a module that both import gets both. A script that `exec` runs, and a module nothing above imports, is not checked. `bascik --check` checks these modules with the pages that import them and reports each finding with its file and line:
+A module runs in Node when it is a directive script's `src=` file, an API route, or a module one of those imports with a `./`, `../` or `@/` specifier (and so on, transitively). That covers a build script's helpers in `src/lib/`, also under a component root or a `scripts.importRoot` outside the project, such as a monorepo's shared folder. A component's plain `<script src>` file runs in the browser, so it and the modules only it imports keep the [scoping rules](/compatibility#javascript-scoping) instead; a module that both import gets both. A script that `exec` runs, and a module nothing above imports, is not checked. `bascik --check` checks these modules with the pages that import them and reports each finding with its file and line:
 
 ```text
 src/lib/posts.ts:6:7 - warning: (server-script-unescaped-markup) This markup template (line 5) interpolates ${post.title} (hole 1) without html. It reads post, a parameter of postCard(), which other modules can call: the value may be markup from a caller, which html would escape, so the page would show its tags as text. Build the callers' markup with html`...` (raw() for fixed markup) and pass html values, since html inserts an html value as it is, then wrap this template in html`...` from @bascik/bascik/html.
@@ -233,14 +249,17 @@ src/components/site-nav_x.html:1:1 - warning: (component-name-underscore) Compon
 
 The name is legal HTML, so this is a warning, not an error. The build itself fails only when two components really do generate one class, with an error that names both rules and their lines; see [The Naming Scheme](/internals/scoping-system#the-remaining-collision-cases). Rename the file with hyphens, or silence the rule for the project with `"disabledRules": ["component-name-underscore"]` under `diagnostics` in `bascik.ext.json`.
 
-### Hints: `attr-prop-unsupplied` and `api-unguarded-json`
+### Hints: Information-Severity Rules
 
-Two rules are hints: advice that is easy to ignore and never fails a run.
+Five rules report at Information severity: advice that is easy to ignore and never fails a run. The editor shows them, and `bascik --check` leaves them out of its summary and exit code.
 
 - `attr-prop-unsupplied` marks a `data-bascik-attr-*` binding in a component whose prop no usage supplies: no page, no other component, and no open editor buffer has a `<my-card data-bascik-prop-href="...">` for `data-bascik-attr-href="href"`. It cannot see usages written in Markdown or produced by a build script, which is why it is a hint.
 - `api-unguarded-json` marks a `request.json()` (or `req.json()`) call in an API route that is not inside a `try` block, because a malformed body then throws and the route answers 500.
+- `id-reference-undeclared` marks a `for`, `itemref`, ARIA ID reference, or `href="#fragment"` whose target ID is not declared in the component, so the reference is left unscoped. Because `bascik --check` does not report it, a CI run stays green for `<label for="missing">`.
+- `html-escaped-twice` marks `esc()` inside an `html` template, which shows `&amp;lt;` on the page.
+- `server-script-sink-text-unescaped` marks a request value interpolated into markup text without escaping. See [the unescaped-markup rules](#server-script-unescaped-markup).
 
-Silence either with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
+Silence any of them with its id, like any rule: `<!-- bascik-ignore attr-prop-unsupplied -->` or `// bascik-ignore api-unguarded-json` on the line above, or `"disabledRules": ["attr-prop-unsupplied"]` in `bascik.ext.json`.
 
 ### CI / Pre-commit Integration
 

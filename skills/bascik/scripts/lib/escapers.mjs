@@ -1,4 +1,4 @@
-// Find hand-written HTML escapers. Dependency-free; Node.js 22.22+.
+// Find hand-written HTML escapers. Dependency-free; Node.js 24.21+.
 //
 // Bascik ships `html` from @bascik/bascik/html for building markup in every script and helper: it escapes each value
 // for where it lands, blocks javascript: URLs, and throws where escaping cannot help. A hand-written escaper does

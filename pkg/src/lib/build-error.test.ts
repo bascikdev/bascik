@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BuildScriptError, locateBuildError } from "./build-error.ts";
+import {
+  BuildScriptError,
+  ComponentCssSyntaxError,
+  locateBuildError,
+} from "./build-error.ts";
 
 const scriptError = () =>
   new BuildScriptError(
@@ -68,6 +72,20 @@ describe("locateBuildError", () => {
       file: "components/x.html",
       line: 4,
       column: 7,
+    });
+  });
+
+  it("returns the location of a component CSS syntax error, so the overlay can name the file and line", () => {
+    const error = new ComponentCssSyntaxError("[bascik] CSS error in x", {
+      sourceFile: "src/components/card/card.css",
+      line: 5,
+      column: 3,
+    });
+    expect(error.name).toBe("ComponentCssSyntaxError");
+    expect(locateBuildError(new AggregateError([error]))).toEqual({
+      file: "src/components/card/card.css",
+      line: 5,
+      column: 3,
     });
   });
 

@@ -33,10 +33,10 @@ This is a real run on a new project. After the server starts, one page is saved 
 
 ### Daily Edit-and-Save Loop
 
-Edit any file and save. Bascik re-transpiles only the affected files in milliseconds and updates your browser automatically without full page reloads:
+Edit any file and save. Bascik re-transpiles only the affected pages in milliseconds and updates your browser automatically without full page reloads:
 
 ```terminal
-transpiled: pages/index.html in 0.4ms (modified component: <user-badge>)
+transpiled: pages/index.html in 1.8ms
 ```
 
 ![An editor above a browser. A heading edited in the editor and saved changes in the browser. A border color edited in a component and saved changes on every card](/assets/demos/live-reload-stacked@2x.webp)
@@ -160,11 +160,6 @@ src/components/user-card/
 Write standard HTML, plain CSS, and standard JavaScript in one file:
 
 ```html
-<article class="card">
-  <h3 class="name"><span data-bascik-slot="name">Guest User</span></h3>
-  <p class="role" data-bascik-prop-role></p>
-</article>
-
 <style>
   .card {
     padding: 16px;
@@ -181,6 +176,11 @@ Write standard HTML, plain CSS, and standard JavaScript in one file:
     font-size: 0.875rem;
   }
 </style>
+
+<article class="card" data-testid="user-card">
+  <h3 class="name"><span data-bascik-slot="name">Guest User</span></h3>
+  <p class="role" data-testid="user-card-role" data-bascik-prop-role></p>
+</article>
 ```
 
 ### Zero-Import Page Usage (`src/pages/index.html`)
@@ -223,9 +223,11 @@ Compare source template code with what appears when inspecting elements in brows
 **Inspected Element in Browser DevTools (`Cmd+Option+I`):**
 
 ```html
-<article class="bascik__user-card__card">
+<article class="bascik__user-card__card" data-testid="user-card">
   <h3 class="bascik__user-card__name">Sarah Chen</h3>
-  <p class="bascik__user-card__role">Lead Engineer</p>
+  <p class="bascik__user-card__role" data-testid="user-card-role">
+    Lead Engineer
+  </p>
 </article>
 ```
 
@@ -259,7 +261,7 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module './does-not-exist' imported fro
 
 ### VS Code Debugging (`F5`)
 
-To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (22.22 or newer) allows VS Code to attach directly to `.ts` files:
+To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node's native TypeScript support (24.21 or newer) allows VS Code to attach directly to `.ts` files:
 
 ```json
 // .vscode/launch.json
@@ -319,7 +321,7 @@ Node.js runs each `<script data-bascik-build>`, `data-bascik-build-once`, `data-
 
 ### TypeScript and Custom Minifier Source Maps
 
-- **Native TypeScript Support:** Node 24 and Node 22.22+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
+- **Native TypeScript Support:** Node 24 and Node 24.21+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
 - **External Source Maps (`sourceMap: true`):** Set `"sourceMap": true` in `tsconfig.json` so external tools, debuggers, and language servers generate and resolve `.map` files across external libraries and helper scripts.
 - **BYOMinifier Integration:** When using custom minifiers via `minify.js` or `minify.css` in `bascik.config.ts` (such as Terser, esbuild, or LightningCSS), you can configure inline or external source maps according to your production requirements.
 
@@ -367,10 +369,8 @@ import { test, expect } from "@playwright/test";
 
 test("renders user card with expanded slot content", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".bascik__user-card__card")).toBeVisible();
-  await expect(page.locator(".bascik__user-card__role")).toHaveText(
-    "Lead Engineer",
-  );
+  await expect(page.getByTestId("user-card")).toBeVisible();
+  await expect(page.getByTestId("user-card-role")).toHaveText("Lead Engineer");
 });
 ```
 
@@ -388,11 +388,17 @@ Validate custom tag references and page structure across your workspace before o
 npx bascik --check
 ```
 
-Output:
+Output for a clean project:
 
 ```terminal
-✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
+bascik --check
+
+✓ 1 page and 1 component checked — no errors
+✓ parse5 reported no parse errors in 1 dist/ HTML file
+✓ 2 files checked by @bascik/language-server
 ```
+
+With findings, each is listed with its file, line, and rule, and the summary line counts them (for example `✓ 0 errors, 2 warnings`).
 
 Scaffolded projects also include `npm run lint`, which is `bascik --check`. It runs the same `@bascik/language-server` checks as the editor extension, plus the project-wide checks, from the terminal. Each finding names the file, line, column, and rule:
 
@@ -442,9 +448,11 @@ Open `dist/index.html` to see the compiled result. Custom component tags are ful
     </style>
   </head>
   <body>
-    <article class="bascik__user-card__card">
+    <article class="bascik__user-card__card" data-testid="user-card">
       <h3 class="bascik__user-card__name">Sarah Chen</h3>
-      <p class="bascik__user-card__role">Lead Engineer</p>
+      <p class="bascik__user-card__role" data-testid="user-card-role">
+        Lead Engineer
+      </p>
     </article>
   </body>
 </html>

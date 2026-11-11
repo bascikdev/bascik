@@ -60,6 +60,14 @@ export const adaptHttp2 = (
 
   stream.on("error", (err) => {
     if (isNetworkResetError(err)) return;
+    // The response is complete and the peer reset the stream, typically
+    // curl still sending an oversize body after its 413: the client's
+    // doing, not a server fault, so no stack trace (audit 159 finding 36).
+    if (
+      ended &&
+      (err as NodeJS.ErrnoException)?.code === "ERR_HTTP2_STREAM_ERROR"
+    )
+      return;
     console.error("[bascik] HTTP/2 stream error:", err);
   });
 

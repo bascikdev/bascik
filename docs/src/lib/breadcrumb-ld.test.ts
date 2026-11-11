@@ -46,8 +46,8 @@ describe("breadcrumbLd", () => {
     expect(result).toBe("");
   });
 
-  it("generates breadcrumbs for nested section pages (e.g. how-to/server-scripts)", async () => {
-    const sectionDir = join(tempDir, "how-to");
+  it("generates breadcrumbs for nested pages of a section with no index page (e.g. notes/server-scripts)", async () => {
+    const sectionDir = join(tempDir, "notes");
     const pageFile = join(sectionDir, "server-scripts.html");
     const { mkdir } = await import("node:fs/promises");
     await mkdir(sectionDir, { recursive: true });

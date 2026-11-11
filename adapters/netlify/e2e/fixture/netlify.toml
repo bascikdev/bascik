@@ -5,7 +5,7 @@
   functions = "adapters/netlify/e2e/fixture/netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "24"
+  NODE_VERSION = "26"
   BASCIK_SITE_URL = "https://bascik-netlify-adapter.netlify.app"
 
 [dev]

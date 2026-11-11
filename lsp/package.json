@@ -1,6 +1,6 @@
 {
   "name": "@bascik/language-server",
-  "version": "0.1.0-rc.6",
+  "version": "1.0.0-rc.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -10,7 +10,16 @@
     "access": "public"
   },
   "description": "Language Server Protocol (LSP) server for Bascik components and scoping diagnostics",
-  "author": "Bascik Contributors",
+  "keywords": [
+    "bascik",
+    "language server",
+    "lsp",
+    "html components",
+    "diagnostics",
+    "linter"
+  ],
+  "homepage": "https://bascik.dev",
+  "author": "Collin Thomas",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -19,7 +28,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.21.0"
   },
   "exports": {
     ".": {

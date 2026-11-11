@@ -1,6 +1,6 @@
 # Configuration
 
-Bascik is **completely zero configuration** by default. You do not need a config file of any kind to start building. Running `bascik` or `bascik --build` works immediately right out of the box, resolving components, scoping CSS and JS, applying production minification when building or serving, and managing routing using sensible defaults.
+Bascik needs **no config file** to start building. You do not need one of any kind: running `bascik` starts the dev server right away, resolving components, scoping CSS and JS, and managing routing using sensible defaults. The one setting a production build cannot guess is your site's URL: `bascik --build` writes `sitemap.xml` and `robots.txt`, so it exits with an error until `BASCIK_SITE_URL` is set (see [The site URL](#the-site-url) below) or you turn off `generate.sitemap` and `generate.robots`.
 
 However, Bascik is also **highly configurable** for both development and production. Rather than forcing a single architectural opinion on your project, Bascik is designed to put control directly in your hands. Whenever a technical choice involves trade-offs, Bascik exposes fine-grained preferences so you can tailor the build pipeline to your exact workflow.
 
@@ -208,7 +208,7 @@ export default defineConfig({
   onMinifyError: "warn", // 'warn' in dev; 'error' in --build and --server
   http: {
     httpCache: false, // false in dev; true in --server (ETag, 304 and cacheControl)
-    port: undefined, // auto-selected port
+    port: undefined, // 8080 (8443 with TLS); the next free port when that one is busy
     hostname: "localhost", // use '0.0.0.0' to bind all interfaces
     tls: {
       enabled: false, // set true for HTTP/2 HTTPS
@@ -299,7 +299,7 @@ Rules that apply across all roots:
 - **A listed root must exist.** A missing root fails the build and `bascik --check` with a message that names it, since a missing root is usually a typo. Only the default, `src/components`, may be absent: the project then has no components.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
-`directory.out` is emptied at the start of every build and dev session, so it must be a folder of its own inside the project. A value that is the project root, resolves outside it, or holds a source folder (`directory.pages`, a `directory.components` root, `directory.api`, or `scripts.importRoot`) is a config error that names the folder it would delete, and so is an output directory inside the pages, components, or API folder, where the build output would be read back as source. `out: "src"` with the default layout is rejected before anything is deleted, and so is `out: "SRC"` on a case-insensitive file system such as the macOS and Windows defaults, where it names the same folder; `out: "build"` or `out: "src/dist"` is fine.
+`directory.out` is emptied at the start of every build and dev session, so it must be a folder of its own inside the project. A value that is the project root, resolves outside it, or holds a source folder (`directory.pages`, a `directory.components` root, `directory.api`, or `scripts.importRoot`) is a config error that names the folder it would delete, and so is an output directory inside the pages, components, or API folder, where the build output would be read back as source. `out: "src"` with the default layout is rejected before anything is deleted, and so is `out: "SRC"` on a case-insensitive file system such as the macOS and Windows defaults, where it names the same folder; `out: "build"` or `out: "src/dist"` is fine. Bascik also refuses to clean a `directory.out` that is a symbolic link and names the link and its target; point `directory.out` at a real directory.
 
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.
 
@@ -421,7 +421,7 @@ export default defineConfig({
 
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
 
-For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. See [Preserve Scoping](/preserve).
+For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. A preserved element keeps its literal `class` and `id`, so a component rule or class query that only preserved elements answer never matches; Bascik warns with `css-preserved-target` or `js-preserved-target`. Put such rules in a global stylesheet. See [Preserve Scoping](/preserve).
 
 ### `minify` (BYOMinifier)
 
@@ -547,7 +547,7 @@ scripts: {
 
 Selects the compiler for TypeScript in scripts: a component's `.ts`/`.mts` companion, a page's own `<script src="name.ts">`, an inline `<script type="text/typescript">`, and a build, routes, server, or stream script whose `src=` names a `.ts`/`.mts` file or whose tag is marked `type="text/typescript"`. Browser scripts are compiled before scoping and before `minify.js`, in dev and build alike, on the main thread and in worker threads.
 
-- `true` (default): Node's built-in strip-only mode (Node 22.22+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
+- `true` (default): Node's built-in strip-only mode (Node 24.21+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
 - `false`: Bascik does not transform browser TypeScript. Marked blocks, `.ts` companions, and a page's `<script src="name.ts">` are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads. Build, routes, server, and stream scripts written in TypeScript are still stripped, since nothing else compiles them before they run.
 - A function `(code, { sourcePath, kind, runtime }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). `runtime` is `'browser'` for a browser script and `'server'` for a build, routes, server, or stream script, which runs as an ES module: keep its `import` and `export`. The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
 
@@ -672,7 +672,7 @@ Configure the HTTP/HTTPS server started by `bascik` and `bascik --server`.
 
 ```ts
 http: {
-  port: 8080,               // HTTP port (default: auto)
+  port: 8080,               // HTTP port (default: 8080, or 8443 with TLS; the next free port when busy)
   hostname: 'localhost',    // hostname to bind
   tls: {
     enabled: false,         // enable HTTP/2 TLS
@@ -702,7 +702,7 @@ http: {
 - `keepAlive` is how long a connection waits, idle between responses, for its next request before the server closes it. It never applies while a response is being sent.
 - `drain` is how long in-flight requests get to finish on shutdown (see [Production Server](/production-server)).
 
-`maxBodySize` is a whole number of bytes; a request body over it gets `413 Payload Too Large`, and `0` turns the limit off. `apiTimeout` is a number of milliseconds up to 2147483647, the longest delay a timer can wait; `0` turns it off. `httpCache` is `true` or `false`. Any other value, such as `maxBodySize: "1mb"`, is a config error, so a typo can never leave API routes without a body limit.
+`maxBodySize` is a whole number of bytes; a request body over it gets `413 Payload Too Large`, and `0` turns the limit off. `apiTimeout` is a number of milliseconds up to 2147483647, the longest delay a timer can wait; `0` turns it off. It also covers the time a handler spends reading the request body; if the body is still arriving when it expires, the client gets `408 Request Timeout` instead of `504 Gateway Timeout`. `httpCache` is `true` or `false`. Any other value, such as `maxBodySize: "1mb"`, is a config error, so a typo can never leave API routes without a body limit.
 
 With `tls.enabled`, `request` and `headers` apply to clients that negotiate HTTP/1.1. HTTP/2 has no per-request equivalent in Node, so for an HTTP/2 connection only `keepAlive` applies: once it has had no open request for that long, the server closes it with a `GOAWAY` and the browser opens a new one for its next request. A request still open, such as a live-reload event stream, keeps the connection open however quiet it is.
 

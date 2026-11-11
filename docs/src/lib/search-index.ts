@@ -63,8 +63,11 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * (the index measures about 1,431,518 bytes).
  * 1.45 MB: the image skill and first-paint gallery/variant guidance add searchable content
  * (the index measures 1,441,278 bytes).
+ * 1.47 MB: the pre-launch audit adds the Astro comparison, five FAQ entries, the How-to and
+ * Tooling landing pages, the custom adapter dev hook and the Netlify rows (the index measures
+ * 1,455,307 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_450_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_470_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

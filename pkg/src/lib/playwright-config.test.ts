@@ -29,9 +29,11 @@ describe("Playwright project test selection", () => {
         "**/server-components.test.ts",
         "**/api-routes.test.ts",
         "**/dev-server-reload.test.ts",
+        "**/dev-boot-component-error.test.ts",
         "**/prod-server.test.ts",
         "**/preserve-server-form.test.ts",
         "**/caching-layer.test.ts",
+        "**/range-requests.test.ts",
         "**/security-defaults.test.ts",
         "**/bascik-add-dev.test.ts",
         "**/dev-exec-lifecycle.test.ts",
@@ -70,6 +72,7 @@ describe("Playwright project test selection", () => {
       [
         "**/static-asset-symlinks.test.ts",
         "**/dev-server-reload.test.ts",
+        "**/dev-boot-component-error.test.ts",
         "**/dist-lifecycle.test.ts",
         "**/bascik-add.test.ts",
         "**/bascik-add-dev.test.ts",
@@ -85,6 +88,7 @@ describe("Playwright project test selection", () => {
       [
         "**/static-asset-symlinks.test.ts",
         "**/dev-server-reload.test.ts",
+        "**/dev-boot-component-error.test.ts",
         "**/dist-lifecycle.test.ts",
         "**/bascik-add.test.ts",
         "**/bascik-add-dev.test.ts",

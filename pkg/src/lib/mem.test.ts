@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resolve } from "node:path";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -358,6 +359,45 @@ describe("failed dependencies so a missing helper is tracked", () => {
     expect(mem.pagesDependentOnFile("src/lib/shared-helper.ts")).toEqual([
       other,
     ]);
+  });
+});
+
+// Finding 40: a page that fails during component expansion (a cycle, a component build
+// script that throws) is never stored, so no component index names it. Remembering that
+// its last build failed lets a component edit rebuild it.
+describe("pages whose last build failed", () => {
+  const PAGE = "pages/cycle.html";
+
+  it("lists a page recorded as failed, once", () => {
+    mem.recordFailedPage(PAGE);
+    mem.recordFailedPage(PAGE);
+    expect(mem.pagesWhoseLastBuildFailed()).toEqual([PAGE]);
+  });
+
+  it("forgets the page when it is stored successfully", async () => {
+    mem.recordFailedPage("test-page");
+    await storeSample("test-page");
+    expect(mem.pagesWhoseLastBuildFailed()).toEqual([]);
+  });
+
+  it("forgets a page that was never stored when it is removed", () => {
+    mem.recordFailedPage(PAGE);
+    mem.recordFailedPage("pages/other.html");
+    mem.removePage(PAGE);
+    expect(mem.pagesWhoseLastBuildFailed()).toEqual(["pages/other.html"]);
+  });
+
+  it("treats relative and absolute spellings of a page as one", () => {
+    mem.recordFailedPage(PAGE);
+    mem.removePage(resolve(PAGE));
+    expect(mem.pagesWhoseLastBuildFailed()).toEqual([]);
+  });
+
+  it("forgets it on removal by relative path too", async () => {
+    await storeSample("test-page");
+    mem.recordFailedPage("test-page");
+    mem.removeByRelativePath("test-page");
+    expect(mem.pagesWhoseLastBuildFailed()).toEqual([]);
   });
 });
 

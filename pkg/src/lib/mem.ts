@@ -47,6 +47,11 @@ class MemoryStore {
    * later add/change of that missing helper rebuilds the page without needing a
    * full rebuild. Keyed by dep path -> set of absolute page paths. */
   #failedDependencies: Map<string, Set<string>>;
+  /** Pages whose last dev build failed (finding 40), keyed by resolved path, valued by the path
+   * the batch used, so a rebuild names the page as the other indexes do. A page that fails
+   * during component expansion is never stored, so no component index names it; a component
+   * edit rebuilds these instead. */
+  #failedPages: Map<string, string>;
   /** HTTP paths of pages with an active SSE live-reload connection, with connection counts. */
   #openPages: Map<string, number>;
   #dirtyPages: Set<string>;
@@ -57,6 +62,7 @@ class MemoryStore {
     this.#components = new Map();
     this.#fileDependencies = new Map();
     this.#failedDependencies = new Map();
+    this.#failedPages = new Map();
     this.#openPages = new Map();
     this.#dirtyPages = new Set();
     this.#pageWaiters = new Map();
@@ -114,6 +120,7 @@ class MemoryStore {
     componentManifest,
   }: StorePageArgs): Promise<void> {
     const httpPath = getHttpPath(relativePagePath);
+    this.#failedPages.delete(resolve(absolutePagePath));
 
     const buffer = Buffer.isBuffer(pageContent)
       ? pageContent
@@ -314,6 +321,7 @@ class MemoryStore {
     }
     // A deleted page must no longer own any failed-dependency entries.
     this.clearFailedDependencies(absolutePagePath);
+    this.#failedPages.delete(resolve(absolutePagePath));
   }
 
   removeByRelativePath(relativePagePath: string): void {
@@ -328,6 +336,17 @@ class MemoryStore {
     });
     this.#files.delete(httpPath);
     this.clearFailedDependencies(page.absolutePagePath);
+    this.#failedPages.delete(resolve(page.absolutePagePath));
+  }
+
+  /** Records that the page's last dev build failed, so a component edit rebuilds it. */
+  recordFailedPage(pagePath: string): void {
+    this.#failedPages.set(resolve(pagePath), pagePath);
+  }
+
+  /** The pages whose last build failed and that have not been removed since. */
+  pagesWhoseLastBuildFailed(): string[] {
+    return [...this.#failedPages.values()];
   }
 
   pagesThisComponentIsUsedOn(componentName: string): string[] {

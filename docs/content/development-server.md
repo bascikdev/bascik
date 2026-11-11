@@ -19,7 +19,7 @@ When started, Bascik:
 2. Cleans the output directory (`dist/`) to remove stale artifacts.
 3. Transpiles all pages and components into memory and disk. Pages open in your browser compile first, then the home page, then the rest (see [Compile Order](#compile-order)).
 4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
-5. Starts an HTTP development server with live reload on port 8080.
+5. Starts an HTTP development server with live reload on port 8080. With the default `http.hostname: "localhost"`, Bascik listens on both loopback addresses, `127.0.0.1` and `[::1]`, so either URL works, and a port already taken on either one counts as in use.
 
 This is the real output of a new project, recorded from the starter site on one machine. Startup takes a fraction of a second, and saving a page afterward rebuilds only that page:
 
@@ -87,6 +87,7 @@ When a syntax error, build script failure, or invalid component reference occurs
 - **Source Line Remapping:** Displays the original HTML template file, line number, and column.
 - **Detailed Stack Traces:** Strips internal V8 and Node runtime frames to highlight your authored code.
 - **Auto-Dismiss on Fix:** As soon as you correct the error and save the file, the dev server re-transpiles the page and dismisses the overlay instantly.
+- **Errors at Startup:** If a component fails to compile when the dev server starts, the server keeps running and the error overlay names the file and line; save a fix and the page loads.
 - **Keyboard and Screen Readers:** The overlay is a modal alert dialog named "Bascik Build Error". It moves focus to its Dismiss button, Escape closes it, and focus returns to where it was. The next error opens it again. While the connection is down, the reconnect banner is a polite status message, so screen readers announce it without moving focus.
 
 A typo in a build script, then the fix:
@@ -98,7 +99,7 @@ A typo in a build script, then the fix:
 The development server watches:
 
 - **`src/pages/`:** Adding or editing pages immediately creates or updates the corresponding route.
-- **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag.
+- **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag. Fixing a component that broke a page (a cycle or a throwing build script) rebuilds that page without restarting the dev server.
 - **`src/` (or `scripts.importRoot`):** Only request-time modules are reloaded from here. A shared `@/` helper that a build script imports re-renders its pages only when its folder is in `pipeline.watchPaths` (or inside `directory.pages` or `directory.components`); then the edit invalidates dependent build script caches and re-renders the affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
 - **The root config file (`bascik.config.js`, `.mjs`, or `.ts`):** An edit is not applied. The server prints `[bascik] Config file changed: <path>. Restart the server to apply configuration changes.` and keeps running with the configuration it booted with. See [My config changes have no effect](/testing/troubleshooting#my-config-changes-have-no-effect).

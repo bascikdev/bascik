@@ -353,11 +353,16 @@ describe("usages cut mid-tag render without re-masking the instance", () => {
   // without and with coverage (which slows the renderer, not the copying),
   // at each size: the copying is a larger share of a larger output (200k:
   // 1.35 to 1.53 plain, 1.63 to 2.71 coverage; 1M: 1.04 to 1.26 plain, 1.05
-  // to 2.39 coverage). Measure again after a change that makes these renders
-  // cheaper.
+  // to 2.39 coverage). At 1M one run takes about 300 ms, so each sample is a
+  // single run and one GC pause lands whole on the ratio: the full
+  // integration run on a loaded Node 26 CI runner read 2.40 for a shape that
+  // reads 1.45 to 1.75 alone (Node 24 and 26), so the 1M plain calibration
+  // carries that reading. The old loops cost tens of times the reference, so
+  // twice this still fails them. Measure again after a change that makes
+  // these renders cheaper.
   const NESTED_COST: Record<string, CalibratedRatio> = {
     "200k": { plain: 1.53, coverage: 2.71 },
-    "1M": { plain: 1.26, coverage: 2.39 },
+    "1M": { plain: 2.4, coverage: 2.4 },
   };
   const list: ComponentList = {
     "my-card": {
@@ -553,11 +558,18 @@ describe("the scan budget stops hostile outputs fast", () => {
   // failed at 3.2 s on a loaded CI runner above: the request's CPU time
   // against copying its output as many times as the budget lets the
   // renderer rescan it (`SCAN_BUDGET`, `spliceCopies`), timed in the same
-  // process. Each limit is the highest ratio of four runs on an M-series
-  // Mac, without and with coverage (the four runs spread by at most 12%),
-  // and a check fails at twice it: a third of the rescans left uncharged,
-  // which triples the work before the budget trips, fails it.
-  const REFUSED_COST: CalibratedRatio = { plain: 0.44, coverage: 2.12 };
+  // process. Each limit is the highest ratio of the calibration runs on an
+  // M-series Mac, without and with coverage, and a check fails at twice it:
+  // a third of the rescans left uncharged, which triples the work before the
+  // budget trips, fails it. Node 24 reads 20 to 21 for every nested shape
+  // (four runs spread by at most 12%); Node 26, the current LTS, renders
+  // these more slowly relative to the splice and spreads wider (nine runs:
+  // 20 to 26 for the 1 MB shapes, 23 to 52 at the 4 MiB limit), so the
+  // calibrations carry the Node 26 highs. A tripled cost (the uncharged
+  // third) still reads about 60 and 150 against limits of 50 and 104, so
+  // each check keeps catching it. Measure again on both lines after a change
+  // to the renderer.
+  const REFUSED_COST: CalibratedRatio = { plain: 0.75, coverage: 2.12 };
   const expectFast = async (
     manifest: ComponentManifest,
     output: string,
@@ -602,19 +614,19 @@ describe("the scan budget stops hostile outputs fast", () => {
       "<my-card>".repeat(999) +
         "a".repeat(1_000_000) +
         "</my-card>".repeat(999),
-      { plain: 22.52, coverage: 39.06 },
+      { plain: 26, coverage: 39.06 },
     ],
     [
       "1000 nested usages, 4000 characters of text at each level",
       ("<my-card>" + "a".repeat(4000)).repeat(999) + "</my-card>".repeat(999),
-      { plain: 21.99, coverage: 24.59 },
+      { plain: 25, coverage: 25 },
     ],
     [
       "nesting at the 4 MiB limit",
       "<my-card>".repeat(999) +
         "a".repeat(REQUEST_RENDER_LIMITS.maxOutputLength - 20_000) +
         "</my-card>".repeat(999),
-      { plain: 21.16, coverage: 26.34 },
+      { plain: 52, coverage: 52 },
     ],
   ] satisfies Array<[string, string, CalibratedRatio]>)(
     "%s fails with the located budget error",

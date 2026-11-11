@@ -81,7 +81,7 @@ jobs:
       - run: corepack enable
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --immutable
       - run: yarn pkg:build && yarn adapter:cf:build
@@ -129,7 +129,7 @@ jobs:
       - run: corepack enable
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --immutable
       - run: yarn pkg:build
@@ -157,7 +157,7 @@ jobs:
       - run: corepack enable
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --immutable
       - uses: actions/download-artifact@v4
@@ -183,7 +183,7 @@ jobs:
       - run: corepack enable
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --immutable
       - run: yarn pkg:build
@@ -216,7 +216,7 @@ jobs:
       - run: corepack enable
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --immutable
       - run: yarn pkg:build

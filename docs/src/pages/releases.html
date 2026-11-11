@@ -46,7 +46,8 @@
           <script data-bascik-build>
             import { renderMd } from "@/lib/md-renderer.ts";
             export default async () =>
-              await renderMd("../CHANGELOG.md", { skipToFirstH2: true });
+              (await renderMd("../CHANGELOG.md", { skipToFirstH2: true })) ||
+              '<p>No release entries yet. See <a href="https://github.com/bascikdev/bascik/releases">GitHub Releases</a>.</p>';
           </script>
 
           <docs-pagination />

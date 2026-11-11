@@ -248,6 +248,17 @@ select {
   min-height: 28px;
   margin-block: 14px;
 }
+/* The order page's head script adds this class to <html> while it trades the
+   private link for a ticket; the server's "use your link" notice stays hidden
+   behind the skeleton until the next page draws. The class lives on the page
+   root, so the rule lives here, outside component scoping. */
+html.order-exchanging [data-order-result] {
+  display: none;
+}
+/* Outranks the component's `:has(.result) .skeleton { display: none }`. */
+html.order-exchanging [data-testid="order"] [data-testid="order-skeleton"] {
+  display: block;
+}
 .status:empty {
   margin: 0;
   min-height: 0;

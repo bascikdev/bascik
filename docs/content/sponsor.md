@@ -17,24 +17,17 @@ Developing and maintaining high-performance tooling requires substantial dedicat
 
 ## Sponsorship Tiers
 
-We offer several sponsorship tiers through GitHub Sponsors for both individuals and organizations:
+Sponsorship runs through [GitHub Sponsors](https://github.com/sponsors/bascikdev), monthly or one-time. The tiers below are the ones on that page today; GitHub shows the full reward text for each.
 
-### Individual Backers
+- **Individual Backer ($5 / month):** Support independent open-source development and get the Sponsor badge on your GitHub profile. The tier lists your name in a `BACKERS.md` file of the main repositories, which the project adds when the first backers join.
+- **Generous Backer ($25 / month):** The same badge, with your name positioned above the standard individual backers.
+- **Gold Tier Backer ($500 / month):** For organizations. A large logo on the bascik.dev front page and in the core GitHub repository READMEs.
+- **Platinum Tier Backer ($1,000 / month):** For organizations. Prominent logo placement on the bascik.dev homepage, the sidebar of the content pages, and the primary GitHub README files.
 
-- **Backer ($5 / month):** Show your support for independent open-source development. Listed as a backer on the GitHub repository.
-- **Supporter ($15 / month):** Recognition in release announcements and access to sponsor discussions.
-
-### Organization & Corporate Sponsors
-
-- **Bronze Sponsor ($100 / month):** Company or project name and link in the GitHub repository README.
-- **Silver Sponsor ($250 / month):** Logo and link displayed on the GitHub repository README and documentation footer.
-- **Gold Sponsor ($500 / month):** Prominent logo placement on the homepage, documentation sidebar, and GitHub repository README. Priority issue triage.
-- **Platinum Sponsor ($1,000+ / month):** Featured logo placement across all pages, direct technical advisory channel, and dedicated support for enterprise adoption.
+Logo placements start when the first organization sponsors at those tiers. Sponsorship does not buy priority support, features, or a say in the roadmap; issues are triaged the same way for everyone.
 
 ## How to Sponsor
 
-All recurring and one-time contributions are managed securely through GitHub Sponsors:
-
 - [Become a Sponsor on GitHub](https://github.com/sponsors/bascikdev)
 
-For custom invoicing, corporate arrangements, or other sponsorship inquiries, please open a discussion or reach out via our [GitHub organization](https://github.com/bascikdev).
+For custom invoicing or another arrangement, open an issue on the [Bascik repository](https://github.com/bascikdev/bascik/issues) asking for a contact, without putting private details in it, or use the contact options on the [GitHub organization](https://github.com/bascikdev) page.

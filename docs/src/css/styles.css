@@ -505,12 +505,14 @@ pre {
   margin: 0;
 }
 
+/* `code` is in scoping.preserve, so a component rule cannot target it; the code-block styling lives here. */
 pre code {
   background: none;
   border: none;
   padding: 0;
   color: var(--pre-text);
   font-size: 0.82rem;
+  line-height: 1.7;
 }
 
 /* ── Cards ── */

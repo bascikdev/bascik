@@ -129,7 +129,7 @@ Each page is converted from its file path to a URL path following these rules:
 | `src/pages/blog/post.html`             | `/blog/post`                                                        |
 | `src/pages/blog/[slug].html` (dynamic) | `/blog/hello-world`, `/blog/second-post` (concrete generated paths) |
 
-Directory index URLs include a trailing slash. The sitemap uses the same canonical path as the development and production servers, so crawlers reach the page directly instead of following a redirect from `/blog` to `/blog/`.
+Directory index URLs include a trailing slash. The sitemap uses the same canonical path as the development and production servers, so crawlers reach the page directly instead of following a redirect from `/blog` to `/blog/`. If both `about.html` and `about/index.html` exist, the build warns that `/about` and `/about/` are served by different pages, and the sitemap lists `/about` only.
 
 When `base` is not `/`, every generated absolute URL composes `BASCIK_SITE_URL`, the normalized base, and the page path. For example, `BASCIK_SITE_URL=https://example.com`, `base: '/docs/'`, and `src/pages/about.html` produce `https://example.com/docs/about`. The `Sitemap:` line in `robots.txt` uses the same composition and never adds a doubled slash.
 

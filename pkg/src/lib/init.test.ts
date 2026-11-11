@@ -15,14 +15,16 @@ vi.mock("node:fs/promises", () => ({
   access: vi.fn(),
   mkdir: vi.fn(async () => undefined),
   readFile: vi.fn(),
+  readdir: vi.fn(),
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 
 const mockAccess = access as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
+const mockReaddir = readdir as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
 vi.spyOn(console, "log").mockImplementation(() => {});
@@ -45,6 +47,28 @@ const init = (options: InitOptions = {}) =>
     ...options,
   });
 
+/** A readdir entry: a file, or a folder when `dir` is set. */
+const entry = (name: string, dir = false) => ({
+  name,
+  isDirectory: () => dir,
+});
+
+/**
+ * Make readdir serve a folder tree: keys are folders relative to the project
+ * ("" is the root), values the entries in them. Unlisted folders are empty.
+ */
+const projectTree = (
+  tree: Record<string, ReturnType<typeof entry>[]>,
+): void => {
+  const root = process.cwd().replace(/\\/g, "/");
+  mockReaddir.mockImplementation(async (dir: string) => {
+    const rel = String(dir)
+      .replace(/\\/g, "/")
+      .slice(root.length + 1);
+    return tree[rel] ?? [];
+  });
+};
+
 /** Return the content written to writeFile for the given path suffix. */
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
@@ -64,6 +88,8 @@ describe("initProject", () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     // package.json read returns a minimal valid package by default.
     mockReadFile.mockResolvedValue('{"name":"my-app"}');
+    // The project folder is empty by default.
+    mockReaddir.mockResolvedValue([]);
   });
 
   it("creates pages and components directories", async () => {
@@ -147,19 +173,66 @@ describe("initProject", () => {
     expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.2.3");
   });
 
-  it("refuses to overwrite package type commonjs", async () => {
+  // `npm init -y` writes "type": "commonjs" since npm 11, so the documented
+  // `npm init -y`, `npm install`, `npx bascik init` path reaches init with it.
+  it('switches "type": "commonjs" to "module" when the project has no .js or .ts file', async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
-    await expect(init()).rejects.toThrow("init aborted");
+    projectTree({
+      "": [
+        entry("node_modules", true),
+        entry(".git", true),
+        entry("README.md"),
+      ],
+      node_modules: [entry("index.js")],
+      ".git": [entry("hook.js")],
+    });
+    await init();
+    const parsed = JSON.parse(writtenTo("package.json")!);
+    expect(parsed.type).toBe("module");
+    expect(parsed.scripts.dev).toBe("bascik");
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('"type": "module" instead of "commonjs"'),
+    );
+  });
+
+  it("refuses a commonjs project with a .js file and names the file", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    projectTree({ "": [entry("lib", true)], lib: [entry("server.js")] });
+    await expect(init()).rejects.toThrow(
+      /init aborted: package\.json sets "type": "commonjs".*lib\/server\.js/,
+    );
+  });
+
+  // A `.cjs` file is CommonJS whatever "type" says, so it cannot break when
+  // the package switches to "module" (an `.eslintrc.cjs` in a fresh project).
+  it("misuse: a commonjs project whose only code is a .cjs file still switches to module", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    projectTree({ "": [entry(".eslintrc.cjs"), entry("tool.cjs")] });
+    await init();
+    expect(JSON.parse(writtenTo("package.json")!).type).toBe("module");
+  });
+
+  it("refuses a commonjs project with a .ts file, which Node also reads by package type", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    projectTree({ "": [entry("build.ts")] });
+    await expect(init()).rejects.toThrow(/build\.ts/);
   });
 
   // The abort message says nothing happened, so nothing may have happened:
   // package.json is checked before any folder or file is created.
-  it("misuse: a commonjs project is refused before any folder or file is written", async () => {
+  it("misuse: a commonjs project with code is refused before any folder or file is written", async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
-    await expect(init()).rejects.toThrow("init aborted");
+    projectTree({ "": [entry("index.js")] });
+    await expect(init()).rejects.toThrow("Nothing was written");
     expect(mockMkdir).not.toHaveBeenCalled();
     expect(mockWriteFile).not.toHaveBeenCalled();
     expect(mockInstall).not.toHaveBeenCalled();
+  });
+
+  it('leaves an explicit "type": "module" alone and never scans the project', async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"module"}');
+    await init();
+    expect(mockReaddir).not.toHaveBeenCalled();
   });
 
   it("pins @bascik/bascik to a caret range on the running version, not the latest dist-tag", async () => {
@@ -194,6 +267,41 @@ describe("initProject", () => {
     expect(lines).toContain("bascik-cert.pem");
   });
 
+  // A fresh folder has no .gitignore: without node_modules/ the first
+  // `git add .` stages every installed package (create-bascik ignores it too).
+  it("ignores node_modules/ in a new .gitignore", async () => {
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      if (String(path).endsWith(".gitignore")) throw new Error("ENOENT");
+      return '{"name":"my-app"}';
+    });
+    await init();
+    const lines = writtenTo(".gitignore")!.split("\n");
+    expect(lines[0]).toBe("node_modules/");
+    expect(lines).toContain("dist/");
+  });
+
+  it("misuse: does not add node_modules/ again when .gitignore spells it node_modules or /node_modules", async () => {
+    for (const spelling of [
+      "node_modules",
+      "/node_modules",
+      "/node_modules/",
+    ]) {
+      mockWriteFile.mockClear();
+      mockReadFile.mockImplementation(async (path: unknown) =>
+        String(path).endsWith(".gitignore")
+          ? `${spelling}\n`
+          : '{"name":"my-app"}',
+      );
+      await init();
+      const lines = writtenTo(".gitignore")!.split("\n");
+      expect(
+        lines.filter(
+          (l) => l.includes("node_modules") && !l.includes(".cache"),
+        ),
+      ).toEqual([spelling]);
+    }
+  });
+
   it("keeps a CRLF .gitignore CRLF, appending only the missing lines", async () => {
     const original = "node_modules/\r\ndist/\r\n.env\r\n";
     mockReadFile.mockImplementation(async (path: unknown) =>
@@ -226,7 +334,7 @@ describe("initProject", () => {
   it("leaves .gitignore alone when every entry is already there", async () => {
     mockReadFile.mockImplementation(async (path: unknown) =>
       String(path).endsWith(".gitignore")
-        ? "dist/\nnode_modules/.cache/bascik/\nbascik-privkey.pem\nbascik-cert.pem\n"
+        ? "node_modules/\ndist/\nnode_modules/.cache/bascik/\nbascik-privkey.pem\nbascik-cert.pem\n"
         : '{"name":"my-app"}',
     );
     await init();

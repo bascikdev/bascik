@@ -209,7 +209,9 @@ export const startAdapterDev = async (
   const adapter = resolved.adapter!;
   if (!adapter.dev) {
     throw new Error(
-      `[bascik] Adapter "${adapter.name}" does not support local development. Use --build --target instead.`,
+      `[bascik] Adapter "${adapter.name}" has no dev() hook, so \`bascik --target ${target}\` cannot run it locally.\n` +
+        "  Add one: https://bascik.dev/deployment/custom-adapters#step-7-add-local-development\n" +
+        `  Or build and run the output yourself: bascik --build --target ${target}`,
     );
   }
   const host = flags.host ?? process.env.BASCIK_SERVER_HOST ?? "127.0.0.1";
@@ -396,6 +398,7 @@ export const startAdapterDev = async (
     clearTimeout(debounce);
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
+    process.off("SIGHUP", onSignal);
     await watcher?.close();
     await Promise.all([stopAdapterChild(builder), stopAdapterChild(runtime)]);
     for (const client of clients) client.end();
@@ -576,6 +579,7 @@ export const startAdapterDev = async (
     });
     process.once("SIGINT", onSignal);
     process.once("SIGTERM", onSignal);
+    process.once("SIGHUP", onSignal);
     registerExitStopper(() => (closing ? null : close()));
     const { watch } = await import("chokidar");
     watcher = watch(location.roots, {

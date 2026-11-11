@@ -43,15 +43,6 @@
   tab-size: 2;
 }
 
-.block pre code {
-  font-size: 0.82rem;
-  color: var(--pre-text);
-  line-height: 1.7;
-  background: none;
-  border: none;
-  padding: 0;
-}
-
 .block [data-code-token="cm"] {
   color: var(--syn-cm);
 }

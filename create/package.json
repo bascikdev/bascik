@@ -9,7 +9,7 @@
     "starter",
     "static site generator"
   ],
-  "version": "1.0.0-rc.11",
+  "version": "1.0.0-rc.12",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -27,7 +27,7 @@
   ],
   "bin": "dist/index.js",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.21.0"
   },
   "publishConfig": {
     "access": "public"
@@ -41,7 +41,7 @@
     "vitest": "^5.0.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",

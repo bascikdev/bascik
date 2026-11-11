@@ -23,6 +23,17 @@ import {
   htmlSuppliesComponentProp,
 } from "./project.js";
 import { findCompatibilityMatches } from "./rules.js";
+import {
+  cssBraceImbalanceMessage,
+  findCssBraceImbalance,
+} from "./css-brace-balance.js";
+import {
+  collectCssClasses,
+  collectPreservedTargets,
+  findPreservedCssTargets,
+  findPreservedJsTargets,
+  type PreservedTargetMatch,
+} from "./preserved-targets.js";
 import { analyzeApiRouteSource } from "./api-rules.js";
 import {
   findComponentStructureProblems,
@@ -659,6 +670,19 @@ export function completionReplacementRange(
  * `b_id_<component>_<id>`, so `<a_b>` with `#c` and `<a>` with `#b_c` spell
  * one class, which the build rejects; the example uses the file's own name.
  */
+/**
+ * A hyphenated name to suggest for a component file without one: camelCase and underscores split into
+ * words (`MyCard.html` -> `my-card`), a single word gets an `app-` prefix (`card.html` -> `app-card`).
+ */
+export const suggestHyphenatedName = (fileName: string): string => {
+  const base = fileName.split(".")[0];
+  const words = base
+    .split(/_+|(?<=[a-z0-9])(?=[A-Z])/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+  return words.length > 1 ? words.join("-") : `app-${words[0] ?? base}`;
+};
+
 export const componentNameUnderscoreMessage = (
   fileName: string,
 ): string | null => {
@@ -885,6 +909,7 @@ export function createDiagnostics(
     if (isComponentDocument) {
       const fileName = path.basename(normalizedDocumentPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, "").toLowerCase();
+      const suggestedName = suggestHyphenatedName(fileName);
       if (
         !nameWithoutExt.includes("-") &&
         !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)
@@ -895,7 +920,7 @@ export function createDiagnostics(
             end: { line: 0, character: Math.min(text.length, 10) },
           },
           code: "component-name-not-hyphenated",
-          message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${nameWithoutExt}") to avoid collisions with future HTML standards.`,
+          message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "${suggestedName}") to avoid collisions with future HTML standards.`,
           severity: DiagnosticSeverity.Warning,
           source: "bascik",
         });
@@ -943,6 +968,62 @@ export function createDiagnostics(
         source: "bascik",
         code: rule.id,
       });
+    }
+  };
+
+  // Component CSS is joined into one page stylesheet, where an unbalanced brace nests or drops other
+  // components' rules; the build stops on it (pkg components.ts), so this is an error at the same line.
+  const addBraceBalanceDiagnostic = (sourceText: string, offset: number) => {
+    if (!appliesScopingRules) return;
+    const imbalance = findCssBraceImbalance(sourceText);
+    if (!imbalance) return;
+    diagnostics.push({
+      range: {
+        start: document.positionAt(offset + imbalance.offset),
+        end: document.positionAt(offset + imbalance.offset + 1),
+      },
+      message: cssBraceImbalanceMessage(imbalance),
+      severity: DiagnosticSeverity.Error,
+      source: "bascik",
+      code: "css-unbalanced-braces",
+    });
+  };
+
+  // A component's <style> bodies and browser <script> bodies, with their offsets, for the preserved-target
+  // rule, which needs every block before it can tell what the stylesheet scopes.
+  const componentStyleBodies: { body: string; offset: number }[] = [];
+  const componentClientScripts: { body: string; offset: number }[] = [];
+  const pushPreservedTargetDiagnostics = (
+    matches: PreservedTargetMatch[],
+    code: "css-preserved-target" | "js-preserved-target",
+    offset: number,
+  ) => {
+    for (const m of matches) {
+      diagnostics.push({
+        range: {
+          start: document.positionAt(offset + m.index),
+          end: document.positionAt(offset + m.index + m.length),
+        },
+        message: `${m.message} ${m.suggestion}`,
+        severity: DiagnosticSeverity.Warning,
+        source: "bascik",
+        code,
+      });
+    }
+  };
+  /** The current text of another file: an open editor buffer's, else the project's copy, else the file on disk. */
+  const readCurrentText = (filePath: string): string | undefined => {
+    const normalized = path.resolve(filePath);
+    const open = openDocumentTexts.find(
+      ({ fsPath: openPath }) => path.resolve(openPath) === normalized,
+    );
+    if (open) return open.text;
+    const known = snapshot?.componentSourceByFile?.get(filePath);
+    if (known !== undefined) return known;
+    try {
+      return fs.readFileSync(filePath, "utf8");
+    } catch {
+      return undefined;
     }
   };
 
@@ -1327,6 +1408,10 @@ export function createDiagnostics(
       // A directive script runs in Node, at build time or per request, and never in the browser Bascik scopes.
       if (isJavaScriptScriptTag(openTag) && !hasServerDirective) {
         addCompatibilityDiagnostics(scriptBody, "js", scriptBodyOffset);
+        componentClientScripts.push({
+          body: scriptBody,
+          offset: scriptBodyOffset,
+        });
       }
     }
 
@@ -1703,9 +1788,60 @@ export function createDiagnostics(
       }
 
       addCompatibilityDiagnostics(styleBody, "css", styleBodyOffset);
+      addBraceBalanceDiagnostic(styleBody, styleBodyOffset);
+      componentStyleBodies.push({ body: styleBody, offset: styleBodyOffset });
+    }
+
+    // A rule or class query aimed only at preserved elements never applies: they keep their literal class
+    // and id while Bascik renames the selector (the build's css-preserved-target and js-preserved-target).
+    // Only a known component: a page, or a file outside any project, is never scoped, so `code {}` there works.
+    if (isComponentDocument) {
+      const targets = collectPreservedTargets(
+        text,
+        snapshot?.preserve ?? ["code"],
+      );
+      const companionCss = readCurrentText(fsPath.replace(/\.html$/i, ".css"));
+      const cssClasses = collectCssClasses(companionCss ?? "");
+      for (const { body } of componentStyleBodies) {
+        for (const className of collectCssClasses(body)) {
+          cssClasses.add(className);
+        }
+      }
+      for (const { body, offset } of componentStyleBodies) {
+        pushPreservedTargetDiagnostics(
+          findPreservedCssTargets(body, targets),
+          "css-preserved-target",
+          offset,
+        );
+      }
+      for (const { body, offset } of componentClientScripts) {
+        pushPreservedTargetDiagnostics(
+          findPreservedJsTargets(body, targets, cssClasses),
+          "js-preserved-target",
+          offset,
+        );
+      }
     }
   } else if (languageId === "css") {
     addCompatibilityDiagnostics(text, "css", 0);
+    addBraceBalanceDiagnostic(text, 0);
+    // A companion stylesheet's preserved targets come from its component's markup.
+    const componentHtml = isComponentDocument
+      ? readCurrentText(fsPath.replace(/\.css$/i, ".html"))
+      : undefined;
+    if (componentHtml !== undefined) {
+      pushPreservedTargetDiagnostics(
+        findPreservedCssTargets(
+          text,
+          collectPreservedTargets(
+            componentHtml,
+            snapshot?.preserve ?? ["code"],
+          ),
+        ),
+        "css-preserved-target",
+        0,
+      );
+    }
   } else if (!isScriptModuleDocument || isBrowserModule) {
     // A module that only runs in Node is never scoped for the browser.
     addCompatibilityDiagnostics(text, "js", 0);

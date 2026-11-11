@@ -56,6 +56,7 @@ import type {
 import { transformTypeScriptScriptTags } from "./typescript.ts";
 
 import { recursivelyTranspile } from "./component-expansion.ts";
+import { decodeSource } from "./source-text.ts";
 import {
   PageProcessingError,
   relativePagePathForDiagnostics,
@@ -212,7 +213,7 @@ export const transpilePage = async (
       const fileBuf = await pendingRead;
       resume();
       // Directive scripts record where they are before the routes script is removed.
-      rawHtml = stampDirectiveSources(fileBuf.toString(), pagePath);
+      rawHtml = stampDirectiveSources(decodeSource(fileBuf), pagePath);
       if (isDynamicPagePath(pagePath)) {
         const pendingRoutes = executeRoutesScript(rawHtml, pagePath);
         pause();

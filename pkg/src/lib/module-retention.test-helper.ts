@@ -801,31 +801,32 @@ export class RetentionIpcWaiters {
 /**
  * WHY one predicate for both sides: the http2 retention child calls
  * `assertSupportedTlsCleanupRuntime` (below) and aborts on anything but Node
- * 24, whose TLS cleanup callback ordering is the one the causal acknowledgment
- * was verified against. The parent tests consult `tlsCleanupRuntimeSupported`
- * and skip the http2 lanes before spawning the child. If the gate and the
- * assertion used different checks (a `>= 24` gate once let Node 25/26 through),
- * unsupported runtimes would spawn a child that fails instead of skipping. Both
- * therefore call this predicate; broaden it only after re-verifying the
- * callback ordering on the new major.
+ * 24 or 26, whose TLS cleanup callback ordering the causal acknowledgment was
+ * verified against (24 in the first round, 26.13 when it became the current
+ * LTS). The parent tests consult `tlsCleanupRuntimeSupported` and skip the
+ * http2 lanes before spawning the child. If the gate and the assertion used
+ * different checks (a `>= 24` gate once let Node 25 through), unsupported
+ * runtimes would spawn a child that fails instead of skipping. Both therefore
+ * call this predicate; broaden it only after re-verifying the callback
+ * ordering on the new major.
  */
 export function isTlsCleanupRuntimeSupported(
   version: string = process.version,
 ): boolean {
-  return /^v24\./.test(version);
+  return /^v2[46]\./.test(version);
 }
 
 /** Parent-side gate for the http2 retention lanes (see the predicate above). */
 export const tlsCleanupRuntimeSupported = isTlsCleanupRuntimeSupported();
 
 const tlsCleanupRuntimeSkipReasonFor = (version: string) =>
-  `http2 retention evidence needs Node 24's verified TLS cleanup callback ordering; running ${version}`;
+  `http2 retention evidence needs Node 24's or 26's verified TLS cleanup callback ordering; running ${version}`;
 
 /**
  * Lane gate for the retention rows: skips an http2 row off Node 24 and writes
  * the reason straight to stderr, because Vitest's default reporter prints a
  * skipped count but neither the note passed to `skip()` nor console output
- * from a skipped test (on the Node 22.22 floor lane the skip would otherwise
+ * from a skipped test (on the Node 24.21 floor lane the skip would otherwise
  * be silent). Only http2 is gated: the dev and http1 rows run, and assert, on
  * every supported runtime.
  */

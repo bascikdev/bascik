@@ -50,7 +50,7 @@ Sending a 2400 px image to a 375 px phone is one of the most common performance 
 
 Always include explicit `width` and `height` attributes. The browser uses them to reserve layout space before the image loads, which eliminates Cumulative Layout Shift (CLS), a Core Web Vital that Lighthouse measures directly.
 
-> **MDN reference.** The [`srcset` attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/srcset) and [`sizes` attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/sizes) on MDN cover the full selection syntax and every valid descriptor.
+> **MDN reference.** The [`srcset` attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/img#srcset) and [`sizes` attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/img#sizes) on MDN cover the full selection syntax and every valid descriptor.
 
 ## Lazy Loading
 

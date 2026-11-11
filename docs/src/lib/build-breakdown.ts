@@ -122,7 +122,7 @@ function renderRun(
     .join("");
   return (
     `<div class="run">` +
-    `<div class="run-head"><h4 class="run-name">${esc(name)}</h4><span class="run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
+    `<div class="run-head"><h3 class="run-name">${esc(name)}</h3><span class="run-total">${formatSeconds(run.wallSeconds)}</span></div>` +
     `<p class="run-note">${esc(note)}</p>` +
     `<div class="bar" role="img" aria-label="${esc(barLabel(name, run, segments))}" style="width:${width.toFixed(1)}%">${bar}</div>` +
     `<ul class="legend">${legend}</ul>` +
@@ -161,7 +161,7 @@ function renderParallel(timings: BuildTimings): string {
     )
     .join("");
   return (
-    `<div class="parallel"><h4 class="parallel-title">Also running during the page compile</h4>` +
+    `<div class="parallel"><h3 class="parallel-title">Also running during the page compile</h3>` +
     `<p class="parallel-note">These ${parallel.length} exec scripts run in parallel with the pages, so they add no time of their own: the longest is ${formatSeconds(parallel[0].seconds)}.</p>` +
     `<ul class="chips">${chips}</ul></div>`
   );

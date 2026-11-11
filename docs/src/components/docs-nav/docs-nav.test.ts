@@ -29,22 +29,6 @@ describe("docs-nav component", () => {
     );
   });
 
-  it("shows the scheduled release date in the notice banner until the release ships", async () => {
-    const html = await readFile(componentPath, "utf8");
-    const match = /scheduled to release ([A-Z][a-z]+ \d{1,2}, \d{4})/.exec(
-      html,
-    );
-
-    // When the banner is removed or reworded after the release, delete this test with it.
-    expect(match, "banner must state a release date").not.toBeNull();
-    const releaseDate = new Date(`${match![1]} 23:59:59`);
-    expect(Number.isNaN(releaseDate.getTime())).toBe(false);
-    expect(
-      releaseDate.getTime(),
-      "release date in the banner is in the past; see RELEASING.md",
-    ).toBeGreaterThan(Date.now());
-  });
-
   it("does not link Sponsor directly from the top navigation", async () => {
     const html = await readFile(componentPath, "utf8");
 
@@ -67,12 +51,9 @@ describe("docs-nav component", () => {
     expect(html).not.toContain('nav[aria-label="Main"] a');
   });
 
-  it("constrains the banner and navigation container to max-width", async () => {
+  it("constrains the navigation container to max-width", async () => {
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(
-      ".banner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
-    );
     expect(css).toContain(
       ".container {\n  max-width: var(--site-max-width);\n  margin: 0 auto;",
     );

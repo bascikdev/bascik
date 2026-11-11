@@ -43,7 +43,7 @@ The skills hold the rules an assistant must follow and point to the docs at http
 
 ## Scripts
 
-The skills ship Node.js scripts (Node 22.22+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
+The skills ship Node.js scripts (Node 24.21+) that agents run from the project root. Most are dependency-free; the image skill's WebP helper loads Sharp from the project, and the opt-in `bascik-refactor` scripts load Playwright and sharp from the project:
 
 | Script                                               | Purpose                                                                                                                                                                                                         |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -89,4 +89,4 @@ The example components and the starter site live in the repository's [`examples/
 
 ## Contributing
 
-These files are the source of truth. The docs build publishes them to `https://bascik.dev/assets/skills.tar.gz`, `https://bascik.dev/.well-known/agent-skills/` (one archive per skill plus `index.json`), and the core skill to `https://bascik.dev/assets/SKILL.md`. `npm create bascik` and `bascik init` offer to install every skill except the opt-in `bascik-refactor` with `npx skills add`, pinned to the matching release. The skills' tests and fixtures live in [`skills-tests/`](../skills-tests/README.md), because this folder ships to users as is. Contributor-only skills for working on Bascik itself live in `.github/skills/` and are marked `metadata.internal`, so `npx skills add` does not offer them.
+These files are the source of truth. The docs build publishes them to `https://bascik.dev/assets/skills.tar.gz`, `https://bascik.dev/.well-known/agent-skills/` (one archive per skill plus `index.json`), and the core skill to `https://bascik.dev/assets/SKILL.md`. `npm create bascik@rc` and `bascik init` offer to install every skill except the opt-in `bascik-refactor` with `npx skills add`, pinned to the matching release. The skills' tests and fixtures live in [`skills-tests/`](../skills-tests/README.md), because this folder ships to users as is. Contributor-only skills for working on Bascik itself live in `.github/skills/` and are marked `metadata.internal`, so `npx skills add` does not offer them.

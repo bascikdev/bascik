@@ -3,7 +3,7 @@
 // data-testid. A component root's id is the component name; its parts are <component>-<part>; repeated instances
 // share their ids and tests pick one with filter({ hasText }), or a data-testid on the usage tag replaces the root's.
 // Reports each gap with the source file to edit.
-// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project.
+// Dependency-free; Node.js 24.21+; needs playwright (or @playwright/test) in your project.
 //
 // Why: the target's own end-to-end tests need stable hooks, and class and id names are hashed in production builds.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

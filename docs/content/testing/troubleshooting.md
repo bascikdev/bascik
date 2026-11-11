@@ -11,7 +11,7 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ## Start here
 
-1. **Check the Node version.** Bascik needs Node 22.22 or newer; the message is `[bascik] Node.js 22.22.0 or newer is required. Detected <version>.`
+1. **Check the Node version.** Bascik needs Node 24.21 or newer; the message is `[bascik] Node.js 24.21.0 or newer is required. Detected <version>.`
 2. **Run `bascik --check`.** Most "it builds but looks wrong" problems are an unresolved tag, an unknown directive, or a config typo, and the report names each one.
 3. **Restart after a config change.** The dev server prints `[bascik] Config file changed: <path>. Restart the server to apply configuration changes.` and keeps the old config until you do.
 4. **Run a full `bascik --build` before `bascik --server` or a deploy.** A targeted `--only` build, or a `dist/` left by an older Bascik version, is the usual cause of a stale-artifact message.
@@ -19,11 +19,11 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 ## Installing and scaffolding
 
-### `[bascik] Node.js 22.22.0 or newer is required.`
+### `[bascik] Node.js 24.21.0 or newer is required.`
 
-The CLI refuses to start on an older Node. Install Node 22.22 or newer (Node 24 is recommended) and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
+The CLI refuses to start on an older Node. Install Node 24.21 or newer and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
 
-### `npm create bascik` ignored my `--template`
+### `npm create bascik@rc` ignored my `--template`
 
 npm keeps flags that come before `--` for itself. If you ran `npm create bascik@rc my-site --template cloudflare`, the scaffolder sees no template and reports:
 
@@ -41,7 +41,7 @@ The template name is misspelled or missing. The message lists the valid names. S
 
 ### `A 'viewport' meta element was not specified` or `Documents must have <title> element`
 
-webhint, axe, or another editor linter read the source page, which has no charset, viewport, or `<title>` because a head component and a build script add them at build time. Open the built page in `dist/`: if the tags are there, the warning is false, and adding them to the source page would put two in the built page. Third-party linters are opt-in, and `npm create bascik` and `bascik init` leave their config files alone. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source) for every such warning and copyable settings.
+webhint, axe, or another editor linter read the source page, which has no charset, viewport, or `<title>` because a head component and a build script add them at build time. Open the built page in `dist/`: if the tags are there, the warning is false, and adding them to the source page would put two in the built page. Third-party linters are opt-in, and `npm create bascik@rc` and `bascik init` leave their config files alone. See [Editor Linters Read Source](/testing/linting#editor-linters-read-source) for every such warning and copyable settings.
 
 ## Configuration
 

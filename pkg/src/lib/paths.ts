@@ -54,3 +54,31 @@ export const getHttpPath = (
 
   return `/${route}`;
 };
+
+/** A route served by two pages, `about.html` (`/about`) and `about/index.html` (`/about/`). */
+export interface SlashVariantRoute {
+  /** The route without its trailing slash, `/about`. */
+  route: string;
+  flatFile: string;
+  indexFile: string;
+}
+
+/**
+ * Pairs each page whose route has no trailing slash with the directory index
+ * that serves the same route with one. The server answers `/about` and
+ * `/about/` from different files, so a reader sees one URL with two bodies
+ * (audit 159 finding 51).
+ */
+export const findSlashVariantRoutes = (
+  pages: { route: string; filePath: string }[],
+): SlashVariantRoute[] => {
+  const byRoute = new Map(pages.map((page) => [page.route, page.filePath]));
+  const found: SlashVariantRoute[] = [];
+  for (const { route, filePath } of pages) {
+    if (route.endsWith("/")) continue;
+    const indexFile = byRoute.get(`${route}/`);
+    if (indexFile !== undefined)
+      found.push({ route, flatFile: filePath, indexFile });
+  }
+  return found;
+};

@@ -172,7 +172,7 @@ describe("loadUserConfig", () => {
     expect(mod.default).toEqual({ cacheHttp: true });
   });
 
-  it("loads a bascik.config.ts file (Node 22.22+ strips types natively)", async () => {
+  it("loads a bascik.config.ts file (Node 24.21+ strips types natively)", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
@@ -240,6 +240,37 @@ describe("loadUserConfig", () => {
     expect(result.stderr).toContain("Unexpected identifier 'is'");
   }, 30000);
 
+  // A project run by a global or npx CLI, without @bascik/bascik in its own
+  // node_modules: the documented `import { defineConfig } from
+  // "@bascik/bascik"` cannot resolve, and the error says how to fix it.
+  it("misuse: a config importing @bascik/bascik in a project without it says to install it locally", async () => {
+    const p = await writeConfig(
+      `import { defineConfig } from "@bascik/bascik";\nexport default defineConfig({});\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    // The temp dir's real path differs on macOS (/var is /private/var).
+    expect(result.stderr).toMatch(
+      /Failed to load bascik\.config \([^)]*bascik\.config\.mjs\)/,
+    );
+    expect(result.stderr).toContain(
+      "This project does not have @bascik/bascik installed",
+    );
+    expect(result.stderr).toContain("npm install --save-dev @bascik/bascik");
+  }, 30000);
+
+  it("does not blame @bascik/bascik when the config imports some other missing package", async () => {
+    const p = await writeConfig(
+      `import x from "not-a-real-package-xyz";\nexport default {};\n`,
+      "bascik.config.mjs",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not-a-real-package-xyz");
+    expect(result.stderr).not.toContain("@bascik/bascik installed");
+  }, 30000);
+
   it("names the line of a syntax error in bascik.config.js and in a --config file", async () => {
     const js = await writeConfig(`export default {\n  a: 1,,\n};\n`);
     const fromJs = buildProject(dirname(js));
@@ -256,6 +287,32 @@ describe("loadUserConfig", () => {
     ]);
     expect(fromFlag.status).toBe(1);
     expect(fromFlag.stderr).toContain(`${custom}:3`);
+  }, 30000);
+
+  // Audit 159 finding 50: a .ts config is not checked by `node --check`, so a
+  // missing brace was reported with no line at all.
+  it("misuse: names the line, column, and offending line for a syntax error in bascik.config.ts", async () => {
+    const p = await writeConfig(
+      `export default {\n  generate: { sitemap: false, robots: false },\n  http: { port: 41001 \n};\n`,
+      "bascik.config.ts",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Failed to load bascik.config");
+    expect(result.stderr).toContain("Expected ',', got ';'");
+    expect(result.stderr).toMatch(/bascik\.config\.ts:4:2\n};\n \^\n/);
+  }, 30000);
+
+  it("misuse: locates a type-annotated bascik.config.ts syntax error on its own line", async () => {
+    const p = await writeConfig(
+      `const port: number = 1;\nexport default {\n  http: { port },\n  this is bad\n};\n`,
+      "bascik.config.ts",
+    );
+    const result = buildProject(dirname(p));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      /bascik\.config\.ts:4:\d+\n  this is bad\n *\^/,
+    );
   }, 30000);
 
   it("locates a syntax error in a CommonJS bascik.config.js at its real line", async () => {

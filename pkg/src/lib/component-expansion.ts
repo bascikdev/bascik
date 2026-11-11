@@ -8,6 +8,7 @@
  * render server and stream script output at request time on a Web host.
  */
 import {
+  ComponentCycleError,
   ComponentExpansionLimitError,
   expandComponents,
   type ComponentInstanceState,
@@ -153,17 +154,29 @@ export const recursivelyTranspile = (
         // every other build diagnostic does.
         warn: (message) =>
           console.warn(
-            message.replace(
-              /^(<[^>\s]+> \()([^)]+)(\): )/,
-              (_match, open: string, path: string, close: string) =>
-                `${open}${getDisplayPath(path)}${close}`,
-            ),
+            message
+              .replace(
+                /^(<[^>\s]+> \()([^)]+)(\): )/,
+                (_match, open: string, path: string, close: string) =>
+                  `${open}${getDisplayPath(path)}${close}`,
+              )
+              .replace(
+                / used in "([^"]+)" /,
+                (_match, path: string) => ` used in "${getDisplayPath(path)}" `,
+              ),
           ),
       },
       usedComponents,
       filePath,
     );
   } catch (error) {
+    if (error instanceof ComponentCycleError && error.sourceFile) {
+      // Printed the way --check and every other build diagnostic name a file.
+      error.message = error.message.replace(
+        `(${error.sourceFile})`,
+        `(${getDisplayPath(error.sourceFile)})`,
+      );
+    }
     if (error instanceof ComponentExpansionLimitError) {
       throw new PageProcessingError(
         filePath ?? "unknown file",

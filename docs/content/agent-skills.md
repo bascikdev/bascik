@@ -37,7 +37,7 @@ The skills hold only what an assistant must not get wrong: target per-instance e
 
 ## Scripts the Assistant Runs
 
-The skills include Node.js scripts (Node 22.22 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. Most need no extra dependencies. The `bascik-images` WebP helper loads Sharp from your project; [Optimizing Images](/how-to/optimizing-images) shows how agents generate files locally, wire up native HTML and CSS, and prevent first-paint flashes. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
+The skills include Node.js scripts (Node 24.21 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik. Most need no extra dependencies. The `bascik-images` WebP helper loads Sharp from your project; [Optimizing Images](/how-to/optimizing-images) shows how agents generate files locally, wire up native HTML and CSS, and prevent first-paint flashes. The `bascik-refactor` scripts also load Playwright and sharp from your project, so install them as dev dependencies when you use those scripts. [Migrating with Coding Agents](/how-to/agent-migration) shows the scripts in order.
 
 | Script                                               | What it does                                                                                                                                                                                                                                                                    |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -163,15 +163,15 @@ After setting up the files, `npm create bascik@rc` and `bascik init` ask:
 Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
 ```
 
-Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0-rc.10`, and from the default branch when that tag cannot be found.
+Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.0`, and from the default branch when that tag cannot be found.
 
 Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
 
 ```sh
-npx skills add bascikdev/bascik#v1.0.0-rc.10 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
+npx skills add bascikdev/bascik#v1.0.0 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
-If that tag is not found, run the same command without `#v1.0.0-rc.10` to install from the default branch.
+If that tag is not found, run the same command without `#v1.0.0` to install from the default branch.
 
 ### Project Brief
 

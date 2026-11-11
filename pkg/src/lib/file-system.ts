@@ -375,9 +375,45 @@ export async function copyReplicatePath(
   }
 }
 
-export const listPages = async () => {
-  return deepReadDirFlat(BascikConfig.directory.pages, /\.html$/);
+/**
+ * Every page under directory.pages. A pages folder that cannot be read is the
+ * most likely first-run mistake (an empty folder, a project subfolder, a
+ * project with no pages yet), so it is reported as a [bascik] error naming
+ * the configured path, the folder it was resolved from, and the fix, in
+ * build and dev alike, instead of Node's bare `ENOENT ... scandir` (audit 159
+ * findings 38, 49, 139).
+ */
+export const pagesDirectoryError = (error: unknown): Error => {
+  const pages =
+    relative(process.cwd(), resolve(BascikConfig.directory.pages)) || ".";
+  const code = (error as NodeJS.ErrnoException)?.code;
+  if (code === "ENOENT" || code === "ENOTDIR")
+    return new Error(
+      `[bascik] error: pages directory "${pages}" (directory.pages) ` +
+        `${code === "ENOENT" ? "does not exist" : "is not a directory"} ` +
+        `in ${process.cwd()}. Run bascik from the project root (the ` +
+        `folder with package.json and src/pages), or set directory.pages ` +
+        `in bascik.config.ts. To start a new project, run ` +
+        `\`npm create bascik@rc\` (or \`npx bascik init\` in an existing folder).`,
+      { cause: error },
+    );
+  return new Error(
+    `[bascik] error: could not read pages directory "${pages}" ` +
+      `(directory.pages): ${error instanceof Error ? error.message : String(error)}`,
+    { cause: error },
+  );
 };
+
+/** Every file under directory.pages matching `filter`, with a readable error. */
+export const readPagesDirectory = async (filter?: RegExp) => {
+  try {
+    return await deepReadDirFlat(BascikConfig.directory.pages, filter);
+  } catch (error) {
+    throw pagesDirectoryError(error);
+  }
+};
+
+export const listPages = async () => readPagesDirectory(/\.html$/);
 
 type NestedPaths = (string | NestedPaths)[];
 
@@ -495,7 +531,7 @@ export const deepReadDirFlat = async (
 
 export const copyStaticAssets = async (): Promise<void> => {
   const pagesRoot = BascikConfig.directory.pages;
-  const allPageFiles = await deepReadDirFlat(pagesRoot);
+  const allPageFiles = await readPagesDirectory();
   const pageAssetFiles = allPageFiles.filter((filePath) =>
     isStaticAssetPath(filePath, pagesRoot, true),
   );

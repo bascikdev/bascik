@@ -14,13 +14,16 @@ import type { LanguageServerDiagnostic } from "./check-language-server.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
 import { GeneratedIdClassCollisionError } from "./generated-id-classes.ts";
+import { ComponentSyntaxError } from "./build-error.ts";
 
 const {
   listPagesMock,
   listComponentsMock,
   deepReadDirFlatMock,
   runLanguageServerCheckMock,
+  setSilencedMock,
 } = vi.hoisted(() => ({
+  setSilencedMock: vi.fn(),
   listPagesMock: vi.fn(),
   listComponentsMock: vi.fn(),
   deepReadDirFlatMock: vi.fn(),
@@ -66,6 +69,9 @@ vi.mock("./file-system.js", () => ({
 
 vi.mock("./components.js", () => ({
   listComponents: listComponentsMock,
+  setComponentWarningsSilenced: setSilencedMock,
+  NATIVE_HTML_ELEMENTS: new Set(["nav", "button"]),
+  suggestHyphenatedName: (f: string) => `app-${f}`,
 }));
 
 vi.mock("./userConfig.js", () => ({
@@ -169,6 +175,7 @@ describe("checkProject", () => {
   beforeEach(async () => {
     listPagesMock.mockReset();
     listComponentsMock.mockReset();
+    setSilencedMock.mockReset();
     deepReadDirFlatMock.mockReset();
     runLanguageServerCheckMock.mockReset();
     runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });
@@ -856,7 +863,10 @@ describe("checkProject", () => {
       expect(item?.severity).toBe("error");
       expect(item?.message).toContain("src/missing-pages");
       expect(item?.message).toContain("does not exist");
-      expect(item?.locations).toEqual([{ filePath: "bascik.config.js" }]);
+      // No config file exists in this project: the location says so instead of naming one.
+      expect(item?.locations).toEqual([
+        { filePath: "no bascik.config file, defaults in use" },
+      ]);
     });
 
     it("reports a missing site URL as a warning that names the fix and the failing build, when sitemap/robots features are enabled", async () => {
@@ -926,6 +936,67 @@ describe("checkProject", () => {
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
       expect(item?.locations).toHaveLength(2);
+    });
+
+    // Finding 30: an unclosed <style> stops the build at the component's own
+    // line; --check names the same file and line, not the config file.
+    it("reports a component syntax error at the component file and line", async () => {
+      await setupProject({
+        "pages/index.html": "<my-counter></my-counter>",
+        "src/components/my-counter.html": "<style>\n.x { color: red; }\n",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockRejectedValue(
+        new ComponentSyntaxError(
+          "[bascik] HTML error in src/components/my-counter.html:1: <style> is never closed",
+          { sourceFile: "src/components/my-counter.html", line: 1, column: 1 },
+        ),
+      );
+      deepReadDirFlatMock.mockResolvedValue([
+        join(workDir, "src/components/my-counter.html"),
+      ]);
+      const findings = await checkProject();
+      expect(
+        findings.items.find((i) => i.category === "component-syntax"),
+      ).toMatchObject({
+        severity: "error",
+        locations: [
+          { filePath: "src/components/my-counter.html", line: 1, column: 1 },
+        ],
+      });
+      expect(
+        findings.items.filter((i) => i.category === "component-list"),
+      ).toEqual([]);
+      // The fallback scan still knows the component, so its tag is not unmatched.
+      expect(
+        findings.items.filter((i) => i.category === "unmatched-tag"),
+      ).toEqual([]);
+    });
+
+    // Finding 24: a whole document saved as a component built with no word and
+    // --check said "✓ 0 errors".
+    it("warns about page chrome in a component template at its line", async () => {
+      await setupProject({
+        "pages/index.html": "<full-page></full-page>",
+        "src/components/full-page.html":
+          '<!-- note -->\n<!DOCTYPE html>\n<html lang="en"><body><div>x</div></body></html>\n',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "full-page": {
+          fileName: join(workDir, "src/components/full-page.html"),
+          fileContent: "<div>x</div>",
+        },
+      });
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "component-document",
+      );
+      expect(item).toMatchObject({
+        severity: "warning",
+        locations: [{ filePath: "src/components/full-page.html", line: 2 }],
+      });
+      expect(item?.message).toContain("<html>");
     });
 
     it("reports two components whose #id rules generate one class, with both rule locations and the fix", async () => {
@@ -1378,6 +1449,33 @@ describe("checkProject", () => {
       ]);
     });
 
+    // Audit 159 finding 51.
+    it("warns when about.html and about/index.html split /about and /about/", async () => {
+      await setupProject({
+        "src/pages/about.html": "<p>A</p>",
+        "src/pages/about/index.html": "<p>B</p>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "src/pages/about.html"),
+        join(workDir, "src/pages/about/index.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "duplicate-route-resolution",
+      );
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("warning");
+      expect(item?.message).toContain(
+        '"/about" and "/about/" are served by different pages',
+      );
+      expect(item?.locations).toEqual([
+        { filePath: join(workDir, "src/pages/about.html") },
+        { filePath: join(workDir, "src/pages/about/index.html") },
+      ]);
+    });
+
     it("does not emit missing-required-prop warnings because the cheap global heuristic is too noisy", async () => {
       await setupProject({
         "pages/index.html": "<card-title></card-title>",
@@ -1655,6 +1753,184 @@ describe("checkProject", () => {
       });
     });
   });
+
+  describe("prelaunch audit: config source, unhyphenated usage, dist honesty", () => {
+    const comp = (name: string) => ({
+      [name]: { fileName: join(workDir, `components/${name}/${name}.html`) },
+    });
+
+    it("does not name a config file that does not exist (findings 32, 88, 110)", async () => {
+      delete process.env.BASCIK_SITE_URL;
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "missing-site-url",
+      );
+      expect(item).toBeDefined();
+      const file = item?.locations[0]?.filePath ?? "";
+      expect(file).not.toMatch(/^bascik\.config\./);
+      expect(file).toContain("no bascik.config file");
+      expect(file).toContain("defaults");
+      const human = formatFindingsHuman(findings);
+      expect(human).not.toContain("(bascik.config.js)");
+    });
+
+    it("names bascik.config.ts when that is the config in use (findings 32, 88, 110)", async () => {
+      delete process.env.BASCIK_SITE_URL;
+      await setupProject({
+        "pages/index.html": "<p>ok</p>",
+        "bascik.config.ts": "export default {};",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "missing-site-url",
+      );
+      expect(item?.locations[0]?.filePath).toBe("bascik.config.ts");
+    });
+
+    it.each([
+      ["card", "<card>Hi</card>"],
+      ["plan_card", "<plan_card />"],
+      ["mycard", "<MyCard></MyCard>"],
+      ["badcomp", "<main>\n<badcomp\n  class='x'></badcomp></main>"],
+    ])(
+      "does not call the used, non-hyphenated component %s unused (findings 45, 107)",
+      async (name, page) => {
+        await setupProject({
+          "pages/index.html": page,
+          [`components/${name}/${name}.html`]: "<div>x</div>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue(comp(name));
+        const findings = await checkProject();
+        expect(
+          findings.items.filter((i) => i.category === "unused-component"),
+        ).toEqual([]);
+        expect(
+          findings.items.filter((i) => i.category === "unmatched-tag"),
+        ).toEqual([]);
+      },
+    );
+
+    it("still calls an unreferenced non-hyphenated component unused, and ignores look-alike prefixes", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<cardinal-point></cardinal-point><cards></cards><!-- <card> -->",
+        "components/card/card.html": "<div>x</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue(comp("card"));
+      const findings = await checkProject();
+      expect(
+        findings.items.filter((i) => i.category === "unused-component"),
+      ).toHaveLength(1);
+    });
+
+    it("counts a non-hyphenated component used by another component", async () => {
+      await setupProject({
+        "pages/index.html": "<wrap-it></wrap-it>",
+        "components/wrap-it/wrap-it.html": "<card>x</card>",
+        "components/card/card.html": "<div>x</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        ...comp("wrap-it"),
+        ...comp("card"),
+      });
+      const findings = await checkProject();
+      expect(
+        findings.items.filter((i) => i.category === "unused-component"),
+      ).toEqual([]);
+    });
+
+    describe("dist/ spec violations (finding 101)", () => {
+      const setDistOut = (dir: string) => {
+        (BascikConfig as unknown as MutableBascikConfigForTest).directory = {
+          ...BascikConfig.directory,
+          out: dir,
+        };
+      };
+      const run = async (distHtml: string, ok = false) => {
+        try {
+          await import("parse5");
+        } catch {
+          return undefined;
+        }
+        setDistOut(join(workDir, "dist"));
+        await setupProject({
+          "pages/index.html": ok
+            ? "<p>ok</p>"
+            : "<site-navv />\n<site-nav></site-nav>",
+          "components/site-nav/site-nav.html": "<nav>n</nav>",
+          "dist/index.html": distHtml,
+          "dist/ok.html":
+            "<!DOCTYPE html><html><head><title>t</title></head><body><p>x</p></body></html>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue(comp("site-nav"));
+        return checkProject();
+      };
+      const bad =
+        "<!DOCTYPE html><html><head><title>t</title></head><body><site-navv /><nav>n</nav></body></html>";
+
+      it("counts files with violations out of the passing total and says so", async () => {
+        const findings = await run(bad);
+        if (!findings) return;
+        expect(findings.distHtmlChecked).toBe(2);
+        expect(findings.distHtmlFailed).toBe(1);
+        const out = formatFindingsHuman(findings);
+        expect(out).toContain(
+          "✗ 1 of 2 dist/ HTML files has WHATWG spec violations (parse5)",
+        );
+        expect(out).not.toMatch(/✓ \d+ dist\/ HTML files? pass/);
+      });
+
+      it("links the violation to the unresolved tag that was passed through, with a column", async () => {
+        const findings = await run(bad);
+        if (!findings) return;
+        const spec = findings.items.find(
+          (i) => i.category === "dist-html-spec",
+        );
+        expect(spec?.locations[0]?.column).toBeGreaterThan(0);
+        expect(spec?.note).toContain("<site-navv>");
+        expect(spec?.note).toContain("no matching component");
+        const out = formatFindingsHuman(findings);
+        expect(out).toContain("<site-navv>");
+        expect(out).toMatch(/index\.html:1:\d+/);
+      });
+
+      it("keeps the pass line when every file is clean", async () => {
+        const findings = await run(
+          "<!DOCTYPE html><html><head><title>t</title></head><body><p>x</p></body></html>",
+          true,
+        );
+        if (!findings) return;
+        expect(findings.distHtmlFailed ?? 0).toBe(0);
+        expect(formatFindingsHuman(findings)).toContain(
+          "✓ parse5 reported no parse errors in 2 dist/ HTML files",
+        );
+      });
+    });
+
+    it("silences the component console warnings while it lists components, then restores them (finding 105)", async () => {
+      const states: boolean[] = [];
+      setSilencedMock.mockImplementation((v: boolean) => states.push(v));
+      let silencedDuringList: boolean | undefined;
+      listComponentsMock.mockImplementation(async () => {
+        silencedDuringList = states.at(-1);
+        return {};
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      await checkProject();
+      expect(silencedDuringList).toBe(true);
+      expect(states.at(-1)).toBe(false);
+    });
+  });
 });
 
 // ─── formatFindingsHuman ──────────────────────────────────────────────────────
@@ -1708,13 +1984,17 @@ describe("formatFindingsHuman — dist/ lines", () => {
 
   it("shows passing dist line when distHtmlChecked > 0, no errors", () => {
     const out = formatFindingsHuman({ ...base(), distHtmlChecked: 12 });
-    expect(out).toContain("✓ 12 dist/ HTML files pass WHATWG spec (parse5)");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 12 dist/ HTML files",
+    );
     expect(out).not.toContain("install parse5");
   });
 
   it("uses singular form when distHtmlChecked === 1", () => {
     const out = formatFindingsHuman({ ...base(), distHtmlChecked: 1 });
-    expect(out).toContain("✓ 1 dist/ HTML file pass");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 1 dist/ HTML file",
+    );
   });
 
   it("shows passing dist note alongside errors in the summary", () => {
@@ -1732,7 +2012,37 @@ describe("formatFindingsHuman — dist/ lines", () => {
       ],
     };
     const out = formatFindingsHuman(findings);
-    expect(out).toContain("✓ 8 dist/ HTML files pass WHATWG spec (parse5)");
+    expect(out).toContain(
+      "✓ parse5 reported no parse errors in 8 dist/ HTML files",
+    );
+  });
+
+  // Finding 30: the report said "violations" and "pass WHATWG spec" one line apart.
+  it("does not claim the dist/ files pass when parse5 reported violations", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 2,
+      distHtmlChecked: 4,
+      items: [
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[eof-in-element-that-can-contain-only-text]",
+          locations: [{ filePath: "index.html", line: 22 }],
+        },
+        {
+          category: "dist-html-spec",
+          severity: "error",
+          message: "[end-tag-without-matching-open-element]",
+          locations: [{ filePath: "index.html", line: 30 }],
+        },
+      ],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).not.toContain("pass WHATWG spec");
+    expect(out).toContain(
+      "✗ 1 of 4 dist/ HTML files has WHATWG spec violations (parse5)",
+    );
   });
 
   it("renders dist-html-spec findings with file:line and error code", () => {
@@ -2022,6 +2332,7 @@ describe("checkProject – request-time component rendering (prompt 157)", () =>
   beforeEach(async () => {
     listPagesMock.mockReset();
     listComponentsMock.mockReset();
+    setSilencedMock.mockReset();
     deepReadDirFlatMock.mockReset();
     runLanguageServerCheckMock.mockReset();
     runLanguageServerCheckMock.mockResolvedValue({ status: "missing" });

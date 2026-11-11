@@ -47,8 +47,23 @@ await writeFile(
   `
 import bascik from "../dist/.bascik/cloudflare/worker.js";
 import { sweep, processOrderMessage } from "../src/lib/fulfillment.ts";
+import { orderGate } from "../src/lib/order-gate.ts";
 export default {
-  fetch(request, env, ctx) { return bascik.fetch(request, env, ctx); },
+  async fetch(request, env, ctx) {
+    // A /order?ticket= request with a ticket that does not verify gets a real
+    // 404 here: stream scripts cannot set a status code once headers are sent.
+    if ((await orderGate(request, env)) === "not-found") {
+      // The 404 page as the assets layer serves it at its own URL, so its
+      // security headers come along; the status and caching are this response's.
+      const notFound = await env.ASSETS.fetch(new Request(new URL("/404.html", request.url), { method: "GET" }));
+      const headers = new Headers(notFound.headers);
+      headers.set("Cache-Control", "no-store");
+      headers.delete("ETag");
+      headers.delete("Last-Modified");
+      return new Response(request.method === "HEAD" ? null : notFound.body, { status: 404, headers });
+    }
+    return bascik.fetch(request, env, ctx);
+  },
   async scheduled(event, env, ctx) { await sweep(env); },
   async queue(batch, env) {
     for (const message of batch.messages) {

@@ -35,14 +35,26 @@ test.describe("dynamic routes", () => {
 
   test("coexists with server scripts on dynamic pages under server mode", async ({
     page,
+    request,
   }) => {
-    await page.goto("/dynamic/alpha");
-    const serverElement = page.getByTestId("server-slice");
-    // If running in a server mode with server scripts active, it should be rendered
-    const isVisible = await serverElement.isVisible().catch(() => false);
-    if (isVisible) {
-      await expect(serverElement).toHaveText("Personalized Slice");
+    // The static harness leaves an inert text/bascik-server placeholder; only
+    // the dev and production servers run the script.
+    const raw = await (await request.get("/dynamic/alpha")).text();
+    test.skip(
+      raw.includes("text/bascik-server"),
+      "the static harness cannot execute server scripts",
+    );
+    for (const slug of ["alpha", "beta"]) {
+      await page.goto(`/dynamic/${slug}`);
+      // The route's build output and the request-time slice are on the same page.
+      await expect(page.getByTestId("post-slug")).toHaveText(slug);
+      await expect(page.getByTestId("server-slice")).toHaveText(
+        "Personalized Slice",
+      );
     }
+    // The handler's output replaces the script: no placeholder or script tag remains.
+    const html = await page.content();
+    expect(html).not.toContain("data-bascik-server");
   });
 
   test("supports unquoted src attribute in routes and build scripts", async ({

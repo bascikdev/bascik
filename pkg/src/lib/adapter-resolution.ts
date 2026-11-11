@@ -209,52 +209,151 @@ export const isLocalAdapterPath = (
     (target.startsWith(".\\") || target.startsWith("..\\"))) ||
   path.isAbsolute(target);
 
-export const resolveAdapterTarget = async (
+/** Damerau-Levenshtein distance with adjacent transpositions (optimal string alignment). */
+const editDistance = (a: string, b: string): number => {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) =>
+      i === 0 ? j : j === 0 ? i : 0,
+    ),
+  );
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost,
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+    }
+  return rows[a.length][b.length];
+};
+
+/**
+ * The official target a mistyped `--target` most likely meant (`cloudfare`
+ * → `cloudflare`, `Netlify` → `netlify`), or `undefined` when the name is
+ * an official target already, a path, a scoped package, or not close to any.
+ */
+export const suggestOfficialTarget = (target: string): string | undefined => {
+  if (
+    !target ||
+    Object.prototype.hasOwnProperty.call(OFFICIAL_TARGETS, target) ||
+    isLocalAdapterPath(target) ||
+    target.includes("/")
+  )
+    return undefined;
+  const lower = target.toLowerCase();
+  let best: { name: string; distance: number } | undefined;
+  for (const name of Object.keys(OFFICIAL_TARGETS)) {
+    const distance = editDistance(lower, name);
+    if (distance <= 2 && (!best || distance < best.distance))
+      best = { name, distance };
+  }
+  return best?.name;
+};
+
+interface ResolvedSpecifier {
+  official?: { package: string; variant?: string };
+  pkgName?: string;
+  localPath?: string;
+  specifier: string;
+}
+
+/**
+ * Turn `--target` into the file `import()` will load, without loading it.
+ * Throws the user-facing error for a missing local file, an uninstalled
+ * package (with the nearest official target when the name is a typo) and an
+ * installed package with no importable entry.
+ */
+const resolveAdapterSpecifier = (
   target: string,
-  projectRoot = process.cwd(),
-  options: ResolveAdapterOptions = {},
-): Promise<ResolvedAdapterTarget> => {
+  projectRoot: string,
+): ResolvedSpecifier => {
   const official = Object.prototype.hasOwnProperty.call(
     OFFICIAL_TARGETS,
     target,
   )
     ? OFFICIAL_TARGETS[target]
     : undefined;
-  let specifier: string;
-  let variant = official?.variant;
-  let pkgName: string | undefined;
-  let localPath: string | undefined;
-
   if (official) {
-    pkgName = official.package;
-
-    if (options.load === false) {
-      return { package: pkgName, variant };
-    }
-
-    const officialPackage = pkgName;
-    specifier = resolveAdapterPackage(
-      officialPackage,
+    const officialPackage = official.package;
+    return {
+      official,
+      pkgName: officialPackage,
+      specifier: resolveAdapterPackage(
+        officialPackage,
+        projectRoot,
+        () =>
+          new Error(
+            `[bascik] --target ${target}: required package "${officialPackage}" is not installed in this project.\n` +
+              `  Install it as a dev dependency: npm install --save-dev ${officialPackage}`,
+          ),
+      ),
+    };
+  }
+  if (isLocalAdapterPath(target)) {
+    const localPath = isAbsolute(target) ? target : join(projectRoot, target);
+    if (!existsSync(localPath))
+      throw new Error(
+        `[bascik] --target ${target}: adapter file not found at ${localPath}`,
+      );
+    return { localPath, specifier: localPath };
+  }
+  const suggestion = suggestOfficialTarget(target);
+  return {
+    pkgName: target,
+    specifier: resolveAdapterPackage(
+      target,
       projectRoot,
       () =>
         new Error(
-          `[bascik] --target ${target}: required package "${officialPackage}" is not installed in this project.\n` +
-            `  Install it as a dev dependency: npm install --save-dev ${officialPackage}`,
+          `[bascik] --target: could not resolve adapter package "${target}" from ${projectRoot}.\n` +
+            (suggestion ? `  Did you mean --target ${suggestion}?\n` : "") +
+            `  Ensure it is installed in package.json dependencies or devDependencies.`,
         ),
-    );
-  } else if (isLocalAdapterPath(target)) {
-    localPath = isAbsolute(target) ? target : join(projectRoot, target);
-    specifier = localPath;
-    if (options.load === false) {
-      return { path: localPath };
-    }
-  } else {
-    pkgName = target;
-    if (options.load === false) {
-      return { package: pkgName };
-    }
-    specifier = resolveAdapterPackage(target, projectRoot);
+    ),
+  };
+};
+
+/**
+ * Check that `--target` names an adapter that can be loaded, without
+ * importing it, so the CLI can reject a typo or a missing file before it
+ * transpiles the site. Throws the same message `resolveAdapterTarget` would.
+ */
+export const checkAdapterTarget = (
+  target: string,
+  projectRoot = process.cwd(),
+): void => {
+  resolveAdapterSpecifier(target, projectRoot);
+};
+
+export const resolveAdapterTarget = async (
+  target: string,
+  projectRoot = process.cwd(),
+  options: ResolveAdapterOptions = {},
+): Promise<ResolvedAdapterTarget> => {
+  if (options.load === false) {
+    const official = Object.prototype.hasOwnProperty.call(
+      OFFICIAL_TARGETS,
+      target,
+    )
+      ? OFFICIAL_TARGETS[target]
+      : undefined;
+    if (official)
+      return { package: official.package, variant: official.variant };
+    if (isLocalAdapterPath(target))
+      return {
+        path: isAbsolute(target) ? target : join(projectRoot, target),
+      };
+    return { package: target };
   }
+
+  const { official, pkgName, localPath, specifier } = resolveAdapterSpecifier(
+    target,
+    projectRoot,
+  );
+  const variant = official?.variant;
 
   // Import adapter module
   let importedModule: unknown;
@@ -262,6 +361,9 @@ export const resolveAdapterTarget = async (
     const importUrl = pathToFileURL(specifier).href;
     importedModule = await import(importUrl);
   } catch (err) {
+    const firstLine = (err as Error).message
+      .split("\n")[0]
+      .replace(/ imported from \S+$/, "");
     // The package resolved above, so it is installed: a missing module here
     // is one it imports (a pruned dependency, a broken install), and its
     // name is the one the author needs.
@@ -270,12 +372,17 @@ export const resolveAdapterTarget = async (
       (err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND"
     ) {
       throw new Error(
-        `[bascik] --target ${target}: "${pkgName}" is installed but failed to load: ${(err as Error).message.split("\n")[0]}\n` +
+        `[bascik] --target ${target}: "${pkgName}" is installed but failed to load: ${firstLine}\n` +
           `  Reinstall the project's dependencies (npm install) so the adapter's own dependencies are present.`,
         { cause: err },
       );
     }
-    throw err;
+    // Node names the importer (this module, inside the compiler) in a
+    // missing-module message; the adapter's own error is what matters.
+    throw new Error(
+      `[bascik] --target ${target}: the adapter failed to load: ${firstLine}`,
+      { cause: err },
+    );
   }
 
   const rawAdapter =

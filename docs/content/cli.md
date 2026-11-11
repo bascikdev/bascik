@@ -98,12 +98,14 @@ bascik init --no-skills  # skip the agent skills
 `bascik init` adds what Bascik needs to the folder it runs in. It adds to files you already have and never replaces them:
 
 - creates `src/pages/index.html` and `src/components/`
-- adds `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
-- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0-rc.10`) and is skipped when `dependencies` or `devDependencies` already lists it
+- adds `node_modules/`, `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0`) and is skipped when `dependencies` or `devDependencies` already lists it
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 
-A `package.json` that sets `"type": "commonjs"` stops `init` before it writes anything, because Bascik config files use ESM syntax.
+Bascik config files use ESM syntax, so `init` needs `"type": "module"`. `npm init -y` writes `"type": "commonjs"` since npm 11. When the project has no `.js` or `.ts` file outside `node_modules`, as right after `npm init -y`, `init` changes it to `"module"`, which cannot break anything (a `.cjs` file is CommonJS under either setting, so it does not count). A project with such a file may rely on CommonJS, so `init` stops before it writes anything and names one of the files.
+
+Run Bascik from the project's own install (`npm run dev`, `npx bascik`). A global install (`npm install -g @bascik/bascik`) can run `bascik init`, but the project still needs `@bascik/bascik` in its own `node_modules`: `init` adds it to `package.json`, and Node resolves `import { defineConfig } from "@bascik/bascik"` in `bascik.config.ts` from the project folder, never from the global copy.
 
 ## CLI reference
 
@@ -213,9 +215,11 @@ bascik --build --env-file .env.staging
 bascik --build --env-file .env.base --env-file .env.staging  # later files win
 ```
 
+Node itself checks `--env-file` before Bascik starts, so a missing file stops the command with `node: <file>: not found` (exit code 9); use `--env-file-if-exists` for an optional file.
+
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
 
-Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
+Env files often hold secrets, so keep them out of git. A project made with `npm create bascik@rc` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
 
 The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
 
@@ -272,7 +276,7 @@ bascik --build --target cloudflare-workers
 bascik --build --target netlify
 ```
 
-`--target <name>` accepts an official target name, an installed adapter package, or a local file path: an absolute path, or one starting with `./` or `../` (on Windows also `.\` or `..\`, as PowerShell completes it). Anything else is read as a package name. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) and [Netlify Adapter](/deployment/netlify) guides for the full workflows.
+`--target <name>` accepts an official target name, an installed adapter package, or a local file path: an absolute path, or one starting with `./` or `../` (on Windows also `.\` or `..\`, as PowerShell completes it). Anything else is read as a package name. The target is checked before anything is transpiled: a typo of an official target, such as `cloudfare`, fails with `Did you mean --target cloudflare?`, and a missing local adapter file fails with `adapter file not found at <path>`. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) and [Netlify Adapter](/deployment/netlify) guides for the full workflows.
 
 ## Starting the dev server
 
@@ -328,7 +332,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. Under the default [`scripts.onBuildScriptError: "error"`](/configuration#scripts), the first build-script failure stops the build at once; other page failures are collected and reported together as `Build failed with N page error(s)`, each with its project-relative path. The build then exits nonzero and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:
@@ -380,7 +384,7 @@ bascik --check
 - **Project checks** need the whole project: the config, every page and component, the route table. Duplicate routes, unused components, and unmatched tags are examples. `bascik` runs these itself.
 - **Per-file checks** need one file: an attribute typo, CSS that cannot be scoped, an API route with no handler. These are the same checks your editor shows as you type, and `bascik --check` runs them through [`@bascik/language-server`](/tools/linter) when it is installed.
 
-Projects created with `npm create bascik` have the language server installed. In a project without it, the project checks still run, and the report says what was skipped:
+Projects created with `npm create bascik@rc` have the language server installed. In a project without it, the project checks still run, and the report says what was skipped:
 
 ```terminal
 ℹ  per-file checks skipped: install @bascik/language-server to run them (npm install --save-dev @bascik/language-server)
@@ -421,6 +425,8 @@ Per-file checks (2)
 ✓ 0 errors, 6 warnings
 ✓ 31 files checked by @bascik/language-server
 ```
+
+Project-level findings (missing site URL, config validation, pages directory) cite the config file in use, such as `bascik.config.ts`, or `no bascik.config file, defaults in use` when the project has none. `dist/` spec violations are reported as `file:line:col`, and the summary reads `1 of 3 dist/ HTML files fail WHATWG spec (parse5)` when any fail. If a failing file contains a tag listed under components with no matching file, the finding says that tag probably caused it.
 
 ### Check Reference
 
@@ -668,7 +674,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 
 ## Editor setup and output inspection
 
-**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
+**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik@rc` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
 
 ```json
 {
@@ -676,7 +682,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 }
 ```
 
-**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. Third-party linters are opt-in: `npm create bascik` and `bascik init` do not install them or create or modify their config files. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and has copyable settings.
+**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. Third-party linters are opt-in: `npm create bascik@rc` and `bascik init` do not install them or create or modify their config files. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and has copyable settings.
 
 **Inspect `dist/` directly.** Both the dev server and `bascik --build` write compiled HTML to `dist/` on disk. This is the fastest way to confirm what Bascik emitted:
 

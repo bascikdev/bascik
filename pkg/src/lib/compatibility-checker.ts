@@ -241,10 +241,14 @@ export function findCompatibilityMatches(
     const regex = new RegExp(rule.regex.source, flags);
     let m: RegExpExecArray | null;
     while ((m = regex.exec(scannable)) !== null) {
+      // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over line breaks.
+      // Start the match at its first visible character, as the language server does, so the
+      // reported (and ignore-checked) line is the line of the problem.
+      const leading = Math.max(m[0].search(/\S/), 0);
       if (
         ignoreRanges.length > 0 &&
         isDiagnosticIgnored(
-          getZeroBasedLineAt(text, m.index),
+          getZeroBasedLineAt(text, m.index + leading),
           rule.id,
           ignoreRanges,
         )
@@ -254,8 +258,8 @@ export function findCompatibilityMatches(
       }
       matches.push({
         rule,
-        index: m.index,
-        length: m[0].length || 1,
+        index: m.index + leading,
+        length: Math.max(m[0].length - leading, 1),
       });
       if (!regex.global) break;
     }

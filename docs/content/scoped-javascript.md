@@ -103,6 +103,8 @@ count.addEventListener("click", () => {
 
 **Imports in a `.ts` module.** Bascik inlines a `type="module"` `.ts` script (a page's own or a component's companion) without bundling it, so the browser would resolve its imports against the page's URL. An import of a relative, `@/`, or `.ts` path therefore fails the build, naming the tag and the import. Bundle the module with esbuild (a `scripts.typescript` function, or a `pipeline.exec` step that writes a `.js` file), or import a published JavaScript URL such as `/js/util.js`.
 
+**Imports in a JavaScript component script.** The same holds for a plain `.js`/`.mjs` companion or inline `<script>` in a component: Bascik does not bundle or publish what it imports. A relative `import` or dynamic `import("./extra.js")` resolves against the page URL, so the browser's request fails at runtime. The build prints a warning naming the file, line, and specifier. Put the imported file in `public/` and import its published URL (`import("/js/extra.js")`), or bundle the script first.
+
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
 
 ```html
@@ -117,7 +119,7 @@ count.addEventListener("click", () => {
 
 The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source.
 
-> **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 22.22+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
+> **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 24.21+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
 
 **Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. An `.mts` companion follows the same rule: the `.m` tells Node.js and TypeScript the file is a module, but the browser only reads the `<script>` tag. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
 

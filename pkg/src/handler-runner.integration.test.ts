@@ -329,6 +329,30 @@ describe("runDirectiveHandler real child processes (handler and result transport
     }
   });
 
+  it("misuse: says a top-level await never settled, keeping what the script logged and dropping Node's runner warning", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+    try {
+      const unsettled = join(dir, "unsettled.mjs");
+      // No timer keeps the event loop alive, so Node exits with code 13 and
+      // its "Detected unsettled top-level await" warning about the runner.
+      await writeFile(
+        unsettled,
+        `console.error("fetching posts"); await new Promise(() => {}); export default () => "never";`,
+        "utf8",
+      );
+
+      const failure = (await runDirectiveHandler(unsettled, "build").catch(
+        (err: Error) => err,
+      )) as Error;
+      expect(failure.message).toBe(
+        "Directive script (data-bascik-build) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.\nfetching posts",
+      );
+      expect(failure.message).not.toMatch(/runner\.mjs|Warning:/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("names a timeout as the reason, followed by what the script logged first", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     try {
@@ -340,16 +364,18 @@ describe("runDirectiveHandler real child processes (handler and result transport
         "utf8",
       );
 
+      // Long enough for a child started under a loaded full integration run
+      // to print its line before the deadline.
       const failure = await runDirectiveHandler(hangModule, "build", {
-        timeoutMs: 300,
+        timeoutMs: 3000,
       }).catch((err: Error) => err);
       expect((failure as Error).message).toBe(
-        "Directive script (data-bascik-build) timed out after 300ms\nstill loading",
+        "Directive script (data-bascik-build) timed out after 3000ms\nstill loading",
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("keeps Node's reason when it stops the child, instead of replacing it with the script's stderr", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));

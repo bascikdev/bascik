@@ -42,17 +42,30 @@ Bascik's component model lives entirely at build time. There is no runtime equiv
 
 [Svelte](https://svelte.dev) is the framework whose single-file component format looks most like Bascik's. A `.svelte` file is `<script>` + markup + `<style>`, scoped styles are the default, and the compiler strips the framework syntax. The resemblance stops at the output.
 
-Svelte compiles to a JavaScript runtime that manages reactive state and DOM updates in the browser. Every page needs that compiled output to function. A page with reactive state ships JS for the reactivity system plus JS for the application logic itself.
+Svelte compiles components to JavaScript that manages reactive state and DOM updates in the browser. In SvelteKit, each page is rendered to HTML on the server (or prerendered at build time), then hydrated in the browser, and a client-side router takes over later navigations. By default, then, a page needs that compiled output to become interactive, and a page with reactive state ships JS for the reactivity system plus JS for the application logic itself.
 
-Bascik's output for an equivalent component is a static HTML file with no JavaScript added. There is nothing to hydrate, no reactive tree to initialize, no framework-managed DOM.
+SvelteKit lets you turn this off per page with `export const csr = false`. A page with CSR disabled ships no JavaScript, but the `<script>` tags in its Svelte components are removed, forms cannot be progressively enhanced, and links become full-page navigations. At that point you are writing Svelte templates to produce static HTML, which is what Bascik does with vanilla HTML files, with component `<script>` blocks that still run, scoped per instance.
 
-**What Svelte adds to a page:**
+Bascik's output for an equivalent component is a static HTML file with no JavaScript added by Bascik. There is nothing to hydrate, no reactive tree to initialize, no framework-managed DOM.
+
+**What Svelte adds to a page by default:**
 
 - A compiled JavaScript bundle per component (size varies; runtime helpers are shared across the app)
 - A reactivity model (`$state`, `$derived`, `$effect`) that requires JavaScript to function
-- Template syntax (`{#if}`, `{#each}`, `{@html}`) that resolves to JavaScript, not vanilla HTML
+- Template syntax (`{#if}`, `{#each}`, `{@html}`) that resolves to JavaScript on the client, or to server-rendered HTML when the page is prerendered
 
-For content sites and documentation portals, the closest Svelte analog is SvelteKit in static-output mode (`adapter-static`). Even then, SvelteKit ships JavaScript for client-side navigation and hydration. Bascik's output for equivalent pages is vanilla HTML with none of that overhead.
+For content sites and documentation portals, the closest Svelte analog is SvelteKit in static-output mode (`adapter-static`). By default, SvelteKit still ships JavaScript there for hydration and client-side navigation, unless you opt each page out with `csr = false`. Bascik's output for equivalent pages is vanilla HTML with none of that overhead, and no per-page opt-out to remember.
+
+## Astro
+
+[Astro](https://astro.build) is the closest comparison. Like Bascik, it compiles component-based markup to static HTML and ships no framework runtime by default, so the output is similar. The difference is authoring and what stays optional:
+
+- **Template language.** Astro components are `.astro` files with a JavaScript frontmatter fence and JSX-like expressions. Bascik components are vanilla `.html` files, used by filename as a custom tag, with build-time logic in `<script data-bascik-build>`.
+- **Interactivity.** Astro adds client JavaScript through islands: a UI framework component hydrated with a `client:*` directive. In Bascik, interactivity is a plain `<script>` in the component, scoped per instance, with no framework to hydrate.
+- **Content and tooling.** Astro brings content collections, integrations, and a Vite-based pipeline. Bascik has none of those: Markdown, data, and collections are read in build scripts with Node.js, and the pipeline is a single build step.
+- **Ecosystem.** Astro has a large integration ecosystem and can host React, Vue, or Svelte islands. If you need those, Astro is the better fit.
+
+For a side-by-side conversion guide, see [From Astro](/switch/from-astro).
 
 ## Next.js
 
@@ -78,16 +91,17 @@ Bascik overlaps with them at the output level, all of these tools can ship plain
 
 Bascik ships the HTML you wrote, element for element, so the [semantic HTML](/component-best-practices#use-htmls-elements) you choose (a `<nav>`, a `<button>`, a `<details>`) reaches the browser unchanged, with no component wrapper or hydration markup around it.
 
-| Tool                         |                Runtime shipped | Component model or APIs required                                          | Attribute / source syntax                                          | Requires server      |
-| ---------------------------- | -----------------------------: | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------- |
-| **Bascik**                   |                           None | Only the components you create, plus slots and props                      | Standards-valid `data-bascik-*` attributes, consumed at build time | No                   |
-| **Next.js**                  | 80–100+ KB (React + hydration) | React component model, routing, and Next.js conventions                   | JSX, React hooks, Next.js file conventions                         | No (SSG) / Yes (SSR) |
-| **HTMX**                     |                         ~14 KB | Request, target, swap, trigger, and history concepts                      | `hx-*` custom attributes interpreted at runtime                    | Usually              |
-| **Alpine.js**                |                         ~16 KB | Alpine state and directive model                                          | `x-*` and `@*` directives interpreted at runtime                   | No                   |
-| **petite-vue**               |                          ~5 KB | Vue reactivity and directive model                                        | `v-*` and `@*` directives interpreted at runtime                   | No                   |
-| **Svelte**                   |    Compiled JS bundle (varies) | Svelte component model and reactivity (`$state`, `$effect`)               | `.svelte` file format with compiler-resolved directives            | No                   |
-| **Vue / React**              |                     40–100+ KB | Framework component model, lifecycle, and state APIs                      | Vue directives/templates or React JSX                              | No                   |
-| **Hugo / Eleventy / Jekyll** |                           None | Template syntax, content collections, front matter, generator conventions | Builder-specific templating languages                              | No                   |
+| Tool                         |                 Runtime shipped | Component model or APIs required                                          | Attribute / source syntax                                          | Requires server         |
+| ---------------------------- | ------------------------------: | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------- |
+| **Bascik**                   |                            None | Only the components you create, plus slots and props                      | Standards-valid `data-bascik-*` attributes, consumed at build time | No                      |
+| **Next.js**                  |  80–100+ KB (React + hydration) | React component model, routing, and Next.js conventions                   | JSX, React hooks, Next.js file conventions                         | No (SSG) / Yes (SSR)    |
+| **HTMX**                     |                          ~14 KB | Request, target, swap, trigger, and history concepts                      | `hx-*` custom attributes interpreted at runtime                    | Usually                 |
+| **Alpine.js**                |                          ~16 KB | Alpine state and directive model                                          | `x-*` and `@*` directives interpreted at runtime                   | No                      |
+| **petite-vue**               |                           ~5 KB | Vue reactivity and directive model                                        | `v-*` and `@*` directives interpreted at runtime                   | No                      |
+| **Svelte**                   |     Compiled JS bundle (varies) | Svelte component model and reactivity (`$state`, `$effect`)               | `.svelte` file format with compiler-resolved directives            | No                      |
+| **Astro**                    | None by default; islands opt in | `.astro` components, frontmatter, and `client:*` directives for islands   | `.astro` templates with JSX-like expressions                       | No (static) / Yes (SSR) |
+| **Vue / React**              |                      40–100+ KB | Framework component model, lifecycle, and state APIs                      | Vue directives/templates or React JSX                              | No                      |
+| **Hugo / Eleventy / Jekyll** |                            None | Template syntax, content collections, front matter, generator conventions | Builder-specific templating languages                              | No                      |
 
 The browser can parse Bascik's source without needing to understand a new runtime language: custom tags are valid custom-element-shaped HTML names, and build instructions use the web platform's `data-*` convention. Bascik resolves both before deployment. By contrast, runtime directives such as `hx-get`, `x-data`, and `v-scope` only gain behavior after their library's JavaScript loads.
 

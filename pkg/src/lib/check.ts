@@ -23,7 +23,15 @@ import { resolve, relative, join, dirname, extname } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
-import { listComponents } from "./components.ts";
+import {
+  NATIVE_HTML_ELEMENTS,
+  listComponents,
+  suggestHyphenatedName,
+  setComponentWarningsSilenced,
+} from "./components.ts";
+import { templateShapeProblems } from "./component-template-shape.ts";
+import { stripBom } from "./source-text.ts";
+import { locateBuildError } from "./build-error.ts";
 import {
   GeneratedIdClassCollisionError,
   formatGeneratedIdClassCollision,
@@ -43,10 +51,10 @@ import {
   runLanguageServerCheck,
   type LanguageServerDiagnostic,
 } from "./check-language-server.ts";
-import { getHttpPath } from "./paths.ts";
+import { findSlashVariantRoutes, getHttpPath } from "./paths.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
-import { CONFIG_FILE_NAMES, findConfigFile } from "./config-file-names.ts";
+import { findConfigFile } from "./config-file-names.ts";
 import {
   validateUserConfig,
   PLAUSIBLE_TAG_NAME,
@@ -110,6 +118,8 @@ export interface CheckFindings {
   items: CheckFinding[];
   /** Number of dist/ HTML files validated against the WHATWG spec, or null when dist/ does not exist or is empty. */
   distHtmlChecked: number | null;
+  /** How many of those files have at least one parse error. Absent or 0 when every file passed. */
+  distHtmlFailed?: number;
   /** True when dist/ has HTML files but parse5 is not installed. */
   distHtmlSpecHintNeeded: boolean;
   /** Number of files the language server checked, or null when it is not installed or too old. */
@@ -238,7 +248,24 @@ export interface TagOccurrence {
 /**
  * Extract all hyphenated tag names from an HTML string along with line numbers.
  */
-export const extractCustomTagOccurrences = (html: string): TagOccurrence[] => {
+export const extractCustomTagOccurrences = (html: string): TagOccurrence[] =>
+  scanTagOccurrences(
+    html,
+    /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\t\n\f\r \/>])/gi,
+    (tag) => tag.toLowerCase(),
+  );
+
+/**
+ * Shared scan: comments blanked (newlines kept), element contents that are not markup stripped, then every
+ * start tag `re` matches is reported with its line. The tag name ends where a browser ends it: at tag
+ * whitespace (a newline included, so attributes may start on the next line), `/` or `>`. The whole text is
+ * scanned at once, not line by line.
+ */
+const scanTagOccurrences = (
+  html: string,
+  re: RegExp,
+  toTag: (matched: string) => string | undefined,
+): TagOccurrence[] => {
   // Strip comments first while preserving newlines
   const noComments = html.replace(/<!--[\s\S]*?-->/g, (match) => {
     const newlines = match.match(/\n/g);
@@ -246,18 +273,38 @@ export const extractCustomTagOccurrences = (html: string): TagOccurrence[] => {
   });
   const stripped = stripElementContents(noComments);
   const occurrences: TagOccurrence[] = [];
-  // The tag name ends where a browser ends it: at tag whitespace (a newline
-  // included, so attributes may start on the next line), `/` or `>`. The
-  // whole text is scanned at once, not line by line.
-  const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\t\n\f\r \/>])/gi;
   let counted = 0;
   let line = 1;
   for (const m of stripped.matchAll(re)) {
     for (; counted < m.index; counted++)
       if (stripped.charCodeAt(counted) === 10) line++;
-    occurrences.push({ tag: m[1].toLowerCase(), line });
+    const tag = toTag(m[1]);
+    if (tag !== undefined) occurrences.push({ tag, line });
   }
   return occurrences;
+};
+
+const HYPHENATED_TAG_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
+
+/**
+ * Start tags of components whose names the hyphen scan cannot see: no hyphen (`card`), an underscore
+ * (`plan_card`), or capitals (`MyCard`). The compiler expands them, so the unused-component check must
+ * count them as used. Matching ignores case and reports the component's own name.
+ */
+export const extractUnhyphenatedTagOccurrences = (
+  html: string,
+  componentNames: Iterable<string>,
+): TagOccurrence[] => {
+  const byLower = new Map<string, string>();
+  for (const name of componentNames)
+    if (!HYPHENATED_TAG_NAME.test(name)) byLower.set(name.toLowerCase(), name);
+  if (byLower.size === 0) return [];
+  const escaped = [...byLower.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const re = new RegExp(`<(${escaped.join("|")})(?=[\\t\\n\\f\\r \\/>])`, "gi");
+  return scanTagOccurrences(html, re, (tag) => byLower.get(tag.toLowerCase()));
 };
 
 /**
@@ -633,9 +680,13 @@ const BUILD_DIRECTIVE_RE = new RegExp(
   "i",
 );
 
+/** What project-level findings cite as their location when the project has no config file. */
+const NO_CONFIG_FILE_LABEL = "no bascik.config file, defaults in use";
+
 const resolveConfigSourcePath = (): string => {
   const { path } = findConfigFile();
-  if (!path) return CONFIG_FILE_NAMES[0];
+  // No file to name: say so, rather than point at a bascik.config.js that does not exist.
+  if (!path) return NO_CONFIG_FILE_LABEL;
   return relative(process.cwd(), path).replace(/\\/g, "/");
 };
 
@@ -792,10 +843,40 @@ export const checkProject = async (
   let componentList: ComponentList = {};
   let componentFilePaths: string[] = [];
   try {
-    componentList = await (listComponents() as Promise<ComponentList>);
+    // The language server reports the same scoping and naming findings, once and with locations, so the
+    // component reader's console warnings would only repeat them (finding 105).
+    setComponentWarningsSilenced(true);
+    try {
+      componentList = await (listComponents() as Promise<ComponentList>);
+    } finally {
+      setComponentWarningsSilenced(false);
+    }
     componentFilePaths = Object.values(componentList)
       .map((c) => c.fileName)
       .filter((f): f is string => Boolean(f));
+    // The build's template shape warnings (findings 23 and 24), so a whole
+    // document saved as a component is not reported as passing.
+    for (const filePath of componentFilePaths) {
+      let raw: string;
+      try {
+        raw = stripBom(await readFile(filePath, "utf-8"));
+      } catch {
+        continue;
+      }
+      for (const problem of templateShapeProblems(raw)) {
+        items.push({
+          category: problem.kind,
+          severity: "warning",
+          message: problem.message,
+          locations: [
+            {
+              filePath: relative(process.cwd(), filePath).replace(/\\/g, "/"),
+              line: raw.slice(0, problem.offset).split("\n").length,
+            },
+          ],
+        });
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     let matchedIdClassCollision = false;
@@ -818,6 +899,23 @@ export const checkProject = async (
         });
       }
     }
+    // A located syntax error (an unclosed <style>, an unbalanced brace, a
+    // script that does not parse) names its own component file and line.
+    const located = locateBuildError(error);
+    if (located) {
+      items.push({
+        category: "component-syntax",
+        severity: "error",
+        message: message.replace(/^\[bascik\] [^:]+ in \S+:\d+: /, ""),
+        locations: [
+          {
+            filePath: located.file,
+            line: located.line,
+            column: located.column,
+          },
+        ],
+      });
+    }
     const duplicateBlockRegex =
       /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
     let matchedDuplicate = false;
@@ -837,7 +935,7 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision) {
+    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -892,7 +990,10 @@ export const checkProject = async (
         return {
           filePath,
           html,
-          occurrences: extractCustomTagOccurrences(html),
+          occurrences: [
+            ...extractCustomTagOccurrences(html),
+            ...extractUnhyphenatedTagOccurrences(html, knownComponents),
+          ],
           directiveScripts: extractDirectiveScripts(html),
         };
       } catch {
@@ -959,7 +1060,10 @@ export const checkProject = async (
     const ownerPath = canonicalPath(filePath);
     if (componentNameByPath.has(ownerPath)) {
       const maskedPreserve = maskPreservedSubtrees(html);
-      const deps = extractCustomTagOccurrences(maskedPreserve)
+      const deps = [
+        ...extractCustomTagOccurrences(maskedPreserve),
+        ...extractUnhyphenatedTagOccurrences(maskedPreserve, knownComponents),
+      ]
         .map((o) => o.tag)
         .filter((tag) => knownComponents.has(tag));
       for (const dep of deps) {
@@ -980,6 +1084,18 @@ export const checkProject = async (
         unmatchedTagLocations.set(tag, list);
       }
     }
+  }
+
+  // A component named like a native element is reported by the build; the language server has no rule for it.
+  for (const name of knownComponents) {
+    if (!NATIVE_HTML_ELEMENTS.has(name)) continue;
+    const rawPath = componentList[name]?.fileName;
+    items.push({
+      category: "component-name-native-element",
+      severity: "warning",
+      message: `Component "${name}" has the same name as a native HTML element. This may cause unexpected behavior; consider a hyphenated name like "${suggestHyphenatedName(rawPath ?? name)}".`,
+      locations: [{ filePath: rawPath ? toDisplay(rawPath) : name }],
+    });
   }
 
   // Unmatched tags -> warnings
@@ -1041,6 +1157,23 @@ export const checkProject = async (
     } else if (!firstSeen) {
       firstRouteByLower.set(lowerRoute, { route, filePath: pagePath });
     }
+  }
+  const slashVariants = findSlashVariantRoutes(
+    [...pagesByRouteExact.entries()].map(([route, files]) => ({
+      route,
+      filePath: files[0],
+    })),
+  );
+  for (const { route, flatFile, indexFile } of slashVariants) {
+    items.push({
+      category: "duplicate-route-resolution",
+      severity: "warning",
+      message: `"${route}" and "${route}/" are served by different pages; keep one of them`,
+      locations: [
+        { filePath: toDisplay(flatFile) },
+        { filePath: toDisplay(indexFile) },
+      ],
+    });
   }
   for (const [route, files] of pagesByRouteExact.entries()) {
     if (files.length < 2) continue;
@@ -1141,6 +1274,7 @@ export const checkProject = async (
   // When parse5 is not installed, set a hint flag so the formatter can nudge
   // the user toward installing it — without failing the check.
   let distHtmlChecked: number | null = null;
+  let distHtmlFailed = 0;
   let distHtmlSpecHintNeeded = false;
 
   if (existsSync(distDir)) {
@@ -1152,6 +1286,7 @@ export const checkProject = async (
       } else {
         distHtmlChecked = distHtmlFiles.length;
         for (const file of distHtmlFiles) {
+          let fileFailed = false;
           let html: string;
           try {
             html = await readFile(file, "utf-8");
@@ -1159,6 +1294,17 @@ export const checkProject = async (
             continue;
           }
           const relPath = relative(distDir, file);
+          // A tag no component matches is passed through, and a self-closing one (`<site-navv />`) is
+          // a parse error in HTML: name it as the likely cause.
+          const unresolved = [...unmatchedTagLocations.keys()].filter((tag) =>
+            new RegExp(
+              `<${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\s/>])`,
+              "i",
+            ).test(html),
+          );
+          const cause = unresolved.length
+            ? `${unresolved.map((tag) => `<${tag}>`).join(", ")} has no matching component and was passed through to dist unchanged, which can cause this. Fix that first (see "Components with no matching file").`
+            : undefined;
           parse5Parse(html, {
             sourceCodeLocationInfo: true,
             onParseError: (err: {
@@ -1166,14 +1312,23 @@ export const checkProject = async (
               startLine?: number;
               startCol?: number;
             }) => {
+              fileFailed = true;
               items.push({
                 category: "dist-html-spec",
                 severity: "error",
                 message: `[${err.code}]`,
-                locations: [{ filePath: relPath, line: err.startLine }],
+                locations: [
+                  {
+                    filePath: relPath,
+                    line: err.startLine,
+                    column: err.startCol,
+                  },
+                ],
+                ...(cause ? { note: cause } : {}),
               });
             },
           });
+          if (fileFailed) distHtmlFailed++;
         }
       }
     }
@@ -1208,6 +1363,7 @@ export const checkProject = async (
     componentsChecked: knownComponents.size,
     items,
     distHtmlChecked,
+    distHtmlFailed,
     distHtmlSpecHintNeeded,
     perFileChecked: perFile.status === "ran" ? perFile.filesChecked : null,
     perFileHint: languageServerHint(perFile),
@@ -1313,6 +1469,11 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
       "component name or an id can let two components spell the same class, and\n" +
       "each rule would style the other's element. Builds stop on it too.",
   },
+  "component-name-native-element": {
+    title: "Components named like a native element",
+    description:
+      "A component whose file name is a native HTML element name (header, dialog, svg) can\nshadow the element. Rename it with a hyphen.",
+  },
   "unmatched-tag": {
     title: "Components with no matching file",
     description:
@@ -1362,6 +1523,21 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Duplicate route resolution",
     description: "Multiple pages resolve to the same route path.",
   },
+  "component-syntax": {
+    title: "Component syntax errors",
+    description:
+      "The build stops here: the component would ship markup, CSS, or JavaScript the browser cannot read.",
+  },
+  "component-document": {
+    title: "Components saved as whole documents",
+    description:
+      "Every page that uses the component gets its doctype, <html>, <head>, or <body> pasted into the page body.",
+  },
+  "native-slot-element": {
+    title: "Native <slot> elements in components",
+    description:
+      "A <slot> outside a shadow root is left in the output as written; Bascik slots use data-bascik-slot.",
+  },
   "component-list": {
     title: "Component scan failures",
     description:
@@ -1383,8 +1559,22 @@ const plural = (count: number, word: string): string =>
 const statusLines = (findings: CheckFindings): string[] => {
   const lines: string[] = [];
   if ((findings.distHtmlChecked ?? null) !== null) {
+    const checked = findings.distHtmlChecked as number;
+    // `distHtmlFailed` is what the check counted; findings assembled without
+    // it (a hand-built report) fall back to the files the items name.
+    const failing =
+      findings.distHtmlFailed ??
+      new Set(
+        findings.items
+          .filter((item) => item.category === "dist-html-spec")
+          .map((item) => item.locations[0]?.filePath),
+      ).size;
     lines.push(
-      `✓ ${plural(findings.distHtmlChecked as number, "dist/ HTML file")} pass WHATWG spec (parse5)`,
+      failing === 0
+        ? // What parse5 reports, not a validation claim: a whole document
+          // pasted into a body parses without one (finding 24).
+          `✓ parse5 reported no parse errors in ${plural(checked, "dist/ HTML file")}`
+        : `✗ ${failing} of ${plural(checked, "dist/ HTML file")} ${failing === 1 ? "has" : "have"} WHATWG spec violations (parse5)`,
     );
   } else if (findings.distHtmlSpecHintNeeded) {
     lines.push(
@@ -1515,11 +1705,12 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
         const locStr = item.locations
           .map((loc) =>
             loc.line !== undefined
-              ? `${loc.filePath}:${loc.line}`
+              ? `${loc.filePath}:${loc.line}${loc.column !== undefined ? `:${loc.column}` : ""}`
               : loc.filePath,
           )
           .join(", ");
         section += `  ${item.message} (${locStr})\n`;
+        if (item.note) section += `      ${item.note}\n`;
       }
     }
     sections.push(section);
@@ -1544,6 +1735,8 @@ export interface CheckJsonOutput {
   pagesChecked: number;
   componentsChecked: number;
   distHtmlChecked: number | null;
+  /** How many of the checked dist/ HTML files have a parse error. */
+  distHtmlFailed: number;
   distHtmlSpecHintNeeded: boolean;
   /** Files the language server checked, or null when it is not installed or too old. */
   perFileChecked: number | null;
@@ -1575,6 +1768,7 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
     pagesChecked: findings.pagesChecked,
     componentsChecked: findings.componentsChecked,
     distHtmlChecked: findings.distHtmlChecked,
+    distHtmlFailed: findings.distHtmlFailed ?? 0,
     distHtmlSpecHintNeeded: findings.distHtmlSpecHintNeeded,
     perFileChecked: findings.perFileChecked ?? null,
     perFileHintNeeded: Boolean(findings.perFileHint),

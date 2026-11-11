@@ -340,6 +340,24 @@ describe("generateSitemapFiles", () => {
     expect(xml).not.toContain("/500");
   });
 
+  // Audit 159 finding 51: one canonical <loc> when about.html and
+  // about/index.html both exist.
+  it("lists /about once when about.html and about/index.html both exist", async () => {
+    await generateSitemapFiles([
+      "pages/index.html",
+      "pages/about.html",
+      "pages/about/index.html",
+    ]);
+    const xml = String(
+      vi
+        .mocked(writeFile)
+        .mock.calls.find(([file]) => String(file).includes("sitemap.xml"))?.[1],
+    );
+    expect(xml.match(/<loc>[^<]*\/about\/?<\/loc>/g)).toEqual([
+      "<loc>https://example.com/about</loc>",
+    ]);
+  });
+
   it("includes passed transpiled routes and does not contain literal bracket placeholders", async () => {
     const transpiledPaths = [
       "pages/index.html",

@@ -175,7 +175,7 @@ describe("parseCliOptions", () => {
     );
   });
 
-  // `npm create bascik my-site --template cloudflare` (no `--`) reaches the CLI
+  // `npm create bascik@rc my-site --template cloudflare` (no `--`) reaches the CLI
   // as ["my-site", "cloudflare"]: npm keeps the flag and forwards its value as a
   // plain argument, so a second positional must be reported, not dropped.
   it("rejects a stray second positional and points at the -- form", () => {
@@ -452,9 +452,9 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.name).toBe("cool-site");
   });
 
-  it("declares the same Node 22.22 engine floor as the bascik package", () => {
+  it("declares the same Node 24.21 engine floor as the bascik package", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.engines.node).toBe(">=22.22.0");
+    expect(pkg.engines.node).toBe(">=24.21.0");
   });
 
   it("treats the default template the same as no template", () => {
@@ -513,10 +513,17 @@ describe("VITE_CONFIG", () => {
     expect(VITE_CONFIG).toContain("provider: 'v8'");
   });
 
-  it("misuse: imports defineConfig from vitest/config, not vite, which the project does not declare", () => {
+  it("imports defineConfig from vitest/config, the documented entry point, even though the project also declares vite", () => {
     expect(VITE_CONFIG).toContain(
       "import { defineConfig } from 'vitest/config';",
     );
+    const pkg = JSON.parse(PACKAGE_JSON("my-app", "default"));
+    expect(pkg.devDependencies.vite).toBeTruthy();
+  });
+
+  it("misuse: the coverage report names the modules to cover, because Vitest 4 and later only count files a test loads, so an untested module would not show up as 0%", () => {
+    expect(VITE_CONFIG).toContain("include: ['src/**/*.ts']");
+    expect(VITE_CONFIG).toContain("exclude: ['src/**/*.test.ts']");
   });
 
   it("misuse: every package the generated configs import is declared in the generated package.json", () => {
@@ -1700,7 +1707,7 @@ describe("parseCliOptions --no-skills", () => {
   });
 
   it("misuse: honors --no-skills and --no-install written before --, which npm exports as empty npm_config_* values", () => {
-    // What npm 11 sets for `npm create bascik my-site --no-skills --no-install`.
+    // What npm 11 sets for `npm create bascik@rc my-site --no-skills --no-install`.
     expect(
       parseCliOptions(["my-site"], {
         npm_config_skills: "",

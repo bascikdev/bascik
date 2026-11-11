@@ -9,10 +9,12 @@ export default async function warmServer(config: FullConfig): Promise<void> {
   const home = await (await fetch(baseURL)).text();
   const index = /"(\/assets\/search-index\.[0-9a-f]+\.json)"/.exec(home)?.[1];
   if (!index) return;
-  for (const encoding of ["br", "gzip", "identity"])
-    await (
-      await fetch(new URL(index, baseURL), {
-        headers: { "accept-encoding": encoding },
-      })
-    ).arrayBuffer();
+  // The unversioned copy is what a page opened before a deploy falls back to, and it compresses once too.
+  for (const file of [index, "/assets/search-index.json"])
+    for (const encoding of ["br", "gzip", "identity"])
+      await (
+        await fetch(new URL(file, baseURL), {
+          headers: { "accept-encoding": encoding },
+        })
+      ).arrayBuffer();
 }

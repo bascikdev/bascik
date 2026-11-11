@@ -36,7 +36,7 @@ Scheduled CodeQL runs are unchanged.
 - Project ID: `268cf8fb-826b-421a-8a34-abd78bf9be1e`.
 - Admin: [Netlify project](https://app.netlify.com/projects/bascik-netlify-adapter).
 - Source: `adapters/netlify/e2e/fixture/`; configuration: its `netlify.toml`.
-- Runtime: Node 24. Static output is `publish/`; generated function is
+- Runtime: Node 26 (`NODE_VERSION` in the fixture `netlify.toml`, the same line as `.nvmrc`). Static output is `publish/`; generated function is
   `.netlify/v1/functions/bascik-pages.mjs`; an authored native function checks coexistence.
 - Synthetic data only. No Identity users, database, OAuth providers, billing, or app secrets.
   The cookie is a short-lived transport-test marker, not an authenticated session.

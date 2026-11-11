@@ -77,6 +77,7 @@ vi.mock("./file-system.js", async (importOriginal) => {
     ...actual,
     listPages: vi.fn(),
     deepReadDirFlat: vi.fn(actual.deepReadDirFlat),
+    readPagesDirectory: vi.fn(actual.readPagesDirectory),
   };
 });
 
@@ -106,6 +107,8 @@ vi.mock("./mem.js", () => ({
     pagesDependentOnFile: vi.fn(() => []),
     recordFailedDependencies: vi.fn(),
     clearFailedDependencies: vi.fn(),
+    recordFailedPage: vi.fn(),
+    pagesWhoseLastBuildFailed: vi.fn(() => []),
     openPages: [] as string[],
     trackOpenPage: vi.fn(),
     untrackOpenPage: vi.fn(),
@@ -253,7 +256,7 @@ import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { mem } from "./mem.ts";
 import { invalidateComponentListCache } from "./components.ts";
-import { listPages } from "./file-system.ts";
+import { deepReadDirFlat, listPages } from "./file-system.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A: Slot fallback content
@@ -470,8 +473,10 @@ describe("recursivelyTranspile – integration", () => {
       componentList,
     );
 
+    // The child's root carries the marker, so it stays and holds its slot
+    // content (finding 27).
     expect(transpiledHtmlBody).toBe(
-      "<section>parent contentchild content</section>",
+      "<section>parent content<article>child content</article></section>",
     );
   });
 
@@ -1337,8 +1342,8 @@ describe("pageProcessing – inlineStyles", () => {
 
   it("inlines every page stylesheet when inlineStyles is true", async () => {
     (BascikConfig as any).assets = { inlineStyles: true, exclude: [] };
-    const { deepReadDirFlat } = await import("./file-system.ts");
-    (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([
+    const { readPagesDirectory } = await import("./file-system.ts");
+    (readPagesDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/css/a.css",
       "src/pages/css/b.css",
     ]);
@@ -1357,6 +1362,9 @@ describe("pageProcessing – inlineStyles", () => {
 describe("selectivelyProcessPagesForWatchPath", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The component list is read with deepReadDirFlat: these tests have no
+    // component folder on disk, so it lists none.
+    (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
   });
@@ -2549,6 +2557,52 @@ describe("processAllPages – side effects", () => {
     errorSpy.mockRestore();
   });
 
+  it("remembers a dev page that failed, and only that page, so a component edit can rebuild it (finding 40)", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/broken.html",
+      "src/pages/working.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string) =>
+        path.endsWith("broken.html") ? "<html><head></head></html>" : PAGE_HTML,
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await processAllPages({ useWorkers: false });
+    expect(mem.recordFailedPage).toHaveBeenCalledTimes(1);
+    expect(mem.recordFailedPage).toHaveBeenCalledWith(
+      expect.stringMatching(/src\/pages\/broken\.html$/),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("remembers the failed page even when a compile scope rejects with it (finding 40)", async () => {
+    const { withCompilationPublisher } =
+      await import("./compilation-events.ts");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
+    await expect(
+      withCompilationPublisher(vi.fn(), () =>
+        processPageBatch(["src/pages/scoped-broken.html"], {}),
+      ),
+    ).rejects.toThrow("validate markup");
+    expect(mem.recordFailedPage).toHaveBeenCalledWith(
+      expect.stringMatching(/scoped-broken\.html$/),
+    );
+  });
+
+  it("does not remember failed pages in a production build, which has no watcher", async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<html><head></head></html>",
+    );
+    await expect(
+      processPageBatch(["src/pages/build-broken.html"], {}),
+    ).rejects.toThrow();
+    expect(mem.recordFailedPage).not.toHaveBeenCalled();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+  });
+
   it("reports an asynchronous dev page write failure without rejecting the batch", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/index.html",
@@ -2925,6 +2979,20 @@ describe("selectivelyProcessPages", () => {
     );
   });
 
+  it("rebuilds a page whose last build failed when any component changes, since no component index names it (finding 40)", async () => {
+    (
+      mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>
+    ).mockReturnValue([]);
+    (
+      mem.pagesWhoseLastBuildFailed as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce(["src/pages/cycle.html"]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    await selectivelyProcessPages("src/components/b-card.html");
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePagePath: "pages/cycle.html" }),
+    );
+  });
+
   it("rebuilds the pages of components whose stylesheets import the changed file", async () => {
     const componentsModule = await import("./components.ts");
     const importers = vi
@@ -3246,7 +3314,7 @@ describe("component load failures (a component build script that throws)", () =>
         () => processPageBatch(["src/pages/index.html"]),
         { onPageErrors: "throw" },
       ),
-    ).rejects.toBeInstanceOf(AggregateError);
+    ).rejects.toThrow(/boom|build script/);
     expect(await emitted()).toHaveLength(0);
   });
 

@@ -6,15 +6,15 @@ import {
   json,
   configuration,
   ShopError,
-  orderToken,
+  orderTicket,
   body,
   boundedText,
   sameOrigin,
   type Env,
 } from "./platform.ts";
-import { type Order, type Quote } from "./checkout.ts";
+import { type Order } from "./checkout.ts";
 import { paidSession, recordPayment } from "./fulfillment.ts";
-import { orderSummary } from "./order-summary.ts";
+import { orderIdFromToken, orderView } from "./order-view.ts";
 import {
   refundEvents,
   reconcileRefundEvent,
@@ -205,48 +205,9 @@ export const orderStatus = handler(async (request, env: Env) => {
   sameOrigin(request, env);
   const data = await body(request);
   const token = typeof data.token === "string" ? data.token : "";
-  if (!/^(?:[a-f0-9]{32}|[a-f0-9-]{36})\.[a-f0-9]{64}$/.test(token))
-    throw new ShopError("Order link not found.", 404);
-  const id = token.split(".")[0];
-  if (!env.ORDER_TOKEN_SECRET || !equal(token, await orderToken(env, id)))
-    throw new ShopError("Order link not found.", 404);
-  const order = await env.DB.prepare(
-    "SELECT * FROM orders WHERE id=? AND token_revoked=0",
-  )
-    .bind(id)
-    .first<Order>();
-  if (!order || now() - order.created_at > 90 * 86400)
-    throw new ShopError("This order link has expired.", 404);
-  const quote: Quote = JSON.parse(order.snapshot);
-  const payment = await env.DB.prepare(
-    "SELECT id FROM payment_events WHERE order_id=? LIMIT 1",
-  )
-    .bind(order.id)
-    .first();
-  const confirmation = await env.DB.prepare(
-    "SELECT status FROM notifications WHERE order_id=? AND kind='confirmation'",
-  )
-    .bind(order.id)
-    .first<{ status: string }>();
-  return json({
-    orderId: order.id,
-    status: order.status,
-    refund: {
-      state: order.refund_state,
-      amount: order.refund_amount,
-      checkedAt: order.refund_checked_at || null,
-    },
-    paymentConfirmed: payment !== null,
-    testMode: env.SHOP_MODE === "test",
-    confirmationEmail:
-      env.SHOP_MODE === "test"
-        ? "disabled"
-        : (confirmation?.status ?? "pending"),
-    summary: payment !== null ? orderSummary(order, quote) : null,
-    shipments: JSON.parse(order.shipments),
-    items: quote.items.map((item) => ({
-      variantId: item.variantId,
-      quantity: item.quantity,
-    })),
-  });
+  const id = await orderIdFromToken(env, token);
+  if (!id) throw new ShopError("Order link not found.", 404);
+  const view = await orderView(env, id);
+  if (!view) throw new ShopError("This order link has expired.", 404);
+  return json({ ...view, ticket: await orderTicket(env, id) });
 });

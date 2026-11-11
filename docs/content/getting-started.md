@@ -1,6 +1,6 @@
 # Getting Started
 
-Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.22.
+Bascik runs on Node.js 24.21 or newer; Node.js 26, the current LTS, is recommended.
 
 ## Quick Start
 
@@ -51,10 +51,12 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 To add Bascik to an existing project:
 
 ```sh
-npm install @bascik/bascik
+npm install @bascik/bascik@rc
 ```
 
 Run `bascik init` to create the starter directory structure, or add `"dev": "bascik"` and `"build": "bascik --build"` to your `package.json` scripts.
+
+`bascik --build` also writes `sitemap.xml` and `robots.txt`, so it needs your site's URL and exits with an error until you set one: put `BASCIK_SITE_URL=https://example.com` in a `.env` file, set it in the environment, or pass `--site-url`. If the site needs no sitemap or `robots.txt`, set `generate.sitemap: false` and `generate.robots: false` instead. See [Environment files and the site URL](/cli#environment-files-and-the-site-url). The dev server does not need it.
 
 `bascik init` also adds the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief), appending to files you already have, and asks whether to install the [agent skills](/agent-skills#new-projects). `bascik init -y` installs them without asking, and `bascik init --no-skills` skips them.
 
@@ -70,7 +72,7 @@ Run `bascik init` to create the starter directory structure, or add `"dev": "bas
 
 VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so a page with two Bascik scripts that each `export default` shows the false error "A module cannot have multiple default exports." Bascik runs each script on its own. The setting turns off only VS Code's check of code inside `<script>` tags in `.html` files. The Bascik extension offers to add the setting to a Bascik workspace the first time it starts there, and changes nothing unless you click. See [Several Scripts in One File](/tools/vscode-extension#several-scripts-in-one-file) for what the setting changes.
 
-Third-party linters such as Webhint are optional. Neither `npm create bascik` nor `bascik init` installs them or creates or changes their config files. If you use one, [Editor Linters Read Source](/testing/linting#editor-linters-read-source) has copyable settings for warnings about head tags and prop-filled attributes that Bascik adds at build time.
+Third-party linters such as Webhint are optional. Neither `npm create bascik@rc` nor `bascik init` installs them or creates or changes their config files. If you use one, [Editor Linters Read Source](/testing/linting#editor-linters-read-source) has copyable settings for warnings about head tags and prop-filled attributes that Bascik adds at build time.
 
 <!-- demo:component-html -->
 

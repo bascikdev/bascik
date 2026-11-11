@@ -7,7 +7,7 @@
  * branch push, a tag, a same-repo pull request and a fork's), and the
  * Cloudflare token reaching only the stage 5 Wrangler steps.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -43,6 +43,12 @@ import {
   run,
   upsertComment,
 } from "../../../.github/scripts/preview-comment.mjs";
+
+// WHY: these tests spawn shell and node child processes (the run-lanes stub,
+// the retrying GitHub CLI stub). Under a loaded machine, such as several
+// agents or CI jobs sharing a runner, process startup alone can exceed
+// vitest's 5s default and fail a test that is logically correct.
+vi.setConfig({ testTimeout: 30_000 });
 
 const repoDir = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKERS = ["bascik", "cloudflare-adapter"];
@@ -1361,7 +1367,7 @@ describe("CI stages and the deploy stage", () => {
 
   it.each([
     ["integration-pkg", "node24"],
-    ["node-floor", "node22.22"],
+    ["node-floor", "node24.21"],
   ])(
     "uploads retained profiling diagnostics only after %s integration tests fail",
     (id, runtime) => {
@@ -2010,5 +2016,26 @@ describe("CI stages and the deploy stage", () => {
     expect(jobs.get("preview-comment")!.body.join("\n")).toMatch(
       /permissions:\n {6}contents: read\n {6}pull-requests: write/,
     );
+  });
+});
+
+describe("CI job permissions", () => {
+  it("gives every job an explicit permissions block, gate jobs included", () => {
+    const lines = workflow.replace(/\r\n/g, "\n").split("\n");
+    const start = lines.findIndex((line) => line === "jobs:");
+    const missing: string[] = [];
+    let job = "";
+    let seen = false;
+    for (const line of lines.slice(start + 1)) {
+      if (/^\S/.test(line)) break;
+      const header = /^ {2}([\w-]+):\s*$/.exec(line);
+      if (header) {
+        if (job && !seen) missing.push(job);
+        job = header[1];
+        seen = false;
+      } else if (/^ {4}permissions:/.test(line)) seen = true;
+    }
+    if (job && !seen) missing.push(job);
+    expect(missing).toEqual([]);
   });
 });

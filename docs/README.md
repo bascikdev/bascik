@@ -50,7 +50,7 @@ New submissions arrive through `.github/ISSUE_TEMPLATE/showcase.yml`.
 Capture public homepage screenshots with the existing recording script:
 
 ```sh
-# from docs/, using Node 24
+# from docs/, using Node 26
 node scripts/capture-demos.ts showcase-rinsesoft showcase-sunridge showcase-dgco showcase-lateral showcase-bascik
 ```
 

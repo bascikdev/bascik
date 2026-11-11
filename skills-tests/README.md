@@ -17,7 +17,7 @@ Coverage counts the skills' `.mjs` scripts (`../skills/**/*.mjs`), not the test 
 
 ## Run It
 
-Use Node 24. From the repository root:
+Use Node 26 (the current LTS; Node 24 works too). From the repository root:
 
 ```sh
 yarn skills:unit         # unit tests (builds pkg first)

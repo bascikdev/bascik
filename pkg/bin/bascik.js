@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const MIN_MAJOR = 22;
-const MIN_MINOR = 22;
+const MIN_MAJOR = 24;
+const MIN_MINOR = 21;
 
 const [majorRaw, minorRaw] = process.versions.node.split(".");
 const major = Number(majorRaw ?? 0);

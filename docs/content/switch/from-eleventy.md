@@ -16,7 +16,7 @@ Eleventy is a static site generator centered on template languages and Markdown 
 
 Migrate a simple partial (like a header or footer) into a Bascik component:
 
-1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
 2. Create `src/components/site-footer/site-footer.html`.
 3. Add your footer HTML markup inside it. Replace template values such as `{{ eleventy.generator }}` with fixed text.
 4. Use `<site-footer />` inside `src/pages/index.html`.
@@ -73,7 +73,7 @@ An Eleventy `{% include 'nav.njk' %}` that renders fixed markup becomes a self-c
 </nav>
 
 <!-- Used in a page with: -->
-<site-nav></site-nav>
+<site-nav />
 ```
 
 ## `{% extends %}` / Template Inheritance → Slot-based Layout Components
@@ -112,7 +112,7 @@ In Bascik, the layout component wraps only the repeated inner structure. The `<h
 
 ```html
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
-<site-nav></site-nav>
+<site-nav />
 <main class="content">
   <div data-bascik-slot></div>
 </main>
@@ -337,7 +337,7 @@ export function renderHome(posts: Post[], latest = 3): SafeHtml {
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <site-head data-bascik-prop-title="Home - Acme Blog"></site-head>
+    <site-head data-bascik-prop-title="Home - Acme Blog" />
   </head>
   <body>
     <site-header />

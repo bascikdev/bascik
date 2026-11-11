@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -46,11 +47,14 @@ export const importUserConfig = async (
  * module check would stop on first). Returns "" when the check reports a
  * different error than the import (so the location could point at the wrong
  * line), when the config parses (the SyntaxError came from linking, such as
- * a missing named export), or for a TypeScript config, which `node --check`
- * would parse without stripping its types.
+ * a missing named export). A TypeScript config, which `node --check` would
+ * parse without stripping its types, is located from the error itself
+ * (typeScriptSyntaxErrorLocation).
  */
 const syntaxErrorLocation = (configPath: string, err: unknown): string => {
   if (!(err instanceof Error) || err.name !== "SyntaxError") return "";
+  if ([".ts", ".mts"].includes(extname(configPath)))
+    return typeScriptSyntaxErrorLocation(configPath, err);
   if (![".js", ".mjs"].includes(extname(configPath))) return "";
   const check = (flags: string[]) =>
     spawnSync(process.execPath, [...flags, "--check", configPath], {
@@ -68,6 +72,38 @@ const syntaxErrorLocation = (configPath: string, err: unknown): string => {
     result = check(["--experimental-default-type=module"]);
   if (result.status === 0 || !result.stderr) return "";
   return checkOutputLocation(result.stderr, configPath, err.message);
+};
+
+/**
+ * "<file>:<line>:<column>", the source line, and a caret for a syntax error
+ * Node's type stripper raised while importing a .ts config. Node puts no
+ * position on the error object; its stack starts with "<url>:<line>", then
+ * the source text up to that line and a caret line under the token. The line
+ * is used only when it exists in the file and the text above the caret is
+ * that line, so a change in Node's format gives no location rather than a
+ * wrong one (audit 159 finding 50).
+ */
+const typeScriptSyntaxErrorLocation = (
+  configPath: string,
+  err: Error,
+): string => {
+  const stack = (err.stack ?? "").replace(/\r\n?/g, "\n");
+  const head = /^[^\n]*:(\d+)\n/.exec(stack);
+  if (!head) return "";
+  const line = Number(head[1]);
+  let source: string;
+  try {
+    source = readFileSync(configPath, "utf8").replace(/\r\n?/g, "\n");
+  } catch {
+    return "";
+  }
+  const sourceLine = source.split("\n")[line - 1];
+  if (sourceLine === undefined) return "";
+  const stackLines = stack.split("\n");
+  const caret = stackLines.findIndex((text, i) => i > 0 && /^\s*\^/.test(text));
+  if (caret < 1 || stackLines[caret - 1] !== sourceLine) return "";
+  const column = stackLines[caret].indexOf("^") + 1;
+  return `${configPath}:${line}:${column}\n${sourceLine}\n${stackLines[caret].trimEnd()}`;
 };
 
 /**
@@ -157,6 +193,27 @@ const assertReadableExports = (
   );
 };
 
+/**
+ * The fix for a config whose `import ... from "@bascik/bascik"` cannot be
+ * resolved, or undefined for any other error. The CLI that is running may be
+ * a global install (`npm install -g @bascik/bascik`) or an `npx` download,
+ * but Node resolves the config's imports from the project folder, so only a
+ * copy installed in the project satisfies them.
+ */
+export function missingBascikPackageHint(err: unknown): string | undefined {
+  if (
+    !(err instanceof Error) ||
+    (err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND" ||
+    !/Cannot find package '@bascik\/bascik'/.test(err.message)
+  ) {
+    return undefined;
+  }
+  return (
+    "  This project does not have @bascik/bascik installed. A global or npx copy of the CLI " +
+    "cannot provide the config's imports, so install it in the project: npm install --save-dev @bascik/bascik"
+  );
+}
+
 /** Load and validate the project's bascik.config, if present. */
 export const loadUserConfig = async (
   configPath: string,
@@ -204,9 +261,11 @@ export const loadUserConfig = async (
     // than process.exit) so the CLI can surface the error and library
     // consumers (worker threads) don't nuke the whole process.
     const location = syntaxErrorLocation(configPath, err);
+    const hint = missingBascikPackageHint(err);
     throw new Error(
       `[bascik] Failed to load bascik.config (${configPath}): ${err instanceof Error ? err.message : String(err)}` +
-        (location ? `\n${location}` : ""),
+        (location ? `\n${location}` : "") +
+        (hint ? `\n${hint}` : ""),
       { cause: err },
     );
   }

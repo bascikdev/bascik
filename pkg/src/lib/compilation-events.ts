@@ -35,10 +35,18 @@ export const withCompilationPublisher = <T>(
       const errors = [...result, ...writes].filter(
         (result) => result.status === "rejected",
       );
+      // One failure is rethrown as it is, so the CLI prints its own located
+      // [bascik] message with no `Error:` prefix; several are joined by
+      // message (audit 159 findings 38 and 49).
+      if (errors.length === 1) throw errors[0].reason;
       if (errors.length)
         throw new AggregateError(
           errors.map((result) => result.reason),
-          errors.map((result) => String(result.reason)).join("\n"),
+          errors
+            .map(({ reason }) =>
+              reason instanceof Error ? reason.message : String(reason),
+            )
+            .join("\n"),
         );
       const completed = result[0];
       if (completed.status === "rejected") throw completed.reason;

@@ -47,6 +47,7 @@ import {
   type ComponentSearchState,
 } from "./component-attribute-scan.ts";
 import {
+  ComponentCycleError,
   ComponentExpansionLimitError,
   expandComponents,
   type ExpandOptions,
@@ -922,6 +923,13 @@ export const wrapRunner = (
             raiseHint("rescanFactor", "rescanBase"),
           httpPath,
           entry?.filePath,
+        );
+      }
+      if (error instanceof ComponentCycleError) {
+        throw new RequestRenderError(
+          `[bascik] ${mode}-script output at "${httpPath}": ${error.message}`,
+          httpPath,
+          error.sourceFile,
         );
       }
       if (!(error instanceof ComponentExpansionLimitError)) throw error;

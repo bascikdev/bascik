@@ -169,6 +169,40 @@ describe("installNetlifyOutput", () => {
     );
   });
 
+  // Finding 132: importing @bascik/bascik/adapter used to load the config at
+  // module evaluation, so these died with an uncaught stack trace (internal
+  // dist paths, caret line, Node version) before the CLI's try/catch ran.
+  it.each([
+    [
+      "a --config path that does not exist",
+      ["--config", "nope.config.ts"],
+      {},
+      /^\[bascik\] error: --config "[^"]*nope\.config\.ts" does not exist\./,
+    ],
+    [
+      "a bascik.config with a syntax error",
+      [],
+      { "bascik.config.mjs": "export default { directory: { out: 'x' }\n" },
+      /^\[bascik\] Failed to load bascik\.config \([^)]*bascik\.config\.mjs\)/,
+    ],
+  ])(
+    "misuse: the CLI reports %s as its own one-line error, not a stack trace",
+    async (_label, args, files, message) => {
+      for (const [name, text] of Object.entries(files))
+        await writeFile(join(root, name), text);
+      const cli = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL("../dist/cli.js", import.meta.url)), ...args],
+        { cwd: root, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } },
+      );
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toMatch(message);
+      expect(cli.stderr).not.toMatch(/^\s+at /m);
+      expect(cli.stderr).not.toContain("Node.js v");
+      expect(cli.stderr).not.toContain("file://");
+    },
+  );
+
   it.each(["parent", "file"])(
     "refuses a function destination whose %s is a symlink into sources",
     async (alias) => {
@@ -316,8 +350,9 @@ describe("findAdapterOutput", () => {
   });
 
   it("explains how to build when there is no output", async () => {
+    // The spelling every doc, the README and the demo scripts use.
     await expect(findAdapterOutput(join(root, "dist"))).rejects.toThrow(
-      "Run bascik --build",
+      "Run bascik --build --target netlify first.",
     );
   });
 });

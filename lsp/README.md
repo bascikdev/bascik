@@ -2,7 +2,7 @@
 
 Official Language Server Protocol (LSP) server for Bascik projects.
 
-Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor. Use it to wire Bascik into Neovim, Zed, Helix, a coding agent, or CI. In VS Code, install the [Bascik extension](https://bascik.dev/tools/vscode-extension) instead: it bundles this server. Requires Node.js 22.22 or newer. Every rule is documented on the [Linter](https://bascik.dev/tools/linter) page.
+Provides editor-agnostic intelligence for Bascik HTML components, props, slots, mutually exclusive script directives, and scoping diagnostics across any LSP-compatible editor. Use it to wire Bascik into Neovim, Zed, Helix, a coding agent, or CI. In VS Code, install the [Bascik extension](https://bascik.dev/tools/vscode-extension) instead: it bundles this server. Requires Node.js 24.21 or newer. Every rule is documented on the [Linter](https://bascik.dev/tools/linter) page.
 
 ## Capabilities
 
@@ -26,6 +26,8 @@ Provides editor-agnostic intelligence for Bascik HTML components, props, slots, 
   - Undeclared prop attributes on component tags.
   - Misplaced `data-bascik-slot` attributes.
   - Scoping compatibility checks in CSS and JavaScript.
+  - Unbalanced `{` or `}` in a component's `<style>` or companion stylesheet (`css-unbalanced-braces`, an error, because the build stops on it).
+  - A component selector or class query that only preserved elements (`scoping.preserve`, `data-bascik-preserve`) answer, so it never matches (`css-preserved-target`, `js-preserved-target`).
   - In-file ignore comment support (`<!-- bascik-ignore -->`, `/* bascik-ignore */`, `// bascik-ignore`).
   - TypeScript errors in `<script type="text/typescript">` blocks, from TypeScript's own language service, with the source `ts (bascik)`. Each block is checked in the scope it runs in (a page's browser blocks share one scope, a scoped component's and every server-side block are on their own); browser blocks get the DOM and server-side blocks (`data-bascik-build`, `-build-once`, `-routes`, `-server`, `-stream`) get Node.js (its types with `@types/node`; without it, the web globals Node.js and workerd share, and Node.js's globals and modules untyped); `@/` resolves against `scripts.importRoot`, and the project's `tsconfig.json` is the base. See [TypeScript](#typescript) below.
   - Configuration support via `bascik.ext.json`, `.bascikrc.json`, `bascik.ext.ts`, or `bascik.ext.js`. The `.ts` and `.js` forms are read without running them (literal values only), and a config that cannot be read is logged to stderr with its file and line.

@@ -4,7 +4,7 @@ Netlify Functions hosting adapter for [Bascik](https://bascik.dev).
 
 ## Overview
 
-This adapter serves a Bascik site from Netlify: the CDN serves every static file, and one Netlify Function (Functions API v2, streaming) runs the `data-bascik-server` and `data-bascik-stream` scripts, the component tags they return (rendered with the component's markup and scoped CSS), and the API routes in `src/api/`. Install it in a Bascik project that deploys to Netlify (Node.js 22.22 or newer), or start one with `npm create bascik@rc my-site -- --template netlify`:
+This adapter serves a Bascik site from Netlify: the CDN serves every static file, and one Netlify Function (Functions API v2, streaming) runs the `data-bascik-server` and `data-bascik-stream` scripts, the component tags they return (rendered with the component's markup and scoped CSS), and the API routes in `src/api/`. Install it in a Bascik project that deploys to Netlify (Node.js 24.21 or newer), or start one with `npm create bascik@rc my-site -- --template netlify`:
 
 ```sh
 npm install --save-dev @bascik/adapter-netlify
@@ -109,7 +109,7 @@ Return the same `user_metadata` from `identity-signup` for new users. An affecte
 The permanent fixture in `e2e/fixture/` deploys to
 [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev/).
 It is independent of application projects and contains synthetic data only.
-Run these commands from the monorepo root on Node 24:
+Run these commands from the monorepo root on the `.nvmrc` Node:
 
 ```sh
 yarn adapter:nf:unit          # Runtime, installer and real-build/Node parity tests
@@ -135,7 +135,7 @@ JavaScript disabled, API methods/params/catch-all precedence, Netlify context/co
 transport, native-function coexistence, security/CSP headers, errors, timeouts, and
 private-path handling. Error routes intentionally generate diagnostics.
 
-Both adapters also run one [shared demo browser contract](../e2e/demo-contract.test.ts)
+Both adapters also run one [shared demo browser contract](https://github.com/bascikdev/bascik/blob/main/adapters/e2e/demo-contract.test.ts)
 against their real runtimes. The canonical routes and titles match Cloudflare:
 `/`, `/server?name=collin`, `/stream`, `/stream-append`, `/mixed`, `/catalog`,
 `/catalog-stream`, `/api-demo`, `/errors`, and `/static`. The `/static` page
@@ -162,4 +162,4 @@ uses stable class-only scripts.
 This is **not** an Identity, database, OAuth or payment-service test. Those services
 are application integrations and need their own isolated resources and credentials
 if added later. Never reuse an application's users, secrets, or database here.
-See [the deployment runbook](../../DEPLOYMENT.md#netlify-adapter-acceptance-project).
+See [the deployment runbook](https://github.com/bascikdev/bascik/blob/main/DEPLOYMENT.md#netlify-adapter-acceptance-project).

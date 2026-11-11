@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Interaction crawl: find every interactive element on a production route, activate each one, record what it did,
 // and replay it on the Bascik target by stable anchors. Reports effects that are missing or different.
-// Dependency-free; Node.js 22.22+; needs playwright (or @playwright/test) in your project. NOT read-only toward
+// Dependency-free; Node.js 24.21+; needs playwright (or @playwright/test) in your project. NOT read-only toward
 // production: plain navigation links and submit buttons are never activated, but every other control (a
 // <button type="button">, a [role=button], an element with a click listener) is clicked from a fresh load, once per
 // matrix case and again per opened layer. Writes other than GET or HEAD to production are refused, but a handler that

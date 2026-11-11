@@ -2,7 +2,7 @@
 // Responsive WebP: write <name>-<width>.webp variants of each source image at the standard widths up to its own
 // width (never upscaled, and the source width itself when it falls between two), plus manifest.json with each
 // file's width, path, site URL, bytes and sha256, for <img srcset>.
-// Node.js 22.22+; needs sharp in your project (npm install -D sharp).
+// Node.js 24.21+; needs sharp in your project (npm install -D sharp).
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";

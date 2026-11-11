@@ -45,7 +45,7 @@ The `--` is required: npm keeps flags placed before it for itself. That is the s
 
 ## Prerequisites
 
-- Node.js 22.22 or newer for the build (Node.js 24 LTS recommended).
+- Node.js 24.21 or newer for the build.
 - `@bascik/adapter-netlify` installed in your project:
 
 ```sh

@@ -5,6 +5,7 @@ const SHA = "a".repeat(40);
 
 function fixture({
   existing = false,
+  remoteTags = [] as string[],
   failed = false,
   pending = false,
   unavailable = false,
@@ -37,8 +38,14 @@ function fixture({
             version,
           });
         }
-        if (args[0] === "ls-remote")
+        if (args[0] === "ls-remote") {
+          const present = remoteTags.filter((tag) =>
+            args.includes(`refs/tags/${tag}`),
+          );
+          if (present.length)
+            return present.map((tag) => `${SHA}\trefs/tags/${tag}`).join("\n");
           return existing ? `${SHA}\trefs/tags/v1.2.3` : "";
+        }
         return "";
       }
       if (args[0] === "auth") return "";
@@ -216,6 +223,29 @@ describe("release script", () => {
         run: () => "git@github.com:someone/other.git",
       }),
     ).rejects.toThrow(/origin must point to bascikdev\/bascik/);
+  });
+
+  it("refuses an ext-v plan when ext-pre-v for the same version is on origin, and the reverse", async () => {
+    for (const [args, existingTag, planned] of [
+      [["extension"], "ext-pre-v1.2.3", "ext-v1.2.3"],
+      [["extension", "--extension-pre"], "ext-v1.2.3", "ext-pre-v1.2.3"],
+    ] as const) {
+      for (const flags of [[], ["--dry-run"]]) {
+        const { dependencies, calls } = fixture({ remoteTags: [existingTag] });
+        await expect(
+          release([...args, ...flags], dependencies),
+        ).rejects.toThrow(
+          new RegExp(`${existingTag} already exists.*${planned}`, "s"),
+        );
+        expect(calls.filter((call) => call[1] === "push")).toEqual([]);
+      }
+    }
+  });
+
+  it("allows the other extension channel at a different version", async () => {
+    const { dependencies, calls } = fixture({ remoteTags: ["ext-pre-v1.2.2"] });
+    await release(["extension"], dependencies);
+    expect(calls.filter((call) => call[1] === "push")).toHaveLength(1);
   });
 
   it("surfaces command and registry failures without pushing later stages", async () => {

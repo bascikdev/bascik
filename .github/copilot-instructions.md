@@ -14,7 +14,7 @@ Repository-wide instructions are labeled accordingly.
 
 ## Keeping the Changelog Up to Date
 
-`CHANGELOG.md` is not actively maintained during pre-1.0 development: the 1.0.0 release entry will be written as a high-level announcement. **Once 1.0.0 ships**, resume normal changelog discipline: add an entry to `[Unreleased]` whenever you add a feature, fix a bug, or make any user-visible change to `pkg/src/`. One bullet per change, grouped under `### Added`, `### Fixed`, or `### Changed`.
+`CHANGELOG.md` at the repository root is the release notes for every package and the source of the `/releases` docs page (`docs/src/pages/releases.html` renders it at build time). From 1.0.0 on it is maintained in every pull request: **whenever you add a feature, fix a bug, or make any user-visible change** to `pkg/src/`, `create/`, `adapters/`, `lsp/`, the extension, or the public skills, add one bullet under `## [Unreleased]` (create the section at the top when it is absent), grouped under `### Added`, `### Changed`, `### Fixed`, or `### Removed`, naming the package when it is not `@bascik/bascik`. Write for a user of the package, not a contributor: what changed and what to do about it, with a docs link when one exists. Internal refactors, test-only changes, and docs-only changes get no entry. A release moves the `[Unreleased]` bullets under `## [<version>] - <date>` and adds the comparison link at the bottom (see `RELEASING.md`, "Release checklist"). Never rewrite a released version's section.
 
 ## Keeping the Compatibility Doc Up to Date
 
@@ -56,7 +56,7 @@ Both Workers deploy from CI stage 5 in `.github/workflows/ci.yml`: a push to `ma
 
 Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
 
-- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`nvm use 24` first, or run `"$(nvm which 24)" scripts/capture-demos.ts <scene>`). Images are only for things that must be a picture of a real program.
+- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use the `.nvmrc` Node (`nvm use` first, or run `"$(nvm which 26)" scripts/capture-demos.ts <scene>`). Images are only for things that must be a picture of a real program.
 - **Diagrams** (flows, file trees, "you write / Bascik emits" comparisons) are the `diagram-*` Bascik components placed in the page shell. Their code lives in `<!-- demo:id -->` blocks in `docs/src/diagrams/<page>.md`, not in `docs/content/`.
 - **Live examples** that must run in the page are `<component-demo>` blocks.
 
@@ -98,7 +98,7 @@ Eight coverage files are generated. The testing page (`docs/src/pages/internals/
 
 ### Public Agent Skills (`skills/`)
 
-The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-images`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and `npm create bascik` / `bascik init`, which run the skills CLI on GitHub at the matching release tag.
+The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-images`, `bascik-testing`, `bascik-migrate`, and the opt-in `bascik-refactor`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and `npm create bascik@rc` / `bascik init`, which run the skills CLI on GitHub at the matching release tag.
 
 - `create-bascik` bundles no copy of the skills. `PROJECT_SKILLS` in `create/src/agent-setup.ts` (identical copy at `pkg/src/lib/agent-setup.ts`) names the skills new projects get: every `skills/` folder minus the opt-in `bascik-refactor`, enforced by `create/src/agent-setup.test.ts`. When you add or rename a skill, update that list in both copies. Readers install `bascik-refactor` with `npx skills add bascikdev/bascik --skill bascik-refactor`.
 - The skills' tests and fixtures live in the `skills-tests/` workspace (`bascik-skills-tests`: `yarn skills:unit`, `yarn skills:integration`, `yarn skills:typecheck`), not in `skills/` (it ships to users) and not in `docs/`. Every `bascik-refactor` script has a `skills-tests/tests/refactor-<script>.test.ts`; the parity check browser tests (`*.integration.test.ts`, Chromium) read `skills-tests/tests/fixtures/refactor-parity/`. Only tests of how the docs site publishes the skills (`docs/scripts/skill-bundle.test.ts`, `docs/scripts/publish-agent-skill.test.ts`) and the docs e2e specs stay in `docs/`.
@@ -145,9 +145,9 @@ Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license det
 
 ## Node 24: Native TypeScript Support
 
-This project is developed and tested on **Node 24**; the published packages support Node 22.22 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
+This project is developed and tested on **Node 26** (the current LTS, pinned in `.nvmrc`) and on Node 24; the published packages support Node 24.21 and newer. Node natively strips TypeScript types, with no transpiler or extra flags needed for erasable syntax.
 
-- `node example.ts` works directly (Node 22.22+ with only erasable syntax, no flags required).
+- `node example.ts` works directly (Node 24.21+ with only erasable syntax, no flags required).
 - Erasable syntax: type annotations, interfaces, type aliases, `import type`. These are stripped at runtime.
 - Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) is **not** supported: a separate transpile step is required for those.
 - Node does **not** type-check. Run `npx tsc --noEmit` separately for type checking.

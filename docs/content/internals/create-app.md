@@ -8,7 +8,7 @@ The package's source files have distinct responsibilities:
 
 - `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
 - `create/src/agent-setup.ts`: the coding-assistant setup shared with `bascik init`: the `AGENTS.md` brief and the `CLAUDE.md` that imports it (merged into existing files), the agent skills install through the skills CLI, and the prompt helper that keeps a run without a terminal from hanging.
-- `create/src/index.ts`: the CLI entry point. Handles prompts, including the Cloudflare template and agent skills questions, and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
+- `create/src/index.ts`: the CLI entry point. Handles prompts, including the template (default, Cloudflare, or Netlify) and agent skills questions, and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
 - `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_template`, `npm_config_skills` and `npm_config_install` variables npm sets instead (npm sets a `--no-*` flag's variable to the empty string). npm takes `--no-dev` as its own `dev` setting and sets nothing, so that flag only works after `--`.
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
@@ -86,7 +86,7 @@ npx --prefer-offline -y skills@1.7.4 add bascikdev/bascik#v<version> -a universa
 
 `BASCIK_SKILLS_SOURCE` replaces the GitHub source, for example with a local checkout (`BASCIK_SKILLS_SOURCE=$PWD/.. node dist/index.js my-site -y`), and is used as given with no tag. The integration tests use it to install this branch's skills without GitHub.
 
-`agent-setup.ts` has an identical copy at `pkg/src/lib/agent-setup.ts` for `bascik init`; a unit test fails when the two differ. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers.
+`agent-setup.ts` has an identical copy at `pkg/src/lib/agent-setup.ts` for `bascik init`; a unit test fails when the two differ. The `cloudflare` template adds `src/pages/edge.html` (a server-script demo page), `src/api/hello.ts`, the `@bascik/adapter-cloudflare` and `wrangler` dev dependencies, and `build`, `preview`, and `deploy` scripts for Cloudflare Workers. The `netlify` template adds the same `src/pages/edge.html` and `src/api/hello.ts`, the `@bascik/adapter-netlify` and `netlify-cli` dev dependencies, a `netlify.toml` (build command and the `publish` folder, with Netlify's `URL` used as the site URL), a `.gitignore` that also excludes `publish/` and `.netlify/`, and `build`, `preview`, and `deploy` scripts that build with `bascik --build --target netlify`, run `bascik-netlify-install`, and call the Netlify CLI through `npx`.
 
 ## Why the generated app uses npm
 

@@ -1,50 +1,54 @@
 <section id="root" class="narrow confirmation" data-testid="order">
   <h1>Your order.</h1>
-  <p class="status" role="status" data-order-status>Checking your order...</p>
-  <p role="status" data-order-refund data-testid="order-refund" hidden></p>
-  <section
-    class="panel"
-    data-order-summary
-    data-testid="order-summary"
-    hidden
-    aria-label="Order confirmation"
-  >
-    <p class="eyebrow">ORDER NUMBER</p>
-    <h2 data-order-reference data-testid="order-reference"></h2>
-    <p data-order-date></p>
-    <div data-order-lines></div>
-    <dl class="totals">
+  <div class="skeleton" aria-busy="true" data-testid="order-skeleton">
+    <p class="visually-hidden" role="status">Loading your order</p>
+    <p class="status bone bone-status" aria-hidden="true"></p>
+    <section class="panel" aria-hidden="true">
+      <p class="eyebrow bone bone-eyebrow"></p>
+      <h2 class="bone bone-reference"></h2>
+      <p class="bone bone-date"></p>
       <div>
-        <dt>Subtotal</dt>
-        <dd data-order-subtotal></dd>
+        <article class="order-line">
+          <div>
+            <h3 class="bone bone-title"></h3>
+            <p class="bone bone-quantity"></p>
+          </div>
+          <strong class="bone bone-amount"></strong>
+        </article>
+        <article class="order-line">
+          <div>
+            <h3 class="bone bone-title"></h3>
+            <p class="bone bone-quantity"></p>
+          </div>
+          <strong class="bone bone-amount"></strong>
+        </article>
       </div>
-      <div>
-        <dt>Shipping</dt>
-        <dd data-order-shipping></dd>
-      </div>
-      <div>
-        <dt>Tax</dt>
-        <dd data-order-tax></dd>
-      </div>
-      <div class="total">
-        <dt data-order-total-label>Total paid</dt>
-        <dd data-order-total></dd>
-      </div>
-    </dl>
-    <p class="muted">All amounts in USD.</p>
-  </section>
-  <p data-order-email data-testid="order-email"></p>
-  <div data-shipments></div>
-  <p class="help" data-testid="order-help">
-    Keep this private link to check fulfillment and tracking. Payment
-    confirmation can take a moment.
-    <a href="/contact">Contact us about your order</a>.
-  </p>
-  <div class="actions print-actions">
-    <a href="/">Back to the collection</a
-    ><button type="button" data-order-print data-testid="order-print" hidden>
-      Print confirmation
-    </button>
+      <dl class="totals">
+        <div>
+          <dt class="bone bone-label"></dt>
+          <dd class="bone bone-amount"></dd>
+        </div>
+        <div>
+          <dt class="bone bone-label"></dt>
+          <dd class="bone bone-amount"></dd>
+        </div>
+        <div>
+          <dt class="bone bone-label"></dt>
+          <dd class="bone bone-amount"></dd>
+        </div>
+        <div class="total">
+          <dt class="bone bone-label"></dt>
+          <dd class="bone bone-amount"></dd>
+        </div>
+      </dl>
+      <p class="muted bone bone-note"></p>
+    </section>
+    <p class="bone bone-email" aria-hidden="true"></p>
+    <p class="help bone bone-help" aria-hidden="true"></p>
+    <div class="actions print-actions" aria-hidden="true">
+      <span class="bone bone-link"></span>
+    </div>
   </div>
+  <script data-bascik-stream src="./order.ts"></script>
 </section>
 <script type="module" src="./order-confirmation.ts"></script>

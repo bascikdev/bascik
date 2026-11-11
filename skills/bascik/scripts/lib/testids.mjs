@@ -1,4 +1,4 @@
-// The data-testid advisory for verify.mjs. Dependency-free; Node.js 22.22+.
+// The data-testid advisory for verify.mjs. Dependency-free; Node.js 24.21+.
 // Lists the elements an end-to-end test needs a stable hook for and that have no data-testid: every component root,
 // every control or ARIA widget, every element in the tab order, every form and dialog, and every landmark. A link that
 // only navigates is left out: a test finds it by its role and name. Advisory by design: it never fails a check.

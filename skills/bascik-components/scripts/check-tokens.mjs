@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Check that components only use CSS custom properties (design tokens) that are declared somewhere.
-// Dependency-free; Node.js 22.22+. Run from the project root.
+// Dependency-free; Node.js 24.21+. Run from the project root.
 import {
   existsSync,
   readFileSync,

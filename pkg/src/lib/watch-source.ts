@@ -182,6 +182,9 @@ export const watchSourceCycles = async (
               all = true;
             } else if (inComponents) {
               if (kind === "add") all = true;
+              // A page that failed during component expansion is in no component index (finding 40).
+              for (const page of mem.pagesWhoseLastBuildFailed())
+                pages.add(resolve(page));
               for (const page of mem.pagesThisComponentIsUsedOn(
                 basename(path).split(".")[0].toLowerCase(),
               ))

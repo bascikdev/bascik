@@ -41,7 +41,11 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
 }));
 
-import { listComponents, invalidateComponentListCache } from "./components.ts";
+import {
+  listComponents,
+  invalidateComponentListCache,
+  setComponentWarningsSilenced,
+} from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
@@ -301,6 +305,21 @@ describe("listComponents – native HTML element name warning", () => {
       warnSpy.mockRestore();
     },
   );
+
+  it("gives a file name with a space one warning with a name a tag can spell (finding 144)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/my widget.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>x</div>"));
+
+    await listComponents();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = String(warnSpy.mock.calls[0][0]);
+    expect(message).toContain("my widget");
+    expect(message).toContain("my-widget.html");
+    expect(message).not.toContain("my-my widget");
+    warnSpy.mockRestore();
+  });
 
   it("does not warn for hyphenated component names", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -992,7 +1011,14 @@ describe("listComponents – component build script preservation", () => {
       "src/components/card.html",
       "src/components/card.js",
     ]);
-    mockReadFile.mockResolvedValue(Buffer.from("<div>Card</div>"));
+    // Companion scripts are parsed now (finding 41), so the .js file holds JS.
+    mockReadFile.mockImplementation(async (path: unknown) =>
+      Buffer.from(
+        String(path).endsWith(".js")
+          ? "console.log('card');"
+          : "<div>Card</div>",
+      ),
+    );
 
     const result = await listComponents();
     expect(result["card"]).toBeDefined();
@@ -1018,5 +1044,77 @@ describe("listComponents – component build script preservation", () => {
     const result = await listComponents();
     expect(result["promo-card"]).toBeDefined();
     expect(result["user-row"]).toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listComponents – one severity per rule, and silence under --check (finding 105)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("listComponents – scoping rule warnings and --check", () => {
+  const styled = (css: string) => `<div>x</div>\n<style>${css}</style>`;
+
+  it("labels a rule with the severity its rules JSON entry carries", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/rep-card.html"]);
+    mockReadFile.mockResolvedValue(
+      Buffer.from(styled('[id="report-form"] { color: red; }')),
+    );
+    await listComponents();
+    const line = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("css-id-attribute-selector"));
+    expect(line).toContain("[bascik] error");
+    expect(line).not.toContain("[bascik] warning");
+    warnSpy.mockRestore();
+  });
+
+  it("labels a warning-severity rule as a warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/rep-card.html"]);
+    mockReadFile.mockResolvedValue(
+      Buffer.from(styled(".b_id_x { color: red; }")),
+    );
+    await listComponents();
+    const line = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("css-reserved-class-prefix"));
+    expect(line).toContain("[bascik] warning");
+    warnSpy.mockRestore();
+  });
+
+  it("prints nothing while component warnings are silenced for --check, which reports them itself", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/rep-card.html",
+      "src/components/badcomp.html",
+      "src/components/nav.html",
+    ]);
+    mockReadFile.mockResolvedValue(
+      Buffer.from(styled('[id="report-form"] { color: red; }')),
+    );
+    setComponentWarningsSilenced(true);
+    try {
+      await listComponents();
+    } finally {
+      setComponentWarningsSilenced(false);
+    }
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("suggests a usable hyphenated name, not a prefixed copy of the old one", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/card.html",
+      "src/components/MyCard.html",
+    ]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>x</div>"));
+    await listComponents();
+    const out = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain('"app-card"');
+    expect(out).toContain('"my-card"');
+    expect(out).not.toContain("my-MyCard");
+    warnSpy.mockRestore();
   });
 });

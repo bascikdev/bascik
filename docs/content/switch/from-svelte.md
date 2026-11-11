@@ -25,7 +25,7 @@ Migrate a static UI component into Bascik:
 
 1. Move your component markup to `src/components/my-card/my-card.html`.
 2. Move your `<style>` content to `src/components/my-card/my-card.css`.
-3. Use `<my-card></my-card>` in `src/pages/index.html`.
+3. Use `<my-card />` in `src/pages/index.html`.
 4. Run `npm run dev` to view your compiled zero-JS output.
 
 ## File and Folder Setup
@@ -88,7 +88,7 @@ A Bascik component is a vanilla HTML file: the HTML is the component markup, wit
 }
 ```
 
-No import or registration is needed to use this component. Bascik resolves `<site-nav></site-nav>` to `src/components/site-nav/site-nav.html` automatically by tag name.
+No import or registration is needed to use this component. Bascik resolves `<site-nav />` to `src/components/site-nav/site-nav.html` automatically by tag name.
 
 ## Default Slot
 
@@ -187,7 +187,7 @@ Svelte 5's `$props()` and Svelte 4's `export let` both become Bascik's `data-bas
 <my-card
   data-bascik-prop-title="Getting Started"
   data-bascik-prop-description="Up and running in minutes."
-></my-card>
+/>
 ```
 
 > **Text only:** Props accept plain text strings. For rich HTML content use a named slot instead. For computed content use a `<script data-bascik-build>` block in the page.

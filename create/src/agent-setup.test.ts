@@ -34,7 +34,7 @@ const HERE = import.meta.dirname;
 const REPO = resolve(HERE, "../..");
 
 describe("the two copies", () => {
-  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik set projects up the same way", () => {
+  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik@rc set projects up the same way", () => {
     expect(readFileSync(join(REPO, "pkg/src/lib/agent-setup.ts"), "utf8")).toBe(
       readFileSync(join(HERE, "agent-setup.ts"), "utf8"),
     );
@@ -139,6 +139,7 @@ describe("installSkills", () => {
       platform: "linux",
       env: { PATH: "/bin" },
       spawn,
+      exists: () => true,
     });
     expect(result).toEqual({
       status: "pinned",
@@ -240,6 +241,7 @@ describe("installSkills", () => {
       platform: "linux",
       env: {},
       spawn,
+      exists: () => true,
     });
     expect(result.status).toBe("latest");
     expect(spawn.mock.calls.map((call) => call[1][4])).toEqual([
@@ -330,12 +332,123 @@ describe("installSkills", () => {
       platform: "linux",
       env: { [SKILLS_SOURCE_ENV]: "/repo" },
       spawn,
+      exists: () => true,
     });
     expect(result.status).toBe("custom");
     expect(spawn.mock.calls[0][1]).toContain("/repo");
     expect(skillsReportLines(result)).toEqual([
       "✓ Installed the Bascik agent skills in .agents/skills/ and .claude/skills/",
     ]);
+  });
+
+  describe("verifying what the skills CLI installed", () => {
+    // The skills CLI exits 0 even when it skips a name the source does not have.
+    // `join()` writes backslashes on Windows; the fakes compare slashes.
+    const slashes = (path: string) => path.replace(/\\/g, "/");
+    const without = (missing: string[]) => (path: string) =>
+      !missing.some((name) => slashes(path).includes(`/${name}/`));
+
+    it("misuse: a tag that lacks a requested skill is not reported as a clean pinned install", () => {
+      const spawn = vi.fn(() => ok);
+      const result = installSkills("/work/app", {
+        version: "1.0.0-rc.11",
+        platform: "linux",
+        env: {},
+        spawn,
+        exists: without(["bascik-images"]),
+      });
+      // It then tries the default branch, which here has the same gap.
+      expect(spawn).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe("partial");
+      expect(result.missing).toEqual(["bascik-images"]);
+    });
+
+    it("falls through to the default branch when the tag lacks a skill, and reports latest when that completes it", () => {
+      const spawn = vi.fn(() => ok);
+      let runs = 0;
+      const result = installSkills("/work/app", {
+        version: "1.0.0-rc.11",
+        platform: "linux",
+        env: {},
+        spawn: ((...args: Parameters<typeof spawn>) => {
+          runs++;
+          return spawn(...args);
+        }) as never,
+        exists: (path) =>
+          runs >= 2 || !slashes(path).includes("/bascik-images/"),
+      });
+      expect(result.status).toBe("latest");
+      expect(
+        spawn.mock.calls.map((call) => (call as string[][])[1][4]),
+      ).toEqual(["bascikdev/bascik#v1.0.0-rc.11", "bascikdev/bascik"]);
+    });
+
+    it("misuse: a skill present in only one destination counts as missing", () => {
+      const result = installSkills("/work/app", {
+        platform: "linux",
+        env: {},
+        spawn: vi.fn(() => ok),
+        exists: (path) =>
+          !(
+            slashes(path).includes(".claude/skills/") &&
+            slashes(path).includes("/bascik-seo/")
+          ),
+      });
+      expect(result.status).toBe("partial");
+      expect(result.missing).toEqual(["bascik-seo"]);
+    });
+
+    it("misuse: a custom source that lacks a skill is reported as partial, not retried elsewhere", () => {
+      const spawn = vi.fn(() => ok);
+      const result = installSkills("/work/app", {
+        platform: "linux",
+        env: { [SKILLS_SOURCE_ENV]: "/repo" },
+        spawn,
+        exists: without(["bascik-images"]),
+      });
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("partial");
+    });
+
+    it("keeps the partial result when the default branch attempt then fails", () => {
+      const spawn = vi
+        .fn()
+        .mockReturnValueOnce(ok)
+        .mockReturnValueOnce(fail("Failed to connect to github.com"));
+      const result = installSkills("/work/app", {
+        version: "1.0.0-rc.11",
+        platform: "linux",
+        env: {},
+        spawn,
+        exists: without(["bascik-images"]),
+      });
+      expect(result.status).toBe("partial");
+      expect(result.missing).toEqual(["bascik-images"]);
+    });
+
+    it("reports how many installed, which are missing, and the command to get just those from the default branch", () => {
+      const lines = skillsReportLines({
+        status: "partial",
+        ref: "v1.0.0-rc.11",
+        missing: ["bascik-images"],
+        command: skillsCommand(undefined, ["bascik-images"]),
+      });
+      expect(lines[0]).toBe(
+        `Installed ${PROJECT_SKILLS.length - 1} of ${PROJECT_SKILLS.length} Bascik agent skills; missing: bascik-images.`,
+      );
+      expect(lines.join("\n")).toContain(
+        "npx skills add bascikdev/bascik -a universal -a claude-code --copy -y --skill bascik-images",
+      );
+      expect(lines.join("\n")).not.toContain("#v1.0.0-rc.11");
+    });
+
+    it("limits the install command to the named skills", () => {
+      expect(skillsAddArgs("x", ["a", "b"]).slice(-3)).toEqual([
+        "--skill",
+        "a",
+        "b",
+      ]);
+    });
   });
 
   it("reports a pinned install with its tag", () => {

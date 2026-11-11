@@ -36,6 +36,8 @@ const staticTestIgnore = [
   "**/server-components.test.ts",
   "**/api-routes.test.ts",
   "**/dev-server-reload.test.ts",
+  // Starts its own dev server in a temporary project (audit 159 finding 43).
+  "**/dev-boot-component-error.test.ts",
   "**/prod-server.test.ts",
   "**/preserve-server-form.test.ts",
   // Content-hash ETags, cache-control mapping, and 304 revalidation are
@@ -43,6 +45,9 @@ const staticTestIgnore = [
   // serves dist/ with a minimal harness server that has none of this, so
   // this suite only runs against playwright.server*.config.ts.
   "**/caching-layer.test.ts",
+  // Byte ranges (audit 159 finding 34) are a Bascik server feature; the
+  // static harness answers every request with the whole file.
+  "**/range-requests.test.ts",
   // The security headers, HSTS, private dynamic pages and dotfile 404s are
   // Bascik server features; the static harness sends none of them.
   "**/security-defaults.test.ts",

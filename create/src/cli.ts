@@ -173,7 +173,7 @@ export function parseCliOptions(
   };
 }
 
-/** What `npm create bascik -- --help` prints. */
+/** What `npm create bascik@rc -- --help` prints. */
 export const USAGE = `Usage: npm create bascik@rc [project-name] -- [options]
 
 Creates a new Bascik project in ./<project-name> (asks for a name when none is given).

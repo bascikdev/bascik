@@ -18,15 +18,17 @@
  *    installed with the skills CLI at this Bascik version's tag
  *
  * Updates package.json (if present):
- *  - Adds "type": "module" only when absent; a "commonjs" project is refused
- *    before anything is written
+ *  - Adds "type": "module" when absent. "commonjs" (which `npm init -y`
+ *    writes since npm 11) becomes "module" when the project has no .js or .ts
+ *    file that the change could break; otherwise init is refused before
+ *    anything is written
  *  - Adds the @bascik/bascik dependency at `^<running version>` when it is in
  *    neither dependencies nor devDependencies
  *  - Adds "dev" and "build" scripts if not already defined
  */
 
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import {
   SKILLS_QUESTION,
   agentFilesReportLines,
@@ -68,9 +70,11 @@ const INDEX_HTML = `<!DOCTYPE html>
  * pki.ts writes into the project folder when `http.tls.enabled` is set
  * without a keyFile or certFile; the private key must never be committed.
  * The exact names, not `*.pem`, so certificates a project commits on purpose
- * stay tracked.
+ * stay tracked. `node_modules/` comes first so a fresh folder's first
+ * `git add .` does not stage installed packages, as create-bascik's does not.
  */
 const REQUIRED_GITIGNORE_ENTRIES = [
+  "node_modules/",
   "dist/",
   "node_modules/.cache/bascik/",
   "bascik-privkey.pem",
@@ -113,7 +117,7 @@ export async function initProject(options: InitOptions = {}): Promise<void> {
 
   // Read and check package.json before writing anything, so a refusal (a
   // "commonjs" project) leaves the folder exactly as it was.
-  const pkgPlan = await planPackageJson(pkgPath, version);
+  const pkgPlan = await planPackageJson(pkgPath, version, cwd);
 
   // Ensure directories exist
   await mkdir(pagesDir, { recursive: true });
@@ -260,6 +264,7 @@ function bascikDependencyRange(version: string): string {
 async function planPackageJson(
   pkgPath: string,
   version: string,
+  cwd: string,
 ): Promise<PackageJsonPlan> {
   let pkgRaw: string;
   try {
@@ -277,12 +282,22 @@ async function planPackageJson(
 
   const changes: string[] = [];
 
+  // "type" decides how Node reads .js and .ts files. `npm init -y` writes
+  // "commonjs" since npm 11, so a project made with it has the setting and no
+  // code: there, switching to "module" cannot break anything. A project with
+  // a .js or .ts file may depend on CommonJS, so it is left to its owner.
   if (pkg.type === "commonjs") {
-    throw new Error(
-      '[bascik] init aborted: package.json sets "type": "commonjs". ' +
-        "Bascik config uses ESM syntax, so update this project manually if you want to migrate. " +
-        "Nothing was written.",
-    );
+    const source = await findTypeSensitiveFile(cwd);
+    if (source !== undefined) {
+      throw new Error(
+        '[bascik] init aborted: package.json sets "type": "commonjs" and the project has ' +
+          `JavaScript or TypeScript files (such as ${source}) that may rely on it. ` +
+          'Bascik config files use ESM syntax: set "type": "module" yourself once that code is ESM, ' +
+          "then run `bascik init` again. Nothing was written.",
+      );
+    }
+    pkg.type = "module";
+    changes.push('"type": "module" instead of "commonjs"');
   }
 
   // Use ESM for future bascik.config.ts support when package type is absent.
@@ -324,6 +339,36 @@ async function planPackageJson(
   }
 
   return { kind: "update", pkg, changes, scripts };
+}
+
+/** Extensions whose module format follows package.json "type". */
+const TYPE_SENSITIVE_EXTENSION = /\.(js|jsx|ts|tsx)$/;
+
+/**
+ * The first file, relative to `cwd`, whose meaning changes with package.json
+ * "type", or undefined when there is none. Skips node_modules and dot folders
+ * (.git, .vscode), whose files are not the project's own modules.
+ */
+async function findTypeSensitiveFile(cwd: string): Promise<string | undefined> {
+  const pending = [cwd];
+  while (pending.length > 0) {
+    const dir = pending.pop()!;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (TYPE_SENSITIVE_EXTENSION.test(entry.name)) {
+        return relative(cwd, path).replace(/\\/g, "/");
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -396,6 +441,13 @@ to change a default: https://bascik.dev/configuration
 }
 
 /**
+ * One `.gitignore` line, compared loosely: `node_modules`, `/node_modules`, and
+ * `node_modules/` all ignore the root folder, so none of them gets a twin.
+ */
+const gitignoreKey = (line: string): string =>
+  line.trim().replace(/^\//, "").replace(/\/$/, "");
+
+/**
  * Append the entries `.gitignore` lacks, in the file's own newline style (a
  * CRLF file stays CRLF). Resolves with the entries it added.
  */
@@ -411,8 +463,12 @@ async function ensureGitignoreEntries(
   }
 
   const newline = current.includes("\r\n") ? "\r\n" : "\n";
-  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
-  const toAppend = entries.filter((entry) => !existing.has(entry));
+  const existing = new Set(
+    current.split(/\r?\n/).map((line) => gitignoreKey(line)),
+  );
+  const toAppend = entries.filter(
+    (entry) => !existing.has(gitignoreKey(entry)),
+  );
   if (toAppend.length === 0) {
     return [];
   }
