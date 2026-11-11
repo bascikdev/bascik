@@ -46,6 +46,7 @@
     "shop:import": "yarn workspace bascik-shop import",
     "shop:build": "yarn workspace bascik-shop build",
     "shop:dev": "yarn workspace bascik-shop dev",
+    "shop:dev:cloudflare": "yarn workspace bascik-shop dev:cloudflare",
     "shop:typecheck": "yarn workspace bascik-shop typecheck",
     "shop:unit": "yarn workspace bascik-shop unit",
     "shop:integration": "yarn workspace bascik-shop integration",

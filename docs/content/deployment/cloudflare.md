@@ -42,7 +42,7 @@ For a new site, let `create-bascik` set this up:
 npm create bascik@rc my-site -- --template cloudflare
 ```
 
-The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run dev` set to `bascik --target cloudflare`, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
+The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run dev` left as `bascik`, `npm run dev:cloudflare` set to `bascik --target cloudflare`, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
@@ -99,8 +99,10 @@ Run the real local Workers runtime (workerd) with source watching and browser li
 
 ```sh
 bascik --target cloudflare
-# or, in the Cloudflare starter: npm run dev
+# or, in the Cloudflare starter: npm run dev:cloudflare
 ```
+
+Keep `npm run dev` as plain `bascik` for everyday editing, and give the Workers runtime its own script, such as `"dev:cloudflare": "bascik --target cloudflare"`. Do not point `dev` at `wrangler dev`: Wrangler serves a bundle that is already built, so it neither watches your source nor reloads the browser.
 
 Open `http://127.0.0.1:8787`. Use `--port <n>` and `--host <name>` to override the public address. Bascik performs a full production build with the adapter, starts Wrangler, and serves the runtime through a local HTTP proxy. Source changes rebuild the complete bundle and reload connected browsers, so scripts execute in workerd rather than Node.
 

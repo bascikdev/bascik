@@ -220,7 +220,7 @@ yarn shop:e2e
 
 `shop:build` generates page shells, browser JavaScript, the Bascik deployment, and an application-owned Worker entry point with fetch, queue, and scheduled handlers. Original product images and the checked-in normalized catalog are build inputs; normal builds never call Shopify.
 
-`yarn shop:dev` builds and starts Wrangler locally. For a credential-free preview of the actual emitted Worker, run `yarn workspace bascik-shop exec node scripts/serve-tests.ts`. Stop a local server before running E2E, which owns port 8790. The test server never loads `.env` or remote bindings.
+`yarn shop:dev` runs the Bascik dev server with live reload for editing pages and components; request-time code that needs a Cloudflare binding (D1, the queue, email) has none there. `yarn shop:dev:cloudflare` builds the shop and starts it in Wrangler, with the bindings but without source watching or live reload, so rerun it after a change. For a credential-free preview of the actual emitted Worker, run `yarn workspace bascik-shop exec node scripts/serve-tests.ts`. Stop a local server before running E2E, which owns port 8790. The test server never loads `.env` or remote bindings.
 
 Refresh the original four listings only while Shopify remains available:
 

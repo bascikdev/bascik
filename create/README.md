@@ -68,7 +68,7 @@ cd my-site
 npm run dev
 ```
 
-Your site will be live at `http://localhost:8080` for the default template, `http://127.0.0.1:8787` for Cloudflare, or `http://127.0.0.1:8888` for Netlify.
+Your site will be live at `http://localhost:8080` in every template. `npm run dev` is always the Bascik dev server; the Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`) to run the same site in the host's local runtime.
 
 ## Templates
 
@@ -88,7 +88,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 
 The Cloudflare template differs from the default in these files only:
 
-- `package.json`: `@bascik/adapter-cloudflare` and `wrangler` as dev dependencies; `dev` runs `bascik --target cloudflare` with source watching and browser live reload in the real local platform runtime; `build` runs `bascik --build --target cloudflare`; `preview` and `deploy` run Wrangler from the emitted `dist/.bascik/cloudflare/` folder.
+- `package.json`: `@bascik/adapter-cloudflare` and `wrangler` as dev dependencies; `dev` stays `bascik`, and `dev:cloudflare` runs `bascik --target cloudflare` with source watching and browser live reload in the real local platform runtime; `build` runs `bascik --build --target cloudflare`; `preview` and `deploy` run Wrangler from the emitted `dist/.bascik/cloudflare/` folder.
 - `src/pages/edge.html`: a page with a `data-bascik-server` script that the Worker renders on every request, linked from a fourth feature card on the home page.
 - `src/api/hello.ts`: an API route served at `/api/hello`.
 - `e2e/app.spec.ts`: one extra test covering the edge page.
@@ -97,7 +97,8 @@ The Cloudflare template differs from the default in these files only:
 After scaffolding a Cloudflare project:
 
 ```sh
-npm run dev       # watched workerd development on http://127.0.0.1:8787
+npm run dev              # Bascik dev server on http://localhost:8080
+npm run dev:cloudflare   # watched workerd development on http://127.0.0.1:8787
 npm run build     # bascik --build --target cloudflare
 npm run preview   # run the bundle locally in workerd
 npm run deploy    # wrangler deploy
@@ -105,7 +106,7 @@ npm run deploy    # wrangler deploy
 
 The Netlify template differs from the default in these files only:
 
-- `package.json`: `@bascik/adapter-netlify` and `netlify-cli` as dev dependencies; `dev` runs `bascik --target netlify` with source watching and browser live reload through the locally installed Netlify Dev; `build` runs `bascik --build --target netlify && bascik-netlify-install`; `preview` and `deploy` run the Netlify CLI through `npx`.
+- `package.json`: `@bascik/adapter-netlify` and `netlify-cli` as dev dependencies; `dev` stays `bascik`, and `dev:netlify` runs `bascik --target netlify` with source watching and browser live reload through the locally installed Netlify Dev; `build` runs `bascik --build --target netlify && bascik-netlify-install`; `preview` and `deploy` run the Netlify CLI through `npx`.
 - `netlify.toml`: builds with `npm run build`, publishes `publish/`, and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set.
 - `src/pages/edge.html` and `src/api/hello.ts`: the edge demo and API route, run in the Netlify Function.
 - `e2e/app.spec.ts`: one extra test covering the edge page.
@@ -114,7 +115,8 @@ The Netlify template differs from the default in these files only:
 After scaffolding a Netlify project:
 
 ```sh
-npm run dev       # watched Netlify development on http://127.0.0.1:8888
+npm run dev           # Bascik dev server on http://localhost:8080
+npm run dev:netlify   # watched Netlify development on http://127.0.0.1:8888
 npm run build     # bascik --build --target netlify && bascik-netlify-install
 npm run preview   # netlify dev --dir publish
 npm run deploy    # netlify deploy --build --prod

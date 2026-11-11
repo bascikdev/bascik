@@ -180,6 +180,8 @@ Details: `read-doc.mjs /configuration` (section `security`) and `read-doc.mjs /s
 
 ## Deploy
 
+The `dev` script stays plain `bascik` in every project. Give the host's runtime its own script and leave `dev` alone: `"dev:cloudflare": "bascik --target cloudflare"` or `"dev:netlify": "bascik --target netlify"`. Never set `dev`, or any script meant for editing, to `wrangler dev` or `netlify dev`: they serve an already built bundle, so nothing rebuilds on save and the browser never reloads.
+
 For watched platform development, use `bascik --target cloudflare` (HTTP port 8787) or `bascik --target netlify` (HTTP port 8888), bound to `127.0.0.1` by default, with `--port`/`--host` overrides. These run the real platform runtime, rebuild the full adapter bundle on source edits, and inject browser live reload only through a local HTTP proxy. Rebuilding or failed builds may return 503; the watcher retries after the next edit. Bare `bascik` remains Node development. Keep `--build --target ...` and direct platform previews for production output without live reload. Read `/deployment/cloudflare#develop-locally` or `/deployment/netlify#develop-locally`.
 
 | Site uses                                                 | Deploy                                                                                                                                                                                       |

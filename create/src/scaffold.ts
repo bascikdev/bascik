@@ -53,11 +53,11 @@ export const PACKAGE_JSON = (
           node: ">=24.21.0",
         },
         scripts: {
-          dev: cloudflare
-            ? "bascik --target cloudflare"
-            : netlify
-              ? "bascik --target netlify"
-              : "bascik",
+          // `dev` is always the Bascik dev server: the fastest edit loop, the same in every template. The host's own
+          // runtime gets its own script, so nobody has to choose between the two by editing `dev`.
+          dev: "bascik",
+          ...(cloudflare && { "dev:cloudflare": "bascik --target cloudflare" }),
+          ...(netlify && { "dev:netlify": "bascik --target netlify" }),
           build: cloudflare
             ? "bascik --build --target cloudflare"
             : netlify

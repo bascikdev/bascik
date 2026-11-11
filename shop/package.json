@@ -5,7 +5,8 @@
   "scripts": {
     "import": "node scripts/import-catalog.ts",
     "build": "BASCIK_SITE_URL=https://shop.bascik.dev bascik --build --target cloudflare && node scripts/package-worker.ts",
-    "dev": "yarn build && wrangler dev --config .output/wrangler.json",
+    "dev": "bascik",
+    "dev:cloudflare": "yarn build && wrangler dev --config .output/wrangler.json",
     "typecheck": "tsc --noEmit",
     "unit": "node scripts/build-assets.ts && vitest run --project unit",
     "integration": "vitest run --project integration",

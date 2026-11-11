@@ -75,7 +75,7 @@ Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for all three and you're live at `http://localhost:8080` with the default template, `http://127.0.0.1:8787` with Cloudflare, or `http://127.0.0.1:8888` with Netlify. The edge templates' `npm run dev` uses the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+Select **Y** for all three and you're live at `http://localhost:8080`. `npm run dev` is the Bascik dev server in every template. The Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`), which run the same site in the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
 | Flag                | Description                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- |

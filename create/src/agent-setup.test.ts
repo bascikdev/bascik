@@ -492,13 +492,20 @@ describe("AGENTS.md", () => {
     ["cloudflare", "workerd development", 8787],
     ["netlify", "Netlify Dev", 8888],
   ] as const)(
-    "names the %s template's watched platform runtime and public address",
-    (template, runtime, port) => {
+    "keeps dev on the Bascik dev server and gives the %s template's watched platform runtime its own script",
+    (template, _runtime, port) => {
       const section = agentsSection({ template });
       expect(section).toContain(
-        `- \`npm run dev\`: watched ${runtime} with browser live reload at http://127.0.0.1:${port}`,
+        "- `npm run dev`: dev server with live reload at http://localhost:8080",
       );
-      expect(section).not.toContain("http://localhost:8080");
+      expect(section).toContain(
+        `- \`npm run dev:${template}\`: the same site in`,
+      );
+      expect(section).toContain(`(\`bascik --target ${template}\`)`);
+      expect(section).toContain(
+        `browser live reload at http://127.0.0.1:${port}`,
+      );
+      expect(section).toContain("keep `dev` as `bascik`");
       expect(section).toContain("`npm run preview`");
     },
   );

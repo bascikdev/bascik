@@ -41,7 +41,7 @@ For a new site, let `create-bascik` set this up:
 npm create bascik@rc my-site -- --template netlify
 ```
 
-The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter and Netlify CLI installed, `npm run dev` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
+The `--` is required: npm keeps flags placed before it for itself. That is the standard starter with the adapter and Netlify CLI installed, `npm run dev` left as `bascik`, `npm run dev:netlify` set to `bascik --target netlify`, `npm run build` set to `bascik --build --target netlify && bascik-netlify-install`, a `netlify.toml` that publishes `publish/` and uses Netlify's `URL` as the site URL unless `BASCIK_SITE_URL` is set, `npm run preview` and `npm run deploy` running the Netlify CLI through `npx`, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the function. The manual steps below are for adding the adapter to an existing project.
 
 ## Prerequisites
 
@@ -104,8 +104,10 @@ Run Netlify Dev with source watching and browser live reload:
 
 ```sh
 bascik --target netlify
-# or, in the Netlify starter: npm run dev
+# or, in the Netlify starter: npm run dev:netlify
 ```
+
+Keep `npm run dev` as plain `bascik` for everyday editing, and give Netlify Dev its own script, such as `"dev:netlify": "bascik --target netlify"`. Do not point `dev` at `netlify dev`: on its own it serves output that is already built, so it neither watches your source nor reloads the browser.
 
 Open `http://127.0.0.1:8888`. Use `--port <n>` and `--host <name>` to override the public address. Bascik performs a full production build with the adapter, installs the generated output for Netlify, and starts Netlify Dev from the project root behind a local HTTP proxy. Source changes rebuild the complete bundle and reload connected browsers, including changes to request-time scripts and API routes.
 

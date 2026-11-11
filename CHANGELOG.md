@@ -11,6 +11,17 @@ it is not `@bascik/bascik`.
 
 ## [Unreleased]
 
+### Changed
+
+- `create-bascik`: in the Cloudflare and Netlify templates `npm run dev` is the Bascik dev
+  server again (`bascik`, `http://localhost:8080`), as in the default template. The
+  host's local runtime moves to its own script, `npm run dev:cloudflare` or
+  `npm run dev:netlify` (`bascik --target ...`, with source watching and browser live
+  reload). Existing projects are not changed; to match, set `"dev": "bascik"` and add
+  the `dev:<host>` script. See
+  [Cloudflare](https://bascik.dev/deployment/cloudflare#develop-locally) and
+  [Netlify](https://bascik.dev/deployment/netlify#develop-locally).
+
 ### Fixed
 
 - The pinned `Server running at` link in the dev server's terminal no longer opens a

@@ -369,12 +369,15 @@ export interface AgentsOptions {
 export function agentsSection(options: AgentsOptions = {}): string {
   const dev = options.commands?.dev ?? "npm run dev";
   const build = options.commands?.build ?? "npm run build";
-  const devDescription =
+  const devDescription = "dev server with live reload at http://localhost:8080";
+  // The host's runtime has its own script. `dev` stays the Bascik dev server in every template, so an agent that
+  // is asked to "run the site" never has to rewrite it.
+  const platformDev =
     options.template === "cloudflare"
-      ? "watched workerd development with browser live reload at http://127.0.0.1:8787"
+      ? "- `npm run dev:cloudflare`: the same site in local workerd (`bascik --target cloudflare`), watched, with browser live reload at http://127.0.0.1:8787. Use it to check bindings and Worker behavior; keep `dev` as `bascik`, and never point it at `wrangler dev`, which neither watches source nor reloads the browser\n"
       : options.template === "netlify"
-        ? "watched Netlify Dev with browser live reload at http://127.0.0.1:8888"
-        : "dev server with live reload at http://localhost:8080";
+        ? "- `npm run dev:netlify`: the same site in Netlify Dev (`bascik --target netlify`), watched, with browser live reload at http://127.0.0.1:8888. Use it to check Netlify Functions behavior; keep `dev` as `bascik`, and never point it at `netlify dev`, which neither watches source nor reloads the browser\n"
+        : "";
   const preview =
     options.template === "cloudflare"
       ? "- `npm run preview`: run the built Worker locally in workerd (after `npm run build`)"
@@ -388,7 +391,7 @@ This site is built with [Bascik](${DOCS}): HTML pages and components compiled to
 ### Commands
 
 - \`${dev}\`: ${devDescription}
-- \`${build}\`: production build into \`dist/\`; it needs the site's URL in \`BASCIK_SITE_URL\` or \`.env\` for the sitemap and robots.txt ([site URL](${DOCS}/cli#environment-files-and-the-site-url))
+${platformDev}- \`${build}\`: production build into \`dist/\`; it needs the site's URL in \`BASCIK_SITE_URL\` or \`.env\` for the sitemap and robots.txt ([site URL](${DOCS}/cli#environment-files-and-the-site-url))
 - \`npx bascik --check\`: validate pages, components and config
 ${preview}
 
