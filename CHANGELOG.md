@@ -9,6 +9,15 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Fixed
+
+- The pinned `Server running at` link in the dev server's terminal no longer opens a
+  garbled address. In VS Code's terminal, when a long log line wrapped and its first
+  half scrolled away, the remaining half was read as part of the pinned row, so
+  Cmd/Ctrl+click opened something like `http://localhost:8080ages/img/photo.webp`.
+
 ## [1.0.0-rc.12] - 2026-11-09
 
 The release candidate for 1.0.0: the full pre-launch audit lands here so every

@@ -164,12 +164,20 @@ export const needsEmptyScrollback = (
   env.TERM_PROGRAM === "vscode" &&
   Boolean(env.VSCODE_INJECTION || env.VSCODE_SHELL_INTEGRATION);
 
-/** The banner text, with the URL shortened so it never wraps onto row 2. */
+/**
+ * The banner text, with the URL shortened so it never wraps onto row 2, and one written space after it.
+ *
+ * The space keeps the URL clickable. xterm.js (VS Code's terminal) marks a row as the continuation of the row
+ * above it, and the mark scrolls with the row. When a long log line wraps and its first row scrolls out of the
+ * region, the leftover row sits directly under the banner still marked as a continuation, so link detection reads
+ * both rows as one line. Cells that were never written are dropped from that line, which glues the log text onto
+ * the URL (`http://localhost:8080ages/img/photo.webp`). A written space is kept, and a URL ends at a space.
+ */
 export const formatBanner = (url: string, columns: number): string => {
-  const room = Math.max(1, columns - LABEL.length - 2);
+  const room = Math.max(1, columns - LABEL.length - 3);
   const shown =
     url.length > room ? `${url.slice(0, Math.max(0, room - 1))}…` : url;
-  return `${colorOut.green(LABEL)} ${colorOut.cyan(shown)}`;
+  return `${colorOut.green(LABEL)} ${colorOut.cyan(shown)} `;
 };
 
 export interface PinnedBanner {

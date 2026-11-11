@@ -10,6 +10,12 @@ import {
   type PinnedBannerStream,
 } from "./pinned-banner.ts";
 import { stripColors } from "./colors.ts";
+import { createRequire } from "node:module";
+
+// The package is CommonJS and its named exports are not visible to a static import.
+const { Terminal } = createRequire(import.meta.url)(
+  "@xterm/headless",
+) as typeof import("@xterm/headless");
 
 const ESC = "\u001B";
 
@@ -146,8 +152,17 @@ describe("pinned-banner", () => {
   describe("formatBanner", () => {
     it("shows the label and the full URL when it fits", () => {
       expect(stripColors(formatBanner("http://localhost:8080", 80))).toBe(
-        "Server running at http://localhost:8080",
+        "Server running at http://localhost:8080 ",
       );
+    });
+
+    it("ends with a written space even when the URL is shortened", () => {
+      const text = stripColors(
+        formatBanner(`http://localhost:8080/${"a".repeat(100)}`, 40),
+      );
+      expect(text.endsWith("… ")).toBe(true);
+      // The space is not in the last column, where it would leave the cursor waiting to wrap.
+      expect(text.length).toBeLessThan(40);
     });
 
     it("shortens a URL that would wrap onto the second row", () => {
@@ -155,7 +170,7 @@ describe("pinned-banner", () => {
         formatBanner(`http://localhost:8080/${"a".repeat(100)}`, 40),
       );
       expect(text.length).toBeLessThanOrEqual(40);
-      expect(text.endsWith("…")).toBe(true);
+      expect(text.trimEnd().endsWith("…")).toBe(true);
     });
   });
 
@@ -327,7 +342,7 @@ describe("pinned-banner", () => {
           // A blank line at the top moves everything down. The command's line stays on screen, which is what keeps
           // VS Code's sticky scroll overlay from covering the banner.
           `${ESC}[1;1H${ESC}[L` +
-          `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
+          `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080 ${ESC}[2;40r` +
           // The cursor was on row 7, column 5. That line is now on row 8, and the cursor goes back to it.
           `${ESC}[8;5H`,
       );
@@ -366,7 +381,7 @@ describe("pinned-banner", () => {
         expect(writes[1]).toBe(
           `${ESC}[r${ESC}[?6l${ESC}[3J` +
             `${ESC}[1;1H${ESC}[L` +
-            `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
+            `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080 ${ESC}[2;40r` +
             `${ESC}[8;5H`,
         );
       });
@@ -516,6 +531,80 @@ describe("pinned-banner", () => {
         writes.filter((chunk) => chunk.includes(`${ESC}[r`)).length -
           resetsBefore,
       ).toBe(1);
+    });
+  });
+
+  describe("in a real terminal emulator (xterm.js, the one VS Code uses)", () => {
+    const columns = 60;
+
+    /** Pins the banner in a headless terminal, then prints one short line and `lines` long ones that each wrap. */
+    const runDevOutput = async (rows: number, lines: number) => {
+      const terminal = new Terminal({
+        cols: columns,
+        rows,
+        allowProposedApi: true,
+      });
+      let written: Promise<void> = Promise.resolve();
+      const stream: PinnedBannerStream = {
+        isTTY: true,
+        rows,
+        columns,
+        write: (chunk) => {
+          written = written.then(
+            () => new Promise<void>((done) => terminal.write(chunk, done)),
+          );
+          return true;
+        },
+        on: () => stream,
+        off: () => stream,
+      };
+      const banner = await pinServerUrl(
+        "http://localhost:8080",
+        stream,
+        {},
+        undefined,
+      );
+      stream.write("Starting transpiling...\r\n");
+      for (let index = 0; index < lines; index++) {
+        stream.write(
+          `copied: /home/user/site/src/pages/svg/some-long-directory/icon-number-${index}.svg\r\n`,
+        );
+      }
+      await written;
+      const buffer = terminal.buffer.active;
+      const secondRow = buffer.getLine(buffer.baseY + 1);
+      // What a link detector reads for the top row: the row, plus every row below it marked as its continuation,
+      // each without its unwritten trailing cells.
+      let topLine = "";
+      for (let row = 0; row < rows; row++) {
+        const line = buffer.getLine(buffer.baseY + row);
+        if (!line || (row > 0 && !line.isWrapped)) break;
+        topLine += line.translateToString(true);
+      }
+      banner?.release();
+      await written;
+      terminal.dispose();
+      return {
+        topLine,
+        secondRowIsContinuation: secondRow?.isWrapped === true,
+      };
+    };
+
+    it("keeps the URL separate from a wrapped log line whose first row scrolled away", async () => {
+      // With 9 rows, the second half of a wrapped line ends up directly under the banner.
+      const { topLine, secondRowIsContinuation } = await runDevOutput(9, 5);
+      // The terminal really does treat that row as part of the banner's line; this is what broke the link.
+      expect(secondRowIsContinuation).toBe(true);
+      expect(topLine).toBe(
+        "Server running at http://localhost:8080 on-number-1.svg",
+      );
+      expect(/https?:\/\/\S+/.exec(topLine)?.[0]).toBe("http://localhost:8080");
+    });
+
+    it("reads the banner alone when a whole log line sits under it", async () => {
+      const { topLine, secondRowIsContinuation } = await runDevOutput(8, 5);
+      expect(secondRowIsContinuation).toBe(false);
+      expect(topLine).toBe("Server running at http://localhost:8080 ");
     });
   });
 });
