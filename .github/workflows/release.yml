@@ -36,7 +36,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -48,7 +48,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
@@ -77,7 +77,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -89,7 +89,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
@@ -130,7 +130,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -142,7 +142,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
@@ -171,7 +171,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -183,7 +183,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
@@ -212,7 +212,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -224,7 +224,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
@@ -255,7 +255,7 @@ jobs:
 
     steps:
       # Full history, so the next step can see origin/main.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -267,7 +267,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
