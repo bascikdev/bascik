@@ -22,6 +22,10 @@ it is not `@bascik/bascik`.
   [Cloudflare](https://bascik.dev/deployment/cloudflare#develop-locally) and
   [Netlify](https://bascik.dev/deployment/netlify#develop-locally).
 
+- `bascik-config` skill: a "Tune build and server performance" table says when to turn on
+  `pipeline.workers`, `assets.symlink`, `http.precompress` and `http.cacheControl`, and
+  which of them do nothing on Cloudflare and Netlify.
+
 ### Fixed
 
 - The pinned `Server running at` link in the dev server's terminal no longer opens a

@@ -1,6 +1,6 @@
 ---
 name: bascik-config
-description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, building a Cloudflare or Netlify bundle with --target, placing static assets, 404, and 500 pages, or structuring a monorepo with several sites, shared components, workspaces, and CI. Includes an audit script that flags redundant or invalid config and a workspace checker for multi-site repositories.
+description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, tuning build and server performance (pipeline.workers, assets.symlink, http.precompress, http.cacheControl), building a Cloudflare or Netlify bundle with --target, placing static assets, 404, and 500 pages, or structuring a monorepo with several sites, shared components, workspaces, and CI. Includes an audit script that flags redundant or invalid config and a workspace checker for multi-site repositories.
 license: MIT
 metadata:
   author: bascik
@@ -188,6 +188,22 @@ For watched platform development, use `bascik --target cloudflare` (HTTP port 87
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Only static pages, build scripts, and dynamic routes      | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host                                                                                                      |
 | `data-bascik-server`, `data-bascik-stream`, or `src/api/` | `bascik --build && bascik --server` on Node, `bascik --build --target cloudflare` for a Worker bundle, or `bascik --build --target netlify && bascik-netlify-install` for a Netlify Function |
+
+## Tune build and server performance
+
+Every option here is off or automatic by default, and a small site needs none of them. Turn one on only when its sign is present, and say why in a comment beside the key.
+
+| Sign                                                                                                                    | Change                                                                               | Read                                         |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------- |
+| The dev server prints `Consider setting pipeline.workers: true` (20 or more pages took 2 seconds or longer on 4+ cores) | `pipeline.workers: true`                                                             | `/configuration#pipeline`                    |
+| Dev startup is slow because of many or large images, fonts, video, or downloads                                         | `assets.symlink: true` (development only; production builds always write real files) | `/configuration#assets`                      |
+| Build scripts exhaust memory or CPU on a small CI runner                                                                | `BASCIK_MAX_CHILD_PROCESSES=<n>` in that runner's environment, not in config         | `/configuration#configuration-precedence`    |
+| `bascik --server` spends CPU compressing the same large assets on every cold request                                    | `http.precompress: true` (slower build, about twice the compressible bytes on disk)  | `/configuration#http`                        |
+| Static files should be cached longer by browsers                                                                        | `http.cacheControl` per extension; pages keep `must-revalidate`                      | `/production-server#in-memory-caching-etags` |
+
+- On Cloudflare and Netlify the platform serves and compresses static files, so `http.compression`, `http.precompress`, and `http.cacheControl` do nothing there. Set cache headers with the host's own file (`_headers`, `netlify.toml`); read `/deployment/cloudflare` or `/deployment/netlify`.
+- `bascik --server` and the Cloudflare adapter send streamed pages (`data-bascik-stream`) uncompressed so the first bytes paint early. Do not add compression in a wrapper.
+- Measure before and after. `audit-config.mjs` flags a key set to its default, so remove an option that did not help.
 
 ## Look it up
 
