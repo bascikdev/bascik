@@ -9,43 +9,6 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
-## [Unreleased]
-
-### Added
-
-- API routes: `export default` handles every method the file has no named export for, so
-  one function can serve a proxy, a webhook, or a mounted router. Named exports still
-  win, `OPTIONS` and `HEAD` reach the default export, and methods outside the seven
-  supported ones are still refused with `405`. It works the same in the dev server,
-  `bascik --server`, and the Cloudflare and Netlify adapters. A route that already had
-  a default export alongside its method exports now sends other methods to it instead
-  of answering `405`. See
-  [One Handler for Every Method](https://bascik.dev/api-routes#one-handler-for-every-method).
-- `@bascik/language-server`: `missing-method-handler` accepts an API route whose only
-  handler is a default export.
-
-### Changed
-
-- `create-bascik`: in the Cloudflare and Netlify templates `npm run dev` is the Bascik dev
-  server again (`bascik`, `http://localhost:8080`), as in the default template. The
-  host's local runtime moves to its own script, `npm run dev:cloudflare` or
-  `npm run dev:netlify` (`bascik --target ...`, with source watching and browser live
-  reload). Existing projects are not changed; to match, set `"dev": "bascik"` and add
-  the `dev:<host>` script. See
-  [Cloudflare](https://bascik.dev/deployment/cloudflare#develop-locally) and
-  [Netlify](https://bascik.dev/deployment/netlify#develop-locally).
-
-- `bascik-config` skill: a "Tune build and server performance" table says when to turn on
-  `pipeline.workers`, `assets.symlink`, `http.precompress` and `http.cacheControl`, and
-  which of them do nothing on Cloudflare and Netlify.
-
-### Fixed
-
-- The pinned `Server running at` link in the dev server's terminal no longer opens a
-  garbled address. In VS Code's terminal, when a long log line wrapped and its first
-  half scrolled away, the remaining half was read as part of the pinned row, so
-  Cmd/Ctrl+click opened something like `http://localhost:8080ages/img/photo.webp`.
-
 ## [1.0.0-rc.12] - 2026-11-09
 
 The release candidate for 1.0.0: the full pre-launch audit lands here so every
@@ -108,6 +71,16 @@ whatever the candidate period finds.
 - **Production build options**: identifier minification, HTML and CSS minification
   with a bring-your-own-minifier hook, asset fingerprinting, sitemap and robots
   generation, base paths, and a build log.
+- API routes: `export default` handles every method the file has no named export for, so
+  one function can serve a proxy, a webhook, or a mounted router. Named exports still
+  win, `OPTIONS` and `HEAD` reach the default export, and methods outside the seven
+  supported ones are still refused with `405`. It works the same in the dev server,
+  `bascik --server`, and the Cloudflare and Netlify adapters. A route that already had
+  a default export alongside its method exports now sends other methods to it instead
+  of answering `405`. See
+  [One Handler for Every Method](https://bascik.dev/api-routes#one-handler-for-every-method).
+- `@bascik/language-server`: `missing-method-handler` accepts an API route whose only
+  handler is a default export.
 
 ### Changed
 
@@ -116,4 +89,23 @@ whatever the candidate period finds.
   project's dependencies, and Node 24.21 is the first release where `node --check`
   locates a syntax error in a `.js` config, which `bascik` relies on to name the
   line. The floor is the first version proven to work end to end.
-  [1.0.0-rc.12]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0-rc.12
+- `create-bascik`: in the Cloudflare and Netlify templates `npm run dev` is the Bascik dev
+  server again (`bascik`, `http://localhost:8080`), as in the default template. The
+  host's local runtime moves to its own script, `npm run dev:cloudflare` or
+  `npm run dev:netlify` (`bascik --target ...`, with source watching and browser live
+  reload). Existing projects are not changed; to match, set `"dev": "bascik"` and add
+  the `dev:<host>` script. See
+  [Cloudflare](https://bascik.dev/deployment/cloudflare#develop-locally) and
+  [Netlify](https://bascik.dev/deployment/netlify#develop-locally).
+- `bascik-config` skill: a "Tune build and server performance" table says when to turn on
+  `pipeline.workers`, `assets.symlink`, `http.precompress` and `http.cacheControl`, and
+  which of them do nothing on Cloudflare and Netlify.
+
+### Fixed
+
+- The pinned `Server running at` link in the dev server's terminal no longer opens a
+  garbled address. In VS Code's terminal, when a long log line wrapped and its first
+  half scrolled away, the remaining half was read as part of the pinned row, so
+  Cmd/Ctrl+click opened something like `http://localhost:8080ages/img/photo.webp`.
+
+[1.0.0-rc.12]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0-rc.12
