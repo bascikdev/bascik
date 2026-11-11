@@ -229,7 +229,7 @@ When a request arrives:
 
 #### Host-neutral execution core (`request-execution.ts`)
 
-The scheduler described above is not Node code. `pkg/src/lib/request-execution.ts` implements buffered composition (`composeBufferedResponse`), the two-phase streamer with its bounded lookahead (`streamComposedResponse`), deadline-bounded invocation (`invokeWithDeadline`), and API method dispatch (`dispatchApiHandler`) against Web platform primitives only: `Uint8Array`, `ReadableStream`, `AbortController`, `Request`, and `Response`. It never imports `node:*`, the config, the filesystem, or the module registry; `serverless-contract.test.ts` bundles it for `platform: "browser"` and fails on any Node resolution error.
+The scheduler described above is not Node code. `pkg/src/lib/request-execution.ts` implements buffered composition (`composeBufferedResponse`), the two-phase streamer with its bounded lookahead (`streamComposedResponse`), deadline-bounded invocation (`invokeWithDeadline`), and API method dispatch (`dispatchApiHandler`: a named method export, then `HEAD` derived from `GET`, then the route's default export) against Web platform primitives only: `Uint8Array`, `ReadableStream`, `AbortController`, `Request`, and `Response`. It never imports `node:*`, the config, the filesystem, or the module registry; `serverless-contract.test.ts` bundles it for `platform: "browser"` and fails on any Node resolution error.
 
 Hosts adapt onto it:
 

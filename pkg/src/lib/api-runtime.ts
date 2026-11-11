@@ -28,6 +28,7 @@ import {
   NODE_PLATFORM,
   createAbortGate,
   dispatchApiHandler,
+  resolveApiHandler,
   type ApiHandlerContext,
   type HttpMethod,
 } from "./request-execution.ts";
@@ -453,8 +454,8 @@ export const executeApiRoute = async (
     // a handler that would run is replaced by the 413, and it never runs.
     if (
       onDeclaredBodyTooLarge &&
-      (ALLOWED_METHODS as readonly string[]).includes(method) &&
-      typeof loadedModule?.[method] === "function"
+      loadedModule &&
+      resolveApiHandler(loadedModule, method)
     ) {
       onDeclaredBodyTooLarge();
       return payloadTooLargeResponse();

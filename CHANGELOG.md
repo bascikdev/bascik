@@ -11,6 +11,19 @@ it is not `@bascik/bascik`.
 
 ## [Unreleased]
 
+### Added
+
+- API routes: `export default` handles every method the file has no named export for, so
+  one function can serve a proxy, a webhook, or a mounted router. Named exports still
+  win, `OPTIONS` and `HEAD` reach the default export, and methods outside the seven
+  supported ones are still refused with `405`. It works the same in the dev server,
+  `bascik --server`, and the Cloudflare and Netlify adapters. A route that already had
+  a default export alongside its method exports now sends other methods to it instead
+  of answering `405`. See
+  [One Handler for Every Method](https://bascik.dev/api-routes#one-handler-for-every-method).
+- `@bascik/language-server`: `missing-method-handler` accepts an API route whose only
+  handler is a default export.
+
 ### Changed
 
 - `create-bascik`: in the Cloudflare and Netlify templates `npm run dev` is the Bascik dev

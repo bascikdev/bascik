@@ -73,6 +73,39 @@ A route file exports functions corresponding to standard HTTP methods: `GET`, `P
 - **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence. A body a `HEAD` answer does not send is canceled, so a streamed source (a `fetch()` pass-through, a file) is released at once.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
 
+### One Handler for Every Method
+
+Export a default function to handle every method the file has no named export for. Use it when one function should see the request whatever its method: a proxy that forwards to another service, a webhook receiver, or an existing router mounted on one route.
+
+```ts
+// src/api/proxy/[...path].ts
+export default async (
+  request: Request,
+  context: { params: { path: string[] } },
+): Promise<Response> => {
+  const upstream = new URL(
+    context.params.path.map(encodeURIComponent).join("/"),
+    "https://books.example/",
+  );
+  return fetch(new Request(upstream, request));
+};
+```
+
+A named export still wins, so a file can answer one method itself and leave the rest to the default:
+
+```ts
+export const GET = (): Response => Response.json({ ok: true });
+
+export default (request: Request): Response =>
+  Response.json({ received: request.method });
+```
+
+- **Order:** a named export for the method, then `HEAD` derived from a named `GET`, then the default export.
+- **OPTIONS and HEAD go to the default export too.** With a default export there is no automatic `204` for `OPTIONS`, so the handler answers a CORS preflight itself. A `HEAD` answer from the default export is sent with its status and headers and no body.
+- **The seven methods stay the limit.** `PURGE`, `PROPFIND` and other methods outside the list are still refused with `405`, and its `Allow` header then lists all seven.
+- **No automatic 405.** The default export receives every allowed method, so refusing one is the handler's job: return a `405` with an `Allow` header for the methods it does not support.
+- The default export receives the same `(request, context, { signal })` arguments and must return a `Response`.
+
 This recording sends two real requests to a dev server whose `src/api/users/[id].ts` exports only `GET`. The `GET` returns the handler's JSON with a `200`. The `DELETE` is refused with a `405`, and the `Allow` header lists exactly what the route accepts:
 
 ![A terminal running two curl commands against a dev server. A GET to /api/users/42 prints the JSON {"id":"42","name":"Ada"} and 200. A DELETE to the same URL prints 405 and an Allow header listing GET, HEAD, and OPTIONS](/assets/demos/api-routes@2x.webp)

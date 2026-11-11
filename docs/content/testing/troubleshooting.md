@@ -596,7 +596,7 @@ Handlers live under `src/api/` and are served only by `bascik --server` (or an a
 
 ### 405 Method Not Allowed
 
-The file exports no handler for that method, or the export is not uppercase. The linter reports `API route method export "get" must be uppercase ("GET")` and `API route file does not export any recognized HTTP method handler`. See [Method Exports and Automatic Allow Headers](/api-routes#method-exports-and-automatic-allow-headers).
+The file exports no handler for that method and no default export, or the export is not uppercase. The linter reports `API route method export "get" must be uppercase ("GET")` and `API route file does not export any recognized HTTP method handler`. See [Method Exports and Automatic Allow Headers](/api-routes#method-exports-and-automatic-allow-headers).
 
 ### 413 Payload Too Large
 
