@@ -83,9 +83,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.19.1",
-    "@types/vscode": "^1.91.0",
-    "@vitest/coverage-v8": "^5.0.3",
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.145.0",
+    "@vitest/coverage-v8": "^5.1.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "esbuild": "^0.28.2",
@@ -93,9 +93,9 @@
     "tm-grammars": "1.32.22",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.3",
-    "vscode-languageclient": "^10.1.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0",
+    "vscode-languageclient": "^11.0.0",
     "vscode-oniguruma": "2.0.1",
     "vscode-textmate": "9.3.2"
   }

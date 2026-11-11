@@ -65,12 +65,12 @@
     "vscode-languageserver-textdocument": "^1.0.15"
   },
   "devDependencies": {
-    "@types/node": "^24.19.1",
-    "@vitest/coverage-v8": "^5.0.3",
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.3"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "typescript": ">=5.0 <7"
