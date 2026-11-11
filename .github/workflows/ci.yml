@@ -67,7 +67,7 @@ jobs:
       run-linear-time: ${{ steps.diff.outputs.run-linear-time }}
       run-any: ${{ steps.diff.outputs.run-any }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -99,13 +99,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -135,7 +135,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Run Semgrep
         uses: semgrep/semgrep-action@v1
@@ -155,13 +155,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -186,13 +186,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -228,13 +228,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -262,13 +262,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -297,13 +297,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -336,7 +336,7 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Windows runners ship a global Yarn 1 shim in C:\npm\prefix that precedes
       # Node's directory on PATH; overwrite it before setup-node's cache step runs
@@ -350,7 +350,7 @@ jobs:
           corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -400,13 +400,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -434,13 +434,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -468,13 +468,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -499,13 +499,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -530,13 +530,13 @@ jobs:
       contents: read
     needs: [changes, jelly, semgrep, typecheck, standards]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -574,13 +574,13 @@ jobs:
         unit-extension,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -605,7 +605,7 @@ jobs:
 
       - name: Upload failed profiling diagnostics
         if: ${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profiling-diagnostics-node24
           path: ${{ runner.temp }}/bascik-profile-test-*
@@ -637,13 +637,13 @@ jobs:
         unit-extension,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -679,13 +679,13 @@ jobs:
         unit-extension,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -737,13 +737,13 @@ jobs:
         unit-extension,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use Node.js 24.21
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 24.21.0
           cache: "yarn"
@@ -784,7 +784,7 @@ jobs:
 
       - name: Upload failed profiling diagnostics
         if: ${{ !cancelled() && steps.framework-integration.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profiling-diagnostics-node24.21
           path: ${{ runner.temp }}/bascik-profile-test-*
@@ -845,13 +845,13 @@ jobs:
         unit-extension,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -933,13 +933,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -976,13 +976,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1028,13 +1028,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1071,13 +1071,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1114,13 +1114,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1162,13 +1162,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1212,13 +1212,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1255,13 +1255,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1295,13 +1295,13 @@ jobs:
         linear-time,
       ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1409,7 +1409,7 @@ jobs:
       preview-url: ${{ steps.upload.outputs.url }}
     steps:
       # Full history: docs/scripts/generate-git-dates.ts reads it for sitemap lastmod and article dates.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1417,7 +1417,7 @@ jobs:
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1547,13 +1547,13 @@ jobs:
     outputs:
       preview-url: ${{ steps.upload.outputs.url }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1688,13 +1688,13 @@ jobs:
     outputs:
       preview-url: ${{ steps.upload.outputs.url }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: "yarn"
@@ -1803,14 +1803,14 @@ jobs:
       pull-requests: write
     needs: [deploy-docs, deploy-demo, deploy-netlify]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
 
       # This job installs nothing: it runs one dependency-free script. setup-node v5 caches the package manager
       # named in package.json by default, which would call Yarn without Corepack, so the cache is turned off.
       - name: Use the .nvmrc Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
