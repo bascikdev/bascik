@@ -620,6 +620,12 @@
         color: var(--pillar-text);
       }
 
+      /* A link inside a sentence: color alone does not tell it from the text around it (WCAG 1.4.1). */
+      .metric-label a {
+        text-decoration: underline;
+        text-underline-offset: 0.15em;
+      }
+
       /* ── Install CTA ── */
       .cta-section {
         padding: 72px 0 88px;
