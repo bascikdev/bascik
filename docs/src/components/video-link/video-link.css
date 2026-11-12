@@ -1,3 +1,7 @@
+/* video-link: a thumbnail that links to a video on YouTube. A plain link, on
+   purpose: it opens the YouTube app on a phone and a new tab on a desktop,
+   and the page loads nothing from YouTube. The thumbnail is decorative (the
+   title under it names the video), so pass it with an empty alt. */
 a {
   display: block;
   color: var(--text);
