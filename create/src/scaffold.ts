@@ -14,7 +14,7 @@ import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
  * The `@bascik/bascik` release a new project depends on. The agent skills are
  * installed from the same release's tag, so the two always match.
  */
-export const BASCIK_VERSION = "1.0.0-rc.12";
+export const BASCIK_VERSION = "1.0.0-rc.13";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -83,8 +83,8 @@ export const PACKAGE_JSON = (
           "@bascik/bascik": `^${BASCIK_VERSION}`,
         },
         devDependencies: {
-          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.12" }),
-          ...(netlify && { "@bascik/adapter-netlify": "^1.0.0-rc.2" }),
+          ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0-rc.13" }),
+          ...(netlify && { "@bascik/adapter-netlify": "^1.0.0-rc.3" }),
           "@bascik/language-server": "^1.0.0-rc.1",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",

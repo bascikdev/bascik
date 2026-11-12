@@ -5,7 +5,7 @@ Deploy a Bascik site to Netlify so the CDN serves your static files and one gene
 > **See it live on Netlify.** [netlify-adapter.bascik.dev](https://netlify-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its home page comes straight from the CDN, and each demo page runs in the generated function:
 >
 > - [Server scripts](https://netlify-adapter.bascik.dev/server?name=collin): request context and platform information rendered before headers commit.
-> - [In-place skeleton swap](https://netlify-adapter.bascik.dev/stream) and [progressive append](https://netlify-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML.
+> - [In-place skeleton swap](https://netlify-adapter.bascik.dev/stream) [progressive append](https://netlify-adapter.bascik.dev/stream-append), and [rows from one script that yields](https://netlify-adapter.bascik.dev/stream-rows): stream scripts flushing chunked HTML.
 > - [Mixed server and stream page](https://netlify-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
 > - [Book catalog](https://netlify-adapter.bascik.dev/catalog?q=monolith) and [streamed catalog](https://netlify-adapter.bascik.dev/catalog-stream): server and stream scripts returning `<book-card>` tags that the function renders with the component's markup and scoped CSS, including a card whose own server script runs per request.
 > - [API client](https://netlify-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.

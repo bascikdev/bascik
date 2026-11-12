@@ -20,6 +20,10 @@
  * - an object with its own `toString` (a `Date`, a `URL`, a class) prints
  *   that text, except an `Error`, whose text may be an internal message.
  *
+ * A script that is a generator yields its output instead of returning it.
+ * Its host pulls the values (`invokeLoadedWithDeadline` with `chunks`) and
+ * classifies each one here, so the same rules apply to every yielded value.
+ *
  * Anything else is a mistake that `String(value)` would print as
  * `[object ...]` or worse: a Promise (a forgotten `await`, or an async
  * `.map`), a `Response` (the API-route habit), an `Error` (`return e` in a
@@ -45,6 +49,8 @@ export type ServerScriptOutputErrorKind =
   | "object"
   | "function"
   | "symbol"
+  | "generator"
+  | "bytes"
   | "array-depth";
 
 export interface ServerScriptOutputError {
@@ -74,6 +80,26 @@ const objectTag = (value: object): string => {
 };
 
 const OBJECT_TAG = /^\[object [^\]]*\]$/;
+
+/** The `toString` every typed array inherits: its numbers joined by commas. */
+const TYPED_ARRAY_TO_STRING: unknown = (
+  Object.getPrototypeOf(Uint8Array.prototype) as { toString: unknown }
+).toString;
+
+/**
+ * Whether a view of bytes has a `toString` of its own that gives text. A
+ * Node `Buffer` does (its UTF-8 text); a typed array and a `DataView` do
+ * not. Read from the value, not from a `Buffer` global, so this module
+ * stays free of Node names.
+ */
+const printsOwnText = (view: object): boolean => {
+  const own = (view as { toString?: unknown }).toString;
+  return (
+    typeof own === "function" &&
+    own !== TYPED_ARRAY_TO_STRING &&
+    own !== Object.prototype.toString
+  );
+};
 
 /** An Error's name for a message, never its text (which may be internal). */
 const errorName = (value: object): string => {
@@ -114,6 +140,20 @@ const valueText = (value: unknown): string | Failure => {
   const tag = objectTag(object);
   if (tag === "[object Response]")
     return { kind: "response", what: "a Response" };
+  // Bytes are not text: a typed array's toString is its numbers joined by
+  // commas (the chunks of a fetched body, yielded as they come). A Node
+  // Buffer is the exception: its toString is its UTF-8 text, so a file read
+  // without an encoding has always printed, and still does.
+  if (
+    (ArrayBuffer.isView(object) && !printsOwnText(object)) ||
+    tag === "[object ArrayBuffer]"
+  )
+    return { kind: "bytes", what: `bytes (${tag.slice(8, -1)})` };
+  // A script that is itself a generator never reaches here: its host pulls
+  // the values it yields and classifies each. This is a generator object
+  // used as a value: yielded, or put in an array.
+  if (tag === "[object AsyncGenerator]" || tag === "[object Generator]")
+    return { kind: "generator", what: "a generator" };
   // An Error has its own toString (`Name: message`), but a returned one is
   // a caught failure, not markup: printing it would show the visitor an
   // internal message, so it is refused whatever its toString says.
@@ -193,44 +233,70 @@ export const serverScriptOutput = (value: unknown): ServerScriptOutput => {
   return { text: out };
 };
 
-const FIXES: Record<ServerScriptOutputErrorKind, (inArray: boolean) => string> =
-  {
-    promise: (inArray) =>
-      inArray
-        ? "An async callback in .map returns Promises: return await Promise.all(items.map(...)) instead."
+const FIXES: Record<
+  ServerScriptOutputErrorKind,
+  (inArray: boolean, yielded: boolean) => string
+> = {
+  promise: (inArray, yielded) =>
+    inArray
+      ? `An async callback in .map returns Promises: ${yielded ? "yield" : "return"} await Promise.all(items.map(...)) instead.`
+      : yielded
+        ? "Await it before the yield: yield await value."
         : "Add await where the value is made (the default export may be async).",
-    error: () =>
-      "To fail the script, throw it instead of returning it (scripts.onServerScriptError decides what the page shows); to show a message, return markup that says it.",
-    response: () =>
-      "A script on a page prints markup into it; a Response belongs in an API route (src/api/). Return the markup (a string or html`...`) instead.",
-    object: () =>
-      "Return markup built from its fields, for example html`<p>${item.name}</p>`.",
-    function: () => "Call it and return what it returns.",
-    symbol: () => "Return a string instead.",
-    "array-depth": () => "Flatten the data in code before you return it.",
-  };
+  error: (_inArray, yielded) =>
+    yielded
+      ? "To fail the script, throw it instead of yielding it (scripts.onServerScriptError decides what the page shows); to show a message, yield markup that says it."
+      : "To fail the script, throw it instead of returning it (scripts.onServerScriptError decides what the page shows); to show a message, return markup that says it.",
+  response: (_inArray, yielded) =>
+    `A script on a page prints markup into it; a Response belongs in an API route (src/api/). ${yielded ? "Yield" : "Return"} the markup (a string or html\`...\`) instead.`,
+  object: (_inArray, yielded) =>
+    `${yielded ? "Yield" : "Return"} markup built from its fields, for example html\`<p>\${item.name}</p>\`.`,
+  function: (_inArray, yielded) =>
+    yielded
+      ? "Call it and yield what it returns."
+      : "Call it and return what it returns.",
+  symbol: (_inArray, yielded) =>
+    `${yielded ? "Yield" : "Return"} a string instead.`,
+  generator: (inArray, yielded) =>
+    yielded && !inArray
+      ? "Delegate to it so its values are yielded one by one: yield* rows()."
+      : inArray
+        ? "To print what it yields, make the default export an async function* and delegate to it: yield* rows()."
+        : // Every Bascik host runs a script that is a generator, so a bare one
+          // reaches here only on a host that has not asked for chunks.
+          "This host does not run scripts that yield; return the markup instead. (An adapter runs them by invoking the script with chunks: true.)",
+  bytes: (_inArray, yielded) =>
+    yielded
+      ? "Decode them to text first (new TextDecoder().decode(bytes, { stream: true })) and yield whole elements, not the slices a byte stream arrives in."
+      : "Decode them to text first: new TextDecoder().decode(bytes), or read the file or the response as text.",
+  "array-depth": (_inArray, yielded) =>
+    `Flatten the data in code before you ${yielded ? "yield" : "return"} it.`,
+};
 
 /**
  * The located message for a refused return, in the frame every server-script
  * error uses on both hosts (`server script error at "<pathname>"`). `owner`
  * names the script (`server script in src/pages/x.html:12`); each host
  * builds it from what it knows. The production form says what the visitor
- * got (an empty slot) and that the warning is not repeated.
+ * got (an empty slot) and that the warning is not repeated. `yielded` is
+ * for a value a script that is a generator yielded: the message says so,
+ * and in production that one value is skipped, not the whole slot.
  */
 export const serverScriptOutputErrorMessage = (
   error: ServerScriptOutputError,
   requestUrl: string,
   owner: string | undefined,
-  options: { production?: boolean } = {},
+  options: { production?: boolean; yielded?: boolean } = {},
 ): string => {
   const who = owner ? `The ${owner}` : "The script";
+  const yielded = options.yielded === true;
   return (
     `[bascik] server script error at "${new URL(requestUrl).pathname}":\n` +
-    `${who} returned ${error.received}, which is not markup. ` +
-    "A server or stream script returns a string, an html`...` value, or an array of them (joined with no separator). " +
-    FIXES[error.kind](error.inArray) +
+    `${who} ${yielded ? "yielded" : "returned"} ${error.received}, which is not markup. ` +
+    `A server or stream script ${yielded ? "yields" : "returns"} a string, an html\`...\` value, or an array of them (joined with no separator). ` +
+    FIXES[error.kind](error.inArray, yielded) +
     (options.production
-      ? "\nThe slot is empty. This warning is logged once per script until the server restarts."
+      ? `\n${yielded ? "That value is skipped" : "The slot is empty"}. This warning is logged once per script until the server restarts.`
       : "")
   );
 };

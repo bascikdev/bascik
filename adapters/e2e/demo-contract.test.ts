@@ -5,6 +5,7 @@ const pages = [
   ["/server?name=collin", "Server scripts"],
   ["/stream", "Stream swap"],
   ["/stream-append", "Stream append"],
+  ["/stream-rows", "Stream rows"],
   ["/mixed", "Mixed execution"],
   ["/catalog", "Server-rendered cards"],
   ["/catalog-stream", "Streamed cards"],
@@ -421,6 +422,64 @@ test.describe("shared adapter demo contract", () => {
       await expect(page.getByRole("article")).toHaveCount(3);
       await expect(page.getByRole("article").first()).toContainText("99.99%");
       await expect(page.getByRole("article").last()).toContainText("64.2");
+    });
+
+    test("rows from one yielding script cover the skeleton rows one at a time", async ({
+      page,
+    }) => {
+      await page.goto("/stream-rows?delay=700", { waitUntil: "commit" });
+      const rows = page.getByTestId("stream-rows-row");
+      const skeletons = page.getByTestId("stream-rows-skeletons");
+      // The footer and the skeleton rows are in the first chunk.
+      await expect(page.getByRole("contentinfo")).toBeVisible();
+      await expect(skeletons).toBeVisible();
+      expect(await rows.count()).toBe(0);
+      const footerTop = (await page.getByRole("contentinfo").boundingBox())!.y;
+
+      // The first row is in the document before the later ones exist, and
+      // it sits exactly on the first skeleton row.
+      await expect(rows.first()).toBeVisible();
+      expect(await rows.count()).toBeLessThan(bookTitles.length);
+      expect(await page.getByTestId("stream-rows-done").count()).toBe(0);
+      await expect(skeletons).toBeVisible();
+      // The lists are compared, not the row: a row slides in for a moment,
+      // which moves its own box, while the list that holds it is in place.
+      const listBox = (await page
+        .getByTestId("stream-rows-list")
+        .boundingBox())!;
+      const skeletonBox = (await skeletons.boundingBox())!;
+      expect(Math.abs(listBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(listBox.x - skeletonBox.x)).toBeLessThanOrEqual(1);
+
+      // The row is what is painted there. The skeleton rows pulse with an
+      // opacity animation, which makes each its own stacking layer; without
+      // a layer of their own the rows are painted under them and flash with
+      // the pulse. Checked when the first row lands and again when the
+      // second does, a different point in the pulse.
+      const firstRowIsOnTop = () =>
+        rows.first().evaluate((row) => {
+          const box = row.getBoundingClientRect();
+          const top = row.ownerDocument.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return top !== null && row.contains(top);
+        });
+      expect(await firstRowIsOnTop()).toBe(true);
+      await expect(rows.nth(1)).toBeVisible();
+      expect(await firstRowIsOnTop()).toBe(true);
+
+      // Every row arrives in the order the script yielded it; its last
+      // yield hides the skeleton list, and the footer never moved.
+      await expect(rows.locator("strong")).toHaveText(bookTitles);
+      await expect(rows.locator("span")).toHaveText(authors);
+      await expect(page.getByTestId("stream-rows-done")).toHaveCount(1);
+      await expect(skeletons).toBeHidden();
+      expect(
+        Math.abs(
+          (await page.getByRole("contentinfo").boundingBox())!.y - footerTop,
+        ),
+      ).toBeLessThanOrEqual(1);
     });
 
     test("mixed execution resolves server work before streaming", async ({

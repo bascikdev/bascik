@@ -18,7 +18,7 @@ import {
   type ExecutionPlan,
   type ExecutionSegment,
   type RenderHost,
-  type ScriptJobRunner,
+  type ScriptOutputRunner,
 } from "@bascik/bascik/runtime";
 import type { ComponentManifest, GraphPage, SiteGraph } from "./runtime.js";
 
@@ -107,14 +107,14 @@ export const componentExecution = (
   page: GraphPage,
   graph: SiteGraph,
   request: Request,
-  run: ScriptJobRunner,
+  run: ScriptOutputRunner,
   runComponentJob: RenderHost["runComponentJob"],
   log: (message: string) => void,
-): { plan: ExecutionPlan; run: ScriptJobRunner } | null => {
+): { plan: ExecutionPlan; run: ScriptOutputRunner } | null => {
   const manifest = graph.components?.manifest;
   if (!manifest || !manifestHasComponents(manifest)) return null;
   const { plan, jobIds } = indexedPlanFor(page);
-  const byIndex: ScriptJobRunner = (index, signal) =>
+  const byIndex: ScriptOutputRunner = (index, signal) =>
     run(jobIds[Number(index)] ?? index, signal);
   return {
     plan,

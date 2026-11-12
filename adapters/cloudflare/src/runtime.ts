@@ -34,10 +34,12 @@
 import { componentExecution } from "./component-host.js";
 import {
   applyOutputScope,
+  collectScriptJobOutput,
   decodeOutputScope,
   composeBufferedResponse,
   dispatchApiHandler,
   invokeLoadedWithDeadline,
+  scriptChunkOutput,
   scriptTimeoutError,
   streamComposedResponse,
   type ApiHandlerContext,
@@ -45,8 +47,10 @@ import {
   type ExecutionPlan,
   type ExecutionSegment,
   type PlatformContext,
+  type InvokeResult,
   type RenderHost,
-  type ScriptJobRunner,
+  type ScriptJobOutput,
+  type ScriptOutputRunner,
   dynamicPageHeaders,
   errorResponse,
   internalErrorPage,
@@ -281,8 +285,14 @@ const warnedRefused = new WeakSet<GraphScriptJob>();
  * applied; a failing job with an owner is located by it; failure under
  * `onServerScriptError: "error"` throws (500 before commit, empty after),
  * `warn` logs and yields empty, `ignore` yields empty.
+ *
+ * A script that yields (a generator) gives an iterable instead of a string:
+ * each value it yields is printed by the same rule, under the same deadline
+ * (which counts only the time the script takes to produce values) and the
+ * same policy. A yielded value that is not markup is skipped, and a failed
+ * pull ends the output there, thrown from `next()` under `"error"`.
  */
-const runGraphJob = async (
+const runGraphJobOutput = async (
   job: GraphScriptJob,
   id: string,
   graph: SiteGraph,
@@ -291,13 +301,13 @@ const runGraphJob = async (
   log: (message: string) => void,
   signal: AbortSignal,
   timeoutMs: number,
-): Promise<string> => {
+): Promise<ScriptJobOutput> => {
   // The load and the handler run under one deadline, and the handler's own
   // promise is settled by the shared rule: once the deadline fires or the
   // client aborts, that is the outcome, exactly as on Node. Calling the
   // handler directly (not from an async wrapper) keeps a value settled just
   // before the deadline from being mistaken for a timeout.
-  const result = await invokeLoadedWithDeadline(
+  const invoked = await invokeLoadedWithDeadline(
     () => job.load(),
     (mod, { signal: jobSignal }) => {
       const handler = mod.default;
@@ -306,68 +316,86 @@ const runGraphJob = async (
           `Server script "${id}" does not export a default function.`,
         );
       }
-      return handler(request, context, { signal: jobSignal });
+      return handler(request, context, { signal: jobSignal }) as unknown;
     },
     // Node's message, so a log reads the same on both hosts.
-    { timeoutMs, signal, timeoutError: scriptTimeoutError },
+    { timeoutMs, signal, timeoutError: scriptTimeoutError, chunks: true },
   );
-  // The rule Node applies (F060): an array is joined with no separator; an
-  // object, a Response, an unawaited Promise in an array, a function or a
-  // symbol is refused. A Worker is production, so a refused return never
-  // fails the page: the slot is empty and, unless the policy is "ignore",
-  // the warning is logged once per script for the isolate's life. A throw
-  // from the author's own toString is the script failing, as on Node.
-  let printed: ReturnType<typeof serverScriptOutput> | undefined;
-  let failure: Error | undefined;
-  if (result.ok) {
-    try {
-      printed = serverScriptOutput(result.value);
-    } catch (thrown) {
-      failure = thrown instanceof Error ? thrown : new Error(String(thrown));
-    }
-  }
-  if (printed) {
-    if (printed.error) {
-      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
-        warnedRefused.add(job);
-        log(
-          serverScriptOutputErrorMessage(
-            printed.error,
-            request.url,
-            // A page job carries no owner in the graph (only component jobs
-            // do); the route in the message names its page.
-            job.owner ?? `${job.mode} script`,
-            { production: true },
-          ),
-        );
-      }
-      return "";
-    }
-    // scripts.stripAnsi off: the codes reach the page as printed.
-    return scopeJobOutput(
-      job,
-      graph.stripAnsi === false
-        ? printed.text
-        : stripAnsiEscapeCodes(printed.text),
+  if (invoked.ok && invoked.source) {
+    return scriptChunkOutput(
+      invoked.source,
+      (value) =>
+        settle({ ok: true, value, timedOut: false, aborted: false }, true),
+      (failed) => settle(failed, true),
     );
   }
-  if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
-  const error =
-    failure ??
-    (!result.ok ? result.error : undefined) ??
-    new Error("Server script failed");
-  // Node maps the stack to the authored file; here it names only the bundle,
-  // so a component job (a timeout, a throw or a missing default export deep
-  // inside a rendered tag) is placed by the owner the build recorded.
-  const where = job.owner ? `\n    in the ${job.owner}` : "";
-  const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}${where}`;
-  if (graph.onServerScriptError === "error") throw new Error(message);
-  if (graph.onServerScriptError === "warn") log(message);
-  return "";
+  return settle(invoked, false);
+
+  /** The output of one settled call or pull, by the policy above. */
+  function settle(result: InvokeResult<unknown>, yielded: boolean): string {
+    // The rule Node applies (F060): an array is joined with no separator; an
+    // object, a Response, an unawaited Promise in an array, a function or a
+    // symbol is refused. A Worker is production, so a refused return never
+    // fails the page: the slot is empty and, unless the policy is "ignore",
+    // the warning is logged once per script for the isolate's life. A throw
+    // from the author's own toString is the script failing, as on Node.
+    let printed: ReturnType<typeof serverScriptOutput> | undefined;
+    let failure: Error | undefined;
+    if (result.ok) {
+      try {
+        printed = serverScriptOutput(result.value);
+      } catch (thrown) {
+        failure = thrown instanceof Error ? thrown : new Error(String(thrown));
+      }
+    }
+    if (printed) {
+      if (printed.error) {
+        if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+          warnedRefused.add(job);
+          log(
+            serverScriptOutputErrorMessage(
+              printed.error,
+              request.url,
+              // A page job carries no owner in the graph (only component jobs
+              // do); the route in the message names its page.
+              job.owner ?? `${job.mode} script`,
+              { production: true, yielded },
+            ),
+          );
+        }
+        return "";
+      }
+      // scripts.stripAnsi off: the codes reach the page as printed.
+      return scopeJobOutput(
+        job,
+        graph.stripAnsi === false
+          ? printed.text
+          : stripAnsiEscapeCodes(printed.text),
+      );
+    }
+    if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
+    const error =
+      failure ??
+      (!result.ok ? result.error : undefined) ??
+      new Error("Server script failed");
+    // Node maps the stack to the authored file; here it names only the bundle,
+    // so a component job (a timeout, a throw or a missing default export deep
+    // inside a rendered tag) is placed by the owner the build recorded.
+    const where = job.owner ? `\n    in the ${job.owner}` : "";
+    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}${where}`;
+    if (graph.onServerScriptError === "error") throw new Error(message);
+    if (graph.onServerScriptError === "warn") log(message);
+    return "";
+  }
 };
 
+/** `runGraphJobOutput` with a yielding script's values joined into one string. */
+const runGraphJob = async (
+  ...args: Parameters<typeof runGraphJobOutput>
+): Promise<string> => collectScriptJobOutput(await runGraphJobOutput(...args));
+
 /**
- * Build a `ScriptJobRunner` for one request: the page's own jobs, then the
+ * Build a `ScriptOutputRunner` for one request: the page's own jobs, then the
  * component scripts of `graph.components` (prompt 157), under the graph's
  * script deadline and error policy (see `runGraphJob`).
  */
@@ -377,11 +405,11 @@ export const createGraphJobRunner = (
   request: Request,
   context: { remoteIp: string; platform: PlatformContext },
   log: (message: string) => void,
-): ScriptJobRunner => {
+): ScriptOutputRunner => {
   return async (id, signal) => {
     const job = page.jobs[id] ?? graph.components?.jobs[id];
     if (!job) throw missingJob(id);
-    return runGraphJob(
+    return runGraphJobOutput(
       job,
       id,
       graph,
@@ -407,7 +435,7 @@ export const createPageExecution = (
   request: Request,
   context: { remoteIp: string; platform: PlatformContext },
   log: (message: string) => void,
-): { plan: ExecutionPlan; run: ScriptJobRunner } => {
+): { plan: ExecutionPlan; run: ScriptOutputRunner } => {
   const run = createGraphJobRunner(page, graph, request, context, log);
   const components = graph.components;
   const rendered = components

@@ -8,6 +8,12 @@
  *                                                      plus one server script (?second=)
  *   - src/components/stream-dashboard/                  layout with two stream cards
  *   - src/pages/server-scripts-dashboard-test.html      uses it (?sub= ?bill=)
+ *   - src/components/stream-rows/                       one stream script that yields
+ *                                                      rows (?rows= ?gap= ?fail=)
+ *   - src/pages/server-scripts-stream-rows-test.html    uses it, plus a script that
+ *                                                      yields <server-card> tags
+ *                                                      (?cards= ?cardgap=) and a
+ *                                                      server script that yields
  *
  * Runs under playwright.dev.config.ts, playwright.server.config.ts, and
  * playwright.server-http2.config.ts. Ignored under playwright.config.ts: the
@@ -226,6 +232,261 @@ test.describe("data-bascik-stream: dashboard layout", () => {
     expect(Math.abs(after.usage.y - before.usage.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(after.footer.y - before.footer.y)).toBeLessThanOrEqual(1);
     expect(consoleErrors).toHaveLength(0);
+  });
+});
+
+test.describe("data-bascik-stream: a script that yields", () => {
+  const ROWS = "/server-scripts-stream-rows-test";
+
+  /**
+   * Fetch `url` in the page and record each read of the body with the time
+   * it arrived, so chunk boundaries and pacing are observed over the real
+   * transport (HTTP/1.1 chunks, HTTP/2 DATA frames).
+   */
+  const readChunks = (page: Page, url: string) =>
+    page.evaluate(async (target) => {
+      const started = performance.now();
+      const response = await fetch(target);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const chunks: { at: number; text: string }[] = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push({
+          at: performance.now() - started,
+          text: decoder.decode(value, { stream: true }),
+        });
+      }
+      return { status: response.status, chunks };
+    }, url);
+
+  /** When the read that carried `needle` arrived. */
+  const arrival = (
+    chunks: { at: number; text: string }[],
+    needle: string,
+  ): number => {
+    const found = chunks.find((chunk) => chunk.text.includes(needle));
+    if (!found) throw new Error(`no chunk carried ${needle}`);
+    return found.at;
+  };
+
+  test("rows are appended one at a time, where the script tag was", async ({
+    page,
+  }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto(`${ROWS}?rows=4&gap=600`, { waitUntil: "commit" });
+    const rows = page.getByTestId("rows-row");
+    // The first row is in the document while the later ones do not exist
+    // yet: a buffered or single-flush response would deliver all four at once.
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeLessThan(4);
+    expect(await page.getByTestId("rows-done").count()).toBe(0);
+
+    await expect(rows).toHaveText(["Order 1", "Order 2", "Order 3", "Order 4"]);
+    // Appended inside the list the script tag was in, in yield order.
+    await expect(
+      page.getByTestId("rows-list").getByTestId("rows-row"),
+    ).toHaveCount(4);
+    expect(
+      await rows.evaluateAll((items) =>
+        items.map((item) => item.getAttribute("data-n")),
+      ),
+    ).toEqual(["1", "2", "3", "4"]);
+    await expect(page.getByTestId("rows-after")).toHaveText("after");
+    expect(consoleErrors).toHaveLength(0);
+  });
+
+  test("each yielded row is its own chunk on the wire, paced by the script", async ({
+    page,
+  }) => {
+    await page.goto("/scope-test");
+    const { status, chunks } = await readChunks(page, `${ROWS}?rows=4&gap=400`);
+    expect(status).toBe(200);
+    const first = arrival(chunks, ">Order 1<");
+    const last = arrival(chunks, ">Order 4<");
+    // Three gaps of 400ms separate the first row from the last. A response
+    // that held the rows back would deliver them in one read.
+    expect(last - first).toBeGreaterThanOrEqual(1000);
+    expect(arrival(chunks, ">Order 2<")).toBeGreaterThan(first);
+    // The static shell (heading, footer, status line, skeletons) left before
+    // the first row was produced.
+    expect(arrival(chunks, 'data-testid="rows-foot"')).toBeLessThan(first);
+    expect(arrival(chunks, 'data-testid="rows-skeletons"')).toBeLessThan(first);
+  });
+
+  test("content below the list paints first, and nothing moves as rows arrive", async ({
+    page,
+  }) => {
+    await page.goto(`${ROWS}?rows=4&gap=700`, { waitUntil: "commit" });
+    // The footer is below the card on screen but ahead of it in source, so
+    // it is visible while no row exists.
+    for (const id of ["rows-head", "rows-foot", "rows-pending"])
+      await expect(page.getByTestId(id)).toBeVisible();
+    expect(await page.getByTestId("rows-row").count()).toBe(0);
+
+    const top = async (id: string) =>
+      (await page.getByTestId(id).boundingBox())!.y;
+    const before = {
+      card: await top("rows-card"),
+      foot: await top("rows-foot"),
+    };
+    // Visual order follows the author's grid, not source order.
+    expect(await top("rows-head")).toBeLessThan(before.card);
+    expect(before.card).toBeLessThan(before.foot);
+
+    await expect(page.getByTestId("rows-row")).toHaveCount(4);
+    await expect(page.getByTestId("rows-done")).toHaveCount(1);
+    expect(
+      Math.abs((await top("rows-foot")) - before.foot),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs((await top("rows-card")) - before.card),
+    ).toBeLessThanOrEqual(1);
+  });
+
+  test("the skeleton swap is author CSS: the status line hides at the first row and the skeleton list at the last yield", async ({
+    page,
+  }) => {
+    await page.goto(`${ROWS}?rows=3&gap=700`, { waitUntil: "commit" });
+    await expect(page.getByTestId("rows-pending")).toBeVisible();
+    await expect(page.getByTestId("rows-skeletons")).toBeVisible();
+
+    // First row: :has(.row) hides the status line (still in the DOM), which
+    // proves the class in the yielded chunk was scoped like the component's
+    // CSS. The skeleton rows stay until the script is done.
+    await expect(page.getByTestId("rows-row").first()).toBeVisible();
+    await expect(page.getByTestId("rows-pending")).toBeHidden();
+    expect(await page.getByTestId("rows-pending").count()).toBe(1);
+    expect(await page.getByTestId("rows-done").count()).toBe(0);
+    await expect(page.getByTestId("rows-skeletons")).toBeVisible();
+
+    // Each row lands on top of the skeleton row it replaces.
+    const rowBox = (await page.getByTestId("rows-row").first().boundingBox())!;
+    const skeletonBox = (await page
+      .getByTestId("rows-skeletons")
+      .boundingBox())!;
+    expect(Math.abs(rowBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+    // And it is the row that is painted there, not the skeleton under it.
+    // The skeleton rows pulse, so each is a stacking layer of its own; the
+    // list of rows has its own layer above them, or it would flash with
+    // the pulse.
+    expect(
+      await page
+        .getByTestId("rows-row")
+        .first()
+        .evaluate((row) => {
+          const box = row.getBoundingClientRect();
+          const top = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return top !== null && row.contains(top);
+        }),
+    ).toBe(true);
+
+    // Last yield: :has(.done) hides the skeleton rows that were left over
+    // (four skeletons, three rows).
+    await expect(page.getByTestId("rows-done")).toHaveCount(1);
+    await expect(page.getByTestId("rows-skeletons")).toBeHidden();
+    await expect(page.getByTestId("rows-row")).toHaveCount(3);
+  });
+
+  test("a failure part-way keeps the rows already sent and completes the page", async ({
+    page,
+  }) => {
+    const response = await page.goto(`${ROWS}?rows=4&fail=3`);
+    expect(response!.status()).toBe(200);
+    await expect(page.getByTestId("rows-row")).toHaveText([
+      "Order 1",
+      "Order 2",
+    ]);
+    expect(await page.getByTestId("rows-done").count()).toBe(0);
+    // Everything after the failed script still arrives.
+    await expect(page.getByTestId("server-card-title")).toHaveCount(2);
+    await expect(page.getByTestId("rows-after")).toHaveText("after");
+    const health = await page.request.get("/api/health");
+    expect(health.status()).toBe(200);
+  });
+
+  test("component tags in each yielded chunk are rendered, with one stylesheet and no repeated id", async ({
+    page,
+  }) => {
+    const html = await (await page.request.get(`${ROWS}?cards=3`)).text();
+    // The literal usage tag is what the script yields; the response must
+    // carry the rendered instances instead. (The page's own comment names
+    // the tag, and the dev server keeps comments.)
+    expect(html).not.toContain("<server-card data-bascik-prop-title");
+    expect(html).not.toContain("</server-card>");
+
+    await page.goto(`${ROWS}?cards=3&cardgap=300`, { waitUntil: "commit" });
+    const cards = page.getByTestId("rows-cards");
+    await expect(cards.getByTestId("server-card-title").first()).toBeVisible();
+    await expect(cards.getByTestId("server-card-title")).toHaveText([
+      "Card 1",
+      "Card 2",
+      "Card 3",
+    ]);
+    await expect(cards.getByTestId("rows-card-body")).toHaveText([
+      "body 1",
+      "body 2",
+      "body 3",
+    ]);
+    // The component's own server script ran for the card of every chunk.
+    await expect(cards.getByTestId("server-card-stock")).toHaveCount(3);
+    // One stylesheet for the component, ahead of the first card.
+    expect(await cards.locator("style").count()).toBe(1);
+    const ids = await cards
+      .getByTestId("server-card")
+      .evaluateAll((items) => items.map((item) => item.id));
+    expect(new Set(ids).size).toBe(3);
+    // The client script ran once per card.
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __serverCardScripts?: number })
+            .__serverCardScripts,
+      ),
+    ).toBe(3);
+  });
+
+  test("a server script that yields is joined into the page", async ({
+    page,
+  }) => {
+    await page.goto(ROWS);
+    await expect(page.getByTestId("rows-joined")).toHaveText([
+      "joined",
+      "one",
+      "two",
+    ]);
+  });
+
+  test("HEAD is buffered: the yielded rows are joined for a content-length, and there is no body", async ({
+    request,
+  }) => {
+    const head = await request.head(`${ROWS}?rows=3&gap=50`);
+    expect(head.status()).toBe(200);
+    expect(head.headers()["content-length"]).toBeDefined();
+    expect((await head.body()).length).toBe(0);
+    const get = await request.get(`${ROWS}?rows=3`);
+    expect(get.headers()["content-length"]).toBeUndefined();
+    expect(Number(head.headers()["content-length"])).toBe(
+      (await get.body()).length,
+    );
+  });
+
+  test("navigating away while rows are arriving leaves the server healthy", async ({
+    page,
+    request,
+  }) => {
+    await page.goto(`${ROWS}?rows=20&gap=500`, { waitUntil: "commit" });
+    await expect(page.getByTestId("rows-row").first()).toBeVisible();
+    await page.goto("/scope-test");
+    await expect(page.locator("body")).toBeVisible();
+    expect((await request.get("/api/health")).status()).toBe(200);
+    // A fresh request still streams.
+    await page.goto(`${ROWS}?rows=2`);
+    await expect(page.getByTestId("rows-row")).toHaveCount(2);
   });
 });
 

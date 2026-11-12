@@ -345,3 +345,183 @@ describe("createNetlifyHandler", () => {
     expect(entries[1]!.error).toContain("kaboom");
   });
 });
+
+describe("createNetlifyHandler: a script that yields", () => {
+  const listPage = (
+    mode: "server" | "stream",
+    fn: (req: Request) => unknown,
+  ): GraphPage =>
+    page({
+      path: "/orders",
+      segments: [
+        { kind: "static", text: "<ul>" },
+        { kind: "script", id: "rows" },
+        { kind: "static", text: "</ul><footer>foot</footer>" },
+      ],
+      jobs: { rows: job("rows", mode, fn) },
+    });
+
+  const reads = async (res: Response): Promise<string[]> => {
+    const decoder = new TextDecoder();
+    const out: string[] = [];
+    const reader = res.body!.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return out;
+      out.push(decoder.decode(value));
+    }
+  };
+
+  const quiet = { log: () => {}, logEvent: () => {}, logRequest: () => {} };
+
+  it("a stream script that is an async generator sends each yielded value as its own chunk", async () => {
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("stream", async function* () {
+          for (const title of ["Dune", "Emma", "Ulysses"]) {
+            await new Promise((r) => setTimeout(r, 1));
+            yield `<li>${title}</li>`;
+          }
+        }),
+      ),
+      quiet,
+    )(get("/orders"));
+    expect(await reads(res)).toEqual([
+      "<ul>",
+      "<li>Dune</li>",
+      "<li>Emma</li>",
+      "<li>Ulysses</li>",
+      "</ul><footer>foot</footer>",
+    ]);
+  });
+
+  it("each yielded value is printed by the rules for a returned one", async () => {
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("stream", async function* () {
+          yield ["<li>a</li>", ["<li>b</li>"]];
+          yield null;
+          yield 7;
+        }),
+      ),
+      quiet,
+    )(get("/orders"));
+    expect(await res.text()).toBe(
+      "<ul><li>a</li><li>b</li>7</ul><footer>foot</footer>",
+    );
+  });
+
+  it("logs the script's start once and its completion after the last chunk, not when the generator is made", async () => {
+    const events: DiagnosticLogEntry[] = [];
+    let produced = 0;
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("stream", async function* () {
+          for (let i = 1; i <= 3; i++) {
+            produced = i;
+            yield `<li>${i}</li>`;
+          }
+        }),
+      ),
+      {
+        ...quiet,
+        logEvent: (entry) => {
+          if (entry.event === "script.complete")
+            events.push({ ...entry, ms: produced });
+          else events.push(entry);
+        },
+      },
+    )(get("/orders"));
+    await res.text();
+    const forRows = events.filter((entry) => entry.scriptId === "rows");
+    expect(forRows.map((entry) => entry.event)).toEqual([
+      "script.start",
+      "script.complete",
+    ]);
+    // `ms` was replaced above by how many rows existed when it was logged.
+    expect(forRows[1].ms).toBe(3);
+  });
+
+  it('a failure while yielding under "error" keeps the rows sent and logs a script.error with the script id and stack', async () => {
+    const errors: string[] = [];
+    let finished: Promise<unknown> = Promise.resolve();
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("stream", async function* () {
+          yield "<li>one</li>";
+          throw new Error("row two failed");
+        }),
+        { onServerScriptError: "error" },
+      ),
+      { ...quiet, log: (line) => errors.push(line) },
+    )(get("/orders", { headers: { "x-nf-request-id": "req-rows" } }), {
+      waitUntil: (promise) => {
+        finished = promise;
+      },
+    });
+    expect(await res.text()).toBe("<ul><li>one</li></ul><footer>foot</footer>");
+    await finished;
+    expect(
+      errors.some((line) => {
+        const entry = JSON.parse(line);
+        return (
+          entry.event === "script.error" &&
+          entry.scriptId === "rows" &&
+          entry.requestId === "req-rows" &&
+          String(entry.stack).includes("row two failed")
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it("misuse: a yielded value that is not markup is skipped and logged once", async () => {
+    const errors: string[] = [];
+    const handler = createNetlifyHandler(
+      graph(
+        listPage("stream", async function* () {
+          yield "<li>one</li>";
+          yield { title: "Dune" };
+          yield "<li>three</li>";
+        }),
+      ),
+      { ...quiet, log: (line) => errors.push(line) },
+    );
+    for (let i = 0; i < 2; i++)
+      expect(await (await handler(get("/orders"))).text()).toBe(
+        "<ul><li>one</li><li>three</li></ul><footer>foot</footer>",
+      );
+    const refused = errors.filter((line) => line.includes("yielded an object"));
+    expect(refused).toHaveLength(1);
+  });
+
+  it("a server script that yields is joined into a buffered page", async () => {
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("server", async function* () {
+          yield "<li>1</li>";
+          yield "<li>2</li>";
+        }),
+      ),
+      quiet,
+    )(get("/orders"));
+    expect(res.headers.get("content-length")).not.toBeNull();
+    expect(await res.text()).toBe(
+      "<ul><li>1</li><li>2</li></ul><footer>foot</footer>",
+    );
+  });
+
+  it('a server script that fails while yielding under "error" is the 500 page, never partial rows', async () => {
+    const res = await createNetlifyHandler(
+      graph(
+        listPage("server", async function* () {
+          yield "<li>1</li>";
+          throw new Error("server row failed");
+        }),
+        { onServerScriptError: "error" },
+      ),
+      quiet,
+    )(get("/orders"));
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain("<li>1</li>");
+  });
+});

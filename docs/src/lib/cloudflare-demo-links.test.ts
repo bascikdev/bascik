@@ -185,6 +185,7 @@ describe("adapter deployment guide demo parity", () => {
         "/server",
         "/stream",
         "/stream-append",
+        "/stream-rows",
         "/mixed",
         "/catalog",
         "/catalog-stream",

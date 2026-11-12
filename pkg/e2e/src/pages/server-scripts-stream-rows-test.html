@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Server Scripts Stream Rows Test</title>
+  </head>
+
+  <body>
+    <stream-rows></stream-rows>
+
+    <!-- A page-level stream script that yields component tags: each chunk is
+         rendered at request time on its own (?cards= ?cardgap=). No page
+         uses <server-card> in its markup, so every card here comes from a
+         yielded chunk. -->
+    <section data-testid="rows-cards">
+      <script data-bascik-stream>
+        export default async function* (request) {
+          const params = new URL(request.url).searchParams;
+          const cards = Math.min(
+            Math.max(Number(params.get("cards") ?? 2), 0),
+            10,
+          );
+          const gap = Math.min(
+            Math.max(Number(params.get("cardgap") ?? 0), 0),
+            2000,
+          );
+          for (let n = 1; n <= cards; n++) {
+            if (gap > 0)
+              await new Promise((resolve) => setTimeout(resolve, gap));
+            yield `<server-card data-bascik-prop-title="Card ${n}">` +
+              `<p data-testid="rows-card-body">body ${n}</p>` +
+              `</server-card>`;
+          }
+        }
+      </script>
+    </section>
+
+    <!-- A server script that yields is joined before the first byte. -->
+    <script data-bascik-server>
+      export default async function* () {
+        yield '<p data-testid="rows-joined">joined</p>';
+        yield '<p data-testid="rows-joined">one</p>';
+        yield '<p data-testid="rows-joined">two</p>';
+      }
+    </script>
+
+    <p data-testid="rows-after">after</p>
+  </body>
+</html>
