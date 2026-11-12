@@ -78,13 +78,25 @@ function findOpenTagEnd(html: string, from: number): number {
   return -1;
 }
 
-/** The index of `</name` (followed by a tag-name end) at or after `from`, or -1. */
-function findCloseTag(lower: string, from: number, name: string): number {
-  const needle = `</${name}`;
-  for (let at = lower.indexOf(needle, from); at >= 0;) {
-    if (isTagNameEnd(lower[at + needle.length])) return at;
-    at = lower.indexOf(needle, at + 1);
-  }
+/**
+ * Whether `html` holds `name` (lowercase ASCII letters) at `at`, in any ASCII case, as an HTML parser compares tag
+ * names. Setting bit 0x20 lowercases an ASCII letter and leaves every other code unequal to a lowercase letter.
+ */
+function hasTagNameAt(html: string, at: number, name: string): boolean {
+  if (at + name.length > html.length) return false;
+  for (let k = 0; k < name.length; k++)
+    if ((html.charCodeAt(at + k) | 0x20) !== name.charCodeAt(k)) return false;
+  return true;
+}
+
+/** The index of `</name` (any ASCII case, followed by a tag-name end) at or after `from`, or -1. */
+function findCloseTag(html: string, from: number, name: string): number {
+  for (let at = html.indexOf("</", from); at >= 0; at = html.indexOf("</", at + 2))
+    if (
+      hasTagNameAt(html, at + 2, name) &&
+      isTagNameEnd(html[at + 2 + name.length])
+    )
+      return at;
   return -1;
 }
 
@@ -105,16 +117,19 @@ interface ScriptElement {
 /**
  * Every `<script>` element of an HTML file, in source order. A script inside an HTML comment or another raw-text
  * element, and one whose tag or element never closes, is not one.
+ *
+ * Tag names are compared in place, in ASCII case only. Lowercasing the page instead copied all of it on every scan
+ * (the language server scans on each keystroke), and Unicode lowercasing can change a string's length ("İ" becomes
+ * two characters), which moved every offset after it.
  */
 function scanScripts(html: string): ScriptElement[] {
   const scripts: ScriptElement[] = [];
-  const lower = html.toLowerCase();
   let i = 0;
   while (i < html.length) {
-    const lt = lower.indexOf("<", i);
+    const lt = html.indexOf("<", i);
     if (lt < 0) break;
-    if (lower.startsWith("<!--", lt)) {
-      const end = lower.indexOf("-->", lt + 4);
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
       // An unclosed comment runs to the end of the file, as in a browser.
       if (end < 0) break;
       i = end + 3;
@@ -122,8 +137,8 @@ function scanScripts(html: string): ScriptElement[] {
     }
     const name = RAW_TEXT_ELEMENTS.find(
       (candidate) =>
-        lower.startsWith(candidate, lt + 1) &&
-        isTagNameEnd(lower[lt + 1 + candidate.length]),
+        hasTagNameAt(html, lt + 1, candidate) &&
+        isTagNameEnd(html[lt + 1 + candidate.length]),
     );
     if (!name) {
       i = lt + 1;
@@ -132,7 +147,7 @@ function scanScripts(html: string): ScriptElement[] {
     const tagEnd = findOpenTagEnd(html, lt + 1 + name.length);
     if (tagEnd < 0) break;
     const contentStart = tagEnd + 1;
-    const close = findCloseTag(lower, contentStart, name);
+    const close = findCloseTag(html, contentStart, name);
     // An element that never closes swallows the rest of the file; nothing after it is a tag.
     if (close < 0) break;
     if (name === "script") {

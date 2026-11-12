@@ -169,6 +169,25 @@ describe("extractTypeScriptBlocks", () => {
     ).toEqual([]);
   });
 
+  it("matches tag names in any ASCII case, as an HTML parser does", () => {
+    const html =
+      '<SCRIPT type="text/typescript">let a = 1;</Script ><TEXTAREA><script type="text/typescript">let b;</script></TextArea><sCrIpT type="text/typescript">let c = 1;</SCRIPT>';
+    expect(extractTypeScriptBlocks(html).map((block) => block.content)).toEqual(
+      ["let a = 1;", "let c = 1;"],
+    );
+  });
+
+  it("places a block after text whose lowercase is longer, such as a dotted capital I", () => {
+    // "İ".toLowerCase() is two characters: offsets taken from a lowercased copy of the page land past the block.
+    const before = "<p>İstanbul İzmir</p>\n";
+    const html = `${before}<script type="text/typescript">const city: string = "x";</script>`;
+    const [block] = extractTypeScriptBlocks(html);
+    expect(block.content).toBe('const city: string = "x";');
+    expect(html.slice(block.contentStart, block.contentStart + block.content.length)).toBe(block.content);
+    const [script] = extractPageScopeScripts(html.replace("text/typescript", "text/javascript"));
+    expect(script.content).toBe('const city: string = "x";');
+  });
+
   it("skips the scan when the file never mentions text/typescript", () => {
     expect(mayHaveTypeScriptBlocks("<script>let a;</script>")).toBe(false);
     expect(mayHaveTypeScriptBlocks('<script type="Text/TypeScript">')).toBe(
