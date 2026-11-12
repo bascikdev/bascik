@@ -1,0 +1,122 @@
+<!-- A stream script that yields: one `data-bascik-stream` script written as
+     an async generator sends each row as its own chunk (?rows= ?gap= ?fail=).
+     The layout is the stream-dashboard pattern: the heading and the footer
+     are FIRST in source, so they are in the first chunk, and the card that
+     streams is LAST in source and placed above the footer by
+     grid-template-areas. Everything about the loading state is author CSS:
+     the list of rows sits on top of a list of skeleton rows in one grid
+     cell, so each row that arrives covers one skeleton; :has(.row) hides the
+     status line when the first row lands and :has(.done) hides the skeleton
+     list when the script yields its last value. Bascik adds no CSS or JS.
+     Class names in each yielded chunk are scoped with the component's CSS,
+     which is what makes both :has() selectors match. -->
+<style>
+  .board {
+    display: grid;
+    /* The card's row is reserved on the grid, so the footer does not move
+       while rows arrive. */
+    grid-template-rows: auto minmax(12rem, auto) auto;
+    grid-template-areas:
+      "head"
+      "orders"
+      "foot";
+  }
+
+  .head {
+    grid-area: head;
+    margin: 0;
+  }
+
+  .foot {
+    grid-area: foot;
+  }
+
+  .orders {
+    grid-area: orders;
+    display: grid;
+    align-content: start;
+    min-block-size: 12rem;
+  }
+
+  .orders > * {
+    grid-area: 1 / 1;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .skeletons > li,
+  .rows > li {
+    box-sizing: border-box;
+    block-size: 2.5rem;
+  }
+
+  .skeletons > li {
+    background: #eee;
+  }
+
+  .row {
+    background: #fff;
+  }
+
+  .pending {
+    z-index: 1;
+  }
+
+  .orders:has(.row) > .pending {
+    display: none;
+  }
+
+  .orders:has(.done) > .skeletons {
+    display: none;
+  }
+</style>
+<main class="board" data-testid="rows-board">
+  <h1 class="head" data-testid="rows-head">Orders</h1>
+  <footer class="foot" data-testid="rows-foot">footer</footer>
+  <section class="orders" aria-busy="true" data-testid="rows-card">
+    <p class="pending" role="status" data-testid="rows-pending">
+      Loading orders…
+    </p>
+    <ul class="skeletons" aria-hidden="true" data-testid="rows-skeletons">
+      <li></li>
+      <li></li>
+      <li></li>
+      <li></li>
+    </ul>
+    <ul class="rows" data-testid="rows-list">
+      <script data-bascik-stream>
+        const bounded = (value, fallback, max) => {
+          const n = Number(value ?? fallback);
+          return Number.isFinite(n) ? Math.min(Math.max(n, 0), max) : fallback;
+        };
+        const wait = (ms, signal) =>
+          ms === 0
+            ? Promise.resolve()
+            : new Promise((resolve, reject) => {
+                const t = setTimeout(resolve, ms);
+                signal?.addEventListener(
+                  "abort",
+                  () => {
+                    clearTimeout(t);
+                    reject(signal.reason);
+                  },
+                  { once: true },
+                );
+              });
+        export default async function* (request, context, { signal }) {
+          const params = new URL(request.url).searchParams;
+          const rows = bounded(params.get("rows"), 4, 20);
+          const gap = bounded(params.get("gap"), 0, 2000);
+          const fail = bounded(params.get("fail"), 0, 20);
+          for (let n = 1; n <= rows; n++) {
+            await wait(gap, signal);
+            if (n === fail) throw new Error(`row ${n} failed on purpose`);
+            yield `<li class="row" data-testid="rows-row" data-n="${n}">Order ${n}</li>`;
+          }
+          yield '<li class="done" hidden data-testid="rows-done"></li>';
+        }
+      </script>
+    </ul>
+  </section>
+</main>

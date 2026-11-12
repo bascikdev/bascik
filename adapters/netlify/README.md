@@ -137,7 +137,7 @@ private-path handling. Error routes intentionally generate diagnostics.
 
 Both adapters also run one [shared demo browser contract](https://github.com/bascikdev/bascik/blob/main/adapters/e2e/demo-contract.test.ts)
 against their real runtimes. The canonical routes and titles match Cloudflare:
-`/`, `/server?name=collin`, `/stream`, `/stream-append`, `/mixed`, `/catalog`,
+`/`, `/server?name=collin`, `/stream`, `/stream-append`, `/stream-rows`, `/mixed`, `/catalog`,
 `/catalog-stream`, `/api-demo`, `/errors`, and `/static`. The `/static` page
 demonstrates scoped client scripts and independent counters; the overview only
 links to the demos. The legacy `/components` fixture

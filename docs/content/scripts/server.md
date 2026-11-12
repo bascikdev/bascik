@@ -111,6 +111,9 @@ The value the default export returns, or resolves to, replaces the script tag. A
 | A plain object, `Map`, `Response`, function, symbol | Refused (see below)                         |
 | An `Error` (`return e` in a `catch`)                | Refused (see below)                         |
 | An array holding a Promise                          | Refused (see below)                         |
+| Bytes (a `Uint8Array`, an `ArrayBuffer`)            | Refused (see below)                         |
+
+A script written as a generator (`export default async function*`) may `yield` its markup in pieces instead: each yielded value follows the same table, and a server script's yielded values are joined with no separator before the page is sent. In a [stream script](/scripts/stream#yield-rows-as-they-arrive) each yielded value is sent as soon as it is yielded.
 
 Because an array is joined with no separator, `.map` needs no `.join("")`:
 
@@ -876,6 +879,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 - During `bascik --build`, server script tags are stripped and stored in `.bascik/dist/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
 - Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as the [Cloudflare Adapter](/deployment/cloudflare). A static-only host leaves the placeholders inert.
 - On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, `'warn'` logs to stderr and replaces the tag with an empty string, and `'ignore'` replaces it with an empty string without a log. Stack traces remap to your original source file line and column.
+- A script may be a generator: the values it yields are joined with no separator. A stream script that yields sends each value as it is yielded; see [Yield rows as they arrive](/scripts/stream#yield-rows-as-they-arrive).
 - A returned array is joined with no separator. A return that is not markup (a plain object, a `Response`, a function, an array holding a Promise) is an empty slot with a located report: an error under the policy in dev, a once-per-script warning in production. See [Return Values](#return-values).
 - Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
 

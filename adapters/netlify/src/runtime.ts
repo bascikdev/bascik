@@ -30,6 +30,7 @@
 import { componentExecution } from "./component-host.js";
 import {
   applyOutputScope,
+  collectScriptJobOutput,
   composeBufferedResponse,
   contentSecurityPolicyHeader,
   decodeOutputScope,
@@ -44,6 +45,7 @@ import {
   matchApiRoute,
   mergeHandlerHeaders,
   pageLookupCandidates,
+  scriptChunkOutput,
   scriptTimeoutError,
   serverScriptOutput,
   serverScriptOutputErrorMessage,
@@ -57,11 +59,14 @@ import {
   type CspRouteHashes,
   type ExecutionPlan,
   type ExecutionSegment,
+  type InvokeResult,
   type PlatformContext,
   type RenderHost,
   type RequestRenderLimits,
   type ResponseSecurity,
+  type ScriptJobOutput,
   type ScriptJobRunner,
+  type ScriptOutputRunner,
 } from "@bascik/bascik/runtime";
 
 // ─── Site graph contract (emitted by build.ts) ──────────────────────────────
@@ -253,8 +258,14 @@ const warnedRefused = new WeakSet<GraphScriptJob>();
  * Cloudflare Worker do: the printed fragment, ANSI-stripped, scoped when the
  * job carries a scope; a refused return value is an empty slot logged once;
  * a failure throws under "error", logs under "warn", is empty under "ignore".
+ *
+ * A script that yields (a generator) gives an iterable instead of a string:
+ * each value it yields is printed by the same rule, under the same deadline
+ * (which counts only the time the script takes to produce values) and the
+ * same policy. A yielded value that is not markup is skipped, and a failed
+ * pull ends the output there, thrown from `next()` under "error".
  */
-const runGraphJob = async (
+const runGraphJobOutput = async (
   job: GraphScriptJob,
   id: string,
   graph: SiteGraph,
@@ -263,8 +274,8 @@ const runGraphJob = async (
   log: (message: string) => void,
   signal: AbortSignal | undefined,
   timeoutMs: number,
-): Promise<string> => {
-  const result = await invokeLoadedWithDeadline(
+): Promise<ScriptJobOutput> => {
+  const invoked = await invokeLoadedWithDeadline(
     () => job.load(),
     (mod, { signal: jobSignal }) => {
       const handler = mod.default;
@@ -279,50 +290,107 @@ const runGraphJob = async (
       timeoutMs,
       ...(signal ? { signal } : {}),
       timeoutError: scriptTimeoutError,
+      chunks: true,
     },
   );
-  let printed: ReturnType<typeof serverScriptOutput> | undefined;
-  let failure: Error | undefined;
-  if (result.ok) {
-    try {
-      printed = serverScriptOutput(result.value);
-    } catch (thrown) {
-      failure = thrown instanceof Error ? thrown : new Error(String(thrown));
-    }
+  if (invoked.ok && invoked.source) {
+    return scriptChunkOutput(
+      invoked.source,
+      (value) =>
+        settle({ ok: true, value, timedOut: false, aborted: false }, true),
+      (failed) => settle(failed, true),
+    );
   }
-  if (printed) {
-    if (printed.error) {
-      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
-        warnedRefused.add(job);
-        log(
-          serverScriptOutputErrorMessage(
-            printed.error,
-            request.url,
-            job.owner ?? `${job.mode} script`,
-            { production: true },
-          ),
-        );
+  return settle(invoked, false);
+
+  /** The output of one settled call or pull, by the policy above. */
+  function settle(result: InvokeResult<unknown>, yielded: boolean): string {
+    let printed: ReturnType<typeof serverScriptOutput> | undefined;
+    let failure: Error | undefined;
+    if (result.ok) {
+      try {
+        printed = serverScriptOutput(result.value);
+      } catch (thrown) {
+        failure = thrown instanceof Error ? thrown : new Error(String(thrown));
       }
-      return "";
     }
-    const text =
-      graph.stripAnsi === false
-        ? printed.text
-        : stripAnsiEscapeCodes(printed.text);
-    const scope = decodeOutputScope(job.outputScope);
-    return scope ? applyOutputScope(text, scope) : text;
+    if (printed) {
+      if (printed.error) {
+        if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+          warnedRefused.add(job);
+          log(
+            serverScriptOutputErrorMessage(
+              printed.error,
+              request.url,
+              job.owner ?? `${job.mode} script`,
+              { production: true, yielded },
+            ),
+          );
+        }
+        return "";
+      }
+      const text =
+        graph.stripAnsi === false
+          ? printed.text
+          : stripAnsiEscapeCodes(printed.text);
+      const scope = decodeOutputScope(job.outputScope);
+      return scope ? applyOutputScope(text, scope) : text;
+    }
+    if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
+    const error =
+      failure ??
+      (!result.ok ? result.error : undefined) ??
+      new Error("Server script failed");
+    const err = error instanceof Error ? error : new Error(String(error));
+    const where = job.owner ? `\n    in the ${job.owner}` : "";
+    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${err.stack ?? err.message}${where}`;
+    if (graph.onServerScriptError === "error") throw new Error(message);
+    if (graph.onServerScriptError === "warn") log(message);
+    return "";
   }
-  if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
-  const error =
-    failure ??
-    (!result.ok ? result.error : undefined) ??
-    new Error("Server script failed");
-  const err = error instanceof Error ? error : new Error(String(error));
-  const where = job.owner ? `\n    in the ${job.owner}` : "";
-  const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${err.stack ?? err.message}${where}`;
-  if (graph.onServerScriptError === "error") throw new Error(message);
-  if (graph.onServerScriptError === "warn") log(message);
-  return "";
+};
+
+/** `runGraphJobOutput` with a yielding script's values joined into one string. */
+const runGraphJob = async (
+  ...args: Parameters<typeof runGraphJobOutput>
+): Promise<string> => collectScriptJobOutput(await runGraphJobOutput(...args));
+
+/**
+ * A yielding job's chunks, passed through: `complete` is called once after
+ * the last one, `failed` once when a pull throws. A consumer that stops
+ * early closes the job and neither is called.
+ */
+const tracedChunks = (
+  output: AsyncIterable<string>,
+  complete: () => void,
+  failed: (error: unknown) => void,
+): AsyncIterable<string> => {
+  const inner = output[Symbol.asyncIterator]();
+  let ended = false;
+  const done: IteratorResult<string> = { done: true, value: undefined };
+  const chunks: AsyncIterator<string> = {
+    async next() {
+      if (ended) return done;
+      try {
+        const step = await inner.next();
+        if (step.done) {
+          ended = true;
+          complete();
+        }
+        return step;
+      } catch (error) {
+        ended = true;
+        failed(error);
+        throw error;
+      }
+    },
+    async return() {
+      ended = true;
+      await inner.return?.();
+      return done;
+    },
+  };
+  return { [Symbol.asyncIterator]: () => chunks };
 };
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -369,27 +437,38 @@ export const createNetlifyHandler = (
     headers.set(name, value);
   };
 
-  /** A runner that logs each job's start, completion and failure. */
-  const traced = (
+  /**
+   * A runner that logs each job's start, completion and failure. A job that
+   * yields completes with its last chunk, and a failure part-way is logged
+   * like one from the call.
+   */
+  function traced(
     request: Request,
     runJob: (id: string, signal?: AbortSignal) => Promise<string>,
     modeOf: (id: string) => GraphScriptJob["mode"] | undefined,
-  ): ScriptJobRunner => {
+  ): ScriptJobRunner;
+  function traced(
+    request: Request,
+    runJob: (id: string, signal?: AbortSignal) => Promise<ScriptJobOutput>,
+    modeOf: (id: string) => GraphScriptJob["mode"] | undefined,
+  ): ScriptOutputRunner;
+  function traced(
+    request: Request,
+    runJob: (id: string, signal?: AbortSignal) => Promise<ScriptJobOutput>,
+    modeOf: (id: string) => GraphScriptJob["mode"] | undefined,
+  ): ScriptOutputRunner {
     return async (id, signal) => {
       const started = performance.now();
       const mode = modeOf(id);
       const details = { scriptId: id, ...(mode ? { mode } : {}) };
-      logEvent(event(request, "script.start", details));
-      try {
-        const output = await runJob(id, signal);
+      const complete = () =>
         logEvent(
           event(request, "script.complete", {
             ...details,
             ms: Math.round(performance.now() - started),
           }),
         );
-        return output;
-      } catch (error) {
+      const failed = (error: unknown) =>
         log(
           JSON.stringify(
             event(request, "script.error", {
@@ -398,16 +477,25 @@ export const createNetlifyHandler = (
             }),
           ),
         );
+      logEvent(event(request, "script.start", details));
+      try {
+        const output = await runJob(id, signal);
+        if (typeof output !== "string")
+          return tracedChunks(output, complete, failed);
+        complete();
+        return output;
+      } catch (error) {
+        failed(error);
         throw error;
       }
     };
-  };
+  }
 
   const pageExecution = (
     page: GraphPage,
     request: Request,
     context: { remoteIp: string; platform: PlatformContext },
-  ): { plan: ExecutionPlan; run: ScriptJobRunner } => {
+  ): { plan: ExecutionPlan; run: ScriptOutputRunner } => {
     const scriptLog = (message: string) =>
       log(JSON.stringify(event(request, "script.error", { error: message })));
     const jobFor = (id: string) => page.jobs[id] ?? graph.components?.jobs[id];
@@ -416,7 +504,7 @@ export const createNetlifyHandler = (
       async (id, signal) => {
         const job = jobFor(id);
         if (!job) throw missingJob(id);
-        return runGraphJob(
+        return runGraphJobOutput(
           job,
           id,
           graph,

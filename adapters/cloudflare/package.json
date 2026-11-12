@@ -1,6 +1,6 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0-rc.12",
+  "version": "1.0.0-rc.13",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -52,10 +52,10 @@
     "smol-toml": "^1.9.1"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.12"
+    "@bascik/bascik": "^1.0.0-rc.13"
   },
   "devDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.12",
+    "@bascik/bascik": "^1.0.0-rc.13",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",

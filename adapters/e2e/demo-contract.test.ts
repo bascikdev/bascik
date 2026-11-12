@@ -5,6 +5,7 @@ const pages = [
   ["/server?name=collin", "Server scripts"],
   ["/stream", "Stream swap"],
   ["/stream-append", "Stream append"],
+  ["/stream-rows", "Stream rows"],
   ["/mixed", "Mixed execution"],
   ["/catalog", "Server-rendered cards"],
   ["/catalog-stream", "Streamed cards"],
@@ -421,6 +422,41 @@ test.describe("shared adapter demo contract", () => {
       await expect(page.getByRole("article")).toHaveCount(3);
       await expect(page.getByRole("article").first()).toContainText("99.99%");
       await expect(page.getByRole("article").last()).toContainText("64.2");
+    });
+
+    test("rows from one yielding script cover the skeleton rows one at a time", async ({
+      page,
+    }) => {
+      await page.goto("/stream-rows?delay=700", { waitUntil: "commit" });
+      const rows = page.getByTestId("stream-rows-row");
+      const skeletons = page.getByTestId("stream-rows-skeletons");
+      // The footer and the skeleton rows are in the first chunk.
+      await expect(page.getByRole("contentinfo")).toBeVisible();
+      await expect(skeletons).toBeVisible();
+      expect(await rows.count()).toBe(0);
+      const footerTop = (await page.getByRole("contentinfo").boundingBox())!.y;
+
+      // The first row is in the document before the later ones exist, and
+      // it sits exactly on the first skeleton row.
+      await expect(rows.first()).toBeVisible();
+      expect(await rows.count()).toBeLessThan(bookTitles.length);
+      expect(await page.getByTestId("stream-rows-done").count()).toBe(0);
+      await expect(skeletons).toBeVisible();
+      const rowBox = (await rows.first().boundingBox())!;
+      const skeletonBox = (await skeletons.boundingBox())!;
+      expect(Math.abs(rowBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+
+      // Every row arrives in the order the script yielded it; its last
+      // yield hides the skeleton list, and the footer never moved.
+      await expect(rows.locator("strong")).toHaveText(bookTitles);
+      await expect(rows.locator("span")).toHaveText(authors);
+      await expect(page.getByTestId("stream-rows-done")).toHaveCount(1);
+      await expect(skeletons).toBeHidden();
+      expect(
+        Math.abs(
+          (await page.getByRole("contentinfo").boundingBox())!.y - footerTop,
+        ),
+      ).toBeLessThanOrEqual(1);
     });
 
     test("mixed execution resolves server work before streaming", async ({

@@ -14,6 +14,7 @@ The preview below cycles through the streaming lifecycle: the static header and 
 >
 > - [In-place skeleton swap](https://cloudflare-adapter.bascik.dev/stream): skeletons and the footer paint first, then each card replaces its skeleton as it arrives.
 > - [Progressive append](https://cloudflare-adapter.bascik.dev/stream-append): no placeholders, cards stream straight into the open response.
+> - [Rows from one script](https://cloudflare-adapter.bascik.dev/stream-rows): one script yields a row at a time, and each row covers a skeleton row.
 > - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): a server script runs before headers commit, then a stream script flushes into the open connection.
 
 ## data-bascik-stream
@@ -26,7 +27,7 @@ When you tag a `<script>` with `data-bascik-stream`, Bascik leverages this nativ
 
 1. **Immediate Initial Paint:** Bascik flushes the HTTP 200 headers and all static HTML preceding the stream tag immediately. The visitor sees the full page shell and your pending placeholder state instantly.
 2. **Asynchronous Edge/Server Execution:** The server or edge Worker executes your script asynchronously (querying databases, calling microservices, or fetching third-party APIs).
-3. **Progressive Document Flush:** As soon as the async task resolves, Bascik flushes the generated HTML chunk across the open connection.
+3. **Progressive Document Flush:** As soon as the async task resolves, Bascik flushes the generated HTML chunk across the open connection. A script that [yields](#yield-rows-as-they-arrive) flushes one chunk per yielded value.
 4. **Pure CSS Transition:** Standard modern CSS (like `:has(.result)` or container states) automatically hides the placeholder and displays the streamed HTML the moment the chunk arrives.
 
 Zero client JavaScript is needed. No React runtime, no hydration phase, no virtual DOM diffing, and no client-side `fetch()` polling. It is standard HTML delivered over standard HTTP streams in source order.
@@ -466,6 +467,212 @@ If you want content to append progressively as it streams in without showing pla
 </div>
 ```
 
+To append many items from one source, one script that [yields each item](#yield-rows-as-they-arrive) does the same job without a script tag per item.
+
+## Yield rows as they arrive
+
+A stream script that returns sends its markup in one piece, when all of it is ready. When the markup is a list whose rows come from a slow source one at a time (a database cursor, a paged API, several calls), write the script as an async generator: `export default async function*`, with a `yield` for each row. Bascik sends every yielded value to the browser as soon as the script yields it, in the order it yields them, into the place the script tag was. It is one script and one response, and still no client JavaScript.
+
+This page lists books from a source that takes a moment per book:
+
+```html
+<!-- src/pages/reading-list.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Reading list</title>
+  </head>
+  <body>
+    <h1>Reading list</h1>
+    <ul>
+      <script data-bascik-stream type="text/typescript">
+        import { html, type SafeHtml } from "@bascik/bascik/html";
+        import { loadBooks } from "@/lib/books.ts";
+
+        export default async function* (): AsyncGenerator<SafeHtml> {
+          for await (const book of loadBooks()) {
+            yield html`<li>${book.title} by ${book.author}</li>`;
+          }
+        }
+      </script>
+    </ul>
+    <footer>Updated daily</footer>
+  </body>
+</html>
+```
+
+The source is an async generator too. Any async iterable works the same way, such as a database driver's cursor or a paged API client:
+
+```ts
+// src/lib/books.ts
+export interface Book {
+  title: string;
+  author: string;
+}
+
+const BOOKS: Book[] = [
+  { title: "Refactoring the Monolith", author: "Grace Lin" },
+  { title: "Practical Type Systems", author: "Ada Okafor" },
+  { title: "Shipping Small Changes", author: "Sam Rivera" },
+];
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Stands in for a slow source: a database cursor, a paged API.
+export async function* loadBooks(): AsyncGenerator<Book> {
+  for (const book of BOOKS) {
+    await wait(400);
+    yield book;
+  }
+}
+```
+
+These are the chunks `bascik --server` sent for `GET /reading-list`, with the time each one arrived. The heading is in the browser before the first book exists, and each book follows 400 milliseconds after the last:
+
+```text
+  34 ms  <!doctype html> ... <h1>Reading list</h1> <ul>
+ 435 ms  <li>Refactoring the Monolith by Grace Lin</li>
+ 835 ms  <li>Practical Type Systems by Ada Okafor</li>
+1237 ms  <li>Shipping Small Changes by Sam Rivera</li> </ul> <footer>Updated daily</footer> ... </html>
+```
+
+### What a script can yield
+
+- **Each yielded value is printed like a returned one.** A string, an `html` value, or an array of them, by the [server script rules](/scripts/server#return-values); `null`, `undefined`, and `false` print nothing.
+- **Yield whole elements.** Put a complete element, or several, in each `yield`, never half a tag. Inside a component, the scoped class names are applied to each yielded value on its own, and [component tags](#returning-component-tags) are rendered one yielded value at a time.
+- **Delegate with `yield*`.** `yield* otherRows()` yields everything another generator yields. Yielding the generator itself (`yield otherRows()`) is refused, because a generator is not markup.
+- **A returned value is sent last.** What the generator returns with `return markup` is sent as its final value, so an early `return` for an empty list still shows its message.
+- **Any async iterable of text works.** A script may return one instead of being a generator, as long as each value it gives holds whole elements. A response body does not: it arrives in slices of bytes that end anywhere, so read it with `await response.text()` or split it into elements yourself. Bytes (a `Uint8Array`) are refused, never printed as numbers.
+- **A sync generator works too.** `export default function* ()` is sent one chunk per `yield`; use it when nothing in the script waits.
+- **The handler signature is unchanged.** The generator receives `(request, context, { signal })` like every other server or stream script.
+- **A server script may yield as well.** In a `data-bascik-server` script the yielded values are joined with no separator before the page is sent, because nothing of a server script is streamed.
+
+Source order still decides delivery order: the markup after a script that yields, and every stream script after it, waits until the generator finishes. Put a long list last in source, and use [Recipe C](#recipe-c-priority-source-order-with-css-positioning-the-early-paint-footer-trick) to show content below it first.
+
+### Skeleton rows that fill in one at a time
+
+The [placeholder recipes](#placeholders-that-do-not-shift-layout) work unchanged with a script that yields, because the browser adds each row to the page as it arrives. This component stacks the real list on top of a list of skeleton rows in one grid cell, so each row that arrives covers one skeleton row. The script's last `yield` is an empty, hidden marker, and `:has(.done)` hides the skeleton rows that are left when there were fewer books than skeletons:
+
+```html
+<!-- src/components/new-arrivals/new-arrivals.html -->
+<style>
+  .arrivals {
+    display: grid;
+    min-block-size: 10rem;
+  }
+  /* Both lists share one grid cell, so a row lands on a skeleton row. */
+  .arrivals > * {
+    grid-area: 1 / 1;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .skeletons > li,
+  .row {
+    box-sizing: border-box;
+    block-size: 2.5rem;
+  }
+  .skeletons > li {
+    background: var(--surface-subtle, #f3f4f6);
+  }
+  .row {
+    background: var(--surface, #ffffff);
+  }
+  /* The last yield: hide the skeleton rows that are left over. */
+  .arrivals:has(.done) > .skeletons {
+    display: none;
+  }
+</style>
+
+<section class="arrivals" aria-busy="true" data-testid="new-arrivals">
+  <ul class="skeletons" role="status" aria-label="Loading new arrivals">
+    <li></li>
+    <li></li>
+    <li></li>
+    <li></li>
+  </ul>
+  <ul class="rows">
+    <script data-bascik-stream type="text/typescript">
+      import { html, type SafeHtml } from "@bascik/bascik/html";
+      import { loadBooks } from "@/lib/books.ts";
+
+      export default async function* (): AsyncGenerator<SafeHtml> {
+        for await (const book of loadBooks()) {
+          yield html`<li class="row">${book.title} by ${book.author}</li>`;
+        }
+        yield html`<li class="done" hidden></li>`;
+      }
+    </script>
+  </ul>
+</section>
+```
+
+Give the rows and the skeleton rows the same fixed `block-size`, and reserve the list's size on the container, so nothing below the list moves as rows arrive. To hide one status line when the first row lands instead, use the single-placeholder rule from Recipe A with the row's class: `.arrivals:has(.row) > .pending { display: none; }`. See it running on the [rows demo](https://cloudflare-adapter.bascik.dev/stream-rows).
+
+### Rows in the order they finish
+
+A `for await` loop over one source yields rows in the source's order. To start several independent lookups at once and show each as soon as it answers, keep the pending promises in a `Map` and yield whichever settles first:
+
+```html
+<!-- src/pages/fastest-first.html -->
+<ul>
+  <script data-bascik-stream type="text/typescript">
+    import { html, type SafeHtml } from "@bascik/bascik/html";
+    import { loadBook, type Book } from "@/lib/books.ts";
+
+    const TITLES = [
+      "Refactoring the Monolith",
+      "Practical Type Systems",
+      "Shipping Small Changes",
+    ];
+
+    export default async function* (): AsyncGenerator<SafeHtml> {
+      // Start every lookup now, then yield each as it settles.
+      const pending = new Map<string, Promise<Book>>(
+        TITLES.map((title) => [title, loadBook(title)]),
+      );
+      while (pending.size > 0) {
+        const book = await Promise.race(pending.values());
+        pending.delete(book.title);
+        yield html`<li>${book.title} by ${book.author}</li>`;
+      }
+    }
+  </script>
+</ul>
+```
+
+All three lookups run at the same time, and the page lists the books fastest first.
+
+### Release what the script holds
+
+When the visitor leaves before the list is complete, or the script times out, Bascik ends the generator, so its `finally` blocks run. Close a cursor or a connection there, and pass `signal` to anything that can be canceled:
+
+```html
+<ul>
+  <script data-bascik-stream type="text/typescript">
+    import { html, type SafeHtml } from "@bascik/bascik/html";
+    import { openOrders } from "@/lib/orders.ts";
+
+    export default async function* (
+      request: Request,
+      context: unknown,
+      { signal }: { signal: AbortSignal },
+    ): AsyncGenerator<SafeHtml> {
+      const cursor = await openOrders({ signal });
+      try {
+        for await (const order of cursor) {
+          yield html`<li>${order.id}: ${order.total}</li>`;
+        }
+      } finally {
+        await cursor.close();
+      }
+    }
+  </script>
+</ul>
+```
+
+A generator that is waiting on something when it is ended reaches its `finally` block only when that wait settles, which is why the wait should take the `signal`.
+
 ## Returning component tags
 
 A stream script can return the tags of your own components, exactly like a server script. Each tag is rendered at request time with the component's markup, props, slots, and scoped CSS, and the result is streamed into its slot. Nothing is imported or configured. The security guarantees and the full rules are in [Returning component tags](/scripts#returning-component-tags) on the scripts overview; this section covers what is different when streaming.
@@ -675,6 +882,7 @@ Run this on Cloudflare Workers: [/catalog-stream](https://cloudflare-adapter.bas
 The rules are the ones for server scripts. These are the ones that matter most when streaming:
 
 - **Script output is HTML.** Component tags in it render with the same power as your own markup, and the component's own scripts run with the current request. Build it with `html`, which escapes every value you interpolate, and sanitize HTML from a CMS or an API before inserting it with `raw()`.
+- **A script that yields is rendered one yielded value at a time.** Each value's component tags are rendered when that value is sent, so cards reach the browser one by one. The budgets for one script output (1000 component instances, 4 MiB of rendered HTML) apply to each yielded value; the limit of 64 nested component scripts counts the whole response, so a long list of cards that each run their own script needs a higher `scripts.renderLimits.maxNestedScripts`. A yielded value over a budget is dropped under `'warn'` and `'ignore'`, and ends the script's output under `'error'`.
 - **A nested stream script resolves with its parent.** A `data-bascik-stream` or `data-bascik-server` script inside a returned component runs once per rendered instance and receives no props from the usage tag. Its output is spliced into the instance before the parent's slot is written, so the slot arrives complete, in one piece, and the page's stream order is unchanged. The nested script gets what is left of the parent's `scripts.timeout`.
 - **CSS arrives before the first instance.** Each component's stylesheet is sent as one `<style>` block in the body, at the start of the first slot in document order that renders an instance of it, once per response for all of the page's stream scripts, whatever order the slots finish in. A page that also returns the component from a server script sends it once more for the server part.
 - **Failures leave the slot empty, never a 500.** An output over a budget (1000 component instances, 4 MiB of rendered HTML, or rereading more than 16 times its length plus 33,554,432 characters per output, 64 nested component scripts per response, 4 levels deep) leaves this slot empty and logs a message naming the route and the component file. A nested script that throws empties this slot under `scripts.onServerScriptError: 'error'`; under `'warn'` or `'ignore'` only the nested script's part of the card is empty. Either way the rest of the document streams on.
@@ -696,6 +904,15 @@ The author's placeholder remains visible on error, keeping page layout intact.
 
 A stream script that resolves its last chunk after `scripts.timeout` has passed, even inside its own `abort` listener, is a timeout under the policy above, not a late chunk.
 
+### A script that yields
+
+A script that [yields](#yield-rows-as-they-arrive) has sent part of its output by the time something goes wrong, so the policy applies to what is left:
+
+- **A failure part-way keeps the rows already sent.** A throw inside the generator ends its output there. It is logged under the policy above, and the rest of the document streams on. Under `'warn'` and `'ignore'` the page is the same, with a warning or no log.
+- **`scripts.timeout` counts the script's own time.** The clock runs while the script is producing its next value and stops while Bascik writes a value to the visitor, so a slow connection does not time a script out. A connection that stops reading altogether is closed by the server ([`http.timeouts.drain`](/configuration#http) on the built-in server), which ends the script. A script that spends longer than `scripts.timeout` in total between its yields is ended as a timeout, its `signal` aborts, and the rows already sent stay.
+- **A yielded value that is not markup is that one value's failure.** In dev it is a failure under the policy above, with a message that names the route, the script's file and line, and what was yielded; under `'error'` the output ends there. In production the value is skipped, the rest is sent, and a warning is logged once per script.
+- **A server script that yields fails as a whole.** Its values are joined before the page is sent, so a failure under `'error'` is still an HTTP 500 and no partial list is sent.
+
 A stream script's return value follows the [server script rules](/scripts/server#return-values): an array is joined with no separator, so ``items.map((item) => html`...`)`` can be returned directly, and a value that is not markup (a plain object, a `Response`, a function, an array holding a Promise) leaves the slot empty. In dev that is a failure under the policy above, logged with the route, the script's file and line, and what was returned; in production it is a warning logged once per script.
 
 ### HTTP Headers & Caching Consequences
@@ -711,7 +928,8 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 ## Client Disconnect & Backpressure
 
 - **Backpressure Handling:** When a downstream TCP socket buffer fills, Bascik's response sink pauses execution of subsequent stream segments until the socket emits `drain`.
-- **Cooperative Cancellation:** If a client closes the connection or navigates away before stream completion, the `AbortController` triggers. The passed `signal` aborts ongoing `fetch()` requests and database queries that consume the signal. Synchronous operations or uninstrumented database clients must be handled accordingly.
+- **One value at a time:** A script that yields is asked for its next value only after the last one was written, so a slow connection also slows the script instead of filling memory. A script that yields and sits ahead of the write position runs to its first `yield` and waits there.
+- **Cooperative Cancellation:** If a client closes the connection or navigates away before stream completion, the `AbortController` triggers. The passed `signal` aborts ongoing `fetch()` requests and database queries that consume the signal. Synchronous operations or uninstrumented database clients must be handled accordingly. A script that yields is ended as well, so its `finally` blocks run.
 
 > **Next:** See [Server Scripts](/scripts/server) for buffered per-request execution, or read [Production Server](/production-server) for server deployment options.
 

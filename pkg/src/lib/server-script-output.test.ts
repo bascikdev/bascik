@@ -288,6 +288,141 @@ describe("serverScriptOutputErrorMessage", () => {
   });
 });
 
+describe("bytes where text is expected", () => {
+  it("a Buffer prints its text, as it always has (readFile without an encoding)", () => {
+    expect(serverScriptOutput(Buffer.from("<p>caf\u00e9</p>"))).toEqual({
+      text: "<p>caf\u00e9</p>",
+    });
+    expect(serverScriptOutput(["<i>", Buffer.from("x"), "</i>"])).toEqual({
+      text: "<i>x</i>",
+    });
+  });
+
+  it("refuses a typed array, a DataView and an ArrayBuffer instead of printing their numbers", () => {
+    for (const [value, name] of [
+      [new Uint8Array([60, 112, 62]), "Uint8Array"],
+      [new Float32Array(2), "Float32Array"],
+      [new DataView(new ArrayBuffer(2)), "DataView"],
+      [new ArrayBuffer(2), "ArrayBuffer"],
+    ] as const)
+      expect(serverScriptOutput(value).error).toEqual({
+        kind: "bytes",
+        received: `bytes (${name})`,
+        inArray: false,
+      });
+    expect(serverScriptOutput(["<p>", new Uint8Array(1)]).error?.received).toBe(
+      "an array holding bytes (Uint8Array) at [1]",
+    );
+  });
+
+  it("the fix is to decode, and for a yield to keep whole elements together", () => {
+    const error = serverScriptOutput(new Uint8Array(1)).error!;
+    expect(
+      serverScriptOutputErrorMessage(error, "http://localhost/x", undefined),
+    ).toContain("new TextDecoder().decode(bytes)");
+    const yielded = serverScriptOutputErrorMessage(
+      error,
+      "http://localhost/x",
+      undefined,
+      { yielded: true },
+    );
+    expect(yielded).toContain("new TextDecoder().decode(bytes");
+    expect(yielded).toContain("whole elements");
+  });
+});
+
+describe("a generator where a value is expected", () => {
+  async function* rows() {
+    yield "<li>x</li>";
+  }
+  function* syncRows() {
+    yield "<li>x</li>";
+  }
+
+  it("refuses an async or sync generator object as its own kind, in an array too", () => {
+    expect(serverScriptOutput(rows()).error).toEqual({
+      kind: "generator",
+      received: "a generator",
+      inArray: false,
+    });
+    expect(serverScriptOutput(syncRows()).error?.kind).toBe("generator");
+    expect(serverScriptOutput(["<p>a</p>", rows()]).error).toEqual({
+      kind: "generator",
+      received: "an array holding a generator at [1]",
+      inArray: true,
+    });
+  });
+
+  it("a returned one in an array is told to yield from one generator", () => {
+    const message = serverScriptOutputErrorMessage(
+      serverScriptOutput([rows()]).error!,
+      "http://localhost/orders",
+      "stream script in src/pages/orders.html:3",
+    );
+    expect(message).toContain(
+      "returned an array holding a generator at [0], which is not markup",
+    );
+    expect(message).toContain("async function*");
+    expect(message).toContain("yield*");
+  });
+});
+
+describe("the message for a yielded value", () => {
+  it("says yielded, names what a script yields, and words the fix for a yield", () => {
+    const message = serverScriptOutputErrorMessage(
+      serverScriptOutput({}).error!,
+      "http://localhost/orders",
+      "stream script in src/pages/orders.html:3",
+      { yielded: true },
+    );
+    expect(message).toContain(
+      "The stream script in src/pages/orders.html:3 yielded an object ([object Object]), which is not markup.",
+    );
+    expect(message).toContain(
+      "yields a string, an html`...` value, or an array of them",
+    );
+    expect(message).toContain("Yield markup built from its fields");
+    expect(message).not.toContain("returned");
+  });
+
+  it("a yielded generator is told to delegate with yield*", () => {
+    async function* rows() {
+      yield "<li>x</li>";
+    }
+    const message = serverScriptOutputErrorMessage(
+      serverScriptOutput(rows()).error!,
+      "http://localhost/orders",
+      undefined,
+      { yielded: true },
+    );
+    expect(message).toContain("The script yielded a generator");
+    expect(message).toContain("yield* rows()");
+  });
+
+  it("a yielded Promise is told to await it before the yield", () => {
+    const message = serverScriptOutputErrorMessage(
+      serverScriptOutput(Promise.resolve("x")).error!,
+      "http://localhost/orders",
+      undefined,
+      { yielded: true },
+    );
+    expect(message).toContain("yielded a Promise");
+    expect(message).toContain("yield await");
+  });
+
+  it("in production it says the value was skipped, not that the slot is empty", () => {
+    const message = serverScriptOutputErrorMessage(
+      serverScriptOutput({}).error!,
+      "http://localhost/orders",
+      undefined,
+      { yielded: true, production: true },
+    );
+    expect(message).toContain("That value is skipped");
+    expect(message).not.toContain("The slot is empty");
+    expect(message).toContain("once");
+  });
+});
+
 describe("server-script-output module", () => {
   it("is portable: no node: imports (the Worker classifies with it)", () => {
     const source = readFileSync(

@@ -83,10 +83,12 @@ import type {
   ComponentManifest,
   ManifestEntry,
 } from "./component-manifest-file.ts";
-import type {
-  ExecutionPlan,
-  ScriptJobRunner,
-  ScriptMode,
+import {
+  collectScriptJobOutput,
+  type ExecutionPlan,
+  type ScriptJobRunner,
+  type ScriptOutputRunner,
+  type ScriptMode,
 } from "./request-execution.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
@@ -683,11 +685,21 @@ export const prepareRenderer = (
  * render: a static site, or one whose components are all unsupported, pays
  * nothing. One wrapper serves one request.
  */
-export const wrapRunner = (
+export function wrapRunner(
   run: ScriptJobRunner,
   plan: ExecutionPlan,
   host: RenderHost,
-): ScriptJobRunner => {
+): ScriptJobRunner;
+export function wrapRunner(
+  run: ScriptOutputRunner,
+  plan: ExecutionPlan,
+  host: RenderHost,
+): ScriptOutputRunner;
+export function wrapRunner(
+  run: ScriptOutputRunner,
+  plan: ExecutionPlan,
+  host: RenderHost,
+): ScriptOutputRunner {
   const manifest = host.manifest;
   if (!manifestHasComponents(manifest)) return run;
   const list = componentListFor(manifest);
@@ -1109,25 +1121,50 @@ export const wrapRunner = (
       release = resolve;
     });
     const started = Date.now();
-    // The render's own signal for this job's nested scripts: the request's
-    // abort reaches them through it, and a failure aborts the siblings
-    // still running, since the job's slot is decided without them.
-    const render = new AbortController();
-    const forwardAbort = () => render.abort(signal.reason);
-    try {
-      const output = await run(id, signal);
+    // The controllers of the renders in flight for this job (one, or one
+    // per chunk of a job that yields): the request's abort reaches each
+    // render's nested scripts through them.
+    const renders = new Set<AbortController>();
+    const forwardAbort = () => {
+      for (const render of renders) render.abort(signal.reason);
+    };
+    let linked = false;
+    const finish = () => {
+      signal.removeEventListener("abort", forwardAbort);
+      release();
+    };
+    /**
+     * Render one output of the job: all of it, or one chunk of a job that
+     * yields. `key` salts the instance ids and `since` is when the budget
+     * its nested scripts share began.
+     */
+    const renderOutput = async (
+      output: string,
+      key: string,
+      since: number,
+    ): Promise<string> => {
       if (!output.includes("<")) return output;
+      // The render's own signal for this output's nested scripts: a failure
+      // aborts the siblings still running, since the output is decided
+      // without them, and never the nested scripts of a later chunk.
+      const render = new AbortController();
       if (signal.aborted) render.abort(signal.reason);
-      else signal.addEventListener("abort", forwardAbort, { once: true });
+      else {
+        renders.add(render);
+        if (!linked) {
+          linked = true;
+          signal.addEventListener("abort", forwardAbort, { once: true });
+        }
+      }
       let fragment: RenderedFragment;
       try {
         fragment = await renderFragment(
           output,
-          id,
+          key,
           mode,
           0,
           render.signal,
-          started,
+          since,
           manifest.minifyHtml
             ? (segmentContextsFor(plan).get(id) ?? DOCUMENT_FRAGMENT_CONTEXT)
             : DOCUMENT_FRAGMENT_CONTEXT,
@@ -1136,7 +1173,7 @@ export const wrapRunner = (
         render.abort();
         // D4.6: a render failure is a failure of this job's output, so the
         // host's onServerScriptError policy decides it, as for a script that
-        // throws. Under warn and ignore the whole job's slot is empty: a
+        // throws. Under warn and ignore the whole output is empty: a
         // partial render (a nested job's output without its parent) is
         // never sent. A nested job's own failure already went through the
         // policy in runComponentJob and reaches here only as its throw.
@@ -1144,13 +1181,83 @@ export const wrapRunner = (
           throw error;
         host.onRenderError(error);
         return "";
+      } finally {
+        renders.delete(render);
       }
       if (fragment.used.length === 0) return fragment.html;
       await previous;
       return decideCss(mode, fragment.used) + fragment.html;
+    };
+    let handedOver = false;
+    try {
+      const output = await run(id, signal);
+      if (typeof output === "string")
+        return await renderOutput(output, id, started);
+      // A `server` job is never sent in pieces, so its chunks are joined
+      // and rendered as the one output they are: a tag may span two yields,
+      // and the budgets are those of a returned output.
+      if (mode === "server")
+        return await renderOutput(
+          await collectScriptJobOutput(output),
+          id,
+          started,
+        );
+      // A job that yields: each chunk is rendered on its own, as a returned
+      // output is, so every chunk must hold whole tags. The first chunk is
+      // keyed like a returned output and each later one by its position, so
+      // ids are the same on every host and none is salted against the last.
+      // A chunk's nested scripts get the script timeout from when the chunk
+      // arrived: the job's own budget is spent producing chunks, and a long
+      // list is not cut off by the time its earlier rows took. The job
+      // keeps its place in the stylesheet chain until its last chunk, so a
+      // component's stylesheet still lands before its first instance.
+      const inner = output[Symbol.asyncIterator]();
+      handedOver = true;
+      let index = 0;
+      let ended = false;
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        finish();
+      };
+      const closeInner = async () => {
+        try {
+          await inner.return?.();
+        } catch {
+          /* a return() that fails has nothing left to release */
+        }
+      };
+      const done: IteratorResult<string> = { done: true, value: undefined };
+      const chunks: AsyncIterator<string> = {
+        async next() {
+          if (ended) return done;
+          try {
+            for (;;) {
+              const step = await inner.next();
+              if (step.done) {
+                end();
+                return done;
+              }
+              const key = index === 0 ? id : `${id}+${index}`;
+              index++;
+              const html = await renderOutput(step.value, key, Date.now());
+              if (html) return { done: false, value: html };
+            }
+          } catch (error) {
+            end();
+            void closeInner();
+            throw error;
+          }
+        },
+        async return() {
+          end();
+          await closeInner();
+          return done;
+        },
+      };
+      return { [Symbol.asyncIterator]: () => chunks };
     } finally {
-      signal.removeEventListener("abort", forwardAbort);
-      release();
+      if (!handedOver) finish();
     }
   };
-};
+}

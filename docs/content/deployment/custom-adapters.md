@@ -190,6 +190,7 @@ import { Readable } from "node:stream";
 import {
   InvalidApiPathError,
   applyOutputScope,
+  collectScriptJobOutput,
   composeBufferedResponse,
   createNameHasher,
   decodeOutputScope,
@@ -204,6 +205,7 @@ import {
   pageLookupCandidates,
   renderFailureMessage,
   requestRoutePath,
+  scriptChunkOutput,
   scriptTimeoutError,
   serverScriptOutput,
   serverScriptOutputErrorMessage,
@@ -220,56 +222,80 @@ const platform = { name: "custom-node" };
 /** Scripts whose refused return value was already logged. */
 const warnedRefused = new WeakSet();
 
-/** Run one script job under the deadline and the onServerScriptError policy. */
-const runJob = async (job, load, request, context, signal, timeoutMs) => {
-  const result = await invokeLoadedWithDeadline(
+/**
+ * Run one script job under the deadline and the onServerScriptError policy.
+ * A script that returns gives its output string. A script that yields (a
+ * generator) gives an async iterable of the strings its values print.
+ */
+const runJobOutput = async (job, load, request, context, signal, timeoutMs) => {
+  const invoked = await invokeLoadedWithDeadline(
     load,
     (mod, { signal: jobSignal }) =>
       mod.default(request, context, { signal: jobSignal }),
-    { timeoutMs, signal, timeoutError: scriptTimeoutError },
+    // chunks: a returned generator becomes `source`, pulled under the same
+    // deadline (which counts only the script's own time) and signal.
+    { timeoutMs, signal, timeoutError: scriptTimeoutError, chunks: true },
   );
-  let printed;
-  let failure = result.error;
-  if (result.ok) {
-    try {
-      // What the value prints, by the rule every host uses: an array joined
-      // with no separator; an object, a Response or an array of Promises refused.
-      printed = serverScriptOutput(result.value);
-    } catch (error) {
-      // The author's own toString threw while printing: the script failed.
-      failure = error;
-    }
-  }
-  if (printed) {
-    if (printed.error) {
-      // Production: an empty slot and one warning per script.
-      if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
-        warnedRefused.add(job);
-        console.warn(
-          serverScriptOutputErrorMessage(
-            printed.error,
-            request.url,
-            job.owner ?? `${job.mode} script`,
-            { production: true },
-          ),
-        );
+
+  /** What one settled call, or one pull from a script that yields, prints. */
+  const settle = (result, yielded) => {
+    let printed;
+    let failure = result.error;
+    if (result.ok) {
+      try {
+        // What the value prints, by the rule every host uses: an array joined
+        // with no separator; an object, a Response or an array of Promises refused.
+        printed = serverScriptOutput(result.value);
+      } catch (error) {
+        // The author's own toString threw while printing: the script failed.
+        failure = error;
       }
-      return "";
     }
-    const output = stripAnsiEscapeCodes(printed.text);
-    // A component's script gets the component's scoped class names.
-    const scope = decodeOutputScope(job.outputScope);
-    return scope ? applyOutputScope(output, scope) : output;
-  }
-  // The client went away: nothing is delivered, nothing to report.
-  if (result.aborted && !result.timedOut) return "";
-  const message =
-    `[bascik] server script error at "${new URL(request.url).pathname}":\n` +
-    `${failure?.stack ?? failure}\n    in the ${job.owner}`;
-  if (graph.onServerScriptError === "error") throw new Error(message);
-  if (graph.onServerScriptError === "warn") console.warn(message);
-  return "";
+    if (printed) {
+      if (printed.error) {
+        // Production: an empty slot (or one skipped value) and one warning per script.
+        if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
+          warnedRefused.add(job);
+          console.warn(
+            serverScriptOutputErrorMessage(
+              printed.error,
+              request.url,
+              job.owner ?? `${job.mode} script`,
+              { production: true, yielded },
+            ),
+          );
+        }
+        return "";
+      }
+      const output = stripAnsiEscapeCodes(printed.text);
+      // A component's script gets the component's scoped class names.
+      const scope = decodeOutputScope(job.outputScope);
+      return scope ? applyOutputScope(output, scope) : output;
+    }
+    // The client went away: nothing is delivered, nothing to report.
+    if (result.aborted && !result.timedOut) return "";
+    const message =
+      `[bascik] server script error at "${new URL(request.url).pathname}":\n` +
+      `${failure?.stack ?? failure}\n    in the ${job.owner}`;
+    if (graph.onServerScriptError === "error") throw new Error(message);
+    if (graph.onServerScriptError === "warn") console.warn(message);
+    return "";
+  };
+
+  // A script that yields: each value is settled like a returned one, and a
+  // failed pull (a throw, the deadline, the client leaving) like a failed call.
+  if (invoked.ok && invoked.source)
+    return scriptChunkOutput(
+      invoked.source,
+      (value) => settle({ ok: true, value }, true),
+      (failed) => settle(failed, true),
+    );
+  return settle(invoked, false);
 };
+
+/** The same job as one string: a yielding script's values joined. */
+const runJob = async (...args) =>
+  collectScriptJobOutput(await runJobOutput(...args));
 
 /** The page as an execution plan, script segments keyed by their index. */
 const planFor = (page) => {
@@ -294,7 +320,9 @@ const runnerFor = (page, plan, request, context) => {
   const run = (index, signal) => {
     const id = page.segments[Number(index)].id;
     const load = pageJobs[`${page.path}#${id}`];
-    return runJob(
+    // Page jobs keep a yielding script's chunks apart, so a stream script
+    // is sent one yielded value at a time.
+    return runJobOutput(
       page.jobs[id],
       load,
       request,
@@ -849,16 +877,16 @@ export interface SiteGraphApiRoute {
 
 Adapters bundle `@bascik/bascik/runtime` into their function entry points. It uses only Web APIs (`Request`, `Response`, `ReadableStream`, `TextEncoder`, `AbortSignal`), so it runs on Node, Cloudflare Workers, Deno and other Web-standard runtimes. It does not route a request by itself: the host decides which page or API route a request is for and calls these parts, as the [tutorial handler](#step-4-write-the-request-handler) and the [Cloudflare adapter source](https://github.com/bascikdev/bascik/tree/main/adapters/cloudflare/src) do.
 
-| Area                | Exports                                                                                                                                                                                                                                                                               |
-| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Page composition    | `composeBufferedResponse(plan, run, signal)`, `streamComposedResponse(plan, run, writer, options)`, and the `ExecutionPlan`, `ExecutionSegment` and `ScriptJobRunner` types. A runner resolves one script job to its output; throwing fails the job.                                  |
-| Deadlines           | `invokeLoadedWithDeadline(load, call, options)`, `invokeWithDeadline(call, options)`, `scriptTimeoutError(ms)`, `createAbortGate(signal)`. A fired deadline or client abort wins over a late result.                                                                                  |
-| API routes          | `matchApiRoute(routes, pathname, rawPathname)`, `dispatchApiHandler(mod, request, context, options)`, `allowHeaderFor(mod)`, `InvalidApiPathError`, and the `ApiHandlerContext` and `PlatformContext` types.                                                                          |
-| Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `isPrivatePathname(pathname, base, hideDotfiles)`, `GENERATED_CONTROL_PATHS`.                                                                  |
-| Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`. |
-| Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                  |
-| Script output       | `serverScriptOutput(value)` (the text a returned value prints, or why it is refused), `serverScriptOutputErrorMessage(error, url, owner, options)`, `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                    |
-| Content policy      | `contentSecurityPolicyHeader(policy, hashes)`, which returns the header name and value for one HTML response, from the graph's content security policy and the route's hashes.                                                                                                        |
+| Area                | Exports                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Page composition    | `composeBufferedResponse(plan, run, signal)`, `streamComposedResponse(plan, run, writer, options)`, `collectScriptJobOutput(output)`, and the `ExecutionPlan`, `ExecutionSegment`, `ScriptJobRunner`, `ScriptOutputRunner` and `ScriptJobOutput` types. A runner resolves one script job to its output: a string, or for a script that yields, an async iterable of chunks (`ScriptOutputRunner`). Throwing fails the job. |
+| Deadlines           | `invokeLoadedWithDeadline(load, call, options)`, `invokeWithDeadline(call, options)`, `scriptTimeoutError(ms)`, `createAbortGate(signal)`. A fired deadline or client abort wins over a late result. With the chunks option a returned generator becomes the result's source, and `scriptChunkOutput(source, print, fail)` turns it into a job's chunks.                                                                   |
+| API routes          | `matchApiRoute(routes, pathname, rawPathname)`, `dispatchApiHandler(mod, request, context, options)`, `allowHeaderFor(mod)`, `InvalidApiPathError`, and the `ApiHandlerContext` and `PlatformContext` types.                                                                                                                                                                                                               |
+| Paths               | `pageLookupCandidates(pathname)`, `normalizePagePathname(pathname)`, `isUnsafePathname(pathname)`, `hasHiddenSegment(pathname, base)`, `isPrivatePathname(pathname, base, hideDotfiles)`, `GENERATED_CONTROL_PATHS`.                                                                                                                                                                                                       |
+| Responses           | `dynamicPageHeaders(options)`, `errorResponse(status, body, options)`, `internalErrorPage(custom500, options)`, `mergeHandlerHeaders(headers, options)`, `stripRepresentationHeaders(headers)`, `SECURITY_HEADERS`, `resolveResponseSecurity(security)`, `DEFAULT_RESPONSE_SECURITY`.                                                                                                                                      |
+| Component rendering | `wrapRunner(run, plan, host)`, `RenderHost`, `requestRoutePath(url)`, `renderFailureMessage(error, url)`, `RequestRenderError`, `REQUEST_RENDER_LIMITS`, `createNameHasher(digest)`.                                                                                                                                                                                                                                       |
+| Script output       | `serverScriptOutput(value)` (the text a returned value prints, or why it is refused), `serverScriptOutputErrorMessage(error, url, owner, options)`, `applyOutputScope(output, scope)`, `decodeOutputScope(encoded)`, `stripAnsiEscapeCodes(text)`.                                                                                                                                                                         |
+| Content policy      | `contentSecurityPolicyHeader(policy, hashes)`, which returns the header name and value for one HTML response, from the graph's content security policy and the route's hashes.                                                                                                                                                                                                                                             |
 
 A buffered page response for a page without stream scripts, given a `page` from `graph.pages` and a `run` like the tutorial's:
 

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <fixture-head data-bascik-prop-title="Bascik · Stream rows" />
+    <style>
+      /* The real list sits on top of the skeleton list in one grid cell, so
+         each row that arrives covers one skeleton row. */
+      .rows-card {
+        display: grid;
+        margin-top: 20px;
+      }
+
+      .rows-card > * {
+        grid-area: 1 / 1;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .row,
+      .row-skeleton {
+        block-size: 64px;
+        padding: 10px 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--r-sm);
+      }
+
+      .row-skeleton {
+        background: var(--surface);
+        animation: skeleton-pulse 1.5s ease-in-out infinite;
+      }
+
+      .row {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+        background: var(--elevated);
+        border-color: var(--accent-border);
+        animation: row-appear 0.3s ease-out;
+      }
+
+      .row strong,
+      .row span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .row span {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+      }
+
+      /* The script's last yield: hide the skeleton rows that are left. */
+      .rows-card:has(.rows-done) .row-skeletons {
+        display: none;
+      }
+
+      @keyframes row-appear {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .row,
+        .row-skeleton {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <fixture-nav />
+    <header class="hero">
+      <h1>Stream rows</h1>
+      <p class="subtitle">One script, one row per yield.</p>
+    </header>
+    <fixture-footer />
+    <main>
+      <p class="subtitle">
+        One <code>&lt;script data-bascik-stream&gt;</code> written as an async
+        generator yields a row each time its slow source produces one. The
+        shell, the footer and the skeleton rows arrive first; every yielded row
+        is sent at once and covers one skeleton, with no client JavaScript.
+      </p>
+      <section
+        class="rows-card"
+        aria-busy="true"
+        data-testid="stream-rows-card"
+      >
+        <ul
+          class="row-skeletons"
+          role="status"
+          aria-label="Loading new arrivals"
+          data-testid="stream-rows-skeletons"
+        >
+          <li class="row-skeleton"></li>
+          <li class="row-skeleton"></li>
+          <li class="row-skeleton"></li>
+          <li class="row-skeleton"></li>
+          <li class="row-skeleton"></li>
+        </ul>
+        <ol class="rows" data-testid="stream-rows-list">
+          <script data-bascik-stream type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+
+            const books = [
+              { title: "Practical Type Systems", author: "Ada Okafor" },
+              { title: "Testing at the Edges", author: "Priya Nair" },
+              { title: "Refactoring the Monolith", author: "Grace Lin" },
+              { title: "Shipping Small Changes", author: "Sam Rivera" },
+              { title: "Pairing & Code Review", author: "Jonah Weiss" },
+            ];
+
+            // Stands in for a slow source: a database cursor, a paged API.
+            const wait = (ms: number, signal?: AbortSignal) =>
+              new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, ms);
+                signal?.addEventListener(
+                  "abort",
+                  () => {
+                    clearTimeout(timer);
+                    reject(signal.reason);
+                  },
+                  { once: true },
+                );
+              });
+
+            export default async function* (
+              request: Request,
+              _context: unknown,
+              { signal }: { signal?: AbortSignal },
+            ) {
+              const requested = Number(
+                new URL(request.url).searchParams.get("delay") ?? 400,
+              );
+              const delay = Number.isFinite(requested)
+                ? Math.min(Math.max(requested, 0), 5000)
+                : 400;
+              for (const book of books) {
+                if (delay > 0) await wait(delay, signal);
+                yield html`<li class="row" data-testid="stream-rows-row">
+                  <strong>${book.title}</strong><span>${book.author}</span>
+                </li>`;
+              }
+              yield html`<li
+                class="rows-done"
+                hidden
+                data-testid="stream-rows-done"
+              ></li>`;
+            }
+          </script>
+        </ol>
+      </section>
+    </main>
+  </body>
+</html>

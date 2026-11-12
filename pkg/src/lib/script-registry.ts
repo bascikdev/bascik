@@ -54,6 +54,8 @@ import { BascikConfig } from "./config.ts";
 import {
   invokeLoadedWithDeadline,
   scriptTimeoutError,
+  type InvokeResult,
+  type ScriptChunkSource,
 } from "./request-execution.ts";
 
 export interface LoadedScriptModule {
@@ -154,6 +156,11 @@ export interface ScriptExecutionOptions {
   lineOffset?: number;
   /** Custom handler name inside the module to invoke. Defaults to 'default'. */
   exportName?: string;
+  /**
+   * A returned generator becomes `source` instead of `value` (a server or
+   * stream script that yields); see `InvokeOptions.chunks`.
+   */
+  chunks?: boolean;
 }
 
 export interface ScriptExecutionResult<T = unknown> {
@@ -164,7 +171,31 @@ export interface ScriptExecutionResult<T = unknown> {
   /** The upstream signal aborted before the script settled (not a timeout). */
   aborted?: boolean;
   isNetworkReset?: boolean;
+  /**
+   * Present instead of `value` when the handler returned a generator and
+   * `chunks` was set. A failed pull is put in this result's shape by
+   * `scriptFailureResult`. The caller drains or closes it.
+   */
+  source?: ScriptChunkSource;
 }
+
+/**
+ * A failed invocation, or a failed pull from a yielding script, in the
+ * registry's result shape. The error is returned, not logged: the caller
+ * decides whether a failure is reported (`onServerScriptError`), so logging
+ * here printed every error twice and ignored `onServerScriptError: "ignore"`.
+ */
+export const scriptFailureResult = <T = unknown>(
+  result: InvokeResult<unknown>,
+): ScriptExecutionResult<T> => ({
+  ok: false,
+  error: result.error,
+  timedOut: result.timedOut,
+  ...(result.aborted ? { aborted: true } : {}),
+  // The raw rejection, not the wrapped Error: a non-Error rejection keeps
+  // only its String() form in `error` and would lose its reset `code`.
+  isNetworkReset: isNetworkResetError(result.thrown),
+});
 
 export interface ScriptRegistryOptions {
   isDev?: boolean;
@@ -389,21 +420,14 @@ export class ScriptRegistry {
         clock: this.clock,
         timeoutError: scriptTimeoutError,
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.chunks ? { chunks: true } : {}),
       },
     );
-    if (result.ok) return { ok: true, value: result.value as T };
-    // The error is returned, not logged: the caller decides whether a failure
-    // is reported (`onServerScriptError`), so logging here printed every error
-    // twice and ignored `onServerScriptError: "ignore"`.
-    return {
-      ok: false,
-      error: result.error,
-      timedOut: result.timedOut,
-      ...(result.aborted ? { aborted: true } : {}),
-      // The raw rejection, not the wrapped Error: a non-Error rejection keeps
-      // only its String() form in `error` and would lose its reset `code`.
-      isNetworkReset: isNetworkResetError(result.thrown),
-    };
+    if (result.ok)
+      return result.source
+        ? { ok: true, source: result.source }
+        : { ok: true, value: result.value as T };
+    return scriptFailureResult<T>(result);
   }
 }
 

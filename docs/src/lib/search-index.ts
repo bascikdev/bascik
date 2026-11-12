@@ -66,8 +66,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * 1.47 MB: the pre-launch audit adds the Astro comparison, five FAQ entries, the How-to and
  * Tooling landing pages, the custom adapter dev hook and the Netlify rows (the index measures
  * 1,455,307 bytes).
+ * 1.49 MB: stream scripts that yield add a section with four recipes to the Stream Scripts page,
+ * and the custom adapter tutorial's job runner handles them (the index measures 1,475,024 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_470_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_490_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;

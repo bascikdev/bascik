@@ -98,7 +98,7 @@ Run this on Cloudflare Workers: the [mixed server and stream page](https://cloud
 
 ## Rules for every script
 
-- **A default export.** Bascik calls the module's default export and uses what it returns, or what its promise resolves to.
+- **A default export.** Bascik calls the module's default export and uses what it returns, or what its promise resolves to. A server or stream script may be a generator instead; a stream script that yields [sends each value as it is yielded](/scripts/stream#yield-rows-as-they-arrive).
 - **Imports.** Top-level `import` and `await` work. Relative imports resolve from the file the script is written in, `@/` resolves from the import root, and installed npm packages resolve as usual. See [Script Imports](/scripts/imports).
 - **TypeScript.** A script is TypeScript when its tag is marked `type="text/typescript"` or its `src` names a `.ts` or `.mts` file. Bascik strips the types before it runs, so errors name your source lines. See [TypeScript](/scripts/build#typescript).
 - **Escaping.** Build, server, and stream scripts return HTML. Build it with `html` from `@bascik/bascik/html`, which escapes each value for where it lands. See [Security](/scripts/security).

@@ -930,3 +930,250 @@ describe("createCloudflareWorker: run_worker_first sends the static files' heade
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 });
+
+describe("createCloudflareWorker: a script that yields", () => {
+  /** `<ul>` + one stream job + `</ul><footer>`, as a list page is written. */
+  const listPage = (
+    handler: unknown,
+    mode: GraphScriptJob["mode"] = "stream",
+  ): GraphPage => ({
+    path: "/orders",
+    is404: false,
+    segments: [
+      { kind: "static", text: "<ul>" },
+      { kind: "script", id: "rows" },
+      { kind: "static", text: "</ul><footer>foot</footer>" },
+    ],
+    jobs: { rows: job("rows", handler, mode) },
+  });
+
+  /** Every read of the body as its own string, so chunk boundaries show. */
+  const reads = async (res: Response): Promise<string[]> => {
+    const decoder = new TextDecoder();
+    const out: string[] = [];
+    const reader = res.body!.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return out;
+      out.push(decoder.decode(value));
+    }
+  };
+
+  it("a stream script that is an async generator sends each yielded value as its own chunk", async () => {
+    const waits = ctx();
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            for (const title of ["Dune", "Emma", "Ulysses"]) {
+              await new Promise((r) => setTimeout(r, 1));
+              yield `<li>${title}</li>`;
+            }
+          }),
+        },
+      }),
+    ).fetch(get("/orders"), {}, waits);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(await reads(res)).toEqual([
+      "<ul>",
+      "<li>Dune</li>",
+      "<li>Emma</li>",
+      "<li>Ulysses</li>",
+      "</ul><footer>foot</footer>",
+    ]);
+    await Promise.all(waits.waited);
+  });
+
+  it("each yielded value is printed by the rules for a returned one, and ANSI codes are stripped per chunk", async () => {
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield ["<li>a</li>", ["<li>b</li>"]];
+            yield null;
+            yield 7;
+            yield "<li>\u001b[31mred\u001b[0m</li>";
+          }),
+        },
+      }),
+    ).fetch(get("/orders"), {}, ctx());
+    expect(await reads(res)).toEqual([
+      "<ul>",
+      "<li>a</li><li>b</li>",
+      "7",
+      "<li>red</li>",
+      "</ul><footer>foot</footer>",
+    ]);
+  });
+
+  it('a failure while yielding under "error" keeps the rows sent, completes the page and is logged once', async () => {
+    const logged: string[] = [];
+    const waits = ctx();
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>one</li>";
+            throw new Error("row two failed");
+          }),
+        },
+      }),
+      logged,
+    ).fetch(get("/orders"), {}, waits);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<ul><li>one</li></ul><footer>foot</footer>");
+    await Promise.all(waits.waited);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('[bascik] server script error at "/orders"');
+    expect(logged[0]).toContain("row two failed");
+  });
+
+  it('a failure while yielding under "ignore" logs nothing', async () => {
+    const logged: string[] = [];
+    const res = await worker(
+      graphOf({
+        onServerScriptError: "ignore",
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>one</li>";
+            throw new Error("row two failed");
+          }),
+        },
+      }),
+      logged,
+    ).fetch(get("/orders"), {}, ctx());
+    expect(await res.text()).toBe("<ul><li>one</li></ul><footer>foot</footer>");
+    expect(logged).toEqual([]);
+  });
+
+  it("misuse: a yielded value that is not markup is skipped, the rest is sent, and it is logged once per script", async () => {
+    const logged: string[] = [];
+    const w = worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>one</li>";
+            yield { title: "Dune" };
+            yield "<li>three</li>";
+          }),
+        },
+      }),
+      logged,
+    );
+    for (let i = 0; i < 2; i++) {
+      const res = await w.fetch(get("/orders"), {}, ctx());
+      expect(await res.text()).toBe(
+        "<ul><li>one</li><li>three</li></ul><footer>foot</footer>",
+      );
+    }
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("The stream script yielded an object");
+    expect(logged[0]).toContain("That value is skipped");
+  });
+
+  it("the script timeout ends a generator that stops producing; the rows sent stay and the timeout is logged", async () => {
+    const logged: string[] = [];
+    let signalAborted = false;
+    const res = await worker(
+      graphOf({
+        scriptTimeoutMs: 30,
+        pages: {
+          "/orders": listPage(async function* (
+            _request: Request,
+            _context: unknown,
+            { signal }: { signal: AbortSignal },
+          ) {
+            signal.addEventListener("abort", () => {
+              signalAborted = true;
+            });
+            yield "<li>one</li>";
+            await new Promise(() => {});
+            yield "<li>never</li>";
+          }),
+        },
+      }),
+      logged,
+    ).fetch(get("/orders"), {}, ctx());
+    expect(await res.text()).toBe("<ul><li>one</li></ul><footer>foot</footer>");
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("Script execution timed out after 30ms");
+    expect(signalAborted).toBe(true);
+  });
+
+  it("a reader that cancels closes the generator, so its finally block runs", async () => {
+    let finallyRan = false;
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            try {
+              yield "<li>one</li>";
+              yield "<li>two</li>";
+              yield "<li>three</li>";
+            } finally {
+              finallyRan = true;
+            }
+          }),
+        },
+      }),
+    ).fetch(get("/orders"), {}, ctx());
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.read();
+    await reader.cancel();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(finallyRan).toBe(true);
+  });
+
+  it("HEAD on a page whose stream script yields is buffered: the rows are joined for the content-length", async () => {
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>1</li>";
+            yield "<li>2</li>";
+          }),
+        },
+      }),
+    ).fetch(get("/orders", { method: "HEAD" }), {}, ctx());
+    expect(res.headers.get("content-length")).toBe(
+      String("<ul><li>1</li><li>2</li></ul><footer>foot</footer>".length),
+    );
+  });
+
+  it("a server script that yields is joined into a buffered page", async () => {
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>1</li>";
+            yield "<li>2</li>";
+          }, "server"),
+        },
+      }),
+    ).fetch(get("/orders"), {}, ctx());
+    expect(res.headers.get("content-length")).not.toBeNull();
+    expect(await res.text()).toBe(
+      "<ul><li>1</li><li>2</li></ul><footer>foot</footer>",
+    );
+  });
+
+  it('a server script that fails while yielding under "error" is the 500 page, never partial rows', async () => {
+    const logged: string[] = [];
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/orders": listPage(async function* () {
+            yield "<li>1</li>";
+            throw new Error("server row failed");
+          }, "server"),
+        },
+      }),
+      logged,
+    ).fetch(get("/orders"), {}, ctx());
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain("<li>1</li>");
+    expect(logged.join("\n")).toContain("server row failed");
+  });
+});

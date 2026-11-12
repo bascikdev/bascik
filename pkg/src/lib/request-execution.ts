@@ -11,7 +11,9 @@
  * loading, sockets, or Node response objects. Hosts supply:
  *
  * - an `ExecutionPlan` (immutable segments in document order),
- * - a `ScriptJobRunner` that turns a job id into its output string,
+ * - a `ScriptOutputRunner` that turns a job id into its output: a string
+ *   (a `ScriptJobRunner` does only that), or for a script that yields, an
+ *   async iterable of strings,
  * - a `StreamWriter` (or use `toReadableStream()` for a Web `Response` body),
  * - an optional `AbortSignal`, deadline clock, and error reporter.
  *
@@ -22,6 +24,9 @@
  * - `stream` jobs dispatch through a bounded lookahead window that advances
  *   with the write cursor, so a slow consumer also slows dispatch;
  * - a `stream` failure after commit is reported and written as empty;
+ * - a `stream` job that yields is written chunk by chunk, each pulled only
+ *   after the last one was written; a failure part-way is reported and the
+ *   chunks already sent stay; everywhere else its chunks are joined;
  * - an abort stops the walk and the writer is never called again.
  *
  * This module MUST stay free of `node:*` imports and of any module that
@@ -52,14 +57,43 @@ export interface ExecutionPlan {
 }
 
 /**
- * Resolve one script job to its output. Throwing is how a host signals a
- * failure the scheduler should treat as precommit (server) or postcommit
- * (stream). The runner receives the request signal so it can cancel work.
+ * What one script job prints: its markup, or, for a script that yields (an
+ * async generator), the chunks of it in order. A streamed response writes
+ * each chunk of a `stream` job as it arrives; a `server` job and a buffered
+ * response join them (`collectScriptJobOutput`).
+ */
+export type ScriptJobOutput = string | AsyncIterable<string>;
+
+/**
+ * Resolve one script job to its output string. Throwing is how a host
+ * signals a failure the scheduler should treat as precommit (server) or
+ * postcommit (stream). The runner receives the request signal so it can
+ * cancel work.
  */
 export type ScriptJobRunner = (
   id: string,
   signal: AbortSignal,
 ) => Promise<string>;
+
+/**
+ * A runner whose jobs may yield: it resolves to a string, or to an iterable
+ * of the job's chunks, which signals a failure by throwing from `next()`.
+ * Every `ScriptJobRunner` is one, so the scheduler takes either.
+ */
+export type ScriptOutputRunner = (
+  id: string,
+  signal: AbortSignal,
+) => Promise<ScriptJobOutput>;
+
+/** A job's whole output as one string: a yielding job's chunks joined with no separator. */
+export const collectScriptJobOutput = async (
+  output: ScriptJobOutput,
+): Promise<string> => {
+  if (typeof output === "string") return output;
+  let joined = "";
+  for await (const chunk of output) joined += chunk;
+  return joined;
+};
 
 /** Where streamed bytes go. Resolving the promise is the demand signal. */
 export interface StreamWriter {
@@ -94,12 +128,14 @@ const concat = (parts: Uint8Array[]): Uint8Array => {
  */
 export const composeBufferedResponse = async (
   plan: ExecutionPlan,
-  run: ScriptJobRunner,
+  run: ScriptOutputRunner,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<Uint8Array> => {
   const outputs = await Promise.all(
     plan.segments.map((segment) =>
-      segment.kind === "script" ? run(segment.id, signal) : undefined,
+      segment.kind === "script"
+        ? run(segment.id, signal).then(collectScriptJobOutput)
+        : undefined,
     ),
   );
   return concat(
@@ -114,7 +150,10 @@ export const composeBufferedResponse = async (
 export interface StreamComposeOptions {
   /** Upstream cancellation (client disconnect, host deadline). */
   signal?: AbortSignal;
-  /** Called once per `stream` job that fails after commit. */
+  /**
+   * Called once per `stream` job that fails after commit. A job that yields
+   * and fails part-way is reported here too; its earlier chunks were sent.
+   */
   onStreamError?: (error: unknown, id: string) => void;
 }
 
@@ -146,7 +185,7 @@ export interface ComposedStreamer {
  */
 export const streamComposedResponse = (
   plan: ExecutionPlan,
-  run: ScriptJobRunner,
+  run: ScriptOutputRunner,
   writer: StreamWriter | undefined,
   options: StreamComposeOptions = {},
 ): ComposedStreamer => {
@@ -166,7 +205,10 @@ export const streamComposedResponse = (
   for (let i = 0; i < plan.segments.length; i++) {
     const segment = plan.segments[i];
     if (segment.kind === "script" && segment.mode === "server") {
-      serverOutputs.set(i, run(segment.id, signal));
+      serverOutputs.set(
+        i,
+        run(segment.id, signal).then(collectScriptJobOutput),
+      );
     }
   }
   const ready = Promise.all(serverOutputs.values()).then(() => undefined);
@@ -179,15 +221,81 @@ export const streamComposedResponse = (
   // The writer is chosen at commit time for the ReadableStream form.
   let activeWriter: StreamWriter | undefined = writer;
 
+  /**
+   * A dispatched stream job that yields. Its first chunk is pulled at
+   * dispatch, so a job ahead of the write cursor overlaps the one being
+   * written the way a job that returns does, and holds at most that one
+   * chunk until its turn.
+   */
+  interface ChunkedOutput {
+    iterator: AsyncIterator<string>;
+    first: Promise<IteratorResult<string>>;
+    /** Set once the iterator finished, failed or was closed. */
+    settled: boolean;
+  }
+
+  /** Ask the job to stop: an async generator runs its `finally` blocks. */
+  const closeChunked = (chunked: ChunkedOutput): void => {
+    if (chunked.settled) return;
+    chunked.settled = true;
+    try {
+      void Promise.resolve(chunked.iterator.return?.()).catch(() => {});
+    } catch {
+      /* a return() that throws has nothing left to release */
+    }
+  };
+
   const runStreamJob = async (
     segment: ScriptExecutionSegment,
-  ): Promise<string> => {
+  ): Promise<string | ChunkedOutput> => {
     try {
-      return await run(segment.id, signal);
+      const output = await run(segment.id, signal);
+      if (typeof output === "string") return output;
+      const iterator = output[Symbol.asyncIterator]();
+      const first = iterator.next();
+      // Observed here so a failure before the job's turn is not an
+      // unhandled rejection; the walk awaits `first` again and reports it.
+      first.catch(() => {});
+      return { iterator, first, settled: false };
     } catch (err) {
       if (signal.aborted) return "";
       options.onStreamError?.(err, segment.id);
       return "";
+    }
+  };
+
+  /**
+   * Write a yielding job's chunks in order. The next chunk is pulled only
+   * after the last one was written, so a stalled consumer also stalls the
+   * script. A failure keeps what was sent and ends the job's slot.
+   */
+  const writeChunked = async (
+    chunked: ChunkedOutput,
+    id: string,
+    sink: StreamWriter,
+  ): Promise<void> => {
+    let pending = chunked.first;
+    try {
+      for (;;) {
+        let step: IteratorResult<string>;
+        try {
+          step = await pending;
+        } catch (err) {
+          chunked.settled = true;
+          if (!signal.aborted) options.onStreamError?.(err, id);
+          return;
+        }
+        if (step.done) {
+          chunked.settled = true;
+          return;
+        }
+        if (signal.aborted) return;
+        if (step.value) await sink.write(encoder.encode(step.value));
+        if (signal.aborted) return;
+        pending = chunked.iterator.next();
+      }
+    } finally {
+      closeChunked(chunked);
     }
   };
 
@@ -207,7 +315,7 @@ export const streamComposedResponse = (
       if (segment.kind === "script" && segment.mode === "stream")
         streamIndices.push(i);
     }
-    const streamOutputs = new Map<number, Promise<string>>();
+    const streamOutputs = new Map<number, Promise<string | ChunkedOutput>>();
     let nextDue = 0;
     let nextToDispatch = 0;
     const dispatchWindow = (cursor: number): void => {
@@ -227,19 +335,33 @@ export const streamComposedResponse = (
       }
     };
 
-    for (let i = 0; i < plan.segments.length; i++) {
-      if (signal.aborted) return;
-      dispatchWindow(i);
-      const segment = plan.segments[i];
-      if (segment.kind === "static") {
-        await sink.write(segment.bytes);
-        continue;
+    try {
+      for (let i = 0; i < plan.segments.length; i++) {
+        if (signal.aborted) return;
+        dispatchWindow(i);
+        const segment = plan.segments[i];
+        if (segment.kind === "static") {
+          await sink.write(segment.bytes);
+          continue;
+        }
+        const output = await (segment.mode === "server"
+          ? serverOutputs.get(i)!
+          : streamOutputs.get(i)!);
+        if (signal.aborted) return;
+        if (typeof output === "string") {
+          if (output) await sink.write(encoder.encode(output));
+        } else {
+          await writeChunked(output, segment.id, sink);
+        }
       }
-      const output = await (segment.mode === "server"
-        ? serverOutputs.get(i)!
-        : streamOutputs.get(i)!);
-      if (signal.aborted) return;
-      if (output) await sink.write(encoder.encode(output));
+    } finally {
+      // A walk that stopped early (an abort, a failed write) leaves jobs it
+      // dispatched ahead of the cursor: a yielding one is closed, so it
+      // releases what it holds instead of waiting at its first yield forever.
+      for (const dispatched of streamOutputs.values())
+        void dispatched.then((output) => {
+          if (typeof output !== "string") closeChunked(output);
+        });
     }
   })();
 
@@ -317,6 +439,11 @@ export const streamComposedResponse = (
 export interface DeadlineClock {
   setTimeout(callback: () => void, delayMs: number): unknown;
   clearTimeout(handle: unknown): void;
+  /**
+   * The current time in milliseconds, read to charge a yielding script only
+   * for the time it runs (`InvokeOptions.chunks`). `Date.now()` when absent.
+   */
+  now?(): number;
 }
 
 const ambientClock: DeadlineClock = {
@@ -328,6 +455,72 @@ export interface InvokeOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   clock?: DeadlineClock;
+  /**
+   * Treat a returned generator (see `scriptChunkIterator`) as a source of
+   * chunks: the result carries `source` instead of `value`, and the deadline
+   * and the handler's signal stay live until the source finishes or is
+   * closed. Server and stream scripts set it; an API route does not.
+   */
+  chunks?: boolean;
+}
+
+/**
+ * The iterator of a value a script yields its output from, or `undefined`
+ * for any other value: an async iterable (an async generator object, or
+ * anything with `Symbol.asyncIterator`) or a sync generator object. Other
+ * sync iterables (a string, an array, a Map) are values, never sources.
+ */
+export const scriptChunkIterator = (
+  value: unknown,
+): AsyncIterator<unknown> | Iterator<unknown> | undefined => {
+  if (value === null || typeof value !== "object") return undefined;
+  try {
+    const source = value as {
+      [Symbol.asyncIterator]?: unknown;
+      [Symbol.iterator]?: unknown;
+    };
+    const asyncIterator = source[Symbol.asyncIterator];
+    if (typeof asyncIterator === "function")
+      return (asyncIterator as () => AsyncIterator<unknown>).call(value);
+    if (
+      Object.prototype.toString.call(value) === "[object Generator]" &&
+      typeof source[Symbol.iterator] === "function"
+    )
+      return (source[Symbol.iterator] as () => Iterator<unknown>).call(value);
+  } catch {
+    // A hostile getter: the value is classified as whatever else it is.
+  }
+  return undefined;
+};
+
+/** One pull from a `ScriptChunkSource`. */
+export interface ScriptChunk {
+  done: boolean;
+  value?: unknown;
+}
+
+/**
+ * A yielding script, pulled one chunk at a time under the invocation's
+ * deadline and signal. The deadline counts only the time a pull is pending
+ * (the script's own time), never the time between pulls, so a consumer that
+ * is slow to accept chunks does not time the script out.
+ */
+export interface ScriptChunkSource {
+  /**
+   * The next chunk. A failure (a throw, the deadline, an upstream abort)
+   * settles as a not-`ok` result, as an invocation does, and finishes the
+   * source; after that, and after the last chunk, every pull is `done`.
+   * A value the generator returns (not `undefined`) is its last chunk.
+   * One pull is pending at a time.
+   */
+  next(): Promise<InvokeResult<ScriptChunk>>;
+  /**
+   * Stop early: the handler's signal aborts, the generator is asked to
+   * return (its `finally` blocks run), and the deadline and the upstream
+   * link are released. Safe to call more than once, and after the source
+   * finished, when it does nothing.
+   */
+  close(): void;
 }
 
 export interface InvokeResult<T> {
@@ -344,6 +537,11 @@ export interface InvokeResult<T> {
   thrown?: unknown;
   timedOut: boolean;
   aborted: boolean;
+  /**
+   * Present instead of `value` when `ok`, `InvokeOptions.chunks` was set and
+   * the handler returned a generator. The caller must drain it or close it.
+   */
+  source?: ScriptChunkSource;
 }
 
 const toError = (raw: unknown): Error =>
@@ -352,6 +550,10 @@ const toError = (raw: unknown): Error =>
 /** The message a timed-out server, stream or component script reports on every host. */
 export const scriptTimeoutError = (timeoutMs: number): Error =>
   new Error(`Script execution timed out after ${timeoutMs}ms`);
+
+/** The abort reason a yielding script's signal carries when its output is closed before it finished. */
+const scriptOutputClosed = (): Error =>
+  new Error("The script's output was closed before the script finished.");
 
 const handlerTimeoutError = (timeoutMs: number): Error =>
   new Error(`Handler timed out after ${timeoutMs}ms`);
@@ -472,20 +674,63 @@ export const invokeLoadedWithDeadline = async <M, T>(
       unsubscribe = () => upstream.removeEventListener("abort", onAbort);
     }
   }
+  const hasDeadline = Boolean(timeoutMs && timeoutMs > 0);
+  const now = (): number => clock.now?.() ?? Date.now();
   let timer: unknown;
   // Set only when the deadline, not an upstream abort, aborted the signal.
   let deadlineAborted = false;
-  if (timeoutMs && timeoutMs > 0) {
-    timer = clock.setTimeout(() => {
-      if (signal.aborted) return;
-      deadlineAborted = true;
-      controller.abort(
-        (options.timeoutError ?? handlerTimeoutError)(timeoutMs),
-      );
-    }, timeoutMs);
-  }
+  // The budget left for a yielding script, and when the running stretch began.
+  let remainingMs = timeoutMs ?? 0;
+  let runningSince = 0;
+  // The handle is kept after it fires, so the release below still clears it
+  // exactly once, as it always has.
+  const fireDeadline = (): void => {
+    if (signal.aborted) return;
+    deadlineAborted = true;
+    controller.abort((options.timeoutError ?? handlerTimeoutError)(timeoutMs!));
+  };
+  const startDeadline = (): void => {
+    if (!hasDeadline) return;
+    runningSince = now();
+    if (remainingMs <= 0) fireDeadline();
+    else timer = clock.setTimeout(fireDeadline, remainingMs);
+  };
+  /** Stop the deadline while nothing of the script's is running. */
+  const pauseDeadline = (): void => {
+    if (!hasDeadline) return;
+    if (timer !== undefined) {
+      clock.clearTimeout(timer);
+      timer = undefined;
+    }
+    remainingMs -= now() - runningSince;
+  };
+  const release = (): void => {
+    gate.dispose();
+    if (timer !== undefined) {
+      clock.clearTimeout(timer);
+      timer = undefined;
+    }
+    unsubscribe?.();
+  };
   // An abort seen before the handler runs needs no race to win.
   let abortedBeforeCall = false;
+  // Only an abort that won the race is a timeout or an abort; a handler's
+  // own failure that settled first is reported as that failure.
+  const failure = <V>(raw: unknown): InvokeResult<V> => {
+    const abortWon =
+      abortedBeforeCall || (gate.decided && raw === signal.reason);
+    return {
+      ok: false,
+      error: toError(raw),
+      thrown: raw,
+      timedOut: abortWon && deadlineAborted,
+      aborted: abortWon && !deadlineAborted,
+    };
+  };
+  // Set when the handler returned a generator: the deadline, the gate and
+  // the upstream link then belong to the source, which releases them.
+  let handedOver = false;
+  startDeadline();
   try {
     if (signal.aborted) {
       abortedBeforeCall = true;
@@ -497,24 +742,135 @@ export const invokeLoadedWithDeadline = async <M, T>(
       throw signal.reason;
     }
     const value = await gated(gate, () => call(loaded, { signal }));
-    return { ok: true, value, timedOut: false, aborted: false };
-  } catch (raw) {
-    // Only an abort that won the race is a timeout or an abort; a handler's
-    // own failure that settled first is reported as that failure.
-    const abortWon =
-      abortedBeforeCall || (gate.decided && raw === signal.reason);
-    return {
-      ok: false,
-      error: toError(raw),
-      thrown: raw,
-      timedOut: abortWon && deadlineAborted,
-      aborted: abortWon && !deadlineAborted,
+    const iterator = options.chunks ? scriptChunkIterator(value) : undefined;
+    if (!iterator) return { ok: true, value, timedOut: false, aborted: false };
+
+    pauseDeadline();
+    handedOver = true;
+    let finished = false;
+    const finish = (returnIterator: boolean): void => {
+      if (finished) return;
+      finished = true;
+      release();
+      if (!returnIterator) return;
+      // Ended early: a script still waiting inside a pull is told through
+      // its signal (already aborted for a deadline or a client abort), so it
+      // can stop and reach its `finally`; return() alone only queues behind
+      // the wait.
+      if (!signal.aborted) controller.abort(scriptOutputClosed());
+      try {
+        void Promise.resolve(iterator.return?.()).catch(() => {});
+      } catch {
+        /* a return() that throws has nothing left to release */
+      }
     };
+    const end: InvokeResult<ScriptChunk> = {
+      ok: true,
+      value: { done: true, value: undefined },
+      timedOut: false,
+      aborted: false,
+    };
+    const source: ScriptChunkSource = {
+      async next() {
+        if (finished) return end;
+        if (signal.aborted) {
+          // Aborted between pulls (the client left while a chunk was being
+          // written): the script is told through its signal and closed.
+          abortedBeforeCall = true;
+          const aborted = failure<ScriptChunk>(signal.reason);
+          finish(true);
+          return aborted;
+        }
+        startDeadline();
+        try {
+          const step = await gated(gate, () => iterator.next());
+          pauseDeadline();
+          if (step.done) {
+            finish(false);
+            // What the generator returned is its last value: an early
+            // `return markup` (an empty state) must not vanish.
+            return step.value === undefined
+              ? end
+              : {
+                  ok: true,
+                  value: { done: false, value: step.value },
+                  timedOut: false,
+                  aborted: false,
+                };
+          }
+          return {
+            ok: true,
+            value: { done: false, value: step.value },
+            timedOut: false,
+            aborted: false,
+          };
+        } catch (raw) {
+          const failed = failure<ScriptChunk>(raw);
+          // A generator that threw is already finished; one that lost to
+          // the deadline or an abort is still running and is asked to stop.
+          finish(failed.timedOut || failed.aborted);
+          return failed;
+        }
+      },
+      close() {
+        finish(true);
+      },
+    };
+    return { ok: true, timedOut: false, aborted: false, source };
+  } catch (raw) {
+    return failure<T>(raw);
   } finally {
-    gate.dispose();
-    if (timer !== undefined) clock.clearTimeout(timer);
-    unsubscribe?.();
+    if (!handedOver) release();
   }
+};
+
+/**
+ * A yielding script's output for a `ScriptJobRunner`: each chunk the source
+ * gives is printed by `print` (the host's rule for a returned value; a chunk
+ * that prints nothing is skipped), and a failed pull is decided by `fail`
+ * (the host's `onServerScriptError` policy: what it returns is the last
+ * chunk, what it throws fails the job). A throw from either ends the
+ * iteration, and however it ends the source is closed.
+ */
+export const scriptChunkOutput = (
+  source: ScriptChunkSource,
+  print: (value: unknown) => string,
+  fail: (result: InvokeResult<ScriptChunk>) => string,
+): AsyncIterable<string> => {
+  const done: IteratorResult<string> = { done: true, value: undefined };
+  let ended = false;
+  const end = (): IteratorResult<string> => {
+    ended = true;
+    source.close();
+    return done;
+  };
+  // Written by hand, not as a generator: a generator that was never pulled
+  // skips its `finally` on return(), and the source must be closed even then.
+  const chunks: AsyncIterator<string> = {
+    async next() {
+      if (ended) return done;
+      try {
+        for (;;) {
+          const pulled = await source.next();
+          if (!pulled.ok) {
+            const last = fail(pulled);
+            end();
+            return last ? { done: false, value: last } : done;
+          }
+          if (pulled.value!.done) return end();
+          const text = print(pulled.value!.value);
+          if (text) return { done: false, value: text };
+        }
+      } catch (error) {
+        end();
+        throw error;
+      }
+    },
+    async return() {
+      return end();
+    },
+  };
+  return { [Symbol.asyncIterator]: () => chunks };
 };
 
 /**

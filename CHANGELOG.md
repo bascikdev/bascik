@@ -9,6 +9,51 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [1.0.0-rc.13] - 2026-11-11
+
+One addition on top of 1.0.0-rc.12: a stream script can send its output a piece at
+a time. This candidate ships `@bascik/bascik`, `create-bascik` and
+`@bascik/adapter-cloudflare` as 1.0.0-rc.13 and `@bascik/adapter-netlify` as
+1.0.0-rc.3. The language server and the VS Code extension are unchanged.
+
+### Added
+
+- **Stream scripts can yield.** A `data-bascik-stream` script written as a generator
+  (`export default async function*`) sends each value it yields to the browser as soon
+  as it is yielded, in order, where the script tag was. One script can now stream a
+  list row by row from a database cursor, a paged API or several calls, where it used
+  to take one script tag per row. Each yielded value follows the rules for a returned
+  one (a string, an `html` value, or an array of them), has the component's scoped
+  class names applied, and may hold component tags, which are rendered as the value is
+  sent. The placeholder recipes work unchanged: a row that arrives can cover a skeleton
+  row, and content below the list can still paint first. A failure part-way keeps the
+  rows already sent and follows `scripts.onServerScriptError`; `scripts.timeout` counts
+  only the time the script takes to produce values, not the time the visitor's
+  connection takes to accept them; and when the visitor leaves, the generator is ended
+  so its `finally` blocks run. A value the generator returns is sent last. A
+  `data-bascik-server` script may be a generator too:
+  its values are joined before the page is sent. Works on the dev server,
+  `bascik --server`, `@bascik/adapter-cloudflare` and `@bascik/adapter-netlify`. See
+  [Yield rows as they arrive](https://bascik.dev/scripts/stream#yield-rows-as-they-arrive).
+- `@bascik/bascik/runtime` (for adapter authors): `ScriptOutputRunner`, a job runner
+  that may resolve to an async iterable of chunks, accepted by
+  `composeBufferedResponse`, `streamComposedResponse` and `wrapRunner`;
+  `invokeLoadedWithDeadline` and `invokeWithDeadline` take `chunks: true` to turn a
+  returned generator into a `ScriptChunkSource`; and `scriptChunkOutput`,
+  `scriptChunkIterator` and `collectScriptJobOutput` build on it. A `ScriptJobRunner`
+  that returns strings keeps working unchanged.
+
+### Changed
+
+- A server or stream script that returns a generator object used to be refused as
+  "an object ([object AsyncGenerator])" and leave an empty slot. It is now run as a
+  script that yields. A generator inside a returned array, or yielded without
+  `yield*`, is refused with a message that says to delegate with `yield*`.
+- A server or stream script that returns a typed array (a `Uint8Array`) is refused
+  like any other value that is not markup, with a message that says to decode it. It
+  used to print the byte values as comma-separated numbers. A Node `Buffer` still
+  prints its text.
+
 ## [1.0.0-rc.12] - 2026-11-09
 
 The release candidate for 1.0.0: the full pre-launch audit lands here so every
@@ -108,4 +153,5 @@ whatever the candidate period finds.
   half scrolled away, the remaining half was read as part of the pinned row, so
   Cmd/Ctrl+click opened something like `http://localhost:8080ages/img/photo.webp`.
 
+[1.0.0-rc.13]: https://github.com/bascikdev/bascik/compare/v1.0.0-rc.12...v1.0.0-rc.13
 [1.0.0-rc.12]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0-rc.12
