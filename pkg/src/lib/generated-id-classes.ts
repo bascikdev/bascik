@@ -133,16 +133,42 @@ const lineAndColumn = (
   return { line, column: offset - lineStart + 1 };
 };
 
+/**
+ * The index of `tag` (`<` and lowercase ASCII, such as `</style`) at or after `from` in `html`, in any ASCII case,
+ * or -1. Compared in place: a lowercased copy of `html` can be longer than it ("İ" becomes two characters), so an
+ * index found there points past the text it names.
+ */
+const indexOfTag = (html: string, tag: string, from: number): number => {
+  for (
+    let at = html.indexOf("<", from);
+    at !== -1;
+    at = html.indexOf("<", at + 1)
+  ) {
+    let k = 1;
+    for (; k < tag.length; k++) {
+      const code = html.charCodeAt(at + k);
+      const wanted = tag.charCodeAt(k);
+      // A lowercase letter also matches its uppercase; anything else only itself.
+      if (
+        code !== wanted &&
+        !(wanted >= 97 && wanted <= 122 && code === wanted - 32)
+      )
+        break;
+    }
+    if (k === tag.length) return at;
+  }
+  return -1;
+};
+
 /** The offset of the first `#id` rule naming `idName` inside a `<style>` element of `html`, or -1. */
 const styleElementOffset = (html: string, idName: string): number => {
-  const lower = html.toLowerCase();
   let from = 0;
   for (;;) {
-    const open = lower.indexOf("<style", from);
+    const open = indexOfTag(html, "<style", from);
     if (open === -1) return -1;
-    const contentStart = lower.indexOf(">", open);
+    const contentStart = html.indexOf(">", open);
     if (contentStart === -1) return -1;
-    const close = lower.indexOf("</style", contentStart);
+    const close = indexOfTag(html, "</style", contentStart);
     const contentEnd = close === -1 ? html.length : close;
     const offset = cssIdSelectorOffset(
       html.slice(contentStart + 1, contentEnd),

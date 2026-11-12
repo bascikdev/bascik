@@ -88,7 +88,6 @@ export function inspectPage(html) {
     metas.find((m) => (m[key] ?? "").toLowerCase() === value)?.content;
   // Preserve boundaries between visible regions, rather than joining text on
   // either side of a removed element into a new tag on another pass.
-  const lower = html.toLowerCase();
   const visible = [];
   const opening = /<(script|style)\b[^>]*>/gi;
   let from = 0;
@@ -97,9 +96,11 @@ export function inspectPage(html) {
     if (match.index < from) continue;
     visible.push(html.slice(from, match.index));
     const name = match[1].toLowerCase();
-    let close = lower.indexOf(`</${name}`, opening.lastIndex);
-    while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
-      close = lower.indexOf(`</${name}`, close + name.length + 2);
+    // Found in the page itself, in ASCII case: a lowercased copy can be longer than
+    // the page ("İ" becomes two characters), so its offsets point past the tag.
+    const endTag = new RegExp(`</${name}(?=[\\s/>])`, "gi");
+    endTag.lastIndex = opening.lastIndex;
+    const close = endTag.exec(html)?.index ?? -1;
     const end = close < 0 ? -1 : html.indexOf(">", close + name.length + 2);
     from = end < 0 ? html.length : end + 1;
     opening.lastIndex = from;

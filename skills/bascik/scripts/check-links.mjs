@@ -62,7 +62,6 @@ export function extractLinks(html) {
   };
   // Scan disjoint visible regions. Removing markup and joining the leftovers can
   // turn <scr<script>ipt> into a new <script> on the next pass.
-  const lower = html.toLowerCase();
   let from = 0;
   const ignored = /<!--|<(script|template|textarea|code|pre)\b[^>]*>/gi;
   let match;
@@ -76,9 +75,11 @@ export function extractLinks(html) {
       const name = match[1].toLowerCase();
       // External scripts have a real src link; their contents are still inert.
       if (name === "script" && /\bsrc\s*=/i.test(match[0])) scan(match[0]);
-      let close = lower.indexOf(`</${name}`, ignored.lastIndex);
-      while (close >= 0 && !/[\s/>]/.test(lower[close + name.length + 2] ?? ""))
-        close = lower.indexOf(`</${name}`, close + name.length + 2);
+      // Found in the page itself, in ASCII case: a lowercased copy can be longer than
+      // the page ("İ" becomes two characters), so its offsets point past the tag.
+      const endTag = new RegExp(`</${name}(?=[\\s/>])`, "gi");
+      endTag.lastIndex = ignored.lastIndex;
+      const close = endTag.exec(html)?.index ?? -1;
       const end = close < 0 ? -1 : html.indexOf(">", close + name.length + 2);
       from = end < 0 ? html.length : end + 1;
     }

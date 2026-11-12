@@ -157,6 +157,24 @@ describe("generated #id class collisions", () => {
     expect(error.message.match(/^error: /gm)).toHaveLength(2);
   });
 
+  it("finds a <style> rule after text whose lowercase is longer, such as a dotted capital I", async () => {
+    // "İ".toLowerCase() is two characters: an offset found in a lowercased copy of the markup lands past the rule.
+    write(
+      "src/components/site-nav_x.html",
+      '<nav><button id="btn">Menu</button></nav>\n',
+    );
+    write("src/components/site-nav_x.css", "#btn { color: red; }\n");
+    write(
+      "src/components/site-nav.html",
+      `<nav>\n  <a id="x_btn">${"İ".repeat(40)}</a>\n</nav>\n<style>\n  #x_btn { color: blue; }\n</style>\n`,
+    );
+
+    const error = await collisionOf();
+    expect(error.message).toContain(
+      "src/components/site-nav.html:5:3  #x_btn in <site-nav>",
+    );
+  });
+
   it("reads CRLF line endings as one line each", async () => {
     write("src/components/one_two.html", '<p id="three">a</p>');
     write(

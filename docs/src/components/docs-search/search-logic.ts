@@ -171,6 +171,20 @@ export function score(e: SearchEntry, q: string, toks: string[]): number {
   return 0;
 }
 
+/**
+ * Where offset `idx` of `lower` (`text.toLowerCase()`) falls in `text`. Lowercasing can lengthen a string ("İ"
+ * becomes two characters), so past such a character the two offsets differ.
+ */
+function indexInOriginal(text: string, lower: string, idx: number): number {
+  if (idx <= 0 || lower.length === text.length) return idx;
+  var lowered = 0;
+  for (var i = 0; i < text.length; i++) {
+    if (lowered >= idx) return i;
+    lowered += text[i].toLowerCase().length;
+  }
+  return text.length;
+}
+
 /** Returns ~120 chars centered on the first query/token match in text. */
 export function snippet(
   text: string | null | undefined,
@@ -187,6 +201,7 @@ export function snippet(
       if (idx >= 0) break;
     }
   }
+  idx = indexInOriginal(text, lo, idx);
   var start = Math.max(0, idx > 40 ? idx - 40 : 0);
   return (
     (start > 0 ? "\u2026" : "") +

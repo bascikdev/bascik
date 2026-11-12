@@ -314,6 +314,12 @@ describe("snippet", () => {
     expect(result.endsWith("\u2026")).toBe(true);
   });
 
+  it("centers on the match after text whose lowercase is longer, such as a dotted capital I", () => {
+    // "İ".toLowerCase() is two characters: an offset found in a lowercased copy lands past the match.
+    const text = "İ".repeat(100) + " match " + "b".repeat(40);
+    expect(snippet(text, "match", tokens("match"))).toContain("match");
+  });
+
   it("keeps output to roughly 120 characters of text", () => {
     const text = "word ".repeat(100);
     const result = snippet(text, "word", tokens("word"));
