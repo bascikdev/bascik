@@ -420,6 +420,12 @@ describe.each(ROOTS)("component root $dir", (root) => {
         config.base = base;
         serverSidecarRegistry.clear();
         clearScopingTemplates();
+        // Components are minified as they are loaded (components.ts), so
+        // the list is this variant's: one kept from another variant would
+        // pair files loaded under one `minify.html` with pages built under
+        // the other, which no build does.
+        invalidateComponentListCache();
+        list = await listComponents(root.components);
         manifest = await buildComponentManifest(list, BascikConfig);
       });
 
