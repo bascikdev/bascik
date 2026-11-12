@@ -3,20 +3,20 @@
 [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)
 [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fcreate%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/create/test-coverage.json)
 
-Interactive project initializer for [Bascik](https://bascik.dev): the command behind `npm create bascik@rc`. Use it to start a new Bascik site with a working starter, editor settings, tests, and the agent skills. Requires Node.js 24.21 or newer. The [Getting Started guide](https://bascik.dev/getting-started) walks through the result, and [Create App internals](https://bascik.dev/internals/create-app) explains how the scaffolder works.
+Interactive project initializer for [Bascik](https://bascik.dev): the command behind `npm create bascik`. Use it to start a new Bascik site with a working starter, editor settings, tests, and the agent skills. Requires Node.js 24.21 or newer. The [Getting Started guide](https://bascik.dev/getting-started) walks through the result, and [Create App internals](https://bascik.dev/internals/create-app) explains how the scaffolder works.
 
 ## Quick Start
 
 Scaffold a new Bascik project in one command:
 
 ```sh
-npm create bascik@rc my-site -y
+npm create bascik my-site -y
 ```
 
 Pass a project name as an argument or run without arguments to be prompted:
 
 ```sh
-npm create bascik@rc
+npm create bascik
 ```
 
 The name is a new folder under the current one, such as `my-site` or `sites/my-site`; `.`, `..`, absolute paths and spaces are refused. A folder that already has one of the starter's files, such as `package.json` or `src/pages/index.html`, is refused before anything is written. To add Bascik to an existing project, see [Manual Setup](https://bascik.dev/getting-started#manual-setup).
@@ -72,7 +72,7 @@ Your site will be live at `http://localhost:8080` in every template. `npm run de
 
 ## Templates
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers, then to Netlify; with `-y` and no flag, you get the default.
+Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag you get the `default` starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
 
 | Template     | What you get                                                                                                             |
 | :----------- | :----------------------------------------------------------------------------------------------------------------------- |
@@ -81,10 +81,10 @@ Pick a starter with `--template <name>` (or `--template=<name>`). Without the fl
 | `netlify`    | The same starter plus the [Netlify adapter](https://bascik.dev/deployment/netlify), a `netlify.toml`, and the edge demo. |
 
 ```sh
-npm create bascik@rc my-site -- --template cloudflare
+npm create bascik my-site -- --template cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik@rc my-site -y -- --template cloudflare` skips every prompt).
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik my-site -y -- --template cloudflare` skips every prompt).
 
 The Cloudflare template differs from the default in these files only:
 

@@ -28,7 +28,7 @@ Two things are deliberately not duplicated:
 
 ### How `bascik --check` uses the language server
 
-`@bascik/language-server` is an **optional peer dependency** of `@bascik/bascik`. Nothing installs it for you, and the compiler has no production dependencies. Projects scaffolded with `npm create bascik@rc` already list it as a dev dependency.
+`@bascik/language-server` is an **optional peer dependency** of `@bascik/bascik`. Nothing installs it for you, and the compiler has no production dependencies. Projects scaffolded with `npm create bascik` already list it as a dev dependency.
 
 When `bascik --check` runs, it loads the language server from the project (so the version you installed is the version that runs), hands it the pages folder (markup only), every component root, and the API folder (scripts only), and merges what comes back. Per-file findings are listed by file under their own heading, because that is how an editor shows them. Hints, which are advice for the editor and may be wrong for a project the file cannot see, are left out, so they can never fail a `--strict` run.
 

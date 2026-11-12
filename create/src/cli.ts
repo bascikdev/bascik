@@ -6,7 +6,7 @@ export interface CliOptions {
   noInstallFlag: boolean;
   /** `--no-skills`: do not ask about or install the agent skills. */
   noSkillsFlag: boolean;
-  /** Left undefined when no `--template` flag was given so the entry can ask interactively. */
+  /** Left undefined when no `--template` flag was given; the entry then uses the default starter. */
   template?: Template;
   /** The first positional argument, the project name, with flag values excluded. */
   projectName?: string;
@@ -39,8 +39,7 @@ const parseTemplate = (value: string | undefined): Template => {
  * The form the docs recommend. npm keeps any flag that comes before `--` for
  * itself, so this is what the error messages point users back to.
  */
-const NPM_CREATE_EXAMPLE =
-  "npm create bascik@rc my-site -- --template cloudflare";
+const NPM_CREATE_EXAMPLE = "npm create bascik my-site -- --template cloudflare";
 
 const unexpectedArgument = (arg: string): Error =>
   new Error(
@@ -104,7 +103,7 @@ const npmConfigIsFalse = (value: string | undefined): boolean =>
  *
  * npm exposes the flags it consumed as `npm_config_*` environment variables.
  * `-y` becomes `npm_config_yes=true`, which is honored so the documented
- * `npm create bascik@rc my-site -y` skips every prompt (and npm's own install
+ * `npm create bascik my-site -y` skips every prompt (and npm's own install
  * prompt, which is why that flag belongs before `--`). `--template=<name>`
  * becomes `npm_config_template=<name>` and is honored too, while the two-token
  * form only yields `npm_config_template=true`, so that case is reported instead
@@ -173,13 +172,13 @@ export function parseCliOptions(
   };
 }
 
-/** What `npm create bascik@rc -- --help` prints. */
-export const USAGE = `Usage: npm create bascik@rc [project-name] -- [options]
+/** What `npm create bascik -- --help` prints. */
+export const USAGE = `Usage: npm create bascik [project-name] -- [options]
 
 Creates a new Bascik project in ./<project-name> (asks for a name when none is given).
 
 Options:
-  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Asks when not given.
+  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Default: default.
   -y, --yes          Answer every question with its default: the default template,
                      install the agent skills, install dependencies, start the dev server
   --no-skills        Do not install the Bascik agent skills

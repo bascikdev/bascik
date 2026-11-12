@@ -45,7 +45,18 @@ test("showcase has real screenshots, working site links, and a submission link",
     await image.scrollIntoViewIfNeeded();
     await expect(image).toBeVisible();
     await expect(image).toHaveJSProperty("complete", true);
-    await expect(image).toHaveJSProperty("naturalWidth", 1280);
+    // A real image loaded, chosen from the width list: the full 1280 pixel screenshot is the
+    // last candidate, and a card this size is served a narrower one.
+    expect(
+      await image.evaluate(
+        (img) => (img as { naturalWidth?: number }).naturalWidth ?? 0,
+      ),
+    ).toBeGreaterThan(0);
+    await expect(image).toHaveAttribute(
+      "srcset",
+      / 320w, .* 480w, .* 640w, .* 960w, \S+%402x\.webp\?v=[0-9a-f]{10} 1280w$/,
+    );
+    await expect(image).toHaveAttribute("sizes", /528px$/);
     await expect(image).toHaveAttribute("width", "640");
     await expect(image).toHaveAttribute("height", "400");
     const imageSize = await image.boundingBox();
@@ -109,12 +120,23 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await expect(preview.getByTestId("showcase-card")).toHaveCount(2);
     for (const site of sites.filter(
-      (site) => site.name === "Rinsesoft" || site.name === "Lateral EMDR",
+      (site) => site.name === "Lateral EMDR" || site.name === "Bascik Shop",
     )) {
       await expect(
         preview.getByRole("heading", { name: site.name, exact: true }),
       ).toBeVisible();
     }
+    // Each screenshot is served from its width variants: a phone gets a file near the
+    // 340 pixels it shows, a desktop one near 528, never the 1280 pixel original.
+    await expect
+      .poll(async () =>
+        preview
+          .getByTestId("showcase-card")
+          .first()
+          .locator("img")
+          .evaluate((img) => (img as { currentSrc?: string }).currentSrc ?? ""),
+      )
+      .toMatch(width === 390 ? /%402x-480\.webp\?v=/ : /%402x-640\.webp\?v=/);
     const sizes = await preview
       .getByTestId("showcase-card")
       .evaluateAll((cards) =>

@@ -261,7 +261,7 @@ describe("listPages", () => {
       expect(failure!.message).toContain(process.cwd());
       expect(failure!.message).toContain("directory.pages");
       expect(failure!.message).toContain("project root");
-      expect(failure!.message).toContain("npm create bascik@rc");
+      expect(failure!.message).toContain("npm create bascik");
       expect(failure!.message).not.toContain("scandir");
     },
   );

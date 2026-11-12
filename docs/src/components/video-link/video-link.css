@@ -1,0 +1,103 @@
+/* video-link: a thumbnail that links to a video on YouTube. A plain link, on
+   purpose: it opens the YouTube app on a phone and a new tab on a desktop,
+   and the page loads nothing from YouTube. The thumbnail is decorative (the
+   title under it names the video), so pass it with an empty alt. */
+a {
+  display: block;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: 4px;
+  border-radius: var(--r-lg);
+}
+
+.thumb {
+  position: relative;
+  display: block;
+  /* The thumbnails are 16:9; reserving the shape keeps the hero still while
+     they load. */
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--elevated);
+}
+
+a:hover .thumb,
+a:focus-visible .thumb {
+  border-color: var(--border-hover);
+}
+
+/* The thumbnail arrives through the slot, so it is not one of this component's
+   own elements: it is reached as a child of the slot's wrapper, which is the
+   one child of .thumb that is not the play mark. */
+.thumb > :not(.play),
+.thumb > :not(.play) > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+/* The play mark: a dark disc with a triangle, in the thumbnail's bottom left
+   corner, which is empty; the middle holds the thumbnail's own title. */
+.play {
+  position: absolute;
+  inset: auto auto 8px 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.play::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  margin: auto;
+  transform: translateX(2px);
+  border-block: 6px solid transparent;
+  border-inline-start: 10px solid #fff;
+}
+
+a:hover .play,
+a:focus-visible .play {
+  background: var(--accent);
+}
+
+a:hover .play::before,
+a:focus-visible .play::before {
+  border-inline-start-color: #18191b;
+}
+
+.title {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.note {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.new-tab {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

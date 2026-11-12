@@ -39,7 +39,7 @@ No client-side JavaScript is added, nothing hydrates, and there is no per-fragme
 For a new site, let `create-bascik` set this up:
 
 ```sh
-npm create bascik@rc my-site -- --template cloudflare
+npm create bascik my-site -- --template cloudflare
 ```
 
 The `--` is required: npm keeps flags placed before it for itself and does not pass them on. That is the standard starter with the adapter and Wrangler installed, `npm run dev` left as `bascik`, `npm run dev:cloudflare` set to `bascik --target cloudflare`, `npm run build` set to `bascik --build --target cloudflare`, `npm run preview` and `npm run deploy` running Wrangler from the emitted bundle, and a demo page (`src/pages/edge.html`) and API route (`src/api/hello.ts`) that run in the Worker. The rest of this guide applies unchanged; the manual steps below are for adding the adapter to an existing project.

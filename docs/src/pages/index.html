@@ -257,6 +257,20 @@
         text-decoration: underline;
       }
 
+      .hero-videos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px 22px;
+        list-style: none;
+        margin: 30px 0 0;
+        padding: 0;
+      }
+
+      .hero-videos li {
+        flex: 1 1 150px;
+        max-width: 300px;
+      }
+
       /* ── Section base ── */
       .home-section {
         padding: 72px 0;
@@ -747,7 +761,7 @@
       <section class="hero">
         <div class="container">
           <div class="hero-eyebrow">
-            <!-- Reads pkg/package.json; release candidate suffixes are dropped (v1.0.0). -->
+            <!-- Reads pkg/package.json; a prerelease suffix is dropped (v1.0.0). -->
             <script data-bascik-build>
               import { versionBadge } from "@/lib/package-version.ts";
               export default async () => {
@@ -778,14 +792,22 @@
           </div>
           <pre
             class="install-command hero-quickstart"
-          ><code>npm create bascik@rc</code><button class="install-copy-btn" type="button" aria-label="Copy" title="Copy"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copy-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></button></pre>
-          <ul class="hero-stats">
+          ><code>npm create bascik</code><button class="install-copy-btn" type="button" aria-label="Copy" title="Copy"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copy-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></button></pre>
+          <ul class="hero-stats" data-testid="hero-stats">
             <li><strong>0 kB</strong> framework runtime shipped</li>
             <li><strong>0 required</strong> runtime dependencies</li>
             <li><strong>Use what you know</strong>: vanilla HTML, CSS, JS</li>
             <li>
               <strong>No imports or exports</strong>: components just work
             </li>
+          </ul>
+          <!-- The launch videos: plain links to YouTube, so nothing loads
+               from it here and a phone opens its app. -->
+          <ul class="hero-videos" data-testid="hero-videos" aria-label="Videos">
+            <script data-bascik-build>
+              import { renderHeroVideos } from "@/lib/hero-videos.ts";
+              export default () => renderHeroVideos();
+            </script>
           </ul>
         </div>
       </section>
@@ -1181,6 +1203,8 @@
                 demoImage(
                   "/assets/demos/stream@2x.webp",
                   "A browser loading a dashboard page. A loading skeleton is shown first, and after about two seconds a card reading 99.99% uptime replaces it in place.",
+                  undefined,
+                  "(max-width: 720px) calc(100vw - 48px), 640px",
                 );
             </script>
             <figcaption>
@@ -1208,7 +1232,7 @@
             )
               return;
             navigator.clipboard
-              .writeText("npm create bascik@rc")
+              .writeText("npm create bascik")
               .then(() => flashCopy(this))
               .catch(function () {
                 // Clipboard may be unavailable (permissions / non-secure context)
@@ -1242,11 +1266,12 @@
                     src: "/assets/demos/live-reload-stacked@2x.webp",
                     maxWidth: 760,
                   },
+                  "(max-width: 1180px) calc(100vw - 48px), 1084px",
                 );
             </script>
             <figcaption>
               Recorded for real: the starter site from
-              <code>npm create bascik@rc</code>, edited in VS Code and served by
+              <code>npm create bascik</code>, edited in VS Code and served by
               the Bascik dev server. Nothing here is mocked.
             </figcaption>
           </figure>
@@ -1282,13 +1307,15 @@
                   demoImage(
                     "/assets/demos/dev-terminal@2x.webp",
                     "A terminal running bascik on a new project. The server URL is pinned to the top row as soon as the server is up, four pages transpile in a fraction of a second, and after one file is saved only that page is rebuilt, in a few milliseconds.",
+                    undefined,
+                    "(max-width: 860px) calc(100vw - 48px), 782px",
                   );
               </script>
               <figcaption>
-                A new <code>npm create bascik@rc</code> project, recorded for
-                real on a laptop: the server is up almost immediately, its
-                address stays pinned to the top row, and saving one file
-                rebuilds only that page.
+                A new <code>npm create bascik</code> project, recorded for real
+                on a laptop: the server is up almost immediately, its address
+                stays pinned to the top row, and saving one file rebuilds only
+                that page.
               </figcaption>
             </figure>
 
@@ -1371,8 +1398,8 @@
           <h2 class="section-heading">Made with Bascik.</h2>
           <p class="section-sub">
             Choosing a new tool is a real decision. These sites already use
-            Bascik in production, from business websites to a SaaS app with a
-            server-rendered dashboard.
+            Bascik in production, from a SaaS app with a server-rendered
+            dashboard to an online shop that takes payments.
           </p>
           <p class="section-sub">
             What ships is HTML, JavaScript, and CSS you can inspect yourself.
@@ -1488,7 +1515,7 @@
           <div>
             <div class="install-command install-block">
               <span class="install-prompt">$</span>
-              <span>npm create bascik@rc</span>
+              <span>npm create bascik</span>
             </div>
           </div>
           <a href="/getting-started" class="btn btn-primary"

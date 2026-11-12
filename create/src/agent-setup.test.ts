@@ -34,7 +34,7 @@ const HERE = import.meta.dirname;
 const REPO = resolve(HERE, "../..");
 
 describe("the two copies", () => {
-  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik@rc set projects up the same way", () => {
+  it("pkg/src/lib/agent-setup.ts is identical to this one, so bascik init and npm create bascik set projects up the same way", () => {
     expect(readFileSync(join(REPO, "pkg/src/lib/agent-setup.ts"), "utf8")).toBe(
       readFileSync(join(HERE, "agent-setup.ts"), "utf8"),
     );
@@ -71,8 +71,10 @@ describe("the project skill list", () => {
 
 describe("the skills CLI command", () => {
   it("pins the release tag for a release version", () => {
-    expect(skillsRef("1.0.0-rc.10")).toBe("v1.0.0-rc.10");
+    expect(skillsRef("1.0.0")).toBe("v1.0.0");
     expect(skillsRef("1.2.3")).toBe("v1.2.3");
+    // A prerelease has a tag of its own.
+    expect(skillsRef("2.0.0-beta.1")).toBe("v2.0.0-beta.1");
   });
 
   it("misuse: an unknown or garbled version gets no tag, so the default branch is used", () => {
@@ -135,7 +137,7 @@ describe("installSkills", () => {
   it("runs the pinned skills CLI at the release tag in the project folder", () => {
     const spawn = vi.fn((_command: string, _args: string[]) => ok);
     const result = installSkills("/work/app", {
-      version: "1.0.0-rc.10",
+      version: "1.0.0",
       platform: "linux",
       env: { PATH: "/bin" },
       spawn,
@@ -143,8 +145,8 @@ describe("installSkills", () => {
     });
     expect(result).toEqual({
       status: "pinned",
-      ref: "v1.0.0-rc.10",
-      command: skillsCommand("v1.0.0-rc.10"),
+      ref: "v1.0.0",
+      command: skillsCommand("v1.0.0"),
     });
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(spawn).toHaveBeenCalledWith(
@@ -153,7 +155,7 @@ describe("installSkills", () => {
         "--prefer-offline",
         "-y",
         SKILLS_CLI,
-        ...skillsAddArgs(`${SKILLS_REPO}#v1.0.0-rc.10`),
+        ...skillsAddArgs(`${SKILLS_REPO}#v1.0.0`),
       ],
       expect.objectContaining({
         cwd: "/work/app",
@@ -277,16 +279,16 @@ describe("installSkills", () => {
 
   it("misuse: the command to run later keeps the release tag, so a later install matches the scaffolded version", () => {
     const result = installSkills("/work/app", {
-      version: "1.0.0-rc.10",
+      version: "1.0.0",
       platform: "linux",
       env: {},
       spawn: vi.fn(() => fail("npm error code ECONNREFUSED")),
     });
-    expect(result.command).toBe(skillsCommand("v1.0.0-rc.10"));
+    expect(result.command).toBe(skillsCommand("v1.0.0"));
     expect(skillsReportLines(result)).toEqual([
       "Could not install the Bascik agent skills (npm error code ECONNREFUSED).",
       "Run this in the project folder when you are online:",
-      ...skillsLaterLines("v1.0.0-rc.10"),
+      ...skillsLaterLines("v1.0.0"),
     ]);
   });
 
@@ -351,7 +353,7 @@ describe("installSkills", () => {
     it("misuse: a tag that lacks a requested skill is not reported as a clean pinned install", () => {
       const spawn = vi.fn(() => ok);
       const result = installSkills("/work/app", {
-        version: "1.0.0-rc.11",
+        version: "1.1.0",
         platform: "linux",
         env: {},
         spawn,
@@ -367,7 +369,7 @@ describe("installSkills", () => {
       const spawn = vi.fn(() => ok);
       let runs = 0;
       const result = installSkills("/work/app", {
-        version: "1.0.0-rc.11",
+        version: "1.1.0",
         platform: "linux",
         env: {},
         spawn: ((...args: Parameters<typeof spawn>) => {
@@ -380,7 +382,7 @@ describe("installSkills", () => {
       expect(result.status).toBe("latest");
       expect(
         spawn.mock.calls.map((call) => (call as string[][])[1][4]),
-      ).toEqual(["bascikdev/bascik#v1.0.0-rc.11", "bascikdev/bascik"]);
+      ).toEqual(["bascikdev/bascik#v1.1.0", "bascikdev/bascik"]);
     });
 
     it("misuse: a skill present in only one destination counts as missing", () => {
@@ -416,7 +418,7 @@ describe("installSkills", () => {
         .mockReturnValueOnce(ok)
         .mockReturnValueOnce(fail("Failed to connect to github.com"));
       const result = installSkills("/work/app", {
-        version: "1.0.0-rc.11",
+        version: "1.1.0",
         platform: "linux",
         env: {},
         spawn,
@@ -429,7 +431,7 @@ describe("installSkills", () => {
     it("reports how many installed, which are missing, and the command to get just those from the default branch", () => {
       const lines = skillsReportLines({
         status: "partial",
-        ref: "v1.0.0-rc.11",
+        ref: "v1.1.0",
         missing: ["bascik-images"],
         command: skillsCommand(undefined, ["bascik-images"]),
       });
@@ -439,7 +441,7 @@ describe("installSkills", () => {
       expect(lines.join("\n")).toContain(
         "npx skills add bascikdev/bascik -a universal -a claude-code --copy -y --skill bascik-images",
       );
-      expect(lines.join("\n")).not.toContain("#v1.0.0-rc.11");
+      expect(lines.join("\n")).not.toContain("#v1.1.0");
     });
 
     it("limits the install command to the named skills", () => {

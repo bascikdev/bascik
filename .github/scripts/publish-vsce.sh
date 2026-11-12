@@ -2,7 +2,7 @@
 # Publishes the VS Code extension in the current directory. Usage: publish-vsce.sh <tag-prefix>
 # Prefix ext-v publishes a stable release; ext-pre-v publishes a Marketplace pre-release.
 # The git tag (GITHUB_REF_NAME) must equal <tag-prefix> + package.json version.
-# The Marketplace rejects semver prerelease identifiers (0.1.0-rc.1), so versions must be plain x.y.z.
+# The Marketplace rejects semver prerelease identifiers (1.1.0-rc.1), so versions must be plain x.y.z.
 set -euo pipefail
 
 prefix="${1:?tag prefix required, e.g. ext-v or ext-pre-v}"

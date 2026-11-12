@@ -16,7 +16,7 @@ Eleventy is a static site generator centered on template languages and Markdown 
 
 Migrate a simple partial (like a header or footer) into a Bascik component:
 
-1. Create a project with `npm create bascik@rc my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
+1. Create a project with `npm create bascik my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`, and run `npx bascik init`. Bascik's config is an ES module, so the project needs `"type": "module"` in `package.json`: `init` adds it, or stops and tells you to add it yourself when the folder already has JavaScript that may rely on CommonJS (see [Set up an existing project](/cli#set-up-an-existing-project-with-bascik-init)).
 2. Create `src/components/site-footer/site-footer.html`.
 3. Add your footer HTML markup inside it. Replace template values such as `{{ eleventy.generator }}` with fixed text.
 4. Use `<site-footer />` inside `src/pages/index.html`.

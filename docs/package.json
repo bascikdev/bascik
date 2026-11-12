@@ -18,6 +18,7 @@
     "cf:deploy": "wrangler deploy",
     "cf:preview": "wrangler preview",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
+    "images:responsive": "node scripts/responsive-images.ts",
     "e2e:serve": "BASCIK_SITE_URL=https://bascik.dev bascik --config e2e/bascik.config.ts --build && bascik --config e2e/bascik.config.ts --server --port 8099",
     "pkg-dev": "node --inspect --watch-path=./bascik.config.ts --watch-path=../pkg/src ../pkg/src/transpile.ts",
     "measure-build": "node scripts/measure-build.ts",

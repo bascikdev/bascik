@@ -8,7 +8,7 @@ The package's source files have distinct responsibilities:
 
 - `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
 - `create/src/agent-setup.ts`: the coding-assistant setup shared with `bascik init`: the `AGENTS.md` brief and the `CLAUDE.md` that imports it (merged into existing files), the agent skills install through the skills CLI, and the prompt helper that keeps a run without a terminal from hanging.
-- `create/src/index.ts`: the CLI entry point. Handles prompts, including the template (default, Cloudflare, or Netlify) and agent skills questions, and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
+- `create/src/index.ts`: the CLI entry point. Handles the prompts (the project name and the agent skills question; the template comes only from `--template`, and is `default` without it), and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
 - `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_template`, `npm_config_skills` and `npm_config_install` variables npm sets instead (npm sets a `--no-*` flag's variable to the empty string). npm takes `--no-dev` as its own `dev` setting and sets nothing, so that flag only works after `--`.
 
 Keeping them split means you can test every generated file without invoking the CLI or touching the filesystem.
@@ -130,7 +130,7 @@ yarn create:test-site
 
 This builds `create-bascik` and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The `-y` flag selects the defaults non-interactively, while `--no-skills`, `--no-install` and `--no-dev` skip the agent skills, npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template and `--template netlify` the Netlify template; through `npm create` it must follow a `--` separator (`npm create bascik@rc my-site -- --template cloudflare`).
+The `-y` flag selects the defaults non-interactively, while `--no-skills`, `--no-install` and `--no-dev` skip the agent skills, npm install and dev server startup. `--template cloudflare` selects the Cloudflare Workers template and `--template netlify` the Netlify template; through `npm create` it must follow a `--` separator (`npm create bascik my-site -- --template cloudflare`).
 
 ```text
 Build complete

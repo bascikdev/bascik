@@ -113,8 +113,8 @@ The release workflow (`.github/workflows/release.yml`) triggers on version tags.
 | `create-bascik`                        | `create-v<semver>`                                        | `create-v1.0.3`             |
 | `@bascik/adapter-cloudflare`           | `adapter-cloudflare-v<semver>`                            | `adapter-cloudflare-v1.0.0` |
 | `@bascik/adapter-netlify`              | `adapter-netlify-v<semver>`                               | `adapter-netlify-v1.0.0`    |
-| `@bascik/language-server`              | `lsp-v<semver>`                                           | `lsp-v0.1.0`                |
-| Bascik VS Code extension (Marketplace) | `ext-v<semver>`, or `ext-pre-v<semver>` for a pre-release | `ext-v0.2.0`                |
+| `@bascik/language-server`              | `lsp-v<semver>`                                           | `lsp-v1.0.0`                |
+| Bascik VS Code extension (Marketplace) | `ext-v<semver>`, or `ext-pre-v<semver>` for a pre-release | `ext-v1.0.0`                |
 
 Each job uses an `if:` guard so only the relevant package is built and published:
 
@@ -163,7 +163,7 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 
 - `--access public`: required for scoped packages and explicit for `create-bascik`. Each `package.json` also declares `"publishConfig": { "access": "public" }` as a belt-and-suspenders default.
 - `--provenance`: generates a signed attestation on npmjs.com that links the published package to the exact GitHub Actions run that built it. This requires `id-token: write` permission on the job and a `repository.url` in `package.json` that matches the GitHub repository.
-- `--tag`: `latest` for stable versions. A prerelease such as `1.0.0-rc.1` publishes under the identifier before the first dot (`rc`), so `npm install <pkg>` never picks it up by default.
+- `--tag`: `latest` for stable versions. A prerelease such as `1.1.0-rc.1` publishes under the identifier before the first dot (`rc`), so `npm install <pkg>` never picks it up by default.
 
 ## Tagging a Release
 
@@ -196,8 +196,8 @@ git push origin create-v1.0.3
 ```sh
 # Bump the version in lsp/package.json and merge it into main through a pull request, then:
 git fetch origin main
-git tag lsp-v0.1.0 origin/main
-git push origin lsp-v0.1.0
+git tag lsp-v1.0.0 origin/main
+git push origin lsp-v1.0.0
 # After @bascik/bascik is on npm, bump the version in adapters/cloudflare/package.json and merge it, then:
 git fetch origin main
 git tag adapter-cloudflare-v1.0.0 origin/main
@@ -211,7 +211,7 @@ Push each tag by name, never with `git push --tags`, which pushes every local ta
 
 ### Release candidates
 
-Use a prerelease version and the matching tag, for example `1.0.0-rc.1` with `v1.0.0-rc.1`. Publish `@bascik/language-server` and `@bascik/bascik` first, then the packages that depend on them (`create-bascik`, `@bascik/adapter-cloudflare` and `@bascik/adapter-netlify`). Install with `npm install @bascik/bascik@rc`. Dependents pin a range that includes the prerelease (for example `^1.0.0-rc.1`), which also accepts the final `1.0.0`.
+Use a prerelease version and the matching tag, for example `1.1.0-rc.1` with `v1.1.0-rc.1`. Publish `@bascik/language-server` and `@bascik/bascik` first, then the packages that depend on them (`create-bascik`, `@bascik/adapter-cloudflare` and `@bascik/adapter-netlify`). Install with `npm install @bascik/bascik@rc`. Dependents pin a range that includes the prerelease (for example `^1.1.0-rc.1`), which also accepts the final `1.1.0`. A prerelease never moves the `latest` dist-tag, so `npm create bascik` and a plain `npm install @bascik/bascik` keep installing the current stable release.
 
 The release workflow picks up the tag, runs tests, builds `dist/` (which is not committed to git), and publishes to npm.
 

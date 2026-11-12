@@ -31,7 +31,7 @@ To install a skill from the docs site instead, use `npx skills add https://basci
 | `bascik-migrate`       | Moving from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                             | `npx skills add bascikdev/bascik --skill bascik-migrate`       |
 | `bascik-refactor`      | **Opt-in.** Refactoring a live site with production parity at every breakpoint and 100 in all five Lighthouse categories | `npx skills add bascikdev/bascik --skill bascik-refactor`      |
 
-New projects created with `npm create bascik@rc` or `bascik init` offer to install the general-purpose skills automatically. Add `bascik-refactor` separately when you need the workflow in [Migrating with Coding Agents](/how-to/agent-migration).
+New projects created with `npm create bascik` or `bascik init` offer to install the general-purpose skills automatically. Add `bascik-refactor` separately when you need the workflow in [Migrating with Coding Agents](/how-to/agent-migration).
 
 The skills hold only what an assistant must not get wrong: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`. For everything else they point to the page on this site that explains it, and `read-doc.mjs` prints that page, so the skills and the docs never disagree.
 
@@ -157,7 +157,7 @@ del skills.tar.gz
 
 ### New projects
 
-After setting up the files, `npm create bascik@rc` and `bascik init` ask:
+After setting up the files, `npm create bascik` and `bascik init` ask:
 
 ```text
 Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)

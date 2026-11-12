@@ -32,7 +32,7 @@ Use the linter on its own, without `bascik`, when you want per-file checks and n
 
 ## CLI Linter
 
-Every project scaffolded with `npm create bascik@rc` includes a `lint` script in `package.json`. It runs [`bascik --check`](/cli#static-analysis-with-bascik-check), which hands your files to the linter and adds the project-wide checks:
+Every project scaffolded with `npm create bascik` includes a `lint` script in `package.json`. It runs [`bascik --check`](/cli#static-analysis-with-bascik-check), which hands your files to the linter and adds the project-wide checks:
 
 ```sh
 npm run lint

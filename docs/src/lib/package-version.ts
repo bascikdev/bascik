@@ -2,8 +2,8 @@
  * package-version.ts
  *
  * Reads the published @bascik/bascik version from pkg/package.json at build time so the docs never
- * carry a hand-edited copy. Release candidates and build metadata are dropped for display: while the
- * package is at `1.0.0-rc.6`, the site already presents the `1.0.0` release it is building toward.
+ * carry a hand-edited copy. Prerelease and build suffixes are dropped for display: while the
+ * package is at a prerelease such as `1.1.0-beta.6`, the site presents the `1.1.0` release it is building toward.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ export async function readPackageVersion(
   }
 }
 
-/** `1.0.0-rc.6` and `1.0.0+build.5` both become `1.0.0`. */
+/** `1.1.0-beta.6` and `1.1.0+build.5` both become `1.1.0`. */
 export function stableVersion(version: string): string {
   return version.replace(/[-+].*$/, "");
 }

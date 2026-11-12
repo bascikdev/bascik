@@ -431,7 +431,7 @@ describe("agent migration page: a newcomer can follow it on day one", () => {
 
   it("scaffolds without prompts and without starting the dev server", () => {
     expect(md()).toMatch(
-      /npm create bascik@rc site -y -- --template (default|cloudflare) --no-dev/,
+      /npm create bascik site -y -- --template (default|cloudflare) --no-dev/,
     );
   });
 

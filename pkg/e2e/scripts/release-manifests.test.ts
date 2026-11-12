@@ -104,18 +104,18 @@ const satisfies = (version: string, range: string): boolean => {
 
 describe("the range check used below", () => {
   it("applies npm's prerelease rule", () => {
-    expect(satisfies("0.1.0-rc.6", ">=0.1.0-rc.6")).toBe(true);
-    expect(satisfies("0.1.0-rc.7", ">=0.1.0-rc.6")).toBe(true);
-    expect(satisfies("0.1.0", ">=0.1.0-rc.6")).toBe(true);
-    expect(satisfies("0.2.0", ">=0.1.0-rc.6")).toBe(true);
+    expect(satisfies("0.1.0-beta.6", ">=0.1.0-beta.6")).toBe(true);
+    expect(satisfies("0.1.0-beta.7", ">=0.1.0-beta.6")).toBe(true);
+    expect(satisfies("0.1.0", ">=0.1.0-beta.6")).toBe(true);
+    expect(satisfies("0.2.0", ">=0.1.0-beta.6")).toBe(true);
     // The stale-peer case: a bumped prerelease of another patch tuple.
-    expect(satisfies("0.2.0-rc.1", ">=0.1.0-rc.6")).toBe(false);
-    expect(satisfies("0.1.1-rc.1", ">=0.1.0-rc.6")).toBe(false);
-    expect(satisfies("0.1.0-rc.5", ">=0.1.0-rc.6")).toBe(false);
-    expect(satisfies("1.0.0-rc.11", "^1.0.0-rc.10")).toBe(true);
-    expect(satisfies("1.4.2", "^1.0.0-rc.10")).toBe(true);
-    expect(satisfies("2.0.0", "^1.0.0-rc.10")).toBe(false);
-    expect(satisfies("0.2.0", "^0.1.0-rc.6")).toBe(false);
+    expect(satisfies("0.2.0-beta.1", ">=0.1.0-beta.6")).toBe(false);
+    expect(satisfies("0.1.1-beta.1", ">=0.1.0-beta.6")).toBe(false);
+    expect(satisfies("0.1.0-beta.5", ">=0.1.0-beta.6")).toBe(false);
+    expect(satisfies("1.0.0-beta.11", "^1.0.0-beta.10")).toBe(true);
+    expect(satisfies("1.4.2", "^1.0.0-beta.10")).toBe(true);
+    expect(satisfies("2.0.0", "^1.0.0-beta.10")).toBe(false);
+    expect(satisfies("0.2.0", "^0.1.0-beta.6")).toBe(false);
   });
 
   it("misuse: refuses a range form it does not implement", () => {
@@ -156,8 +156,8 @@ describe("published package manifests", () => {
     expect(satisfies(pkg.version, dev!), `${pkg.version} vs ${dev}`).toBe(true);
   });
 
-  // Bumping lsp/package.json to another patch tuple's prerelease (0.2.0-rc.1)
-  // while pkg's peer stays >=0.1.0-rc.6 makes every scaffolded project warn
+  // Bumping lsp/package.json to another patch tuple's prerelease (0.2.0-beta.1)
+  // while pkg's peer stays >=0.1.0-beta.6 makes every scaffolded project warn
   // about an invalid peer.
   it("pkg's optional peer range on @bascik/language-server includes the lsp version", () => {
     const pkg = manifest("pkg");
