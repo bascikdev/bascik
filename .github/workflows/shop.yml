@@ -2,6 +2,9 @@ name: Shop
 
 on:
   push:
+    # Branches only. A release tag push would otherwise run this workflow too, and its deploy-preview job fails on a
+    # tag: the shop-preview environment admits branches, and a tag is not the head of a pull request.
+    branches: ["**"]
     paths:
       - "shop/**"
       - "pkg/**"
