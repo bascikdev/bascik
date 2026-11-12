@@ -567,6 +567,11 @@ The [placeholder recipes](#placeholders-that-do-not-shift-layout) work unchanged
     padding: 0;
     list-style: none;
   }
+  /* The real rows get a layer of their own, above the skeleton rows. */
+  .rows {
+    position: relative;
+    z-index: 1;
+  }
   .skeletons > li,
   .row {
     box-sizing: border-box;
@@ -607,7 +612,7 @@ The [placeholder recipes](#placeholders-that-do-not-shift-layout) work unchanged
 </section>
 ```
 
-Give the rows and the skeleton rows the same fixed `block-size`, and reserve the list's size on the container, so nothing below the list moves as rows arrive. To hide one status line when the first row lands instead, use the single-placeholder rule from Recipe A with the row's class: `.arrivals:has(.row) > .pending { display: none; }`. See it running on the [rows demo](https://cloudflare-adapter.bascik.dev/stream-rows).
+Give the rows and the skeleton rows the same fixed `block-size`, and reserve the list's size on the container, so nothing below the list moves as rows arrive. Keep the `position: relative` and `z-index` on the list of real rows: a skeleton with a shimmer animates its `opacity`, which makes it a stacking layer of its own, and the browser would paint it on top of rows that have no layer, so the rows would flash with the shimmer. To hide one status line when the first row lands instead, use the single-placeholder rule from Recipe A with the row's class: `.arrivals:has(.row) > .pending { display: none; }`. See it running on the [rows demo](https://cloudflare-adapter.bascik.dev/stream-rows).
 
 ### Rows in the order they finish
 

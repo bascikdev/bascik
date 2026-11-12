@@ -177,6 +177,14 @@
         list-style: none;
       }
 
+      /* The real rows get a layer of their own above the skeleton rows. A
+         skeleton that animates its opacity is its own stacking layer, and
+         would otherwise be painted on top of the rows and show through. */
+      .rows {
+        position: relative;
+        z-index: 1;
+      }
+
       .row,
       .row-skeleton {
         block-size: 64px;

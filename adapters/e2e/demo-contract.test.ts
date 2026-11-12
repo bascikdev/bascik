@@ -442,9 +442,32 @@ test.describe("shared adapter demo contract", () => {
       expect(await rows.count()).toBeLessThan(bookTitles.length);
       expect(await page.getByTestId("stream-rows-done").count()).toBe(0);
       await expect(skeletons).toBeVisible();
-      const rowBox = (await rows.first().boundingBox())!;
+      // The lists are compared, not the row: a row slides in for a moment,
+      // which moves its own box, while the list that holds it is in place.
+      const listBox = (await page
+        .getByTestId("stream-rows-list")
+        .boundingBox())!;
       const skeletonBox = (await skeletons.boundingBox())!;
-      expect(Math.abs(rowBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(listBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(listBox.x - skeletonBox.x)).toBeLessThanOrEqual(1);
+
+      // The row is what is painted there. The skeleton rows pulse with an
+      // opacity animation, which makes each its own stacking layer; without
+      // a layer of their own the rows are painted under them and flash with
+      // the pulse. Checked when the first row lands and again when the
+      // second does, a different point in the pulse.
+      const firstRowIsOnTop = () =>
+        rows.first().evaluate((row) => {
+          const box = row.getBoundingClientRect();
+          const top = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return top !== null && row.contains(top);
+        });
+      expect(await firstRowIsOnTop()).toBe(true);
+      await expect(rows.nth(1)).toBeVisible();
+      expect(await firstRowIsOnTop()).toBe(true);
 
       // Every row arrives in the order the script yielded it; its last
       // yield hides the skeleton list, and the footer never moved.

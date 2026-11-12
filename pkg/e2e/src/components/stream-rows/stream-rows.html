@@ -45,6 +45,24 @@
     list-style: none;
   }
 
+  /* The rows get their own layer above the skeleton rows, which pulse:
+     an element animating its opacity is a stacking layer, and would be
+     painted over rows that have none. */
+  .rows {
+    position: relative;
+    z-index: 1;
+  }
+
+  .skeletons > li {
+    animation: rows-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes rows-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+
   .skeletons > li,
   .rows > li {
     box-sizing: border-box;

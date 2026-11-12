@@ -367,6 +367,23 @@ test.describe("data-bascik-stream: a script that yields", () => {
       .getByTestId("rows-skeletons")
       .boundingBox())!;
     expect(Math.abs(rowBox.y - skeletonBox.y)).toBeLessThanOrEqual(1);
+    // And it is the row that is painted there, not the skeleton under it.
+    // The skeleton rows pulse, so each is a stacking layer of its own; the
+    // list of rows has its own layer above them, or it would flash with
+    // the pulse.
+    expect(
+      await page
+        .getByTestId("rows-row")
+        .first()
+        .evaluate((row) => {
+          const box = row.getBoundingClientRect();
+          const top = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return top !== null && row.contains(top);
+        }),
+    ).toBe(true);
 
     // Last yield: :has(.done) hides the skeleton rows that were left over
     // (four skeletons, three rows).
