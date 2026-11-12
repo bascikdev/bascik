@@ -1,19 +1,20 @@
 name: Release
 
 # The tag must be <prefix><version in that package's package.json>.
-# Prerelease versions (1.0.0-rc.1) publish under the matching dist-tag (rc), not latest.
-# Push each tag by name, never with --tags, and in the publish order in RELEASING.md.
+# Stable versions (1.0.0) publish under the latest dist-tag. A prerelease (1.1.0-rc.1) publishes under the dist-tag
+# named by its identifier (rc), never latest, so a plain install keeps getting the stable release.
+# Push each tag by name, never with --tags, and in the publish order in RELEASING.md. `yarn release` does both.
 # Tag only commits on main: every job fails before building when the tagged commit is not an ancestor of
 # origin/main (.github/scripts/release-on-main.mjs), so a tag on an unmerged branch publishes nothing.
 # Run `git fetch origin main` first; each example tags origin/main, not the current checkout.
 # npm jobs use OIDC trusted publishing; configure each package on npmjs.com as documented in RELEASING.md.
-# pkg:      git tag v1.0.0-rc.1 origin/main && git push origin v1.0.0-rc.1
-# create:   git tag create-v1.0.0-rc.1 origin/main && git push origin create-v1.0.0-rc.1
-# adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 origin/main && git push origin adapter-cloudflare-v1.0.0-rc.1
-#           git tag adapter-netlify-v1.0.0-rc.1 origin/main && git push origin adapter-netlify-v1.0.0-rc.1
-# lsp:      git tag lsp-v0.1.0-rc.1 origin/main && git push origin lsp-v0.1.0-rc.1
-# ext:      git tag ext-v0.2.0 origin/main && git push origin ext-v0.2.0            (Marketplace stable, even minor)
-#           git tag ext-pre-v0.1.0 origin/main && git push origin ext-pre-v0.1.0    (Marketplace pre-release, odd minor)
+# pkg:      git tag v1.0.0 origin/main && git push origin v1.0.0
+# create:   git tag create-v1.0.0 origin/main && git push origin create-v1.0.0
+# adapter:  git tag adapter-cloudflare-v1.0.0 origin/main && git push origin adapter-cloudflare-v1.0.0
+#           git tag adapter-netlify-v1.0.0 origin/main && git push origin adapter-netlify-v1.0.0
+# lsp:      git tag lsp-v1.0.0 origin/main && git push origin lsp-v1.0.0
+# ext:      git tag ext-v1.0.0 origin/main && git push origin ext-v1.0.0            (Marketplace stable, even minor)
+#           git tag ext-pre-v1.1.0 origin/main && git push origin ext-pre-v1.1.0    (Marketplace pre-release, odd minor)
 on:
   push:
     tags:

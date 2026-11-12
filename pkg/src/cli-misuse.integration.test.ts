@@ -75,7 +75,7 @@ describe("CLI misuse messages", { timeout: 60_000 }, () => {
     expect(output).toMatch(
       /^\[bascik\] error: pages directory "src\/pages" \(directory\.pages\) does not exist in .*misuse-no-pages.*\. Run bascik from the project root/m,
     );
-    expect(output).toContain("npm create bascik@rc");
+    expect(output).toContain("npm create bascik");
     expect(output).not.toMatch(/scandir|ENOENT|^Error: /m);
   });
 

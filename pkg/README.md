@@ -34,14 +34,14 @@ This is the package you install in a Bascik project: the compiler, the `bascik` 
 
 ## Getting Started
 
-Requires **Node.js ≥ 24.21**. To start a new site with a starter project, run `npm create bascik@rc my-site` (see [Getting Started](https://bascik.dev/getting-started)). To add Bascik to an existing project:
+Requires **Node.js ≥ 24.21**. To start a new site with a starter project, run `npm create bascik my-site` (see [Getting Started](https://bascik.dev/getting-started)). To add Bascik to an existing project:
 
 ```sh
-yarn add @bascik/bascik@rc
+yarn add @bascik/bascik
 # or
-npm install @bascik/bascik@rc
+npm install @bascik/bascik
 # or
-pnpm add @bascik/bascik@rc
+pnpm add @bascik/bascik
 ```
 
 ---

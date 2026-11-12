@@ -394,7 +394,7 @@ export const pagesDirectoryError = (error: unknown): Error => {
         `in ${process.cwd()}. Run bascik from the project root (the ` +
         `folder with package.json and src/pages), or set directory.pages ` +
         `in bascik.config.ts. To start a new project, run ` +
-        `\`npm create bascik@rc\` (or \`npx bascik init\` in an existing folder).`,
+        `\`npm create bascik\` (or \`npx bascik init\` in an existing folder).`,
       { cause: error },
     );
   return new Error(

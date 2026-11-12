@@ -2,7 +2,7 @@
  * home-schema.ts
  *
  * JSON-LD for the home page: the SoftwareApplication and Organization entities.
- * `softwareVersion` is read from pkg/package.json at build time (release candidate suffixes
+ * `softwareVersion` is read from pkg/package.json at build time (a prerelease suffix is
  * dropped, see package-version.ts), so the structured data always matches the release being
  * published (1.0.0 at launch) with nothing to remember to bump.
  *

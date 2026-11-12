@@ -16,10 +16,11 @@ export const SHOWCASE_SITES = [
 ] as const;
 
 export async function renderShowcase(featured = false): Promise<string> {
+  // The home page shows two: the SaaS dashboard, then the shop.
   const sites = featured
     ? SHOWCASE_SITES.filter(
-        (site) => site.slug === "lateral" || site.slug === "rinsesoft",
-      ).toReversed()
+        (site) => site.slug === "lateral" || site.slug === "bascik-shop",
+      )
     : SHOWCASE_SITES;
   return (
     await Promise.all(

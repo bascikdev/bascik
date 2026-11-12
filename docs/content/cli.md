@@ -5,9 +5,9 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ## Scaffold a new project
 
 ```sh
-npm create bascik@rc
-# or: npm create bascik@rc my-project
-# or: npm create bascik@rc my-project -- --template cloudflare
+npm create bascik
+# or: npm create bascik my-project
+# or: npm create bascik my-project -- --template cloudflare
 ```
 
 Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter, and `--template netlify` adds the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the same demo; it goes after `--` because npm keeps flags placed before it for itself. Creates:
@@ -219,7 +219,7 @@ Node itself checks `--env-file` before Bascik starts, so a missing file stops th
 
 An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
 
-Env files often hold secrets, so keep them out of git. A project made with `npm create bascik@rc` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
+Env files often hold secrets, so keep them out of git. A project made with `npm create bascik` already ignores `.env` and `.env.*` in its `.gitignore`, except `.env.example`.
 
 The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
 
@@ -384,7 +384,7 @@ bascik --check
 - **Project checks** need the whole project: the config, every page and component, the route table. Duplicate routes, unused components, and unmatched tags are examples. `bascik` runs these itself.
 - **Per-file checks** need one file: an attribute typo, CSS that cannot be scoped, an API route with no handler. These are the same checks your editor shows as you type, and `bascik --check` runs them through [`@bascik/language-server`](/tools/linter) when it is installed.
 
-Projects created with `npm create bascik@rc` have the language server installed. In a project without it, the project checks still run, and the report says what was skipped:
+Projects created with `npm create bascik` have the language server installed. In a project without it, the project checks still run, and the report says what was skipped:
 
 ```terminal
 ℹ  per-file checks skipped: install @bascik/language-server to run them (npm install --save-dev @bascik/language-server)
@@ -674,7 +674,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 
 ## Editor setup and output inspection
 
-**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik@rc` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
+**VS Code false positives.** VS Code's built-in HTML checker joins every classic `<script>` (one without `type="module"`) in a file into one JavaScript file, so two Bascik scripts that each `export default` show "A module cannot have multiple default exports." Bascik runs each build and server script on its own, and wraps each component script in its own scope, so that error is false. Plain `<script>` blocks in a page still share the browser's global scope, so the same top-level `const` in two page scripts is a real error. `npm create bascik` and `bascik init` turn this check off in `.vscode/settings.json`, and the [Bascik extension](/tools/vscode-extension#several-scripts-in-one-file) offers to add it in a Bascik workspace that has no value set. For other projects, add this to `.vscode/settings.json`:
 
 ```json
 {
@@ -682,7 +682,7 @@ Then open the URL printed by `http-server` (default: `http://127.0.0.1:8080`).
 }
 ```
 
-**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. Third-party linters are opt-in: `npm create bascik@rc` and `bascik init` do not install them or create or modify their config files. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and has copyable settings.
+**Linter warnings about the page head.** webhint, axe, html-validate, and similar editor linters read source files, so they report a missing charset, viewport, or `<title>` that a head component or build script adds at build time. Third-party linters are opt-in: `npm create bascik` and `bascik init` do not install them or create or modify their config files. Check the built page in `dist/` before changing a source page; [Editor Linters Read Source](/testing/linting#editor-linters-read-source) lists every such warning and has copyable settings.
 
 **Inspect `dist/` directly.** Both the dev server and `bascik --build` write compiled HTML to `dist/` on disk. This is the fastest way to confirm what Bascik emitted:
 

@@ -9,7 +9,7 @@
  * reported twice, and the language server is the same engine the editor uses.
  *
  * The language server is an optional peer dependency. `@bascik/bascik` stays free of production dependencies, and
- * projects scaffolded with `npm create bascik@rc` already have it. When it is missing, the project half still runs
+ * projects scaffolded with `npm create bascik` already have it. When it is missing, the project half still runs
  * and the report says what was skipped.
  */
 import { existsSync } from "node:fs";

@@ -58,12 +58,12 @@ describe("homeSchema", () => {
     expect(software).not.toHaveProperty("softwareVersion");
   });
 
-  it("drops the release candidate suffix so the schema shows the launch version", async () => {
+  it("drops a prerelease suffix so the schema shows the version being released", async () => {
     const packageJson = join(tempDir, "package.json");
-    await writeFile(packageJson, JSON.stringify({ version: "1.0.0-rc.6" }));
+    await writeFile(packageJson, JSON.stringify({ version: "1.1.0-beta.6" }));
 
     const [software] = parseBlocks(String(await homeSchema(packageJson)));
-    expect(software.softwareVersion).toBe("1.0.0");
+    expect(software.softwareVersion).toBe("1.1.0");
   });
 
   it("omits softwareVersion for a missing, empty, or non-string version", async () => {

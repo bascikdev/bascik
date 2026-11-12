@@ -1524,7 +1524,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
           ].join("\n"),
         });
 
-        // Upgrade pre-rc.5 console.log build and routes scripts in the extracted oct052026 branch fixture to current export default contract
+        // Upgrade early-prerelease console.log build and routes scripts in the extracted oct052026 branch fixture to current export default contract
         const upgradeDirectiveScripts = (rootDir: string) => {
           const htmlFiles = execFileSync("find", [rootDir, "-name", "*.html"], {
             encoding: "utf8",

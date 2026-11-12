@@ -236,9 +236,9 @@ describe("initProject", () => {
   });
 
   it("pins @bascik/bascik to a caret range on the running version, not the latest dist-tag", async () => {
-    await init({ version: "1.0.0-rc.10" });
+    await init({ version: "1.0.0" });
     const parsed = JSON.parse(writtenTo("package.json")!);
-    expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.10");
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("^1.0.0");
   });
 
   it("falls back to the latest dist-tag only when the running version is unknown", async () => {
@@ -251,13 +251,13 @@ describe("initProject", () => {
     mockReadFile.mockResolvedValue(
       JSON.stringify({
         name: "my-app",
-        devDependencies: { "@bascik/bascik": "^1.0.0-rc.9" },
+        devDependencies: { "@bascik/bascik": "^1.0.0" },
       }),
     );
     await init();
     const parsed = JSON.parse(writtenTo("package.json")!);
     expect(parsed.dependencies?.["@bascik/bascik"]).toBeUndefined();
-    expect(parsed.devDependencies["@bascik/bascik"]).toBe("^1.0.0-rc.9");
+    expect(parsed.devDependencies["@bascik/bascik"]).toBe("^1.0.0");
   });
 
   it("ignores the TLS key and certificate Bascik generates in the project folder", async () => {

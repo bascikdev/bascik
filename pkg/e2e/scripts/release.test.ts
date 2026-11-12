@@ -171,13 +171,13 @@ describe("release script", () => {
   });
 
   it("prints latest commands for RC versions and selected packages only", async () => {
-    const { dependencies, logs } = fixture({ version: "1.2.3-rc.10" });
+    const { dependencies, logs } = fixture({ version: "1.2.3-beta.10" });
     await release(["pkg", "create", "--latest"], dependencies);
 
     expect(logs).toEqual([
       "Run these commands to set the selected npm package versions to latest:",
-      "npm dist-tag add @bascik/bascik@1.2.3-rc.10 latest --registry https://registry.npmjs.org",
-      "npm dist-tag add create-bascik@1.2.3-rc.10 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add @bascik/bascik@1.2.3-beta.10 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add create-bascik@1.2.3-beta.10 latest --registry https://registry.npmjs.org",
     ]);
   });
 

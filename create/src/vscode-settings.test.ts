@@ -56,7 +56,7 @@ describe("VS Code settings for Bascik projects", () => {
 
   // Someone who opens examples/starter-site on its own gets the same editor setup as a new project.
   // The examples bundle skips dot folders, so add-example.mjs never copies these over a project's own files.
-  it("ships in examples/starter-site as npm create bascik@rc writes them", () => {
+  it("ships in examples/starter-site as npm create bascik writes them", () => {
     const starter = resolve(HERE, "../../examples/starter-site/.vscode");
     expect(readFileSync(join(starter, "settings.json"), "utf8")).toBe(
       VSCODE_SETTINGS_JSON,

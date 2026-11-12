@@ -2,7 +2,7 @@
 
 ## Release checklist
 
-Every release, 1.0.0 included, goes through one pull request and then `yarn release`:
+Every release goes through one pull request and then `yarn release`:
 
 1. **Changelog.** Move the bullets under `## [Unreleased]` in `CHANGELOG.md` to a new
    `## [<version>] - <YYYY-MM-DD>` section and add the comparison link at the bottom
@@ -21,10 +21,14 @@ Every release, 1.0.0 included, goes through one pull request and then `yarn rele
    Marketplace channel (`ext-v`), an odd minor to pre-release (`ext-pre-v`).
 3. **Docs sweep.** `grep -rn '<old version>' docs/content skills README.md pkg/README.md
 create/README.md adapters/*/README.md` and fix what the bump left behind (install
-   commands, example ranges, the `#v<tag>` the skills install from).
+   commands, example ranges, the `#v<tag>` the skills install from). The docs, READMEs,
+   scaffold and skills always name the stable install commands (`npm create bascik`,
+   `npm install @bascik/bascik`); a prerelease does not change them. Mention `@rc` only
+   in the prerelease's own changelog section.
 4. **Validate.** `yarn check:format`, `yarn check:spelling`, `yarn typecheck:all`,
    `yarn test:all`, and the `pre-push` skill (`.github/skills/pre-push/SKILL.md`), which
-   regenerates the coverage JSON files.
+   regenerates the coverage JSON files. When the code has already passed CI and only the
+   coverage files changed, commit them with `[skip ci]` (see the skill for the caveats).
 5. **Merge into `main`** through a pull request. CI must be green on the branch; the
    merge deploys the docs and the demo Worker, so the site already shows the new version
    and release notes before the packages exist on npm. Keep that window short.
@@ -47,6 +51,10 @@ yarn release pkg create --latest    # Print commands for selected npm packages
 yarn release --dry-run             # Print tag-push commands without publishing
 ```
 
+1.0.0 bumps all six artifacts, so the plain `yarn release` is its command. A later release
+that leaves a package's version alone must name the packages it does ship, because the
+script refuses a tag that already exists.
+
 Versions come from fetched `origin/main`, not your working tree. One pinned
 commit ships in stages:
 
@@ -61,14 +69,17 @@ pushing. CI independently rejects off-main tags with `.github/scripts/release-on
 Existing tags are never replaced. Select only unreleased packages; their
 dependencies must already be published or selected in an earlier stage.
 
-npm prereleases publish under their prerelease channel (`rc`, `beta`, etc.);
-stable versions publish under `latest`. `--latest` is a command-generation
+Stable versions publish under the `latest` dist-tag, so `npm create bascik` and a plain
+`npm install @bascik/bascik` get them. A prerelease (`1.1.0-rc.1`, `1.1.0-beta.1`)
+publishes under the dist-tag named by its identifier (`rc`, `beta`), never `latest`, and
+is installed on request with `@rc` or `@beta`. `--latest` is a command-generation
 mode: it prints `npm dist-tag add <package>@<version> latest` commands for the
 selected npm packages using versions from `origin/main`, and does not create
 release tags or run npm. With no package selection, it prints commands for all
 five npm packages and skips the Marketplace extension. Run the printed commands
 locally to update the tags; this lets npm handle any interactive 2FA prompt.
-Pointing `latest` at an RC means a plain `npm install` can install a prerelease.
+Pointing `latest` at a prerelease means a plain `npm install` can install it, so only do
+that on purpose.
 Extension versions must be plain `x.y.z`; `--extension-pre` uses
 `ext-pre-v<version>`. Use distinct versions for stable and pre-release uploads.
 
@@ -83,8 +94,9 @@ Extension versions must be plain `x.y.z`; `--extension-pre` uses
    ```
 
 2. **Prerelease dist-tags.** When a stable version follows a prerelease channel, point
-   that channel at the stable version so old install commands keep working. For 1.0.0,
-   `npm create bascik@rc` and `@bascik/bascik@rc` were the documented commands for weeks:
+   that channel at the stable version so old install commands keep working. Before 1.0.0,
+   `npm create bascik@rc` and `@bascik/bascik@rc` were the documented commands for weeks,
+   so 1.0.0 needs this once:
 
    ```sh
    for p in @bascik/bascik create-bascik @bascik/adapter-cloudflare @bascik/adapter-netlify @bascik/language-server; do
@@ -93,8 +105,7 @@ Extension versions must be plain `x.y.z`; `--extension-pre` uses
    ```
 
 3. **Verify as a user.** In an empty directory on the floor Node version
-   (`nvm use 24.21.0`): `npm create bascik my-site -y -- --no-dev` (with `@rc` while
-   the release candidate is current), then `npm run lint`,
+   (`nvm use 24.21.0`): `npm create bascik my-site -y -- --no-dev`, then `npm run lint`,
    `npm run build` with `BASCIK_SITE_URL` set, and `npm run e2e`. Check
    `npm view @bascik/bascik dist-tags` shows `latest` at the new version, and that the
    Marketplace stable channel lists the extension version (the pre-release toggle in VS

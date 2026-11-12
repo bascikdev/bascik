@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Publishes the package in the current directory. Usage: publish-npm.sh <tag-prefix>
 # Requires the git tag (GITHUB_REF_NAME) to equal <tag-prefix> + package.json version.
-# Prerelease versions (1.0.0-rc.1) publish under the matching dist-tag (rc), never latest.
+# Stable versions (1.0.0) publish under latest. A prerelease (1.1.0-rc.1) publishes under the dist-tag named by
+# its identifier (rc), never latest.
 set -euo pipefail
 
 prefix="${1:?tag prefix required, e.g. v or create-v}"

@@ -12,11 +12,11 @@ import {
 describe("stableVersion", () => {
   it.each([
     ["1.0.0", "1.0.0"],
-    ["1.0.0-rc.6", "1.0.0"],
-    ["1.0.0-rc.99", "1.0.0"],
+    ["1.1.0-beta.6", "1.1.0"],
+    ["1.1.0-beta.99", "1.1.0"],
     ["1.2.3-beta.1", "1.2.3"],
     ["1.0.0+build.5", "1.0.0"],
-    ["1.0.0-rc.1+build.5", "1.0.0"],
+    ["1.1.0-beta.1+build.5", "1.1.0"],
   ])("%s -> %s", (input, expected) => {
     expect(stableVersion(input)).toBe(expected);
   });
@@ -35,19 +35,19 @@ describe("package version readers", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("reads the raw version, keeping the release candidate suffix", async () => {
-    await writeFile(packageJson, JSON.stringify({ version: "1.0.0-rc.6" }));
-    expect(await readPackageVersion(packageJson)).toBe("1.0.0-rc.6");
+  it("reads the raw version, keeping a prerelease suffix", async () => {
+    await writeFile(packageJson, JSON.stringify({ version: "1.1.0-beta.6" }));
+    expect(await readPackageVersion(packageJson)).toBe("1.1.0-beta.6");
   });
 
-  it("reads the stable version, dropping the release candidate suffix", async () => {
-    await writeFile(packageJson, JSON.stringify({ version: "1.0.0-rc.6" }));
-    expect(await readStableVersion(packageJson)).toBe("1.0.0");
+  it("reads the stable version, dropping a prerelease suffix", async () => {
+    await writeFile(packageJson, JSON.stringify({ version: "1.1.0-beta.6" }));
+    expect(await readStableVersion(packageJson)).toBe("1.1.0");
   });
 
-  it("renders the badge text without the release candidate suffix", async () => {
-    await writeFile(packageJson, JSON.stringify({ version: "1.0.0-rc.6" }));
-    expect(await versionBadge(packageJson)).toBe("v1.0.0");
+  it("renders the badge text without a prerelease suffix", async () => {
+    await writeFile(packageJson, JSON.stringify({ version: "1.1.0-beta.6" }));
+    expect(await versionBadge(packageJson)).toBe("v1.1.0");
   });
 
   it("renders an empty badge instead of a wrong number when the version is unreadable", async () => {

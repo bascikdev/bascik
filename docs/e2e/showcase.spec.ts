@@ -109,7 +109,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await expect(preview.getByTestId("showcase-card")).toHaveCount(2);
     for (const site of sites.filter(
-      (site) => site.name === "Rinsesoft" || site.name === "Lateral EMDR",
+      (site) => site.name === "Lateral EMDR" || site.name === "Bascik Shop",
     )) {
       await expect(
         preview.getByRole("heading", { name: site.name, exact: true }),

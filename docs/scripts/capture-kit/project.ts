@@ -1,5 +1,5 @@
 /**
- * A throwaway Bascik project for capture scripts: the real starter that `npm create bascik@rc` generates, wired
+ * A throwaway Bascik project for capture scripts: the real starter that `npm create bascik` generates, wired
  * to this repo's own compiler through symlinks, in a temp directory. Capture scripts run the real dev server
  * against it, so what they show is what a new user would see.
  *
