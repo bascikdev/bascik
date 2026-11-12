@@ -91,7 +91,11 @@ function hasTagNameAt(html: string, at: number, name: string): boolean {
 
 /** The index of `</name` (any ASCII case, followed by a tag-name end) at or after `from`, or -1. */
 function findCloseTag(html: string, from: number, name: string): number {
-  for (let at = html.indexOf("</", from); at >= 0; at = html.indexOf("</", at + 2))
+  for (
+    let at = html.indexOf("</", from);
+    at >= 0;
+    at = html.indexOf("</", at + 2)
+  )
     if (
       hasTagNameAt(html, at + 2, name) &&
       isTagNameEnd(html[at + 2 + name.length])

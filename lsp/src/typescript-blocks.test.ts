@@ -183,8 +183,12 @@ describe("extractTypeScriptBlocks", () => {
     const html = `${before}<script type="text/typescript">const city: string = "x";</script>`;
     const [block] = extractTypeScriptBlocks(html);
     expect(block.content).toBe('const city: string = "x";');
-    expect(html.slice(block.contentStart, block.contentStart + block.content.length)).toBe(block.content);
-    const [script] = extractPageScopeScripts(html.replace("text/typescript", "text/javascript"));
+    expect(
+      html.slice(block.contentStart, block.contentStart + block.content.length),
+    ).toBe(block.content);
+    const [script] = extractPageScopeScripts(
+      html.replace("text/typescript", "text/javascript"),
+    );
     expect(script.content).toBe('const city: string = "x";');
   });
 

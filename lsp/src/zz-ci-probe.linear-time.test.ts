@@ -6,7 +6,8 @@ import { LINEAR_TIME_TIMEOUT_MS, growthOf } from "./linear-time.test.util.js";
 const page = (n: number) => `text/javascript <script type="${"a".repeat(n)}`;
 const work: Record<string, (html: string) => unknown> = {
   "new scan": extractPageScopeScripts,
-  "page-sized toLowerCase (what the old scan paid)": (html) => html.toLowerCase(),
+  "page-sized toLowerCase (what the old scan paid)": (html) =>
+    html.toLowerCase(),
   "native indexOf pass": (html) => html.indexOf("\u0001"),
 };
 it(
@@ -23,7 +24,9 @@ it(
             () => run(large),
           ).toFixed(1),
         );
-        lines.push(`PROBE ${smallChars / 1000}k vs ${(4 * smallChars) / 1000}k | ${label}: ${readings.join(" ")}`);
+        lines.push(
+          `PROBE ${smallChars / 1000}k vs ${(4 * smallChars) / 1000}k | ${label}: ${readings.join(" ")}`,
+        );
       }
     }
     process.stderr.write(`${lines.join("\n")}\n`);
