@@ -70,11 +70,11 @@ import {
   DOCUMENT_FRAGMENT_CONTEXT,
   fragmentContexts,
   fragmentEdges,
-  leadingCollapsibleWhitespace,
-  trailingCollapsibleWhitespace,
   minifyHtmlFragment,
   type FragmentContext,
+  type FragmentNeighbor,
 } from "./html-minifier.ts";
+import { SEAM_SEPARATOR } from "./html-scanner.ts";
 import {
   applyScopingResult,
   instantiateTemplate,
@@ -499,6 +499,174 @@ export const expandByUsage = (
   return pieces.join("");
 };
 
+/** One piece of the whitespace and comment separators at an instance's edge. */
+interface SeamToken {
+  text: string;
+  whitespace: boolean;
+  keep: boolean;
+}
+
+/**
+ * Split `html` into the whitespace and separators at its start, what lies
+ * between, and those at its end. A piece that is nothing else is all `lead`.
+ */
+const splitSeams = (
+  html: string,
+): { lead: SeamToken[]; middle: string; trail: SeamToken[] } => {
+  const isSpace = (index: number): boolean => {
+    const code = html.charCodeAt(index);
+    return code === 32 || code === 10 || code === 9 || code === 13;
+  };
+  const lead: SeamToken[] = [];
+  let start = 0;
+  while (start < html.length) {
+    if (isSpace(start)) {
+      let end = start + 1;
+      while (end < html.length && isSpace(end)) end++;
+      lead.push({
+        text: html.slice(start, end),
+        whitespace: true,
+        keep: true,
+      });
+      start = end;
+    } else if (html.startsWith(SEAM_SEPARATOR, start)) {
+      lead.push({ text: SEAM_SEPARATOR, whitespace: false, keep: true });
+      start += SEAM_SEPARATOR.length;
+    } else break;
+  }
+  const trail: SeamToken[] = [];
+  let end = html.length;
+  while (end > start) {
+    if (isSpace(end - 1)) {
+      let from = end - 1;
+      while (from > start && isSpace(from - 1)) from--;
+      trail.push({ text: html.slice(from, end), whitespace: true, keep: true });
+      end = from;
+    } else if (
+      end - SEAM_SEPARATOR.length >= start &&
+      html.startsWith(SEAM_SEPARATOR, end - SEAM_SEPARATOR.length)
+    ) {
+      trail.push({ text: SEAM_SEPARATOR, whitespace: false, keep: true });
+      end -= SEAM_SEPARATOR.length;
+    } else break;
+  }
+  trail.reverse();
+  return { lead, middle: html.slice(start, end), trail };
+};
+
+/** What `mergeSeamWhitespace` needs to know about each finished instance. */
+interface SeamNeighbors {
+  /** What the instance's minified form starts and ends with ("none": nothing). */
+  edges: (index: number) => { first: FragmentNeighbor; last: FragmentNeighbor };
+  /** What renders before and after each instance, past any that leave nothing. */
+  before: readonly FragmentNeighbor[];
+  after: readonly FragmentNeighbor[];
+}
+
+/**
+ * Reconcile the whitespace where instances written with nothing between them
+ * meet. Each was minified on its own, so each kept the space its own edge
+ * called for; in the built page those edges are one stretch of whitespace
+ * and comment separators (a removed comment leaves an empty one in a table)
+ * between two things that render, and of that stretch the build keeps:
+ *
+ * - whitespace that touches text on either side, which is part of that text;
+ * - while a formatting element may be open, one space per whitespace run;
+ * - otherwise one space for every other run together, at the last of them,
+ *   and none when text is on either side of the stretch.
+ *
+ * Two runs that now touch are one run. An instance only ever keeps a space
+ * the build may also keep at that run, so this only removes. Inside a
+ * `<pre>`, and where the page could not be followed, the instances are as
+ * written and stay so. One pass over the pieces' edges.
+ */
+const mergeSeamWhitespace = (
+  finished: string[],
+  spans: readonly UsageSpan[],
+  contexts: readonly FragmentContext[],
+  neighbors: SeamNeighbors,
+): string[] => {
+  if (finished.length < 2) return finished;
+  let changed = false;
+  /** The stretch being read: its tokens, and what it started after. */
+  let stretch: SeamToken[] = [];
+  let afterText = false;
+  let formatting = false;
+  const close = (beforeText: boolean): void => {
+    const runs: SeamToken[] = [];
+    let previous: SeamToken | undefined;
+    for (const token of stretch) {
+      if (!token.whitespace) {
+        previous = undefined;
+        continue;
+      }
+      if (previous) {
+        token.keep = false;
+        changed = true;
+      } else {
+        runs.push(token);
+        previous = token;
+      }
+    }
+    if (!formatting && runs.length > 0) {
+      // Runs that are part of the text on either side stay with it.
+      const first = stretch[0];
+      const last = stretch[stretch.length - 1];
+      let from = afterText && first.whitespace ? 1 : 0;
+      let to = runs.length;
+      if (beforeText && last.whitespace && runs.length > from) to--;
+      // A single run between two texts is both; it is counted once.
+      if (from > to) from = to;
+      // The build keeps that space only between two inline elements. Each
+      // instance checked its own neighbors, but one that follows text was
+      // minified as if it touched that text, which a comment separator
+      // between them undoes.
+      const keepLast = !beforeText && !afterText;
+      for (let index = from; index < to; index++) {
+        if (keepLast && index === to - 1) break;
+        runs[index].keep = false;
+        changed = true;
+      }
+    }
+    stretch = [];
+  };
+  let open = false;
+  const parts = finished.map((piece, index) => {
+    const context = contexts[index];
+    const skipped = context.inPre || context.verbatim;
+    const adjacent = index > 0 && spans[index].start === spans[index - 1].end;
+    if (open && (skipped || !adjacent)) {
+      // The stretch ran to the end of its run of instances.
+      close(neighbors.after[index - 1] === "text");
+      open = false;
+    }
+    if (skipped) return undefined;
+    if (!open) {
+      open = true;
+      afterText = neighbors.before[index] === "text";
+      formatting = context.formatting;
+    }
+    const seams = splitSeams(piece);
+    stretch.push(...seams.lead);
+    if (seams.middle !== "") {
+      const { first, last } = neighbors.edges(index);
+      close(first === "text");
+      afterText = last === "text";
+      formatting = context.formatting;
+      stretch.push(...seams.trail);
+    }
+    return seams;
+  });
+  if (open) close(neighbors.after[finished.length - 1] === "text");
+  if (!changed) return finished;
+  const text = (tokens: SeamToken[]): string =>
+    tokens.map((token) => (token.keep ? token.text : "")).join("");
+  return finished.map((piece, index) => {
+    const seams = parts[index];
+    return seams ? text(seams.lead) + seams.middle + text(seams.trail) : piece;
+  });
+};
+
 /**
  * The request path's finish for each expanded top-level usage. The build
  * rewrites base paths in, then minifies, the whole page once
@@ -520,42 +688,41 @@ export const usageFinalizer = (
         if (!manifest.minifyHtml) return rebased;
         const contexts = fragmentContexts(html, spans, outer);
         // Two usages written next to each other are each other's neighbors
-        // in the page as their instances, not as their usage tags.
-        const edges = new Map<number, ReturnType<typeof fragmentEdges>>();
-        const edgesOf = (index: number) => {
-          let found = edges.get(index);
-          if (!found) edges.set(index, (found = fragmentEdges(rebased[index])));
-          return found;
-        };
-        const finished = rebased.map((piece, index) => {
-          const context = { ...contexts[index] };
-          if (context.beforeIsSpan) {
-            const last = edgesOf(index - 1).last;
-            if (last !== "none") context.before = last;
-          }
-          if (context.afterIsSpan) {
-            const first = edgesOf(index + 1).first;
-            if (first !== "none") context.after = first;
-          }
-          return minifyHtmlFragment(piece, context);
-        });
-        // Whitespace at the end of one instance and the start of the next,
-        // written with nothing between them, is one text run in the built
-        // page and collapses to one space; outside a <pre> it is kept once.
-        for (let index = 1; index < finished.length; index++) {
-          const context = contexts[index];
-          if (
-            context.inPre ||
-            context.verbatim ||
-            spans[index].start !== spans[index - 1].end ||
-            trailingCollapsibleWhitespace(finished[index - 1]) === 0
-          )
-            continue;
-          finished[index] = finished[index].slice(
-            leadingCollapsibleWhitespace(finished[index]),
-          );
+        // in the page as their instances, not as their usage tags. An
+        // instance that leaves nothing at its edge (it is empty, or only
+        // comments and whitespace) is no neighbor: the one past it is, and
+        // past the last of them whatever the output has there.
+        const edges: Array<ReturnType<typeof fragmentEdges> | undefined> = [];
+        const edgesOf = (index: number) =>
+          (edges[index] ??= fragmentEdges(rebased[index]));
+        // Resolved from the far end of each run of usages, so a run of
+        // instances that leave nothing is walked once, not once per member.
+        const before: FragmentNeighbor[] = [];
+        for (let index = 0; index < rebased.length; index++) {
+          before[index] = contexts[index].before;
+          if (!contexts[index].beforeIsSpan) continue;
+          const last = edgesOf(index - 1).last;
+          before[index] = last !== "none" ? last : before[index - 1];
         }
-        return finished;
+        const after: FragmentNeighbor[] = [];
+        for (let index = rebased.length - 1; index >= 0; index--) {
+          after[index] = contexts[index].after;
+          if (!contexts[index].afterIsSpan) continue;
+          const first = edgesOf(index + 1).first;
+          after[index] = first !== "none" ? first : after[index + 1];
+        }
+        const finished = rebased.map((piece, index) =>
+          minifyHtmlFragment(piece, {
+            ...contexts[index],
+            before: before[index],
+            after: after[index],
+          }),
+        );
+        return mergeSeamWhitespace(finished, spans, contexts, {
+          edges: edgesOf,
+          before,
+          after,
+        });
       }
     : undefined;
 

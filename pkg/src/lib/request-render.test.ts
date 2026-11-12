@@ -20,6 +20,7 @@
  * `RequestRenderError`, or a once-per-(page, tag) dev log.
  */
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import fc from "fast-check";
 import { createHash } from "node:crypto";
 
 vi.mock("./config.js", () => ({
@@ -2404,5 +2405,128 @@ describe("usageFinalizer", () => {
       `${open}<button>a</button> <button>a</button></td></tr></table>`,
     );
     expect(rendered(requestTime)).toBe(rendered(built));
+  });
+
+  describe("whitespace around a comment's separator between adjacent instances", () => {
+    // In a table the build replaces a removed comment with an empty comment
+    // (the content model there must not change), and of the whitespace runs
+    // around the comments between two inline elements it keeps one space, at
+    // the last run. Each instance is minified on its own at request time, so
+    // the runs on either side of an instance boundary must be reconciled.
+    const A = `<a href="x">t</a>`;
+    const instances: Record<string, string> = {
+      "leading comment": `<!-- note -->\n${A}\n`,
+      "trailing comment": `${A}\n<!-- note -->\n`,
+      "trailing comment, no final newline": `${A}\n<!-- note -->`,
+      "leading newline": `\n${A}`,
+      "comment on both sides": `<!-- a -->\n${A}\n<!-- b -->\n`,
+      "comment only": `<!-- nothing here -->\n`,
+      "no comment": `${A}\n`,
+      "block root with a leading comment": `<!-- note -->\n<div>t</div>\n`,
+      "two comments": `<!-- a -->\n<!-- b -->\n${A}\n`,
+      "comment touching the root": `<!-- a -->${A}\n`,
+      text: `hello\n`,
+      "text after a comment": `<!-- a -->\nhello`,
+      "text before a comment": `\nhello\n<!-- a -->\n`,
+      "whitespace only": `\n  \n`,
+      empty: ``,
+      "a script after the root": `${A}\n<!-- a -->\n<script type="application/json">{}</script>\n`,
+    };
+    const finalize = usageFinalizer({
+      minifyHtml: true,
+      base: "/",
+    } as ComponentManifest)!;
+    const names = Object.keys(instances);
+    const sequences: string[][] = [
+      ...names.flatMap((first) => names.map((second) => [first, second])),
+      ["leading comment", "leading comment", "leading comment"],
+      ["no comment", "comment only", "leading comment"],
+      ["trailing comment, no final newline", "comment only", "leading newline"],
+      ["comment only", "comment only", "no comment"],
+    ];
+    const wrappers: Array<[string, string, string]> = [
+      [
+        "a table cell",
+        "<table><tr><td><p>before</p>",
+        "<p>after</p></td></tr></table>",
+      ],
+      [
+        "a table cell, between inline elements",
+        "<table><tr><td><i>x</i>",
+        "<i>y</i></td></tr></table>",
+      ],
+      [
+        "a formatting element in a table cell",
+        "<table><tr><td><b>",
+        "</b></td></tr></table>",
+      ],
+      [
+        "a <pre> in a table cell",
+        "<table><tr><td><pre>",
+        "</pre></td></tr></table>",
+      ],
+      ["a paragraph", "<p>", "</p>"],
+      ["a formatting element", "<b>", "</b>"],
+    ];
+    it.each(wrappers)("matches the build in %s", (_label, open, close) => {
+      for (const sequence of sequences) {
+        const spans: Array<{ name: string; start: number; end: number }> = [];
+        let page = open;
+        for (const _ of sequence) {
+          spans.push({
+            name: "x-c",
+            start: page.length,
+            end: page.length + 11,
+          });
+          page += "<x-c></x-c>";
+        }
+        const pieces = sequence.map((name) => instances[name]);
+        const finished = finalize(page + close, spans, pieces);
+        expect(
+          `${open}${finished.join("")}${close}`,
+          sequence.join(" + "),
+        ).toBe(minifyHtml(`${open}${pieces.join("")}${close}`));
+      }
+    });
+    it("matches the build for any instances written next to each other", () => {
+      const atom = fc.constantFrom(
+        "<!-- c -->",
+        "\n",
+        " ",
+        A,
+        "<div>d</div>",
+        "<span>s</span>",
+        "hello",
+        "<br>",
+      );
+      const instance = fc.array(atom, { maxLength: 6 }).map((a) => a.join(""));
+      fc.assert(
+        fc.property(
+          fc.array(instance, { minLength: 2, maxLength: 5 }),
+          fc.constantFrom(...wrappers),
+          // Author text on either side of the run, which is left as written.
+          fc.constantFrom("", "x", "<i>x</i>", "<p>x</p>"),
+          fc.constantFrom("", "y", "<i>y</i>", "<p>y</p>"),
+          (pieces, [, open, close], lead, tail) => {
+            const spans: Array<{ name: string; start: number; end: number }> =
+              [];
+            let page = open + lead;
+            for (const _ of pieces) {
+              spans.push({
+                name: "x-c",
+                start: page.length,
+                end: page.length + 11,
+              });
+              page += "<x-c></x-c>";
+            }
+            const finished = finalize(page + tail + close, spans, pieces);
+            expect(`${open}${lead}${finished.join("")}${tail}${close}`).toBe(
+              minifyHtml(`${open}${lead}${pieces.join("")}${tail}${close}`),
+            );
+          },
+        ),
+        { numRuns: 3000 },
+      );
+    });
   });
 });
