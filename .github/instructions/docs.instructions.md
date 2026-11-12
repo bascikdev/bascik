@@ -80,6 +80,8 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
 Both folders are served with `Cache-Control: public, max-age=31536000, immutable` by Cloudflare (a `_headers` rule written by `docs/scripts/generate-pages-headers.ts`; Workers static assets and Pages read it the same way). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
 
+**Width variants.** Every still image in these folders (a showcase screenshot, a thumbnail, the `-still` copy of a recording) has narrower copies beside it, `<name>-<width>.webp`, which `renderImage` lists in a `srcset` so a phone or a 1x screen downloads a file near the size it shows. After adding or re-recording a still, run `yarn workspace bascik-docs images:responsive` (`docs/scripts/responsive-images.ts`) and commit what it writes; `docs/src/lib/responsive-images.test.ts` fails otherwise. Commit the image at the widest size it will be shown at on a dense screen, as WebP only, with no JPEG or PNG master. An image placed with `demoImage()` gets its `srcset` only when the call passes `sizes`, the CSS width it is laid out at; a Markdown image gets the content column's. Animated recordings have no variants: a resized lossless animation is larger than the original.
+
 ## Visuals
 
 Three kinds of visual, each with one home. Do not mix them up, and do not add a fourth.

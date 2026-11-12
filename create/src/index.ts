@@ -61,22 +61,10 @@ if (error) {
   process.exit(1);
 }
 
-let template: Template;
-
-if (templateArg) {
-  template = templateArg;
-} else if (yesFlag) {
-  template = "default";
-} else {
-  const cloudflareAnswer = await rl.ask("Deploy to Cloudflare Workers? (y/N) ");
-  // The other prompts default to yes, so "yes" typed in full is accepted here too.
-  if (/^y(es)?$/i.test(cloudflareAnswer.trim())) {
-    template = "cloudflare";
-  } else {
-    const netlifyAnswer = await rl.ask("Deploy to Netlify? (y/N) ");
-    template = /^y(es)?$/i.test(netlifyAnswer.trim()) ? "netlify" : "default";
-  }
-}
+// Where the site will be deployed is never asked: a new project is the default starter, which builds a
+// static site and runs on the built-in server. `--template cloudflare` or `--template netlify` adds an
+// adapter for someone who already knows they want one, and an adapter can be added to any project later.
+const template: Template = templateArg ?? "default";
 
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
 let notes: string[];

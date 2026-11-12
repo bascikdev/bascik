@@ -72,7 +72,7 @@ Your site will be live at `http://localhost:8080` in every template. `npm run de
 
 ## Templates
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag, the interactive prompts ask whether the site deploys to Cloudflare Workers, then to Netlify; with `-y` and no flag, you get the default.
+Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag you get the `default` starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
 
 | Template     | What you get                                                                                                             |
 | :----------- | :----------------------------------------------------------------------------------------------------------------------- |

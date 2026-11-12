@@ -15,6 +15,12 @@ export const SHOWCASE_SITES = [
   { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ] as const;
 
+/**
+ * How wide a card's screenshot is laid out: the viewport less the page gutters on a phone (310 pixels at 360),
+ * and at most 528 pixels in the home page's two-column preview (the showcase page's cards are narrower).
+ */
+const SHOWCASE_IMAGE_SIZES = "(max-width: 620px) calc(100vw - 50px), 528px";
+
 export async function renderShowcase(featured = false): Promise<string> {
   // The home page shows two: the SaaS dashboard, then the shop.
   const sites = featured
@@ -43,6 +49,8 @@ export async function renderShowcase(featured = false): Promise<string> {
           <div data-bascik-slot="image">${demoImage(
             `/assets/demos/showcase-${site.slug}@2x.webp`,
             `${site.name} website homepage`,
+            undefined,
+            SHOWCASE_IMAGE_SIZES,
           )}</div>
           <div data-bascik-slot="description">${description}</div>
         </showcase-card>`;

@@ -288,10 +288,47 @@ describe("npm create bascik and the agent skills", () => {
     });
     expect(status, output).toBe(0);
     expect(output).toContain("Project name (bascik-app): \n");
-    expect(output).toContain("Deploy to Cloudflare Workers? (y/N) \n");
-    expect(output).toContain("Deploy to Netlify? (y/N) \n");
     expect(existsSync(join(parent, "bascik-app", "AGENTS.md"))).toBe(true);
     expect(existsSync(join(parent, "bascik-app", "netlify.toml"))).toBe(false);
+  });
+
+  it("never asks where the site will be deployed: without --template the starter is the default one", async () => {
+    // Answers that would have chosen an adapter when the question existed.
+    const { status, output, parent } = await create(
+      ["my-site", "--no-skills", ...QUIET],
+      { input: "y\ny\ny\n" },
+    );
+    expect(status, output).toBe(0);
+    expect(output).not.toMatch(/Deploy to/i);
+    expect(output).not.toMatch(/Cloudflare|Netlify/);
+    const manifest = JSON.parse(
+      readFileSync(join(parent, "my-site", "package.json"), "utf8"),
+    ) as { devDependencies: Record<string, string> };
+    expect(
+      Object.keys(manifest.devDependencies).filter((name) =>
+        name.startsWith("@bascik/adapter-"),
+      ),
+    ).toEqual([]);
+    expect(existsSync(join(parent, "my-site", "netlify.toml"))).toBe(false);
+    expect(existsSync(join(parent, "my-site", "wrangler.jsonc"))).toBe(false);
+  });
+
+  it("--template still chooses an adapter starter, with no question asked", async () => {
+    for (const [template, adapter] of [
+      ["cloudflare", "@bascik/adapter-cloudflare"],
+      ["netlify", "@bascik/adapter-netlify"],
+    ] as const) {
+      const { status, output, parent } = await create(
+        [`site-${template}`, "--template", template, "--no-skills", ...QUIET],
+        { input: "" },
+      );
+      expect(status, output).toBe(0);
+      expect(output).not.toMatch(/Deploy to .*\?/i);
+      const manifest = JSON.parse(
+        readFileSync(join(parent, `site-${template}`, "package.json"), "utf8"),
+      ) as { devDependencies: Record<string, string> };
+      expect(manifest.devDependencies[adapter]).toBe("^1.0.0");
+    }
   });
 
   it("misuse: a skills install that fails still scaffolds, exits 0 and prints the command to run later", async () => {

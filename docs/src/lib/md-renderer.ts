@@ -25,6 +25,7 @@ import {
   closeSync,
   existsSync,
   openSync,
+  readdirSync,
   readFileSync,
   readSync,
   statSync,
@@ -102,6 +103,63 @@ function imageSize(sitePath: string): { width: number; height: number } | null {
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+/** The pixel width of a site image file, or null when it cannot be read. */
+function imagePixelWidth(sitePath: string): number | null {
+  const size = imageSize(sitePath);
+  if (!size) return null;
+  return size.width * (/@2x\.[a-z]+$/i.test(sitePath) ? 2 : 1);
+}
+
+/**
+ * The widths a docs content image is laid out at: the column is 664 pixels wide from a tablet up, and the
+ * viewport less the page gutters below that (312 pixels on a 360 pixel phone). Measured on the built site.
+ */
+export const MARKDOWN_IMAGE_SIZES =
+  "(max-width: 720px) calc(100vw - 48px), 664px";
+
+/**
+ * The `srcset` for a site image that has width variants beside it, or null when it has none.
+ *
+ * A variant is `<name>-<width>.webp` next to `<name>.webp`, the names `responsive-webp.mjs` (the bascik-images
+ * skill's script) writes; scripts/responsive-images.ts makes them for every still image. The list is in
+ * ascending width and includes the file itself at its own pixel width. Every URL carries its content hash, like
+ * any other reference to these folders.
+ *
+ * Only still images have variants. An animated recording is lossless, and resizing one makes the file larger
+ * (lint 56 KB to 82 KB at half size), so it is served as its one file.
+ */
+function widthSrcset(sitePath: string): string | null {
+  const ownWidth = imagePixelWidth(sitePath);
+  if (ownWidth === null) return null;
+  const slash = sitePath.lastIndexOf("/");
+  const folder = sitePath.slice(0, slash + 1);
+  const name = sitePath.slice(slash + 1);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || name.slice(dot).toLowerCase() !== ".webp") return null;
+  const stem = name.slice(0, dot);
+  let names: string[];
+  try {
+    names = readdirSync(join(process.cwd(), "src/pages", folder));
+  } catch {
+    return null;
+  }
+  const candidates = new Map<number, string>();
+  for (const candidate of names) {
+    if (!candidate.startsWith(`${stem}-`) || !candidate.endsWith(".webp"))
+      continue;
+    const width = candidate.slice(stem.length + 1, -".webp".length);
+    if (!/^[1-9]\d*$/.test(width)) continue;
+    candidates.set(Number(width), folder + candidate);
+  }
+  if (candidates.size === 0) return null;
+  // The file itself is the candidate at its own width, whatever a variant of that width holds.
+  candidates.set(ownWidth, sitePath);
+  return [...candidates]
+    .sort(([a], [b]) => a - b)
+    .map(([width, path]) => `${imageUrl(path)} ${width}w`)
+    .join(", ");
 }
 
 /**
@@ -243,12 +301,17 @@ const unescapeMarkedAttribute = (text: string) =>
  * still instead. The animation loops forever and cannot be paused, so it must not be their default.
  *
  * `rest` is whatever follows `src` in the original tag, such as ` alt="..."`.
+ *
+ * `sizes` is the CSS width the image is laid out at (an `<img sizes>` value). With it, a still image that has
+ * width variants gets a `srcset` of them, so a phone or a 1x screen downloads a file near the size it shows.
+ * Without it there is no `srcset`: a width list with no `sizes` makes the browser assume the full viewport width.
  */
 function renderImage(
   src: string,
   rest: string,
   narrow?: { src: string; maxWidth: number },
   eager = false,
+  sizes?: string,
 ): string {
   const file = imageReference(src).file;
   const size = file === null ? null : imageSize(file);
@@ -264,7 +327,11 @@ function renderImage(
   // download of an animated recording competed with it (sitemap mobile LCP 1.5 s to 2.4 s in Lighthouse). The
   // browser raises the priority of an image in the viewport on its own.
   const loading = eager ? 'loading="eager"' : 'loading="lazy" decoding="async"';
-  const image = `<img ${loading}${demoClass}${dimensions} src="${imageUrl(src)}"${rest}>`;
+  const responsive = (sitePath: string | null): string => {
+    const srcset = sizes && sitePath ? widthSrcset(sitePath) : null;
+    return srcset ? ` srcset="${srcset}" sizes="${esc(sizes!)}"` : "";
+  };
+  const image = `<img ${loading}${demoClass}${dimensions} src="${imageUrl(src)}"${responsive(file)}${rest}>`;
   const sources: string[] = [];
   // The narrow image has a different shape from the default one, so its sources say how big it is. Without
   // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
@@ -283,7 +350,8 @@ function renderImage(
   }
   if (still)
     sources.push(
-      `<source media="(prefers-reduced-motion: reduce)" srcset="${imageUrl(still)}">`,
+      // The still is one image at one density unless it has width variants and the caller said how wide it is.
+      `<source media="(prefers-reduced-motion: reduce)"${responsive(still) || ` srcset="${imageUrl(still)}"`}>`,
     );
   if (narrow)
     sources.push(
@@ -304,8 +372,10 @@ export function demoImage(
   src: string,
   alt: string,
   narrow?: { src: string; maxWidth: number },
+  /** The CSS width the image is laid out at; with it, a still image is served from its width variants. */
+  sizes?: string,
 ): string {
-  return renderImage(src, ` alt="${esc(alt)}"`, narrow);
+  return renderImage(src, ` alt="${esc(alt)}"`, narrow, false, sizes);
 }
 
 /**
@@ -654,7 +724,13 @@ function _transformMd(
         offset < foldOffset &&
         textBefore(offset) <= LCP_IMAGE_MAX_TEXT_BEFORE;
       if (eager) eagerUsed = true;
-      return renderImage(unescapeMarkedAttribute(src), rest, undefined, eager);
+      return renderImage(
+        unescapeMarkedAttribute(src),
+        rest,
+        undefined,
+        eager,
+        MARKDOWN_IMAGE_SIZES,
+      );
     },
   );
 

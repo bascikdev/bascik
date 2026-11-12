@@ -1,0 +1,22 @@
+<!-- A thumbnail that links to a video on YouTube. A plain link, on purpose:
+     it opens the YouTube app on a phone and a new tab on a desktop, and this
+     page loads nothing from YouTube. The thumbnail is decorative (the title
+     under it names the video), so pass it with an empty alt. -->
+<a
+  data-testid="video-link"
+  data-bascik-attr-href="href"
+  target="_blank"
+  rel="noopener noreferrer"
+>
+  <span class="thumb">
+    <span data-bascik-slot="image"></span>
+    <span class="play" aria-hidden="true"></span>
+  </span>
+  <span class="title" data-testid="video-link-title" data-bascik-prop-title>
+  </span>
+  <span class="note">
+    <span data-bascik-prop-note></span>
+    <span aria-hidden="true">&#8599;</span>
+    <span class="new-tab">(opens in a new tab)</span>
+  </span>
+</a>

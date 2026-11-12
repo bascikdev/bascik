@@ -6,7 +6,7 @@ export interface CliOptions {
   noInstallFlag: boolean;
   /** `--no-skills`: do not ask about or install the agent skills. */
   noSkillsFlag: boolean;
-  /** Left undefined when no `--template` flag was given so the entry can ask interactively. */
+  /** Left undefined when no `--template` flag was given; the entry then uses the default starter. */
   template?: Template;
   /** The first positional argument, the project name, with flag values excluded. */
   projectName?: string;
@@ -178,7 +178,7 @@ export const USAGE = `Usage: npm create bascik [project-name] -- [options]
 Creates a new Bascik project in ./<project-name> (asks for a name when none is given).
 
 Options:
-  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Asks when not given.
+  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Default: default.
   -y, --yes          Answer every question with its default: the default template,
                      install the agent skills, install dependencies, start the dev server
   --no-skills        Do not install the Bascik agent skills

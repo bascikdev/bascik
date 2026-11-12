@@ -8,6 +8,7 @@ import {
   renderMdRange,
   extractDemoBlock,
   demoImage,
+  MARKDOWN_IMAGE_SIZES,
   VERSIONED_IMAGE_FOLDERS,
 } from "./md-renderer.js";
 
@@ -395,6 +396,178 @@ const x = 1;
     } finally {
       cwd.mockRestore();
     }
+  });
+
+  describe("width variants: srcset and sizes", () => {
+    const webp = (width: number, height: number) => {
+      const header = Buffer.alloc(32);
+      header.write("RIFF", 0, "latin1");
+      header.write("WEBP", 8, "latin1");
+      header.write("VP8 ", 12, "latin1");
+      header.writeUInt16LE(width, 26);
+      header.writeUInt16LE(height, 28);
+      return header;
+    };
+    const SIZES = "(max-width: 600px) 90vw, 500px";
+
+    it("gives a still image with width variants a srcset in ascending order, ending with the file itself, plus the sizes it was given", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "site@2x.webp"), webp(1280, 800));
+      await writeFile(join(assets, "site@2x-640.webp"), webp(640, 400));
+      await writeFile(join(assets, "site@2x-320.webp"), webp(320, 200));
+      await writeFile(join(assets, "site@2x-960.webp"), webp(960, 600));
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        const html = demoImage(
+          "/assets/demos/site@2x.webp",
+          "A site",
+          undefined,
+          SIZES,
+        );
+        const v = (width: number, height: number) =>
+          `?v=${hashOf(webp(width, height))}`;
+        expect(html).toBe(
+          '<img loading="lazy" decoding="async" class="demo-shot" width="640" height="400" ' +
+            `src="/assets/demos/site%402x.webp${v(1280, 800)}" ` +
+            `srcset="/assets/demos/site%402x-320.webp${v(320, 200)} 320w, ` +
+            `/assets/demos/site%402x-640.webp${v(640, 400)} 640w, ` +
+            `/assets/demos/site%402x-960.webp${v(960, 600)} 960w, ` +
+            `/assets/demos/site%402x.webp${v(1280, 800)} 1280w" ` +
+            `sizes="${SIZES}" alt="A site">`,
+        );
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it("emits no srcset without sizes, or without variants: a width list with no sizes makes the browser assume 100vw", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "site@2x.webp"), webp(1280, 800));
+      await writeFile(join(assets, "site@2x-640.webp"), webp(640, 400));
+      await writeFile(join(assets, "lone@2x.webp"), webp(1280, 800));
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        expect(demoImage("/assets/demos/site@2x.webp", "A site")).not.toContain(
+          "srcset",
+        );
+        const lone = demoImage(
+          "/assets/demos/lone@2x.webp",
+          "Alone",
+          undefined,
+          SIZES,
+        );
+        expect(lone).not.toContain("srcset");
+        expect(lone).not.toContain("sizes=");
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it("a variant wider than the file is listed after it (a small base with larger copies for dense screens)", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "thumb@2x.webp"), webp(640, 360));
+      await writeFile(join(assets, "thumb@2x-320.webp"), webp(320, 180));
+      await writeFile(join(assets, "thumb@2x-960.webp"), webp(960, 540));
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        const html = demoImage(
+          "/assets/demos/thumb@2x.webp",
+          "",
+          undefined,
+          SIZES,
+        );
+        expect(
+          [...html.matchAll(/ (\d+)w/g)].map((match) => Number(match[1])),
+        ).toEqual([320, 640, 960]);
+        // The display size is still the base file's.
+        expect(html).toContain('width="320" height="180"');
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it("misuse: files that only look like variants are ignored", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "site@2x.webp"), webp(1280, 800));
+      await writeFile(join(assets, "site@2x-640.webp"), webp(640, 400));
+      // Another image, a non-numeric suffix, another format, a still, and a zero width.
+      await writeFile(join(assets, "site-b@2x-640.webp"), webp(640, 400));
+      await writeFile(join(assets, "site@2x-wide.webp"), webp(640, 400));
+      await writeFile(join(assets, "site@2x-480.png"), webp(480, 300));
+      await writeFile(join(assets, "site-still@2x-480.webp"), webp(480, 300));
+      await writeFile(join(assets, "site@2x-0.webp"), webp(1, 1));
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        const html = demoImage(
+          "/assets/demos/site@2x.webp",
+          "A site",
+          undefined,
+          SIZES,
+        );
+        expect(
+          [...html.matchAll(/ (\d+)w/g)].map((match) => Number(match[1])),
+        ).toEqual([640, 1280]);
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it("an animated image keeps its one file, while its reduced-motion still gets the width list", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "tour@2x.webp"), webp(1328, 1000));
+      await writeFile(join(assets, "tour-still@2x.webp"), webp(1328, 1000));
+      await writeFile(join(assets, "tour-still@2x-480.webp"), webp(480, 361));
+      await writeFile(join(assets, "tour-still@2x-800.webp"), webp(800, 602));
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        const html = demoImage(
+          "/assets/demos/tour@2x.webp",
+          "A tour",
+          undefined,
+          SIZES,
+        );
+        const source = html.match(/<source [^>]*>/)![0];
+        expect(source).toContain('media="(prefers-reduced-motion: reduce)"');
+        expect(
+          [...source.matchAll(/ (\d+)w/g)].map((match) => Number(match[1])),
+        ).toEqual([480, 800, 1328]);
+        expect(source).toContain(`sizes="${SIZES}"`);
+        // The animation itself is never resized.
+        const img = html.match(/<img [^>]*>/)![0];
+        expect(img).not.toContain("srcset");
+        expect(img).not.toContain("sizes=");
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it("a Markdown image gets the docs content column's sizes without being asked", async () => {
+      const assets = join(tempDir, "src/pages/assets/demos");
+      await mkdir(assets, { recursive: true });
+      await writeFile(join(assets, "shot@2x.webp"), webp(1328, 1000));
+      await writeFile(join(assets, "shot@2x-480.webp"), webp(480, 361));
+      const mdFile = join(tempDir, "shot.md");
+      await writeFile(
+        mdFile,
+        "# Page\n\n" +
+          "word ".repeat(400) +
+          "\n\n![A shot](/assets/demos/shot@2x.webp)\n",
+      );
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+      try {
+        const html = await renderMd(mdFile);
+        const img = html.match(/<img [^>]*>/)![0];
+        expect(img).toMatch(/srcset="[^"]* 480w, [^"]* 1328w"/);
+        expect(img).toContain(`sizes="${MARKDOWN_IMAGE_SIZES}"`);
+      } finally {
+        cwd.mockRestore();
+      }
+    });
   });
 
   it("versions images in the demo and screenshot folders by content hash, and nothing else", async () => {

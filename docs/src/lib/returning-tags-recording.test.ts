@@ -32,9 +32,17 @@ describe("Returning component tags recording", () => {
 
   it("renders a reduced-motion source for the animation", async () => {
     const html = await renderMd("./content/scripts.md");
-    expect(html).toContain(
-      `<source media="(prefers-reduced-motion: reduce)" srcset="${STILL.replaceAll("@", "%40")}?v=`,
-    );
+    // The still is offered as a width list (its narrower variants, then the file itself).
+    const still = `${STILL.replaceAll("@", "%40")}?v=`;
+    const source = [
+      ...html.matchAll(
+        /<source media="\(prefers-reduced-motion: reduce\)"[^>]*>/g,
+      ),
+    ]
+      .map((match) => match[0])
+      .find((tag) => tag.includes(still));
+    expect(source).toBeDefined();
+    expect(source).toMatch(/ srcset="[^"]+ \d+w" sizes="[^"]+"/);
     expect(html).toContain(ANIMATION.replaceAll("@", "%40"));
   });
 });
