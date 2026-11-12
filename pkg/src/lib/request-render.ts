@@ -21,7 +21,9 @@
  *    each expanded top-level usage then gets the build's base-path rewrite
  *    and, under `minify.html`, the build's minification as it would apply
  *    where the usage sits in the page (inside a `<pre>`, a table, ...), with
- *    client scripts hoisted to the end of that outermost instance;
+ *    client scripts hoisted to the end of that outermost instance, and the
+ *    whitespace where two instances meet reconciled to what the build keeps
+ *    there (`mergeSeamWhitespace`);
  * 3. runs the marked nested jobs through `host.runComponentJob` with the
  *    parent's remaining budget and the runner's own signal, renders their
  *    output the same way (nested components, bounded depth), and splices
