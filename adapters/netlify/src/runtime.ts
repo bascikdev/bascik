@@ -29,11 +29,9 @@
 
 import { componentExecution } from "./component-host.js";
 import {
-  applyOutputScope,
   collectScriptJobOutput,
   composeBufferedResponse,
   contentSecurityPolicyHeader,
-  decodeOutputScope,
   dispatchApiHandler,
   dynamicPageHeaders,
   errorResponse,
@@ -45,12 +43,9 @@ import {
   matchApiRoute,
   mergeHandlerHeaders,
   pageLookupCandidates,
-  scriptChunkOutput,
+  scriptJobOutput,
   scriptTimeoutError,
-  serverScriptOutput,
-  serverScriptOutputErrorMessage,
   streamComposedResponse,
-  stripAnsiEscapeCodes,
   stripRepresentationHeaders,
   type ApiHandlerContext,
   type ApiHandlerModule,
@@ -59,7 +54,6 @@ import {
   type CspRouteHashes,
   type ExecutionPlan,
   type ExecutionSegment,
-  type InvokeResult,
   type PlatformContext,
   type RenderHost,
   type RequestRenderLimits,
@@ -293,61 +287,26 @@ const runGraphJobOutput = async (
       chunks: true,
     },
   );
-  if (invoked.ok && invoked.source) {
-    return scriptChunkOutput(
-      invoked.source,
-      (value) =>
-        settle({ ok: true, value, timedOut: false, aborted: false }, true),
-      (failed) => settle(failed, true),
-    );
-  }
-  return settle(invoked, false);
-
-  /** The output of one settled call or pull, by the policy above. */
-  function settle(result: InvokeResult<unknown>, yielded: boolean): string {
-    let printed: ReturnType<typeof serverScriptOutput> | undefined;
-    let failure: Error | undefined;
-    if (result.ok) {
-      try {
-        printed = serverScriptOutput(result.value);
-      } catch (thrown) {
-        failure = thrown instanceof Error ? thrown : new Error(String(thrown));
-      }
-    }
-    if (printed) {
-      if (printed.error) {
-        if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
-          warnedRefused.add(job);
-          log(
-            serverScriptOutputErrorMessage(
-              printed.error,
-              request.url,
-              job.owner ?? `${job.mode} script`,
-              { production: true, yielded },
-            ),
-          );
-        }
-        return "";
-      }
-      const text =
-        graph.stripAnsi === false
-          ? printed.text
-          : stripAnsiEscapeCodes(printed.text);
-      const scope = decodeOutputScope(job.outputScope);
-      return scope ? applyOutputScope(text, scope) : text;
-    }
-    if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
-    const error =
-      failure ??
-      (!result.ok ? result.error : undefined) ??
-      new Error("Server script failed");
-    const err = error instanceof Error ? error : new Error(String(error));
-    const where = job.owner ? `\n    in the ${job.owner}` : "";
-    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${err.stack ?? err.message}${where}`;
-    if (graph.onServerScriptError === "error") throw new Error(message);
-    if (graph.onServerScriptError === "warn") log(message);
-    return "";
-  }
+  // The runtime's shared policy, as the Node server and the Cloudflare
+  // Worker use it. What is this host's own: a function is production, logs
+  // through `log`, remembers a script's first refused value for the
+  // instance's life, and places a failure by the owner the build recorded.
+  return scriptJobOutput(invoked, {
+    onServerScriptError: graph.onServerScriptError,
+    production: true,
+    requestUrl: request.url,
+    owner: job.owner ?? `${job.mode} script`,
+    stripAnsi: graph.stripAnsi,
+    outputScope: job.outputScope,
+    warn: log,
+    firstRefusal: () => {
+      if (warnedRefused.has(job)) return false;
+      warnedRefused.add(job);
+      return true;
+    },
+    describeFailure: (error) =>
+      `${error.stack ?? error.message}${job.owner ? `\n    in the ${job.owner}` : ""}`,
+  });
 };
 
 /** `runGraphJobOutput` with a yielding script's values joined into one string. */

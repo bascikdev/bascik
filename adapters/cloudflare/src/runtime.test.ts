@@ -1177,3 +1177,104 @@ describe("createCloudflareWorker: a script that yields", () => {
     expect(logged.join("\n")).toContain("server row failed");
   });
 });
+
+describe("createCloudflareWorker: the exact bytes of a report (shared output policy)", () => {
+  const OWNER = "stream script in src/components/book-card/book-card.html:12";
+  const failingPage = (handler: unknown, owner?: string): GraphPage => {
+    const scripted = page("/account", handler);
+    if (owner) scripted.jobs.server_script_a!.owner = owner;
+    return scripted;
+  };
+
+  it('a failed script under "warn" logs the route line, the stack, then its owner, and nothing else', async () => {
+    const logged: string[] = [];
+    const boom = new Error("boom");
+    const res = await worker(
+      graphOf({
+        onServerScriptError: "warn",
+        pages: {
+          "/account": failingPage(() => {
+            throw boom;
+          }, OWNER),
+        },
+      }),
+      logged,
+    ).fetch(get("/account"), {}, ctx());
+    expect(await res.text()).toBe("<main></main>");
+    expect(logged).toEqual([
+      `[bascik] server script error at "/account":\n${boom.stack}\n    in the ${OWNER}`,
+    ]);
+  });
+
+  it("a page script has no owner, so its report ends with the stack", async () => {
+    const logged: string[] = [];
+    const boom = new Error("boom");
+    await worker(
+      graphOf({
+        onServerScriptError: "warn",
+        pages: {
+          "/account": failingPage(() => {
+            throw boom;
+          }),
+        },
+      }),
+      logged,
+    ).fetch(get("/account"), {}, ctx());
+    expect(logged).toEqual([
+      `[bascik] server script error at "/account":\n${boom.stack}`,
+    ]);
+  });
+
+  it('a failed script under "error" logs that same report once and answers with the 500 page', async () => {
+    const logged: string[] = [];
+    const boom = new Error("boom");
+    const res = await worker(
+      graphOf({
+        pages: {
+          "/account": failingPage(() => {
+            throw boom;
+          }, OWNER),
+        },
+      }),
+      logged,
+    ).fetch(get("/account"), {}, ctx());
+    expect(res.status).toBe(500);
+    expect(logged).toEqual([
+      `[bascik] server script error at "/account":\n${boom.stack}\n    in the ${OWNER}`,
+    ]);
+  });
+
+  it("a refused value's warning is the shared production message, word for word", async () => {
+    const logged: string[] = [];
+    await worker(
+      graphOf({
+        pages: { "/account": failingPage(() => ({ not: "markup" }), OWNER) },
+      }),
+      logged,
+    ).fetch(get("/account"), {}, ctx());
+    expect(logged).toEqual([
+      `[bascik] server script error at "/account":\n` +
+        `The ${OWNER} returned an object ([object Object]), which is not markup. ` +
+        "A server or stream script returns a string, an html`...` value, or an array of them (joined with no separator). " +
+        "Return markup built from its fields, for example html`<p>${item.name}</p>`.\n" +
+        "The slot is empty. This warning is logged once per script until the server restarts.",
+    ]);
+  });
+
+  it("terminal color codes are stripped from a script's output unless the graph says to keep them", async () => {
+    const colored = () => "<b>\u001b[31mred\u001b[0m</b>";
+    const stripped = await worker(
+      graphOf({ pages: { "/account": failingPage(colored) } }),
+    ).fetch(get("/account"), {}, ctx());
+    expect(await stripped.text()).toBe("<main><b>red</b></main>");
+    const kept = await worker(
+      graphOf({
+        stripAnsi: false,
+        pages: { "/account": failingPage(colored) },
+      }),
+    ).fetch(get("/account"), {}, ctx());
+    expect(await kept.text()).toBe(
+      "<main><b>\u001b[31mred\u001b[0m</b></main>",
+    );
+  });
+});

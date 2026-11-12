@@ -525,3 +525,105 @@ describe("createNetlifyHandler: a script that yields", () => {
     expect(await res.text()).not.toContain("<li>1</li>");
   });
 });
+
+describe("createNetlifyHandler: the exact bytes of a report (shared output policy)", () => {
+  const OWNER = "stream script in src/components/book-card/book-card.html:12";
+  const scripted = (fn: () => unknown, owner?: string): GraphPage => {
+    const p = page({ jobs: { s1: job("s1", "server", fn) } });
+    if (owner) (p.jobs.s1 as { owner?: string }).owner = owner;
+    return p;
+  };
+  /** The `error` of every script.error line the handler logged. */
+  const scriptErrors = (lines: string[]): string[] =>
+    lines
+      .map((line) => {
+        try {
+          return JSON.parse(line) as { event?: string; error?: string };
+        } catch {
+          return {};
+        }
+      })
+      .filter((entry) => entry.event === "script.error")
+      .map((entry) => String(entry.error));
+
+  it('a failed script under "warn" logs the route line, the stack, then its owner', async () => {
+    const lines: string[] = [];
+    const boom = new Error("boom");
+    const res = await createNetlifyHandler(
+      graph(
+        scripted(() => {
+          throw boom;
+        }, OWNER),
+      ),
+      {
+        log: (line) => lines.push(line),
+        logEvent: () => {},
+        logRequest: () => {},
+      },
+    )(get("/dashboard"));
+    expect(await res.text()).toBe("<p></p>");
+    expect(scriptErrors(lines)).toEqual([
+      `[bascik] server script error at "/dashboard":\n${boom.stack}\n    in the ${OWNER}`,
+    ]);
+  });
+
+  it("a page script has no owner, so its report ends with the stack", async () => {
+    const lines: string[] = [];
+    const boom = new Error("boom");
+    await createNetlifyHandler(
+      graph(
+        scripted(() => {
+          throw boom;
+        }),
+      ),
+      {
+        log: (line) => lines.push(line),
+        logEvent: () => {},
+        logRequest: () => {},
+      },
+    )(get("/dashboard"));
+    expect(scriptErrors(lines)).toEqual([
+      `[bascik] server script error at "/dashboard":\n${boom.stack}`,
+    ]);
+  });
+
+  it("a refused value's warning is the shared production message, word for word, the same as the Worker's", async () => {
+    const lines: string[] = [];
+    await createNetlifyHandler(
+      graph(scripted(() => ({ not: "markup" }), OWNER)),
+      {
+        log: (line) => lines.push(line),
+        logEvent: () => {},
+        logRequest: () => {},
+      },
+    )(get("/dashboard"));
+    expect(scriptErrors(lines)).toEqual([
+      `[bascik] server script error at "/dashboard":\n` +
+        `The ${OWNER} returned an object ([object Object]), which is not markup. ` +
+        "A server or stream script returns a string, an html`...` value, or an array of them (joined with no separator). " +
+        "Return markup built from its fields, for example html`<p>${item.name}</p>`.\n" +
+        "The slot is empty. This warning is logged once per script until the server restarts.",
+    ]);
+  });
+
+  it("terminal color codes are stripped from a script's output unless the graph says to keep them", async () => {
+    const colored = () => "<b>\u001b[31mred\u001b[0m</b>";
+    const quiet = { log: () => {}, logEvent: () => {}, logRequest: () => {} };
+    expect(
+      await (
+        await createNetlifyHandler(
+          graph(scripted(colored)),
+          quiet,
+        )(get("/dashboard"))
+      ).text(),
+    ).toBe("<p><b>red</b></p>");
+    expect(
+      await (
+        await createNetlifyHandler(
+          graph(scripted(colored), { stripAnsi: false }),
+          quiet,
+        )(get("/dashboard"))
+      ).text(),
+    ).toBe("<p><b>\u001b[31mred\u001b[0m</b></p>");
+  });
+});

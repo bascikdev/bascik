@@ -575,3 +575,92 @@ describe("a script that yields where nothing is streamed", () => {
     ]);
   });
 });
+
+describe("the Node host's side of the shared output policy", () => {
+  it("a socket reset while a script yields ends its output with no report, as for a script that returns", async () => {
+    const { writes, done } = await stream(
+      page(`export default async function* () {
+        yield "<li>one</li>";
+        throw Object.assign(new Error("Client reset"), { code: "ECONNRESET" });
+      }`),
+    );
+    await done;
+    expect(writes).toEqual([
+      "<ul>",
+      "<li>one</li>",
+      "</ul><footer>foot</footer>",
+    ]);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('under "error" a failed call, a failed pull and a refused value all throw a ServerScriptError', async () => {
+    const run = (body: string) =>
+      executeServerScripts(
+        page(body, "data-bascik-server"),
+        new Request("http://localhost/orders"),
+        baseContext,
+        30000,
+        FILE,
+      ).then(
+        () => undefined,
+        (error: unknown) => error as Error,
+      );
+    for (const body of [
+      `export default () => { throw new Error("call failed"); };`,
+      `export default async function* () { yield "a"; throw new Error("pull failed"); }`,
+      `export default () => ({ not: "markup" });`,
+      `export default async function* () { yield { not: "markup" }; }`,
+    ]) {
+      const error = await run(body);
+      expect(error?.name, body).toBe("ServerScriptError");
+      expect(error?.message, body).toMatch(
+        /^\[bascik\] server script error at "\/orders":\n/,
+      );
+    }
+  });
+
+  it("the report of a failed pull is the framed, source-mapped trace: the route, the message, then the authored file and line", async () => {
+    const { done } = await stream(
+      page(`export default async function* () {
+        yield "<li>one</li>";
+        throw new Error("row two failed");
+      }`),
+    );
+    await done;
+    const message = String(errorSpy.mock.calls[0]![0]);
+    const lines = message.split("\n");
+    expect(lines[0]).toBe('[bascik] server script error at "/orders":');
+    expect(lines[1]).toBe("Error: row two failed");
+    expect(lines[2]).toMatch(/^\s+at .*src\/pages\/orders\.html:\d+:\d+\)?$/);
+    // Never the data: URL the inline module was loaded from.
+    expect(message).not.toContain("data:text/javascript");
+  });
+
+  it("a refused value in development names the script's file and line as its owner", async () => {
+    const { done } = await stream(
+      page(`export default () => ({ not: "markup" });`),
+    );
+    await done;
+    expect(String(errorSpy.mock.calls[0]![0])).toMatch(
+      /^\[bascik\] server script error at "\/orders":\nThe stream script in src\/pages\/orders\.html:\d+ returned an object \(\[object Object\]\), which is not markup\./,
+    );
+  });
+
+  it("production warns once per script by where it starts, so two scripts each get their warning", async () => {
+    (BascikConfig as unknown as Record<string, unknown>).isProdServer = true;
+    // The gate lasts for the process and is keyed by where a script starts,
+    // so these two start on lines no other test in this file uses.
+    const html =
+      "\n".repeat(40) +
+      `<ul><script data-bascik-stream>\nexport default () => ({ a: 1 });\n</script></ul>` +
+      `<ol><script data-bascik-stream>\nexport default () => ({ b: 2 });\n</script></ol>`;
+    for (let i = 0; i < 2; i++) {
+      const { done } = await stream(html);
+      await done;
+    }
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    for (const call of warnSpy.mock.calls)
+      expect(String(call[0])).toContain("The slot is empty");
+  });
+});
