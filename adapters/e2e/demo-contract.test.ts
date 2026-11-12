@@ -459,7 +459,7 @@ test.describe("shared adapter demo contract", () => {
       const firstRowIsOnTop = () =>
         rows.first().evaluate((row) => {
           const box = row.getBoundingClientRect();
-          const top = document.elementFromPoint(
+          const top = row.ownerDocument.elementFromPoint(
             box.left + box.width / 2,
             box.top + box.height / 2,
           );
