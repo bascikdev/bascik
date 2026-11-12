@@ -431,6 +431,33 @@ test("canonical catalogs render request-time and streamed book cards", async ({
   ]);
 });
 
+test("a default export handles the methods an API route has no named export for", async ({
+  request,
+}) => {
+  expect(await (await request.get("/api/any-method")).json()).toEqual({
+    handledBy: "GET",
+  });
+  const put = await request.fetch("/api/any-method", {
+    method: "PUT",
+    data: "Dune",
+    headers: { "content-type": "text/plain" },
+  });
+  expect(put.status()).toBe(200);
+  expect(await put.json()).toEqual({
+    handledBy: "default",
+    method: "PUT",
+    body: "Dune",
+    platform: "netlify",
+  });
+  const preflight = await request.fetch("/api/any-method", {
+    method: "OPTIONS",
+  });
+  expect(preflight.status()).toBe(204);
+  expect(preflight.headers()["access-control-allow-origin"]).toBe(
+    "https://books.example",
+  );
+});
+
 test("API routes dispatch methods, parameters and catch-all precedence", async ({
   request,
 }) => {

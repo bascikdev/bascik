@@ -75,7 +75,7 @@ Install dependencies now? (Y/n)
 Start the dev server after install? (Y/n)
 ```
 
-Select **Y** for all three and you're live at `http://localhost:8080` with the default template, `http://127.0.0.1:8787` with Cloudflare, or `http://127.0.0.1:8888` with Netlify. The edge templates' `npm run dev` uses the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
+Select **Y** for all three and you're live at `http://localhost:8080`. `npm run dev` is the Bascik dev server in every template. The Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`), which run the same site in the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
 | Flag                | Description                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -456,7 +456,7 @@ The per-file checks, from `@bascik/language-server`:
 | A script tag with two directives, such as `data-bascik-build` and `data-bascik-server`              | `script-mode-conflict`      | Error                    |
 | A value on `data-bascik-build` or `data-bascik-build-once` (`data-bascik-build="page"`)             | `unknown-directive-value`   | Warning                  |
 | A declared component prop passed without the `data-bascik-prop-` prefix (auto-fixable with `--fix`) | `missing-prop-prefix`       | Warning                  |
-| API route file with no recognized method export                                                     | `missing-method-handler`    | Error                    |
+| API route file with no recognized method export and no default export                               | `missing-method-handler`    | Error                    |
 | Method-like API export with wrong casing (`get`, `Post`)                                            | `invalid-method-case`       | Warning                  |
 | A `_middleware.ts` file in the API folder                                                           | `middleware-unsupported`    | Error                    |
 | Component template convention (`<style>` above markup, `<script>` below markup)                     | `component-structure-order` | Warning                  |

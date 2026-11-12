@@ -126,9 +126,10 @@ describe("Lighthouse CI configuration", () => {
         "error",
         { minScore: 0.95 },
       ]);
-      // Budgets: DOM size, script bytes, and layout forced by scripts before first paint. The DOM budget reads the
-      // classic `dom-size` audit: lhci runs its own Lighthouse 12, whose `dom-size-insight` has no numericValue.
-      expect(all["dom-size"], file).toEqual([
+      // Budgets: DOM size, script bytes, and layout forced by scripts before first paint. The DOM budget reads
+      // `dom-size-insight`: lhci 0.16 runs Lighthouse 13.6, which dropped the classic `dom-size` audit and reports the
+      // element count as that insight's numericValue.
+      expect(all["dom-size-insight"], file).toEqual([
         "error",
         { maxNumericValue: 4000 },
       ]);
@@ -501,7 +502,7 @@ describe("Every assertion reads an audit the lhci-bundled Lighthouse reports", (
       const { collect, assert } = (await readConfig(file)).ci;
       for (const url of collect.url)
         expect(
-          assertionsFor(assert, url)["dom-size"],
+          assertionsFor(assert, url)["dom-size-insight"],
           `${file}: ${url}`,
         ).toEqual(["error", { maxNumericValue: 4000 }]);
     }

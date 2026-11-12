@@ -28,6 +28,8 @@ const METHOD_LIKE_REGEX =
   /\bexport\s+(?:async\s+)?(?:const|function|let|var)\s+([a-zA-Z0-9_$]+)\b/g;
 /** `export { a, b as GET }` and `export { ... } from "..."`; `export type { ... }` exports no value. */
 const EXPORT_CLAUSE_REGEX = /\bexport\s*(type\s*)?\{([^{}]*)\}/g;
+/** `export default ...`: the handler for every method the file has no named export for. */
+const DEFAULT_EXPORT_REGEX = /\bexport\s+default\b/;
 /** `export * from "..."` may re-export any method; `export * as ns` exports one name. */
 const STAR_EXPORT_REGEX = /\bexport\s*\*\s*from\b/;
 
@@ -313,12 +315,13 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
   };
 
   const hasRecognizedMethod =
-    exportedNames.some((n) => VALID_METHODS.has(n)) ||
+    exportedNames.some((n) => VALID_METHODS.has(n) || n === "default") ||
+    DEFAULT_EXPORT_REGEX.test(code) ||
     STAR_EXPORT_REGEX.test(code);
   if (!hasRecognizedMethod) {
     diagnostics.push({
       code: "missing-method-handler",
-      message: `API route file does not export any recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`,
+      message: `API route file does not export any recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD) or a default export that handles every method.`,
       severity: "error",
       range: missingHandlerRange(),
     });

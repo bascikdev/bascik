@@ -45,6 +45,50 @@ test.describe("API routes core functionality", () => {
     expect(allow).toContain("OPTIONS");
   });
 
+  test("a default export handles every allowed method without a named export, and a named export wins", async ({
+    request,
+  }) => {
+    const get = await request.get("/api/any-method");
+    expect(await get.json()).toEqual({ handledBy: "GET" });
+
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      const res = await request.fetch("/api/any-method", {
+        method,
+        data: "Dune",
+        headers: { "content-type": "text/plain" },
+      });
+      expect(res.status(), method).toBe(200);
+      const data = await res.json();
+      expect(data.handledBy).toBe("default");
+      expect(data.method).toBe(method);
+      expect(data.body).toBe("Dune");
+    }
+
+    // The default owns OPTIONS, so a CORS preflight reaches it instead of the automatic 204 with Allow.
+    const preflight = await request.fetch("/api/any-method", {
+      method: "OPTIONS",
+    });
+    expect(preflight.status()).toBe(204);
+    expect(preflight.headers()["access-control-allow-origin"]).toBe(
+      "https://books.example",
+    );
+
+    // HEAD still derives from the named GET.
+    const head = await request.head("/api/any-method");
+    expect(head.status()).toBe(200);
+    expect(await head.text()).toBe("");
+  });
+
+  test("misuse: a default export does not widen the method allowlist", async ({
+    request,
+  }) => {
+    const res = await request.fetch("/api/any-method", { method: "PURGE" });
+    expect(res.status()).toBe(405);
+    expect(res.headers()["allow"]).toBe(
+      "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+    );
+  });
+
   test("HEAD request derives from GET with matching headers and empty body", async ({
     request,
   }) => {

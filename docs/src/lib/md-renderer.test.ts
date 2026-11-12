@@ -587,6 +587,38 @@ const x = 1;
     expect(html).toContain('<h2 id="subheading">');
   });
 
+  it("sectionScopedH3Ids gives a sub-heading repeated in every section its own id, with no duplicate warning", async () => {
+    const mdFile = join(tempDir, "changelog.md");
+    await writeFile(
+      mdFile,
+      "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- One.\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- Two.\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const html = await renderMd(mdFile, {
+        skipToFirstH2: true,
+        sectionScopedH3Ids: true,
+      });
+      const ids = [...html.matchAll(/<h3 id="([^"]+)">/g)].map(
+        (match) => match[1],
+      );
+      expect(ids).toHaveLength(2);
+      expect(new Set(ids).size).toBe(2);
+      expect(ids[0]).toBe("unreleased-fixed");
+      expect(ids[1].endsWith("-fixed")).toBe(true);
+      for (const id of ids) expect(html).toContain(`href="#${id}"`);
+      expect(warn).not.toHaveBeenCalled();
+
+      // Without the option the second "Fixed" repeats #fixed and is reported.
+      await renderMd(mdFile, { skipToFirstH2: true });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("has the same id #fixed"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("renderMd supports skipToFirstH2 option", async () => {
     const mdContent = `# Title\n\nIntro paragraph.\n\n## Section 1\nFirst content.\n\n## Section 2\nSecond content.`;
     const mdFile = join(tempDir, "skip-h2.md");

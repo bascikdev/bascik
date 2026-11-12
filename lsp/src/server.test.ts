@@ -331,8 +331,7 @@ describe("BascikLanguageServer", () => {
   // or @bascik/language-server, or its root has a language server config (bascik.ext.json and so on). Any other folder (a React or Vue app with its own src/components) gets no Bascik diagnostics.
   describe("folders that are not Bascik projects", () => {
     const ATTRIBUTE_CSS = '[data-state="open"] {\n  color: red;\n}\n';
-    const DEFAULT_EXPORT_ROUTE =
-      "export default function handler() {\n  return 1;\n}\n";
+    const NO_HANDLER_ROUTE = "export function handler() {\n  return 1;\n}\n";
 
     beforeEach(async () => {
       await fs.rm(path.join(root, "bascik.config.ts"));
@@ -350,9 +349,9 @@ describe("BascikLanguageServer", () => {
       );
       await initialize();
       const css = await write("src/components/button.css", ATTRIBUTE_CSS);
-      const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+      const route = await write("src/api/users.ts", NO_HANDLER_ROUTE);
       open(css, ATTRIBUTE_CSS, "css");
-      open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+      open(route, NO_HANDLER_ROUTE, "typescript");
       await settle();
       expect(latest(css)).toEqual([]);
       expect(latest(route)).toEqual([]);
@@ -369,9 +368,9 @@ describe("BascikLanguageServer", () => {
     it("says once in the output panel why a folder gets no diagnostics", async () => {
       await initialize();
       const css = await write("src/components/button.css", ATTRIBUTE_CSS);
-      const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+      const route = await write("src/api/users.ts", NO_HANDLER_ROUTE);
       open(css, ATTRIBUTE_CSS, "css");
-      open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+      open(route, NO_HANDLER_ROUTE, "typescript");
       await settle();
       const notes = infoMessages().filter((message) =>
         message.includes("not a Bascik project"),
@@ -391,9 +390,9 @@ describe("BascikLanguageServer", () => {
         );
         await initialize();
         const css = await write("src/components/button.css", ATTRIBUTE_CSS);
-        const route = await write("src/api/users.ts", DEFAULT_EXPORT_ROUTE);
+        const route = await write("src/api/users.ts", NO_HANDLER_ROUTE);
         open(css, ATTRIBUTE_CSS, "css");
-        open(route, DEFAULT_EXPORT_ROUTE, "typescript");
+        open(route, NO_HANDLER_ROUTE, "typescript");
         await vi.waitFor(
           () => expect(codes(css)).toContain("css-attribute-selector"),
           { timeout: 5000 },

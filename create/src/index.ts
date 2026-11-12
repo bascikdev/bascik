@@ -162,11 +162,13 @@ if (shouldDev && installed) {
 }
 
 if (template === "cloudflare") {
+  console.log("To develop in workerd:  npm run dev:cloudflare");
   console.log("To preview in workerd:  npm run build && npm run preview");
   console.log("To deploy:              npm run build && npm run deploy\n");
 }
 
 if (template === "netlify") {
+  console.log("To develop in Netlify Dev:    npm run dev:netlify");
   console.log("To preview with netlify dev:  npm run build && npm run preview");
   console.log(
     "To deploy:                    npm run deploy (or connect the repo in Netlify)\n",

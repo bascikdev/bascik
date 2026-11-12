@@ -602,8 +602,39 @@ const releaseBody = (response: Response): void => {
   body.cancel().catch(() => {});
 };
 
-/** Sorted `Allow` header value for a module: exported methods plus derived HEAD and auto OPTIONS. */
+type ApiHandler = (...args: unknown[]) => unknown;
+
+/** The route's `export default` function: the handler for every allowlisted method it has no named export for. */
+const fallbackHandlerOf = (mod: ApiHandlerModule): ApiHandler | undefined =>
+  typeof mod.default === "function" ? (mod.default as ApiHandler) : undefined;
+
+/**
+ * The function that answers `method` for a route module, or `undefined` when none would run (a 405, or the
+ * automatic OPTIONS answer). A named export always wins, then HEAD derived from a named GET, then the default
+ * export. `stripBody` is set when the answer must go out without the body the function returned.
+ */
+export const resolveApiHandler = (
+  mod: ApiHandlerModule,
+  method: string,
+): { handler: ApiHandler; stripBody: boolean } | undefined => {
+  if (!(ALLOWED_METHODS as readonly string[]).includes(method))
+    return undefined;
+  if (typeof mod[method] === "function")
+    return { handler: mod[method] as ApiHandler, stripBody: false };
+  if (method === "HEAD" && typeof mod.GET === "function")
+    return { handler: mod.GET as ApiHandler, stripBody: true };
+  const fallback = fallbackHandlerOf(mod);
+  // A HEAD answer never carries a body, whatever a general handler returned for it.
+  if (fallback) return { handler: fallback, stripBody: method === "HEAD" };
+  return undefined;
+};
+
+/**
+ * Sorted `Allow` header value for a module: exported methods plus derived HEAD and auto OPTIONS. A default export
+ * takes every allowlisted method, so all of them are listed.
+ */
 export const allowHeaderFor = (mod: ApiHandlerModule): string => {
+  if (fallbackHandlerOf(mod)) return [...ALLOWED_METHODS].sort().join(", ");
   const allow = new Set<string>();
   for (const m of ALLOWED_METHODS)
     if (typeof mod[m] === "function") allow.add(m);
@@ -616,8 +647,10 @@ export const allowHeaderFor = (mod: ApiHandlerModule): string => {
  * Method dispatch with the exact policy the Node runtime documents:
  * allowlist 405 + Allow, derived HEAD, auto OPTIONS 204 without CORS,
  * generic 500 for throws and non-Response returns, 504 on deadline, 499 on
- * upstream abort. No Node-only headers (`Connection`, `Transfer-Encoding`)
- * are added to the Web `Response`; hosts add transport headers themselves.
+ * upstream abort. A default export handles every allowlisted method the
+ * module has no named export for, OPTIONS and HEAD included. No Node-only
+ * headers (`Connection`, `Transfer-Encoding`) are added to the Web
+ * `Response`; hosts add transport headers themselves.
  */
 export const dispatchApiHandler = async (
   mod: ApiHandlerModule,
@@ -628,24 +661,18 @@ export const dispatchApiHandler = async (
   const requested = request.method.toUpperCase();
   const allow = allowHeaderFor(mod);
   // The allowlist comes first: an export named PURGE, or a helper that only
-  // looks like a method, is never dispatched, so `Allow` stays accurate.
+  // looks like a method, is never dispatched, so `Allow` stays accurate. A
+  // default export does not widen it either.
   if (!(ALLOWED_METHODS as readonly string[]).includes(requested))
     return text("Method Not Allowed", 405, { Allow: allow });
   const method = requested as HttpMethod;
-  const isAllowed =
-    typeof mod[method] === "function" ||
-    (method === "HEAD" && typeof mod.GET === "function") ||
-    method === "OPTIONS";
-  if (!isAllowed) return text("Method Not Allowed", 405, { Allow: allow });
-  if (method === "OPTIONS" && typeof mod.OPTIONS !== "function") {
-    return new Response(null, { status: 204, headers: { Allow: allow } });
+  const resolved = resolveApiHandler(mod, method);
+  if (!resolved) {
+    if (method === "OPTIONS")
+      return new Response(null, { status: 204, headers: { Allow: allow } });
+    return text("Method Not Allowed", 405, { Allow: allow });
   }
-  let handler = mod[method] as (...args: unknown[]) => unknown;
-  let derivedHead = false;
-  if (method === "HEAD" && typeof mod.HEAD !== "function") {
-    handler = mod.GET as typeof handler;
-    derivedHead = true;
-  }
+  const { handler, stripBody } = resolved;
 
   const result = await invokeWithDeadline(
     ({ signal }) => handler(request, context, { signal }),
@@ -675,8 +702,8 @@ export const dispatchApiHandler = async (
     );
     return text("Internal Server Error", 500);
   }
-  if (derivedHead) {
-    // The GET body is never sent: cancel it so a streamed source (a fetch
+  if (stripBody) {
+    // The body is never sent: cancel it so a streamed source (a fetch
     // pass-through, a file or cursor) is released now, not at GC.
     releaseBody(value);
     return new Response(null, {

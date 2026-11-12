@@ -154,6 +154,30 @@ describe("API Route Rules", () => {
     ]);
   });
 
+  it("accepts a default export as the handler for every method", () => {
+    expect(
+      codesOf(
+        "export default (request: Request) => new Response(request.method);",
+      ),
+    ).toEqual([]);
+    expect(
+      codesOf(
+        "export default async function handler() { return new Response(null); }",
+      ),
+    ).toEqual([]);
+    expect(
+      codesOf(
+        "const proxy = () => new Response(null);\nexport { proxy as default };",
+      ),
+    ).toEqual([]);
+    // A default that is only mentioned is not one.
+    expect(
+      codesOf(
+        '// export default () => new Response("x");\nconst s = "export default";',
+      ),
+    ).toEqual(["missing-method-handler"]);
+  });
+
   it("does not count a method export in a comment or a string", () => {
     expect(
       codesOf(

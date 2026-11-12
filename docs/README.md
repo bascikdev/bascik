@@ -123,7 +123,7 @@ The gate (`lighthouserc.json` for mobile, `lighthouserc.desktop.json` for deskto
 
 - **Performance:** a score under 0.95
 - **Accessibility, Best Practices, SEO:** a score under 1.0 (mobile). `/search` is left out of the SEO score: the page is `noindex` on purpose, which fails the crawlability audit and costs it a third of the category. An `assertMatrix` entry whose pattern skips `/search` holds the SEO assertion, so every other route keeps it and `/search` keeps the other categories. The sweep over every route has the same entry, and every config takes the pattern from `SEO_URL_PATTERN` in `lighthouse/site.ts` (`generate-config.ts` writes it; `lighthouserc.test.ts` fails when a hand-written config uses another).
-- **Budgets:** more than 4,000 DOM elements (the `dom-size` audit), more than 50 KB of script, a layout shift above 0.01 on /libraries, and a mobile LCP above 2 seconds on /sitemap
+- **Budgets:** more than 4,000 DOM elements (the `dom-size-insight` audit), more than 50 KB of script, a layout shift above 0.01 on /libraries, and a mobile LCP above 2 seconds on /sitemap
 
 `lhci` runs its own bundled Lighthouse (12.6 with `@lhci/cli` 0.15), not the repo's `lighthouse` 13 package, so an assertion must name an audit that version reports. Its `dom-size-insight` has no numeric value, so a budget on it reads NaN on every URL; the classic `dom-size` audit carries the count. `lighthouse/lighthouserc.test.ts` resolves lhci's Lighthouse and fails when an assertion names an audit it lacks or puts a numeric budget on one without a numeric value.
 

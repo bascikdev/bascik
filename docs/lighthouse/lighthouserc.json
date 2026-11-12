@@ -28,7 +28,7 @@
                 "minScore": 0.95
               }
             ],
-            "dom-size": [
+            "dom-size-insight": [
               "error",
               {
                 "maxNumericValue": 4000

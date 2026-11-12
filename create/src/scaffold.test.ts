@@ -421,7 +421,9 @@ describe("PACKAGE_JSON", () => {
     expect(netlify.scripts.build).toBe(
       "bascik --build --target netlify && bascik-netlify-install",
     );
-    expect(netlify.scripts.dev).toBe("bascik --target netlify");
+    expect(netlify.scripts.dev).toBe("bascik");
+    expect(netlify.scripts["dev:netlify"]).toBe("bascik --target netlify");
+    expect(netlify.scripts["dev:cloudflare"]).toBeUndefined();
     expect(netlify.scripts.preview).toBe(
       "npx --yes netlify-cli dev --dir publish",
     );
@@ -473,8 +475,10 @@ describe("PACKAGE_JSON", () => {
   describe("cloudflare template", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app", "cloudflare"));
 
-    it("builds the Cloudflare bundle and develops in the watched platform runtime", () => {
-      expect(pkg.scripts.dev).toBe("bascik --target cloudflare");
+    it("builds the Cloudflare bundle, keeps dev on the Bascik dev server, and gives the watched platform runtime its own script", () => {
+      expect(pkg.scripts.dev).toBe("bascik");
+      expect(pkg.scripts["dev:cloudflare"]).toBe("bascik --target cloudflare");
+      expect(pkg.scripts["dev:netlify"]).toBeUndefined();
       expect(pkg.scripts.build).toBe("bascik --build --target cloudflare");
     });
 

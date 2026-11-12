@@ -21,17 +21,22 @@ afterAll(() => fixture.remove());
 // Both inputs must exceed V8's large-object allocation boundary. Unit counts alone
 // cross it for some fixtures: 8,000/32,000 unclosed-comment units are 56 KB/224 KB.
 const SMALL_SCAN_CHARACTERS = 256_000;
+// A fixture that is one long run of text is scanned by a native search at memory speed, so its cost per character
+// is the cost of a cache miss. At 256 KB against 1 MB the small input fits a CI runner's per-core cache and the
+// large one does not, and linear work measured a growth of 12.6 there. At 4 MB against 16 MB both are past it.
+const MEMORY_BOUND_SCAN_CHARACTERS = 4_000_000;
 const scanGrowth = (
   html: (count: number) => string,
   scan: (text: string) => unknown,
+  smallCharacters = SMALL_SCAN_CHARACTERS,
 ): number => {
   const prefixLength = html(0).length;
   const unitLength = html(1).length - prefixLength;
   expect(unitLength).toBeGreaterThan(0);
-  const smallCount = Math.ceil(SMALL_SCAN_CHARACTERS / unitLength);
+  const smallCount = Math.ceil(smallCharacters / unitLength);
   const small = html(smallCount);
   const large = html(4 * smallCount);
-  expect(small.length).toBeGreaterThanOrEqual(SMALL_SCAN_CHARACTERS);
+  expect(small.length).toBeGreaterThanOrEqual(smallCharacters);
   expect(large.length - prefixLength).toBe(4 * (small.length - prefixLength));
   return growthOf(
     () => scan(small),
@@ -81,7 +86,7 @@ describe("TypeScript block diagnostics: linear time", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  const scans: Array<[string, (n: number) => string]> = [
+  const scans: Array<[string, (n: number) => string, number?]> = [
     [
       "script tags that never close",
       (n) => `text/typescript ${'<script type="text/typescript">'.repeat(n)}`,
@@ -93,6 +98,7 @@ describe("TypeScript block diagnostics: linear time", () => {
     [
       "a quote that never ends",
       (n) => `text/typescript <script type="${"a".repeat(n)}`,
+      MEMORY_BOUND_SCAN_CHARACTERS,
     ],
     [
       "many comments",
@@ -115,19 +121,22 @@ describe("TypeScript block diagnostics: linear time", () => {
 
   it.each(scans)(
     "finds blocks in linear time with %s",
-    (_label, html) => {
-      expect(scanGrowth(html, extractTypeScriptBlocks)).toBeLessThan(8);
+    (_label, html, smallCharacters) => {
+      expect(
+        scanGrowth(html, extractTypeScriptBlocks, smallCharacters),
+      ).toBeLessThan(8);
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(scans)(
     "finds the page's classic scripts in linear time with %s",
-    (_label, html) => {
+    (_label, html, smallCharacters) => {
       expect(
         scanGrowth(
           (n) => html(n).replaceAll("text/typescript", "text/javascript"),
           extractPageScopeScripts,
+          smallCharacters,
         ),
       ).toBeLessThan(8);
     },

@@ -861,6 +861,158 @@ describe("invokeWithDeadline: a fired deadline wins", () => {
   });
 });
 
+describe("dispatchApiHandler: a default export is the handler for every other allowed method", () => {
+  const ctx = { params: {}, remoteIp: "10.0.0.1" };
+  const request = (method: string, body?: string) =>
+    new Request("https://books.example/api/shelf", { method, body });
+  const echo = () =>
+    vi.fn(
+      async (req: Request, context: unknown, extra: { signal: AbortSignal }) =>
+        Response.json({
+          method: req.method,
+          hasContext: context === ctx,
+          hasSignal: extra.signal instanceof AbortSignal,
+        }),
+    );
+
+  it.each(["GET", "POST", "PUT", "PATCH", "DELETE"])(
+    "runs the default export for %s with the request, the context and the signal",
+    async (method) => {
+      const mod = { default: echo() };
+      const res = await dispatchApiHandler(mod, request(method), ctx);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        method,
+        hasContext: true,
+        hasSignal: true,
+      });
+      expect(mod.default).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("a named export wins over the default, and the default takes what is left", async () => {
+    const mod = {
+      GET: vi.fn(async () => new Response("named")),
+      default: vi.fn(async (req: Request) => new Response(req.method)),
+    };
+    expect(
+      await (await dispatchApiHandler(mod, request("GET"), ctx)).text(),
+    ).toBe("named");
+    expect(
+      await (await dispatchApiHandler(mod, request("DELETE"), ctx)).text(),
+    ).toBe("DELETE");
+    expect(mod.GET).toHaveBeenCalledTimes(1);
+    expect(mod.default).toHaveBeenCalledTimes(1);
+  });
+
+  it("OPTIONS reaches the default export, so a handler can answer a CORS preflight itself", async () => {
+    const mod = {
+      default: vi.fn(
+        async () =>
+          new Response(null, {
+            status: 204,
+            headers: { "access-control-allow-origin": "https://books.example" },
+          }),
+      ),
+    };
+    const res = await dispatchApiHandler(mod, request("OPTIONS"), ctx);
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://books.example",
+    );
+    expect(res.headers.get("allow")).toBeNull();
+    expect(mod.default).toHaveBeenCalledTimes(1);
+  });
+
+  it("a named OPTIONS export still wins over the default", async () => {
+    const mod = {
+      OPTIONS: vi.fn(async () => new Response(null, { status: 204 })),
+      default: vi.fn(async () => new Response("default")),
+    };
+    await dispatchApiHandler(mod, request("OPTIONS"), ctx);
+    expect(mod.OPTIONS).toHaveBeenCalledTimes(1);
+    expect(mod.default).not.toHaveBeenCalled();
+  });
+
+  it("HEAD derives from a named GET before it falls to the default", async () => {
+    const mod = {
+      GET: vi.fn(
+        async () => new Response("body", { headers: { "x-from": "get" } }),
+      ),
+      default: vi.fn(async () => new Response("default")),
+    };
+    const res = await dispatchApiHandler(mod, request("HEAD"), ctx);
+    expect(res.headers.get("x-from")).toBe("get");
+    expect(await res.text()).toBe("");
+    expect(mod.default).not.toHaveBeenCalled();
+  });
+
+  it("HEAD handled by the default goes out with its status and headers and no body", async () => {
+    const cancel = vi.fn();
+    const mod = {
+      default: vi.fn(
+        async () =>
+          new Response(new ReadableStream({ cancel }), {
+            status: 206,
+            headers: { "x-from": "default" },
+          }),
+      ),
+    };
+    const res = await dispatchApiHandler(mod, request("HEAD"), ctx);
+    expect(res.status).toBe(206);
+    expect(res.headers.get("x-from")).toBe("default");
+    expect(res.body).toBeNull();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("misuse: the default export does not widen the allowlist; PURGE is a 405 that lists every allowed method", async () => {
+    const mod = { default: vi.fn(async () => new Response("never")) };
+    const res = await dispatchApiHandler(mod, request("PURGE"), ctx);
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe(
+      "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+    );
+    expect(mod.default).not.toHaveBeenCalled();
+  });
+
+  it("misuse: a default export that is not a function changes nothing", async () => {
+    const mod = {
+      GET: vi.fn(async () => new Response("ok")),
+      default: { GET: () => new Response("object") },
+    };
+    const res = await dispatchApiHandler(mod, request("POST", "x"), ctx);
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
+    const options = await dispatchApiHandler(mod, request("OPTIONS"), ctx);
+    expect(options.status).toBe(204);
+    expect(options.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
+  });
+
+  it("misuse: a default export that throws or returns no Response is the same generic 500 a named handler gets", async () => {
+    const onError = vi.fn();
+    const thrown = await dispatchApiHandler(
+      {
+        default: async () => {
+          throw new Error("secret detail");
+        },
+      },
+      request("POST", "x"),
+      ctx,
+      { onError },
+    );
+    expect(thrown.status).toBe(500);
+    expect(await thrown.text()).toBe("Internal Server Error");
+    const notResponse = await dispatchApiHandler(
+      { default: async () => "plain string" },
+      request("POST", "x"),
+      ctx,
+      { onError },
+    );
+    expect(notResponse.status).toBe(500);
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("dispatchApiHandler: a fired deadline wins", () => {
   const ctx = { params: {}, remoteIp: "10.0.0.1" };
   const manualClock = () => {

@@ -316,6 +316,32 @@ test.describe("cloudflare adapter: request-time pages", () => {
     expect(options.headers()["allow"]).toBe("GET, HEAD, OPTIONS");
   });
 
+  test("a default export handles the methods an API route has no named export for, inside the worker", async ({
+    page,
+  }) => {
+    const get = await page.request.get("/api/any-method");
+    expect(await get.json()).toEqual({ handledBy: "GET" });
+    const put = await page.request.fetch("/api/any-method", {
+      method: "PUT",
+      data: "Dune",
+      headers: { "content-type": "text/plain" },
+    });
+    expect(put.status()).toBe(200);
+    expect(await put.json()).toEqual({
+      handledBy: "default",
+      method: "PUT",
+      body: "Dune",
+      platform: "cloudflare",
+    });
+    const preflight = await page.request.fetch("/api/any-method", {
+      method: "OPTIONS",
+    });
+    expect(preflight.status()).toBe(204);
+    expect(preflight.headers()["access-control-allow-origin"]).toBe(
+      "https://books.example",
+    );
+  });
+
   test("a catch-all API route captures decoded segments and respects precedence in the worker", async ({
     page,
   }) => {
