@@ -22,14 +22,26 @@ afterAll(() => fixture.remove());
 // cross it for some fixtures: 8,000/32,000 unclosed-comment units are 56 KB/224 KB.
 const SMALL_SCAN_CHARACTERS = 256_000;
 // A fixture that is one long run of text is scanned by a native search at memory speed, so its cost per character
-// is the cost of a cache miss. At 256 KB against 1 MB the small input fits a CI runner's per-core cache and the
-// large one does not, and linear work measured a growth of 12.6 there. At 4 MB against 16 MB both are past it.
+// is the CPU's cost of reading memory, which changes where an input stops fitting a cache. Where that is depends on
+// the runner: the same linear search read 3.0 at 256 KB against 1 MB, 5.2 to 5.6 at 1 MB against 4 MB and 4.4 at 4 MB
+// against 16 MB on one CI runner, and checks of it at 4 MB against 16 MB read 12.2 to 16.6 on others. So such a
+// check is measured against a native search over the same two texts (`MEMORY_BOUND_REFERENCE`), which pays the same
+// cost of reading them: a linear scan grows about as much as it does (1), and work that rescans the text for each
+// character about four times as much. Both texts stay past the large-object boundary, and large enough that each run
+// is a few milliseconds of reading.
 const MEMORY_BOUND_SCAN_CHARACTERS = 4_000_000;
+/** One native pass over all of `text`: U+0001 never occurs in the fixtures. */
+const MEMORY_BOUND_REFERENCE = (text: string) => text.indexOf("\u0001");
+/** How much more a memory-bound scan grows than reading its texts does. Linear reads about 1, quadratic about 4. */
+const MAX_GROWTH_OVER_READING = 2;
 const scanGrowth = (
   html: (count: number) => string,
   scan: (text: string) => unknown,
-  smallCharacters = SMALL_SCAN_CHARACTERS,
+  memoryBound = false,
 ): number => {
+  const smallCharacters = memoryBound
+    ? MEMORY_BOUND_SCAN_CHARACTERS
+    : SMALL_SCAN_CHARACTERS;
   const prefixLength = html(0).length;
   const unitLength = html(1).length - prefixLength;
   expect(unitLength).toBeGreaterThan(0);
@@ -38,11 +50,24 @@ const scanGrowth = (
   const large = html(4 * smallCount);
   expect(small.length).toBeGreaterThanOrEqual(smallCharacters);
   expect(large.length - prefixLength).toBe(4 * (small.length - prefixLength));
-  return growthOf(
+  if (memoryBound) expect(large.includes("\u0001")).toBe(false);
+  const growth = growthOf(
     () => scan(small),
     () => scan(large),
   );
+  if (!memoryBound) return growth;
+  return (
+    growth /
+    growthOf(
+      () => MEMORY_BOUND_REFERENCE(small),
+      () => MEMORY_BOUND_REFERENCE(large),
+    )
+  );
 };
+
+/** The bar a scan's growth must stay under: over reading its texts for a memory-bound one, 8 otherwise. */
+const maxScanGrowth = (memoryBound = false) =>
+  memoryBound ? MAX_GROWTH_OVER_READING : 8;
 
 /** A page of `count` client blocks, each with a little typed code. */
 const pageOf = (count: number, edited: string) =>
@@ -86,7 +111,8 @@ describe("TypeScript block diagnostics: linear time", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  const scans: Array<[string, (n: number) => string, number?]> = [
+  // The third entry marks a memory-bound fixture (see MEMORY_BOUND_SCAN_CHARACTERS).
+  const scans: Array<[string, (n: number) => string, boolean?]> = [
     [
       "script tags that never close",
       (n) => `text/typescript ${'<script type="text/typescript">'.repeat(n)}`,
@@ -98,7 +124,7 @@ describe("TypeScript block diagnostics: linear time", () => {
     [
       "a quote that never ends",
       (n) => `text/typescript <script type="${"a".repeat(n)}`,
-      MEMORY_BOUND_SCAN_CHARACTERS,
+      true,
     ],
     [
       "many comments",
@@ -121,24 +147,24 @@ describe("TypeScript block diagnostics: linear time", () => {
 
   it.each(scans)(
     "finds blocks in linear time with %s",
-    (_label, html, smallCharacters) => {
+    (_label, html, memoryBound) => {
       expect(
-        scanGrowth(html, extractTypeScriptBlocks, smallCharacters),
-      ).toBeLessThan(8);
+        scanGrowth(html, extractTypeScriptBlocks, memoryBound),
+      ).toBeLessThan(maxScanGrowth(memoryBound));
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
 
   it.each(scans)(
     "finds the page's classic scripts in linear time with %s",
-    (_label, html, smallCharacters) => {
+    (_label, html, memoryBound) => {
       expect(
         scanGrowth(
           (n) => html(n).replaceAll("text/typescript", "text/javascript"),
           extractPageScopeScripts,
-          smallCharacters,
+          memoryBound,
         ),
-      ).toBeLessThan(8);
+      ).toBeLessThan(maxScanGrowth(memoryBound));
     },
     LINEAR_TIME_TIMEOUT_MS,
   );
