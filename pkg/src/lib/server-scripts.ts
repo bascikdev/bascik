@@ -42,7 +42,6 @@ import {
   scriptFailureResult,
   type ScriptExecutionResult,
 } from "./script-registry.ts";
-import { stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   resolveScriptSrcPath,
@@ -53,22 +52,17 @@ import {
 } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
-import { applyOutputScope, decodeOutputScope } from "./output-scope.ts";
-import {
-  serverScriptOutput,
-  serverScriptOutputErrorMessage,
-  type ServerScriptOutputError,
-} from "./server-script-output.ts";
+import { scriptJobOutput } from "./script-output-policy.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
 import { prepareRenderer, wrapRunner } from "./request-render.ts";
 import type { ComponentManifest } from "./component-manifest-file.ts";
 import {
   collectScriptJobOutput,
   composeBufferedResponse,
-  scriptChunkOutput,
   streamComposedResponse,
   STREAM_LOOKAHEAD,
   type ExecutionPlan,
+  type InvokeResult,
   type ScriptJobOutput,
   type ScriptOutputRunner,
 } from "./request-execution.ts";
@@ -451,50 +445,6 @@ const compiledServerTypeScript = (
 const warnedRefusedReturns = new Set<string>();
 
 /**
- * A script returned something that is not markup (F060). In development it
- * is a server-script failure like a throw: under `onServerScriptError:
- * "error"` a located ServerScriptError (the 500 page, or the stream error
- * log after commit), under `"warn"` a warning per request, under `"ignore"`
- * nothing. In production it never fails the page: the slot is empty and,
- * unless the policy is `"ignore"`, a warning is logged once per script, as
- * the Cloudflare Worker does. `yielded` is for one value of a script that
- * yields: the same policy, worded for a yield, and in production only that
- * value is skipped.
- */
-const refusedReturn = (
-  error: ServerScriptOutputError,
-  job: ScriptJob,
-  request: Request,
-  containingFile: string | undefined,
-  startsAt: string,
-  yielded: boolean,
-): string => {
-  const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
-  const line = job.sourceLine ?? job.startLine;
-  const owner = containingFile
-    ? `${job.mode} script in ${relative(process.cwd(), containingFile).replace(/\\/g, "/")}${line ? `:${line}` : ""}`
-    : `${job.mode} script`;
-  const production = Boolean(BascikConfig.isProdServer || BascikConfig.isBuild);
-  if (!production) {
-    const message = serverScriptOutputErrorMessage(error, request.url, owner, {
-      yielded,
-    });
-    if (behavior === "error") throw new ServerScriptError(message);
-    if (behavior === "warn") console.warn(message);
-    return "";
-  }
-  if (behavior === "ignore" || warnedRefusedReturns.has(startsAt)) return "";
-  warnedRefusedReturns.add(startsAt);
-  console.warn(
-    serverScriptOutputErrorMessage(error, request.url, owner, {
-      production: true,
-      yielded,
-    }),
-  );
-  return "";
-};
-
-/**
  * Load and invoke one script job and join its output into one string: `""`
  * under `onServerScriptError: warn | ignore`, a throw under `"error"`. The
  * caller decides what a throw means: a 500 before commit, an empty slot
@@ -667,132 +617,105 @@ export const runServerScriptJobOutput = async (
         job.sourceColumn ?? 1,
       );
 
-  const invoked: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
-    specifier,
-    [request, context],
-    {
-      timeoutMs,
-      originalSourcePath,
-      lineOffset,
-      exportName: "default",
-      chunks: true,
-      ...(!runsFromFile ? { moduleOwner: job } : {}),
-      ...(signal ? { signal } : {}),
+  const invoked = await scriptRegistry.invoke(specifier, [request, context], {
+    timeoutMs,
+    originalSourcePath,
+    lineOffset,
+    exportName: "default",
+    chunks: true,
+    ...(!runsFromFile ? { moduleOwner: job } : {}),
+    ...(signal ? { signal } : {}),
+  });
+
+  // What the value prints, what a value that is not markup becomes and what
+  // a failure becomes are the runtime's shared policy (script-output-policy.ts),
+  // which the Cloudflare Worker and the Netlify function settle by too. A
+  // script that yields has each value and each failed pull settled the same
+  // way. What is Node's own is named here.
+  const startsAt = `${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
+  const ownerLine = job.sourceLine ?? job.startLine;
+  return scriptJobOutput(invoked, {
+    onServerScriptError: BascikConfig.scripts?.onServerScriptError ?? "error",
+    // In development a value that is not markup is a server-script failure
+    // like a throw (the 500 page, or the stream error log after commit). In
+    // production it never fails the page: the slot is empty and a warning
+    // is logged once per script, as the Cloudflare Worker does.
+    production: Boolean(BascikConfig.isProdServer || BascikConfig.isBuild),
+    requestUrl: request.url,
+    owner: containingFile
+      ? `${job.mode} script in ${relative(process.cwd(), containingFile).replace(/\\/g, "/")}${ownerLine ? `:${ownerLine}` : ""}`
+      : `${job.mode} script`,
+    // scripts.stripAnsi off: terminal color codes reach the page as printed.
+    stripAnsi: BascikConfig.scripts?.stripAnsi,
+    // A component's server or stream script prints markup that is spliced
+    // in after scoping, so its class and element names are applied the way a
+    // build script's output receives them (prompt 157), whether the
+    // component was placed on the page statically or rendered at request
+    // time. Page-level scripts carry no scope and are untouched.
+    outputScope: job.outputScope,
+    warn: (message) => console.warn(message),
+    firstRefusal: () => {
+      if (warnedRefusedReturns.has(startsAt)) return false;
+      warnedRefusedReturns.add(startsAt);
+      return true;
     },
-  );
-
-  // A script that yields: each value it yields is settled like a returned
-  // one, and a failed pull (a throw inside the generator, the deadline, the
-  // client leaving) like a failed call.
-  if (invoked.ok && invoked.source) {
-    return scriptChunkOutput(
-      invoked.source,
-      (value) => settle({ ok: true, value }, true),
-      (failed) => settle(scriptFailureResult(failed), true),
-    );
-  }
-  return settle(invoked, false);
-
-  /** The output of one settled call or pull, by the policy; see the function comment. */
-  function settle(
-    result: ScriptExecutionResult<unknown>,
-    yielded: boolean,
-  ): string {
-    // An array is joined with no separator, the way `html` inserts one; an
-    // object, a Response, an unawaited Promise in an array, a function or a
-    // symbol is refused instead of printing "[object ...]" (F060). A throw from
-    // the author's own toString is the script failing: it follows the policy
-    // below like any other throw.
-    let printed: ReturnType<typeof serverScriptOutput> | undefined;
-    if (result.ok) {
-      try {
-        printed = serverScriptOutput(result.value);
-      } catch (thrown) {
-        result = {
-          ok: false,
-          error: thrown instanceof Error ? thrown : new Error(String(thrown)),
-        };
-      }
-    }
-
-    if (printed) {
-      if (printed.error) {
-        return refusedReturn(
-          printed.error,
-          job,
-          request,
-          containingFile,
-          `${originalSourcePath}:${lineOffset}:${columnOffset + 1}`,
-          yielded,
+    createError: (message) => new ServerScriptError(message),
+    // A socket the client reset is not the script's failure. A failed call
+    // carries the registry's flag; a failed pull from a script that yields
+    // carries the raw rejection, which the registry classifies the same way.
+    isSilentFailure: (result) => {
+      const flagged = (result as ScriptExecutionResult).isNetworkReset;
+      if (flagged !== undefined) return flagged;
+      return (
+        "thrown" in result &&
+        scriptFailureResult(result as InvokeResult<unknown>).isNetworkReset ===
+          true
+      );
+    },
+    describeFailure: (err, result) => {
+      // Columns after a rewritten import on the same line are put back first, in module coordinates.
+      const moduleReferences = runsFromFile
+        ? [moduleFilePath!, pathToFileURL(moduleFilePath!).href]
+        : [specifier, dataUri];
+      const rawTrace = remapRewrittenColumns(
+        err.stack || err.message,
+        moduleReferences,
+        specifierEdits,
+      );
+      const cleanedMsg = cleanStackTrace(
+        rawTrace,
+        specifier,
+        originalSourcePath,
+        lineOffset,
+        columnOffset,
+      );
+      // An in-process `import()` of a module with a syntax error reports only Node's
+      // own loader frames, so nothing names the file. Point at where the script starts.
+      // A timeout is raised by the registry, not the script, so its trace names no
+      // file either; a nested component script's timeout (prompt 157) would
+      // otherwise be impossible to place.
+      if (
+        err.name === "TypeError" &&
+        /does not export a function named "default"\.$/.test(err.message)
+      ) {
+        // Written like a build script that prints markup, or missing its
+        // `export default`: Node's text names the module, which for an inline
+        // script is a URL-encoded data: URL. Name where the script starts and
+        // what it needs instead (audit 159 finding 134).
+        return (
+          `The server script that starts at ${startsAt} has no default export. ` +
+          "Export a function that returns the markup, for example " +
+          '`export default () => "<p>Hello</p>";` (see /scripts/server).'
         );
       }
-      // scripts.stripAnsi off: terminal color codes reach the page as printed.
-      const output =
-        BascikConfig.scripts?.stripAnsi === false
-          ? printed.text
-          : stripAnsiEscapeCodes(printed.text);
-      // A component's server or stream script prints markup that is spliced
-      // in after scoping, so its class and element names are applied here the
-      // way a build script's output receives them (prompt 157), whether the
-      // component was placed on the page statically or rendered at request
-      // time. Page-level scripts carry no scope and are untouched.
-      const scope = decodeOutputScope(job.outputScope);
-      return scope ? applyOutputScope(output, scope) : output;
-    }
-
-    const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
-    const err = result.error ?? new Error("Server script error");
-    if (result.isNetworkReset) return "";
-    // The client went away before the script settled: nothing is delivered, so
-    // there is nothing to report, even when the script answered the abort with
-    // a value inside its listener. The Worker drops an aborted job the same way.
-    if (result.aborted) return "";
-
-    // Columns after a rewritten import on the same line are put back first, in module coordinates.
-    const moduleReferences = runsFromFile
-      ? [moduleFilePath!, pathToFileURL(moduleFilePath!).href]
-      : [specifier, dataUri];
-    const rawTrace = remapRewrittenColumns(
-      err.stack || err.message,
-      moduleReferences,
-      specifierEdits,
-    );
-    let cleanedMsg = cleanStackTrace(
-      rawTrace,
-      specifier,
-      originalSourcePath,
-      lineOffset,
-      columnOffset,
-    );
-    // An in-process `import()` of a module with a syntax error reports only Node's
-    // own loader frames, so nothing names the file. Point at where the script starts.
-    // A timeout is raised by the registry, not the script, so its trace names no
-    // file either; a nested component script's timeout (prompt 157) would
-    // otherwise be impossible to place.
-    if (
-      err.name === "TypeError" &&
-      /does not export a function named "default"\.$/.test(err.message)
-    ) {
-      // Written like a build script that prints markup, or missing its
-      // `export default`: Node's text names the module, which for an inline
-      // script is a URL-encoded data: URL. Name where the script starts and
-      // what it needs instead (audit 159 finding 134).
-      cleanedMsg =
-        `The server script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1} has no default export. ` +
-        "Export a function that returns the markup, for example " +
-        '`export default () => "<p>Hello</p>";` (see /scripts/server).';
-    } else if (
-      (err instanceof SyntaxError || result.timedOut) &&
-      !cleanedMsg.includes(`${originalSourcePath}:`)
-    ) {
-      cleanedMsg += `\n    in the script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
-    }
-    const requestPath = new URL(request.url).pathname;
-    const errorMsg = `[bascik] server script error at "${requestPath}":\n${cleanedMsg}`;
-    if (behavior === "error") throw new ServerScriptError(errorMsg);
-    if (behavior === "warn") console.warn(errorMsg);
-    return "";
-  }
+      if (
+        (err instanceof SyntaxError || result.timedOut) &&
+        !cleanedMsg.includes(`${originalSourcePath}:`)
+      )
+        return `${cleanedMsg}\n    in the script that starts at ${startsAt}`;
+      return cleanedMsg;
+    },
+  });
 };
 
 /**

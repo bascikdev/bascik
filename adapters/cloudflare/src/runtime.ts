@@ -33,13 +33,11 @@
 
 import { componentExecution } from "./component-host.js";
 import {
-  applyOutputScope,
   collectScriptJobOutput,
-  decodeOutputScope,
   composeBufferedResponse,
   dispatchApiHandler,
   invokeLoadedWithDeadline,
-  scriptChunkOutput,
+  scriptJobOutput,
   scriptTimeoutError,
   streamComposedResponse,
   type ApiHandlerContext,
@@ -47,7 +45,6 @@ import {
   type ExecutionPlan,
   type ExecutionSegment,
   type PlatformContext,
-  type InvokeResult,
   type RenderHost,
   type ScriptJobOutput,
   type ScriptOutputRunner,
@@ -62,9 +59,6 @@ import {
   InvalidApiPathError,
   matchApiRoute,
   pageLookupCandidates,
-  stripAnsiEscapeCodes,
-  serverScriptOutput,
-  serverScriptOutputErrorMessage,
   contentSecurityPolicyHeader,
   DEFAULT_RESPONSE_SECURITY,
   type ApiRouteDefinition,
@@ -73,19 +67,6 @@ import {
   type RequestRenderLimits,
   type ResponseSecurity,
 } from "@bascik/bascik/runtime";
-
-/**
- * A job's output with its component's element classes applied, when the job
- * carries an output scope, as `runServerScriptJob` does on Node. It lives
- * here, not in component-host.ts, because page jobs carry a scope too (that
- * of a component placed statically on the page) whether or not the manifest
- * has anything renderable: a Worker built with the component-host stub must
- * still scope them. Both helpers are portable (no `node:crypto`).
- */
-const scopeJobOutput = (job: GraphScriptJob, output: string): string => {
-  const scope = decodeOutputScope(job.outputScope);
-  return scope ? applyOutputScope(output, scope) : output;
-};
 
 // ─── Site graph contract (emitted by serverless-artifacts.ts) ────────────────
 
@@ -321,72 +302,31 @@ const runGraphJobOutput = async (
     // Node's message, so a log reads the same on both hosts.
     { timeoutMs, signal, timeoutError: scriptTimeoutError, chunks: true },
   );
-  if (invoked.ok && invoked.source) {
-    return scriptChunkOutput(
-      invoked.source,
-      (value) =>
-        settle({ ok: true, value, timedOut: false, aborted: false }, true),
-      (failed) => settle(failed, true),
-    );
-  }
-  return settle(invoked, false);
-
-  /** The output of one settled call or pull, by the policy above. */
-  function settle(result: InvokeResult<unknown>, yielded: boolean): string {
-    // The rule Node applies (F060): an array is joined with no separator; an
-    // object, a Response, an unawaited Promise in an array, a function or a
-    // symbol is refused. A Worker is production, so a refused return never
-    // fails the page: the slot is empty and, unless the policy is "ignore",
-    // the warning is logged once per script for the isolate's life. A throw
-    // from the author's own toString is the script failing, as on Node.
-    let printed: ReturnType<typeof serverScriptOutput> | undefined;
-    let failure: Error | undefined;
-    if (result.ok) {
-      try {
-        printed = serverScriptOutput(result.value);
-      } catch (thrown) {
-        failure = thrown instanceof Error ? thrown : new Error(String(thrown));
-      }
-    }
-    if (printed) {
-      if (printed.error) {
-        if (graph.onServerScriptError !== "ignore" && !warnedRefused.has(job)) {
-          warnedRefused.add(job);
-          log(
-            serverScriptOutputErrorMessage(
-              printed.error,
-              request.url,
-              // A page job carries no owner in the graph (only component jobs
-              // do); the route in the message names its page.
-              job.owner ?? `${job.mode} script`,
-              { production: true, yielded },
-            ),
-          );
-        }
-        return "";
-      }
-      // scripts.stripAnsi off: the codes reach the page as printed.
-      return scopeJobOutput(
-        job,
-        graph.stripAnsi === false
-          ? printed.text
-          : stripAnsiEscapeCodes(printed.text),
-      );
-    }
-    if (!failure && !result.ok && result.aborted && !result.timedOut) return "";
-    const error =
-      failure ??
-      (!result.ok ? result.error : undefined) ??
-      new Error("Server script failed");
-    // Node maps the stack to the authored file; here it names only the bundle,
-    // so a component job (a timeout, a throw or a missing default export deep
-    // inside a rendered tag) is placed by the owner the build recorded.
-    const where = job.owner ? `\n    in the ${job.owner}` : "";
-    const message = `[bascik] server script error at "${new URL(request.url).pathname}":\n${error.stack ?? error.message}${where}`;
-    if (graph.onServerScriptError === "error") throw new Error(message);
-    if (graph.onServerScriptError === "warn") log(message);
-    return "";
-  }
+  // Printing, refusing, stripping, scoping and the onServerScriptError
+  // policy are the runtime's, shared with the Node server and the Netlify
+  // function, so every host sends the same bytes and words a mistake the
+  // same way. What is this host's own: a Worker is production, logs through
+  // `log`, remembers a script's first refused value for the isolate's life,
+  // and places a failure by the owner the build recorded (Node maps the
+  // stack to the authored file; here the stack names only the bundle).
+  return scriptJobOutput(invoked, {
+    onServerScriptError: graph.onServerScriptError,
+    production: true,
+    requestUrl: request.url,
+    // A page job carries no owner in the graph (only component jobs do);
+    // the route in the message names its page.
+    owner: job.owner ?? `${job.mode} script`,
+    stripAnsi: graph.stripAnsi,
+    outputScope: job.outputScope,
+    warn: log,
+    firstRefusal: () => {
+      if (warnedRefused.has(job)) return false;
+      warnedRefused.add(job);
+      return true;
+    },
+    describeFailure: (error) =>
+      `${error.stack ?? error.message}${job.owner ? `\n    in the ${job.owner}` : ""}`,
+  });
 };
 
 /** `runGraphJobOutput` with a yielding script's values joined into one string. */

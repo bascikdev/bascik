@@ -42,6 +42,14 @@ a time. This candidate ships `@bascik/bascik`, `create-bascik` and
   returned generator into a `ScriptChunkSource`; and `scriptChunkOutput`,
   `scriptChunkIterator` and `collectScriptJobOutput` build on it. A `ScriptJobRunner`
   that returns strings keeps working unchanged.
+- `@bascik/bascik/runtime` (for adapter authors): `scriptJobOutput` and
+  `settleScriptOutput` turn a script's settled result into its output the way the
+  built-in server and both official adapters now do, through one function: printed,
+  stripped of ANSI escapes, scoped to its component, refused when it is not markup,
+  and reported under `scripts.onServerScriptError`. An adapter passes a
+  `ScriptOutputPolicy` with its own log and failure description instead of
+  re-implementing those rules. See
+  [the custom adapter tutorial](https://bascik.dev/deployment/custom-adapters#step-4-write-the-request-handler).
 
 ### Changed
 
