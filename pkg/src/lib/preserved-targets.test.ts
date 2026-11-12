@@ -271,6 +271,27 @@ document.querySelector(".inline");`;
   });
 });
 
+describe("collectPreservedTargets: raw-text elements", () => {
+  it("finds the end of a raw-text element in any ASCII case", () => {
+    const targets = collectPreservedTargets(
+      '<TITLE>x</Title ><p class="kept">a</p><STYLE>p{}</STYLE><p class="also">b</p>',
+      ["p"],
+    );
+    expect([...targets.classes]).toEqual(["kept", "also"]);
+  });
+
+  it("reads past a raw-text element whose lowercase is longer, such as one holding a dotted capital I", () => {
+    // "İ".toLowerCase() is two characters: an end found in a lowercased copy of the markup lands past the next tag.
+    for (const element of ["title", "style", "textarea", "script"]) {
+      const targets = collectPreservedTargets(
+        `<${element}>${"İ".repeat(12)}</${element}><p class="kept">a</p>`,
+        ["p"],
+      );
+      expect([...targets.classes], element).toEqual(["kept"]);
+    }
+  });
+});
+
 describe("preserved-targets copies", () => {
   it("keeps the language server's copy byte-identical to the compiler's", () => {
     const pkgCopy = readFileSync(

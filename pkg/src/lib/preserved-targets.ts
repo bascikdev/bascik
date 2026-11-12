@@ -94,6 +94,28 @@ const directiveBits = (value: string | undefined): number => {
 };
 
 /** The offset just past the `>` closing a start tag that begins at `from`, honoring quotes; -1 when unclosed. */
+/**
+ * The index of `</name` at or after `from`, in any ASCII case, or -1. `name` is lowercase letters. Tag names are
+ * compared in place, as an HTML parser compares them: a lowercased copy of the markup can be longer than it ("İ"
+ * becomes two characters), so an index found there points past the real end tag.
+ */
+const findEndTag = (markup: string, name: string, from: number): number => {
+  for (
+    let at = markup.indexOf("</", from);
+    at !== -1;
+    at = markup.indexOf("</", at + 2)
+  ) {
+    let k = 0;
+    while (
+      k < name.length &&
+      (markup.charCodeAt(at + 2 + k) | 0x20) === name.charCodeAt(k)
+    )
+      k++;
+    if (k === name.length) return at;
+  }
+  return -1;
+};
+
 const startTagEnd = (markup: string, from: number): number => {
   let quote = "";
   for (let i = from; i < markup.length; i++) {
@@ -118,7 +140,6 @@ export const collectPreservedTargets = (
   preserve: readonly string[],
 ): PreservedTargets => {
   const matchers = preserveMatchers(preserve);
-  const lower = markup.toLowerCase();
   const stack: { name: string; bits: number }[] = [];
   const preserved = {
     classes: new Set<string>(),
@@ -196,7 +217,7 @@ export const collectPreservedTargets = (
     classTarget.tags.add(name);
 
     if (RAW_TEXT_ELEMENTS.has(name)) {
-      const rawEnd = lower.indexOf(`</${name}`, end);
+      const rawEnd = findEndTag(markup, name, end);
       i = rawEnd === -1 ? markup.length : rawEnd;
       continue;
     }

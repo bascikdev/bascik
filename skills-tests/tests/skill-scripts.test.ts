@@ -548,6 +548,15 @@ describe("audit-seo", () => {
     expect(facts.imagesWithoutAlt).toBe(0);
   });
 
+  it("reads past a script or style whose lowercase is longer, such as one holding a dotted capital I", () => {
+    // "İ".toLowerCase() is two characters: an end found in a lowercased copy of the page lands past the next tag.
+    const facts = inspectPage(
+      `<body><script>${"İ".repeat(12)}</script><h1>real</h1><style>${"İ".repeat(12)}</style><img src=x></body>`,
+    );
+    expect(facts.h1Count).toBe(1);
+    expect(facts.imagesWithoutAlt).toBe(1);
+  });
+
   it("does not form new HTML from either side of a script or style", () => {
     const facts = inspectPage(
       '<body><h<script>inert</script>1>fake</h1><SCRIPT>"<h1>ignored</h1>"</script\t\n data-test><h1>real</h1></body>',
@@ -820,6 +829,17 @@ describe("check-links", () => {
         (l: { url: string }) => l.url,
       ),
     ).toEqual(["/a.png", "/a.png", "/a@2x.png"]);
+  });
+
+  it("reads past a masked element whose lowercase is longer, such as one holding a dotted capital I", () => {
+    // "İ".toLowerCase() is two characters: an end found in a lowercased copy of the page lands past the next tag.
+    const links = extractLinks(
+      `<pre>${"İ".repeat(12)}</pre><a href="/after-pre">a</a><script>${"İ".repeat(12)}</script><a href="/after-script">b</a>`,
+    );
+    expect(links.map((link: { url: string }) => link.url)).toEqual([
+      "/after-pre",
+      "/after-script",
+    ]);
   });
 
   it("decodes entities once and ignores links in masked elements", () => {
