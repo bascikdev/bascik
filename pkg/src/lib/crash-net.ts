@@ -5,11 +5,21 @@
  * The exit waits, bounded, for the page worker pools to stop: exiting while a
  * page worker is still loading can abort Node 24 (`exit-stoppers.ts`). A
  * Ctrl-C during that wait ends the process at once.
+ *
+ * A write to stderr that fails (EPIPE: the terminal closed, the CI step was
+ * killed, `2>&1 | head` stopped reading) is not a crash and cannot be
+ * reported: stderr is where the report would go. Without a listener Node
+ * raises it as an uncaught exception, the handler below prints it to the
+ * same broken stream, and that write fails in turn, from inside the
+ * `process.nextTick` queue, so no timer (the bounded exit included) ever
+ * runs again. The stderr `error` listener installed here ends that loop.
  */
 import { flushHeldOutputForExit } from "./ordered-output.ts";
 import { exitAfterStopping, isExitInProgress } from "./exit-stoppers.ts";
 
 let installed = false;
+
+const ignoreStderrFailure = (): void => {};
 
 export const installProcessCrashHandlers = (): (() => void) => {
   // A handler runs in the context of whatever threw. Inside a task whose
@@ -35,12 +45,14 @@ export const installProcessCrashHandlers = (): (() => void) => {
 
   process.on("unhandledRejection", onUnhandledRejection);
   process.on("uncaughtException", onUncaughtException);
+  process.stderr.on("error", ignoreStderrFailure);
 
   installed = true;
 
   return () => {
     process.removeListener("unhandledRejection", onUnhandledRejection);
     process.removeListener("uncaughtException", onUncaughtException);
+    process.stderr.removeListener("error", ignoreStderrFailure);
     installed = false;
   };
 };

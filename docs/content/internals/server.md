@@ -366,6 +366,8 @@ Both HTTP/1.1 and HTTP/2 adapters register stream error handlers that identify c
 
 Process-level handlers for `unhandledRejection` and `uncaughtException` log full error context and exit with a non-zero code (`1`) to allow external process supervisors (systemd, Docker container restart policies) to restart the process cleanly.
 
+A write to stderr that fails (`EPIPE`: the terminal closed, a CI step was killed, `2>&1 | head` stopped reading) is not a crash and has nowhere to be reported. The crash net keeps an `error` listener on `process.stderr` that ignores it. Without that listener Node raises the failure as an uncaught exception, the handler prints it to the same broken stream, and that write fails again from inside the `process.nextTick` queue, so the bounded exit's timer never runs and the process spins until it is killed.
+
 ### API response stream and disconnect ownership
 
 API route execution (`server-api.ts`) enforces strict backpressure and lifecycle ownership across WHATWG `Response` streams and underlying network sockets:
