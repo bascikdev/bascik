@@ -14,6 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template blog` scaffolds a blog, as in `npm create bascik my-blog -- --template blog`. Posts are Markdown files with front matter in `content/posts/`; the starter has a home page with the newest posts, a post list, a page per post and per tag, an Atom feed at `/feed.xml`, canonical and Open Graph tags for every post, an about page, and a 404 page. A post with a missing title, description, author or date stops the build with an error that names the file. It takes any `--adapter`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 
 ### Fixed
 
