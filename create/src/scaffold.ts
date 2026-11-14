@@ -484,7 +484,7 @@ export const SITE_META_HTML = `<meta charset="UTF-8" />
 export const SITE_HEADER_CSS = `.skip-link {
   position: absolute;
   left: 16px;
-  top: -48px;
+  top: 8px;
   padding: 8px 14px;
   border-radius: var(--r-sm);
   background: var(--accent);
@@ -492,7 +492,15 @@ export const SITE_HEADER_CSS = `.skip-link {
   font-weight: 600;
   z-index: 200;
 }
-.skip-link:focus { top: 8px; }
+/* Hidden until focused. Clipping, not an offset, keeps it hidden when something sits above the header. */
+.skip-link:not(:focus) {
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 header {
   position: sticky;

@@ -844,7 +844,15 @@ describe("semantic HTML in the starter", () => {
     expect(SITE_HEADER_HTML).toMatch(
       /<a href="#main" class="skip-link"[^>]*>Skip to content<\/a>/,
     );
-    expect(SITE_HEADER_CSS).toMatch(/\.skip-link:focus/);
+    // Hidden by clipping until focused. A negative offset shows the link
+    // as soon as anything is placed above the header.
+    const hidden = /\.skip-link:not\(:focus\)\s*\{([^}]*)\}/.exec(
+      SITE_HEADER_CSS,
+    );
+    expect(hidden).not.toBeNull();
+    expect(hidden![1]).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(hidden![1]).toMatch(/overflow:\s*hidden/);
+    expect(SITE_HEADER_CSS).not.toMatch(/top:\s*-\d/);
     expect(SITE_HEADER_HTML).toMatch(/<nav aria-label="Main"[\s>]/);
     const toggle = /<button id="nav-toggle"[^>]*>/.exec(SITE_HEADER_HTML)![0];
     expect(toggle).toContain('type="button"');
