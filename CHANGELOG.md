@@ -14,6 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template corporate` scaffolds a multi-page company site: a home page, a services index with one page per service, about, careers, news, and contact pages, placeholder privacy and terms pages, and a 404. The services, open roles, and news entries are typed data: add an entry and its card, menu link, and page follow, and an entry with a missing field or a repeated slug fails the build with its name. Try it with `npm create bascik my-company -- --template corporate`; it takes any `--adapter`.
 
 ### Fixed
 

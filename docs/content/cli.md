@@ -86,9 +86,10 @@ Select **Y** for all three and you're live at `http://localhost:8080`. `npm run 
 | `--adapter <name>`  | Add a deploy adapter to the starter: `cloudflare`, `netlify`, or `none` (the default). New in `create-bascik` 1.1.0                |
 | `--template <name>` | The kind of site, from the table below. Default: `default`. `cloudflare` and `netlify` still work and mean the same as `--adapter` |
 
-| Template  | What you get                                                                   |
-| --------- | ------------------------------------------------------------------------------ |
-| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+| Template    | What you get                                                                   |
+| ----------- | ------------------------------------------------------------------------------ |
+| `default`   | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+| `corporate` | A company site: services, about, careers, news, and contact pages              |
 
 Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 
