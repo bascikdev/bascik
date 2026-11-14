@@ -398,7 +398,7 @@ describe("template registry", () => {
     expect(templateNamed("Default")).toBe(DEFAULT_TEMPLATE);
     expect(templateNamed("STATIC")).toBe(DEFAULT_TEMPLATE);
     expect(templateNamed("cloudflare")).toBeUndefined();
-    expect(templateNamed("defualt")).toBeUndefined();
+    expect(templateNamed("defaults")).toBeUndefined();
     expect(templateNamed("constructor")).toBeUndefined();
   });
 
