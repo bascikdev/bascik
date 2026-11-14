@@ -45,6 +45,7 @@ import {
   validateProjectName,
   ADAPTERS,
   DEFAULT_TEMPLATE,
+  escapeHtml,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
 import { parseJsonc } from "./vscode-settings.js";
@@ -359,6 +360,21 @@ describe("parseCliOptions", () => {
     ).toThrow(
       'npm kept --adapter for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --adapter cloudflare',
     );
+  });
+});
+
+describe("escapeHtml", () => {
+  it("escapes the five characters that are markup in text and quoted attributes", () => {
+    expect(escapeHtml(`Tom & "Jerry" <b>'s`)).toBe(
+      "Tom &amp; &quot;Jerry&quot; &lt;b&gt;&#39;s",
+    );
+  });
+
+  it("leaves plain names and replacement tokens alone, and escapes an ampersand once", () => {
+    expect(escapeHtml("my-site")).toBe("my-site");
+    expect(escapeHtml("$& $1 $`")).toBe("$&amp; $1 $`");
+    expect(escapeHtml("&amp;")).toBe("&amp;amp;");
+    expect(escapeHtml("")).toBe("");
   });
 });
 
