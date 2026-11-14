@@ -8,9 +8,13 @@
  */
 
 import { DEFAULT_TEMPLATE, type StarterTemplate } from "./scaffold.js";
+import { LANDING_TEMPLATE } from "./templates/landing.js";
 
 /** Every template, the default first. Keep one entry per line: each template is added in its own change. */
-export const TEMPLATES: readonly StarterTemplate[] = [DEFAULT_TEMPLATE];
+export const TEMPLATES: readonly StarterTemplate[] = [
+  DEFAULT_TEMPLATE,
+  LANDING_TEMPLATE,
+];
 
 /** Other names a template answers to. `static` is the default: it is a plain static site. */
 export const TEMPLATE_ALIASES: Readonly<Record<string, string>> = {

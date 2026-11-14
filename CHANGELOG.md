@@ -14,6 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template landing` scaffolds a one-page product landing page: a hero, features, steps, testimonials, pricing, an FAQ built on `<details>`, and a waitlist form with validation, plus a privacy page and a 404 page. Its lists are typed data beside each component, and with `--adapter` the form posts to an API route that validates it again. Try it with `npm create bascik my-site -- --template landing`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 
 ### Fixed
 

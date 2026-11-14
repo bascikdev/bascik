@@ -90,9 +90,10 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 
 `--template <name>` picks the kind of site. Any template takes any adapter (`--template default --adapter netlify`).
 
-| Template  | What you get                                                                   |
-| :-------- | :----------------------------------------------------------------------------- |
-| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+| Template  | What you get                                                                                                                                                     |
+| :-------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                                   |
+| `landing` | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it |
 
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
