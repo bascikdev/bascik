@@ -89,6 +89,7 @@ Select **Y** for all three and you're live at `http://localhost:8080`. `npm run 
 | Template  | What you get                                                                   |
 | --------- | ------------------------------------------------------------------------------ |
 | `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+| `minimal` | An almost empty site: one page, one stylesheet, and a 404 page                 |
 
 Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 
