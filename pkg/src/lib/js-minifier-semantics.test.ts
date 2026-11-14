@@ -212,3 +212,157 @@ describe("minifyJs – semicolon-free statement sequences (property)", () => {
     PARITY_BOUNDS.timeoutMs,
   );
 });
+
+// A `{` on its own line after a function, method, class or catch header opens that header's
+// body. It is what brace-on-next-line code looks like, and what a TypeScript function with a
+// multi-line return type looks like once its types are stripped to spaces.
+describe("minifyJs – a body brace on the line after its header", () => {
+  it.each([
+    [
+      "function declaration",
+      "function f(a)\n{\n  return a + 1;\n}\nlog.push(f(1));",
+    ],
+    [
+      "default parameter with parentheses",
+      "function f(a, b = (2))\n{\n  return a + b;\n}\nlog.push(f(1));",
+    ],
+    [
+      "function expression",
+      "const f = function (a)\n{\n  return a * 2;\n}\nlog.push(f(2));",
+    ],
+    [
+      "function expression passed as an argument",
+      "[1, 2].forEach(function (n)\n{\n  log.push(n);\n});",
+    ],
+    [
+      "generator",
+      "function* g(a)\n{\n  yield a;\n}\nfunction *h()\n{\n  yield 2;\n}\nlog.push([...g(1), ...h()]);",
+    ],
+    [
+      "async function",
+      "async function f(a)\n{\n  return a;\n}\nlog.push(typeof f(1).then);",
+    ],
+    [
+      "class and its members",
+      [
+        "class A",
+        "{",
+        "  static count = 1",
+        "  static",
+        "  {",
+        "    A.count = 2;",
+        "  }",
+        "  #secret()",
+        "  {",
+        "    return 3;",
+        "  }",
+        "  constructor(a)",
+        "  {",
+        "    this.a = a;",
+        "  }",
+        "  get double()",
+        "  {",
+        "    return this.a * 2;",
+        "  }",
+        "  static make(a)",
+        "  {",
+        "    return new A(a);",
+        "  }",
+        "  ['computed']()",
+        "  {",
+        "    return this.#secret();",
+        "  }",
+        "  'quoted'()",
+        "  {",
+        "    return 4;",
+        "  }",
+        "  *items()",
+        "  {",
+        "    yield this.a;",
+        "  }",
+        "}",
+        "const a = A.make(5);",
+        "log.push(A.count, a.double, a.computed(), a.quoted(), [...a.items()]);",
+      ].join("\n"),
+    ],
+    [
+      "class with a heritage clause",
+      "class B\n{\n  hi()\n  {\n    return 1;\n  }\n}\nclass A extends B\n{\n}\nconst mix = (C) => C;\nclass D extends mix(B)\n{\n}\nlog.push(new A().hi(), new D().hi());",
+    ],
+    [
+      "class expression",
+      "const C = class\n{\n  hi()\n  {\n    return 1;\n  }\n};\nlog.push(new C().hi());",
+    ],
+    [
+      "object literal methods",
+      "const o = {\n  m(a)\n  {\n    return a;\n  },\n  get x()\n  {\n    return 2;\n  },\n  nested: {\n    n()\n    {\n      return 3;\n    }\n  }\n};\nlog.push(o.m(1), o.x, o.nested.n());",
+    ],
+    [
+      "object literal returned and passed",
+      "const make = () =>\n{\n  return {\n    m()\n    {\n      return 1;\n    }\n  };\n};\nconst call = (o) => o.m();\nlog.push(make().m(), call({\n  m()\n  {\n    return 2;\n  }\n}));",
+    ],
+    [
+      "try, catch and finally",
+      "try\n{\n  throw new Error('x');\n}\ncatch (e)\n{\n  log.push(e.message);\n}\nfinally\n{\n  log.push('done');\n}",
+    ],
+    [
+      "catch without a binding",
+      "try\n{\n  throw 1;\n}\ncatch\n{\n  log.push('caught');\n}",
+    ],
+    [
+      "a stripped multi-line return type",
+      "function f(a        )   \n               \n                   \n  {\n  return { ok: a };\n}\nlog.push(f(true).ok);",
+    ],
+    [
+      "a comment between the header and its brace",
+      "function f(a) // adds one\n// to a\n{\n  return a + 1;\n}\nlog.push(f(1));",
+    ],
+  ])("%s", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).not.toContain(";{");
+    expect(minified).not.toContain("\n");
+  });
+
+  // The line break ends the statement in each of these: the `{` starts a block of its own.
+  it.each([
+    ["a call", "let n = 0\nconst foo = () => n++\nfoo()\n{\n  log.push(n);\n}"],
+    ["an assignment", "let x\nconst y = 1\nx = y\n{\n  log.push(x);\n}"],
+    ["a declaration", "let a = 1\n{\n  a++;\n}\nlog.push(a);"],
+    [
+      "a method call",
+      "const a = { b: (c) => log.push(c) }\na.b(1)\n{ log.push(2) }",
+    ],
+    [
+      "a constructor call",
+      "function Foo(a) { log.push(a) }\nnew Foo(1)\n{ log.push(2) }",
+    ],
+    [
+      "a call inside a function whose own brace is on the next line",
+      "const g = (a) => log.push(a)\nfunction f(a)\n{\n  g(a)\n  {\n    log.push('block');\n  }\n}\nf(1);",
+    ],
+    [
+      "a call inside a method whose own brace is on the next line",
+      "const g = (a) => log.push(a)\nclass A\n{\n  m(a)\n  {\n    g(a)\n    {\n      log.push('block');\n    }\n  }\n}\nnew A().m(1);",
+    ],
+    [
+      "a property named catch or function",
+      "const p = { catch: (f) => log.push('c'), function: (f) => log.push('f') }\np.catch(1)\n{ log.push(1) }\np.function(2)\n{ log.push(2) }",
+    ],
+    [
+      "a function expression that already has its body",
+      "let x\nx = function () {}\n{ log.push(typeof x) }",
+    ],
+    [
+      "a catch with no binding, then a call",
+      "const b = () => log.push('b')\ntry\n{\n  throw 1;\n}\ncatch\n{\n  b()\n  {\n    log.push('block');\n  }\n}",
+    ],
+  ])("still ends the statement after %s", (_name, source) => {
+    expect(expectSameProgram(source)).toContain(";{");
+  });
+
+  it("joins a class body across a string in its heritage clause", () => {
+    expectSameProgram(
+      "const mix = () => Object;\nclass A extends mix('x')\n{\n  hi()\n  {\n    return 1;\n  }\n}\nlog.push(new A().hi());",
+    );
+  });
+});
