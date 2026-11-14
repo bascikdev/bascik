@@ -77,14 +77,20 @@ Start the dev server after install? (Y/n)
 
 Select **Y** for all three and you're live at `http://localhost:8080`. `npm run dev` is the Bascik dev server in every template. The Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`), which run the same site in the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
-| Flag                | Description                                                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `-y`, `--yes`       | Answer every question with its default: the default template, no adapter, and yes to the skills, the install and the dev server |
-| `--no-skills`       | Do not install the agent skills                                                                                                 |
-| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                              |
-| `--no-dev`          | Do not start the dev server                                                                                                     |
-| `--adapter <name>`  | Add a deploy adapter to the starter: `cloudflare`, `netlify`, or `none` (the default). New in `create-bascik` 1.1.0             |
-| `--template <name>` | The starter site: `default` (alias `static`). `cloudflare` and `netlify` still work and mean the same as `--adapter`            |
+| Flag                | Description                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `-y`, `--yes`       | Answer every question with its default: the default template, no adapter, and yes to the skills, the install and the dev server    |
+| `--no-skills`       | Do not install the agent skills                                                                                                    |
+| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                                 |
+| `--no-dev`          | Do not start the dev server                                                                                                        |
+| `--adapter <name>`  | Add a deploy adapter to the starter: `cloudflare`, `netlify`, or `none` (the default). New in `create-bascik` 1.1.0                |
+| `--template <name>` | The kind of site, from the table below. Default: `default`. `cloudflare` and `netlify` still work and mean the same as `--adapter` |
+
+| Template  | What you get                                                                   |
+| --------- | ------------------------------------------------------------------------------ |
+| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+
+Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 
 A `--no-*` flag wins over `-y` and skips its question. An unknown flag, such as `--no-skill`, is refused with the flag it most likely meant. Without a terminal, such as in CI, answers piped to the command are used in order, and every question after the input ends takes its default.
 

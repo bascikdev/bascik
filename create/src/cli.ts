@@ -1,4 +1,5 @@
-import { TEMPLATES, type Template } from "./scaffold.js";
+import { ADAPTERS, type Adapter, type StarterTemplate } from "./scaffold.js";
+import { TEMPLATES, TEMPLATE_ALIASES, templateNamed } from "./templates.js";
 
 export interface CliOptions {
   yesFlag: boolean;
@@ -6,49 +7,53 @@ export interface CliOptions {
   noInstallFlag: boolean;
   /** `--no-skills`: do not ask about or install the agent skills. */
   noSkillsFlag: boolean;
+  /** `--template`: the kind of site. Left undefined when the flag was not given; the entry then uses the default one. */
+  template?: StarterTemplate;
   /**
-   * The starter to write, from `--adapter` and `--template` together. Left undefined
-   * when neither flag was given; the entry then uses the default starter.
+   * `--adapter`, or the older `--template cloudflare` and `--template netlify`.
+   * Left undefined for no adapter, which `--adapter none` also asks for.
    */
-  template?: Template;
+  adapter?: Adapter;
   /** The first positional argument, the project name, with flag values excluded. */
   projectName?: string;
   /** `--help` or `-h`: print the usage and exit 0, before anything else. */
   helpFlag: boolean;
 }
 
-/** `static` is accepted as a synonym because the default starter is a plain static site. */
-const TEMPLATE_ALIASES: Record<string, Template> = { static: "default" };
-
 const templateChoices = (): string =>
-  [...TEMPLATES, ...Object.keys(TEMPLATE_ALIASES)].join(", ");
+  [
+    ...TEMPLATES.map((template) => template.name),
+    ...Object.keys(TEMPLATE_ALIASES),
+  ].join(", ");
 
-const parseTemplate = (value: string | undefined): Template => {
+const isAdapter = (name: string): name is Adapter =>
+  (ADAPTERS as readonly string[]).includes(name);
+
+/**
+ * `--template <name>` is a template, or one of the adapters: until 1.1.0 an
+ * adapter was chosen with `--template cloudflare`, which still works.
+ */
+const parseTemplate = (
+  value: string | undefined,
+): StarterTemplate | Adapter => {
   if (value === undefined || value === "" || value.startsWith("-")) {
     throw new Error(
       `--template needs a value. Choose one of: ${templateChoices()}.`,
     );
   }
+  const template = templateNamed(value);
+  if (template) return template;
   const name = value.toLowerCase();
-  if ((TEMPLATES as readonly string[]).includes(name)) return name as Template;
-  if (Object.prototype.hasOwnProperty.call(TEMPLATE_ALIASES, name))
-    return TEMPLATE_ALIASES[name];
+  if (isAdapter(name)) return name;
   throw new Error(
     `Unknown template "${value}". Choose one of: ${templateChoices()}.`,
   );
 };
 
-/** The adapters `--adapter` accepts. Each one is also a `--template` value, the older spelling. */
-const ADAPTERS = ["cloudflare", "netlify"] as const;
-type Adapter = (typeof ADAPTERS)[number];
-
 /** `--adapter none` asks for the plain static starter, the same as leaving the flag out. */
 const NO_ADAPTER = "none";
 
 const adapterChoices = (): string => [...ADAPTERS, NO_ADAPTER].join(", ");
-
-const isAdapter = (name: string): name is Adapter =>
-  (ADAPTERS as readonly string[]).includes(name);
 
 const parseAdapter = (
   value: string | undefined,
@@ -66,22 +71,20 @@ const parseAdapter = (
 };
 
 /**
- * One starter from the two flags. `--adapter` adds an adapter to the default
- * starter; `--template cloudflare` and `--template netlify` are the older way
- * to say the same thing, so the two flags may agree but not disagree.
+ * One adapter from the two flags. `--template cloudflare` and `--template netlify`
+ * are the older way to write `--adapter`, so the two flags may agree but not disagree.
  */
-const resolveTemplate = (
-  template: Template | undefined,
+const resolveAdapter = (
+  legacy: Adapter | undefined,
   adapter: Adapter | typeof NO_ADAPTER | undefined,
-): Template | undefined => {
-  if (adapter === undefined) return template;
-  const wanted: Template = adapter === NO_ADAPTER ? "default" : adapter;
-  if (template !== undefined && isAdapter(template) && template !== wanted) {
+): Adapter | undefined => {
+  if (adapter === undefined) return legacy;
+  if (legacy !== undefined && legacy !== adapter) {
     throw new Error(
-      `--template ${template} and --adapter ${adapter} ask for different adapters. Pass only --adapter.`,
+      `--template ${legacy} and --adapter ${adapter} ask for different adapters. Pass only --adapter.`,
     );
   }
-  return wanted;
+  return adapter === NO_ADAPTER ? undefined : adapter;
 };
 
 /**
@@ -176,7 +179,7 @@ export function parseCliOptions(
       noSkillsFlag: false,
     };
   }
-  let template: Template | undefined;
+  let template: StarterTemplate | Adapter | undefined;
   let adapter: Adapter | typeof NO_ADAPTER | undefined;
   const positionals: string[] = [];
 
@@ -234,7 +237,11 @@ export function parseCliOptions(
       args.includes("--no-install") || npmConfigIsFalse(env.npm_config_install),
     noSkillsFlag:
       args.includes("--no-skills") || npmConfigIsFalse(env.npm_config_skills),
-    template: resolveTemplate(template, adapter),
+    template: typeof template === "string" ? undefined : template,
+    adapter: resolveAdapter(
+      typeof template === "string" ? template : undefined,
+      adapter,
+    ),
     projectName: positionals[0],
     helpFlag: false,
   };
@@ -247,7 +254,8 @@ Creates a new Bascik project in ./<project-name> (asks for a name when none is g
 
 Options:
   --adapter <name>   Add a deploy adapter to the starter: ${adapterChoices()}. Default: none.
-  --template <name>  The starter site: default (alias: static). Default: default.
+  --template <name>  The kind of site. Default: default (alias: static).
+${TEMPLATES.map((template) => `                       ${template.name.padEnd(8)} ${template.summary}`).join("\n")}
                      "--template cloudflare" and "--template netlify" still work
                      and mean the same as --adapter.
   -y, --yes          Answer every question with its default: the default template, no adapter,

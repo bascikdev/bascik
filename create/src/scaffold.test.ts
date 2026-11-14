@@ -43,9 +43,18 @@ import {
   scaffold,
   siteNameOf,
   validateProjectName,
+  ADAPTERS,
+  DEFAULT_TEMPLATE,
 } from "./scaffold.js";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.js";
 import { parseJsonc } from "./vscode-settings.js";
+import { TEMPLATES, TEMPLATE_ALIASES, templateNamed } from "./templates.js";
+
+/** What an unknown or missing --template value is told to choose from. */
+const TEMPLATE_CHOICES = [
+  ...TEMPLATES.map((template) => template.name),
+  ...Object.keys(TEMPLATE_ALIASES),
+].join(", ");
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -130,33 +139,50 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions([]).template).toBeUndefined();
   });
 
-  it("reads --template as a two-token form without consuming it as the project name", () => {
-    const options = parseCliOptions(["--template", "cloudflare", "my-site"]);
-    expect(options.template).toBe("cloudflare");
+  it("reads --template in both forms without consuming it as the project name", () => {
+    const options = parseCliOptions(["--template", "default", "my-site"]);
+    expect(options.template).toBe(DEFAULT_TEMPLATE);
+    expect(options.adapter).toBeUndefined();
     expect(options.projectName).toBe("my-site");
-    expect(parseCliOptions(["my-site", "--template", "cloudflare"])).toEqual(
+    expect(parseCliOptions(["my-site", "--template", "default"])).toEqual(
       options,
     );
+    expect(parseCliOptions(["my-site", "--template=default", "-y"])).toEqual({
+      ...options,
+      yesFlag: true,
+    });
   });
 
-  it("reads --template=<name>", () => {
-    const options = parseCliOptions(["my-site", "--template=cloudflare", "-y"]);
-    expect(options.template).toBe("cloudflare");
-    expect(options.projectName).toBe("my-site");
-    expect(options.yesFlag).toBe(true);
-  });
-
-  it("accepts default and its static alias, ignoring case", () => {
-    expect(parseCliOptions(["--template", "default"]).template).toBe("default");
-    expect(parseCliOptions(["--template=static"]).template).toBe("default");
-    expect(parseCliOptions(["--template", "Cloudflare"]).template).toBe(
-      "cloudflare",
+  it("accepts every registered template by name, and static as the default's alias, ignoring case", () => {
+    for (const template of TEMPLATES) {
+      expect(parseCliOptions(["--template", template.name]).template).toBe(
+        template,
+      );
+      expect(
+        parseCliOptions([`--template=${template.name.toUpperCase()}`]).template,
+      ).toBe(template);
+    }
+    expect(parseCliOptions(["--template=static"]).template).toBe(
+      DEFAULT_TEMPLATE,
     );
+  });
+
+  it("reads the older --template cloudflare and --template netlify as the adapter, with the default template", () => {
+    for (const args of [
+      ["--template", "cloudflare", "my-site"],
+      ["my-site", "--template=Cloudflare"],
+    ]) {
+      const options = parseCliOptions(args);
+      expect(options.adapter).toBe("cloudflare");
+      expect(options.template).toBeUndefined();
+      expect(options.projectName).toBe("my-site");
+    }
+    expect(parseCliOptions(["--template", "netlify"]).adapter).toBe("netlify");
   });
 
   it("rejects an unknown template with the available choices", () => {
     expect(() => parseCliOptions(["--template", "vercel"])).toThrow(
-      'Unknown template "vercel". Choose one of: default, cloudflare, netlify, static.',
+      `Unknown template "vercel". Choose one of: ${TEMPLATE_CHOICES}.`,
     );
     expect(() => parseCliOptions(["--template=vercel"])).toThrow(
       /Unknown template/,
@@ -165,7 +191,7 @@ describe("parseCliOptions", () => {
 
   it("rejects --template without a value, including when a flag follows it", () => {
     expect(() => parseCliOptions(["--template"])).toThrow(
-      "--template needs a value. Choose one of: default, cloudflare, netlify, static.",
+      `--template needs a value. Choose one of: ${TEMPLATE_CHOICES}.`,
     );
     expect(() => parseCliOptions(["--template", "-y"])).toThrow(
       /--template needs a value/,
@@ -202,23 +228,23 @@ describe("parseCliOptions", () => {
 
   it("honors npm's consumed --template=<name> through npm_config_template", () => {
     expect(
-      parseCliOptions(["my-site"], { npm_config_template: "cloudflare" })
-        .template,
-    ).toBe("cloudflare");
-    expect(
       parseCliOptions(["my-site"], { npm_config_template: "static" }).template,
-    ).toBe("default");
+    ).toBe(DEFAULT_TEMPLATE);
+    expect(
+      parseCliOptions(["my-site"], { npm_config_template: "cloudflare" })
+        .adapter,
+    ).toBe("cloudflare");
     expect(() =>
       parseCliOptions(["my-site"], { npm_config_template: "vercel" }),
     ).toThrow(/Unknown template "vercel"/);
   });
 
   it("prefers an explicit --template over npm_config_template", () => {
-    expect(
-      parseCliOptions(["my-site", "--template", "default"], {
-        npm_config_template: "cloudflare",
-      }).template,
-    ).toBe("default");
+    const options = parseCliOptions(["my-site", "--template", "default"], {
+      npm_config_template: "cloudflare",
+    });
+    expect(options.template).toBe(DEFAULT_TEMPLATE);
+    expect(options.adapter).toBeUndefined();
   });
 
   it("reports the two-token form npm reduced to npm_config_template=true", () => {
@@ -229,41 +255,45 @@ describe("parseCliOptions", () => {
     );
   });
 
-  it("reads --adapter in both forms, ignoring case, as the adapter starter", () => {
+  it("reads --adapter in both forms, ignoring case", () => {
     const options = parseCliOptions(["--adapter", "cloudflare", "my-site"]);
-    expect(options.template).toBe("cloudflare");
+    expect(options.adapter).toBe("cloudflare");
+    expect(options.template).toBeUndefined();
     expect(options.projectName).toBe("my-site");
     expect(parseCliOptions(["my-site", "--adapter", "cloudflare"])).toEqual(
       options,
     );
-    expect(parseCliOptions(["my-site", "--adapter=netlify"]).template).toBe(
+    expect(parseCliOptions(["my-site", "--adapter=netlify"]).adapter).toBe(
       "netlify",
     );
-    expect(parseCliOptions(["--adapter", "Netlify"]).template).toBe("netlify");
+    expect(parseCliOptions(["--adapter", "Netlify"]).adapter).toBe("netlify");
   });
 
-  it("--adapter none is the default starter", () => {
-    expect(parseCliOptions(["--adapter", "none"]).template).toBe("default");
-    expect(parseCliOptions(["--adapter=none"]).template).toBe("default");
+  it("--adapter none is no adapter", () => {
+    expect(parseCliOptions(["--adapter", "none"]).adapter).toBeUndefined();
+    expect(parseCliOptions(["--adapter=none"]).adapter).toBeUndefined();
   });
 
-  it("combines --adapter with --template default or static, in either order", () => {
-    expect(
-      parseCliOptions(["--template", "default", "--adapter", "netlify"])
-        .template,
-    ).toBe("netlify");
-    expect(
-      parseCliOptions(["--adapter=cloudflare", "--template=static"]).template,
-    ).toBe("cloudflare");
-    expect(
-      parseCliOptions(["--template", "default", "--adapter", "none"]).template,
-    ).toBe("default");
+  it("combines --adapter with any template, in either order", () => {
+    for (const template of TEMPLATES) {
+      for (const args of [
+        ["--template", template.name, "--adapter", "netlify"],
+        ["--adapter=netlify", `--template=${template.name}`],
+      ]) {
+        const options = parseCliOptions(args);
+        expect(options.template).toBe(template);
+        expect(options.adapter).toBe("netlify");
+      }
+    }
+    const none = parseCliOptions(["--template", "static", "--adapter", "none"]);
+    expect(none.template).toBe(DEFAULT_TEMPLATE);
+    expect(none.adapter).toBeUndefined();
   });
 
   it("accepts the older --template <adapter> next to the same --adapter", () => {
     expect(
       parseCliOptions(["--template", "cloudflare", "--adapter", "cloudflare"])
-        .template,
+        .adapter,
     ).toBe("cloudflare");
   });
 
@@ -284,7 +314,7 @@ describe("parseCliOptions", () => {
     expect(() => parseCliOptions(["--adapter", "vercel"])).toThrow(
       'Unknown adapter "vercel". Choose one of: cloudflare, netlify, none.',
     );
-    // `default` and `static` are template names, not adapters.
+    // Template names are not adapters.
     expect(() => parseCliOptions(["--adapter=default"])).toThrow(
       /Unknown adapter "default"/,
     );
@@ -310,7 +340,7 @@ describe("parseCliOptions", () => {
 
   it("honors npm's consumed --adapter=<name> through npm_config_adapter", () => {
     expect(
-      parseCliOptions(["my-site"], { npm_config_adapter: "netlify" }).template,
+      parseCliOptions(["my-site"], { npm_config_adapter: "netlify" }).adapter,
     ).toBe("netlify");
     expect(() =>
       parseCliOptions(["my-site"], { npm_config_adapter: "vercel" }),
@@ -319,8 +349,8 @@ describe("parseCliOptions", () => {
     expect(
       parseCliOptions(["my-site", "--adapter", "none"], {
         npm_config_adapter: "cloudflare",
-      }).template,
-    ).toBe("default");
+      }).adapter,
+    ).toBeUndefined();
   });
 
   it("reports the two-token form npm reduced to npm_config_adapter=true", () => {
@@ -330,6 +360,92 @@ describe("parseCliOptions", () => {
       'npm kept --adapter for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --adapter cloudflare',
     );
   });
+});
+
+// The registry every template is added to: these hold for a template nobody has written yet.
+describe("template registry", () => {
+  it("lists the default template first, with unique lowercase names that are not adapter names or aliases", () => {
+    expect(TEMPLATES[0]).toBe(DEFAULT_TEMPLATE);
+    const names = TEMPLATES.map((template) => template.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) {
+      expect(name).toMatch(/^[a-z][a-z-]*$/);
+      expect(ADAPTERS as readonly string[]).not.toContain(name);
+      expect(name).not.toBe("none");
+      expect(Object.keys(TEMPLATE_ALIASES)).not.toContain(name);
+    }
+    for (const target of Object.values(TEMPLATE_ALIASES))
+      expect(names).toContain(target);
+  });
+
+  it("finds a template by name or alias without case, and nothing for an adapter or a typo", () => {
+    expect(templateNamed("Default")).toBe(DEFAULT_TEMPLATE);
+    expect(templateNamed("STATIC")).toBe(DEFAULT_TEMPLATE);
+    expect(templateNamed("cloudflare")).toBeUndefined();
+    expect(templateNamed("defualt")).toBeUndefined();
+    expect(templateNamed("constructor")).toBeUndefined();
+  });
+
+  it("names every template with its summary in the usage text", () => {
+    for (const template of TEMPLATES) {
+      expect(template.summary.length).toBeGreaterThan(10);
+      expect(USAGE).toContain(template.summary);
+    }
+  });
+
+  it.each(
+    TEMPLATES.flatMap((template) =>
+      ([undefined, ...ADAPTERS] as const).map(
+        (adapter) =>
+          [template.name, adapter ?? "none", template, adapter] as const,
+      ),
+    ),
+  )(
+    "the %s template with adapter %s writes each path once, inside folders it declares, and leaves the shared files alone",
+    (_name, _adapterName, template, adapter) => {
+      const context = { siteName: "My Site", adapter };
+      const files = template.files(context);
+      const paths = files.map(([path]) => path);
+      expect(new Set(paths).size).toBe(paths.length);
+      const dirs = new Set([
+        "e2e",
+        "src/pages/assets",
+        ...(adapter ? ["src/api"] : []),
+        ...template.directories(context),
+      ]);
+      // A folder is made with its parents, so a file may sit in a declared folder or above one.
+      const made = [...dirs].map((dir) => `${dir}/`);
+      for (const path of paths) {
+        expect(path).not.toMatch(/^\/|\\|\.\./);
+        const folder = path.slice(0, path.lastIndexOf("/") + 1);
+        expect(
+          made.some((dir) => dir.startsWith(folder)),
+          `${path} is in a folder the template does not declare`,
+        ).toBe(true);
+      }
+      // Written for every template by scaffold itself.
+      for (const shared of [
+        "package.json",
+        "vite.config.ts",
+        ".gitignore",
+        "netlify.toml",
+        "e2e/playwright.config.ts",
+        "src/api/hello.ts",
+        "src/pages/favicon.ico",
+        "src/pages/assets/favicon.svg",
+        "AGENTS.md",
+        "CLAUDE.md",
+      ])
+        expect(paths).not.toContain(shared);
+      // What every site needs, whatever its kind.
+      for (const required of [
+        "e2e/app.spec.ts",
+        "src/pages/index.html",
+        "src/pages/404.html",
+      ])
+        expect(paths).toContain(required);
+    },
+  );
 });
 
 // ─── validateProjectName ──────────────────────────────────────────────────────
@@ -535,13 +651,15 @@ describe("PACKAGE_JSON", () => {
     expect(netlify.devDependencies).not.toHaveProperty("wrangler");
     for (const template of ["default", "cloudflare"] as const) {
       expect(
-        JSON.parse(PACKAGE_JSON("my-app", template)).devDependencies,
+        JSON.parse(
+          PACKAGE_JSON("my-app", template === "default" ? undefined : template),
+        ).devDependencies,
       ).not.toHaveProperty("netlify-cli");
     }
   });
 
   it("parses --template netlify and ships its netlify.toml and ignores", () => {
-    expect(parseCliOptions(["my-site", "--template", "netlify"]).template).toBe(
+    expect(parseCliOptions(["my-site", "--template", "netlify"]).adapter).toBe(
       "netlify",
     );
     expect(NETLIFY_TOML).toContain('publish = "publish"');
@@ -562,7 +680,7 @@ describe("PACKAGE_JSON", () => {
   });
 
   it("treats the default template the same as no template", () => {
-    expect(PACKAGE_JSON("my-app", "default")).toBe(PACKAGE_JSON("my-app"));
+    expect(PACKAGE_JSON("my-app")).toBe(PACKAGE_JSON("my-app"));
   });
 
   it("leaves wrangler and the adapter out of the default template", () => {
@@ -623,7 +741,7 @@ describe("VITE_CONFIG", () => {
     expect(VITE_CONFIG).toContain(
       "import { defineConfig } from 'vitest/config';",
     );
-    const pkg = JSON.parse(PACKAGE_JSON("my-app", "default"));
+    const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.devDependencies.vite).toBeTruthy();
   });
 
@@ -634,7 +752,9 @@ describe("VITE_CONFIG", () => {
 
   it("misuse: every package the generated configs import is declared in the generated package.json", () => {
     for (const template of ["default", "cloudflare"] as const) {
-      const pkg = JSON.parse(PACKAGE_JSON("my-app", template));
+      const pkg = JSON.parse(
+        PACKAGE_JSON("my-app", template === "default" ? undefined : template),
+      );
       const declared = new Set([
         ...Object.keys(pkg.dependencies ?? {}),
         ...Object.keys(pkg.devDependencies ?? {}),
@@ -711,7 +831,7 @@ describe("E2E_APP_SPEC", () => {
       FEATURE_CARD_HTML,
       MY_COUNTER_HTML,
       CONTACT_FORM_HTML,
-      indexPage("My App", { template: "cloudflare" }),
+      indexPage("My App", { adapter: "cloudflare" }),
       aboutPage("My App"),
       contactPage("My App"),
       notFoundPage("My App"),
@@ -1187,7 +1307,7 @@ describe("MY_COUNTER_CSS", () => {
 describe("the starter passes the linters the docs give, unchanged", () => {
   const pages = {
     index: indexPage("My App"),
-    cloudflareIndex: indexPage("My App", { template: "cloudflare" }),
+    cloudflareIndex: indexPage("My App", { adapter: "cloudflare" }),
     about: aboutPage("My App"),
     contact: contactPage("My App"),
     notFound: notFoundPage("My App"),
@@ -1266,10 +1386,10 @@ describe("page templates", () => {
 
   it("indexPage adds an edge feature card only for the cloudflare template", () => {
     const plain = indexPage("My App");
-    const cloudflare = indexPage("My App", { template: "cloudflare" });
+    const cloudflare = indexPage("My App", { adapter: "cloudflare" });
     expect(plain).not.toContain('href="/edge"');
     expect(plain.match(/<feature-card /g)).toHaveLength(3);
-    expect(indexPage("My App", { template: "default" })).toBe(plain);
+    expect(indexPage("My App", {})).toBe(plain);
     expect(cloudflare).toContain('href="/edge"');
     expect(cloudflare.match(/<feature-card /g)).toHaveLength(4);
     // The extra card is an insertion: everything else on the page is unchanged.
@@ -1430,7 +1550,7 @@ describe("scaffold", () => {
     expect(writtenTo("/tmp/my-app/AGENTS.md")).toBe(agentsMd());
     expect(writtenTo("/tmp/my-app/CLAUDE.md")).toBe(CLAUDE_MD);
     vi.clearAllMocks();
-    await scaffold("edge-app", "/tmp", { template: "cloudflare" });
+    await scaffold("edge-app", "/tmp", { adapter: "cloudflare" });
     expect(writtenTo("/tmp/edge-app/AGENTS.md")).toBe(
       agentsMd({ template: "cloudflare" }),
     );
@@ -1485,7 +1605,9 @@ describe("scaffold", () => {
 
   for (const template of ["default", "cloudflare"] as const) {
     it(`turns off VS Code's inline-script check in the ${template} template`, async () => {
-      await scaffold("my-app", "/tmp", { template });
+      await scaffold("my-app", "/tmp", {
+        adapter: template === "default" ? undefined : template,
+      });
       const settings = writtenTo(".vscode/settings.json");
       expect(parseJsonc(settings!)).toEqual({
         "html.validate.scripts": false,
@@ -1681,7 +1803,7 @@ describe("scaffold", () => {
       await expect(scaffold("my-app", "/tmp")).resolves.toBeDefined();
       vi.clearAllMocks();
       await expect(
-        scaffold("my-app", "/tmp", { template: "cloudflare" }),
+        scaffold("my-app", "/tmp", { adapter: "cloudflare" }),
       ).rejects.toThrow('"my-app" already has src/api/hello.ts,');
       expect(mockWriteFile).not.toHaveBeenCalled();
     });
@@ -1737,7 +1859,7 @@ describe("scaffold", () => {
     await scaffold("my-app", "/tmp");
     const implicit = writtenFiles();
     vi.clearAllMocks();
-    await scaffold("my-app", "/tmp", { template: "default" });
+    await scaffold("my-app", "/tmp", {});
     expect(writtenFiles()).toEqual(implicit);
     expect(
       mockMkdir.mock.calls.some((c) => String(c[0]).endsWith("src/api")),
@@ -1758,7 +1880,7 @@ describe("scaffold", () => {
   });
 
   describe("cloudflare template", () => {
-    beforeEach(() => scaffold("my-app", "/tmp", { template: "cloudflare" }));
+    beforeEach(() => scaffold("my-app", "/tmp", { adapter: "cloudflare" }));
 
     it("writes the 31 default files plus the edge page and API route", () => {
       expect(mockWriteFile.mock.calls.length).toBe(33);
@@ -1782,7 +1904,7 @@ describe("scaffold", () => {
       );
       expect(files.get("/tmp/my-app/.gitignore")).toBe(CLOUDFLARE_GITIGNORE);
       expect(files.get("/tmp/my-app/src/pages/index.html")).toBe(
-        indexPage("my-app", { template: "cloudflare" }),
+        indexPage("my-app", { adapter: "cloudflare" }),
       );
       expect(files.get("/tmp/my-app/src/pages/edge.html")).toBe(
         edgePage("my-app"),

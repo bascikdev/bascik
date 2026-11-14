@@ -6,7 +6,8 @@ The `create/` folder is a small standalone package that scaffolds a fresh Bascik
 
 The package's source files have distinct responsibilities:
 
-- `create/src/scaffold.ts`: pure data and file-writing logic. All generated file content lives here as exported string constants and functions. No I/O beyond `fs/promises`. This is what the tests cover.
+- `create/src/scaffold.ts`: pure data and file-writing logic. The files every project gets (package.json, the Vite and Playwright configs, `.gitignore`, the favicons, the adapter pieces) and the default template's content live here as exported string constants and functions, with the `StarterTemplate` interface a template implements. No I/O beyond `fs/promises`. This is what the tests cover.
+- `create/src/templates.ts`: the list of templates `--template` accepts, the default first, and its aliases. `create/src/templates/<name>.ts` holds each template after the default. See [Adding a template](#adding-a-template).
 - `create/src/agent-setup.ts`: the coding-assistant setup shared with `bascik init`: the `AGENTS.md` brief and the `CLAUDE.md` that imports it (merged into existing files), the agent skills install through the skills CLI, and the prompt helper that keeps a run without a terminal from hanging.
 - `create/src/index.ts`: the CLI entry point. Handles the prompts (the project name and the agent skills question; the starter comes only from `--adapter` and `--template`, and is the default static one without them), and spawns the skills CLI, `npm install` and `npm run dev`. `create-cli.integration.test.ts` runs it end to end.
 - `create/src/cli.ts`: parses `-y`, `--no-install`, `--no-dev`, `--no-skills`, `--adapter <name>`, `--template <name>`, and the positional project name, and refuses an unknown flag with the closest known one. `--adapter cloudflare` and the older `--template cloudflare` resolve to the same starter; the two flags naming different adapters is an error. Because npm keeps flags written before `--` for itself, it also honors the `npm_config_yes`, `npm_config_adapter`, `npm_config_template`, `npm_config_skills` and `npm_config_install` variables npm sets instead (npm sets a `--no-*` flag's variable to the empty string). npm takes `--no-dev` as its own `dev` setting and sets nothing, so that flag only works after `--`.
@@ -102,6 +103,27 @@ npm run build
 ```
 
 The `npm link` symlink points at the `create/` directory, so a fresh `dist/` is picked up immediately without relinking. `npm link` also runs `prepare`, which builds `dist/`, so the initial link after a fresh checkout needs no separate build step.
+
+## Adding a template
+
+A template is a kind of site (`--template <name>`); an adapter is where it deploys (`--adapter <name>`). The two are independent, so every template must work with every adapter and with none.
+
+1. Write `create/src/templates/<name>.ts`, exporting one `StarterTemplate` (the interface is in `scaffold.ts`): `name`, a one-line `summary` for `--help`, `directories(context)` and `files(context)`. The context carries the site's display name and the adapter, if any.
+2. Add it to `TEMPLATES` in `create/src/templates.ts`, on its own line. The CLI's choices and help text read that list.
+3. Put the template's own tests in `create/src/templates/<name>.test.ts`.
+4. Add a row to the template tables in `docs/content/cli.md` and `create/README.md`, and a `CHANGELOG.md` bullet.
+
+What a template owns and what it is given:
+
+- **Owns:** everything it writes under `src/` and `e2e/app.spec.ts`. It must write `src/pages/index.html` and `src/pages/404.html`.
+- **Given:** `package.json`, `vite.config.ts`, `.gitignore`, `netlify.toml` (Netlify), `e2e/playwright.config.ts`, the favicons under `src/pages/`, `AGENTS.md`, `CLAUDE.md`, the `.vscode` files and, with an adapter, the `/api/hello` route in `src/api/hello.ts`. A template that writes one of these fails `scaffold`.
+- **With an adapter:** `context.adapter` is set. A template may add a page that runs per request, as the default template's `/edge` page does, or change nothing.
+- **Packages:** a site that imports a package beyond `@bascik/bascik` lists it in the template's `dependencies`. It must be installed in this repo's root `node_modules`, where the integration test links it from.
+- **Reuse:** the default template's pieces are exported from `scaffold.ts` (`SITE_META_HTML`, `HOST_RUNTIME`, and so on). Import what fits; do not copy it.
+
+Templates follow the same house rules as the docs examples: TypeScript, component-first pages, semantic HTML, a `data-testid` on every component root and interactive part, a skip link first in the header, one `<main id="main">` per page, and books and authors as demo data.
+
+Two tests hold every registered template to the common rules, with no code per template: `template registry` in `scaffold.test.ts` (paths, declared folders, shared files left alone) and the template-by-adapter matrix in `scaffold.integration.test.ts`, which scaffolds each combination, builds it with the real CLI, runs `bascik --check`, and runs the public skill's semantic HTML and `data-testid` audits.
 
 ## Tests
 

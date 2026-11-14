@@ -44,7 +44,8 @@ import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CLAUDE_MD, agentsMd } from "./agent-setup.ts";
-import { scaffold } from "./scaffold.ts";
+import { ADAPTERS, scaffold } from "./scaffold.ts";
+import { TEMPLATES } from "./templates.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -371,7 +372,7 @@ describe("scaffold-to-compiler integration", () => {
     const projectName = "edge-site";
     const projectDir = join(parentDir, projectName);
 
-    await scaffold(projectName, parentDir, { template: "cloudflare" });
+    await scaffold(projectName, parentDir, { adapter: "cloudflare" });
 
     const buildResult = await runBascikBuild(projectDir);
     expect(
@@ -403,7 +404,9 @@ describe("scaffold-to-compiler integration", () => {
       const parentDir = await createTempDir(`feature-card-${template}`);
       const projectName = "slot-site";
       const projectDir = join(parentDir, projectName);
-      await scaffold(projectName, parentDir, { template });
+      await scaffold(projectName, parentDir, {
+        adapter: template === "default" ? undefined : template,
+      });
 
       const buildResult = await runBascikBuild(projectDir);
       expect(
@@ -456,7 +459,7 @@ describe("scaffold-to-compiler integration", () => {
     const projectName = "edge-site";
     const projectDir = join(parentDir, projectName);
 
-    await scaffold(projectName, parentDir, { template: "cloudflare" });
+    await scaffold(projectName, parentDir, { adapter: "cloudflare" });
     await linkWorkspacePackages(projectDir);
 
     const buildResult = await runBascikBuild(projectDir, [
@@ -545,7 +548,7 @@ describe("scaffold-to-compiler integration", () => {
     const projectName = "netlify-site";
     const projectDir = join(parentDir, projectName);
 
-    await scaffold(projectName, parentDir, { template: "netlify" });
+    await scaffold(projectName, parentDir, { adapter: "netlify" });
     await linkWorkspacePackages(projectDir);
     expect(await readFile(join(projectDir, "netlify.toml"), "utf8")).toContain(
       'publish = "publish"',
@@ -620,7 +623,9 @@ describe("scaffold-to-compiler integration", () => {
     async (template) => {
       const parentDir = await createTempDir(`check-${template}`);
       const projectDir = join(parentDir, "check-site");
-      await scaffold("check-site", parentDir, { template });
+      await scaffold("check-site", parentDir, {
+        adapter: template === "default" ? undefined : template,
+      });
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         NO_COLOR: "1",
@@ -786,7 +791,9 @@ describe("scaffold-to-compiler integration", () => {
     ]);
     for (const template of ["default", "cloudflare", "netlify"] as const) {
       const parentDir = await createTempDir(`audit-${template}`);
-      await scaffold("audit-site", parentDir, { template });
+      await scaffold("audit-site", parentDir, {
+        adapter: template === "default" ? undefined : template,
+      });
       const run = await execFileAsync(
         process.execPath,
         [audit, "--json", "--root", join(parentDir, "audit-site")],
@@ -814,7 +821,9 @@ describe("scaffold-to-compiler integration", () => {
     };
     for (const template of ["default", "cloudflare", "netlify"] as const) {
       const parentDir = await createTempDir(`testids-${template}`);
-      await scaffold("testid-site", parentDir, { template });
+      await scaffold("testid-site", parentDir, {
+        adapter: template === "default" ? undefined : template,
+      });
       expect(
         testIdAdvisory(join(parentDir, "testid-site")).map(
           (gap) => `${gap.file}:${gap.line} ${gap.message}`,
@@ -823,6 +832,107 @@ describe("scaffold-to-compiler integration", () => {
       ).toEqual([]);
     }
   });
+
+  // Every registered template with every adapter: a template added to TEMPLATES is held to these with no test of its own.
+  it.each(
+    TEMPLATES.flatMap((template) =>
+      ([undefined, ...ADAPTERS] as const).map(
+        (adapter) =>
+          [template.name, adapter ?? "none", template, adapter] as const,
+      ),
+    ),
+  )(
+    "the %s template with adapter %s builds, passes --check, and passes the semantic HTML and data-testid audits",
+    async (name, adapterName, template, adapter) => {
+      const parentDir = await createTempDir(`matrix-${name}-${adapterName}`);
+      const projectDir = join(parentDir, "matrix-site");
+      const { notes } = await scaffold("matrix-site", parentDir, {
+        template,
+        adapter,
+      });
+      expect(notes).toEqual([]);
+
+      // A scaffolded project has no node_modules: link Bascik, the adapters, and what the template imports.
+      await linkWorkspacePackages(projectDir);
+      for (const dependency of Object.keys(template.dependencies ?? {})) {
+        const link = join(projectDir, "node_modules", dependency);
+        await mkdir(resolve(link, ".."), { recursive: true });
+        await symlink(join(REPO_ROOT, "node_modules", dependency), link, "dir");
+      }
+
+      const build = await runBascikBuild(
+        projectDir,
+        adapter ? ["--target", adapter] : [],
+      );
+      expect(build.exitCode, `${build.stdout}\n${build.stderr}`).toBe(0);
+      for (const page of ["index.html", "404.html"])
+        expect(existsSync(join(projectDir, "dist", page)), page).toBe(true);
+
+      const check = await execFileAsync(
+        process.execPath,
+        [PKG_CLI, "--check"],
+        {
+          cwd: projectDir,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            NO_COLOR: "1",
+            BASCIK_SITE_URL: "https://example.com",
+          },
+          timeout: 60_000,
+        },
+      ).then(
+        (ok) => ({ ...ok, exitCode: 0 }),
+        (err: { stdout?: string; stderr?: string }) => ({
+          stdout: err.stdout ?? "",
+          stderr: err.stderr ?? "",
+          exitCode: 1,
+        }),
+      );
+      expect(check.exitCode, `${check.stdout}\n${check.stderr}`).toBe(0);
+
+      const audit = await execFileAsync(
+        process.execPath,
+        [
+          join(REPO_ROOT, "skills/bascik/scripts/audit-components.mjs"),
+          "--json",
+          "--root",
+          projectDir,
+        ],
+        { encoding: "utf8" },
+      ).catch((err: { stdout?: string }) => ({ stdout: err.stdout ?? "" }));
+      const semantic = new Set([
+        "clickable-element",
+        "generic-root",
+        "skipped-heading",
+        "missing-alt",
+        "unlabeled-control",
+        "missing-main",
+      ]);
+      const { findings } = JSON.parse(audit.stdout) as {
+        findings: { rule: string; file: string; line: number }[];
+      };
+      expect(
+        findings
+          .filter((f) => semantic.has(f.rule))
+          .map((f) => `${f.rule} ${f.file}:${f.line}`),
+      ).toEqual([]);
+
+      const { testIdAdvisory } = (await import(
+        join(REPO_ROOT, "skills/bascik/scripts/lib/testids.mjs")
+      )) as {
+        testIdAdvisory: (
+          root: string,
+        ) => { file: string; line: number; message: string }[];
+      };
+      expect(
+        testIdAdvisory(projectDir).map(
+          (gap) => `${gap.file}:${gap.line} ${gap.message}`,
+        ),
+      ).toEqual([]);
+    },
+    120_000,
+  );
 
   it("negative control: rejects compilation when a required page contains invalid build-script syntax", async () => {
     const parentDir = await createTempDir("negative-control");

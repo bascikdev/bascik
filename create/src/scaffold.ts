@@ -16,17 +16,58 @@ import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
  */
 export const BASCIK_VERSION = "1.0.0";
 
-// ─── Templates ────────────────────────────────────────────────────────────────
+// ─── Templates and adapters ───────────────────────────────────────────────────
 
 /**
- * The starters create-bascik can scaffold. `default` is the plain static site;
- * `cloudflare` is the same site plus the pieces a Cloudflare Workers deployment
- * needs: the hosting adapter, Wrangler, and a demo page the Worker renders;
- * `netlify` is the same site with the Netlify adapter, a `netlify.toml`, and
- * the same demo page, rendered by a Netlify Function.
+ * The deploy adapters a starter can be scaffolded with (`--adapter`). Any
+ * template takes any adapter: the adapter adds the hosting package, the host's
+ * CLI, the scripts that run them, and an API route; the template adds whatever
+ * request-time demo page it wants to show.
  */
-export const TEMPLATES = ["default", "cloudflare", "netlify"] as const;
-export type Template = (typeof TEMPLATES)[number];
+export const ADAPTERS = ["cloudflare", "netlify"] as const;
+export type Adapter = (typeof ADAPTERS)[number];
+
+/** Where each adapter runs request-time code, for the copy that names it. */
+export const HOST_RUNTIME: Record<Adapter, string> = {
+  cloudflare: "a Cloudflare Worker",
+  netlify: "a Netlify Function",
+};
+
+/** What a template is told about the project it is writing. */
+export interface TemplateContext {
+  /** The site's display name, from the last segment of the project name. */
+  siteName: string;
+  /** The deploy adapter, when one was asked for. */
+  adapter?: Adapter;
+}
+
+/** One file a template writes, relative to the project root, with `/` separators. */
+export type TemplateFile = [path: string, data: string | Buffer];
+
+/**
+ * A kind of site create-bascik can scaffold (`--template`). A template owns
+ * everything under `src/` except the favicons and `src/api/hello.ts`, plus
+ * `e2e/app.spec.ts`. The root files (package.json, the Vite and Playwright
+ * configs, .gitignore, netlify.toml), the favicons and, with an adapter, the
+ * `/api/hello` route are written for every template by `scaffold`.
+ *
+ * Each template is one module in `create/src/templates/`, registered in
+ * `create/src/templates.ts`. See "Adding a template" in
+ * docs/content/internals/create-app.md.
+ */
+export interface StarterTemplate {
+  /** The `--template` value: lowercase letters and hyphens. */
+  name: string;
+  /** One line for `--help` and the docs: what kind of site this is. */
+  summary: string;
+  /** The folders the template's files need, relative to the project root. */
+  directories(context: TemplateContext): string[];
+  /** The files the template writes as its own. */
+  files(context: TemplateContext): TemplateFile[];
+  /** Packages the site imports beyond the starter's own, such as a Markdown parser. */
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
 
 // ─── Root files ───────────────────────────────────────────────────────────────
 
@@ -39,10 +80,11 @@ const NETLIFY_CLI_VERSION = "^27.16.2";
 
 export const PACKAGE_JSON = (
   name: string,
-  template: Template = "default",
+  adapter?: Adapter,
+  extra: Pick<StarterTemplate, "dependencies" | "devDependencies"> = {},
 ): string => {
-  const cloudflare = template === "cloudflare";
-  const netlify = template === "netlify";
+  const cloudflare = adapter === "cloudflare";
+  const netlify = adapter === "netlify";
   return (
     JSON.stringify(
       {
@@ -81,6 +123,7 @@ export const PACKAGE_JSON = (
         },
         dependencies: {
           "@bascik/bascik": `^${BASCIK_VERSION}`,
+          ...extra.dependencies,
         },
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0" }),
@@ -93,6 +136,7 @@ export const PACKAGE_JSON = (
           vite: "^8.3.4",
           ...(cloudflare && { wrangler: WRANGLER_VERSION }),
           ...(netlify && { "netlify-cli": NETLIFY_CLI_VERSION }),
+          ...extra.devDependencies,
         },
       },
       null,
@@ -977,12 +1021,6 @@ ${body}
 </html>
 `;
 
-/** Where each hosted template runs request-time code, for the copy that names it. */
-const HOST_RUNTIME: Partial<Record<Template, string>> = {
-  cloudflare: "a Cloudflare Worker",
-  netlify: "a Netlify Function",
-};
-
 /** The extra feature card a hosted template adds, linking to the page its host renders. */
 const edgeFeatureCard = (runtime: string): string => `
           <feature-card data-testid="feature-edge">
@@ -994,7 +1032,7 @@ const edgeFeatureCard = (runtime: string): string => `
 
 export const indexPage = (
   brand: string,
-  options: { template?: Template } = {},
+  options: { adapter?: Adapter } = {},
 ): string =>
   pageShell(
     `Home - ${brand}`,
@@ -1034,7 +1072,7 @@ export const indexPage = (
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feature-card>${options.template && HOST_RUNTIME[options.template] ? edgeFeatureCard(HOST_RUNTIME[options.template]!) : ""}
+          </feature-card>${options.adapter ? edgeFeatureCard(HOST_RUNTIME[options.adapter]) : ""}
         </div>
       </div>
     </section>
@@ -1129,7 +1167,7 @@ export const notFoundPage = (brand: string): string =>
  */
 export const edgePage = (
   brand: string,
-  runtime = HOST_RUNTIME.cloudflare!,
+  runtime = HOST_RUNTIME.cloudflare,
 ): string =>
   pageShell(
     `Edge - ${brand}`,
@@ -1247,20 +1285,34 @@ export const packageNameOf = (projectName: string): string => {
  * @param projectName  The folder to create, relative to `targetDir` (see `validateProjectName`).
  *                     Its last segment names the site and, lowercased, the package.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
- * @param options      `template` picks the starter (defaults to the static `default`).
+ * @param options      `template` is the kind of site (defaults to `DEFAULT_TEMPLATE`; the CLI
+ *                     looks a name up in `create/src/templates.ts`). `adapter` adds a deploy adapter.
  */
 export async function scaffold(
   projectName: string,
   targetDir: string = process.cwd(),
-  options: { template?: Template } = {},
+  options: { template?: StarterTemplate; adapter?: Adapter } = {},
 ): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
-  const siteName = siteNameOf(projectName);
-  const template = options.template ?? "default";
+  const template = options.template ?? DEFAULT_TEMPLATE;
+  const { adapter } = options;
+  const context: TemplateContext = {
+    siteName: siteNameOf(projectName),
+    adapter,
+  };
   const notes: string[] = [];
 
-  const dirs = starterDirectories(template);
-  const files = starterFiles(siteName, packageNameOf(projectName), template);
+  const dirs = [
+    ...new Set([
+      ...sharedDirectories(adapter),
+      ...template.directories(context),
+    ]),
+  ];
+  const files = [
+    ...sharedFiles(packageNameOf(projectName), template, adapter),
+    ...template.files(context),
+  ];
+  assertDistinctPaths(template, files);
 
   // Nothing is written when the folder already holds a file the starter would replace.
   await assertScaffoldTarget(projectName, root, dirs, files);
@@ -1275,7 +1327,7 @@ export async function scaffold(
   await Promise.all([
     // Coding assistants: merged into an AGENTS.md or CLAUDE.md the folder already has.
     // The agent skills are installed afterwards by the CLI, with the skills CLI.
-    writeAgentFiles(root, { template }).then((report) => {
+    writeAgentFiles(root, { template: adapter ?? "default" }).then((report) => {
       notes.push(...agentFilesReportLines(report));
     }),
 
@@ -1298,11 +1350,74 @@ export async function scaffold(
   return { notes };
 }
 
-/** The folders the starter creates, relative to the project root, with `/` separators. */
-const starterDirectories = (template: Template): string[] => [
+/** The folders every template gets, relative to the project root, with `/` separators. */
+const sharedDirectories = (adapter?: Adapter): string[] => [
   "e2e",
-  ...(template === "cloudflare" || template === "netlify" ? ["src/api"] : []),
+  ...(adapter ? ["src/api"] : []),
   "src/pages/assets",
+];
+
+/**
+ * The files every template gets: the project's root files, the favicons and,
+ * with an adapter, the `/api/hello` route. AGENTS.md, CLAUDE.md and the .vscode
+ * files are not here: they are merged into what the folder has.
+ */
+const sharedFiles = (
+  packageName: string,
+  template: StarterTemplate,
+  adapter?: Adapter,
+): TemplateFile[] => [
+  ["package.json", PACKAGE_JSON(packageName, adapter, template)],
+  ["vite.config.ts", VITE_CONFIG],
+  [
+    ".gitignore",
+    adapter === "cloudflare"
+      ? CLOUDFLARE_GITIGNORE
+      : adapter === "netlify"
+        ? NETLIFY_GITIGNORE
+        : GITIGNORE,
+  ],
+  ...(adapter === "netlify"
+    ? ([["netlify.toml", NETLIFY_TOML]] as TemplateFile[])
+    : []),
+
+  // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node
+  ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
+
+  ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
+  [
+    "src/pages/assets/favicon-32x32.png",
+    Buffer.from(FAVICON_32_PNG_B64, "base64"),
+  ],
+  [
+    "src/pages/assets/apple-touch-icon.png",
+    Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
+  ],
+  ["src/pages/assets/favicon.svg", FAVICON_SVG],
+
+  ...(adapter
+    ? ([["src/api/hello.ts", HELLO_API_ROUTE]] as TemplateFile[])
+    : []),
+];
+
+/** A template that writes a shared file, or one path twice, is a bug in the template. */
+const assertDistinctPaths = (
+  template: StarterTemplate,
+  files: TemplateFile[],
+): void => {
+  const seen = new Set<string>();
+  for (const [path] of files) {
+    if (seen.has(path)) {
+      throw new Error(
+        `The "${template.name}" template writes ${path} twice, or writes a file every template already gets.`,
+      );
+    }
+    seen.add(path);
+  }
+};
+
+/** The folders the default starter creates under `src/`. */
+const defaultDirectories = (): string[] => [
   "src/pages/css",
   "src/components/site-meta",
   "src/components/site-header",
@@ -1312,65 +1427,29 @@ const starterDirectories = (template: Template): string[] => [
   "src/components/contact-form",
 ];
 
-/**
- * The files the starter writes as its own, relative to the project root. AGENTS.md,
- * CLAUDE.md and the .vscode files are not here: they are merged into what the folder has.
- */
-const starterFiles = (
-  siteName: string,
-  packageName: string,
-  template: Template,
-): Array<[path: string, data: string | Buffer]> => {
-  const cloudflare = template === "cloudflare";
-  const netlify = template === "netlify";
-  const runtime = HOST_RUNTIME[template];
+/** The files the default starter writes as its own, relative to the project root. */
+const defaultFiles = ({
+  siteName,
+  adapter,
+}: TemplateContext): TemplateFile[] => {
+  const runtime = adapter && HOST_RUNTIME[adapter];
   return [
-    // Root
-    ["package.json", PACKAGE_JSON(packageName, template)],
-    ["vite.config.ts", VITE_CONFIG],
-    [
-      ".gitignore",
-      cloudflare
-        ? CLOUDFLARE_GITIGNORE
-        : netlify
-          ? NETLIFY_GITIGNORE
-          : GITIGNORE,
-    ],
-    ...(netlify
-      ? ([["netlify.toml", NETLIFY_TOML]] as Array<[string, string]>)
-      : []),
-
-    // E2E: the web server is \`bascik --server\`, which renders the edge page on Node
-    ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
     ["e2e/app.spec.ts", runtime ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
-
-    // Assets
-    ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
-    [
-      "src/pages/assets/favicon-32x32.png",
-      Buffer.from(FAVICON_32_PNG_B64, "base64"),
-    ],
-    [
-      "src/pages/assets/apple-touch-icon.png",
-      Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
-    ],
-    ["src/pages/assets/favicon.svg", FAVICON_SVG],
 
     // Global CSS
     ["src/pages/css/styles.css", STYLES_CSS],
 
     // Pages
-    ["src/pages/index.html", indexPage(siteName, { template })],
+    ["src/pages/index.html", indexPage(siteName, { adapter })],
     ["src/pages/about.html", aboutPage(siteName)],
     ["src/pages/contact.html", contactPage(siteName)],
     ["src/pages/404.html", notFoundPage(siteName)],
 
-    // Hosted templates: the edge demo page and its API route
+    // With an adapter: the edge demo page, next to the shared /api/hello route
     ...(runtime
       ? ([
           ["src/pages/edge.html", edgePage(siteName, runtime)],
-          ["src/api/hello.ts", HELLO_API_ROUTE],
-        ] as Array<[string, string]>)
+        ] as TemplateFile[])
       : []),
 
     // Components
@@ -1387,6 +1466,14 @@ const starterFiles = (
     ["src/components/contact-form/contact-form.html", CONTACT_FORM_HTML],
     ["src/components/contact-form/contact-form.test.ts", CONTACT_FORM_TEST],
   ];
+};
+
+/** The starter you get without `--template`: a small multi-page site that shows components, slots and scoped scripts. */
+export const DEFAULT_TEMPLATE: StarterTemplate = {
+  name: "default",
+  summary: "A small multi-page site: home, about, contact, and a 404 page",
+  directories: defaultDirectories,
+  files: defaultFiles,
 };
 
 /** Thrown before anything is written when the target folder cannot take the starter. */
@@ -1423,7 +1510,7 @@ async function assertScaffoldTarget(
   projectName: string,
   root: string,
   dirs: string[],
-  files: Array<[path: string, data: string | Buffer]>,
+  files: TemplateFile[],
 ): Promise<void> {
   const rootEntry = await entryAt(root);
   if (rootEntry === null) return;
