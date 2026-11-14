@@ -57,7 +57,7 @@ Tomas Lindqvist's fourth novel follows Runa, who pilots a small car ferry across
 
 ## What works
 
-Lindqvist writes weather better than most people write dialogue. The strait has moods, and by the third crossing you can read them as well as Runa can.
+Lindqvist writes weather better than most people write people. The strait has moods, and by the third crossing you can read them as well as Runa can.
 
 ## What does not
 
