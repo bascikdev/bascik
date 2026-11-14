@@ -1,0 +1,131 @@
+/**
+ * @module templates/docs
+ *
+ * The `docs` template: a documentation site. Each Markdown file in
+ * `content/docs/` becomes a page through one dynamic route template,
+ * `src/pages/docs/[slug].html`, whose routes script reads the files with
+ * `getDocs()` from `src/lib/docs.ts`. The sidebar order is `SIDEBAR` in
+ * `src/lib/sidebar.ts`; the table of contents comes from each page's headings.
+ *
+ * It writes two things outside `src/`: the Markdown in `content/docs/` and a
+ * `bascik.config.ts` whose only setting is `pipeline.watchPaths`, so the dev
+ * server rebuilds when a Markdown page or a `src/lib/` helper changes.
+ */
+
+import {
+  FEATURE_CARD_HTML,
+  FEATURE_CARD_TEST,
+  type StarterTemplate,
+  type TemplateContext,
+  type TemplateFile,
+} from "../scaffold.js";
+import { DOCS_SAMPLE_PAGES } from "./docs/content.js";
+import {
+  DOCS_BASCIK_CONFIG,
+  DOCS_CONTENT_DIR,
+  DOCS_MODULE,
+  DOCS_MODULE_TEST,
+  HEAD_MODULE,
+  HEAD_MODULE_TEST,
+  MARKDOWN_MODULE,
+  MARKDOWN_MODULE_TEST,
+  SIDEBAR_MODULE,
+  siteModule,
+} from "./docs/lib.js";
+import {
+  DOCS_ARTICLE_HTML,
+  DOCS_ARTICLE_TEST,
+  DOCS_INDEX_PAGE,
+  DOCS_NOT_FOUND_PAGE,
+  DOCS_PAGE_HTML,
+  DOCS_PAGINATION_HTML,
+  DOCS_PAGINATION_TEST,
+  DOCS_SIDEBAR_HTML,
+  DOCS_SIDEBAR_TEST,
+  DOCS_SITE_FOOTER_HTML,
+  DOCS_SITE_FOOTER_TEST,
+  DOCS_SITE_HEADER_HTML,
+  DOCS_SITE_HEADER_TEST,
+  DOCS_SITE_META_HTML,
+  DOCS_SITE_META_TEST,
+  DOCS_STYLES_CSS,
+  DOCS_TOC_HTML,
+  DOCS_TOC_TEST,
+  HOME_FEATURES_TEST,
+  HOME_HERO_HTML,
+  HOME_HERO_TEST,
+  docsE2eSpec,
+  homeFeatures,
+} from "./docs/site.js";
+
+/** The template's components: each is a folder with its template and a test. */
+const components = ({ adapter }: Pick<TemplateContext, "adapter"> = {}): Record<
+  string,
+  [template: string, test: string]
+> => ({
+  "site-meta": [DOCS_SITE_META_HTML, DOCS_SITE_META_TEST],
+  "site-header": [DOCS_SITE_HEADER_HTML, DOCS_SITE_HEADER_TEST],
+  "site-footer": [DOCS_SITE_FOOTER_HTML, DOCS_SITE_FOOTER_TEST],
+  "home-hero": [HOME_HERO_HTML, HOME_HERO_TEST],
+  "home-features": [homeFeatures({ adapter }), HOME_FEATURES_TEST],
+  "feature-card": [FEATURE_CARD_HTML, FEATURE_CARD_TEST],
+  "docs-sidebar": [DOCS_SIDEBAR_HTML, DOCS_SIDEBAR_TEST],
+  "docs-article": [DOCS_ARTICLE_HTML, DOCS_ARTICLE_TEST],
+  "docs-toc": [DOCS_TOC_HTML, DOCS_TOC_TEST],
+  "docs-pagination": [DOCS_PAGINATION_HTML, DOCS_PAGINATION_TEST],
+});
+
+const docsDirectories = (): string[] => [
+  DOCS_CONTENT_DIR,
+  "src/lib",
+  "src/pages/css",
+  "src/pages/docs",
+  ...Object.keys(components()).map((name) => `src/components/${name}`),
+];
+
+const docsFiles = ({ siteName, adapter }: TemplateContext): TemplateFile[] => [
+  ["bascik.config.ts", DOCS_BASCIK_CONFIG],
+  ["e2e/app.spec.ts", docsE2eSpec({ adapter })],
+
+  // Content: one Markdown file per page
+  ...Object.entries(DOCS_SAMPLE_PAGES).map(([slug, markdown]): TemplateFile => [
+    `${DOCS_CONTENT_DIR}/${slug}.md`,
+    markdown,
+  ]),
+
+  // Build helpers
+  ["src/lib/site.ts", siteModule(siteName)],
+  ["src/lib/head.ts", HEAD_MODULE],
+  ["src/lib/head.test.ts", HEAD_MODULE_TEST],
+  ["src/lib/sidebar.ts", SIDEBAR_MODULE],
+  ["src/lib/markdown.ts", MARKDOWN_MODULE],
+  ["src/lib/markdown.test.ts", MARKDOWN_MODULE_TEST],
+  ["src/lib/docs.ts", DOCS_MODULE],
+  ["src/lib/docs.test.ts", DOCS_MODULE_TEST],
+
+  // Global CSS
+  ["src/pages/css/styles.css", DOCS_STYLES_CSS],
+
+  // Pages
+  ["src/pages/index.html", DOCS_INDEX_PAGE],
+  ["src/pages/docs/[slug].html", DOCS_PAGE_HTML],
+  ["src/pages/404.html", DOCS_NOT_FOUND_PAGE],
+
+  // Components
+  ...Object.entries(components({ adapter })).flatMap(
+    ([name, [template, test]]): TemplateFile[] => [
+      [`src/components/${name}/${name}.html`, template],
+      [`src/components/${name}/${name}.test.ts`, test],
+    ],
+  ),
+];
+
+/** `--template docs`: Markdown pages with a sidebar, a table of contents, and previous and next links. */
+export const DOCS_TEMPLATE: StarterTemplate = {
+  name: "docs",
+  summary:
+    "A documentation site: Markdown pages, sidebar navigation, and an on-page table of contents",
+  directories: docsDirectories,
+  files: docsFiles,
+  dependencies: { marked: "^18.1.3" },
+};

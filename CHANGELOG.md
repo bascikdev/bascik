@@ -14,6 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template docs` scaffolds a documentation site, as in `npm create bascik my-docs -- --template docs`. Each Markdown file in `content/docs/` becomes a page at `/docs/<name>` with a sidebar that marks the current page, an "On this page" list built from the page's headings, and previous and next links. To add a page, write the file and list it in `src/lib/sidebar.ts`; a page missing from the sidebar, or an entry with no file, fails the build with an error that names it. It works with `--adapter cloudflare` and `--adapter netlify`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 
 ### Fixed
 

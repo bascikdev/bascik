@@ -115,7 +115,7 @@ A template is a kind of site (`--template <name>`); an adapter is where it deplo
 
 What a template owns and what it is given:
 
-- **Owns:** everything it writes under `src/` and `e2e/app.spec.ts`. It must write `src/pages/index.html` and `src/pages/404.html`.
+- **Owns:** everything it writes under `src/` and `e2e/app.spec.ts`. It must write `src/pages/index.html` and `src/pages/404.html`. A template whose pages come from content files also owns that content folder and a `bascik.config.ts` that names it, as the `docs` template does with `content/docs/` and `pipeline.watchPaths`; a template that needs neither writes no config.
 - **Given:** `package.json`, `vite.config.ts`, `.gitignore`, `netlify.toml` (Netlify), `e2e/playwright.config.ts`, the favicons under `src/pages/`, `AGENTS.md`, `CLAUDE.md`, the `.vscode` files and, with an adapter, the `/api/hello` route in `src/api/hello.ts`. A template that writes one of these fails `scaffold`.
 - **With an adapter:** `context.adapter` is set. A template may add a page that runs per request, as the default template's `/edge` page does, or change nothing.
 - **Packages:** a site that imports a package beyond `@bascik/bascik` lists it in the template's `dependencies`. It must be installed in this repo's root `node_modules`, where the integration test links it from.
