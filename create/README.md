@@ -93,6 +93,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | Template  | What you get                                                                   |
 | :-------- | :----------------------------------------------------------------------------- |
 | `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
+| `shop`    | A shop: a product catalog, product pages, a cart, and a demo checkout          |
 
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 

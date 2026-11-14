@@ -14,6 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template shop` scaffolds a small bookshop: a typed catalog file (`catalog/books.ts`) that becomes a catalog page and one page per book, a cart kept in the browser, and a checkout form that ends on a demo confirmation page (no payment is taken; the source marks where to connect a payment provider). With `--adapter`, the server prices the cart from the catalog at `POST /api/cart`. Try it with `npm create bascik my-shop -- --template shop`.
 
 ### Fixed
 
