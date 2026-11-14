@@ -120,6 +120,7 @@ What a template owns and what it is given:
 - **With an adapter:** `context.adapter` is set. A template may add a page that runs per request, as the default template's `/edge` page does, or change nothing.
 - **Packages:** a site that imports a package beyond `@bascik/bascik` lists it in the template's `dependencies`. It must be installed in this repo's root `node_modules`, where the integration test links it from.
 - **Reuse:** the default template's pieces are exported from `scaffold.ts` (`SITE_META_HTML`, `HOST_RUNTIME`, and so on). Import what fits; do not copy it.
+- **Site name:** put `context.siteName` through `escapeHtml` from `scaffold.ts` before writing it into a page.
 
 Templates follow the same house rules as the docs examples: TypeScript, component-first pages, semantic HTML, a `data-testid` on every component root and interactive part, a skip link first in the header, one `<main id="main">` per page, and books and authors as demo data.
 

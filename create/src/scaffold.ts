@@ -41,6 +41,23 @@ export interface TemplateContext {
   adapter?: Adapter;
 }
 
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/**
+ * Text made safe for HTML text and quoted attribute values. A template puts the
+ * site name through this before writing it into a page: the CLI only accepts
+ * names that need no escaping, but `scaffold` can be called with any name.
+ * The sites themselves use `@bascik/bascik/html`; create-bascik has no dependencies.
+ */
+export const escapeHtml = (text: string): string =>
+  text.replace(/[&<>"']/g, (character) => HTML_ESCAPES[character]);
+
 /** One file a template writes, relative to the project root, with `/` separators. */
 export type TemplateFile = [path: string, data: string | Buffer];
 
