@@ -32,7 +32,7 @@ export const PAGE_FILES: TemplateFile[] = [
         <p class="not-found-code" aria-hidden="true">404</p>
         <h1>Page not found</h1>
         <p class="not-found-text">The page you asked for does not exist or has moved.</p>
-        <div class="hero-actions">
+        <div class="actions">
           <a href="/" class="btn btn-primary" data-testid="not-found-home">Go to the home page</a>
           <a href="/services/" class="btn btn-ghost" data-testid="not-found-services">See our services</a>
         </div>
@@ -346,13 +346,122 @@ export const PAGE_FILES: TemplateFile[] = [
   ],
 ];
 
-/** Added to the default template's `STYLES_CSS` to make this template's `src/pages/css/styles.css`. */
-export const CORPORATE_CSS = `
-/* ── Company site ── */
-/* The header is sticky: keep a focused field or a #fragment target clear of it. */
-html { scroll-padding-top: 76px; }
+/**
+ * `src/pages/css/styles.css`: the template's own global stylesheet. Light by default, with a dark variant under
+ * `prefers-color-scheme: dark`. Every color is a token on `:root` that the components read.
+ */
+export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The design tokens are declared once, on :root, and every component
+   reads them with var(). To rebrand the site, change --brand and its three companions in both blocks below. */
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ── Design tokens ── */
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces and lines */
+  --bg:            #ffffff;
+  --surface:       #f4f5f7;
+  --border:        #d9dde3;
+  --border-strong: #6f7785;
+
+  /* Text */
+  --text:          #1b1f27;
+  --text-muted:    #545c6a;
+
+  /* The brand color, a darker shade for hover, a tint for panels, and the text color that sits on the brand color */
+  --brand:         #8a1c3a;
+  --brand-strong:  #6d1530;
+  --brand-soft:    #f9edf0;
+  --on-brand:      #ffffff;
+
+  --danger:        #b3261e;
+  --shadow:        0 12px 32px rgba(27, 31, 39, 0.14);
+
+  /* Type */
+  --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+  --mono:  ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Shape */
+  --r:    12px;
+  --r-sm: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:            #15171c;
+    --surface:       #1d2027;
+    --border:        #2e333d;
+    --border-strong: #8a92a0;
+    --text:          #eef0f3;
+    --text-muted:    #b1b7c2;
+    --brand:         #f29bb0;
+    --brand-strong:  #f7b7c6;
+    --brand-soft:    #2b1a20;
+    --on-brand:      #2a0a14;
+    --danger:        #ff9d8a;
+    --shadow:        0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The header is sticky: keep a focused field or a #fragment target clear of it. */
+html { scroll-padding-top: 80px; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+main { flex: 1; }
+
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+
+/* ── Layout ── */
+.container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+.section { padding: 80px 0; }
+.section + .section { border-top: 1px solid var(--border); }
+
+/* ── Typography ── */
+h1, h2, h3 { margin-top: 0; color: var(--text); line-height: 1.2; }
+h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2.25rem, 5vw, 3.5rem); margin-bottom: 16px; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.125rem); margin-bottom: 12px; }
+h3 { font-size: 1.125rem; font-weight: 650; margin-bottom: 6px; }
+p  { margin-top: 0; color: var(--text-muted); }
+
+a { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+a:hover { color: var(--brand-strong); }
+
+.section-label {
+  margin-bottom: 8px; color: var(--brand);
+  font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
+  font: inherit; font-size: 0.95rem; font-weight: 600; line-height: 1.2;
+  text-decoration: none; cursor: pointer;
+}
+.btn-primary { background: var(--brand); color: var(--on-brand); }
+.btn-primary:hover { background: var(--brand-strong); color: var(--on-brand); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.btn-ghost:hover { color: var(--brand); border-color: var(--brand); }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* ── Cards ── */
+.card { padding: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+.card p { margin-bottom: 0; }
 
 /* For text a screen reader should read and the eye does not need, such as the end of a "Learn more" link. */
 .visually-hidden {
@@ -362,7 +471,7 @@ html { scroll-padding-top: 76px; }
 
 /* Long-form text: the legal pages and the promises on the about page. */
 .prose { max-width: 720px; }
-.prose h2 { margin-top: 32px; }
+.prose h2 { margin-top: 36px; }
 ul.prose { margin: 0; padding-left: 20px; color: var(--text-muted); }
 ul.prose li { margin-bottom: 8px; }
 ul.prose strong { color: var(--text); }
@@ -370,9 +479,21 @@ ul.prose strong { color: var(--text); }
 /* The contact page: the form beside the office details, stacked at phone width. */
 .contact-layout {
   display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 40px; align-items: start; padding-top: 32px; padding-bottom: 72px;
+  gap: 48px; align-items: start; padding-top: 40px; padding-bottom: 88px;
 }
+
+/* ── 404 ── */
+.not-found { text-align: center; }
+.not-found-code {
+  margin-bottom: 8px; color: var(--brand);
+  font-family: var(--serif); font-size: clamp(4rem, 12vw, 8rem); font-weight: 600; line-height: 1;
+}
+.not-found-text { margin-bottom: 32px; }
+.not-found .actions { justify-content: center; }
+
+/* ── Phone width ── */
 @media (max-width: 760px) {
+  .section { padding: 56px 0; }
   .contact-layout { grid-template-columns: minmax(0, 1fr); }
 }
 `;

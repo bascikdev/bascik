@@ -12,7 +12,8 @@
  * - `lib.ts`: `bascik.config.ts` and `src/lib/` (company facts, services,
  *   navigation, head tags, the data check).
  * - `components.ts`: `src/components/`, with each component's data beside it.
- * - `pages.ts`: `src/pages/` and the CSS added to the default stylesheet.
+ * - `pages.ts`: `src/pages/` and the global stylesheet, `CORPORATE_CSS`: the
+ *   template's own light theme, with a dark variant by preference.
  * - `tests.ts`: the generated project's Vitest files and Playwright spec.
  *
  * The site name is written once, as a JSON string in `src/lib/site.ts`; no
@@ -21,7 +22,6 @@
  */
 
 import {
-  STYLES_CSS,
   type StarterTemplate,
   type TemplateContext,
   type TemplateFile,
@@ -35,7 +35,7 @@ import { TEST_FILES } from "./corporate/tests.js";
 const corporateFiles = ({ siteName }: TemplateContext): TemplateFile[] => [
   ...LIB_FILES,
   ["src/lib/site.ts", siteModule(siteName)],
-  ["src/pages/css/styles.css", STYLES_CSS + CORPORATE_CSS],
+  ["src/pages/css/styles.css", CORPORATE_CSS],
   ...PAGE_FILES,
   ...COMPONENT_FILES,
   ...TEST_FILES,

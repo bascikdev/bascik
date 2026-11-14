@@ -6,16 +6,17 @@
 import { SITE_HEADER_CSS, type TemplateFile } from "../../scaffold.js";
 
 /**
- * The skip link's rules, taken from the default template's header so the two cannot drift: the link is clipped
- * until it has focus. They end where that stylesheet's own header rule starts.
+ * The rule that hides the skip link until it has focus, taken from the default template's header so the two
+ * cannot drift: clipping, not an offset. The link's own look (brand color, spacing) is this template's.
  */
+const clipAt = SITE_HEADER_CSS.indexOf("/* Hidden until focused.");
 const headerRuleAt = SITE_HEADER_CSS.indexOf("\nheader {");
-if (headerRuleAt < 0) {
+if (clipAt < 0 || headerRuleAt < clipAt) {
   throw new Error(
-    "SITE_HEADER_CSS no longer has a header rule after its skip link rules; update SKIP_LINK_CSS in templates/corporate/components.ts.",
+    "SITE_HEADER_CSS no longer has its skip link clip rule before its header rule; update SKIP_LINK_CLIP_CSS in templates/corporate/components.ts.",
   );
 }
-export const SKIP_LINK_CSS = SITE_HEADER_CSS.slice(0, headerRuleAt);
+export const SKIP_LINK_CLIP_CSS = SITE_HEADER_CSS.slice(clipAt, headerRuleAt);
 
 export const COMPONENT_FILES: TemplateFile[] = [
   [
@@ -67,10 +68,14 @@ export const breadcrumb = (pagePath = "/"): SafeHtml =>
 A closing band that sends the reader to the contact page. Used at the end of the home, services and about pages.
 -->
 <style>
-  .band { padding: 0 0 72px; }
-  .panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 32px; background: var(--accent-dim); border: 1px solid rgba(211, 255, 141, 0.22); border-radius: var(--r); }
-  .panel h2 { margin-bottom: 4px; }
-  .panel p { margin: 0; color: var(--text); }
+  .band { padding: 0 0 88px; }
+  .panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 32px; background: var(--brand); border-radius: var(--r); }
+  .panel h2 { margin-bottom: 4px; color: var(--on-brand); }
+  .panel p { margin: 0; color: var(--on-brand); }
+  /* On the brand color the button and its focus ring swap to the color that reads on it. */
+  .action { background: var(--on-brand); color: var(--brand); }
+  .action:hover { color: var(--brand-strong); }
+  .action:focus-visible { outline-color: var(--on-brand); }
 </style>
 <section class="band" aria-labelledby="heading" data-testid="call-to-action">
   <div class="container">
@@ -79,7 +84,7 @@ A closing band that sends the reader to the contact page. Used at the end of the
         <h2 id="heading">Have a manuscript ready?</h2>
         <p>Tell us about the book and we will reply within two working days.</p>
       </div>
-      <a href="/contact" class="btn btn-primary" data-testid="call-to-action-contact">Talk to us</a>
+      <a href="/contact" class="btn action" data-testid="call-to-action-contact">Talk to us</a>
     </div>
   </div>
 </section>
@@ -91,7 +96,7 @@ A closing band that sends the reader to the contact page. Used at the end of the
 A row of client names drawn as inline SVG wordmarks, from clients.ts beside this file. No image files.
 -->
 <style>
-  .logos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .logos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
   .mark { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--r); fill: var(--text-muted); }
   .serif { font: italic 600 19px Georgia, 'Times New Roman', serif; }
   .wide { font: 700 15px system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
@@ -161,7 +166,7 @@ The company's history as an ordered list of dated milestones, from milestones.ts
   .timeline { list-style: none; margin: 0; padding: 0; max-width: 720px; border-left: 2px solid var(--border); }
   .milestone { display: flex; gap: 20px; padding: 0 0 24px 20px; }
   .milestone:last-child { padding-bottom: 0; }
-  .milestone time { flex: none; width: 3.2rem; font-family: var(--mono); font-weight: 700; color: var(--accent); }
+  .milestone time { flex: none; width: 3.2rem; font-family: var(--mono); font-weight: 700; color: var(--brand); }
   .milestone p { margin: 0; font-size: 0.92rem; }
 </style>
 <ol class="timeline" data-testid="company-timeline">
@@ -234,8 +239,8 @@ export function timeline(milestones: Milestone[] = MILESTONES): SafeHtml {
 .field textarea {
   width: 100%;
   padding: 10px 14px;
-  background: var(--elevated);
-  border: 1px solid var(--border);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
   color: var(--text);
   font: inherit;
@@ -244,13 +249,13 @@ export function timeline(milestones: Milestone[] = MILESTONES): SafeHtml {
 .field textarea { min-height: 140px; resize: vertical; }
 .field input:focus-visible,
 .field select:focus-visible,
-.field textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field textarea:focus-visible { outline: 3px solid var(--brand); outline-offset: 1px; }
 .field input[aria-invalid="true"],
 .field select[aria-invalid="true"],
-.field textarea[aria-invalid="true"] { border-color: #ff9d8a; }
+.field textarea[aria-invalid="true"] { border-color: var(--danger); border-width: 2px; }
 
-.error { margin: 6px 0 0; font-size: 0.85rem; color: #ff9d8a; }
-.status { margin: 16px 0 0; color: var(--accent); }
+.error { margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; color: var(--danger); }
+.status { margin: 16px 0 0; font-weight: 600; color: var(--brand); }
 .status:empty { display: none; }
 `,
   ],
@@ -393,12 +398,13 @@ form.addEventListener("submit", (event: SubmitEvent): void => {
 The home page's opening: the company's one-line promise, two ways forward, and a drawing of a bookshelf. The drawing is inline SVG, so the page loads no image.
 -->
 <style>
-  .hero { padding: 88px 0 64px; }
+  .hero { padding: 88px 0 72px; background: var(--surface); border-bottom: 1px solid var(--border); }
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 48px; align-items: center; }
-  h1 span { color: var(--accent); }
-  .lead { font-size: 1.1rem; max-width: 520px; margin-bottom: 32px; }
+  h1 span { color: var(--brand); }
+  /* The drawing is stroked and filled with currentColor, so it follows the brand color in both color schemes. */
+  .lead { font-size: 1.2rem; max-width: 540px; margin-bottom: 32px; }
   .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .shelf { width: 100%; height: auto; max-width: 420px; justify-self: center; }
+  .shelf { width: 100%; height: auto; max-width: 420px; justify-self: center; color: var(--brand); }
 
   @media (max-width: 760px) {
     .hero { padding: 56px 0 40px; }
@@ -418,7 +424,7 @@ The home page's opening: the company's one-line promise, two ways forward, and a
     </div>
     <svg class="shelf" viewBox="0 0 320 220" role="img" aria-labelledby="shelf-title">
       <title id="shelf-title">Seven books of different heights standing on a shelf, one leaning against the others</title>
-      <g fill="none" stroke="#d3ff8d" stroke-width="2">
+      <g fill="none" stroke="currentColor" stroke-width="2">
         <rect x="36" y="60" width="30" height="130" rx="3" />
         <rect x="70" y="84" width="24" height="106" rx="3" />
         <rect x="98" y="44" width="36" height="146" rx="3" />
@@ -427,7 +433,7 @@ The home page's opening: the company's one-line promise, two ways forward, and a
         <rect x="204" y="56" width="28" height="134" rx="3" />
         <rect x="238" y="74" width="26" height="118" rx="3" transform="rotate(12 251 192)" />
       </g>
-      <g fill="#d3ff8d">
+      <g fill="currentColor">
         <rect x="98" y="64" width="36" height="10" opacity="0.35" />
         <rect x="36" y="150" width="30" height="8" opacity="0.35" />
         <rect x="204" y="80" width="28" height="8" opacity="0.35" />
@@ -474,10 +480,10 @@ export function figureList(figures: Figure[] = FIGURES): SafeHtml {
 The company's key figures as a description list, from figures.ts beside this file.
 -->
 <style>
-  .figures { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; }
-  .figure { display: flex; flex-direction: column-reverse; gap: 4px; padding: 20px 24px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r); }
+  .figures { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; }
+  .figure { display: flex; flex-direction: column-reverse; gap: 4px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .figure dt { font-size: 0.88rem; color: var(--text-muted); }
-  .figure dd { margin: 0; font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--accent); }
+  .figure dd { margin: 0; font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--brand); }
 </style>
 <dl class="figures" data-testid="key-figures">
   <script data-bascik-build-once type="text/typescript">
@@ -494,8 +500,8 @@ The body of a legal page, such as the privacy policy or the terms: a notice that
 @slot default - The page's text: <h2> headings and paragraphs.
 -->
 <style>
-  .legal { padding-top: 24px; padding-bottom: 72px; }
-  .notice { margin: 0 0 28px; padding: 16px 20px; background: var(--accent-dim); border: 1px solid rgba(211, 255, 141, 0.22); border-radius: var(--r); }
+  .legal { padding-top: 48px; padding-bottom: 88px; }
+  .notice { margin: 0 0 28px; padding: 16px 20px; background: var(--brand-soft); border-left: 4px solid var(--brand); border-radius: var(--r-sm); }
   .notice p { margin: 0; color: var(--text); }
 </style>
 <article class="container legal" data-testid="legal-text">
@@ -515,9 +521,9 @@ The newsroom: a dated entry for each item in news.ts beside this file, newest fi
 -->
 <style>
   .news { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; max-width: 760px; }
-  .entry { padding: 24px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r); }
+  .entry { padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .entry p { margin: 0; font-size: 0.92rem; }
-  .entry .meta { margin-bottom: 8px; color: var(--accent); font-size: 0.82rem; }
+  .entry .meta { margin-bottom: 8px; color: var(--brand); font-size: 0.82rem; }
 </style>
 <ul class="news" data-testid="news-list">
   <script data-bascik-build-once type="text/typescript">
@@ -632,9 +638,9 @@ export function newsList(entries: NewsEntry[] = NEWS): SafeHtml {
 The office: postal address, phone and email in an <address>, and the opening hours. Every value comes from src/lib/site.ts.
 -->
 <style>
-  .office { padding: 24px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r); }
+  .office { padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .office address { font-style: normal; }
-  .office h3 { margin-top: 8px; }
+  .office h3 { margin-top: 20px; }
   .office p:last-child { margin-bottom: 0; }
 </style>
 <section class="office" aria-labelledby="office-heading" data-testid="office-details">
@@ -682,8 +688,8 @@ The top of an inner page: its breadcrumb, its one top-level heading, and an intr
 @prop text - One or two sentences under the heading.
 -->
 <style>
-  .intro { padding: 48px 0 8px; }
-  .lead { max-width: 640px; margin-bottom: 0; font-size: 1.05rem; }
+  .intro { padding: 48px 0 44px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .lead { max-width: 640px; margin-bottom: 0; font-size: 1.15rem; }
 </style>
 <header class="intro" data-testid="page-intro">
   <div class="container">
@@ -726,10 +732,10 @@ The open roles, from roles.ts beside this file: a title, the team, the location 
 -->
 <style>
   .roles { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-  .role { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 24px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r); }
+  .role { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .role > div { flex: 1 1 320px; }
   .role p { margin: 0; font-size: 0.92rem; }
-  .role .facts { margin-bottom: 8px; color: var(--accent); font-size: 0.82rem; }
+  .role .facts { margin-bottom: 8px; color: var(--brand); font-size: 0.82rem; }
   .empty { color: var(--text-muted); }
 </style>
 <ul class="roles" data-testid="role-list">
@@ -875,7 +881,7 @@ export function serviceDetail(service: Service): SafeHtml {
 One service's page content: its name and summary, what is included, how it works and the turnaround. It reads the service from the route data, so it belongs only in src/pages/services/[slug].html.
 -->
 <style>
-  .body { max-width: 720px; padding-bottom: 56px; }
+  .body { max-width: 720px; padding-top: 48px; padding-bottom: 72px; }
   .body h2 { margin-top: 32px; }
   .body ul,
   .body ol { color: var(--text-muted); padding-left: 20px; }
@@ -979,15 +985,15 @@ export function legalLine(site = SITE, year = new Date().getFullYear()): SafeHtm
 The site footer: the company's name and contact line, link columns grouped under headings, and a legal line with the year of the build. The links come from src/lib/navigation.ts and the company facts from src/lib/site.ts, so the footer ships no JavaScript.
 -->
 <style>
-  .footer { margin-top: 24px; padding: 48px 0 28px; border-top: 1px solid var(--border); font-size: 0.9rem; }
+  .footer { padding: 56px 0 28px; background: var(--surface); border-top: 1px solid var(--border); font-size: 0.95rem; }
   .layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 40px; }
   .about p { margin-bottom: 8px; }
   .about .name { font-weight: 700; color: var(--text); }
   .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 24px; }
-  .column h2 { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text); margin-bottom: 10px; }
+  .column h2 { font-family: var(--sans); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text); margin-bottom: 10px; }
   .column ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .footer a { color: var(--text-muted); text-decoration: none; }
-  .footer a:hover { color: var(--text); opacity: 1; }
+  .footer a:hover { color: var(--brand); text-decoration: underline; }
   .legal { margin: 36px 0 0; padding-top: 20px; border-top: 1px solid var(--border); font-size: 0.82rem; }
 
   @media (max-width: 760px) {
@@ -1088,14 +1094,23 @@ export function primaryNav(pagePath = "/", items = PRIMARY_NAV): SafeHtml {
   ],
   [
     "src/components/site-header/site-header.css",
-    `${SKIP_LINK_CSS}
+    `.skip-link {
+  position: absolute;
+  left: 16px;
+  top: 8px;
+  padding: 10px 16px;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-weight: 600;
+  z-index: 200;
+}
+${SKIP_LINK_CLIP_CSS}
 .bar {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(24, 25, 27, 0.92);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1103,16 +1118,20 @@ nav {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  min-height: 60px;
+  min-height: 68px;
   gap: 8px 24px;
 }
 
 .logo {
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.01em;
   margin-right: auto;
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
 }
+.logo:hover { color: var(--brand); }
 
 .menu {
   list-style: none;
@@ -1125,15 +1144,16 @@ nav {
 }
 .menu a {
   display: block;
-  padding: 6px 12px;
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  text-decoration: none;
+  padding: 8px 12px;
   border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
 }
-.menu a:hover,
-.menu a[aria-current] { color: var(--text); background: var(--elevated); opacity: 1; }
-.menu a[aria-current="page"] { color: var(--accent); }
+.menu a:hover { background: var(--surface); color: var(--brand); }
+/* The current page, or the section it is in: marked by color and by a line, not by color alone. */
+.menu a[aria-current] { color: var(--brand); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
 
 .group { position: relative; display: flex; align-items: center; }
 
@@ -1141,17 +1161,18 @@ nav {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: none;
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
-  background: none;
-  color: var(--text-muted);
+  background: var(--bg);
+  color: var(--text);
   cursor: pointer;
 }
 .caret[hidden] { display: none; }
-.caret[aria-expanded="true"] { color: var(--accent); background: var(--elevated); }
+.caret:hover,
+.caret[aria-expanded="true"] { color: var(--brand); border-color: var(--brand); }
 .caret[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* The services menu. Closed means display: none, which also takes its links out of the Tab order. */
@@ -1161,16 +1182,18 @@ nav {
   padding: 8px;
   display: none;
   position: absolute;
-  top: 100%;
+  top: calc(100% + 8px);
   left: 0;
-  min-width: 240px;
-  background: var(--surface);
+  min-width: 260px;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
 }
 .submenu[data-state="open"] { display: block; }
-/* Without JavaScript there is no button: pointing at the group or tabbing into it shows the links. */
+/* Without JavaScript there is no button: pointing at the group or tabbing into it shows the links. The menu then
+   touches the link above it, so the pointer can reach it without leaving the group. */
+.bar:not(.enhanced) .submenu { top: 100%; }
 .bar:not(.enhanced) .group:hover .submenu,
 .bar:not(.enhanced) .group:focus-within .submenu { display: block; }
 
@@ -1179,12 +1202,12 @@ nav {
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 36px;
-  height: 36px;
-  padding: 6px;
-  border: none;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
-  background: none;
+  background: var(--bg);
   cursor: pointer;
 }
 .toggle span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
@@ -1193,10 +1216,10 @@ nav {
   .toggle:not([hidden]) { display: flex; }
 
   /* One column, full width. Without JavaScript it is always shown, services included. */
-  .menu { flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 8px; }
+  .menu { flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 12px; }
   .bar.enhanced .menu { display: none; }
   .bar.enhanced .menu[data-state="open"] { display: flex; }
-  .menu a { padding: 10px 4px; }
+  .menu a { padding: 12px 4px; }
 
   .group { flex-wrap: wrap; }
   .group > a { flex: 1; }
@@ -1337,12 +1360,12 @@ header.classList.add("enhanced");
 The leadership team: a name, a role and a short biography for each person in team.ts beside this file. Place it under an <h2>: the names are <h3>.
 -->
 <style>
-  .team { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-  .member { display: flex; gap: 16px; padding: 24px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r); }
-  .avatar { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); font-weight: 700; }
+  .team { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 20px; }
+  .member { display: flex; gap: 16px; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .avatar { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 700; }
   .member h3 { margin-bottom: 0; }
   .member p { margin: 0; font-size: 0.9rem; }
-  .member .role { margin-bottom: 8px; color: var(--accent); font-size: 0.82rem; }
+  .member .role { margin-bottom: 8px; color: var(--brand); font-size: 0.82rem; }
 </style>
 <ul class="team" data-testid="team-list">
   <script data-bascik-build-once type="text/typescript">
@@ -1417,7 +1440,7 @@ Quotes from authors, each a <figure> with a <blockquote> and a <figcaption>, fro
 -->
 <style>
   .quotes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-  .quote { margin: 0; height: 100%; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: var(--elevated); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r); }
+  .quote { margin: 0; height: 100%; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--r); }
   .quote blockquote { margin: 0; flex: 1; }
   .quote blockquote p { margin: 0; color: var(--text); }
   .quote figcaption { font-size: 0.88rem; color: var(--text-muted); }

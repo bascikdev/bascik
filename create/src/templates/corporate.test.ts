@@ -14,7 +14,7 @@ import {
 } from "../scaffold.js";
 import { TEMPLATES, templateNamed } from "../templates.js";
 import { CORPORATE_TEMPLATE } from "./corporate.js";
-import { SKIP_LINK_CSS } from "./corporate/components.js";
+import { SKIP_LINK_CLIP_CSS } from "./corporate/components.js";
 
 const files = (siteName = "My Company"): TemplateFile[] =>
   CORPORATE_TEMPLATE.files({ siteName });
@@ -321,20 +321,23 @@ describe("corporate template: house rules", () => {
     }
   });
 
-  it("starts the header with the default template's skip link, clipped until it has focus", () => {
+  it("starts the header with a skip link, hidden by the default template's clip rule until it has focus", () => {
     const html = read("src/components/site-header/site-header.html");
     expect(html.slice(html.indexOf("<header"))).toMatch(
       /^<header[^>]*>\s*<a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content<\/a>/,
     );
     const css = read("src/components/site-header/site-header.css");
-    expect(css.startsWith(SKIP_LINK_CSS)).toBe(true);
-    expect(SITE_HEADER_CSS.startsWith(SKIP_LINK_CSS)).toBe(true);
-    expect(SKIP_LINK_CSS).toMatch(
-      /\.skip-link:not\(:focus\) \{[^}]*clip-path: inset\(50%\);[^}]*\}\n$/,
+    // The clip rule is the default template's own text, not a copy of it.
+    expect(SITE_HEADER_CSS).toContain(SKIP_LINK_CLIP_CSS);
+    expect(css).toContain(SKIP_LINK_CLIP_CSS);
+    expect(SKIP_LINK_CLIP_CSS).toMatch(
+      /^\/\* Hidden until focused\.[^\n]*\n\.skip-link:not\(:focus\) \{[^}]*clip-path: inset\(50%\);[^}]*\}\n$/,
     );
-    // Only the skip link's rules are shared: the default header's own rules stay behind.
-    expect(SKIP_LINK_CSS).not.toMatch(/(^|\n)header \{/);
-    expect(css.match(/\.skip-link \{/g)).toHaveLength(1);
+    expect(css.match(/\.skip-link:not\(:focus\) \{/g)).toHaveLength(1);
+    // The link's look is this template's: the brand color, not the default starter's.
+    expect(css).toMatch(
+      /^\.skip-link \{[^}]*background: var\(--brand\);\s*color: var\(--on-brand\);/,
+    );
   });
 
   it("keeps the menu usable without JavaScript: both buttons start hidden and the script shows them", () => {
@@ -353,11 +356,157 @@ describe("corporate template: house rules", () => {
     );
   });
 
-  it("extends the default stylesheet instead of copying it", () => {
+  /** The custom properties one block declares, by name. */
+  const tokensIn = (block: string): Map<string, string> =>
+    new Map(
+      [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, name, value]) => [
+        name,
+        value.trim(),
+      ]),
+    );
+
+  /** The light tokens, and the dark ones laid over them. */
+  const themes = (): Record<"light" | "dark", Map<string, string>> => {
     const css = read("src/pages/css/styles.css");
-    expect(css.startsWith(STYLES_CSS)).toBe(true);
-    expect(css.length).toBeGreaterThan(STYLES_CSS.length);
-    expect(css.match(/:root \{/g)).toHaveLength(1);
+    const light = /^:root \{([^}]*)\}/m.exec(css)?.[1];
+    const dark =
+      /@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(light, "the :root block").toBeDefined();
+    expect(dark, "the dark :root block").toBeDefined();
+    return {
+      light: tokensIn(light!),
+      dark: new Map([...tokensIn(light!), ...tokensIn(dark!)]),
+    };
+  };
+
+  /** The WCAG 2 contrast ratio of two #rrggbb colors. */
+  const contrast = (first: string, second: string): number => {
+    const luminance = (hex: string): number => {
+      expect(hex).toMatch(/^#[0-9a-f]{6}$/);
+      const [r, g, b] = [1, 3, 5].map((at) => {
+        const channel = parseInt(hex.slice(at, at + 2), 16) / 255;
+        return channel <= 0.03928
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const [high, low] = [luminance(first), luminance(second)].sort(
+      (a, b) => b - a,
+    );
+    return (high + 0.05) / (low + 0.05);
+  };
+
+  it("has a stylesheet of its own: tokens declared once on :root, light by default, dark by preference", () => {
+    const css = read("src/pages/css/styles.css");
+    expect(css.match(/^:root \{/gm)).toHaveLength(1);
+    expect(css).toContain("color-scheme: light dark;");
+    // None of the default starter's stylesheet, and none of its colors.
+    expect(css.includes(STYLES_CSS.slice(0, 200))).toBe(false);
+    for (const color of [
+      "#d3ff8d",
+      "#18191b",
+      "211,255,141",
+      "211, 255, 141",
+    ]) {
+      for (const [path, text] of siteSources()) {
+        expect(text.toLowerCase(), path).not.toContain(color);
+      }
+    }
+    const { light, dark } = themes();
+    // A light page: the background is lighter than the text. Dark is the reverse.
+    expect(contrast(light.get("--bg")!, "#ffffff")).toBeLessThan(1.1);
+    expect(contrast(dark.get("--bg")!, "#000000")).toBeLessThan(1.3);
+    // The dark block changes colors only, and every color the light block has.
+    const colors = [...light].filter(([, value]) => value.startsWith("#"));
+    for (const [name] of colors) {
+      expect(
+        tokensIn(/dark\) \{\s*:root \{([^}]*)\}/.exec(css)![1]).has(name),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it("reads only tokens the stylesheet declares, and no color outside it", () => {
+    const declared = new Set(themes().light.keys());
+    for (const [path, text] of siteSources()) {
+      for (const [, name] of text.matchAll(/var\((--[\w-]+)/g)) {
+        expect(declared.has(name), `${path} reads ${name}`).toBe(true);
+      }
+      if (path === "src/pages/css/styles.css") continue;
+      // Components take every color from a token, so both color schemes reach them.
+      expect(text, path).not.toMatch(/#[0-9a-f]{3,8}\b|\brgba?\(/i);
+    }
+  });
+
+  it.each(["light", "dark"] as const)(
+    "meets WCAG AA contrast in the %s color scheme for text, links, buttons, errors, focus rings and control boundaries",
+    (scheme) => {
+      const token = (name: string): string => {
+        const value = themes()[scheme].get(name);
+        expect(value, name).toBeDefined();
+        return value!;
+      };
+      // Text, 4.5:1: [foreground, background].
+      const text: [string, string][] = [
+        ["--text", "--bg"],
+        ["--text", "--surface"],
+        ["--text", "--brand-soft"],
+        ["--text-muted", "--bg"],
+        ["--text-muted", "--surface"],
+        ["--brand", "--bg"],
+        ["--brand", "--surface"],
+        ["--brand", "--brand-soft"],
+        ["--brand-strong", "--bg"],
+        ["--brand-strong", "--surface"],
+        ["--on-brand", "--brand"],
+        ["--on-brand", "--brand-strong"],
+        ["--danger", "--bg"],
+      ];
+      for (const [foreground, background] of text) {
+        expect(
+          contrast(token(foreground), token(background)),
+          `${foreground} on ${background}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      // Focus rings and the edges of controls, 3:1 against what is around them.
+      const edges: [string, string][] = [
+        ["--border-strong", "--bg"],
+        ["--border-strong", "--surface"],
+        ["--brand", "--bg"],
+        ["--brand", "--surface"],
+        ["--on-brand", "--brand"],
+        ["--danger", "--bg"],
+      ];
+      for (const [edge, around] of edges) {
+        expect(
+          contrast(token(edge), token(around)),
+          `${edge} against ${around}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    },
+  );
+
+  it("draws form fields and outlined buttons with the strong border, and keeps a visible focus ring", () => {
+    const css = read("src/pages/css/styles.css");
+    expect(css).toMatch(
+      /:focus-visible \{ outline: 3px solid var\(--brand\); outline-offset: 2px; \}/,
+    );
+    expect(css).toMatch(
+      /\.btn-ghost \{[^}]*border-color: var\(--border-strong\)/,
+    );
+    expect(read("src/components/contact-form/contact-form.css")).toMatch(
+      /border: 1px solid var\(--border-strong\);/,
+    );
+    // On the brand-colored band the ring swaps to the color that shows there.
+    expect(read("src/components/call-to-action/call-to-action.html")).toContain(
+      ".action:focus-visible { outline-color: var(--on-brand); }",
+    );
+    for (const [path, text] of siteSources()) {
+      expect(text, path).not.toMatch(/outline:\s*(none|0)\b/);
+    }
   });
 
   it("marks both legal pages as placeholders", () => {
