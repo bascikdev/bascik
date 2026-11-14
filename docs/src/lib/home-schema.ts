@@ -19,7 +19,7 @@ import { readStableVersion } from "./package-version.ts";
 const SITE_URL = "https://bascik.dev";
 const SITE_HOME_URL = `${SITE_URL}/`;
 const DESCRIPTION =
-  "Bascik is a zero-runtime HTML component builder with automatically scoped CSS and JavaScript. Build reusable components without a client-side framework.";
+  "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. Build reusable components without a client-side framework.";
 
 export async function homeSchema(packageJsonPath?: string): Promise<SafeHtml> {
   const softwareVersion = await readStableVersion(packageJsonPath);

@@ -60,17 +60,17 @@ const localPages = NAV.flatMap((section) => section.pages).filter(
 );
 
 describe("home page search metadata", () => {
-  it("clearly identifies Bascik as the HTML component builder", async () => {
+  it("clearly identifies Bascik as a build tool for HTML components", async () => {
     const html = await readFile(
       path.join(DOCS_ROOT, "src", "pages", "index.html"),
       "utf8",
     );
 
     expect(pageTitle(html)).toBe(
-      "Bascik: HTML Component Builder with Scoped CSS and JS",
+      "Bascik: HTML Components with Scoped CSS and JS",
     );
     expect(pageDescription(html)).toBe(
-      "Bascik is a zero-runtime HTML component builder with automatically scoped CSS and JavaScript. Build reusable components without a client-side framework.",
+      "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. Build reusable components without a client-side framework.",
     );
 
     const websites = [
