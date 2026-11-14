@@ -62,7 +62,7 @@ if (error) {
 }
 
 // Where the site will be deployed is never asked: a new project is the default starter, which builds a
-// static site and runs on the built-in server. `--template cloudflare` or `--template netlify` adds an
+// static site and runs on the built-in server. `--adapter cloudflare` or `--adapter netlify` adds an
 // adapter for someone who already knows they want one, and an adapter can be added to any project later.
 const template: Template = templateArg ?? "default";
 

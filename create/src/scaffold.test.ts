@@ -180,7 +180,7 @@ describe("parseCliOptions", () => {
   // plain argument, so a second positional must be reported, not dropped.
   it("rejects a stray second positional and points at the -- form", () => {
     expect(() => parseCliOptions(["my-site", "cloudflare", "-y"], {})).toThrow(
-      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik my-site -- --template cloudflare',
+      'Unexpected argument "cloudflare". When running through npm create, put flags after "--": npm create bascik my-site -- --adapter cloudflare',
     );
   });
 
@@ -225,7 +225,109 @@ describe("parseCliOptions", () => {
     expect(() =>
       parseCliOptions(["my-site"], { npm_config_template: "true" }),
     ).toThrow(
-      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --template cloudflare',
+      'npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --adapter cloudflare',
+    );
+  });
+
+  it("reads --adapter in both forms, ignoring case, as the adapter starter", () => {
+    const options = parseCliOptions(["--adapter", "cloudflare", "my-site"]);
+    expect(options.template).toBe("cloudflare");
+    expect(options.projectName).toBe("my-site");
+    expect(parseCliOptions(["my-site", "--adapter", "cloudflare"])).toEqual(
+      options,
+    );
+    expect(parseCliOptions(["my-site", "--adapter=netlify"]).template).toBe(
+      "netlify",
+    );
+    expect(parseCliOptions(["--adapter", "Netlify"]).template).toBe("netlify");
+  });
+
+  it("--adapter none is the default starter", () => {
+    expect(parseCliOptions(["--adapter", "none"]).template).toBe("default");
+    expect(parseCliOptions(["--adapter=none"]).template).toBe("default");
+  });
+
+  it("combines --adapter with --template default or static, in either order", () => {
+    expect(
+      parseCliOptions(["--template", "default", "--adapter", "netlify"])
+        .template,
+    ).toBe("netlify");
+    expect(
+      parseCliOptions(["--adapter=cloudflare", "--template=static"]).template,
+    ).toBe("cloudflare");
+    expect(
+      parseCliOptions(["--template", "default", "--adapter", "none"]).template,
+    ).toBe("default");
+  });
+
+  it("accepts the older --template <adapter> next to the same --adapter", () => {
+    expect(
+      parseCliOptions(["--template", "cloudflare", "--adapter", "cloudflare"])
+        .template,
+    ).toBe("cloudflare");
+  });
+
+  it("misuse: --template and --adapter naming different adapters is refused", () => {
+    expect(() =>
+      parseCliOptions(["--template", "cloudflare", "--adapter", "netlify"]),
+    ).toThrow(
+      "--template cloudflare and --adapter netlify ask for different adapters. Pass only --adapter.",
+    );
+    expect(() =>
+      parseCliOptions(["--adapter=none", "--template=netlify"]),
+    ).toThrow(
+      "--template netlify and --adapter none ask for different adapters. Pass only --adapter.",
+    );
+  });
+
+  it("misuse: an unknown adapter is refused with the choices", () => {
+    expect(() => parseCliOptions(["--adapter", "vercel"])).toThrow(
+      'Unknown adapter "vercel". Choose one of: cloudflare, netlify, none.',
+    );
+    // `default` and `static` are template names, not adapters.
+    expect(() => parseCliOptions(["--adapter=default"])).toThrow(
+      /Unknown adapter "default"/,
+    );
+  });
+
+  it("misuse: --adapter without a value is refused, including when a flag follows it", () => {
+    expect(() => parseCliOptions(["--adapter"])).toThrow(
+      "--adapter needs a value. Choose one of: cloudflare, netlify, none.",
+    );
+    expect(() => parseCliOptions(["--adapter", "-y"])).toThrow(
+      /--adapter needs a value/,
+    );
+    expect(() => parseCliOptions(["--adapter="])).toThrow(
+      /--adapter needs a value/,
+    );
+  });
+
+  it("misuse: a typo of --adapter is refused, pointing at --adapter", () => {
+    expect(() => parseCliOptions(["--adaptor", "netlify"])).toThrow(
+      'Unknown option "--adaptor". Did you mean "--adapter"?',
+    );
+  });
+
+  it("honors npm's consumed --adapter=<name> through npm_config_adapter", () => {
+    expect(
+      parseCliOptions(["my-site"], { npm_config_adapter: "netlify" }).template,
+    ).toBe("netlify");
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_adapter: "vercel" }),
+    ).toThrow(/Unknown adapter "vercel"/);
+    // An explicit flag wins over what npm kept.
+    expect(
+      parseCliOptions(["my-site", "--adapter", "none"], {
+        npm_config_adapter: "cloudflare",
+      }).template,
+    ).toBe("default");
+  });
+
+  it("reports the two-token form npm reduced to npm_config_adapter=true", () => {
+    expect(() =>
+      parseCliOptions(["my-site"], { npm_config_adapter: "true" }),
+    ).toThrow(
+      'npm kept --adapter for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --adapter cloudflare',
     );
   });
 });
@@ -1761,6 +1863,7 @@ describe("parseCliOptions --no-skills", () => {
   it("documents every flag it accepts in the usage text", () => {
     for (const flag of [
       "--template",
+      "--adapter",
       "-y",
       "--yes",
       "--no-skills",
@@ -1771,7 +1874,7 @@ describe("parseCliOptions --no-skills", () => {
     ])
       expect(USAGE).toContain(flag);
     expect(USAGE).toContain(
-      "npm create bascik my-site -- --template cloudflare",
+      "npm create bascik my-site -- --adapter cloudflare",
     );
   });
 
@@ -1785,7 +1888,7 @@ describe("parseCliOptions --no-skills", () => {
     expect(() =>
       parseCliOptions(["my-site", "--typescript-everywhere"]),
     ).toThrow(
-      'Unknown option "--typescript-everywhere". create-bascik accepts -h, --help, -y, --yes, --no-install, --no-dev, --no-skills, --template.',
+      'Unknown option "--typescript-everywhere". create-bascik accepts -h, --help, -y, --yes, --no-install, --no-dev, --no-skills, --template, --adapter.',
     );
   });
 });

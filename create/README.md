@@ -70,21 +70,23 @@ npm run dev
 
 Your site will be live at `http://localhost:8080` in every template. `npm run dev` is always the Bascik dev server; the Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`) to run the same site in the host's local runtime.
 
-## Templates
+## Adapters
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag you get the `default` starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
+Add a deploy adapter to the starter with `--adapter <name>` (or `--adapter=<name>`). Without the flag you get the static starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
 
-| Template     | What you get                                                                                                             |
+| Adapter      | What you get                                                                                                             |
 | :----------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `default`    | The static starter above. `static` is accepted as an alias.                                                              |
+| `none`       | The static starter above. The same as leaving the flag out.                                                              |
 | `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo.    |
 | `netlify`    | The same starter plus the [Netlify adapter](https://bascik.dev/deployment/netlify), a `netlify.toml`, and the edge demo. |
 
 ```sh
-npm create bascik my-site -- --template cloudflare
+npm create bascik my-site -- --adapter cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik my-site -y -- --template cloudflare` skips every prompt).
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--adapter` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik my-site -y -- --adapter cloudflare` skips every prompt).
+
+`--template <name>` picks the starter site, and `default` (alias `static`) is the only one today. `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
 The Cloudflare template differs from the default in these files only:
 
