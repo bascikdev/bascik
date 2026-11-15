@@ -163,6 +163,40 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
   });
 });
 
+describe("minifyJs – a line starting with != or !==", () => {
+  // `!=` is a binary operator: the comparison continues the line before it.
+  it.each([
+    ["a name", "const a = 1, b = 2\nconst x = a\n  !== b\nlog.push(x)"],
+    ["a name and !=", "const a = 1, b = '1'\nconst x = a\n  != b\nlog.push(x)"],
+    ["a call", "const a = () => 1\nconst x = a()\n  !== 1\nlog.push(x)"],
+    ["an index", "const a = [1]\nconst x = a[0]\n  !== 2\nlog.push(x)"],
+    ["a string", "const x = 'a'\n  !== 'b'\nlog.push(x)"],
+    ["a template", "const x = `a`\n  !== `b`\nlog.push(x)"],
+    ["an object", "const o = {}\nconst x = {}\n  !== o\nlog.push(x)"],
+    ["a postfix update", "let a = 1\nconst x = a++\n  !== 1\nlog.push(x, a)"],
+    [
+      "a condition over two lines",
+      "const a = 'x', b = 'y'\nif (a.toString('binary')\n  !== b.toString('binary')) log.push('differs')",
+    ],
+  ])("continues the comparison after %s", (_name, source) => {
+    expect(expectSameProgram(source)).not.toContain(";!");
+  });
+
+  it.each([
+    ["a name", "let a = 1, b = 0\na\n!b\nlog.push(a, b)"],
+    [
+      "a string",
+      "const b = () => log.push('b')\nconst a = 'x'\n!b()\nlog.push(a)",
+    ],
+    [
+      "an IIFE",
+      "const a = 1\n!function () { log.push('iife') }()\nlog.push(a)",
+    ],
+  ])("still starts a statement at a lone ! after %s", (_name, source) => {
+    expect(expectSameProgram(source)).toContain(";!");
+  });
+});
+
 describe("minifyJs – semicolon-free statement sequences (property)", () => {
   // Statements a hand-written, semicolon-free script might contain, including the ones whose
   // line breaks ASI does or does not turn into statement ends.
