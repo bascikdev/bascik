@@ -17,8 +17,17 @@ import {
 const execFileAsync = promisify(execFile);
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
 const roots: string[] = [];
+// Process ids a test started outside `run`. A failed assertion must not
+// leave a dev server or its exec script running after the test.
+const startedPids = new Set<number>();
 
 afterEach(async () => {
+  for (const pid of startedPids) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+  startedPids.clear();
   await Promise.all(roots.splice(0).map(cleanupFixture));
 });
 
@@ -224,6 +233,7 @@ setInterval(() => {}, 1000);
         [cli, "--port", "44012", "--no-pin"],
         { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
       );
+      startedPids.add(child.pid!);
       let output = "";
       child.stdout.on("data", (d: Buffer) => (output += d.toString()));
       child.stderr.on("data", (d: Buffer) => (output += d.toString()));
@@ -243,6 +253,7 @@ setInterval(() => {}, 1000);
       expect(existsSync(pidsPath), output).toBe(true);
       const { readFile } = await import("node:fs/promises");
       const pids = JSON.parse(await readFile(pidsPath, "utf8")) as number[];
+      for (const pid of pids) startedPids.add(pid);
 
       child.kill("SIGHUP");
       const result = await exited;

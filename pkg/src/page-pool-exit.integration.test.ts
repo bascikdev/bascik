@@ -397,6 +397,35 @@ describe("exiting while page workers load (real CLI)", () => {
     );
   }, 60_000);
 
+  // Whoever read the CLI's output is gone (a closed terminal, a killed CI
+  // step, `bascik --build 2>&1 | head`): every write to stderr then fails
+  // with EPIPE. Reporting that failure on the same stream fails again, and
+  // doing so from the crash handler used to loop without ever reaching the
+  // bounded exit, at full CPU, until someone killed the process.
+  for (const kind of ["throw", "throw-twice"] as const) {
+    it(`build: a crash (${kind}) still exits within a bounded time when nothing reads stderr any more`, async () => {
+      const fixture = await makeFixture(`closed-stderr-${kind}`, {
+        stuckWorkers: true,
+      });
+      const { child, done } = start(fixture, "build", {
+        kind,
+        at: "spawn",
+        delay: 300,
+      });
+      child.stdout!.destroy();
+      child.stderr!.destroy();
+      const outcome = await Promise.race([
+        done,
+        new Promise<"hung">((r) => setTimeout(() => r("hung"), 30_000)),
+      ]);
+      expect(outcome, "the CLI never exited").not.toBe("hung");
+      const result = outcome as Run;
+      expect(result.signal, describeRun("closed stderr", result)).toBeNull();
+      expect(result.code, describeRun("closed stderr", result)).toBe(1);
+      expect(count(readLog(fixture.log), "trigger")).toBe(1);
+    }, 60_000);
+  }
+
   for (const [label, mode, kind] of [
     ["dev: a second Ctrl-C", "dev", "SIGINT"],
     ["build: a Ctrl-C after a crash", "build", "throw"],
