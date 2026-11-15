@@ -5,7 +5,10 @@
  * already on `127.0.0.1:<port>` went unnoticed while Bascik announced
  * `http://localhost:<port>`. `localhost` now means both loopbacks.
  *
- * Real sockets on ports 44060-44079.
+ * Real sockets on ports 24060-24079: below the range the operating system
+ * hands out for port 0 (32768 and up on Linux, 49152 and up on macOS and
+ * Windows). A port inside that range is taken now and then by another test
+ * file running at the same time, and the "next port" assertions then fail.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
@@ -123,35 +126,35 @@ const bindable = async (host: string, port: number) => {
 
 describe("hostname localhost listens on both loopbacks", () => {
   it("answers on 127.0.0.1 and on [::1] (findings 46 and 86)", async () => {
-    const { origin } = await start(44060);
-    expect(origin).toBe("http://localhost:44060");
-    expect(await fetchFrom("127.0.0.1", 44060)).toBe("bascik via 127.0.0.1");
-    expect(await fetchFrom("::1", 44060)).toBe("bascik via ::1");
+    const { origin } = await start(24060);
+    expect(origin).toBe("http://localhost:24060");
+    expect(await fetchFrom("127.0.0.1", 24060)).toBe("bascik via 127.0.0.1");
+    expect(await fetchFrom("::1", 24060)).toBe("bascik via ::1");
   });
 
   it("dev moves to the next port when another program holds 127.0.0.1 (finding 143)", async () => {
-    await blocker("127.0.0.1", 44062);
+    await blocker("127.0.0.1", 24062);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const { origin } = await start(44062);
-      expect(origin).toBe("http://localhost:44063");
-      expect(warn).toHaveBeenCalledWith("Port 44062 is in use, trying 44063…");
-      expect(await fetchFrom("127.0.0.1", 44063)).toBe("bascik via 127.0.0.1");
-      expect(await fetchFrom("::1", 44063)).toBe("bascik via ::1");
+      const { origin } = await start(24062);
+      expect(origin).toBe("http://localhost:24063");
+      expect(warn).toHaveBeenCalledWith("Port 24062 is in use, trying 24063…");
+      expect(await fetchFrom("127.0.0.1", 24063)).toBe("bascik via 127.0.0.1");
+      expect(await fetchFrom("::1", 24063)).toBe("bascik via ::1");
       // The port it gave up is left whole on ::1 for the next run.
-      expect(await bindable("::1", 44062)).toBe(true);
+      expect(await bindable("::1", 24062)).toBe(true);
     } finally {
       warn.mockRestore();
     }
   });
 
   it("dev moves to the next port when another program holds [::1]", async () => {
-    await blocker("::1", 44065);
+    await blocker("::1", 24065);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const { origin } = await start(44065);
-      expect(origin).toBe("http://localhost:44066");
-      expect(await fetchFrom("127.0.0.1", 44066)).toBe("bascik via 127.0.0.1");
+      const { origin } = await start(24065);
+      expect(origin).toBe("http://localhost:24066");
+      expect(await fetchFrom("127.0.0.1", 24066)).toBe("bascik via 127.0.0.1");
     } finally {
       warn.mockRestore();
     }
@@ -159,18 +162,18 @@ describe("hostname localhost listens on both loopbacks", () => {
 
   it("--server refuses a port another program holds on 127.0.0.1", async () => {
     configState.isProdServer = true;
-    await blocker("127.0.0.1", 44068);
-    configState.http.port = 44068;
+    await blocker("127.0.0.1", 24068);
+    configState.http.port = 24068;
     const server = http.createServer();
     await expect(startServerInstance(server, "http")).rejects.toThrow(
-      /Port 44068 is already in use/,
+      /Port 24068 is already in use/,
     );
     expect(server.listening).toBe(false);
-    expect(await bindable("::1", 44068)).toBe(true);
+    expect(await bindable("::1", 24068)).toBe(true);
   });
 
   it("close() releases both loopbacks and waits for both", async () => {
-    const { server } = await start(44070);
+    const { server } = await start(24070);
     let closed = false;
     await new Promise<void>((resolve) =>
       server.close(() => {
@@ -179,16 +182,16 @@ describe("hostname localhost listens on both loopbacks", () => {
       }),
     );
     expect(closed).toBe(true);
-    expect(await bindable("127.0.0.1", 44070)).toBe(true);
-    expect(await bindable("::1", 44070)).toBe(true);
+    expect(await bindable("127.0.0.1", 24070)).toBe(true);
+    expect(await bindable("::1", 24070)).toBe(true);
     cleanup.pop();
   });
 
   it("an explicit 127.0.0.1 binds only IPv4", async () => {
     configState.http.hostname = "127.0.0.1";
-    const { origin } = await start(44072);
-    expect(origin).toBe("http://127.0.0.1:44072");
-    expect(await fetchFrom("127.0.0.1", 44072)).toBe("bascik via 127.0.0.1");
-    expect(await fetchFrom("::1", 44072)).toMatch(/^error ECONNREFUSED/);
+    const { origin } = await start(24072);
+    expect(origin).toBe("http://127.0.0.1:24072");
+    expect(await fetchFrom("127.0.0.1", 24072)).toBe("bascik via 127.0.0.1");
+    expect(await fetchFrom("::1", 24072)).toMatch(/^error ECONNREFUSED/);
   });
 });
