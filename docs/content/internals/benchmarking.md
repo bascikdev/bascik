@@ -4,15 +4,16 @@ Bascik ships a repeatable benchmarking and profiling harness in `pkg/bench/` for
 
 ## Tooling Overview
 
-| Command (from the repository root)                  | Entry point                       | Purpose                                                                               |
-| --------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
-| `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`            | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
-| `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`   | Paired baseline versus candidate compiler builds with byte-identity verification      |
-| `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler                          |
-| `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`    | Read-only CPU sample and hot-line summaries                                           |
-| `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`  | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
-| `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`   | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts` | Resource-boundary capture with optional heap allocation sampling                      |
+| Command (from the repository root)                  | Entry point                        | Purpose                                                                               |
+| --------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`             | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
+| `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`    | Paired baseline versus candidate compiler builds with byte-identity verification      |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`       | Seeded differential checks against a built baseline compiler                          |
+| `yarn workspace @bascik/bascik profile:minify`      | `pkg/bench/minify-differential.ts` | The built-in JavaScript minifier's output compared with its own input on real files   |
+| `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`     | Read-only CPU sample and hot-line summaries                                           |
+| `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`   | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
+| `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`    | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts`  | Resource-boundary capture with optional heap allocation sampling                      |
 
 ## Throughput Microbenchmarks (`yarn pkg:bench`)
 
@@ -44,6 +45,14 @@ yarn workspace @bascik/bascik profile:fuzz \
 ```
 
 Use absolute package paths with built `dist/lib/` directories. The default candidate is the current workspace package; defaults are 2,000 cases per target and seed `31337`. Use `--targets expansion,props,slots,tags,masking,javascript` to select groups. To replay a failure, select one target and pass its reported `--seed` and `--path`. A mismatch exits nonzero. This is an opt-in developer check, not a substitute for real builds, worker tests, or browser tests.
+
+`profile:minify` checks the built-in JavaScript minifier against the source it was given instead of against an earlier minifier, so it also finds bugs that every revision has. It minifies each `.js`, `.mjs`, and `.cjs` file under the paths you pass, has esbuild print the source and the result in one canonical form, and reports every file whose minified text no longer parses or parses to a different program, with a shrunk input for the first failures:
+
+```sh
+yarn workspace @bascik/bascik profile:minify "$PWD/node_modules" --sample 3000
+```
+
+The options and limits are in `pkg/bench/README.md`.
 
 `profile:summary` reads an existing V8 CPU profile and prints self time, inclusive time, and hot source lines:
 
