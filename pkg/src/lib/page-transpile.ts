@@ -222,6 +222,11 @@ export const transpilePage = async (
         rawHtml = routesResult.cleanedHtml;
       }
     } catch (err) {
+      // A build that cannot read a page must not finish without it and exit
+      // 0: the failure is reported with the other page errors. In dev the
+      // file may have been deleted since the watcher saw it, so it is only
+      // a warning there.
+      if (BascikConfig.isBuild) throw err;
       console.warn(
         `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
       );
