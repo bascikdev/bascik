@@ -923,7 +923,7 @@ export const minifyJs = (js: string): string => {
       if (
         resultLast &&
         firstLine &&
-        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
           firstLine,
         )
       ) {
@@ -1020,7 +1020,7 @@ export const minifyJs = (js: string): string => {
         // ends in a restricted production (`return`, `break label`, ...) where the
         // line break itself ends the statement.
         const startsWithContinuation =
-          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           ) ||
           ((firstChar === "(" || firstChar === "[") &&
@@ -1039,7 +1039,7 @@ export const minifyJs = (js: string): string => {
         // (and starts a new statement after a block or declaration either way), but not the
         // `}` of an arrow function body, which cannot be called or indexed.
         if (
-          !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           ) &&
           ((firstChar !== "(" && firstChar !== "[") ||
@@ -1056,7 +1056,7 @@ export const minifyJs = (js: string): string => {
         }
       } else if (seg.postfixUpdateEnds?.has(prevLineEnd)) {
         const startsWithContinuation =
-          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(
+          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           );
         if (!startsWithContinuation) {
