@@ -769,7 +769,14 @@ export const createRequestHandler = () => {
       const ext = (
         extname(pathname) || (dotfileName.startsWith(".") ? dotfileName : "")
       ).toLowerCase();
-      if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
+      // A page name can hold a dot too (`release-1.0.html`, a `[version]`
+      // route of `v2.0`, the folder `v1.2/`): when no file has the path and a
+      // page does, the request leaves this block for the page lookup.
+      staticAsset: if (
+        ext &&
+        !ext.match(/^\.htm.*$/) &&
+        !pathname.endsWith("/")
+      ) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);
@@ -812,6 +819,8 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
+          if (isNoSuchFileError(err) && mem.getPageExact(pathname))
+            break staticAsset;
           responseStatus = isNoSuchFileError(err) ? 404 : 500;
           res.respond(responseStatus, { ...secHeaders });
           res.end(
@@ -819,6 +828,9 @@ export const createRequestHandler = () => {
           );
           return;
         }
+        // `/v1.2` is the folder of the page `v1.2/index.html`, not a file.
+        if (fileStat.isDirectory?.() && mem.getPageExact(pathname))
+          break staticAsset;
 
         const mimeType =
           MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
