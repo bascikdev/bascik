@@ -25,6 +25,13 @@ type Segment = {
    */
   arrowBodyCloses?: Set<number>;
   /**
+   * Offsets in `text` of the last character before a line break that is followed by the `{`
+   * of a function, method, class, static block or `catch` body (`function f(a)\n{`,
+   * `class A\n{`). That `{` belongs to its header, so the line break is not a statement end,
+   * unlike the one in `foo()\n{ block }`.
+   */
+  bodyHeaderEnds?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -107,6 +114,28 @@ const RESTRICTED_PRODUCTION_END =
 
 /** Keywords whose parenthesized header is followed by a statement, not an operator. */
 const CONTROL_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
+
+/** What an open `{` is, for telling a method body from a block statement. */
+const BRACE_BLOCK = 0;
+const BRACE_CLASS = 1;
+const BRACE_OBJECT = 2;
+
+/**
+ * Keywords that take an expression next on the same line, so a `{` right after one is an
+ * object literal: `return {`, `yield {`. After a line break, `return` has already ended.
+ */
+const OBJECT_PRECEDING_KEYWORDS = new Set([
+  "return",
+  "throw",
+  "yield",
+  "await",
+  "typeof",
+  "void",
+  "new",
+  "in",
+  "of",
+  "instanceof",
+]);
 
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
@@ -354,6 +383,24 @@ const scanSegments = (js: string): Segment[] => {
   let controlHeaderCloses: Set<number> | undefined;
   let postfixUpdateEnds: Set<number> | undefined;
   let arrowBodyCloses: Set<number> | undefined;
+  let bodyHeaderEnds: Set<number> | undefined;
+  // One entry per open `(`: true when it opens the parameters of a `function` or `catch`.
+  const parenIsBodyHeader: boolean[] = [];
+  let lastParenClosedBodyHeader = false;
+  // `function` or `catch` was read and its `(` has not come yet.
+  let bodyHeaderPending = false;
+  // One entry per open `{`: what it is, and how many `(` and `[` were open around it, so a
+  // member of a class body or object literal can be told from code nested in one of its values.
+  const braceKind: number[] = [];
+  const braceParenDepth: number[] = [];
+  const braceBracketDepth: number[] = [];
+  let bracketDepth = 0;
+  // `class` was read and its body `{` has not come yet: the `(` and `[` depth it was read at,
+  // so a `{` inside its heritage clause (`extends mix({})`) is not taken for the body.
+  let classPendingParenDepth = -1;
+  let classPendingBracketDepth = -1;
+  // Offset in `codeAccum` of `lastSig`.
+  let lastSigOffset = -1;
   let lineBreakSinceSignificant = false;
   // The significant character before `lastSig`, to recognize `=>` when `{` follows it.
   let prevSig = "";
@@ -372,12 +419,15 @@ const scanSegments = (js: string): Segment[] => {
         controlHeaderCloses,
         postfixUpdateEnds,
         arrowBodyCloses,
+        bodyHeaderEnds,
       });
       codeAccum = "";
     }
     controlHeaderCloses = undefined;
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
+    bodyHeaderEnds = undefined;
+    lastSigOffset = -1;
     lastRaw = "";
     lastSig = "";
     prevSig = "";
@@ -412,26 +462,140 @@ const scanSegments = (js: string): Segment[] => {
     return false;
   };
 
+  /**
+   * Classify the `{` about to be appended, and when it is the body of the header that ends
+   * on an earlier line, record that header's last character so the line break stays a join.
+   */
+  const openBrace = (): void => {
+    const parenDepth = parenIsControlHeader.length;
+    const top = braceKind.length - 1;
+    const enclosing = top === -1 ? BRACE_BLOCK : braceKind[top];
+    // Directly in the enclosing `{`, not inside a `(` or `[` it contains.
+    const atMemberLevel =
+      top !== -1 &&
+      braceParenDepth[top] === parenDepth &&
+      braceBracketDepth[top] === bracketDepth;
+    const word = isWordChar(lastSig) && !wordIsProperty ? wordRun : undefined;
+
+    let kind = BRACE_BLOCK;
+    let isBody = false;
+    if (
+      classPendingParenDepth === parenDepth &&
+      classPendingBracketDepth === bracketDepth
+    ) {
+      kind = BRACE_CLASS;
+      isBody = true;
+      classPendingParenDepth = -1;
+      classPendingBracketDepth = -1;
+    } else if (lastSig === ")" && lastParenClosedBodyHeader) {
+      // `function f(a)\n{`, `catch (e)\n{`
+      isBody = true;
+    } else if (word === "catch") {
+      isBody = true;
+    } else if (
+      atMemberLevel &&
+      enclosing !== BRACE_BLOCK &&
+      (lastSig === ")" || (enclosing === BRACE_CLASS && word === "static"))
+    ) {
+      // A method, accessor or static block: a class body or object literal holds only
+      // members, so nothing else can put a `{` on a line of its own here.
+      isBody = true;
+    } else if (
+      lastSig === "(" ||
+      lastSig === "," ||
+      lastSig === "[" ||
+      lastSig === "?" ||
+      lastSig === "&" ||
+      lastSig === "|" ||
+      (lastSig === "=" && prevSig !== ">") ||
+      (lastSig === ":" &&
+        (enclosing === BRACE_OBJECT || !atMemberLevel) &&
+        top !== -1) ||
+      (word !== undefined &&
+        !lineBreakSinceSignificant &&
+        OBJECT_PRECEDING_KEYWORDS.has(word))
+    ) {
+      // Where only an expression can start, `{` is an object literal (or a destructuring
+      // pattern, which holds no statements either).
+      kind = BRACE_OBJECT;
+    }
+    if (isBody && lineBreakSinceSignificant && lastSigOffset !== -1) {
+      (bodyHeaderEnds ??= new Set()).add(lastSigOffset);
+    }
+    bodyHeaderPending = false;
+    braceKind.push(kind);
+    braceParenDepth.push(parenDepth);
+    braceBracketDepth.push(bracketDepth);
+  };
+
   const appendCode = (c: string): void => {
-    if (c === "(") {
-      const keyword = isWordChar(lastSig)
-        ? lastWordBeforeSlash(wordRun)
-        : undefined;
-      parenIsControlHeader.push(
-        keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword),
-      );
-    } else if (c === ")") {
-      lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
-      if (lastParenClosedControlHeader) {
-        (controlHeaderCloses ??= new Set()).add(codeAccum.length);
+    // Most characters are part of a word: none of the bookkeeping below applies to them.
+    if (isWordChar(c)) {
+      codeAccum += c;
+      if (isWordChar(lastRaw)) {
+        wordRun += c;
+      } else {
+        wordIsProperty = lastSig === ".";
+        wordRun = c;
       }
-    } else if (c === "{") {
-      braceIsArrowBody.push(lastSig === ">" && prevSig === "=");
-    } else if (c === "}") {
-      lastBraceClosedArrowBody = braceIsArrowBody.pop() ?? false;
-      if (lastBraceClosedArrowBody) {
-        (arrowBodyCloses ??= new Set()).add(codeAccum.length);
+      lastRaw = c;
+      prevSig = lastSig;
+      lastSig = c;
+      lastSigOffset = codeAccum.length - 1;
+      lastSigIsPostfixUpdate = false;
+      lineBreakSinceSignificant = false;
+      return;
+    }
+    if (!wordIsProperty && isWordChar(lastRaw)) {
+      // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords.
+      if (wordRun === "function" || wordRun === "catch") {
+        bodyHeaderPending = true;
+      } else if (wordRun === "class") {
+        classPendingParenDepth = parenIsControlHeader.length;
+        classPendingBracketDepth = bracketDepth;
       }
+    }
+    switch (c) {
+      case "(": {
+        const keyword = isWordChar(lastSig)
+          ? lastWordBeforeSlash(wordRun)
+          : undefined;
+        parenIsControlHeader.push(
+          keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword),
+        );
+        parenIsBodyHeader.push(bodyHeaderPending);
+        bodyHeaderPending = false;
+        break;
+      }
+      case ")":
+        lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
+        lastParenClosedBodyHeader = parenIsBodyHeader.pop() ?? false;
+        if (lastParenClosedControlHeader) {
+          (controlHeaderCloses ??= new Set()).add(codeAccum.length);
+        }
+        break;
+      case "{":
+        braceIsArrowBody.push(lastSig === ">" && prevSig === "=");
+        openBrace();
+        break;
+      case "}":
+        lastBraceClosedArrowBody = braceIsArrowBody.pop() ?? false;
+        braceKind.pop();
+        braceParenDepth.pop();
+        braceBracketDepth.pop();
+        if (lastBraceClosedArrowBody) {
+          (arrowBodyCloses ??= new Set()).add(codeAccum.length);
+        }
+        break;
+      case "[":
+        bracketDepth++;
+        break;
+      case "]":
+        if (bracketDepth > 0) bracketDepth--;
+        break;
+      case ";":
+        bodyHeaderPending = false;
+        break;
     }
     codeAccum += c;
     if (isSpace(c)) {
@@ -440,15 +604,11 @@ const scanSegments = (js: string): Segment[] => {
       lastRaw = c;
       return;
     }
-    if (isWordChar(c)) {
-      if (!isWordChar(lastRaw)) wordIsProperty = lastSig === ".";
-      wordRun = isWordChar(lastRaw) ? wordRun + c : c;
-    } else {
-      wordRun = "";
-    }
+    wordRun = "";
     lastRaw = c;
     prevSig = lastSig;
     lastSig = c;
+    lastSigOffset = codeAccum.length - 1;
     lastSigIsPostfixUpdate = false;
     lineBreakSinceSignificant = false;
   };
@@ -771,7 +931,13 @@ export const minifyJs = (js: string): string => {
       if (/[a-zA-Z0-9_\)$\]'"`]/.test(lastChar)) {
         // Do NOT insert semicolon if line ends with an open control flow / operator
         let endsWithOpenControl = false;
-        if (lastChar === ")" && seg.controlHeaderCloses?.has(prevLineEnd)) {
+        if (seg.bodyHeaderEnds?.has(prevLineEnd)) {
+          // `function f(a)` or `class A` then its body `{` on the next line.
+          endsWithOpenControl = true;
+        } else if (
+          lastChar === ")" &&
+          seg.controlHeaderCloses?.has(prevLineEnd)
+        ) {
           // `if (a === "x")` then a body on the next line: the scanner saw this `)` close the header.
           endsWithOpenControl = true;
         } else if (lastChar === ")") {
