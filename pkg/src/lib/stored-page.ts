@@ -45,6 +45,14 @@ export interface StoredPage {
    * renders at request time.
    */
   componentManifest?: import("./component-manifest.ts").ComponentManifest;
+  /**
+   * The hashes of this content's inline scripts and styles, stored with it
+   * by the dev server so the `contentSecurityPolicy` header of a response
+   * always matches the body it is sent with. The collector in
+   * `csp-hashes.ts` learns them only when the page's queued disk write runs,
+   * which is after the page is servable and its live-reload event is out.
+   */
+  cspHashes?: import("./types.ts").PageCspHashes;
   /** Pre-computed ETag from the page content buffer for fast response headers. */
   etag?: string;
 }
