@@ -35,7 +35,11 @@ import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import { coalesceRuns } from "./coalesced-run.ts";
-import { isComponentLoadFailure } from "./page-diagnostics.ts";
+import {
+  isComponentLoadFailure,
+  PageProcessingAggregateError,
+  PageProcessingError,
+} from "./page-diagnostics.ts";
 import { locateBuildError } from "./build-error.ts";
 import {
   clearBootFailure,
@@ -85,6 +89,10 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
 
   const onWatchError = (err: unknown) => {
     if (isLocatedBascikError(err)) console.error(err.message);
+    // A page that failed on save (a half-written file with no <body>, say)
+    // reads as it does at boot and in a build: the page and the reason.
+    else if (err instanceof PageProcessingError)
+      console.error(new PageProcessingAggregateError([err]).message);
     else console.error("[bascik] watch error:", err);
   };
   const recordBootFailure = (error: unknown): void => {

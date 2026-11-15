@@ -15,6 +15,7 @@ it is not `@bascik/bascik`.
 
 - The built-in JavaScript minifier no longer puts a `;` before a `{` that sits on its own line after a function, method, class, static block, or `catch` header. A production build turned `function f(a)\n{` into `function f(a);{`, which does not parse, so the script failed in the browser while the same code worked in development. This also broke TypeScript functions with a return type written across several lines. No change is needed in your code; rebuild. See the "Semicolon-free scripts" row of the [compatibility page](https://bascik.dev/compatibility).
 - `bascik` no longer hangs at full CPU when it crashes after whatever was reading its output has gone away (a closed terminal, a killed CI step, `bascik --build 2>&1 | head`). The failed write to stderr was reported to stderr again, forever, and the process never exited. It now exits with code 1 as any other crash does. See [Crash net](https://bascik.dev/internals/server#crash-net-stream-error-handling).
+- Saving a page the dev server cannot compile, such as a half-written page with no `<body>` yet or an empty file, now prints the page and the reason (`Build failed with 1 page error:`, then `src/pages/about.html` and `validate markup: Page does not contain a non-empty <body> element`), as starting the dev server on the same page already did. It printed `[bascik] watch error: PageProcessingError` followed by a stack trace through Bascik's own files. The dev server keeps running and serves the last good version until you save a fix, as before.
 
 ## [1.0.0] - 2026-11-12
 
