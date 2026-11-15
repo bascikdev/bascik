@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalProgram,
   compareWithSource,
+  countOption,
   shrinkFailure,
 } from "../../bench/minify-differential.ts";
 
@@ -78,4 +79,28 @@ describe("shrinkFailure", () => {
     expect(shrunk).toBe("first()\nsecond()");
     expect(compareWithSource(shrunk, minify)).toBe("syntax");
   });
+});
+
+describe("countOption", () => {
+  it("reads a whole number of at least the minimum", () => {
+    expect(countOption("3000", "sample", 1)).toBe(3000);
+    expect(countOption("0", "shrink", 0)).toBe(0);
+  });
+
+  it.each([
+    ["sample", "0", 1],
+    ["sample", "-5", 1],
+    ["max-bytes", "1.5", 1],
+    ["shrink", "all", 0],
+    ["shrink", "", 0],
+    ["shrink", "-1", 0],
+    ["shrink", "2e400", 0],
+  ] as const)(
+    "rejects --%s %j and names the option",
+    (name, value, minimum) => {
+      expect(() => countOption(value, name, minimum)).toThrow(
+        `--${name} must be`,
+      );
+    },
+  );
 });

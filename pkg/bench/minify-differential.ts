@@ -158,10 +158,21 @@ const pathHash = (path: string): number => {
   return hash;
 };
 
-const positiveInteger = (value: string, name: string): number => {
+/** An option that counts something: a whole number of at least `minimum`. */
+export const countOption = (
+  value: string,
+  name: string,
+  minimum: 0 | 1,
+): number => {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`--${name} must be a positive integer`);
+  if (
+    value.trim() === "" ||
+    !Number.isSafeInteger(parsed) ||
+    parsed < minimum
+  ) {
+    throw new Error(
+      `--${name} must be ${minimum === 0 ? "zero or a positive integer" : "a positive integer"}, got "${value}"`,
+    );
   }
   return parsed;
 };
@@ -186,8 +197,8 @@ const main = async (): Promise<void> => {
   const { minifyJs } = (await import(pathToFileURL(minifierPath).href)) as {
     minifyJs: Minify;
   };
-  const maxBytes = positiveInteger(values["max-bytes"], "max-bytes");
-  const shrinkLimit = Number(values.shrink);
+  const maxBytes = countOption(values["max-bytes"], "max-bytes", 1);
+  const shrinkLimit = countOption(values.shrink, "shrink", 0);
 
   let files: string[] = [];
   for (const path of positionals) {
@@ -201,7 +212,7 @@ const main = async (): Promise<void> => {
   }
   if (values.sample !== undefined) {
     // By path hash, so two runs check the same files even when others come and go.
-    const step = Math.ceil(found / positiveInteger(values.sample, "sample"));
+    const step = Math.ceil(found / countOption(values.sample, "sample", 1));
     if (step > 1) files = files.filter((file) => pathHash(file) % step === 0);
   }
 
