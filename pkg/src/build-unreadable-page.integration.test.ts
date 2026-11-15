@@ -6,10 +6,11 @@
  * other page, and exit 0: the site shipped without the page and CI stayed
  * green. These tests run the real CLI against a page made unreadable with
  * `chmod`, serially and with page workers, for a static and a dynamic page.
+ * The dev server keeps its warning, which the last test pins.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -23,6 +24,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
+const DEV_PORT = 44934;
 const roots: string[] = [];
 const locked: string[] = [];
 
@@ -112,5 +114,48 @@ describe.skipIf(!canLock)(
         expect(code).toBe(1);
       });
     }
+
+    // The other half of the rule: in dev the page may have been deleted
+    // since the watcher saw it, so the server warns and keeps serving.
+    it("the dev server only warns and serves the other pages", async () => {
+      const root = await project("dev", "locked.html", false);
+      const child = spawn(
+        process.execPath,
+        [cli, "--port", String(DEV_PORT), "--no-pin"],
+        { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      try {
+        let status: number | null = null;
+        const deadline = Date.now() + 45_000;
+        while (status === null && Date.now() < deadline) {
+          try {
+            const response = await fetch(`http://localhost:${DEV_PORT}/about`);
+            await response.arrayBuffer();
+            status = response.status;
+          } catch {
+            await new Promise((done) => setTimeout(done, 100));
+          }
+        }
+        expect(status, output).toBe(200);
+        // The boot may still be compiling when the first page answers.
+        const warning =
+          /warning: Could not read page file "[^"]*locked\.html": EACCES/;
+        const warned = Date.now() + 20_000;
+        while (!warning.test(output) && Date.now() < warned)
+          await new Promise((done) => setTimeout(done, 50));
+        expect(output).toMatch(warning);
+        expect(output).not.toMatch(/Build failed/);
+        expect(child.exitCode).toBeNull();
+      } finally {
+        const exited = new Promise((done) => child.once("exit", done));
+        if (child.exitCode === null && child.signalCode === null) {
+          process.kill(-child.pid!, "SIGKILL");
+          await exited;
+        }
+      }
+    });
   },
 );
