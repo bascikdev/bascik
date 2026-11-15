@@ -234,6 +234,8 @@ describe.skipIf(process.platform === "win32")("process leak guard", () => {
       child.stdout!.on("data", (chunk) => (output += chunk));
       child.stderr!.on("data", (chunk) => (output += chunk));
       const [code] = await once(child, "close");
+      // Without the colors Vitest prints on a CI runner.
+      output = output.replace(/\u001b\[[0-9;]*m/g, "");
       return { code, output, pidFile };
     }
 
