@@ -25,7 +25,7 @@ export default async function setup(): Promise<
   if (process.platform === "win32") return undefined;
   const guard = createProcessLeakGuard({ rootPid: process.pid });
   process.env[LEAK_GUARD_ENV] = guard.marker;
-  // A run that was killed (a closed terminal, a cancelled job) never got to
+  // A run that was killed (a closed terminal, a canceled job) never got to
   // its own teardown below. What it left is ended here, before it can hold a
   // port this run needs, and reported without failing this run.
   const abandoned = await guard.sweepAbandoned();
