@@ -1500,12 +1500,29 @@ const pendingLookahead = (
   return before === 60 /* < */ && run === text.length ? "lt" : "";
 };
 
+/** Raw text elements whose body the compiler reads as markup, not as code or a value. */
+const MARKUP_BODY_ELEMENTS = new Set([
+  "noscript",
+  "iframe",
+  "noembed",
+  "noframes",
+  "xmp",
+]);
+const MARKUP_BODY_ELEMENT_PATTERN =
+  /<(?:noscript|iframe|noembed|noframes|xmp)/i;
+
 /**
  * Every comment in `html`, in document order, as the browser reads it. A
  * `<!--` inside a raw text element (`<style>`, `<script>`, `<textarea>`) is
  * that element's text, not a comment, so a CSS string such as
  * `content: "<!--"` starts none. `/<!--[\s\S]*?-->/g` cannot tell the two
  * apart and runs from such a string to the next real comment's `-->`.
+ *
+ * The body of a `<noscript>`, `<iframe>`, `<noembed>`, `<noframes>` or
+ * `<xmp>` is text to a browser that runs scripts, but the compiler reads it
+ * as markup (a `<noscript>` holds the page for a browser that does not), so
+ * the comments in such a body are reported too, as the markup parse of that
+ * body finds them. A comment the body ends inside ends with the body.
  *
  * Past the point where the scan can no longer follow the browser's parse
  * (`stoppedAt`), every `<!--` counts, as that regex counted it.
@@ -1515,6 +1532,18 @@ export const scanHtmlComments = (html: string): HtmlRange[] => {
   if (!html.includes("<!--")) return comments;
   const { stoppedAt } = scanHtml(html, {
     comment: ({ start, end }) => comments.push({ start, end }),
+    // Tokens cost an object each, so they are read only when such an element
+    // may be present.
+    token: MARKUP_BODY_ELEMENT_PATTERN.test(html)
+      ? ({ kind, name, start, end }) => {
+          if (kind !== "raw" || !MARKUP_BODY_ELEMENTS.has(name)) return;
+          for (const comment of scanHtmlComments(html.slice(start, end)))
+            comments.push({
+              start: start + comment.start,
+              end: start + comment.end,
+            });
+        }
+      : undefined,
   });
   let start = stoppedAt < html.length ? html.indexOf("<!--", stoppedAt) : -1;
   while (start !== -1) {

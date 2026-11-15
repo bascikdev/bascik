@@ -711,6 +711,32 @@ describe("scanHtmlComments", () => {
     ).toEqual(["<!-- real -->"]);
   });
 
+  // The compiler reads these bodies as markup (a <noscript> is the page for a
+  // browser without scripts), so markup commented out in one stays hidden.
+  it.each(["noscript", "iframe", "noembed", "noframes", "xmp"])(
+    "reports the comments inside <%s>, read as markup",
+    (name) => {
+      expect(
+        texts(
+          `<!--a--><${name}><!-- <style>.a{}</style> --><p>x</p>` +
+            `<style>.b::before { content: "<!--"; }</style><!--b--></${name}>` +
+            `<p>y</p><!--c-->`,
+        ),
+      ).toEqual([
+        "<!--a-->",
+        "<!-- <style>.a{}</style> -->",
+        "<!--b-->",
+        "<!--c-->",
+      ]);
+    },
+  );
+
+  it("ends a comment the <noscript> body ends inside at the end tag", () => {
+    expect(
+      texts("<NoScript ><!-- open</noscript><p>x</p> --><!--c-->"),
+    ).toEqual(["<!-- open", "<!--c-->"]);
+  });
+
   it("runs a comment the input ends inside to the end", () => {
     expect(texts("<p>a</p><!-- open <p>")).toEqual(["<!-- open <p>"]);
   });

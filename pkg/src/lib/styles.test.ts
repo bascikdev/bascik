@@ -2587,6 +2587,14 @@ describe("extractInlineStyles", () => {
     const input = '<p class="a">a</p><!-- <style>.a { color: red; }</style>';
     expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
   });
+
+  // A <noscript> body is markup for a browser without scripts, so a
+  // stylesheet commented out inside one must not reach the page.
+  it("leaves a <style> commented out inside <noscript> as written", () => {
+    const input =
+      '<noscript><!-- <style>.a { color: blue; }</style> --><p class="a">a</p></noscript>';
+    expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
+  });
 });
 
 describe("Resilience to regex replacement patterns (TDD)", () => {

@@ -47,6 +47,11 @@ describe("scanHtmlComments", () => {
         (n: number) => "<!--a-->".repeat(n),
         (n: number) =>
           `<style>${"<!--".repeat(n)}</style>${"<!--a-->".repeat(n)}`,
+        (n: number) => `<noscript>${"<!--a-->".repeat(n)}</noscript>`,
+        (n: number) =>
+          "<noscript><!--a--><iframe><!--b--></iframe></noscript>".repeat(n),
+        (n: number) => `<noscript>${"<!--".repeat(n)}</noscript>`,
+        (n: number) => `${"<noscript".repeat(n)}<!--a-->`,
         (n: number) => `${stopped}${"<!--a-->".repeat(n)}`,
         (n: number) => `${stopped}${"<!--".repeat(n * 2)}`,
         (n: number) => `${stopped}${"<!--a--".repeat(n)}`,
