@@ -727,6 +727,13 @@ export interface ExecuteBuildScriptOptions {
    */
   onReadsPageContext?: () => void;
   /**
+   * Set by the component manifest, which runs a component's build scripts
+   * with an empty page context. A script that read its page context and then
+   * failed (one that opens `BASCIK_PAGE_FILE`, say) is reported through
+   * `onReadsPageContext` instead of as a build script error.
+   */
+  emptyPageContext?: boolean;
+  /**
    * Where to count this call's cache hits, misses, and child-process time.
    * The caller owns the object; a page passes one through every pass (page,
    * body, head) so the counts on its `transpiled:` line are the page's.
@@ -1233,6 +1240,15 @@ export const executeBuildScripts = async (
         // The script's own output, printed once. Its error report is the message below.
         if (err?.stdout) process.stdout.write(err.stdout);
         if (err?.stderr) process.stderr.write(err.stderr);
+        if (options?.emptyPageContext && err?.readsPageContext === true) {
+          // The script needs a page and was given none. Its component is
+          // refused through onReadsPageContext; the pages that use it run the
+          // script with their own context and report a real failure there.
+          dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+          task.output = "";
+          task.readsPageContext = true;
+          continue;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         const { location } = task;
         let errorMsg = `[bascik] build script error`;

@@ -27,6 +27,16 @@ export interface DirectiveHandlerResult<T = unknown> {
   readsPageContext: boolean;
 }
 
+/**
+ * The error a failed directive script rejects with. `readsPageContext` is
+ * true when the script had looked at its page context before it failed.
+ */
+export type DirectiveHandlerError = Error & {
+  stdout?: string;
+  stderr?: string;
+  readsPageContext?: boolean;
+};
+
 export interface DirectiveHandlerOptions {
   extraEnv?: Record<string, string>;
   args?: string[];
@@ -78,6 +88,17 @@ process.env = new Proxy(process.env, {
     readsPageContext = true;
     return Reflect.ownKeys(target);
   },
+});
+// A script that fails writes no result, so a failed run says here whether it
+// had looked at its page. The component manifest runs a script with no page:
+// one that needs a page and throws without it is page-dependent, not broken.
+process.on("exit", (code) => {
+  if (code === 0 || !readsPageContext) return;
+  try {
+    writeFileSync(resultFile + ".page-context", "", { mode: 0o600 });
+  } catch {
+    // best effort
+  }
 });
 
 let mod;
@@ -231,6 +252,7 @@ export const runDirectiveHandler = async <T = unknown>(
   const runDir = await getRunnerDirectory();
   const runnerScriptPath = join(runDir, "runner.mjs");
   const resultFilePath = join(runDir, `${++resultCounter}.result.json`);
+  const pageContextMarkerPath = `${resultFilePath}.page-context`;
 
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -369,6 +391,13 @@ export const runDirectiveHandler = async <T = unknown>(
           settle(err, rawStdout ?? "", rawStderr ?? "");
         },
       );
+    }).catch(async (err: DirectiveHandlerError) => {
+      // The runner leaves this marker when a failed script had read its page.
+      err.readsPageContext = await stat(pageContextMarkerPath).then(
+        () => true,
+        () => false,
+      );
+      throw err;
     });
 
     // Verify result file exists and is within limit before reading into parent
@@ -431,6 +460,7 @@ export const runDirectiveHandler = async <T = unknown>(
   } finally {
     await cleanupSpill().catch(() => {});
     await rm(resultFilePath, { force: true }).catch(() => {});
+    await rm(pageContextMarkerPath, { force: true }).catch(() => {});
     semaphore.release();
   }
 };
