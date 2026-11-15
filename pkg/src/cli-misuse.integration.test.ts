@@ -278,7 +278,7 @@ setInterval(() => {}, 1000);
   /**
    * Starts the CLI in a project whose `pipeline.exec` is `exec`, waits for
    * scripts/long.ts to be running, sends `signal` to the CLI alone (as
-   * `timeout`, a supervisor, or a cancelled CI job does), and returns how
+   * `timeout`, a supervisor, or a canceled CI job does), and returns how
    * the CLI ended with the PIDs the script wrote.
    */
   const signalWhileScriptRuns = async (
