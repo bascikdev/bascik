@@ -14,7 +14,7 @@ import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
  * The `@bascik/bascik` release a new project depends on. The agent skills are
  * installed from the same release's tag, so the two always match.
  */
-export const BASCIK_VERSION = "1.0.0";
+export const BASCIK_VERSION = "1.0.1";
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
