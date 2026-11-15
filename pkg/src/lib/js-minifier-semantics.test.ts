@@ -162,6 +162,26 @@ describe("minifyJs – a declaration keyword at the end of a line", () => {
   });
 });
 
+describe("minifyJs – a private name spelled like a keyword at the end of a line", () => {
+  // `this.#class` is a value, so the line break after it ends the statement.
+  it.each([
+    [
+      "a declaration keyword",
+      'class A {\n  #class = "x"\n  #let = 2\n  read() {\n    const c = this.#class\n    const l = this.#let\n    return c + l\n  }\n}\nlog.push(new A().read())',
+    ],
+    [
+      "an operator keyword",
+      "class A {\n  #default = 1\n  #new = 2\n  read() {\n    const d = this.#default\n    const n = this.#new\n    return d + n\n  }\n}\nlog.push(new A().read())",
+    ],
+    [
+      "a field without a value",
+      "class A {\n  #class\n  #default\n  set() {\n    this.#class = 1\n    this.#default = 2\n    return this.#class + this.#default\n  }\n}\nlog.push(new A().set())",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – lines starting with ( or [ continue the expression (F037)", () => {
   it.each([
     'const getEl = () => (f) => (log.push("called"), 1)\nconst el = getEl("x")\n(async () => { log.push("iife") })\nlog.push(el)',

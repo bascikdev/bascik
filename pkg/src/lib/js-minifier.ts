@@ -102,10 +102,10 @@ const EXPRESSION_CONTINUING_KEYWORDS = new Set(
  * (`typeof\nx`, `a in\nb`). Contextual words (`of`, `await`, `from`) are left out because they
  * are also valid identifiers that can end a statement; `let` is one too, but a statement that
  * ends in a variable named `let` is not something scripts contain. The character class keeps
- * `x.case` a property.
+ * `x.case` a property and `this.#class` a private name.
  */
 const LINE_END_CONTINUING_KEYWORD =
-  /(?:^|[^.\w$])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class)\s*$/;
+  /(?:^|[^.\w$#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class)\s*$/;
 
 /**
  * A line ending in a restricted production: ECMAScript ends the statement at the line break
