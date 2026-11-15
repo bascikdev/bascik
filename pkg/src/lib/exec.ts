@@ -4,7 +4,7 @@ import { matchesGlob, resolve } from "node:path";
 import { isSameOrInside } from "./path-containment.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
-import { registerExitStopper } from "./exit-stoppers.ts";
+import { registerExitStopper, type ExitStopper } from "./exit-stoppers.ts";
 import { formatDuration } from "./format.ts";
 import { logInfo } from "./log.ts";
 import { stdout as colorOut } from "./colors.ts";
@@ -469,11 +469,11 @@ export const execShutdownHandler = async (
 // stoppers (`exitAfterStopping` for CLI failures, a dev bind failure and the
 // crash net; `runShutdownHandlers` for SIGINT / SIGTERM and exec-failure
 // stops), so no exit leaves a parallel script running in the terminal.
-registerExitStopper(() =>
+export const stopExecChildren: ExitStopper = () =>
   activeChildren.size > 0 || pendingLeftovers.size > 0
     ? execShutdownHandler()
-    : null,
-);
+    : null;
+registerExitStopper(stopExecChildren);
 
 export const runScript = (
   entry: ExecEntry,

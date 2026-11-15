@@ -226,3 +226,87 @@ describe("exitAfterStopping", () => {
     expect(exit).toHaveBeenCalledWith(1);
   });
 });
+
+describe("exitOnSignalsAfterStopping", () => {
+  let kill: ReturnType<typeof vi.spyOn>;
+  let stdoutWrite: typeof process.stdout.write;
+
+  beforeEach(() => {
+    // The listener ends the process by sending itself the signal.
+    kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    // A pending stop quiets stdout for good: the real process dies next.
+    stdoutWrite = process.stdout.write;
+    process.removeAllListeners("SIGINT");
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGHUP");
+  });
+
+  afterEach(() => {
+    kill.mockRestore();
+    process.stdout.write = stdoutWrite;
+  });
+
+  it("with nothing to stop, ends the process with the same signal at once", async () => {
+    const { exitOnSignalsAfterStopping } = await load();
+    const stop = vi.fn(() => null);
+    exitOnSignalsAfterStopping(stop);
+    process.emit("SIGHUP");
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGHUP");
+    // No listener is left to swallow the signal it sends itself.
+    expect(process.listenerCount("SIGHUP")).toBe(0);
+    expect(process.listenerCount("SIGINT")).toBe(0);
+    expect(process.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("waits for the stop, as an exit in progress a second signal can cut short, then ends with the signal", async () => {
+    const { exitOnSignalsAfterStopping, isExitInProgress } = await load();
+    const stop = deferred();
+    exitOnSignalsAfterStopping(() => stop.promise);
+    process.exitCode = undefined;
+    process.emit("SIGTERM");
+    expect(kill).not.toHaveBeenCalled();
+    expect(isExitInProgress()).toBe(true);
+    expect(process.exitCode).toBe(143);
+    expect(process.listenerCount("SIGINT")).toBe(0);
+    expect(process.listenerCount("SIGTERM")).toBe(0);
+    expect(process.listenerCount("SIGHUP")).toBe(0);
+    stop.resolve();
+    await flush();
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGTERM");
+  });
+
+  it("still ends the process when the stop rejects or throws", async () => {
+    const { exitOnSignalsAfterStopping } = await load();
+    const stop = deferred();
+    exitOnSignalsAfterStopping(() => stop.promise);
+    process.emit("SIGINT");
+    stop.reject(new Error("ps failed"));
+    await flush();
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+
+    const again = await load();
+    kill.mockClear();
+    again.exitOnSignalsAfterStopping(() => {
+      throw new Error("stopper threw");
+    });
+    process.emit("SIGINT");
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+  });
+
+  it("handOverSignals removes its listeners and leaves a server's in place", async () => {
+    const { exitOnSignalsAfterStopping, handOverSignals } = await load();
+    const stop = vi.fn(() => null);
+    exitOnSignalsAfterStopping(stop);
+    const server = vi.fn();
+    process.once("SIGTERM", server);
+    handOverSignals();
+    expect(process.listenerCount("SIGINT")).toBe(0);
+    expect(process.listenerCount("SIGHUP")).toBe(0);
+    process.emit("SIGTERM");
+    expect(server).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+  });
+});
