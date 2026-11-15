@@ -265,3 +265,71 @@ setInterval(() => {}, 1000);
     60_000,
   );
 });
+
+describe("build scripts when Bascik is gone", () => {
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // A page whose build script records its PID and then takes a minute.
+  const slowPage = `<!doctype html><html lang="en"><head><title>P</title></head><body><h1>Hi</h1>
+<script data-bascik-build>
+import { writeFileSync } from "node:fs";
+writeFileSync("script-pid.json", JSON.stringify(process.pid));
+await new Promise((resolve) => setTimeout(resolve, 60_000));
+export default () => "<p>done</p>";
+</script></body></html>`;
+
+  it.skipIf(process.platform === "win32").each([
+    [
+      "a dev server stopped with SIGTERM",
+      ["--port", "44014", "--no-pin"],
+      "SIGTERM",
+    ],
+    ["a build killed with SIGKILL", ["--build"], "SIGKILL"],
+  ] as const)(
+    "%s leaves no data-bascik-build script running",
+    async (_name, args, signal) => {
+      const root = await project(`script-orphan-${signal.toLowerCase()}`, {
+        "src/pages/index.html": slowPage,
+      });
+      const { spawn } = await import("node:child_process");
+      const child = spawn(process.execPath, [cli, ...args], {
+        cwd: root,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      startedPids.add(child.pid!);
+      let output = "";
+      child.stdout.on("data", (d: Buffer) => (output += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (output += d.toString()));
+      const exited = new Promise<void>((done) =>
+        child.once("exit", () => done()),
+      );
+      const pidPath = join(root, "script-pid.json");
+      const deadline = Date.now() + 30_000;
+      while (
+        !existsSync(pidPath) &&
+        child.exitCode === null &&
+        Date.now() < deadline
+      )
+        await new Promise((r) => setTimeout(r, 50));
+      expect(existsSync(pidPath), output).toBe(true);
+      const { readFile } = await import("node:fs/promises");
+      const scriptPid = JSON.parse(await readFile(pidPath, "utf8")) as number;
+      startedPids.add(scriptPid);
+      expect(alive(scriptPid)).toBe(true);
+
+      child.kill(signal);
+      await exited;
+
+      // Nothing is left to read the script's result or to time it out.
+      await expect.poll(() => alive(scriptPid), { timeout: 5000 }).toBe(false);
+    },
+    60_000,
+  );
+});
