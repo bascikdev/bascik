@@ -1702,7 +1702,8 @@ export const resolveCssImportsSync = (
 /**
  * A function returning the `{}` nesting depth at an offset of `css`, for
  * offsets asked in increasing order. Braces in strings and comments do not
- * count.
+ * count, and an offset inside a string or comment has depth -1: what stands
+ * there is text, not a statement.
  */
 const braceDepthScanner = (css: string): ((offset: number) => number) => {
   let index = 0;
@@ -1726,7 +1727,7 @@ const braceDepthScanner = (css: string): ((offset: number) => number) => {
       else if (char === "}" && depth > 0) depth--;
       index++;
     }
-    return depth;
+    return index > offset ? -1 : depth;
   };
 };
 
@@ -1748,13 +1749,20 @@ export const hoistCssImports = (css: string): string => {
     /@import\s+(?:url\((?:\s*(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)\s*|(?=([^)]*))\1)\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)[^;{}@]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
   // Only top-level `@layer` statements move: one inside `@media` must stay
   // there.
+  // `@import` or `@layer` text inside a string (`content: "@import …;"`) is
+  // not a statement and stays where it is.
   const depthAt = braceDepthScanner(css);
-  const matches = [...css.matchAll(statementRegex)];
+  const depths = new Map<number, number>();
+  const matches = [...css.matchAll(statementRegex)].filter((statement) => {
+    const depth = depthAt(statement.index);
+    depths.set(statement.index, depth);
+    return depth !== -1;
+  });
   const hoistableLayerStatements = new Set(
     matches
       .filter(
         (statement) =>
-          !/^@import/i.test(statement[0]) && depthAt(statement.index) === 0,
+          !/^@import/i.test(statement[0]) && depths.get(statement.index) === 0,
       )
       .map((statement) => statement.index),
   );
@@ -1762,8 +1770,12 @@ export const hoistCssImports = (css: string): string => {
   // layer where it stands, so a statement after it must stay after it, or
   // the layers it names would move ahead of that one.
   let layerOrderFixedFrom = css.length;
+  const layerDepthAt = braceDepthScanner(css);
   for (const layer of css.matchAll(/@layer\b/gi)) {
-    if (!hoistableLayerStatements.has(layer.index)) {
+    if (
+      !hoistableLayerStatements.has(layer.index) &&
+      layerDepthAt(layer.index) !== -1
+    ) {
       layerOrderFixedFrom = layer.index;
       break;
     }
