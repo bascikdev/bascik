@@ -37,6 +37,112 @@ const expectSameProgram = (source: string): string => {
   return minified;
 };
 
+describe("minifyJs – operators that would join into another token", () => {
+  // `+` and `+` are two operators, `++` is one; a line break or a comment kept them apart.
+  it.each([
+    [
+      "a sign on the next line",
+      "const a = 1, b = '2'\nconst x = a +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a negation on the next line",
+      "const a = 1, b = 2\nconst x = a -\n  -b\nlog.push(x)",
+    ],
+    [
+      "a prefix ++ on the next line",
+      "let a = 1, b = 2\nconst x = a +\n  ++b\nlog.push(x, a, b)",
+    ],
+    [
+      "a prefix -- on the next line",
+      "let a = 1, b = 2\nconst x = a -\n  --b\nlog.push(x, a, b)",
+    ],
+    [
+      "a sign after a blank line",
+      "const a = 1, b = '2'\nconst x = a +\n\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign after a line comment",
+      "const a = 1, b = '2'\nconst x = a + // then the number\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign after a block comment",
+      "const a = 1, b = '2'\nconst x = a +/* sign */+ b\nlog.push(x)",
+    ],
+    [
+      "a negation after a block comment",
+      "const a = 1, b = 2\nconst x = a -/* sign */- b\nlog.push(x)",
+    ],
+    [
+      "a prefix ++ after a block comment",
+      "let a = 1, b = 2\nconst x = a +/* then */++b\nlog.push(x, a, b)",
+    ],
+    [
+      "a string then a sign on the next line",
+      "const b = '2'\nconst x = 'a' +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign then a string on the next line",
+      "const a = 1\nconst x = a +\n  +'2'\nlog.push(x)",
+    ],
+    [
+      "three plus signs over three lines",
+      "const a = 1, b = '2'\nconst x = a +\n  +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a postfix ++ then a plus line",
+      "let a = 1, b = 2\nconst x = a++\n  + b\nlog.push(x, a)",
+    ],
+  ])("keeps apart %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `/` and then a regex literal must not become `//`, which comments out the rest.
+  it.each([
+    ["a number", "const x = 6 / /ab/.source.length\nlog.push(x)"],
+    [
+      "a name",
+      "const a = 6\nconst x = a / /ab/.source.length / 3\nlog.push(x)",
+    ],
+    [
+      "a name, regex on the next line",
+      "const a = 6\nconst x = a /\n  /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a name, slash on the next line",
+      "const a = 6\nconst x = a\n  / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a call",
+      "const a = () => 6\nconst x = a() / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "an index",
+      "const a = [6]\nconst x = a[0] / /ab/.source.length\nlog.push(x)",
+    ],
+    ["a string", "const x = '6' / /ab/.source.length\nlog.push(x)"],
+    ["a template", "const x = `6` / /ab/.source.length\nlog.push(x)"],
+    [
+      "a postfix update",
+      "let a = 6\nconst x = a++ / /ab/.source.length\nlog.push(x, a)",
+    ],
+    [
+      "a regex property",
+      "const x = /abcd/.source.length / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a block comment",
+      "const a = 6\nconst x = a / /* by */ /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "no space at all",
+      "const a = 6\nconst x = a/ /ab/.source.length\nlog.push(x)",
+    ],
+  ])("keeps a division by a regex after %s", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).toContain("log.push(");
+  });
+});
+
 describe("minifyJs – postfix update before division (F035)", () => {
   it("treats `/` after a postfix ++ as division so a trailing // comment stays a comment", () => {
     const source = [

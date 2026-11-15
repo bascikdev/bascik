@@ -752,13 +752,14 @@ const scanSegments = (js: string): Segment[] => {
         }
         i += 2;
         // If stripping a block comment between two word characters (e.g., return/*x*/v),
-        // preserve a space so token boundaries aren't lost.
+        // preserve a space so token boundaries aren't lost. The same goes for two `+` or
+        // two `-`, which would join into `++` or `--` (`a +/* sign */+ b`).
         const nextChar = js[i];
         if (
           lastRaw &&
-          isWordChar(lastRaw) &&
           nextChar &&
-          isWordChar(nextChar)
+          ((isWordChar(lastRaw) && isWordChar(nextChar)) ||
+            ((lastRaw === "+" || lastRaw === "-") && nextChar === lastRaw))
         ) {
           appendCode(" ");
         }
@@ -829,6 +830,10 @@ export const minifyJs = (js: string): string => {
         result += ";";
       } else if (result && isWordChar(resultLast) && isWordChar(seg.text[0])) {
         // Ensure space between preceding keyword/identifier and literal if needed
+        result += " ";
+      } else if (resultLast === "/" && seg.text[0] === "/") {
+        // A division sign and then a regex literal (`a / /b/.source.length`): without the
+        // space the two slashes start a line comment that swallows the rest of the script.
         result += " ";
       }
       result += seg.text;
@@ -1006,8 +1011,13 @@ export const minifyJs = (js: string): string => {
       prevLine = line;
       if (needsSemicolon) {
         appendProcessed(";" + line);
-      } else if (isWordChar(lastChar) && isWordChar(firstChar)) {
-        // Ensure space between word tokens when joining without semicolon
+      } else if (
+        (isWordChar(lastChar) && isWordChar(firstChar)) ||
+        ((lastChar === "+" || lastChar === "-") && firstChar === lastChar)
+      ) {
+        // Ensure space between word tokens when joining without semicolon, and between a
+        // binary `+` or `-` and a sign or update on the next line: `a +\n+b` is `a+ +b`,
+        // and `a +\n++b` is `a+ ++b`, where `a+++b` would read as `a++ + b`.
         appendProcessed(" " + line);
       } else {
         appendProcessed(line);
