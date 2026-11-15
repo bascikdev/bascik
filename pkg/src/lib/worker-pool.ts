@@ -108,10 +108,15 @@ export class WorkerPool<Task, Result> {
   #trimming = new Set<Promise<unknown>>();
 
   #env: NodeJS.ProcessEnv | undefined;
+  #argv: string[] | undefined;
   #readySignal: boolean;
   #stopSignal: boolean;
 
   /**
+   * `argv`: arguments the worker script sees in `process.argv`. A worker
+   * thread does not inherit this thread's, so a flag the worker reads for
+   * itself (`--config`) has to be passed on here.
+   *
    * `readySignal`: the worker script posts `{ ready: true }` once its module
    * graph has finished evaluating, and the pool never terminates a worker
    * before that (or before `READY_GRACE_MS`). Node 24 can abort the whole
@@ -144,11 +149,13 @@ export class WorkerPool<Task, Result> {
     initData: unknown,
     options: {
       env?: NodeJS.ProcessEnv;
+      argv?: string[];
       readySignal?: boolean;
       stopSignal?: boolean;
     } = {},
   ) {
     this.#env = options.env;
+    this.#argv = options.argv;
     this.#readySignal = options.readySignal ?? false;
     this.#stopSignal = options.stopSignal ?? false;
     this.#workerScript = workerScript;
@@ -172,6 +179,8 @@ export class WorkerPool<Task, Result> {
         execArgv,
         // Only passed when asked for. Omitting it keeps the default: a copy of this thread's environment.
         ...(this.#env ? { env: this.#env } : {}),
+        // Appended to the worker's own process.argv, which starts without this thread's arguments.
+        ...(this.#argv?.length ? { argv: this.#argv } : {}),
       });
     } catch (error) {
       // Constructor failure (missing/unloadable module). Treat as a startup

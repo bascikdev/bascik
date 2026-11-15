@@ -66,7 +66,7 @@ Rules when touching this path:
 
 Worker threads run in isolated V8 contexts. When working on worker tasks, keep these constraints in mind:
 
-1. **Process Arguments (`process.argv`):** Worker threads do not automatically inherit `process.argv` modifications made on the main thread. Configuration must be passed explicitly via worker data or task payloads.
+1. **Process Arguments (`process.argv`):** Worker threads do not automatically inherit `process.argv` modifications made on the main thread. Configuration must be passed explicitly via worker data or task payloads. Page workers load the config file themselves, so the page pool forwards an explicit `--config <path>` through the pool's `argv` option (`explicitConfigArgv` in `config-file-names.ts`); other flags reach workers through the environment (`bootEnvironment`).
 2. **Global State & Singletons:** Module-level caches or singletons in `pkg/src/` do not share memory across threads.
 3. **Filesystem Side-Effects:** During `bascik --build` the worker writes `dist/` output itself inside `transpilePage`; in dev mode the main thread stores the transferred bytes in memory and writes them to disk. Return bytes, not strings, for anything large.
 4. **No Direct DOM or Window:** Worker environments are pure Node.js environments.

@@ -87,6 +87,26 @@ describe("WorkerPool", () => {
     );
   });
 
+  it("gives workers the arguments it was handed, and none when it was handed none", () => {
+    new WorkerPool<string, string>(
+      "/fake/worker.js",
+      1,
+      {},
+      { argv: ["--config=/project/config/site.mjs"] },
+    );
+    expect(WorkerMock).toHaveBeenLastCalledWith(
+      "/fake/worker.js",
+      expect.objectContaining({ argv: ["--config=/project/config/site.mjs"] }),
+    );
+    for (const argv of [undefined, []]) {
+      WorkerMock.mockClear();
+      new WorkerPool<string, string>("/fake/worker.js", 1, {}, { argv });
+      expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty(
+        "argv",
+      );
+    }
+  });
+
   it("dispatches tasks to idle workers and resolves with the result", async () => {
     const pool = makePool(1);
     const promise = pool.run("task-a");

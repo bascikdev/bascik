@@ -51,3 +51,18 @@ export const findConfigFile = (
   );
   return { path: found && resolve(cwd, found), explicit: false };
 };
+
+/**
+ * The explicit `--config` flag as arguments for a worker thread, or none when
+ * the config was discovered. A worker does not inherit `process.argv`, so a
+ * worker that loads the config would otherwise fall back to discovery and
+ * compile with a different config than the main thread. The path is already
+ * resolved, so the worker finds the same file whatever its own cwd is.
+ */
+export const explicitConfigArgv = (
+  argv: string[] = process.argv.slice(2),
+  cwd: string = process.cwd(),
+): string[] => {
+  const found = findConfigFile(argv, cwd);
+  return found.explicit && found.path ? [`--config=${found.path}`] : [];
+};
