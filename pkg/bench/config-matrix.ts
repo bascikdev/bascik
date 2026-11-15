@@ -360,10 +360,35 @@ const VARIANTS: Variant[] = [
 
 // --- arguments -------------------------------------------------------------
 
+/** A mistake in the command line: reported without a stack, exit code 2. */
+class UsageError extends Error {}
+
 const argValue = (flag: string): string | undefined => {
   const index = process.argv.indexOf(flag);
-  return index === -1 ? undefined : process.argv[index + 1];
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  // A flag that lost its value must not fall back to the default: `--only`
+  // with nothing after it would run, and pass, a different set of variants.
+  if (value === undefined || value.startsWith("--"))
+    throw new UsageError(`${flag} needs a value.`);
+  return value;
 };
+
+/** The `--only` names, each checked against the variant list. */
+const onlyNames = (): string[] | undefined => {
+  const names = argValue("--only")?.split(",");
+  const unknown = names?.filter(
+    (name) => !VARIANTS.some((variant) => variant.name === name),
+  );
+  if (unknown?.length)
+    throw new UsageError(
+      `--only names no variant: ${unknown.join(", ")}. Run with --list to see the names.`,
+    );
+  return names;
+};
+
+/** The temporary fixture copy to remove when the run ends, however it ends. */
+let temporaryProject: string | undefined;
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(benchDir, "..");
@@ -569,13 +594,16 @@ const main = async (): Promise<number> => {
       console.log(`${variant.name}\t${variant.expect}`);
     return 0;
   }
+  // Read every argument before anything is created, so a mistake in one
+  // leaves nothing behind.
   const projectArg = argValue("--project");
-  const keep = process.argv.includes("--keep");
-  const project = projectArg ? resolve(projectArg) : makeFixtureProject();
-  const only = argValue("--only")?.split(",");
-  const skipBrowser = process.argv.includes("--skip-browser");
-  const work = join(project, ".config-matrix");
   const reportArg = argValue("--report-dir");
+  const only = onlyNames();
+  const keep = process.argv.includes("--keep");
+  const skipBrowser = process.argv.includes("--skip-browser");
+  const project = projectArg ? resolve(projectArg) : makeFixtureProject();
+  if (!projectArg && !keep) temporaryProject = project;
+  const work = join(project, ".config-matrix");
   const reportDir = resolve(reportArg ?? join(work, "report"));
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
@@ -612,6 +640,17 @@ const main = async (): Promise<number> => {
       configPath,
       `export default ${JSON.stringify(config, null, 2)};\n`,
     );
+    // The copy is removed after the build, folder and all. In a `--project`
+    // run that folder could be the project's own, so it must not exist yet.
+    const relocated =
+      variant.relocate && join(project, variant.relocate.pages.split("/")[0]);
+    if (relocated && existsSync(relocated)) {
+      fail(
+        variant.name,
+        `not built: ${relocated} exists, and this variant copies the pages and components there and removes the folder afterwards`,
+      );
+      continue;
+    }
     if (variant.relocate) {
       cpSync(
         join(project, "src/pages"),
@@ -632,12 +671,7 @@ const main = async (): Promise<number> => {
       configPath,
       variant.siteUrl ?? SITE_URL,
     );
-    if (variant.relocate) {
-      rmSync(join(project, variant.relocate.pages.split("/")[0]), {
-        recursive: true,
-        force: true,
-      });
-    }
+    if (relocated) rmSync(relocated, { recursive: true, force: true });
     writeFileSync(join(reportDir, `${variant.name}.log`), result.output);
     process.stdout.write(
       `built ${variant.name} (${Date.now() - started}ms, exit ${result.code})\n`,
@@ -769,8 +803,7 @@ const main = async (): Promise<number> => {
   writeFileSync(join(reportDir, "summary.txt"), `${text}\n`);
   console.log(text);
   console.log(`\n${failures.size} of ${selected.length} variants failed.`);
-  if (!projectArg && !keep) {
-    rmSync(project, { recursive: true, force: true });
+  if (temporaryProject) {
     if (reportArg) console.log(`Report: ${reportDir}`);
   } else {
     console.log(`Report: ${reportDir}\nBuilds: ${join(work, "out")}`);
@@ -778,4 +811,15 @@ const main = async (): Promise<number> => {
   return failures.size > 0 ? 1 : 0;
 };
 
-process.exitCode = await main();
+try {
+  process.exitCode = await main();
+} catch (error) {
+  if (!(error instanceof UsageError)) throw error;
+  console.error(`config-matrix: ${error.message}`);
+  process.exitCode = 2;
+} finally {
+  // Also after a crash (a browser that will not start, a full disk): the
+  // copy holds every build's output.
+  if (temporaryProject)
+    rmSync(temporaryProject, { recursive: true, force: true });
+}

@@ -77,7 +77,7 @@ yarn workspace @bascik/bascik profile:matrix --list
 yarn workspace @bascik/bascik profile:matrix --only workers+base,base --keep
 ```
 
-The fixture in `config-matrix-fixture/` is copied to a private temporary directory, which is removed afterwards unless `--keep` is passed. Each variant writes its own config file and runs this workspace's CLI (`src/index.ts --build --config <file>`) into its own output directory, one build after another on the same project path, because instance IDs hash absolute source paths. `--project <dir>` runs the same variants on another project, `--report-dir <dir>` keeps the logs, snapshots, and summary, and `--skip-browser` stops after the byte comparisons.
+The fixture in `config-matrix-fixture/` is copied to a private temporary directory, which is removed afterwards unless `--keep` is passed. Each variant writes its own config file and runs this workspace's CLI (`src/index.ts --build --config <file>`) into its own output directory, one build after another on the same project path, because instance IDs hash absolute source paths. `--project <dir>` runs the same variants on another project, `--report-dir <dir>` keeps the logs, snapshots, and summary, and `--skip-browser` stops after the byte comparisons. In a `--project` run the two `directories` variants copy the pages and components to `alt/` and remove that folder after the build, so they are reported as not built when the project already has an `alt/` folder.
 
 Each variant states what it must preserve:
 
@@ -94,7 +94,7 @@ The browser snapshot (`config-matrix-snapshot.js`, evaluated in Chromium through
 
 To cover a new option, add a variant to `VARIANTS`. To cover a new construct, add it to the fixture with a `data-probe` and, when it needs a new measurement, extend the snapshot. Keep the fixture's stylesheet `<link>` in place: `assets.inlineStyles` variants tolerate the missing file (`allowMissingCss`), because the docs tell authors to remove the link when they inline it.
 
-The command exits 1 when any variant fails and prints each difference as `page.probe.field: this ... | base ...`. It runs no dev server and no `bascik --server`; the e2e lanes cover those.
+The command exits 1 when any variant fails and prints each difference as `page.probe.field: this ... | base ...`. It exits 2, before building anything, when `--only` names a variant that does not exist or a flag is missing its value. It runs no dev server and no `bascik --server`; the e2e lanes cover those.
 
 ## CPU Profile Summaries
 
