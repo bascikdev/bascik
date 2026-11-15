@@ -115,6 +115,114 @@ describe("minifyJs – statement starting with a string or regex literal (F036)"
   });
 });
 
+describe("minifyJs – else or while on the line after a value's closing brace", () => {
+  // The `}` ends an object literal or a function, not the `if` body: `else` needs a `;` first.
+  it.each([
+    [
+      "an object literal",
+      "let x\nif (log.length) x = { a: 1 }\nelse x = { a: 2 }\nlog.push(x.a)",
+    ],
+    [
+      "an empty object",
+      "let x\nif (!log.length) x = {}\nelse x = null\nlog.push(typeof x)",
+    ],
+    [
+      "an object holding a string",
+      "let x\nif (log.length) x = { a: 'b' }\nelse x = { a: `c` }\nlog.push(x.a)",
+    ],
+    [
+      "a returned object",
+      "const f = (a) => {\n  if (a) return { a }\n  else return { a: 0 }\n}\nlog.push(f(1).a, f(0).a)",
+    ],
+    [
+      "a function expression",
+      "let cb\nif (log.length) cb = function () { return 1 }\nelse cb = function () { return 2 }\nlog.push(cb())",
+    ],
+    [
+      "a function expression on several lines",
+      "let cb\nif (log.length) cb = function ()\n{\n  return 1\n}\nelse cb = () => 2\nlog.push(cb())",
+    ],
+    [
+      "an arrow function body",
+      "let cb\nif (log.length) cb = () => { return 1 }\nelse cb = () => { return 2 }\nlog.push(cb())",
+    ],
+    [
+      "an async function expression",
+      "let cb\nif (log.length) cb = async function () {}\nelse cb = () => 2\nlog.push(cb())",
+    ],
+    [
+      "a returned function expression",
+      "const f = (a) => {\n  if (a) return function () { return 1 }\n  else return () => 2\n}\nlog.push(f(1)(), f(0)())",
+    ],
+    [
+      "a class expression",
+      "let C\nif (log.length) C = class { a() { return 1 } }\nelse C = class { a() { return 2 } }\nlog.push(new C().a())",
+    ],
+    [
+      "an object in a call argument list",
+      "let x = 0\nconst f = (...a) => a.length\nif (log.length) x = f({}, {\n})\nelse x = f({\n})\nlog.push(x)",
+    ],
+    [
+      "an object before a while loop",
+      "let n = 0\nconst seen = {}\nwhile (n < 2) n++\nlog.push(n, typeof seen)",
+    ],
+    [
+      "an assigned object before a while loop",
+      "let n = 0, seen\nseen = {}\nwhile (n < 2) { n++ }\nlog.push(n, typeof seen)",
+    ],
+    [
+      "a function expression before a while loop",
+      "let n = 0\nconst f = function () {}\nwhile (n < 2) n++\nlog.push(n, typeof f)",
+    ],
+    [
+      "an object as a do body",
+      "let n = 0, x\ndo x = { n: n++ }\nwhile (n < 2)\nlog.push(n, x.n)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // The `}` ends the block that `else` or `while` belongs to: no `;` may come between them.
+  it.each([
+    [
+      "an if block",
+      "let x\nif (log.length) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
+    ],
+    [
+      "an if block holding an object",
+      "let x\nif (log.length) {\n  x = { a: 1 }\n}\nelse {\n  x = { a: 2 }\n}\nlog.push(x.a)",
+    ],
+    [
+      "a nested loop block",
+      "let x = 0\nif (!log.length) for (const a of [1, 2]) { x += a }\nelse x = 9\nlog.push(x)",
+    ],
+    [
+      "a nested try",
+      "let x = 0\nif (!log.length) try { x = 1 } catch { x = 2 }\nelse x = 9\nlog.push(x)",
+    ],
+    [
+      "an else-if chain",
+      "let x = 0\nif (log.length) { x = 1 }\nelse if (x) { x = 2 }\nelse { x = 3 }\nlog.push(x)",
+    ],
+    ["a do block", "let n = 0\ndo {\n  n++\n}\nwhile (n < 2)\nlog.push(n)"],
+    [
+      "a do block holding a function expression",
+      "let n = 0, f\ndo {\n  f = function () { return n }\n  n++\n}\nwhile (n < 2)\nlog.push(n, f())",
+    ],
+    [
+      "a function declaration",
+      "let x = 0\nif (!log.length) { function f() { x = 1 }\n  f()\n}\nelse x = 2\nlog.push(x)",
+    ],
+    [
+      "a labeled block inside an if",
+      "let x = 0\nif (!log.length) a: { x = 1 }\nelse x = 2\nlog.push(x)",
+    ],
+  ])("keeps %s joined to what follows", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).not.toMatch(/\};(?:else|while)/);
+  });
+});
+
 describe("minifyJs – regex after else", () => {
   it("keeps the regex body, quotes and spaces included", () => {
     expectSameProgram(
