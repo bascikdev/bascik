@@ -10,6 +10,7 @@ Bascik ships a repeatable benchmarking and profiling harness in `pkg/bench/` for
 | `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`    | Paired baseline versus candidate compiler builds with byte-identity verification      |
 | `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`       | Seeded differential checks against a built baseline compiler                          |
 | `yarn workspace @bascik/bascik profile:minify`      | `pkg/bench/minify-differential.ts` | The built-in JavaScript minifier's output compared with its own input on real files   |
+| `yarn workspace @bascik/bascik profile:matrix`      | `pkg/bench/config-matrix.ts`       | One fixture site built under many configurations and compared in a browser            |
 | `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`     | Read-only CPU sample and hot-line summaries                                           |
 | `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`   | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
 | `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`    | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
@@ -62,6 +63,8 @@ yarn workspace @bascik/bascik profile:summary \
 ```
 
 Functions are identified by full URL, line, and column. Recursive frames count once per inclusive sample, and negative sampler deltas are clamped to zero. Totals include idle and GC samples; they are not end-to-end build durations. Locations are those recorded in the profile, without source-map remapping. The command does not modify the capture. Both utilities have unit tests in the normal package suite.
+
+`profile:matrix` checks configuration interactions instead of speed. It builds the fixture in `pkg/bench/config-matrix-fixture/` under about 70 configurations (every combination of the four minifiers, `pipeline.workers`, the `generate` outputs, base paths, the security toggles, directory overrides, and pairs of the risky ones), loads each build in Chromium, and compares it with the default build: rendered text, computed styles, boxes, which element each ID reference resolves to, the effect of each client script, and console errors. Variants that must not change output at all, such as `pipeline.workers: true`, are compared byte for byte. Run `yarn pkg:build` first; `pkg/bench/README.md` documents the options and how to add a variant.
 
 ## Private Report Directories
 

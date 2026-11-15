@@ -1,0 +1,124 @@
+<style>
+  :root {
+    --local-tone: rgb(1, 2, 3);
+  }
+  .card {
+    --pad: 12px;
+    container-type: inline-size;
+    container-name: cardbox;
+    padding: var(--pad);
+    border: 2px solid var(--accent, black);
+    counter-increment: section;
+    width: 400px;
+  }
+  .card::before {
+    content: "Card " counter(section) ": ";
+    color: rgb(200, 0, 0);
+  }
+  #title {
+    color: rgb(0, 100, 0);
+    font-size: calc(10px + 2 * 5px);
+    animation: pulse 2s infinite alternate;
+  }
+  h3 + p {
+    margin-top: 3px;
+  }
+  p {
+    color: var(--local-tone);
+  }
+  .card > .body:not(.hidden) a[href^="#"] {
+    text-decoration: underline dotted;
+  }
+  .open {
+    background-color: rgb(255, 255, 0);
+  }
+  .tag-1 {
+    outline: 1px solid rgb(0, 0, 255);
+  }
+  @keyframes pulse {
+    from {
+      opacity: 0.99;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @container cardbox (min-width: 300px) {
+    .body {
+      padding-left: 7px;
+    }
+  }
+  @media (min-width: 100px) and (max-width: 99999px) {
+    .body {
+      margin-bottom: 5px;
+    }
+  }
+  @supports (display: grid) {
+    .grid {
+      display: grid;
+      grid-template-areas: "a b" "c d";
+      grid-template-columns: 1fr 2fr;
+    }
+  }
+  .pop:popover-open {
+    border: 3px solid rgb(9, 9, 9);
+  }
+  .list li:nth-child(2n + 1) {
+    color: rgb(50, 60, 70);
+  }
+</style>
+<article class="card" data-testid="rich-card" data-probe="card">
+  <h3 id="title" data-probe="title" data-bascik-prop-title>Untitled</h3>
+  <p id="desc" data-probe="desc">
+    By <span data-bascik-prop-author>nobody</span>. Two spaces.
+  </p>
+  <div class="body" data-probe="body">
+    <a href="#title" data-probe="jump">Jump to title</a>
+    <a data-bascik-attr-href="link" data-probe="extlink" aria-describedby="desc"
+      >More</a
+    >
+    <button
+      type="button"
+      id="toggle"
+      popovertarget="pop"
+      aria-controls="pop"
+      aria-labelledby="title toggle"
+      data-probe="toggle"
+    >
+      Toggle
+    </button>
+    <div id="pop" class="pop" popover data-probe="pop">Popover text</div>
+    <div class="grid" data-probe="grid"><span>a</span><span>b</span></div>
+    <ul class="list" id="list" data-probe="list">
+      <li>one</li>
+      <li>two</li>
+      <li>three</li>
+    </ul>
+    <div data-bascik-slot></div>
+    <output id="out" data-probe="out">idle</output>
+  </div>
+</article>
+<script>
+  const root = document.getElementById("title").closest("article");
+  const out = document.getElementById("out");
+  const toggle = document.getElementById("toggle");
+  const first = document.querySelector(".card");
+  const items = document.getElementById("list").querySelectorAll("li");
+  const n = 1;
+  root.classList.add("tag-1");
+  toggle.addEventListener("click", () => {
+    root.classList.toggle("open");
+    out.textContent = root.classList.contains("open")
+      ? `open ${items.length}`
+      : "closed";
+  });
+  out.textContent =
+    "ready " +
+    (first !== null) +
+    " " +
+    items.length +
+    " " +
+    /a\/b"'/.test("a/b\"'") +
+    ` t${n}`;
+  out.setAttribute("data-kind", root.matches(".card") ? "card" : "other");
+</script>
