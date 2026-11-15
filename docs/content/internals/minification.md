@@ -99,6 +99,8 @@ type Segment = {
   postfixUpdateEnds?: Set<number>; // end of each postfix `++`/`--`
   arrowBodyCloses?: Set<number>; // `}` closing an arrow function body (`=> {...}`)
   bodyHeaderEnds?: Set<number>; // end of a function, method, class or catch header whose `{` is on a later line
+  valueBraceCloses?: Set<number>; // `}` ending a value: an object literal, or an arrow, function or class expression body
+  fieldNameEnds?: Set<number>; // end of a class field name with no value, before a `[` or `*` member on a later line
   asiBefore?: boolean; // literal only: a line break before it ends the statement
 };
 ```
@@ -133,7 +135,7 @@ When `/` follows an operator or one of these keywords, it is parsed as a regular
 
 ### Line Breaks (ASI)
 
-Collapsing a line break must keep the statement boundary that JavaScript's automatic semicolon insertion puts there, so the minified script runs the same program as the unminified one. The scanner records what it needs for this on each segment (`controlHeaderCloses`, `postfixUpdateEnds`, `arrowBodyCloses`, `bodyHeaderEnds`, `valueBraceCloses`, `fieldNameEnds`, `asiBefore`). `valueBraceCloses` marks each `}` that ends a value (an object literal, or the body of an arrow function, function expression, or class expression), after which an `else` or `while` on the next line needs a `;` that it must not get after the `}` of a block. `fieldNameEnds` marks a class field name that has no value and is followed, on a later line, by a member starting with `[` or `*`; the scanner finds it by tracking which word starts a member directly inside a class body. For `bodyHeaderEnds` it tracks, per open `{`, whether it is a class body, an object literal, or a block, so a `{` on its own line after `m(a)` is a method body inside a class or object literal and a separate block statement anywhere else. The rules are listed in the "Semicolon-free scripts in `minify.js`" row of the [compatibility page](/compatibility).
+Collapsing a line break must keep the statement boundary that JavaScript's automatic semicolon insertion puts there, so the minified script runs the same program as the unminified one. The scanner records what it needs for this on each segment (`controlHeaderCloses`, `postfixUpdateEnds`, `arrowBodyCloses`, `bodyHeaderEnds`, `valueBraceCloses`, `fieldNameEnds`, `asiBefore`). `valueBraceCloses` marks each `}` that ends a value (an object literal, or the body of an arrow function, function expression, or class expression), after which an `else` or `while` on the next line needs a `;` that it must not get after the `}` of a block. `fieldNameEnds` marks a class field name that has no value and is followed, on a later line, by a member starting with `[` or `*`; the scanner finds it by tracking which word starts a member directly inside a class body. For `bodyHeaderEnds` it tracks, per open `{`, whether it is a class body, an object literal, or a block, so a `{` on its own line after `m(a)` is a method body inside a class or object literal and a separate block statement anywhere else. The rules are listed in the `minify.js` (built-in) rows of the [compatibility page](/compatibility).
 
 ## Identifier Hashing (`names.ts`)
 
