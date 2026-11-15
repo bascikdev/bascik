@@ -368,6 +368,8 @@ Process-level handlers for `unhandledRejection` and `uncaughtException` log full
 
 A write to stderr that fails (`EPIPE`: the terminal closed, a CI step was killed, `2>&1 | head` stopped reading) is not a crash and has nowhere to be reported. The crash net keeps an `error` listener on `process.stderr` that ignores it. Without that listener Node raises the failure as an uncaught exception, the handler prints it to the same broken stream, and that write fails again from inside the `process.nextTick` queue, so the bounded exit's timer never runs and the process spins until it is killed.
 
+A write to stdout that fails is not a crash either: the reader of the log went away (`bascik --build | head -1`, `| grep -q`, a log collector that stopped), not the work. The crash net keeps the same `error` listener on `process.stdout`, so a build runs to the end and exits with the code its result deserves (it used to stop halfway with `Fatal uncaught exception: Error: write EPIPE`, leaving a partial output directory), and a dev or production server keeps serving instead of exiting on its next access log line. What is printed after the reader left is lost; errors still go to stderr.
+
 ### API response stream and disconnect ownership
 
 API route execution (`server-api.ts`) enforces strict backpressure and lifecycle ownership across WHATWG `Response` streams and underlying network sockets:
