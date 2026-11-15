@@ -33,7 +33,8 @@
     "src/**/*.ts",
     "bench/**/*.ts",
     "e2e/bascik.config.ts",
-    "vitest.coverage-setup.ts"
+    "vitest.coverage-setup.ts",
+    "vitest.leak-guard-setup.ts"
   ],
   "exclude": ["node_modules", "coverage"]
 }

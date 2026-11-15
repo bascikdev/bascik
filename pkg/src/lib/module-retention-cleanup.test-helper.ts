@@ -10,7 +10,10 @@ if (role === "descendant") {
   process.on("SIGTERM", () => {});
   process.on("SIGINT", () => {});
   process.send!({ ready: true });
-  setInterval(() => {}, 60_000);
+  // Alive through SIGTERM and SIGINT, until the cleanup under test kills the
+  // group. It ends itself after two minutes (the test times out after one),
+  // so a run that is killed mid-test does not leave it running for good.
+  setTimeout(() => process.exit(0), 120_000);
 } else if (role === "subject") {
   const descendant = childProcess.fork(fixture, ["descendant"], {
     execArgv: [],
