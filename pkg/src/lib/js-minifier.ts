@@ -32,6 +32,13 @@ type Segment = {
    */
   bodyHeaderEnds?: Set<number>;
   /**
+   * Offsets in `text` of each `}` that ends a value: an object literal, or the body of an
+   * arrow function, function expression or class expression. The statement holding that value
+   * is not over at the `}`, so an `else` or `while` on the next line needs a `;` before it
+   * (`if (a) x = {}\nelse y()`), unlike after the `}` of a block.
+   */
+  valueBraceCloses?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -144,6 +151,21 @@ const OBJECT_PRECEDING_KEYWORDS = new Set([
   "in",
   "of",
   "instanceof",
+]);
+
+/**
+ * Characters after which only an expression can start, so a `function` or `class` right
+ * after one is a function or class expression: `x = function () {}`, `f(class {})`.
+ */
+const EXPRESSION_START_AFTER = new Set([
+  "=",
+  "(",
+  ",",
+  "[",
+  "?",
+  "&",
+  "|",
+  "!",
 ]);
 
 /** Identifier/number characters: the "word" class the scanner tracks. */
@@ -419,6 +441,19 @@ const scanSegments = (js: string): Segment[] => {
   let wordIsProperty = false;
   // The current word is the `await` of `for await (`: only whitespace after a `for` keyword.
   let wordIsForAwait = false;
+  // The current word stands where only an expression can start, to tell
+  // `x = function () {}` (a value) from a function declaration.
+  let wordStartsExpression = false;
+  // The `function` or `class` last read stands where only an expression can.
+  let functionIsExpression = false;
+  let classIsExpression = false;
+  // One entry per open `(`: true when it opens the parameters of a function expression.
+  const parenIsExpressionFunction: boolean[] = [];
+  let lastParenClosedExpressionFunction = false;
+  // One entry per open `{`: true when its `}` ends a value (an object literal, or the body of
+  // an arrow function, function expression or class expression), not a block statement.
+  const braceEndsValue: boolean[] = [];
+  let valueBraceCloses: Set<number> | undefined;
   let i = 0;
   const len = js.length;
 
@@ -431,6 +466,7 @@ const scanSegments = (js: string): Segment[] => {
         postfixUpdateEnds,
         arrowBodyCloses,
         bodyHeaderEnds,
+        valueBraceCloses,
       });
       codeAccum = "";
     }
@@ -438,6 +474,7 @@ const scanSegments = (js: string): Segment[] => {
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
     bodyHeaderEnds = undefined;
+    valueBraceCloses = undefined;
     lastSigOffset = -1;
     lastRaw = "";
     lastSig = "";
@@ -477,7 +514,7 @@ const scanSegments = (js: string): Segment[] => {
    * Classify the `{` about to be appended, and when it is the body of the header that ends
    * on an earlier line, record that header's last character so the line break stays a join.
    */
-  const openBrace = (): void => {
+  const openBrace = (): boolean => {
     const parenDepth = parenIsControlHeader.length;
     const top = braceKind.length - 1;
     const enclosing = top === -1 ? BRACE_BLOCK : braceKind[top];
@@ -490,17 +527,20 @@ const scanSegments = (js: string): Segment[] => {
 
     let kind = BRACE_BLOCK;
     let isBody = false;
+    let endsValue = false;
     if (
       classPendingParenDepth === parenDepth &&
       classPendingBracketDepth === bracketDepth
     ) {
       kind = BRACE_CLASS;
       isBody = true;
+      endsValue = classIsExpression;
       classPendingParenDepth = -1;
       classPendingBracketDepth = -1;
     } else if (lastSig === ")" && lastParenClosedBodyHeader) {
       // `function f(a)\n{`, `catch (e)\n{`
       isBody = true;
+      endsValue = lastParenClosedExpressionFunction;
     } else if (word === "catch") {
       isBody = true;
     } else if (
@@ -529,6 +569,7 @@ const scanSegments = (js: string): Segment[] => {
       // Where only an expression can start, `{` is an object literal (or a destructuring
       // pattern, which holds no statements either).
       kind = BRACE_OBJECT;
+      endsValue = true;
     }
     if (isBody && lineBreakSinceSignificant && lastSigOffset !== -1) {
       (bodyHeaderEnds ??= new Set()).add(lastSigOffset);
@@ -537,6 +578,7 @@ const scanSegments = (js: string): Segment[] => {
     braceKind.push(kind);
     braceParenDepth.push(parenDepth);
     braceBracketDepth.push(bracketDepth);
+    return endsValue;
   };
 
   const appendCode = (c: string): void => {
@@ -547,6 +589,13 @@ const scanSegments = (js: string): Segment[] => {
         wordRun += c;
       } else {
         wordIsForAwait = wordRun === "for" && !wordIsProperty;
+        // `= function`, `return function`, and `= async function` through its `async`.
+        wordStartsExpression =
+          EXPRESSION_START_AFTER.has(lastSig) ||
+          (wordRun !== "" &&
+            !wordIsProperty &&
+            (OBJECT_PRECEDING_KEYWORDS.has(wordRun) ||
+              (wordRun === "async" && wordStartsExpression)));
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -562,9 +611,11 @@ const scanSegments = (js: string): Segment[] => {
       // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords.
       if (wordRun === "function" || wordRun === "catch") {
         bodyHeaderPending = true;
+        functionIsExpression = wordRun === "function" && wordStartsExpression;
       } else if (wordRun === "class") {
         classPendingParenDepth = parenIsControlHeader.length;
         classPendingBracketDepth = bracketDepth;
+        classIsExpression = wordStartsExpression;
       }
     }
     switch (c) {
@@ -577,20 +628,27 @@ const scanSegments = (js: string): Segment[] => {
               (wordIsForAwait && wordRun === "await")),
         );
         parenIsBodyHeader.push(bodyHeaderPending);
+        parenIsExpressionFunction.push(
+          bodyHeaderPending && functionIsExpression,
+        );
         bodyHeaderPending = false;
         break;
       }
       case ")":
         lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
         lastParenClosedBodyHeader = parenIsBodyHeader.pop() ?? false;
+        lastParenClosedExpressionFunction =
+          parenIsExpressionFunction.pop() ?? false;
         if (lastParenClosedControlHeader) {
           (controlHeaderCloses ??= new Set()).add(codeAccum.length);
         }
         break;
-      case "{":
-        braceIsArrowBody.push(lastSig === ">" && prevSig === "=");
-        openBrace();
+      case "{": {
+        const isArrowBody = lastSig === ">" && prevSig === "=";
+        braceIsArrowBody.push(isArrowBody);
+        braceEndsValue.push(openBrace() || isArrowBody);
         break;
+      }
       case "}":
         lastBraceClosedArrowBody = braceIsArrowBody.pop() ?? false;
         braceKind.pop();
@@ -598,6 +656,9 @@ const scanSegments = (js: string): Segment[] => {
         braceBracketDepth.pop();
         if (lastBraceClosedArrowBody) {
           (arrowBodyCloses ??= new Set()).add(codeAccum.length);
+        }
+        if (braceEndsValue.pop()) {
+          (valueBraceCloses ??= new Set()).add(codeAccum.length);
         }
         break;
       case "[":
@@ -976,6 +1037,13 @@ export const minifyJs = (js: string): string => {
           ((firstChar !== "(" && firstChar !== "[") ||
             seg.arrowBodyCloses?.has(prevLineEnd) === true)
         ) {
+          needsSemicolon = true;
+        } else if (
+          seg.valueBraceCloses?.has(prevLineEnd) === true &&
+          /^(?:else|while)(?![a-zA-Z0-9_$])/.test(line)
+        ) {
+          // `if (a) x = {}\nelse y()`: the `}` ends a value, not the `if` body, so the
+          // statement still needs its `;` before `else` (or before a `while` loop).
           needsSemicolon = true;
         }
       } else if (seg.postfixUpdateEnds?.has(prevLineEnd)) {
