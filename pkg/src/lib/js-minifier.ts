@@ -32,6 +32,13 @@ type Segment = {
    */
   bodyHeaderEnds?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a class field name that has no value and is
+   * followed, on a later line, by a member starting with `[` or `*` (`#abort\n[kResume] = null`,
+   * `count\n*items() {}`). A field name cannot be indexed or multiplied, so the line break
+   * ends the field.
+   */
+  fieldNameEnds?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -408,8 +415,32 @@ const scanSegments = (js: string): Segment[] => {
   // following `/` is division (`count++ / 2`), never the start of a regex literal.
   let lastSigIsPostfixUpdate = false;
   let wordIsProperty = false;
+  // The current word is the name a class member starts with (after `static` or `#` at most),
+  // and the same for a `#` just read.
+  let wordStartsClassMember = false;
+  let hashStartsClassMember = false;
+  let fieldNameEnds: Set<number> | undefined;
   let i = 0;
   const len = js.length;
+
+  /** Directly in a class body: not inside a member's parameters, value or computed name. */
+  const atClassMemberLevel = (): boolean => {
+    const top = braceKind.length - 1;
+    return (
+      top !== -1 &&
+      braceKind[top] === BRACE_CLASS &&
+      braceParenDepth[top] === parenIsControlHeader.length &&
+      braceBracketDepth[top] === bracketDepth
+    );
+  };
+
+  /** Whether a name (or its `#`) starting here is the first token of a class member. */
+  const startsClassMember = (): boolean =>
+    atClassMemberLevel() &&
+    (lastSig === "{" ||
+      lastSig === ";" ||
+      lastSig === "}" ||
+      (isWordChar(lastSig) && wordRun === "static" && wordStartsClassMember));
 
   const flushCode = (): void => {
     if (codeAccum) {
@@ -420,6 +451,7 @@ const scanSegments = (js: string): Segment[] => {
         postfixUpdateEnds,
         arrowBodyCloses,
         bodyHeaderEnds,
+        fieldNameEnds,
       });
       codeAccum = "";
     }
@@ -427,6 +459,7 @@ const scanSegments = (js: string): Segment[] => {
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
     bodyHeaderEnds = undefined;
+    fieldNameEnds = undefined;
     lastSigOffset = -1;
     lastRaw = "";
     lastSig = "";
@@ -535,6 +568,8 @@ const scanSegments = (js: string): Segment[] => {
       if (isWordChar(lastRaw)) {
         wordRun += c;
       } else {
+        wordStartsClassMember =
+          lastSig === "#" ? hashStartsClassMember : startsClassMember();
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -587,8 +622,24 @@ const scanSegments = (js: string): Segment[] => {
           (arrowBodyCloses ??= new Set()).add(codeAccum.length);
         }
         break;
+      case "#":
+        hashStartsClassMember = startsClassMember();
+        break;
       case "[":
-        bracketDepth++;
+      case "*":
+        // `name\n[key] = 1` and `name\n*items() {}` in a class body: `name` is a field of its
+        // own. `static`, `get` and `set` are modifiers of the member that follows.
+        if (
+          lineBreakSinceSignificant &&
+          isWordChar(lastSig) &&
+          wordStartsClassMember &&
+          lastSigOffset !== -1 &&
+          wordRun !== "static" &&
+          (c === "*" || (wordRun !== "get" && wordRun !== "set"))
+        ) {
+          (fieldNameEnds ??= new Set()).add(lastSigOffset);
+        }
+        if (c === "[") bracketDepth++;
         break;
       case "]":
         if (bracketDepth > 0) bracketDepth--;
@@ -1000,6 +1051,10 @@ export const minifyJs = (js: string): string => {
         if (!startsWithContinuation) {
           needsSemicolon = true;
         }
+      }
+      if (seg.fieldNameEnds?.has(prevLineEnd)) {
+        // A class field name, then a member starting with `[` or `*` on this line.
+        needsSemicolon = true;
       }
 
       prevLineEnd = lineEnd;
