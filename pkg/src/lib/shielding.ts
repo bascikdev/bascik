@@ -5,6 +5,7 @@ import {
   scanOpeningTags,
   scanPatternElementContents,
 } from "./element-content-scan.ts";
+import { scanHtmlComments } from "./html-scanner.ts";
 
 // A global counter plus source collision checks keep generated tokens outside user input.
 const SHIELD_TOKEN_PATTERN = /\x00BASCIK_SHIELD_(\d+)\x00/g;
@@ -84,6 +85,33 @@ export const shieldElementContents = (
   for (const tag of tags)
     result = replaceElementContents(result, tag, false, shield.hide);
   return { html: result, restore: shield.restore };
+};
+
+/**
+ * Hide every HTML comment in `html` behind a shield token, so commented-out
+ * markup is never read as live markup. Comments are the ones the browser
+ * sees: `<!--` inside a `<style>`, `<script>` or `<textarea>` is that
+ * element's text (a CSS or JavaScript string, JSON, a stylesheet or script
+ * wrapped in `<!-- -->`) and stays visible to the passes that read it.
+ * A comment the input ends inside is hidden to the end.
+ */
+export const shieldHtmlComments = (
+  html: string,
+): { html: string; restore: (value: string) => string } => {
+  const comments = scanHtmlComments(html);
+  if (comments.length === 0) return { html, restore: (value) => value };
+  const shield = createContentShield(html);
+  const parts: string[] = [];
+  let copiedTo = 0;
+  for (const { start, end } of comments) {
+    parts.push(
+      html.slice(copiedTo, start),
+      shield.hide(html.slice(start, end)),
+    );
+    copiedTo = end;
+  }
+  parts.push(html.slice(copiedTo));
+  return { html: parts.join(""), restore: shield.restore };
 };
 
 const PRESERVABLE_ATTRIBUTES = new Set(["id", "name", "class"]);

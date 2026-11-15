@@ -187,6 +187,7 @@ import {
 import {
   createContentShield,
   shieldElementContents,
+  shieldHtmlComments,
   shieldPreservedAttribute,
   stripPreserveDirectives,
 } from "./shielding.ts";
@@ -669,13 +670,11 @@ export const prefixElementAttribute = (
   // static HTML string literals inside client, server, and stream scripts have
   // their class/id/name attributes scoped.
   const nonScriptRawShield = (() => {
-    const commentShield = createContentShield(component.fileContent);
-    const withoutComments = component.fileContent.includes("<!--")
-      ? component.fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-          commentShield.hide(comment),
-        )
-      : component.fileContent;
-    const rawElements = shieldElementContents(withoutComments, [
+    // `<!--` in a script or style (a string, JSON, a `<!-- -->` wrapper) is
+    // not a comment; hiding from it to a later `-->` left the markup between
+    // them unscoped.
+    const commentShield = shieldHtmlComments(component.fileContent);
+    const rawElements = shieldElementContents(commentShield.html, [
       "style",
       "textarea",
     ]);
@@ -734,13 +733,8 @@ export const prefixElementAttribute = (
     /\sstyle\s*=/i.test(scopedAttrsHtml)
   ) {
     const styleShield = (() => {
-      const commentShield = createContentShield(scopedAttrsHtml);
-      const withoutComments = scopedAttrsHtml.includes("<!--")
-        ? scopedAttrsHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-            commentShield.hide(comment),
-          )
-        : scopedAttrsHtml;
-      const rawElements = shieldElementContents(withoutComments, [
+      const commentShield = shieldHtmlComments(scopedAttrsHtml);
+      const rawElements = shieldElementContents(commentShield.html, [
         "style",
         "textarea",
       ]);
@@ -1418,13 +1412,10 @@ export const namespaceScriptTags = (
   // Script-looking examples in HTML comments are documentation, not browser
   // code. Shield comments before scanning for script tags so a fake opener in
   // a comment cannot be paired with a later real </script> and wrapped into an
-  // invalid runtime script.
-  const commentShield = createContentShield(component.fileContent);
-  const commentMaskedContent = component.fileContent.includes("<!--")
-    ? component.fileContent.replace(/<!--[\s\S]*?-->/g, (comment) =>
-        commentShield.hide(comment),
-      )
-    : component.fileContent;
+  // invalid runtime script. `<!--` inside a real script (a string, or the
+  // old `<!-- ... //-->` wrapper) is code, not a comment, and stays visible.
+  const commentShield = shieldHtmlComments(component.fileContent);
+  const commentMaskedContent = commentShield.html;
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(

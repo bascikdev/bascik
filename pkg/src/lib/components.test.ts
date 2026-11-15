@@ -1466,6 +1466,14 @@ describe("listComponents – unbalanced braces in component CSS", () => {
     expect(messageOf(error)).toMatch(/remove the "}"/i);
   });
 
+  it('still finds a missing } after a "<!--" CSS string, on its own line', async () => {
+    const error = await listWith(
+      "feature-card",
+      '<style>\n  .a::before { content: "<!--"; }\n  .a { color: red;\n</style>\n<p class="a">x</p>\n<!-- a real comment -->\n',
+    );
+    expect(messageOf(error)).toMatch(/feature-card\.html:3\b/);
+  });
+
   it("fails on a missing } in the companion stylesheet, naming its own file and line", async () => {
     const error = await listWith(
       "book-card",
@@ -1495,6 +1503,14 @@ describe("listComponents – unbalanced braces in component CSS", () => {
     [
       "<style> text inside a <textarea>",
       '<p class="a">x</p>\n<textarea><style>.a {</style></textarea>\n',
+    ],
+    [
+      'a "<!--" CSS string before a real comment',
+      '<style>\n  .a::before { content: "<!--"; }\n  .a { color: red; }\n</style>\n<p class="a">x</p>\n<!-- a real comment -->\n',
+    ],
+    [
+      "a stylesheet wrapped in <!-- -->",
+      '<style>\n<!--\n  .a { color: red; }\n-->\n</style>\n<p class="a">x</p>\n',
     ],
   ])("accepts %s", async (_label, html) => {
     expect(await listWith("good-card", html)).toBeUndefined();

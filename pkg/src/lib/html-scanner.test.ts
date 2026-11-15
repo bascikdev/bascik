@@ -7,6 +7,7 @@ import {
   readStartTagAttributes,
   removeHtmlRanges,
   scanHtml,
+  scanHtmlComments,
   type HtmlRange,
   type ScannedComment,
   type ScannedScript,
@@ -682,5 +683,41 @@ describe("removeHtmlRanges", () => {
         { start: 8, end: 14 },
       ]).html,
     ).toBe("<a></a>");
+  });
+});
+
+describe("scanHtmlComments", () => {
+  const texts = (html: string): string[] =>
+    scanHtmlComments(html).map(({ start, end }) => html.slice(start, end));
+
+  it("reports comments in order, ended the way the browser ends them", () => {
+    expect(texts("<!--a--><p>x</p><!--b--!><!----><!-->")).toEqual([
+      "<!--a-->",
+      "<!--b--!>",
+      "<!---->",
+      "<!-->",
+    ]);
+    expect(texts("<p>no comment</p>")).toEqual([]);
+  });
+
+  it("reports none inside raw text elements", () => {
+    expect(
+      texts(
+        '<style>.a::before { content: "<!--"; }</style>' +
+          '<script>const s = "<!-- x -->";</script>' +
+          "<textarea><!-- t --></textarea><title><!-- n --></title>" +
+          "<!-- real -->",
+      ),
+    ).toEqual(["<!-- real -->"]);
+  });
+
+  it("runs a comment the input ends inside to the end", () => {
+    expect(texts("<p>a</p><!-- open <p>")).toEqual(["<!-- open <p>"]);
+  });
+
+  it("counts every <!-- after the point where the scan stops", () => {
+    const html = "<svg><foreignObject><select></p><!--a--><p><!--b";
+    expect(scanHtml(html).stoppedAt).toBeLessThan(html.length);
+    expect(texts(html)).toEqual(["<!--a-->", "<!--b"]);
   });
 });

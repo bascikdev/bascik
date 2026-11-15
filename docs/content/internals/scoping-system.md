@@ -6,6 +6,8 @@ Scoping prevents one component's styles and identifiers from leaking into anothe
 
 All compiler passes use one shielding utility, one token namespace, and one global counter. Restorable shields own their tokens and recursively restore nested content, so overlapping operations cannot consume or swap one another's values. Generated tokens are checked against source text before use.
 
+Passes that must not read commented-out markup hide comments first with `shieldHtmlComments` (`pkg/src/lib/shielding.ts`). It takes its comments from the HTML scanner, not from a `<!--` search, because `<!--` inside a `<style>`, `<script>`, `<textarea>` or `<title>` is that element's text: a CSS string such as `content: "<!--"`, a JSON data block, or a block wrapped in `<!-- ... -->`. A text search would run from there to the next real comment's `-->` and hide the element's end tag and the markup in between.
+
 The internal raw-text mask has a different semantic: it replaces content with the same number of spaces for index-safe scanning, then discards the mask. In contrast, author-configured `scoping.preserve` restores the original content after scoping. The shared utility implements both behaviors without treating the internal mask as an author-facing setting.
 
 ## The Naming Scheme

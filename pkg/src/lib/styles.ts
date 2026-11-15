@@ -3,7 +3,11 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
-import { createContentShield, shieldElementContents } from "./shielding.ts";
+import {
+  createContentShield,
+  shieldElementContents,
+  shieldHtmlComments,
+} from "./shielding.ts";
 import { readStartTagAttributes } from "./html-scanner.ts";
 import {
   createMarkerWalk,
@@ -458,13 +462,8 @@ export const injectClassIntoTag = (
 const shieldNonMarkupHtml = (
   html: string,
 ): { html: string; restore: (value: string) => string } => {
-  const commentShield = createContentShield(html);
-  const withoutComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-        commentShield.hide(comment),
-      )
-    : html;
-  const rawText = shieldElementContents(withoutComments, [
+  const commentShield = shieldHtmlComments(html);
+  const rawText = shieldElementContents(commentShield.html, [
     "script",
     "style",
     "textarea",
@@ -2262,12 +2261,11 @@ export const extractInlineStyles = (
   // Mask HTML comments before shielding element contents so that a literal
   // `<style>` reference inside a comment (e.g. "keep CSS in this file's
   // <style> block") is never mistaken for a real style tag opener.
-  const commentShield = createContentShield(html);
-  const htmlWithMaskedComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) =>
-        commentShield.hide(match),
-      )
-    : html;
+  // The scanner reports only real comments: `<!--` inside a `<style>` block
+  // (a CSS string, or a stylesheet wrapped in `<!-- -->`) is CSS text, and
+  // hiding it would send the shield token out with the extracted CSS.
+  const commentShield = shieldHtmlComments(html);
+  const htmlWithMaskedComments = commentShield.html;
 
   const shielded = shieldElementContents(htmlWithMaskedComments, [
     "code",

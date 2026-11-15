@@ -1500,6 +1500,31 @@ const pendingLookahead = (
   return before === 60 /* < */ && run === text.length ? "lt" : "";
 };
 
+/**
+ * Every comment in `html`, in document order, as the browser reads it. A
+ * `<!--` inside a raw text element (`<style>`, `<script>`, `<textarea>`) is
+ * that element's text, not a comment, so a CSS string such as
+ * `content: "<!--"` starts none. `/<!--[\s\S]*?-->/g` cannot tell the two
+ * apart and runs from such a string to the next real comment's `-->`.
+ *
+ * Past the point where the scan can no longer follow the browser's parse
+ * (`stoppedAt`), every `<!--` counts, as that regex counted it.
+ */
+export const scanHtmlComments = (html: string): HtmlRange[] => {
+  const comments: HtmlRange[] = [];
+  if (!html.includes("<!--")) return comments;
+  const { stoppedAt } = scanHtml(html, {
+    comment: ({ start, end }) => comments.push({ start, end }),
+  });
+  let start = stoppedAt < html.length ? html.indexOf("<!--", stoppedAt) : -1;
+  while (start !== -1) {
+    const end = findCommentEnd(html, start);
+    comments.push({ start, end: end === -1 ? html.length : end });
+    start = end === -1 ? -1 : html.indexOf("<!--", end);
+  }
+  return comments;
+};
+
 /** An empty comment: parsed as nothing, and it ends any pending `<` or `&` lookahead. */
 export const SEAM_SEPARATOR = "<!---->";
 

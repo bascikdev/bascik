@@ -2027,6 +2027,60 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
     );
     expect(isolated.fileContent).not.toContain("<!-- The <script>(function()");
   });
+
+  // `<!--` in a script is code. Read as a comment, it ran to the next `-->`
+  // (or the end of the file) and hid the scripts in between from the IIFE
+  // wrapper, so two instances declared the same top-level `const`.
+  it.each([
+    [
+      'a "<!--" string in an earlier data block',
+      '<script type="application/json">{"open":"<!--"}</script>' +
+        '<p id="panel"></p><!-- note -->' +
+        "<script>const shared = 1;</script>",
+    ],
+    [
+      'a "<!--" string in the script itself',
+      '<p id="panel"></p><script>const shared = "<!--";</script>',
+    ],
+    [
+      "a script wrapped in <!-- //-->",
+      '<p id="panel"></p><script><!--\nconst shared = 1;\n//--></script>',
+    ],
+  ])("wraps a classic script despite %s", (_name, html) => {
+    const isolated = namespaceScriptTags(makeComponent(html)).fileContent;
+    expect(isolated).toMatch(/<script>\(function\(\) \{\n[^]*const shared = /);
+    expect(isolated).toContain("})();");
+  });
+});
+
+describe("prefixElementAttribute - comment-like text in raw text elements", () => {
+  // The same misreading hid every element between the `<!--` and the next
+  // `-->` from id and class scoping, while the stylesheet was still scoped.
+  it.each([
+    [
+      "a JSON data block",
+      '<script type="application/json">{"open":"<!--"}</script>',
+    ],
+    ["a script string", '<script>window.open1 = "<!--";</script>'],
+    ["a CSS string", '<style>.x::before { content: "<!--"; }</style>'],
+    ["a textarea value", "<textarea><!-- typed</textarea>"],
+  ])("scopes the markup after %s", (_name, rawText) => {
+    let component = makeScopedComponent(
+      `${rawText}<p class="one" id="x">one</p><!-- <i class="off" id="off"></i> --><b class="one" id="y">two</b>`,
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(
+      `<p class="${scopeClass("one")}" id="${scope("x")}">one</p>`,
+    );
+    expect(component.fileContent).toContain(
+      `<b class="${scopeClass("one")}" id="${scope("y")}">two</b>`,
+    );
+    // The real comment is still left as written.
+    expect(component.fileContent).toContain(
+      '<!-- <i class="off" id="off"></i> -->',
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

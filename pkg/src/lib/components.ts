@@ -27,6 +27,7 @@ import {
 } from "./preserved-targets.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
+import { scanHtmlComments } from "./html-scanner.ts";
 import { invalidComponentNameMessage } from "./component-name-validity.ts";
 import { templateShapeProblems } from "./component-template-shape.ts";
 import {
@@ -646,9 +647,18 @@ const warnComponentCompatibility = async (
     relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
   // Mask each comment to same-length whitespace (keeping its line breaks) so offsets
   // in the scanned text are offsets in rawHtml and every warning lands on its real line.
-  const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) =>
-    match.replace(/[^\n]/g, " "),
-  );
+  // Only real comments: `<!--` in a <style> or <script> is that element's
+  // text, and masking from it to a later `-->` hid the element's end tag.
+  const commentFreeParts: string[] = [];
+  let copiedTo = 0;
+  for (const { start, end } of scanHtmlComments(rawHtml)) {
+    commentFreeParts.push(
+      rawHtml.slice(copiedTo, start),
+      rawHtml.slice(start, end).replace(/[^\n]/g, " "),
+    );
+    copiedTo = end;
+  }
+  const noComments = commentFreeParts.join("") + rawHtml.slice(copiedTo);
   const nonCodeScan = maskElementContents(noComments, [
     "textarea",
     ...(BascikConfig.scoping?.preserve ?? ["code"])
