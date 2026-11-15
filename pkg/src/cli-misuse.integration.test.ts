@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,17 @@ const roots: string[] = [];
 const startedPids = new Set<number>();
 
 afterEach(async () => {
+  // A pipeline.exec script records its PIDs in the project. A test that
+  // failed before it read them never added them to startedPids, and killing
+  // the CLI below orphans the script.
+  for (const root of roots) {
+    try {
+      const pids = JSON.parse(readFileSync(join(root, "pids.json"), "utf8"));
+      for (const pid of pids as number[]) startedPids.add(pid);
+    } catch {
+      // The test wrote no PIDs.
+    }
+  }
   for (const pid of startedPids) {
     try {
       process.kill(pid, "SIGKILL");

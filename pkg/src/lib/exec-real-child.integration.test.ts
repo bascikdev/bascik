@@ -104,6 +104,23 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // A test that failed while its script was still running: the reset below
+  // only forgets the script, so end it and what it started first. The
+  // grandchild by its own PID too, for the tests where Bascik cannot confirm
+  // it and leaves it alone.
+  // After a turn of the event loop: a spawn that failed (the missing cwd
+  // test) reports on the next tick, and until then its child has no PID, so
+  // stopping it would signal PID 0, this process's own group.
+  await new Promise((resolve) => setImmediate(resolve));
+  await stopBeforeExit();
+  try {
+    const pid = Number(readFileSync(join(project, "grandchild.pid"), "utf8"));
+    // Never 0 (a file read while it was being written): that is this
+    // process's own group.
+    if (Number.isInteger(pid) && pid > 1) process.kill(pid, "SIGKILL");
+  } catch {
+    // No grandchild, or already gone.
+  }
   vi.restoreAllMocks();
   resetActiveExecChildrenForTests();
   await rm(project, { recursive: true, force: true });
