@@ -460,15 +460,16 @@ Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` sel
 
 ### CSS comma-separated element selectors
 
-The same context-aware lookahead used for `#id` detection applies here. Adding `)` to the stop set (`[^{};)]*\{`) prevents false positives inside `:is()`, `:where()`, and `:has()` pseudo-functions, because the closing `)` terminates the lookahead before `{` is reached:
+The same selector-position check used for `#id` detection applies here: the first `{`, `;` or `}` after the name must be a `{`. A second check counts open parentheses, so a comma inside `:is()`, `:where()`, `:has()` or `:not()`, or inside a function in a value, is not a list separator. A `(...)` later in the list does not hide the elements before it, and an escaped comma in a class name (`.cols-\[1fr\,auto\]`) is part of the name:
 
 ```
-div:is(p, h2) { }                    →  ) stops lookahead → skipped ✓
-h1, h2 { }                           →  { before ;/}/)} → MATCHES ✓
+div:is(p, h2) { }                     →  comma inside ( ) → skipped ✓
+h1, h2 { }                            →  { before ; or } → MATCHES ✓
+h1, h2:not(.lead), li:nth-child(2) { } →  commas outside ( ) → MATCHES ✓
 transition: color 0.2s, opacity 0.3s; →  ; before { → skipped ✓
 ```
 
-Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
+Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`.
 
 ### Compound and descendant element selectors
 

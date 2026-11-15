@@ -110,6 +110,16 @@ describe("element selector passes stay linear on long stretches without a stop",
         `${Array.from({ length: n }, () => "h2").join(", ")} { color: red }`,
     ],
     [
+      "a long selector list with pseudo-class arguments (Pass 2)",
+      (n: number) =>
+        `${Array.from({ length: n }, () => "h2:not(.a)").join(", ")} { color: red }`,
+    ],
+    [
+      "a long list inside unclosed parentheses (Pass 2)",
+      (n: number) =>
+        `div:is(${Array.from({ length: n }, () => "h2").join(", ")} { color: red }`,
+    ],
+    [
       "a long selector list over many lines (Pass 1)",
       (n: number) =>
         `${Array.from({ length: n }, () => "h2").join(",\n")} { color: red }`,

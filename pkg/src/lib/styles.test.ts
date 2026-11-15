@@ -942,6 +942,80 @@ describe("convertCssElementSelectorsToClasses – pseudo-classes and pseudo-elem
     expect(elementsConvertedClasses).not.toContain("h2");
   });
 
+  // A `)` later in a same-line list used to end the selector-position check,
+  // so every element before it (after the first) kept its bare tag name and
+  // the rule applied to the whole page instead of the component.
+  it.each([
+    [
+      "h1, h2:not(.lead), h3 { margin: 0; }",
+      ".b_el_my-comp_h1, .b_el_my-comp_h2:not(.lead), .b_el_my-comp_h3 { margin: 0; }",
+    ],
+    [
+      "p, input:not([type=checkbox]) { margin: 0; }",
+      ".b_el_my-comp_p, .b_el_my-comp_input:not([type=checkbox]) { margin: 0; }",
+    ],
+    [
+      "li:first-child, li:last-child, li:nth-child(2) { margin: 0; }",
+      ".b_el_my-comp_li:first-child, .b_el_my-comp_li:last-child, .b_el_my-comp_li:nth-child(2) { margin: 0; }",
+    ],
+    [
+      "tr:nth-child(even) td, tr:nth-of-type(2n+1) th { margin: 0; }",
+      ".b_el_my-comp_tr:nth-child(even) .b_el_my-comp_td, .b_el_my-comp_tr:nth-of-type(2n+1) .b_el_my-comp_th { margin: 0; }",
+    ],
+    [
+      "@media (min-width: 40em) { a:hover, button:focus-within, li:nth-child(2) { margin: 0; } }",
+      "@media (min-width: 40em) { .b_el_my-comp_a:hover, .b_el_my-comp_button:focus-within, .b_el_my-comp_li:nth-child(2) { margin: 0; } }",
+    ],
+    [
+      "section{a:is(.x),em:not(.y),b{margin:0}}",
+      ".b_el_my-comp_section{.b_el_my-comp_a:is(.x),.b_el_my-comp_em:not(.y),.b_el_my-comp_b{margin:0}}",
+    ],
+  ])(
+    "converts every element of a same-line list with a later `(...)`: %s",
+    (source, expected) => {
+      expect(convertCssElementSelectorsToClasses(source, "my-comp").css).toBe(
+        expected,
+      );
+    },
+  );
+
+  it.each([
+    ["a:not(p, h2), h3:is(b, i), em { margin: 0; }", ["a", "h3", "em"]],
+    ["div:is(p, h2:not(b, i), em) { margin: 0; }", ["div"]],
+    [".el { color: rgb(0, 0, 0); font: a, small }", []],
+    [".el { width: min(1px, calc(2px, 3em)), em; }", []],
+  ])(
+    "keeps a comma inside parentheses out of the list: %s",
+    (source, expected) => {
+      expect(
+        convertCssElementSelectorsToClasses(source, "my-comp")
+          .elementsConvertedClasses,
+      ).toEqual(expected);
+    },
+  );
+
+  it.each([
+    String.raw`.bascik__my-comp__cols-\[1fr\,auto\] { margin: 0; }`,
+    String.raw`.bascik__my-comp__a\,p { margin: 0; }`,
+    String.raw`.bascik__my-comp__w-\(a\,b { margin: 0; }`,
+  ])("leaves an escaped comma in a class name alone: %s", (source) => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(source, "my-comp");
+    expect(css).toBe(source);
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("converts an element after a class whose name escapes a parenthesis", () => {
+    expect(
+      convertCssElementSelectorsToClasses(
+        String.raw`p, .bascik__my-comp__w-\(1px, h2 { margin: 0; }`,
+        "my-comp",
+      ).css,
+    ).toBe(
+      String.raw`.b_el_my-comp_p, .bascik__my-comp__w-\(1px, .b_el_my-comp_h2 { margin: 0; }`,
+    );
+  });
+
   it("does NOT convert property-value commas: 'transition: color 0.2s, opacity 0.3s'", () => {
     const { elementsConvertedClasses } = convertCssElementSelectorsToClasses(
       ".el { transition: color 0.2s, opacity 0.3s; }",

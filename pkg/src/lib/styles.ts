@@ -162,12 +162,19 @@ const CSS_UNIT_KEYWORDS = new Set([
 
 /**
  * `css.replace(pattern, ...)` for a pattern capturing `(prefix)(element)`,
- * replacing a match only when the first `{`, `}` or `;` (and `)` when
- * `parenStops`) after it is a `{`: what `(?=[^{};]*\{)` answered, the test
- * that an element name sits in selector position. The lookahead rescanned
- * to the next stop from every candidate, quadratic in a long selector list
- * or a long run of text without a stop; match ends only grow, so one
- * forward cursor answers them all in a single scan.
+ * replacing a match only when the first `{`, `}` or `;` after it is a `{`:
+ * what `(?=[^{};]*\{)` answered, the test that an element name sits in
+ * selector position. The lookahead rescanned to the next stop from every
+ * candidate, quadratic in a long selector list or a long run of text without
+ * a stop; match ends only grow, so one forward cursor answers them all in a
+ * single scan.
+ *
+ * With `outsideParens`, a match is also refused when it starts inside
+ * parentheses (`h2` in `:is(p, h2)`, `0` in `rgb(0, 0, 0)`) or at an escaped
+ * character (the comma of `.cols-\[1fr\,auto\]`). A second forward cursor
+ * counts the parentheses open since the last `{`, `}` or `;`, so a `(...)`
+ * later in the list (`h1, h2:not(.lead), h3`) does not hide the elements
+ * before it.
  *
  * A match never spans a stop past its first character (only an escaped one
  * inside a scoped class name), so a match the lookahead refused lies in a
@@ -177,14 +184,33 @@ const CSS_UNIT_KEYWORDS = new Set([
 const replaceInSelectorPosition = (
   css: string,
   pattern: RegExp,
-  parenStops: boolean,
+  outsideParens: boolean,
   convert: (prefix: string, elementName: string) => string,
 ): string => {
   // The first stop at or after the last match end asked about.
   let stop = -1;
+  // The parentheses open at `depthAt`, counted from the last stop before it.
+  let depth = 0;
+  let depthAt = 0;
   return css.replace(
     pattern,
     (match: string, prefix: string, elementName: string, offset: number) => {
+      if (outsideParens) {
+        for (; depthAt < offset; depthAt++) {
+          const code = css.charCodeAt(depthAt);
+          if (code === 92 /* \ */) depthAt++;
+          else if (code === 40 /* ( */) depth++;
+          else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+          else if (
+            code === 123 /* { */ ||
+            code === 125 /* } */ ||
+            code === 59 /* ; */
+          )
+            depth = 0;
+        }
+        // Past `offset` means a backslash escapes the match's first character.
+        if (depth > 0 || depthAt > offset) return match;
+      }
       const end = offset + match.length;
       if (end > stop) {
         stop = end;
@@ -193,8 +219,7 @@ const replaceInSelectorPosition = (
           if (
             code === 123 /* { */ ||
             code === 125 /* } */ ||
-            code === 59 /* ; */ ||
-            (parenStops && code === 41) /* ) */
+            code === 59 /* ; */
           )
             break;
         }
@@ -263,12 +288,13 @@ export const convertCssElementSelectorsToClasses = (
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
   // Multi-line lists (`h1,\nh2`) are already handled by Pass 1.
-  // The context-aware lookahead [^{};)]*\{ confirms selector position:
-  //   - In selector context, `{` follows before any `;` or `}`.
-  //   - In value context (property values, gradient functions, etc.) a
-  //     `;`, `}`, or `)` always appears before the next `{`.
-  // Adding `)` to the stop set is essential — it prevents false positives
-  // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
+  // Two checks confirm selector position:
+  //   - In selector context, `{` follows before any `;` or `}`; a property
+  //     value ends at a `;` or `}` first.
+  //   - The comma is outside parentheses, which keeps the pass out of :is(),
+  //     :where(), :has() and :not() arguments (h2 in `:is(p, h2)`) and out of
+  //     functions in a value. A `(...)` after the comma is no obstacle, so
+  //     every element of `h1, h2:not(.lead), li:nth-child(2)` is converted.
   result = replaceInSelectorPosition(
     result,
     /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g,
