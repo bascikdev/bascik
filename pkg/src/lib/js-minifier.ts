@@ -112,8 +112,17 @@ const LINE_END_CONTINUING_KEYWORD =
 const RESTRICTED_PRODUCTION_END =
   /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
 
-/** Keywords whose parenthesized header is followed by a statement, not an operator. */
-const CONTROL_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
+/**
+ * Keywords whose parenthesized header is followed by a statement (or, for `switch`, its
+ * `{`), not an operator.
+ */
+const CONTROL_HEADER_KEYWORDS = new Set([
+  "if",
+  "while",
+  "for",
+  "with",
+  "switch",
+]);
 
 /** What an open `{` is, for telling a method body from a block statement. */
 const BRACE_BLOCK = 0;
@@ -408,6 +417,8 @@ const scanSegments = (js: string): Segment[] => {
   // following `/` is division (`count++ / 2`), never the start of a regex literal.
   let lastSigIsPostfixUpdate = false;
   let wordIsProperty = false;
+  // The current word is the `await` of `for await (`: only whitespace after a `for` keyword.
+  let wordIsForAwait = false;
   let i = 0;
   const len = js.length;
 
@@ -535,6 +546,7 @@ const scanSegments = (js: string): Segment[] => {
       if (isWordChar(lastRaw)) {
         wordRun += c;
       } else {
+        wordIsForAwait = wordRun === "for" && !wordIsProperty;
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -557,11 +569,12 @@ const scanSegments = (js: string): Segment[] => {
     }
     switch (c) {
       case "(": {
-        const keyword = isWordChar(lastSig)
-          ? lastWordBeforeSlash(wordRun)
-          : undefined;
+        // `Symbol.for(key)` and `$if(a)` are calls, not headers.
         parenIsControlHeader.push(
-          keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword),
+          isWordChar(lastSig) &&
+            !wordIsProperty &&
+            (CONTROL_HEADER_KEYWORDS.has(wordRun) ||
+              (wordIsForAwait && wordRun === "await")),
         );
         parenIsBodyHeader.push(bodyHeaderPending);
         bodyHeaderPending = false;
@@ -863,23 +876,14 @@ export const minifyJs = (js: string): string => {
     //   - `ptTail`: last TAIL_WINDOW characters (enough for every bounded
     //     pattern; the longest is `instanceof$` which needs 10 + 1 for the
     //     character before it)
-    //   - the paren region: when prevLine ends with `)`, the one unbounded
-    //     pattern `\b(if|while|for|switch)\s*\([^)]*\)\s*$` must use that
-    //     final `)` as its `\)`, and `[^)]*` cannot cross the previous `)`,
-    //     so the whole match lies after the second-to-last `)`. That region
-    //     is kept as it is appended (`afterLastParen`, `afterPrevParen`) and
-    //     read only when the line actually ends with `)`. Regions for
-    //     successive `)`-terminated lines are disjoint, so total work stays
-    //     linear. (A `lastIndexOf` on processedText looked cheap, but V8
-    //     flattens a string built by `+=` on each read: quadratic.)
+    // Whether a final `)` closes an `if`/`while`/`for`/`switch` header is not a
+    // suffix question (`Symbol.for(key)` ends the same way): the scanner
+    // records those in `controlHeaderCloses`.
     const TAIL_WINDOW = 12;
     const lines = text.split("\n");
     let processedText = "";
     let ptLast = "";
     let ptTail = "";
-    // processedText after its last `)`, and after its second-to-last `)`.
-    let afterLastParen = "";
-    let afterPrevParen = "";
     // Offset in `text` of the last character of the most recently appended line.
     let lineOffset = 0;
     let prevLineEnd = -1;
@@ -888,16 +892,6 @@ export const minifyJs = (js: string): string => {
 
     const appendProcessed = (s: string): void => {
       processedText += s;
-      const last = s.lastIndexOf(")");
-      if (last === -1) {
-        afterLastParen += s;
-        afterPrevParen += s;
-      } else {
-        const previous = s.lastIndexOf(")", last - 1);
-        afterPrevParen =
-          previous === -1 ? afterLastParen + s : s.slice(previous + 1);
-        afterLastParen = s.slice(last + 1);
-      }
       ptLast = s[s.length - 1];
       ptTail =
         s.length >= TAIL_WINDOW
@@ -940,14 +934,6 @@ export const minifyJs = (js: string): string => {
         ) {
           // `if (a === "x")` then a body on the next line: the scanner saw this `)` close the header.
           endsWithOpenControl = true;
-        } else if (lastChar === ")") {
-          // processedText ends with this `)`, so the region after the
-          // `)` before it is everything after the second-to-last `)`.
-          const region = afterPrevParen;
-          __scanStatsForTests.charsExamined += region.length;
-          endsWithOpenControl = /\b(if|while|for|switch)\s*\([^)]*\)\s*$/.test(
-            region,
-          );
         }
         endsWithOpenControl =
           endsWithOpenControl ||
