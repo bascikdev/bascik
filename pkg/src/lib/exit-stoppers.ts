@@ -108,13 +108,15 @@ export const exitAfterStopping = (
   exit: (code: number) => void = (exitCode) => process.exit(exitCode),
 ): void => {
   const pending = stopBeforeExit();
-  if (!pending) {
+  // While an exit waits, a later one only waits with it, even when nothing
+  // is left to stop by now: the first exit decides how the process ends.
+  if (!pending && !exiting) {
     exit(code);
     return;
   }
   if (process.exitCode === undefined || process.exitCode === 0)
     process.exitCode = code;
-  if (exiting) return;
+  if (exiting || !pending) return;
   exiting = true;
   releaseSignals();
   const restoreStdout = code === 0 ? () => {} : quietStdout();
@@ -131,7 +133,58 @@ export const exitAfterStopping = (
  * that is already on its way out and only waiting for stoppers.
  */
 export const releaseSignals = (): void => {
+  signalHandlers.clear();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
   process.removeAllListeners("SIGHUP");
+};
+
+/** The signals a terminal, a supervisor or a CI runner stops a process with. */
+const EXIT_SIGNALS = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;
+
+const signalHandlers = new Map<NodeJS.Signals, () => void>();
+
+/**
+ * Run the stoppers before SIGINT, SIGTERM or SIGHUP ends the process.
+ *
+ * Without a listener each of these ends the process at once, and whatever it
+ * started keeps running: a `pipeline.exec` script, with the timeout that
+ * would have stopped it gone too. A supervisor, `timeout`, or a CI runner
+ * that cancels a job signals only this process, not the scripts. This is for
+ * a build, and for the dev server until it is listening and installs its own
+ * graceful shutdown (`removeExitSignalHandlers`).
+ *
+ * Once the stoppers have finished the process ends by the same signal, as it
+ * would have without a listener, so the parent still sees a process killed
+ * by SIGINT or SIGTERM and not an exit code. `kill` is injectable for tests.
+ */
+export const installExitSignalHandlers = (
+  kill: (signal: NodeJS.Signals) => void = (signal) => {
+    process.kill(process.pid, signal);
+  },
+): void => {
+  if (signalHandlers.size > 0) return;
+  for (const [name, number] of Object.entries(EXIT_SIGNALS)) {
+    const signal = name as NodeJS.Signals;
+    const handler = () =>
+      exitAfterStopping(128 + number, () => {
+        // No listener may be left, or the signal would be delivered to it
+        // and the process would stay: the other two signals' handlers, and
+        // those of a dev server that began listening while the stoppers ran.
+        releaseSignals();
+        kill(signal);
+      });
+    signalHandlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+};
+
+/**
+ * Remove the listeners `installExitSignalHandlers` added, for a server that
+ * handles the same signals itself from here on.
+ */
+export const removeExitSignalHandlers = (): void => {
+  for (const [signal, handler] of signalHandlers)
+    process.removeListener(signal, handler);
+  signalHandlers.clear();
 };

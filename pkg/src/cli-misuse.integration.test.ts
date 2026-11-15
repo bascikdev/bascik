@@ -264,4 +264,116 @@ setInterval(() => {}, 1000);
     },
     60_000,
   );
+
+  // A script that never ends, with a process of its own, and the PIDs of
+  // both in pids.json.
+  const longScript = `import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+const helper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+helper.unref();
+writeFileSync("pids.json", JSON.stringify([process.pid, helper.pid]));
+setInterval(() => {}, 1000);
+`;
+
+  /**
+   * Starts the CLI in a project whose `pipeline.exec` is `exec`, waits for
+   * scripts/long.ts to be running, sends `signal` to the CLI alone (as
+   * `timeout`, a supervisor, or a cancelled CI job does), and returns how
+   * the CLI ended with the PIDs the script wrote.
+   */
+  const signalWhileScriptRuns = async (
+    name: string,
+    args: string[],
+    exec: string,
+    signal: NodeJS.Signals,
+  ) => {
+    const root = await project(name, {
+      "src/pages/index.html": page("<h1>Hi</h1>"),
+      "scripts/long.ts": longScript,
+    });
+    await writeFixtureFile(
+      root,
+      "bascik.config.js",
+      `export default {
+  generate: { sitemap: false, robots: false },
+  pipeline: { ${exec} },
+};`,
+    );
+    const { spawn } = await import("node:child_process");
+    const child = spawn(process.execPath, [cli, ...args], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    startedPids.add(child.pid!);
+    let output = "";
+    child.stdout.on("data", (d: Buffer) => (output += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (output += d.toString()));
+    const exited = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((done) => child.once("exit", (code, signal) => done({ code, signal })));
+    const pidsPath = join(root, "pids.json");
+    const deadline = Date.now() + 30_000;
+    while (
+      !existsSync(pidsPath) &&
+      child.exitCode === null &&
+      Date.now() < deadline
+    )
+      await new Promise((r) => setTimeout(r, 50));
+    expect(existsSync(pidsPath), output).toBe(true);
+    const { readFile } = await import("node:fs/promises");
+    const pids = JSON.parse(await readFile(pidsPath, "utf8")) as number[];
+    for (const pid of pids) startedPids.add(pid);
+
+    child.kill(signal);
+    const result = await exited;
+    return { result, pids, output: () => output };
+  };
+
+  it.skipIf(process.platform === "win32").each([
+    ["SIGTERM", "parallel"],
+    ["SIGINT", "parallel"],
+    ["SIGHUP", "parallel"],
+    ["SIGTERM", "pre"],
+    ["SIGTERM", "post"],
+  ] as const)(
+    "a %s to a build alone leaves no %s pipeline.exec process behind, and the build still ends by the signal",
+    async (signal, phase) => {
+      const { result, pids, output } = await signalWhileScriptRuns(
+        `build-${signal.toLowerCase()}-${phase}`,
+        ["--build"],
+        `exec: [{ script: "scripts/long.ts", phase: "${phase}", timeout: 0 }]`,
+        signal,
+      );
+
+      // Not an exit code: the parent sees what it saw before, a build its
+      // signal ended.
+      expect(result, output()).toEqual({ code: null, signal });
+      await expect
+        .poll(() => pids.filter(alive), { timeout: 5000 })
+        .toEqual([]);
+    },
+    60_000,
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "a SIGTERM to a dev server that is still running its pre scripts leaves no pipeline.exec process behind",
+    async () => {
+      // The server installs its graceful shutdown when it listens. Before
+      // that, a `pre` script is already running.
+      const { result, pids, output } = await signalWhileScriptRuns(
+        "devboot-sigterm",
+        ["--port", "44013", "--no-pin"],
+        `exec: [{ script: "scripts/long.ts", phase: "pre", timeout: 0 }]`,
+        "SIGTERM",
+      );
+
+      expect(output()).not.toContain("All tasks completed");
+      expect(result, output()).toEqual({ code: null, signal: "SIGTERM" });
+      await expect
+        .poll(() => pids.filter(alive), { timeout: 5000 })
+        .toEqual([]);
+    },
+    60_000,
+  );
 });

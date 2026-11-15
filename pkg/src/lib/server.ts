@@ -20,6 +20,7 @@ import {
   registerShutdownHandler,
   runShutdownHandlers,
 } from "./events.ts";
+import { removeExitSignalHandlers } from "./exit-stoppers.ts";
 import { getHttpPath } from "./paths.ts";
 import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
@@ -1602,6 +1603,9 @@ export const startServerInstance = async (
     onFirstSignal();
     void gracefulShutdown("SIGHUP");
   };
+  // From here the graceful shutdown owns these signals, not the CLI's
+  // handlers for the time before the server listens (`exit-stoppers.ts`).
+  removeExitSignalHandlers();
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
   process.once("SIGHUP", sighupHandler);

@@ -226,3 +226,129 @@ describe("exitAfterStopping", () => {
     expect(exit).toHaveBeenCalledWith(1);
   });
 });
+
+describe("exitAfterStopping while another exit waits", () => {
+  it("a later exit with nothing left to stop still leaves the exit to the first", async () => {
+    const { exitAfterStopping, registerExitStopper } = await load();
+    // A stopper that has work only once, like a script that is gone by the
+    // time its failure reaches the CLI's own exit.
+    const stop = deferred();
+    let asked = 0;
+    registerExitStopper(() => (asked++ === 0 ? stop.promise : null));
+    process.exitCode = undefined;
+    const first = vi.fn();
+    const second = vi.fn();
+    exitAfterStopping(143, first);
+    exitAfterStopping(1, second);
+    expect(second).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(143);
+    stop.resolve();
+    await flush();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledWith(143);
+    expect(second).not.toHaveBeenCalled();
+  });
+});
+
+describe("installExitSignalHandlers", () => {
+  const signals = [
+    ["SIGHUP", 129],
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const;
+
+  beforeEach(() => {
+    process.removeAllListeners("SIGINT");
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGHUP");
+  });
+
+  it.each(signals)(
+    "%s runs the stoppers, then ends the process by the same signal",
+    async (signal, code) => {
+      const { installExitSignalHandlers, registerExitStopper } = await load();
+      const stop = deferred();
+      const stopper = vi.fn(() => stop.promise);
+      registerExitStopper(stopper);
+      process.exitCode = undefined;
+      const kill = vi.fn();
+      installExitSignalHandlers(kill);
+      expect(process.listenerCount(signal)).toBe(1);
+
+      process.emit(signal);
+
+      expect(stopper).toHaveBeenCalledTimes(1);
+      expect(kill).not.toHaveBeenCalled();
+      // Fails even if the process ends some other way while it waits.
+      expect(process.exitCode).toBe(code);
+      // Any of the three sent now ends the process at once.
+      for (const [other] of signals)
+        expect(process.listenerCount(other)).toBe(0);
+      stop.resolve();
+      await flush();
+      expect(kill).toHaveBeenCalledTimes(1);
+      expect(kill).toHaveBeenCalledWith(signal);
+    },
+  );
+
+  it("ends the process at once when nothing is running", async () => {
+    const { installExitSignalHandlers } = await load();
+    const kill = vi.fn();
+    installExitSignalHandlers(kill);
+    process.emit("SIGTERM");
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(process.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("removes a listener added while the stoppers ran, so the signal it sends itself is not caught", async () => {
+    const { installExitSignalHandlers, registerExitStopper } = await load();
+    const stop = deferred();
+    registerExitStopper(() => stop.promise);
+    process.exitCode = undefined;
+    const lateListener = vi.fn();
+    const listenersAtKill: number[] = [];
+    installExitSignalHandlers(() => {
+      listenersAtKill.push(process.listenerCount("SIGTERM"));
+    });
+    process.emit("SIGTERM");
+    // A dev server that began listening meanwhile.
+    process.once("SIGTERM", lateListener);
+    stop.resolve();
+    await flush();
+    expect(listenersAtKill).toEqual([0]);
+    expect(lateListener).not.toHaveBeenCalled();
+  });
+
+  it("installing twice adds one listener per signal", async () => {
+    const { installExitSignalHandlers } = await load();
+    installExitSignalHandlers(vi.fn());
+    installExitSignalHandlers(vi.fn());
+    for (const [signal] of signals)
+      expect(process.listenerCount(signal)).toBe(1);
+  });
+
+  it("removeExitSignalHandlers removes only its own listeners", async () => {
+    const {
+      installExitSignalHandlers,
+      removeExitSignalHandlers,
+      registerExitStopper,
+    } = await load();
+    const stopper = vi.fn(() => null);
+    registerExitStopper(stopper);
+    const serverListener = vi.fn();
+    process.on("SIGTERM", serverListener);
+    const kill = vi.fn();
+    installExitSignalHandlers(kill);
+    removeExitSignalHandlers();
+    expect(process.listeners("SIGTERM")).toEqual([serverListener]);
+    expect(process.listenerCount("SIGINT")).toBe(0);
+    expect(process.listenerCount("SIGHUP")).toBe(0);
+    process.emit("SIGTERM");
+    expect(serverListener).toHaveBeenCalledTimes(1);
+    expect(stopper).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+    // Removed for good: it can be installed again.
+    installExitSignalHandlers(kill);
+    expect(process.listenerCount("SIGINT")).toBe(1);
+  });
+});

@@ -8,7 +8,10 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
-import { exitAfterStopping } from "./lib/exit-stoppers.ts";
+import {
+  exitAfterStopping,
+  installExitSignalHandlers,
+} from "./lib/exit-stoppers.ts";
 import { stripColors } from "./lib/colors.ts";
 
 export { readVersion, installProcessCrashHandlers };
@@ -197,6 +200,10 @@ export const runCli = async (
     // falls through
     case "build":
     default: {
+      // A build, or a dev server that is not listening yet, stopped by a
+      // signal must not leave its pipeline.exec scripts running. Only for the
+      // CLI's own process, never for a caller that runs it in-process.
+      if (options.exitOnFinish !== false) installExitSignalHandlers();
       const { runTranspile } = await import("./transpile.ts");
       try {
         if (process.send && process.env.BASCIK_ADAPTER_DEV === "1") {
