@@ -86,6 +86,19 @@ test("commerce previews deploy only trusted branch pushes after validation", () 
   expect(deploy).toContain("config.send_email?.length");
   expect(deploy).toContain("bascik-shop-pr-${pr}");
 });
+test("a preview removes the Stripe endpoints of closed pull requests before it asks for its own", () => {
+  // Stripe refuses a seventeenth endpoint, and nothing runs when a pull
+  // request closes, so every preview clears the leftovers first.
+  const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
+  const cleanup = deploy.indexOf("!openPulls.has(entry.metadata.pr)");
+  const create = deploy.indexOf('"metadata[app]": "bascik-shop-preview"');
+  expect(cleanup).toBeGreaterThan(-1);
+  expect(cleanup).toBeLessThan(create);
+  // Only endpoints this script made, and never one of an open pull request.
+  expect(deploy).toContain('entry.metadata.app === "bascik-shop-preview"');
+  expect(deploy).toContain("pulls?state=open&per_page=100");
+  expect(deploy).toContain("if (!openPulls.has(String(pr)))");
+});
 test("main deployments cannot be cancelled by a later main push", () => {
   const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
   expect(workflow).toContain(
