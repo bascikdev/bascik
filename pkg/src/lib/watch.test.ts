@@ -259,7 +259,10 @@ import {
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
 import { clearBootFailure, getBootFailure } from "./boot-failure.ts";
-import { reportComponentLoadFailure } from "./page-diagnostics.ts";
+import {
+  PageProcessingError,
+  reportComponentLoadFailure,
+} from "./page-diagnostics.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2065,6 +2068,44 @@ describe("watchFiles – watch error output (audit 159 finding 48)", () => {
 
     expect(errorSpy).toHaveBeenCalledWith(error.message);
     expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    errorSpy.mockRestore();
+  });
+
+  // Misuse: a page saved half-written (no <body> yet, or an empty file).
+  // The boot compile and `bascik --build` name the page and the reason; a
+  // save must not print the error object with Bascik's own stack instead.
+  it("misuse: a page that fails on save prints the page and the reason, not the error object and its stack", async () => {
+    await watchFiles();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const pagePath = resolve(process.cwd(), "src/pages/about.html");
+    const error = new PageProcessingError(
+      pagePath,
+      "validate markup",
+      new Error("Page does not contain a non-empty <body> element"),
+    );
+    mockPageProcessing.mockRejectedValueOnce(error);
+
+    getHandler(1, "change")?.(pagePath);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Build failed with 1 page error:\n  src/pages/about.html\n    validate markup: Page does not contain a non-empty <body> element",
+    );
+    expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    errorSpy.mockRestore();
+  });
+
+  it("still prints the whole object for an error that names no file", async () => {
+    await watchFiles();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new TypeError("x is not a function");
+    mockPageProcessing.mockRejectedValueOnce(error);
+
+    getHandler(1, "change")?.("/project/src/pages/index.html");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", error);
     errorSpy.mockRestore();
   });
 });
