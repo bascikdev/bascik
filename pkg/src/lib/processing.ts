@@ -348,6 +348,8 @@ export const expandPageToJobs = async (
       pagePath,
     );
   } catch (err) {
+    // As in `transpilePage`: a build fails on a page it cannot read.
+    if (BascikConfig.isBuild) throw err;
     console.warn(
       `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
     );
