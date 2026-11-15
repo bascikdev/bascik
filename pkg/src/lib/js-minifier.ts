@@ -144,6 +144,9 @@ const OBJECT_PRECEDING_KEYWORDS = new Set([
   "instanceof",
 ]);
 
+/** Words that, at the start of a class member, modify the member named after them. */
+const CLASS_MEMBER_MODIFIERS = new Set(["get", "set", "async", "accessor"]);
+
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
   (c >= "a" && c <= "z") ||
@@ -434,13 +437,32 @@ const scanSegments = (js: string): Segment[] => {
     );
   };
 
-  /** Whether a name (or its `#`) starting here is the first token of a class member. */
-  const startsClassMember = (): boolean =>
-    atClassMemberLevel() &&
-    (lastSig === "{" ||
-      lastSig === ";" ||
-      lastSig === "}" ||
-      (isWordChar(lastSig) && wordRun === "static" && wordStartsClassMember));
+  /**
+   * Whether a name (or its `#`) starting here is the first token of a class member: after
+   * `{`, `;`, `}` or `static`, or on a new line after a field value that has ended
+   * (`#paused = false\n#abort`). A value has not ended after an operator, or after a word that
+   * takes something next (`typeof`, `get`).
+   */
+  const startsClassMember = (): boolean => {
+    if (!atClassMemberLevel()) return false;
+    if (lastSig === "{" || lastSig === ";" || lastSig === "}") return true;
+    if (isWordChar(lastSig)) {
+      if (wordIsProperty) return lineBreakSinceSignificant;
+      if (wordRun === "static") return wordStartsClassMember;
+      return (
+        lineBreakSinceSignificant &&
+        !EXPRESSION_CONTINUING_KEYWORDS.has(wordRun) &&
+        !CLASS_MEMBER_MODIFIERS.has(wordRun)
+      );
+    }
+    if (!lineBreakSinceSignificant) return false;
+    // After `)`, `]`, or a string, template or regex literal.
+    return (
+      lastSig === ")" ||
+      lastSig === "]" ||
+      (!lastSig && segments.at(-1)?.literal === true)
+    );
+  };
 
   const flushCode = (): void => {
     if (codeAccum) {

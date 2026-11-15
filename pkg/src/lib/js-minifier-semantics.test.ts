@@ -241,6 +241,18 @@ describe("minifyJs – a class field name before a computed or generator member"
       "const k = 'key'\nclass A {\n  m() { return 1 }\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.m(), 'first' in a, a.key)",
     ],
     [
+      "a private field after fields with values",
+      "const k = 'key'\nclass A {\n  #paused = false\n  #reason = null\n  #abort\n  [k] = 2\n  has() { return #abort in this && !this.#paused && !this.#reason }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "a field after a field with a string value",
+      "const k = 'key'\nclass A {\n  label = 'x'\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.label, 'first' in a, a.key)",
+    ],
+    [
+      "a field after a field with a call value",
+      "const k = 'key', f = () => 1\nclass A {\n  n = f()\n  first\n  *[k]() { yield 2 }\n}\nconst a = new A()\nlog.push(a.n, 'first' in a, [...a.key()])",
+    ],
+    [
       "a class expression in a field value",
       "const k = 'key'\nclass A {\n  static Inner = class {\n    first\n    [k] = 3\n  }\n}\nconst i = new A.Inner()\nlog.push('first' in i, i.key)",
     ],
