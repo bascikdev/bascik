@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer, type AddressInfo } from "node:net";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -29,8 +30,6 @@ const PKG_ENTRY = resolve(
 );
 
 const PAGE_COUNT = 60;
-const port = 9800 + (process.pid % 90);
-const base = `http://localhost:${port}`;
 
 const pageSource = (index: number, revision: number) => `<!doctype html>
 <html lang="en">
@@ -55,6 +54,7 @@ const pageSource = (index: number, revision: number) => `<!doctype html>
 `;
 
 let root: string;
+let base: string;
 let child: ChildProcess;
 let output = "";
 
@@ -69,6 +69,31 @@ interface Response {
   body: string;
   policy: string | null;
 }
+
+/**
+ * A port nothing is listening on. The requests start before the server
+ * prints its address (that line comes after the first compile, and the
+ * first compile is what the first test watches), so they go to the port the
+ * server was asked to use. A port derived from the process id could be held
+ * by a parallel test file or a stray server; the dev server would then move
+ * to the next port, and this test would ask the other server.
+ */
+const freePort = async (): Promise<number> => {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, done));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((done) => probe.close(() => done()));
+  return port;
+};
+
+/** Fails with the reason when the server did not get the port it asked for. */
+const assertServerKeptItsPort = (): void => {
+  const printed = /Server running at\s+(http:\/\/[^\s/]+)/.exec(output)?.[1];
+  if (printed && printed !== base)
+    throw new Error(
+      `the dev server moved from ${base} to ${printed}, so the requests went to another server:\n${output}`,
+    );
+};
 
 const get = async (path: string): Promise<Response | undefined> => {
   try {
@@ -119,6 +144,8 @@ beforeAll(async () => {
   );
   for (let index = 0; index < PAGE_COUNT; index++)
     await write(`src/pages/book-${index}.html`, pageSource(index, 0));
+  const port = await freePort();
+  base = `http://localhost:${port}`;
   child = spawn(process.execPath, [PKG_ENTRY], {
     cwd: root,
     env: {
@@ -160,6 +187,7 @@ describe("dev server Content-Security-Policy header", () => {
     while (served.some((count) => count < 3)) {
       if (child.exitCode !== null)
         throw new Error(`dev server exited:\n${output}`);
+      assertServerKeptItsPort();
       if (Date.now() > deadline)
         throw new Error(`pages were not served in time:\n${output}`);
       await Promise.all(
