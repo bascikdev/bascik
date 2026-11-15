@@ -84,6 +84,7 @@ import { scriptDirectiveFinder } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
+import { explicitConfigArgv } from "./config-file-names.ts";
 import {
   addBuildScriptStats,
   createBuildScriptStats,
@@ -960,6 +961,9 @@ const startPagePool = (pageList: string[]): PagePool => {
         // memory again, so their shares add up to one consistent budget.
         [CHILD_SYSTEM_MAX_VAR]: String(SYSTEM_MAX_CHILD_PROCESSES),
       },
+      // Each worker loads the config itself: without the flag it would
+      // discover one, and compile with a different config than this thread.
+      argv: explicitConfigArgv(),
       // The pool can now be trimmed or torn down while workers are still
       // loading the compiler; it must wait until each has loaded first.
       readySignal: true,

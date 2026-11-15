@@ -570,6 +570,35 @@ describe("resolveConfigPath", () => {
     });
   });
 
+  it("explicitConfigArgv hands a worker thread the --config flag as one resolved argument", async () => {
+    // A worker thread does not inherit process.argv, so the page pool passes
+    // these on; the worker's own findConfigFile must then name the same file.
+    const { explicitConfigArgv, findConfigFile } =
+      await import("./config-file-names.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    const expected = join(dir, "config", "site.mjs");
+    for (const argv of [
+      ["--build", "--config", "config/site.mjs"],
+      ["--config=config/site.mjs", "--build"],
+      ["--config", expected],
+    ]) {
+      const forwarded = explicitConfigArgv(argv, dir);
+      expect(forwarded).toEqual([`--config=${expected}`]);
+      // From another cwd, as a worker that changed directory would see it.
+      expect(findConfigFile(forwarded, tmpdir())).toEqual({
+        path: expected,
+        explicit: true,
+      });
+    }
+    // A discovered config, no config, and a flag with no value forward nothing:
+    // the worker discovers the same file the main thread did.
+    await writeFile(join(dir, "bascik.config.mjs"), `export default {};`);
+    expect(explicitConfigArgv(["--build"], dir)).toEqual([]);
+    expect(explicitConfigArgv([], dir)).toEqual([]);
+    expect(explicitConfigArgv(["--config", "--build"], dir)).toEqual([]);
+  });
+
   it("falls back to bascik.config.ts when no .js file exists", async () => {
     const { resolveConfigPath } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
