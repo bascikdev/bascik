@@ -101,7 +101,7 @@ describe("CLI misuse messages", { timeout: 60_000 }, () => {
 
   it("gives the same message from the dev server instead of an `Error:`-prefixed one (finding 49)", async () => {
     const root = await project("no-pages-dev", {});
-    const { code, output } = await run(root, ["--port", "44010", "--no-pin"]);
+    const { code, output } = await run(root, ["--port", "24010", "--no-pin"]);
     expect(code).toBe(1);
     expect(output).toMatch(
       /^\[bascik\] error: pages directory "src\/pages" \(directory\.pages\) does not exist/m,
@@ -241,7 +241,7 @@ setInterval(() => {}, 1000);
       const { spawn } = await import("node:child_process");
       const child = spawn(
         process.execPath,
-        [cli, "--port", "44012", "--no-pin"],
+        [cli, "--port", "24012", "--no-pin"],
         { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
       );
       startedPids.add(child.pid!);
@@ -323,7 +323,7 @@ export default () => "<p>done</p>";
   it.skipIf(process.platform === "win32").each([
     [
       "a dev server stopped with SIGTERM",
-      ["--port", "44014", "--no-pin"],
+      ["--port", "24014", "--no-pin"],
       "SIGTERM",
     ],
     ["a build killed with SIGKILL", ["--build"], "SIGKILL"],

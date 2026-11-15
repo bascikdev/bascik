@@ -223,7 +223,7 @@ describe.skipIf(process.platform === "win32")(
       string[],
       { onExecError?: "warn" },
     ][] = [
-      ["bascik (dev)", "dev", ["--port", "44936", "--no-pin"], {}],
+      ["bascik (dev)", "dev", ["--port", "24936", "--no-pin"], {}],
       [
         "bascik --build, onExecError warn",
         "build",
@@ -276,7 +276,7 @@ describe.skipIf(process.platform === "win32")(
       const root = await project("dev-pre", "pre");
       const result = await signalWhileExecRuns(
         root,
-        ["--port", "44930", "--no-pin"],
+        ["--port", "24930", "--no-pin"],
         "SIGTERM",
       );
       expect(result.execGone, "the exec script is still running").toBe(true);

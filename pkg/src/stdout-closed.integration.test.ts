@@ -158,12 +158,12 @@ describe("stdout closed by its reader", { timeout: 90_000 }, () => {
       signal: null,
     });
 
-    const run = start(root, ["--server", "--port", "44931"], true);
+    const run = start(root, ["--server", "--port", "24931"], true);
     // Each request writes an access log line to the closed stdout.
-    expect(await getStatus("http://localhost:44931/", 30_000)).toBe(200);
-    expect(await getStatus("http://localhost:44931/page-1", 5_000)).toBe(200);
-    expect(await getStatus("http://localhost:44931/missing", 5_000)).toBe(404);
-    expect(await getStatus("http://localhost:44931/", 5_000)).toBe(200);
+    expect(await getStatus("http://localhost:24931/", 30_000)).toBe(200);
+    expect(await getStatus("http://localhost:24931/page-1", 5_000)).toBe(200);
+    expect(await getStatus("http://localhost:24931/missing", 5_000)).toBe(404);
+    expect(await getStatus("http://localhost:24931/", 5_000)).toBe(200);
     expect(run.child.exitCode).toBeNull();
     expect(run.stderr()).not.toMatch(/Fatal uncaught exception|EPIPE/);
 
@@ -173,9 +173,9 @@ describe("stdout closed by its reader", { timeout: 90_000 }, () => {
 
   it("bascik (dev) boots, serves, and still shuts down on SIGTERM", async () => {
     const root = await project("dev");
-    const run = start(root, ["--port", "44932", "--no-pin"], true);
-    expect(await getStatus("http://localhost:44932/", 45_000)).toBe(200);
-    expect(await getStatus("http://localhost:44932/page-1", 5_000)).toBe(200);
+    const run = start(root, ["--port", "24932", "--no-pin"], true);
+    expect(await getStatus("http://localhost:24932/", 45_000)).toBe(200);
+    expect(await getStatus("http://localhost:24932/page-1", 5_000)).toBe(200);
     expect(run.child.exitCode).toBeNull();
     expect(run.stderr()).not.toMatch(/Fatal uncaught exception|EPIPE/);
 
