@@ -127,6 +127,41 @@ describe("minifyJs – regex after else", () => {
   });
 });
 
+describe("minifyJs – a declaration keyword at the end of a line", () => {
+  // `var`, `let`, `const`, `function` and `class` need the name on the next line.
+  it.each([
+    ["var", "var\n  a = 1,\n  b = 2\nlog.push(a, b)"],
+    ["const", "const\n  a = 1,\n  b = 2\nlog.push(a, b)"],
+    ["let", "let\n  a = 1,\n  b = 2\na++\nlog.push(a, b)"],
+    ["var then a comment", "var // names\n  a = 1\nlog.push(a)"],
+    [
+      "var then a doc comment",
+      "var\n  /** the first */\n  a = 1,\n  /** the second */\n  b = 2;\nlog.push(a, b)",
+    ],
+    [
+      "const then a pattern",
+      "const\n  { a } = { a: 1 },\n  [b] = [2]\nlog.push(a, b)",
+    ],
+    ["var in a for header", "for (var\n  i = 0; i < 2; i++) log.push(i)"],
+    ["function", "function\nf(a)\n{\n  return a + 1\n}\nlog.push(f(1))"],
+    [
+      "a function expression",
+      "const f = function\ng() { return typeof g }\nlog.push(f())",
+    ],
+    ["class", "class\nA { m() { return 1 } }\nlog.push(new A().m())"],
+    [
+      "a property named var",
+      "const o = { var: 1, let: 2, const: 3, class: 4, function: 5 }\nlet t = o.var\nt += o.let\nt += o.const\nt += o.class\nt += o.function\nlog.push(t)",
+    ],
+    [
+      "a name ending in a keyword",
+      "const $var = 1, _let = 2, myclass = 3\nlet t = $var\nt += _let\nt += myclass\nlog.push(t)",
+    ],
+  ])("continues after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – lines starting with ( or [ continue the expression (F037)", () => {
   it.each([
     'const getEl = () => (f) => (log.push("called"), 1)\nconst el = getEl("x")\n(async () => { log.push("iife") })\nlog.push(el)',
