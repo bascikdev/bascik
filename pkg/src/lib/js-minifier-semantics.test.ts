@@ -516,6 +516,92 @@ describe("minifyJs – semicolon-free statement sequences (property)", () => {
   );
 });
 
+describe("minifyJs – a class field name before a computed or generator member", () => {
+  // `name\n[key] = 1` is two fields: a field name cannot be indexed, so the line break ends it.
+  it.each([
+    [
+      "a field then a computed field",
+      "const k = 'key'\nclass A {\n  first\n  [k] = 1\n}\nconst a = new A()\nlog.push('first' in a, a.key)",
+    ],
+    [
+      "a private field then a computed field",
+      "const k = 'key'\nclass A {\n  #abort\n  [k] = null\n  has() { return #abort in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "a static field then a computed field",
+      "const k = 'key'\nclass A {\n  static first\n  [k] = 1\n}\nlog.push('first' in A, new A().key)",
+    ],
+    [
+      "a field then a computed method",
+      "const k = 'key'\nclass A {\n  first\n\n  // the method\n  [k]() { return 2 }\n}\nconst a = new A()\nlog.push('first' in a, a.key())",
+    ],
+    [
+      "a field then a generator method",
+      "class A {\n  first\n  *items() { yield 1 }\n}\nconst a = new A()\nlog.push('first' in a, [...a.items()])",
+    ],
+    [
+      "a field after a method",
+      "const k = 'key'\nclass A {\n  m() { return 1 }\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.m(), 'first' in a, a.key)",
+    ],
+    [
+      "a private field after fields with values",
+      "const k = 'key'\nclass A {\n  #paused = false\n  #reason = null\n  #abort\n  [k] = 2\n  has() { return #abort in this && !this.#paused && !this.#reason }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "a field after a field with a string value",
+      "const k = 'key'\nclass A {\n  label = 'x'\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.label, 'first' in a, a.key)",
+    ],
+    [
+      "a field after a field with a call value",
+      "const k = 'key', f = () => 1\nclass A {\n  n = f()\n  first\n  *[k]() { yield 2 }\n}\nconst a = new A()\nlog.push(a.n, 'first' in a, [...a.key()])",
+    ],
+    [
+      "a class expression in a field value",
+      "const k = 'key'\nclass A {\n  static Inner = class {\n    first\n    [k] = 3\n  }\n}\nconst i = new A.Inner()\nlog.push('first' in i, i.key)",
+    ],
+    [
+      "a field named async",
+      "const k = 'key'\nclass A {\n  async\n  [k]() { return 4 }\n}\nconst a = new A()\nlog.push('async' in a, a.key())",
+    ],
+  ])("ends %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // Here the `[` or `*` line belongs to what is before it.
+  it.each([
+    [
+      "static",
+      "const k = 'key'\nclass A {\n  static\n  [k] = 1\n}\nlog.push(A.key)",
+    ],
+    [
+      "get",
+      "const k = 'key'\nclass A {\n  get\n  [k]() { return 2 }\n}\nlog.push(new A().key)",
+    ],
+    [
+      "a static generator",
+      "class A {\n  static\n  *items() { yield 3 }\n}\nlog.push([...A.items()])",
+    ],
+    [
+      "a field value that is indexed",
+      "const b = [4]\nclass A {\n  first = b\n  [0]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a field value that is multiplied",
+      "const b = 5\nclass A {\n  first = b\n  * 2\n}\nlog.push(new A().first)",
+    ],
+    [
+      "an index inside a method",
+      "const b = [6]\nclass A {\n  m() {\n    return b\n      [0]\n  }\n}\nlog.push(typeof new A().m())",
+    ],
+    [
+      "an expression statement inside a method",
+      "const b = [7]\nclass A {\n  m() {\n    const c = b\n    [0]\n    return c\n  }\n}\nlog.push(new A().m())",
+    ],
+  ])("keeps %s joined to the next line", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 // A `{` on its own line after a function, method, class or catch header opens that header's
 // body. It is what brace-on-next-line code looks like, and what a TypeScript function with a
 // multi-line return type looks like once its types are stripped to spaces.

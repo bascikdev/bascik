@@ -39,6 +39,13 @@ type Segment = {
    */
   valueBraceCloses?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a class field name that has no value and is
+   * followed, on a later line, by a member starting with `[` or `*` (`#abort\n[kResume] = null`,
+   * `count\n*items() {}`). A field name cannot be indexed or multiplied, so the line break
+   * ends the field.
+   */
+  fieldNameEnds?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -170,6 +177,8 @@ const EXPRESSION_START_AFTER = new Set([
   "|",
   "!",
 ]);
+/** Words that, at the start of a class member, modify the member named after them. */
+const CLASS_MEMBER_MODIFIERS = new Set(["get", "set", "async", "accessor"]);
 
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
@@ -457,8 +466,51 @@ const scanSegments = (js: string): Segment[] => {
   // an arrow function, function expression or class expression), not a block statement.
   const braceEndsValue: boolean[] = [];
   let valueBraceCloses: Set<number> | undefined;
+  // The current word is the name a class member starts with (after `static` or `#` at most),
+  // and the same for a `#` just read.
+  let wordStartsClassMember = false;
+  let hashStartsClassMember = false;
+  let fieldNameEnds: Set<number> | undefined;
   let i = 0;
   const len = js.length;
+
+  /** Directly in a class body: not inside a member's parameters, value or computed name. */
+  const atClassMemberLevel = (): boolean => {
+    const top = braceKind.length - 1;
+    return (
+      top !== -1 &&
+      braceKind[top] === BRACE_CLASS &&
+      braceParenDepth[top] === parenIsControlHeader.length &&
+      braceBracketDepth[top] === bracketDepth
+    );
+  };
+
+  /**
+   * Whether a name (or its `#`) starting here is the first token of a class member: after
+   * `{`, `;`, `}` or `static`, or on a new line after a field value that has ended
+   * (`#paused = false\n#abort`). A value has not ended after an operator, or after a word that
+   * takes something next (`typeof`, `get`).
+   */
+  const startsClassMember = (): boolean => {
+    if (!atClassMemberLevel()) return false;
+    if (lastSig === "{" || lastSig === ";" || lastSig === "}") return true;
+    if (isWordChar(lastSig)) {
+      if (wordIsProperty) return lineBreakSinceSignificant;
+      if (wordRun === "static") return wordStartsClassMember;
+      return (
+        lineBreakSinceSignificant &&
+        !EXPRESSION_CONTINUING_KEYWORDS.has(wordRun) &&
+        !CLASS_MEMBER_MODIFIERS.has(wordRun)
+      );
+    }
+    if (!lineBreakSinceSignificant) return false;
+    // After `)`, `]`, or a string, template or regex literal.
+    return (
+      lastSig === ")" ||
+      lastSig === "]" ||
+      (!lastSig && segments.at(-1)?.literal === true)
+    );
+  };
 
   const flushCode = (): void => {
     if (codeAccum) {
@@ -470,6 +522,7 @@ const scanSegments = (js: string): Segment[] => {
         arrowBodyCloses,
         bodyHeaderEnds,
         valueBraceCloses,
+        fieldNameEnds,
       });
       codeAccum = "";
     }
@@ -478,6 +531,7 @@ const scanSegments = (js: string): Segment[] => {
     arrowBodyCloses = undefined;
     bodyHeaderEnds = undefined;
     valueBraceCloses = undefined;
+    fieldNameEnds = undefined;
     lastSigOffset = -1;
     lastRaw = "";
     lastSig = "";
@@ -599,6 +653,8 @@ const scanSegments = (js: string): Segment[] => {
             !wordIsProperty &&
             (OBJECT_PRECEDING_KEYWORDS.has(wordRun) ||
               (wordRun === "async" && wordStartsExpression)));
+        wordStartsClassMember =
+          lastSig === "#" ? hashStartsClassMember : startsClassMember();
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -664,8 +720,24 @@ const scanSegments = (js: string): Segment[] => {
           (valueBraceCloses ??= new Set()).add(codeAccum.length);
         }
         break;
+      case "#":
+        hashStartsClassMember = startsClassMember();
+        break;
       case "[":
-        bracketDepth++;
+      case "*":
+        // `name\n[key] = 1` and `name\n*items() {}` in a class body: `name` is a field of its
+        // own. `static`, `get` and `set` are modifiers of the member that follows.
+        if (
+          lineBreakSinceSignificant &&
+          isWordChar(lastSig) &&
+          wordStartsClassMember &&
+          lastSigOffset !== -1 &&
+          wordRun !== "static" &&
+          (c === "*" || (wordRun !== "get" && wordRun !== "set"))
+        ) {
+          (fieldNameEnds ??= new Set()).add(lastSigOffset);
+        }
+        if (c === "[") bracketDepth++;
         break;
       case "]":
         if (bracketDepth > 0) bracketDepth--;
@@ -1062,6 +1134,10 @@ export const minifyJs = (js: string): string => {
         if (!startsWithContinuation) {
           needsSemicolon = true;
         }
+      }
+      if (seg.fieldNameEnds?.has(prevLineEnd)) {
+        // A class field name, then a member starting with `[` or `*` on this line.
+        needsSemicolon = true;
       }
 
       prevLineEnd = lineEnd;
