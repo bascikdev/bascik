@@ -9,6 +9,7 @@ Contributor tooling for measuring Bascik itself. Nothing in this directory ships
 | `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`  | Dev and build timelines on a copy of a real project                    |
 | `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`   | Paired baseline versus candidate compiler runs on one fixture          |
 | `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler           |
+| `yarn workspace @bascik/bascik profile:matrix`      | `config-matrix.ts`      | One fixture built under many configs, compared in a browser            |
 | `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`    | Read-only CPU sample and hot-line summaries                            |
 | `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling            |
 
@@ -64,6 +65,36 @@ yarn workspace @bascik/bascik profile:fuzz \
 ```
 
 Use the actual path from the failure report. This opt-in check complements unit tests and same-path `profile:compare` builds; it does not execute build scripts, watch files, spawn page workers, or prove browser behavior. The normal unit suite verifies runner comparison, warm-call detection, shrinking/replay, and argument validation without requiring a baseline checkout.
+
+## Config Matrix (`profile:matrix`)
+
+Most fixtures pin one configuration, so interactions between options are thinly tested. `config-matrix.ts` builds one site under about 70 configurations and compares each with the default build. It is a correctness check, not a timing tool.
+
+```sh
+yarn pkg:build   # the fixture's build script imports @bascik/bascik/html from dist/
+yarn workspace @bascik/bascik profile:matrix
+yarn workspace @bascik/bascik profile:matrix --list
+yarn workspace @bascik/bascik profile:matrix --only workers+base,base --keep
+```
+
+The fixture in `config-matrix-fixture/` is copied to a private temporary directory, which is removed afterwards unless `--keep` is passed. Each variant writes its own config file and runs this workspace's CLI (`src/index.ts --build --config <file>`) into its own output directory, one build after another on the same project path, because instance IDs hash absolute source paths. `--project <dir>` runs the same variants on another project, `--report-dir <dir>` keeps the logs, snapshots, and summary, and `--skip-browser` stops after the byte comparisons.
+
+Each variant states what it must preserve:
+
+| Expectation  | Meaning                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| `bytes`      | Every output file equals the comparison build's (the baseline, or the variant named by `against`)         |
+| `html-bytes` | Every HTML file equals the baseline's; generated files such as the sitemap may differ                     |
+| `render`     | The browser snapshot equals the baseline's                                                                |
+| `builds`     | The option changes rendering by design (`scoping.attributes.id: false`): only a failed build is a finding |
+
+Every `pipeline.workers: true` variant is compared byte for byte with its `workers: false` twin, and the baseline is built twice to check that a build is deterministic.
+
+The browser snapshot (`config-matrix-snapshot.js`, evaluated in Chromium through Playwright) describes every element marked `data-probe="<name>"`: its rendered text, a fixed list of computed styles, its box, its `data-*` attributes, and which probe each ID reference resolves to (`for`, `aria-*`, `href="#..."`, `popovertarget`, `list`, `form`, and `url(#...)` in attributes and CSS). It then clicks every `data-probe="toggle"` and records what changed, which is how a client script's effect is compared. Scoped names never appear in a snapshot, so builds with different `minify.identifiers` settings compare equal when they render the same. Console errors, page errors, and failed requests fail any variant.
+
+To cover a new option, add a variant to `VARIANTS`. To cover a new construct, add it to the fixture with a `data-probe` and, when it needs a new measurement, extend the snapshot. Keep the fixture's stylesheet `<link>` in place: `assets.inlineStyles` variants tolerate the missing file (`allowMissingCss`), because the docs tell authors to remove the link when they inline it.
+
+The command exits 1 when any variant fails and prints each difference as `page.probe.field: this ... | base ...`. It runs no dev server and no `bascik --server`; the e2e lanes cover those.
 
 ## CPU Profile Summaries
 

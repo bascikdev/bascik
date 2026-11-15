@@ -138,6 +138,7 @@
     "profile:compiler": "node bench/compiler-timeline.ts",
     "profile:compare": "node bench/compiler-compare.ts",
     "profile:fuzz": "node bench/compiler-fuzz.ts",
+    "profile:matrix": "node bench/config-matrix.ts",
     "profile:summary": "node bench/profile-summary.ts"
   }
 }
