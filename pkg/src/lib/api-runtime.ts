@@ -38,6 +38,27 @@ export type { HttpMethod };
 
 export type ApiRouteContext = ApiHandlerContext;
 
+/**
+ * What to log for an API route module that failed to load: the error's stack,
+ * and, when the cause is an `@/` import in a module file, the fix. `@/` is
+ * rewritten in `<script>` blocks only; in a `.ts` file Node reads `@/lib/x.ts`
+ * as a package named `@/lib` and reports that it cannot find it.
+ */
+export const apiRouteLoadFailureReport = (err: unknown): string => {
+  const report = (err as Error)?.stack ?? String(err);
+  const message = (err as Error)?.message;
+  if (
+    (err as { code?: unknown })?.code !== "ERR_MODULE_NOT_FOUND" ||
+    typeof message !== "string"
+  )
+    return report;
+  const alias = /Cannot find package '(@\/[^']*)' imported from (.+)$/m.exec(
+    message,
+  );
+  if (!alias) return report;
+  return `${report}\n  The @/ alias is available inside <script> blocks only. In ${alias[2]} use a relative import, such as "../lib/helper.ts" in place of "@/lib/helper.ts".`;
+};
+
 export interface ExecuteApiRouteOptions {
   filePath: string;
   request: Request;
@@ -441,7 +462,7 @@ export const executeApiRoute = async (
       console.error(
         "[bascik] Failed to load API route module %s:",
         filePath,
-        (err as Error).stack ?? String(err),
+        apiRouteLoadFailureReport(err),
       );
       return new Response("Internal Server Error", { status: 500 });
     }
