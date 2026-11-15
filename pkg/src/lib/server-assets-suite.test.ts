@@ -774,6 +774,74 @@ describe("startHttp2Server – static representation failure paths", () => {
       expect.objectContaining({ ":status": 404 }),
     );
   });
+
+  // A page name can hold a dot: `release-1.0.html`, a `[version]` route of
+  // `v2.0`. Its URL (the one the sitemap lists) looks like a file with an
+  // extension, but no such file exists, so the page answers.
+  it.each(["/release-1.0", "/docs/v2.0", "/blog/hello.world"])(
+    "serves the page at a dotted path no static file has: %s",
+    async (path) => {
+      mockStat.mockRejectedValueOnce(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockImplementation((httpPath: string) =>
+        httpPath === path
+          ? makePage({ content: Buffer.from("<html>Dotted</html>") })
+          : undefined,
+      );
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 200,
+          "content-type": "text/html; charset=utf-8",
+        }),
+      );
+    },
+  );
+
+  // `v1.2/index.html` is the page `/v1.2/`; `/v1.2` names its folder in
+  // dist, which stat finds, and the page answers as it does for `/blog`.
+  it("serves a dotted folder's index page when the path without the slash is a directory", async () => {
+    mockStat.mockResolvedValueOnce({
+      mtimeMs: 1_705_000_000_000,
+      size: 96,
+      isDirectory: () => true,
+    });
+    mockMem.getPageExact.mockImplementation((httpPath: string) =>
+      httpPath === "/v1.2"
+        ? makePage({ relativePagePath: "pages/v1.2/index.html" })
+        : undefined,
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/v1.2", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
+    expect(mockReadFile).not.toHaveBeenCalledWith(
+      expect.stringContaining("v1.2"),
+    );
+  });
+
+  it("a static file wins over a page with the same dotted path", async () => {
+    mockStat.mockResolvedValue({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    mockReadFile.mockResolvedValue(Buffer.from('{"a":1}'));
+    mockMem.getPageExact.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/data.json", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200, "content-length": 7 }),
+    );
+    expect(stream.respond).not.toHaveBeenCalledWith(
+      expect.objectContaining({ "content-type": "text/html; charset=utf-8" }),
+    );
+  });
 });
 
 describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () => {
