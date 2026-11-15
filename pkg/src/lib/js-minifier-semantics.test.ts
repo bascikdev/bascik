@@ -366,3 +366,101 @@ describe("minifyJs – a body brace on the line after its header", () => {
     );
   });
 });
+
+describe("minifyJs – a call that only looks like a control header", () => {
+  // `Symbol.for(...)`, `list.with(...)` and `$if(...)` are calls: the line break after them
+  // ends the statement, unlike the one after `for (...)` or `if (...)`.
+  it.each([
+    [
+      "Symbol.for with a string",
+      "const k = Symbol.for('app.key')\nconst y = 2\nlog.push(typeof k, y)",
+    ],
+    [
+      "Symbol.for with a name",
+      "const name = 'k'\nconst k = Symbol.for(name)\nconst y = 2\nlog.push(typeof k, y)",
+    ],
+    [
+      "Array.prototype.with",
+      "const a = [1, 2]\nconst b = a.with(0, 9)\nlog.push(b[0])",
+    ],
+    [
+      "a method named if, while or switch",
+      "const o = { if: (v) => log.push(v), while: (v) => log.push(v), switch: (v) => log.push(v) }\no.if(1)\no.while(2)\no.switch('3')\nlog.push(4)",
+    ],
+    [
+      "a property reached across a line break",
+      "const o = { for: (v) => v }\nconst r = o\n  .for(1)\nlog.push(r)",
+    ],
+    [
+      "a property after a space",
+      "const o = { for: (v) => v }\nconst r = o. for(1)\nlog.push(r)",
+    ],
+    [
+      "an optional call",
+      "const o = { for: (v) => v }\nconst r = o?.for(1)\nlog.push(r)",
+    ],
+    [
+      "a name ending in a keyword after $",
+      "const $if = (v) => v, $for = (v) => v\nconst a = $if(1)\nconst b = $for('2')\nlog.push(a, b)",
+    ],
+    [
+      "a division after such a call",
+      "const o = { with: (v) => v }, g = 2\nconst r = o.with(8) / 2 / g\nlog.push(r)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["for", "for (const a of [1, 2])\n  log.push(a)\nlog.push('done')"],
+    [
+      "if",
+      "const a = 1\nif (a === 1)\n  log.push('one')\nelse\n  log.push('other')",
+    ],
+    ["while", "let n = 0\nwhile (n < 2)\n  n++\nlog.push(n)"],
+    ["nested call", "const f = (v) => v\nif (f(f(1)))\n  log.push('one')"],
+  ])("still joins a real %s header to its body", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `new Function` bodies cannot hold `for await`, so these compare text.
+  it.each([
+    [
+      "async function f(o) {\n  for await (const a of o)\n  {\n    use(a)\n  }\n}",
+      "async function f(o){for await(const a of o){use(a)}}",
+    ],
+    [
+      "async function f(o) {\n  for await (const a of o)\n    use(a)\n  done()\n}",
+      "async function f(o){for await(const a of o)use(a);done()}",
+    ],
+    [
+      "async function f(o) {\n  for await (const a of o) /x/.test(a) && use(a)\n}",
+      "async function f(o){for await(const a of o)/x/.test(a)&&use(a)}",
+    ],
+    ["const r = o.for\nawait (a)\nb()", "const r=o.for;await(a);b()"],
+  ])("reads the header of `for await`: %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it.each([
+    [
+      "a string",
+      "const a = 'x'\nswitch (a + 'y')\n{\n  case 'xy':\n    log.push(1)\n}",
+    ],
+    [
+      "a template",
+      "const a = 'x'\nswitch (`${a}y`)\n{\n  case 'xy':\n    log.push(1)\n}",
+    ],
+    ["a regex", "switch (/x/.test('x'))\n{\n  case true:\n    log.push(1)\n}"],
+    [
+      "a call",
+      "const f = (v) => v\nswitch (f(f(1)))\n{\n  case 1:\n    log.push(1)\n}",
+    ],
+    ["a name", "const a = 1\nswitch (a)\n{\n  case 1:\n    log.push(1)\n}"],
+  ])(
+    "joins a switch header holding %s to a `{` on the next line",
+    (_name, source) => {
+      expect(expectSameProgram(source)).not.toContain(";{");
+    },
+  );
+});
