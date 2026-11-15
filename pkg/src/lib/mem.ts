@@ -37,6 +37,8 @@ interface StorePageArgs {
   fileDependencies?: string[];
   /** The manifest of the publication storing the page (prompt 157); see `StoredPage.componentManifest`. */
   componentManifest?: ComponentManifest | null;
+  /** The content's inline script and style hashes; see `StoredPage.cspHashes`. */
+  cspHashes?: StoredPage["cspHashes"];
 }
 
 class MemoryStore {
@@ -118,6 +120,7 @@ class MemoryStore {
     usedComponentsNames = [],
     fileDependencies = [],
     componentManifest,
+    cspHashes,
   }: StorePageArgs): Promise<void> {
     const httpPath = getHttpPath(relativePagePath);
     this.#failedPages.delete(resolve(absolutePagePath));
@@ -191,6 +194,7 @@ class MemoryStore {
       // Attached only with a plan: a page that never runs a script at request
       // time has no use for it, and a static site keeps paying nothing.
       ...(serverScriptPlan && componentManifest ? { componentManifest } : {}),
+      ...(cspHashes ? { cspHashes } : {}),
     };
 
     // Store the raw content immediately so the page is servable right away.

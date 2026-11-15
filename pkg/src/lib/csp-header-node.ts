@@ -6,8 +6,8 @@
  *
  * - `bascik --server` reads .bascik/dist/csp-hashes.json (already widened
  *   for routes that render components at request time) once.
- * - The dev server reads the hashes it recorded for the route as it compiled
- *   the page, and widens a page with server or stream scripts with its
+ * - The dev server reads the hashes stored with the page in the memory
+ *   store when it was compiled, and widens a page with server or stream scripts with its
  *   component manifest, as the build does.
  *
  * Without the option nothing is computed and no header is added.
@@ -61,7 +61,7 @@ const hashesOf = (manifest: ComponentManifest): CspRouteHashes => {
 export const cspHeadersForPage = (
   page: Pick<
     StoredPage,
-    "relativePagePath" | "componentManifest" | "serverScriptPlan"
+    "relativePagePath" | "componentManifest" | "serverScriptPlan" | "cspHashes"
   >,
 ): Record<string, string> => {
   const policy = BascikConfig.contentSecurityPolicy;
@@ -69,7 +69,10 @@ export const cspHeadersForPage = (
   const route = getHttpPath(page.relativePagePath);
   const own = BascikConfig.isProdServer
     ? (readProdManifest()?.[route] ?? undefined)
-    : cspHashCollector.getRoute(route);
+    : // The hashes stored with the content being sent. The collector is
+      // one disk write behind the memory store, so right after a compile it
+      // has no hashes for the route, or the previous build's.
+      (page.cspHashes ?? cspHashCollector.getRoute(route));
   // A page with server or stream scripts can render any manifest component
   // at request time, so it carries their hashes too (a build already wrote
   // them into csp-hashes.json; the dev server adds them here).

@@ -118,6 +118,30 @@ describe("storePage + getPage round-trip", () => {
     );
   });
 
+  it("keeps the page's CSP hashes with its content, and replaces them with it", async () => {
+    // The dev server builds the Content-Security-Policy header from these,
+    // so they must change in the same step as the content they describe.
+    const store = (script: string) =>
+      mem.storePage({
+        relativePagePath: "csp-page",
+        absolutePagePath: "csp-page",
+        pageContent: `<html><body><script>${script}</script></body></html>`,
+        cspHashes: { scripts: [`sha256-${script}`], styles: [] },
+      });
+    await store("first");
+    expect(mem.getPage("csp-page")?.cspHashes).toEqual({
+      scripts: ["sha256-first"],
+      styles: [],
+    });
+    await store("second");
+    const page = mem.getPage("csp-page");
+    expect(page?.content.toString()).toContain("second");
+    expect(page?.cspHashes).toEqual({ scripts: ["sha256-second"], styles: [] });
+    // A page stored without hashes (the production server) carries none.
+    await storeSample("no-csp");
+    expect(mem.getPage("no-csp")).not.toHaveProperty("cspHashes");
+  });
+
   it("stores usedComponentsSet as a Set", async () => {
     await storeSample("comp-test", ["my-nav", "my-footer"]);
     const page = mem.getPage("comp-test");

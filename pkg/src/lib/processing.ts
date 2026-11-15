@@ -728,6 +728,7 @@ export const processPageBatch = async (
           pageContent: result.distHtml,
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
+          cspHashes: result.cspHashes,
           componentManifest: await devManifestForPage(
             componentList!,
             result.distHtml,
@@ -1271,6 +1272,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               pageContent: pageBytes,
               usedComponentsNames: result.usedComponentsNames,
               fileDependencies: result.fileDependencies,
+              cspHashes: result.cspHashes,
               componentManifest: await devManifestForPage(
                 componentList,
                 pageBytes,
@@ -1451,6 +1453,7 @@ export const pageProcessing = (
                 pageContent: distHtml,
                 usedComponentsNames,
                 fileDependencies,
+                cspHashes,
                 componentManifest: await devManifestForPage(
                   componentList,
                   distHtml,
