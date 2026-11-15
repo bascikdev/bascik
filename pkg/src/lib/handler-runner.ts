@@ -101,6 +101,24 @@ process.on("exit", (code) => {
   }
 });
 
+// Bascik holds the other end of stdin for as long as it lives and never
+// writes to it. Its end therefore means Bascik is gone (stopped, killed, or
+// its page worker ended): nothing will read this script's result, and the
+// timeout that would have stopped it is gone too. Stop instead of running on.
+// Unref'd, so stdin alone never keeps a finished script alive. Only for the
+// pipe Bascik starts a script with: a terminal or a file says nothing about
+// who started the script.
+try {
+  const stdin = process.stdin;
+  if (!stdin.isTTY && typeof stdin.unref === "function") {
+    stdin.unref();
+    stdin.on("end", () => process.exit(1));
+    stdin.resume();
+  }
+} catch {
+  // No usable stdin: nothing to watch.
+}
+
 let mod;
 try {
   mod = await import(target);
