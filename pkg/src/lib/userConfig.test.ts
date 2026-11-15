@@ -80,6 +80,40 @@ describe("loadUserConfig", () => {
     );
   });
 
+  // A promise is an object, so it used to pass as a config with no settings:
+  // everything the promise resolved to was ignored without a word.
+  it("rejects a promise export instead of ignoring what it resolves to", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `const load = async () => ({ directory: { out: "public" } });
+       export default load();
+       export const build = Promise.resolve({ minify: { css: false } });`,
+    );
+    const error = await loadUserConfig(p).then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain(p);
+    expect(error?.message).toMatch(
+      /the default export must be an object, not a promise[^\n]*export default await/,
+    );
+    // Each line names the fix for its own export, not `export default`.
+    expect(error?.message).toMatch(
+      /the build export must be an object, not a promise[^\n]*export const build = await/,
+    );
+    expect(error?.message).not.toMatch(/defineConfig/);
+  });
+
+  it("loads a config that awaits its settings before exporting them", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `const load = async () => ({ directory: { out: "public" } });
+       export default await load();`,
+    );
+    const { config } = await loadUserConfig(p);
+    expect(config).toEqual({ directory: { out: "public" } });
+  });
+
   it("rejects a config whose only exports are names Bascik does not read", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(
